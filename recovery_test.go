@@ -1,4 +1,4 @@
-package authserver_test
+package accountkit_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	authserver "github.com/bbxx111/accountkit"
+	"github.com/bbxx111/accountkit"
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/user"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -34,7 +34,7 @@ func TestRecoveryFixture(t *testing.T) {
 	}
 	cfg := minimal()
 	cfg.Schema = "accountkit_recovery"
-	pc, err := authserver.PoolConfig(dsn, cfg.Schema)
+	pc, err := accountkit.PoolConfig(dsn, cfg.Schema)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestRecoveryFixture(t *testing.T) {
 	}
 	defer pool.Close()
 	captured := &captureSender{}
-	a, err := authserver.New(cfg, authserver.Deps{Pool: pool, Redis: testRedis(t), SMSSender: captured, EmailSender: captured, Audit: audit.Noop{}})
+	a, err := accountkit.New(cfg, accountkit.Deps{Pool: pool, Redis: testRedis(t), SMSSender: captured, EmailSender: captured, Audit: audit.Noop{}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -98,7 +98,7 @@ func New(d Deps) (*Handler, error) {
 }
 
 // Unconfigured 返回“管理面未配置”的 handler：任何请求 503 UNAVAILABLE / ADMIN_NOT_CONFIGURED，
-// 响应带 X-Request-Id（与已配置时的行为一致）。authserver.New 在宿主未注入 AdminVerifier / AdminPrincipal
+// 响应带 X-Request-Id（与已配置时的行为一致）。accountkit.New 在宿主未注入 AdminVerifier / AdminPrincipal
 // 时使用它，保证 AdminHandler() 永不为 nil。
 func Unconfigured(requestID func(*http.Request) string) http.Handler {
 	return reqid.Middleware(requestID)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

@@ -1,4 +1,4 @@
-package authserver_test
+package accountkit_test
 
 import (
 	"context"

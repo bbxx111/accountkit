@@ -12,4 +12,4 @@ TestRecoveryFixture 是跨进程恢复演练的合成数据工具，普通测试
 
 独立宿主示例：examples/embedded/main.go。设置 ACCOUNTKIT_DEMO=1、ACCOUNTKIT_DATABASE_URL、ACCOUNTKIT_REDIS_ADDR 及 README 配置表中的 ACCOUNTKIT_ 前缀配置，再 go run ./examples/embedded。仅监听 127.0.0.1:8080；日志发送器仅供开发，管理端未注入验证器时返回 503。
 
-源码清单与兼容对照见 docs/compatibility.md，迁移操作与恢复限制见 docs/migrations.md。两个产品的实际部署、服务商实机联调和发布 tag/push 独立进行。
+源码清单与兼容对照见 docs/compatibility.md，迁移操作与恢复限制见 docs/migrations.md。宿主实际部署、服务商实机联调和发布 tag/push 独立进行。

@@ -1,4 +1,4 @@
-package authserver_test
+package accountkit_test
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
-	authserver "github.com/bbxx111/accountkit"
+	"github.com/bbxx111/accountkit"
 	"github.com/bbxx111/accountkit/anonymize"
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
@@ -46,13 +46,13 @@ func lazyPool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-func baseDeps(t *testing.T) authserver.Deps {
+func baseDeps(t *testing.T) accountkit.Deps {
 	t.Helper()
-	return authserver.Deps{Pool: lazyPool(t), Redis: testRedis(t), SMSSender: sender.NewLog(nil), EmailSender: sender.NewLog(nil)}
+	return accountkit.Deps{Pool: lazyPool(t), Redis: testRedis(t), SMSSender: sender.NewLog(nil), EmailSender: sender.NewLog(nil)}
 }
 
 func TestNewIsPureAndAppliesDefaults(t *testing.T) {
-	a, err := authserver.New(minimal(), baseDeps(t))
+	a, err := accountkit.New(minimal(), baseDeps(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,25 +64,25 @@ func TestNewIsPureAndAppliesDefaults(t *testing.T) {
 func TestNewRejectsBadConfigAndMissingDeps(t *testing.T) {
 	bad := minimal()
 	bad.JWTIssuer = ""
-	if _, err := authserver.New(bad, baseDeps(t)); err == nil {
+	if _, err := accountkit.New(bad, baseDeps(t)); err == nil {
 		t.Fatal("invalid config must fail")
 	}
-	if _, err := authserver.New(minimal(), authserver.Deps{Redis: testRedis(t), SMSSender: sender.NewLog(nil), EmailSender: sender.NewLog(nil)}); err == nil {
+	if _, err := accountkit.New(minimal(), accountkit.Deps{Redis: testRedis(t), SMSSender: sender.NewLog(nil), EmailSender: sender.NewLog(nil)}); err == nil {
 		t.Fatal("missing Pool must fail")
 	}
-	if _, err := authserver.New(minimal(), authserver.Deps{Pool: lazyPool(t), SMSSender: sender.NewLog(nil), EmailSender: sender.NewLog(nil)}); err == nil {
+	if _, err := accountkit.New(minimal(), accountkit.Deps{Pool: lazyPool(t), SMSSender: sender.NewLog(nil), EmailSender: sender.NewLog(nil)}); err == nil {
 		t.Fatal("missing Redis must fail")
 	}
-	if _, err := authserver.New(minimal(), authserver.Deps{Pool: lazyPool(t), Redis: testRedis(t), EmailSender: sender.NewLog(nil)}); err == nil {
+	if _, err := accountkit.New(minimal(), accountkit.Deps{Pool: lazyPool(t), Redis: testRedis(t), EmailSender: sender.NewLog(nil)}); err == nil {
 		t.Fatal("missing SMSSender must fail")
 	}
-	if _, err := authserver.New(minimal(), authserver.Deps{Pool: lazyPool(t), Redis: testRedis(t), SMSSender: sender.NewLog(nil)}); err == nil {
+	if _, err := accountkit.New(minimal(), accountkit.Deps{Pool: lazyPool(t), Redis: testRedis(t), SMSSender: sender.NewLog(nil)}); err == nil {
 		t.Fatal("missing EmailSender must fail")
 	}
 }
 
 func TestNewExposesUsersService(t *testing.T) {
-	a, err := authserver.New(minimal(), baseDeps(t))
+	a, err := accountkit.New(minimal(), baseDeps(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,26 +92,26 @@ func TestNewExposesUsersService(t *testing.T) {
 }
 
 func TestPoolConfigSetsSearchPath(t *testing.T) {
-	cfg, err := authserver.PoolConfig("postgres://u:p@localhost:5432/db?sslmode=disable", "auth_x")
+	cfg, err := accountkit.PoolConfig("postgres://u:p@localhost:5432/db?sslmode=disable", "auth_x")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := cfg.ConnConfig.RuntimeParams["search_path"]; got != "auth_x,public" {
 		t.Fatalf("search_path = %q", got)
 	}
-	if _, err := authserver.PoolConfig("postgres://u:p@localhost/db", "Bad Schema"); err == nil {
+	if _, err := accountkit.PoolConfig("postgres://u:p@localhost/db", "Bad Schema"); err == nil {
 		t.Fatal("invalid schema must fail")
 	}
 }
 
 func TestCloseBeforeStartIsSafe(t *testing.T) {
-	a, _ := authserver.New(minimal(), baseDeps(t))
+	a, _ := accountkit.New(minimal(), baseDeps(t))
 	a.Close()
 	a.Close()
 }
 
 func TestNewDefaultsAuditToAsyncStoreUnlessInjected(t *testing.T) {
-	a, err := authserver.New(minimal(), baseDeps(t))
+	a, err := accountkit.New(minimal(), baseDeps(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestNewDefaultsAuditToAsyncStoreUnlessInjected(t *testing.T) {
 	mem := &audit.Memory{}
 	d := baseDeps(t)
 	d.Audit = mem
-	b, err := authserver.New(minimal(), d)
+	b, err := accountkit.New(minimal(), d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestNewDefaultsAuditToAsyncStoreUnlessInjected(t *testing.T) {
 }
 
 func TestDefaultRequestIDAndClientIP(t *testing.T) {
-	a, _ := authserver.New(minimal(), baseDeps(t))
+	a, _ := accountkit.New(minimal(), baseDeps(t))
 	deps := a.DepsForTest()
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	r.RemoteAddr = "203.0.113.9:4567"
@@ -155,7 +155,7 @@ func TestDefaultRequestIDAndClientIP(t *testing.T) {
 }
 
 func TestConsumerHandlerAndMiddlewareWiring(t *testing.T) {
-	a, err := authserver.New(minimal(), baseDeps(t))
+	a, err := accountkit.New(minimal(), baseDeps(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestConsumerHandlerAndMiddlewareWiring(t *testing.T) {
 	// 3) RequireScope 保护宿主路由：缺 bearer 401；伪造 token 401
 	protected := chi.NewRouter()
 	protected.With(a.RequireScope("user")).Get("/devices", func(w http.ResponseWriter, r *http.Request) {
-		p, ok := authserver.PrincipalFrom(r.Context())
+		p, ok := accountkit.PrincipalFrom(r.Context())
 		if !ok {
 			t.Fatal("principal must be present after RequireScope")
 		}
@@ -206,7 +206,7 @@ func TestConsumerHandlerAndMiddlewareWiring(t *testing.T) {
 	cfg := minimal()
 	off := false
 	cfg.SensitiveOpVerification = &off
-	a2, err := authserver.New(cfg, baseDeps(t))
+	a2, err := accountkit.New(cfg, baseDeps(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +228,7 @@ func TestConsumerHandlerAndMiddlewareWiring(t *testing.T) {
 // 宿主自己的业务路由挂在同一 chi.Router 下的兄弟前缀（"/devices"）。证明
 // Mount("/") 与相邻的 Mount("/devices") 能在 chi 下共存，互不吞掉对方的路由。
 func TestHostMountShape(t *testing.T) {
-	a, err := authserver.New(minimal(), baseDeps(t))
+	a, err := accountkit.New(minimal(), baseDeps(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +269,7 @@ func TestHostMountShape(t *testing.T) {
 
 func TestNewWiresIdPVerifiersOnlyWhenConfigured(t *testing.T) {
 	// 未配置：signInWithIdp 走到领域层后以 IDP_APP_NOT_ALLOWED 拒绝（校验器为 nil），且 New 不做任何网络 I/O。
-	a, err := authserver.New(minimal(), baseDeps(t))
+	a, err := accountkit.New(minimal(), baseDeps(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,13 +282,13 @@ func TestNewWiresIdPVerifiersOnlyWhenConfigured(t *testing.T) {
 	}
 	// 配置了但 HTTPClient 指向不存在的地址：New 仍成功（懒加载），请求时 503 IDP_UNAVAILABLE
 	cfg := minimal()
-	cfg.WeChatApps = []authserver.WeChatApp{{AppID: "wx1", Secret: "s"}}
+	cfg.WeChatApps = []accountkit.WeChatApp{{AppID: "wx1", Secret: "s"}}
 	cfg.WeChatAPIBaseURL = "http://127.0.0.1:1"
 	cfg.AppleBundleIDs = []string{"co.shifang.zavelo"}
 	cfg.AppleJWKSURL = "http://127.0.0.1:1/keys"
 	deps := baseDeps(t)
 	deps.HTTPClient = &http.Client{Timeout: 300 * time.Millisecond}
-	a2, err := authserver.New(cfg, deps)
+	a2, err := accountkit.New(cfg, deps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,8 +311,8 @@ func TestNewWiresIdPVerifiersOnlyWhenConfigured(t *testing.T) {
 
 type stubAnonymizer struct{ name string }
 
-func (s stubAnonymizer) Name() string                                 { return s.name }
-func (stubAnonymizer) Tables() []string                               { return nil }
+func (s stubAnonymizer) Name() string                                  { return s.name }
+func (stubAnonymizer) Tables() []string                                { return nil }
 func (stubAnonymizer) Anonymize(context.Context, pgx.Tx, string) error { return nil }
 
 func TestNewRejectsBadAnonymizersAndAcceptsDistinctOnes(t *testing.T) {
@@ -323,19 +323,19 @@ func TestNewRejectsBadAnonymizersAndAcceptsDistinctOnes(t *testing.T) {
 	} {
 		d := baseDeps(t)
 		d.Anonymizers = list
-		if _, err := authserver.New(minimal(), d); err == nil {
+		if _, err := accountkit.New(minimal(), d); err == nil {
 			t.Fatalf("%s must be rejected", name)
 		}
 	}
 	d := baseDeps(t)
 	d.Anonymizers = []anonymize.Anonymizer{stubAnonymizer{name: "a"}, stubAnonymizer{name: "b"}}
-	if _, err := authserver.New(minimal(), d); err != nil {
+	if _, err := accountkit.New(minimal(), d); err != nil {
 		t.Fatalf("distinct names must be accepted: %v", err)
 	}
 }
 
 func TestLifecycleRoutesMounted(t *testing.T) {
-	a, err := authserver.New(minimal(), baseDeps(t))
+	a, err := accountkit.New(minimal(), baseDeps(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +351,7 @@ func TestLifecycleRoutesMounted(t *testing.T) {
 }
 
 // stubVerifier 模拟宿主的 oidc-verifier：Middleware 从 X-Test-Admin（"issuer|subject|username|role1,role2"）注入主体；
-// RequireRole 检查主体角色。auth-server 只见到 RequireRole 与 principalFrom。
+// RequireRole 检查主体角色。accountkit 只见到 RequireRole 与 principalFrom。
 type stubVerifier struct{}
 
 type stubPrincipal struct {
@@ -396,31 +396,31 @@ func (stubVerifier) RequireRole(role string) func(http.Handler) http.Handler {
 	}
 }
 
-func stubPrincipalFrom(ctx context.Context) (authserver.AdminPrincipal, bool) {
+func stubPrincipalFrom(ctx context.Context) (accountkit.AdminPrincipal, bool) {
 	p, ok := ctx.Value(stubKey{}).(stubPrincipal)
-	return authserver.AdminPrincipal{Issuer: p.issuer, Subject: p.subject, Username: p.username}, ok
+	return accountkit.AdminPrincipal{Issuer: p.issuer, Subject: p.subject, Username: p.username}, ok
 }
 
 func TestNewRequiresBothAdminDepsOrNeither(t *testing.T) {
 	d := baseDeps(t)
 	d.AdminVerifier = stubVerifier{}
-	if _, err := authserver.New(minimal(), d); err == nil {
+	if _, err := accountkit.New(minimal(), d); err == nil {
 		t.Fatal("AdminVerifier without AdminPrincipal must be rejected")
 	}
 	d = baseDeps(t)
 	d.AdminPrincipal = stubPrincipalFrom
-	if _, err := authserver.New(minimal(), d); err == nil {
+	if _, err := accountkit.New(minimal(), d); err == nil {
 		t.Fatal("AdminPrincipal without AdminVerifier must be rejected")
 	}
 	d = baseDeps(t)
 	d.AdminVerifier, d.AdminPrincipal = stubVerifier{}, stubPrincipalFrom
-	if _, err := authserver.New(minimal(), d); err != nil {
+	if _, err := accountkit.New(minimal(), d); err != nil {
 		t.Fatalf("both set: %v", err)
 	}
 }
 
 func TestAdminHandlerUnconfiguredIs503(t *testing.T) {
-	a, err := authserver.New(minimal(), baseDeps(t))
+	a, err := accountkit.New(minimal(), baseDeps(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -436,7 +436,7 @@ func TestAdminHandlerUnconfiguredIs503(t *testing.T) {
 func TestAdminHandlerMountsBehindHostVerifier(t *testing.T) {
 	d := baseDeps(t)
 	d.AdminVerifier, d.AdminPrincipal = stubVerifier{}, stubPrincipalFrom
-	a, err := authserver.New(minimal(), d)
+	a, err := accountkit.New(minimal(), d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -471,14 +471,14 @@ func TestRecordAdminForbidden(t *testing.T) {
 	mem := &audit.Memory{}
 	d := baseDeps(t)
 	d.Audit = mem
-	a, err := authserver.New(minimal(), d)
+	a, err := accountkit.New(minimal(), d)
 	if err != nil {
 		t.Fatal(err)
 	}
 	req := httptest.NewRequest("GET", "/admin/v1/users", nil)
 	req.Header.Set("X-Request-Id", "req-forbidden")
 	req.RemoteAddr = "198.51.100.9:1234"
-	a.RecordAdminForbidden(req, authserver.AdminPrincipal{Issuer: "iss", Subject: "sub", Username: "ops"})
+	a.RecordAdminForbidden(req, accountkit.AdminPrincipal{Issuer: "iss", Subject: "sub", Username: "ops"})
 	evs := mem.Events()
 	if len(evs) != 1 {
 		t.Fatalf("events: %+v", evs)

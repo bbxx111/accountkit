@@ -7,7 +7,7 @@
 - Go 1.26.5；Linux Docker 环境启用 CGO/race。
 - PostgreSQL 服务端 17.11（postgres:17-alpine）；pg_dump/pg_restore 17.11（Debian 17.11-0+deb13u1）。
 - sqlc 1.31.1；Redis 测试使用 miniredis。
-- 固定来源：ai-food 的 7b4c4ecfdba4a05d54810aa2152b40d5c7da00c2，130 个源文件清单。0001 SQL 与 manifest 均基于 git cat-file blob 原始字节；已在临时提交及干净克隆后复验。
+- 固定基线：`tests/testdata/source-baseline/manifest.json`，包含 130 个历史文件的校验值。0001 SQL 与 manifest 均基于 git cat-file blob 原始字节；已在临时提交及干净克隆后复验。
 - 数据库全部位于临时容器 accountkit-test-20261003，账号及身份都是合成数据。最终演练使用 accountkit_recovery_source_clean 和 accountkit_recovery_target_clean 两个空库，普通集成测试使用 accountkit_test。
 
 最终验证在临时 Git 干净克隆运行，正式仓库未提交。以下命令中的 DSN 由运行环境指向上述一次性测试库，真实凭证不写入文档：
@@ -50,4 +50,4 @@ TestRecoveryFixture 是演练的跨进程工具，常规全套测试明确跳过
 
 数据库备份不包含 Redis 和密钥系统。产品恢复前需核验历史签名、HMAC、加密密钥及 session/吊销/刷新宽限状态；不能通过清空 Redis 宣称安全恢复。实际短信、邮件、微信/Apple、管理员身份与产品预发布环境仍由宿主验收。
 
-本记录证明包级本地发布门禁通过；GitHub Actions 已配置，但未声称在线运行通过。两个产品尚未切换到 accountkit。
+本记录证明记录时的包级本地发布门禁通过；GitHub Actions 已配置，但未声称在线运行通过。宿主接入与部署不属于本次验证范围。

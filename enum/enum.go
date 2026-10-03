@@ -1,4 +1,4 @@
-// Package enum 定义 auth-server 所有存于 SMALLINT 列的枚举（AGENTS.md：枚举在 Go 定义，
+// Package enum 定义 accountkit 所有存于 SMALLINT 列的枚举（AGENTS.md：枚举在 Go 定义，
 // DB 无 CHECK；值 append-only；零值 UNSPECIFIED 不存储不发出）。sqlc 通过 go_type 覆盖把列绑到这些类型。
 //
 // 数值已被 0001_init.up.sql 的注释与索引谓词钉死（如 purge 索引 WHERE state = 3），修改即破坏迁移。

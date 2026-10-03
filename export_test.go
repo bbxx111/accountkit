@@ -1,4 +1,4 @@
-package authserver
+package accountkit
 
 import "github.com/bbxx111/accountkit/audit"
 

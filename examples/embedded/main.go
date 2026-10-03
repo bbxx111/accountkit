@@ -11,7 +11,7 @@ import (
 	"os/signal"
 	"time"
 
-	authserver "github.com/bbxx111/accountkit"
+	"github.com/bbxx111/accountkit"
 	"github.com/bbxx111/accountkit/user/sender"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,7 +24,7 @@ func run() error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
-	cfg, err := authserver.ConfigFromEnv("ACCOUNTKIT_")
+	cfg, err := accountkit.ConfigFromEnv("ACCOUNTKIT_")
 	if err != nil {
 		return err
 	}
@@ -33,7 +33,7 @@ func run() error {
 	if dsn == "" || addr == "" {
 		return fmt.Errorf("ACCOUNTKIT_DATABASE_URL and ACCOUNTKIT_REDIS_ADDR are required")
 	}
-	pc, err := authserver.PoolConfig(dsn, cfg.Schema)
+	pc, err := accountkit.PoolConfig(dsn, cfg.Schema)
 	if err != nil {
 		return err
 	}
@@ -44,7 +44,7 @@ func run() error {
 	defer pool.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: addr})
 	defer rdb.Close()
-	a, err := authserver.New(cfg, authserver.Deps{Pool: pool, Redis: rdb, SMSSender: sender.NewLog(nil), EmailSender: sender.NewLog(nil)})
+	a, err := accountkit.New(cfg, accountkit.Deps{Pool: pool, Redis: rdb, SMSSender: sender.NewLog(nil), EmailSender: sender.NewLog(nil)})
 	if err != nil {
 		return err
 	}

@@ -2,14 +2,15 @@
 
 本文件是本仓库所有编码代理的统一项目指南。`CLAUDE.md` 只引用本文，不维护第二份规范。沟通与项目文档默认使用中文；代码标识符遵循 Go 和既有协议约定。
 
-本文提炼 duopandian 的 API/领域建模规范与 ai-food 的 AGENTS.md，并按 accountkit 的独立包形态调整。其他仓库的业务配置与部署要求不自动适用于本仓库；用户在当前任务中的明确要求优先。
+本文定义 accountkit 的 API、领域建模、独立集成及开发规范。用户在当前任务中的明确要求优先。
 
 ## 项目定位与边界
 
-- accountkit 是可嵌入宿主服务的 C 端账号认证 Go 包，来源于 ai-food 的 auth-server；独立仓库为 `github.com/bbxx111/accountkit`，根 Go package 保留 `authserver`。
+- accountkit 是可嵌入宿主服务的 C 端账号认证 Go 包，模块为 `github.com/bbxx111/accountkit`，根 Go package 为 `accountkit`。
 - 首版包含验证码登录、多身份与微信/Apple 登录、JWT/刷新会话、重新认证、身份绑定、注销/恢复/匿名化、管理接口、审计和维护任务。功能对照见 [docs/compatibility.md](docs/compatibility.md)。
-- 单一 Go module，构建必须可在 `GOWORK=off` 下完成。不依赖 ai-food 或 duopandian 的源码路径、go.work、本地 replace、业务表和部署环境；不擅自修改这两个产品仓库。
-- 当前存储为 PostgreSQL + Redis。库不监听端口，不管理网关，不内置管理员账号系统，不强制 Keycloak，也不承担短信/邮件服务商装配。不要擅自扩展为独立微服务、前端项目或多数据库适配层。
+- 单一 Go module，构建必须可在 `GOWORK=off` 下完成，不依赖外部工作区、提交的本地 replace、宿主业务表或部署环境。
+- 当前存储为 PostgreSQL + Redis。库不监听端口，不管理网关，不内置管理员账号系统，不强制 Keycloak，也不承担短信/邮件服务商装配。不要擅自扩展为前端项目或多数据库适配层。
+- accountsvc 定位为本项目自带的可选服务实现，基于 accountkit 装配运行；库不依赖该服务，其他项目仍可直接嵌入库。服务运行时尚待独立变更实现，现有 `examples/embedded` 是开发宿主示例。
 - 宿主负责连接池、Redis 客户端、发送器、可信代理/IP 解析、请求 ID、管理员身份验证以及业务匿名化回调。配置与接口细节以 [README.md](README.md) 和公开 Go 类型为准。
 
 ## 技术栈与目录
@@ -18,7 +19,7 @@
 
 | 路径 | 职责 |
 |---|---|
-| `authserver.go`、`config.go` | 对外门面、依赖注入、配置及生命周期 |
+| `accountkit.go`、`config.go` | 对外门面、依赖注入、配置及生命周期 |
 | `user/` | 账号领域规则、事务、状态机与仓储 |
 | `httpapi/consumer/`、`httpapi/admin/` | 两个独立 HTTP 面及各自 DTO |
 | `httpapi/authn/`、`httpapi/apierror/` | 认证中间件、协议错误映射 |
@@ -61,14 +62,14 @@
 ### 两个身份系统、两个 HTTP 面
 
 - C 端账号与管理员身份分离，不能用一个共享 handler 加角色判断代替两套路由边界。管理员角色属于管理员系统内部授权，不是给消费者加一个 admin 标志。
-- 消费者 JWT 的 `sub` 是 `u_…`，`sid` 是 `s_…`；不要搬入 duopandian 的 `users/{id}` sub 形式。`aud` 表示令牌接收服务，不表示用户/管理员身份类型。`iss`、`aud`、密钥及作用域校验均须保留。
+- 消费者 JWT 的 `sub` 是 `u_…`，`sid` 是 `s_…`；不使用 `users/{id}` 资源名作为 sub。`aud` 表示令牌接收服务，不表示用户/管理员身份类型。`iss`、`aud`、密钥及作用域校验均须保留。
 - C 端权限范围下沉到 SQL 的 user_id 条件；格式错误的 ID 返回 400，合法但不存在或属于其他用户的资源返回 404，不暴露资源存在性。
 - 每个面使用明确 DTO，禁止直接序列化 sqlc 行，也不共享一个按角色删字段的 DTO。摘要、密文、密钥版本等内部字段不得泄露；管理面身份默认掩码，明文仅经授权且带审计的 `:reveal` 返回。
 - 管理写操作仍经过领域方法；列表沿用既有 filter、show_deleted 和游标协议。角色拒绝审计通过宿主接入 `RecordAdminForbidden`，不要移除该契约。
 
 ## 数据库与实例隔离
 
-- 包拥有 `user_account`、`identity`、`session`、`audit_event` 和 `schema_migrations`，位于 `Config.Schema` 指定的 schema，默认 `auth`。使用无业务前缀的单数 snake_case 表名；隔离靠 schema，不复制 `duopandian_` 或 `sfc_` 表前缀。
+- 包拥有 `user_account`、`identity`、`session`、`audit_event` 和 `schema_migrations`，位于 `Config.Schema` 指定的 schema，默认 `auth`。使用无业务前缀的单数 snake_case 表名；隔离靠 schema，不添加产品专用表前缀。
 - 同一数据库可有多个独立实例。宿主使用 `PoolConfig` 设置 search_path，并独立配置 schema、Redis `KeyPrefix`（以 `:` 结尾）、JWT issuer/audience 和密钥。新增 Redis 键必须包含实例前缀。
 - PostgreSQL 同库可以跨 schema 查询、join、事务及定义外键；本包不使用外键是领域设计选择，不是数据库不支持跨 schema。不要改变既有无外键契约；引用一致性由领域写路径和测试保证。
 - 主键使用 `ids` 的类型前缀 TSID：`u_`、`i_`、`s_`、`e_` 加 13 位小写 Crockford base32；TEXT/COLLATE C 和格式 CHECK 保持一致。ID 只承诺相等查找；分页排序必须有时间字段和唯一的次级排序键。
@@ -82,7 +83,7 @@
 
 操作步骤以 [docs/migrations.md](docs/migrations.md) 为准。以下规则不能因为独立包尚未发布而放宽：
 
-- 源 `0001_init` 已冻结，必须与固定 ai-food Git blob 字节一致。其保留的源注释中“部署前可改写”不适用于 accountkit；不要改写 SQL 或 manifest 来让检查通过。
+- `0001_init` 已冻结，必须与 `tests/testdata/source-baseline/` 中固定的原始字节和校验值一致。其保留注释中“部署前可改写”不适用于 accountkit；不要改写 SQL 或 manifest 来让检查通过。
 - 新业务结构使用递增 `NNNN_name.up.sql` / `.down.sql`，已发布版本不可修改、删除、重编号或 squash。测试专用下一版本放 `migrations/testdata/`，不混入生产嵌入目录。
 - `schema_migrations` 记录当前 version/dirty，不是完整历史账本。重复 Up 只忽略无新迁移；dirty 必须阻断后续升级，禁止自动 Force、清除 dirty 或把失败标记为成功。
 - 保留从 schema 初始化开始的外层锁，以及与旧工具兼容的引擎锁。锁等待必须支持取消和超时，所有错误路径必须释放连接及锁；不能假定底层 WithInstance 初始化失败会自动释放借出的连接。

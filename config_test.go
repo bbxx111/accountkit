@@ -1,4 +1,4 @@
-package authserver_test
+package accountkit_test
 
 import (
 	"bytes"
@@ -7,15 +7,15 @@ import (
 	"testing"
 	"time"
 
-	authserver "github.com/bbxx111/accountkit"
+	"github.com/bbxx111/accountkit"
 )
 
 func k(b byte) []byte     { return bytes.Repeat([]byte{b}, 32) }
 func b64(b []byte) string { return base64.StdEncoding.EncodeToString(b) }
 
 // minimal 返回只含必填项的配置。
-func minimal() authserver.Config {
-	return authserver.Config{
+func minimal() accountkit.Config {
+	return accountkit.Config{
 		JWTKeys: map[uint16][]byte{1: k(1)}, JWTActiveKey: 1, JWTIssuer: "shifang", JWTAudience: "app",
 		SubjectHMACKeys: map[uint16][]byte{1: k(2)}, SubjectHMACActiveKey: 1,
 		SubjectCipherKeys: map[uint16][]byte{1: k(3)}, SubjectCipherActiveKey: 1,
@@ -36,7 +36,7 @@ func TestValidateAppliesDefaults(t *testing.T) {
 	t.Setenv("T_SUBJECT_HMAC_ACTIVE_KEY", "1")
 	t.Setenv("T_SUBJECT_CIPHER_KEYS", "1:"+b64(k(3)))
 	t.Setenv("T_SUBJECT_CIPHER_ACTIVE_KEY", "1")
-	got, err := authserver.ConfigFromEnv("T_")
+	got, err := accountkit.ConfigFromEnv("T_")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestConfigFromEnvOverridesAndParses(t *testing.T) {
 	t.Setenv("T_SENSITIVE_OP_VERIFICATION", "false")
 	t.Setenv("T_CODE_MAX_ATTEMPTS", "3")
 	t.Setenv("T_DEFAULT_REGION", "us")
-	got, err := authserver.ConfigFromEnv("T_")
+	got, err := accountkit.ConfigFromEnv("T_")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,26 +77,26 @@ func TestConfigFromEnvOverridesAndParses(t *testing.T) {
 }
 
 func TestValidateRejects(t *testing.T) {
-	cases := map[string]func(*authserver.Config){
-		"missing jwt keys":         func(c *authserver.Config) { c.JWTKeys = nil },
-		"jwt active missing":       func(c *authserver.Config) { c.JWTActiveKey = 9 },
-		"jwt key short":            func(c *authserver.Config) { c.JWTKeys = map[uint16][]byte{1: k(1)[:16]} },
-		"issuer empty":             func(c *authserver.Config) { c.JWTIssuer = "" },
-		"audience empty":           func(c *authserver.Config) { c.JWTAudience = "" },
-		"hmac active missing":      func(c *authserver.Config) { c.SubjectHMACActiveKey = 7 },
-		"cipher keys missing":      func(c *authserver.Config) { c.SubjectCipherKeys = nil },
-		"cipher key not 32 bytes":  func(c *authserver.Config) { c.SubjectCipherKeys = map[uint16][]byte{1: bytes.Repeat([]byte{3}, 64)} },
-		"bad schema":               func(c *authserver.Config) { c.Schema = "Auth-1" },
-		"prefix without colon":     func(c *authserver.Config) { c.KeyPrefix = "auth" },
-		"access ttl too short":     func(c *authserver.Config) { c.AccessTokenTTL = 10 * time.Second },
-		"refresh shorter than acc": func(c *authserver.Config) { c.AccessTokenTTL = time.Hour; c.RefreshTokenTTL = 30 * time.Minute },
-		"grace >= access":          func(c *authserver.Config) { c.RefreshGrace = 20 * time.Minute },
-		"attempts zero":            func(c *authserver.Config) { c.CodeMaxAttempts = -1 },
-		"code ttl sub-second":      func(c *authserver.Config) { c.CodeTTL = 500 * time.Millisecond },
-		"code cooldown sub-second": func(c *authserver.Config) { c.CodeCooldown = 500 * time.Millisecond },
-		"max identities zero":      func(c *authserver.Config) { c.MaxIdentitiesPerKind = -1 },
-		"region not 2 letters":     func(c *authserver.Config) { c.DefaultRegion = "CHN" },
-		"maintenance too short":    func(c *authserver.Config) { c.MaintenanceInterval = 500 * time.Millisecond },
+	cases := map[string]func(*accountkit.Config){
+		"missing jwt keys":         func(c *accountkit.Config) { c.JWTKeys = nil },
+		"jwt active missing":       func(c *accountkit.Config) { c.JWTActiveKey = 9 },
+		"jwt key short":            func(c *accountkit.Config) { c.JWTKeys = map[uint16][]byte{1: k(1)[:16]} },
+		"issuer empty":             func(c *accountkit.Config) { c.JWTIssuer = "" },
+		"audience empty":           func(c *accountkit.Config) { c.JWTAudience = "" },
+		"hmac active missing":      func(c *accountkit.Config) { c.SubjectHMACActiveKey = 7 },
+		"cipher keys missing":      func(c *accountkit.Config) { c.SubjectCipherKeys = nil },
+		"cipher key not 32 bytes":  func(c *accountkit.Config) { c.SubjectCipherKeys = map[uint16][]byte{1: bytes.Repeat([]byte{3}, 64)} },
+		"bad schema":               func(c *accountkit.Config) { c.Schema = "Auth-1" },
+		"prefix without colon":     func(c *accountkit.Config) { c.KeyPrefix = "auth" },
+		"access ttl too short":     func(c *accountkit.Config) { c.AccessTokenTTL = 10 * time.Second },
+		"refresh shorter than acc": func(c *accountkit.Config) { c.AccessTokenTTL = time.Hour; c.RefreshTokenTTL = 30 * time.Minute },
+		"grace >= access":          func(c *accountkit.Config) { c.RefreshGrace = 20 * time.Minute },
+		"attempts zero":            func(c *accountkit.Config) { c.CodeMaxAttempts = -1 },
+		"code ttl sub-second":      func(c *accountkit.Config) { c.CodeTTL = 500 * time.Millisecond },
+		"code cooldown sub-second": func(c *accountkit.Config) { c.CodeCooldown = 500 * time.Millisecond },
+		"max identities zero":      func(c *accountkit.Config) { c.MaxIdentitiesPerKind = -1 },
+		"region not 2 letters":     func(c *accountkit.Config) { c.DefaultRegion = "CHN" },
+		"maintenance too short":    func(c *accountkit.Config) { c.MaintenanceInterval = 500 * time.Millisecond },
 	}
 	for name, mutate := range cases {
 		c := minimal()
@@ -109,17 +109,17 @@ func TestValidateRejects(t *testing.T) {
 
 func TestConfigFromEnvReportsBadValues(t *testing.T) {
 	t.Setenv("T_JWT_KEYS", "1:notbase64!")
-	if _, err := authserver.ConfigFromEnv("T_"); err == nil || !strings.Contains(err.Error(), "T_JWT_KEYS") {
+	if _, err := accountkit.ConfigFromEnv("T_"); err == nil || !strings.Contains(err.Error(), "T_JWT_KEYS") {
 		t.Fatalf("bad key list must name the variable: %v", err)
 	}
 	t.Setenv("T_JWT_KEYS", "1:"+b64(k(1)))
 	t.Setenv("T_JWT_ACTIVE_KEY", "one")
-	if _, err := authserver.ConfigFromEnv("T_"); err == nil || !strings.Contains(err.Error(), "T_JWT_ACTIVE_KEY") {
+	if _, err := accountkit.ConfigFromEnv("T_"); err == nil || !strings.Contains(err.Error(), "T_JWT_ACTIVE_KEY") {
 		t.Fatalf("bad integer must name the variable: %v", err)
 	}
 	t.Setenv("T_JWT_ACTIVE_KEY", "1")
 	t.Setenv("T_ACCESS_TOKEN_TTL", "fifteen")
-	if _, err := authserver.ConfigFromEnv("T_"); err == nil || !strings.Contains(err.Error(), "T_ACCESS_TOKEN_TTL") {
+	if _, err := accountkit.ConfigFromEnv("T_"); err == nil || !strings.Contains(err.Error(), "T_ACCESS_TOKEN_TTL") {
 		t.Fatalf("bad duration must name the variable: %v", err)
 	}
 }
@@ -138,7 +138,7 @@ func TestIdPConfigDefaultsAndValidation(t *testing.T) {
 	t.Setenv("T_SUBJECT_HMAC_ACTIVE_KEY", "1")
 	t.Setenv("T_SUBJECT_CIPHER_KEYS", "1:"+b64(k(3)))
 	t.Setenv("T_SUBJECT_CIPHER_ACTIVE_KEY", "1")
-	def, err := authserver.ConfigFromEnv("T_")
+	def, err := accountkit.ConfigFromEnv("T_")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestIdPConfigDefaultsAndValidation(t *testing.T) {
 		t.Fatal("IdPs disabled by default")
 	}
 
-	bad := func(mutate func(*authserver.Config), wantSub string) {
+	bad := func(mutate func(*accountkit.Config), wantSub string) {
 		t.Helper()
 		c := minimal()
 		mutate(&c)
@@ -161,19 +161,19 @@ func TestIdPConfigDefaultsAndValidation(t *testing.T) {
 			t.Fatalf("secret leaked into error: %v", err)
 		}
 	}
-	bad(func(c *authserver.Config) { c.WeChatApps = []authserver.WeChatApp{{AppID: "", Secret: "s3cret"}} }, "WeChatApps")
-	bad(func(c *authserver.Config) { c.WeChatApps = []authserver.WeChatApp{{AppID: "wx1", Secret: ""}} }, "WeChatApps")
-	bad(func(c *authserver.Config) {
-		c.WeChatApps = []authserver.WeChatApp{{AppID: "wx1", Secret: "s3cret"}, {AppID: "wx1", Secret: "s3cret"}}
+	bad(func(c *accountkit.Config) { c.WeChatApps = []accountkit.WeChatApp{{AppID: "", Secret: "s3cret"}} }, "WeChatApps")
+	bad(func(c *accountkit.Config) { c.WeChatApps = []accountkit.WeChatApp{{AppID: "wx1", Secret: ""}} }, "WeChatApps")
+	bad(func(c *accountkit.Config) {
+		c.WeChatApps = []accountkit.WeChatApp{{AppID: "wx1", Secret: "s3cret"}, {AppID: "wx1", Secret: "s3cret"}}
 	}, "duplicate")
-	bad(func(c *authserver.Config) { c.AppleBundleIDs = []string{"com.a", ""} }, "AppleBundleIDs")
-	bad(func(c *authserver.Config) { c.AppleBundleIDs = []string{"com.a", "com.a"} }, "duplicate")
-	bad(func(c *authserver.Config) { c.AppleNonceTTL = 30 * time.Second }, "AppleNonceTTL")
-	bad(func(c *authserver.Config) { c.WeChatAPIBaseURL = "api.weixin.qq.com" }, "WeChatAPIBaseURL")
-	bad(func(c *authserver.Config) { c.AppleJWKSURL = "ftp://x/keys" }, "AppleJWKSURL")
+	bad(func(c *accountkit.Config) { c.AppleBundleIDs = []string{"com.a", ""} }, "AppleBundleIDs")
+	bad(func(c *accountkit.Config) { c.AppleBundleIDs = []string{"com.a", "com.a"} }, "duplicate")
+	bad(func(c *accountkit.Config) { c.AppleNonceTTL = 30 * time.Second }, "AppleNonceTTL")
+	bad(func(c *accountkit.Config) { c.WeChatAPIBaseURL = "api.weixin.qq.com" }, "WeChatAPIBaseURL")
+	bad(func(c *accountkit.Config) { c.AppleJWKSURL = "ftp://x/keys" }, "AppleJWKSURL")
 
 	ok := minimal()
-	ok.WeChatApps = []authserver.WeChatApp{{AppID: "wx1", Secret: "s3cret"}, {AppID: "wx2", Secret: "t0p"}}
+	ok.WeChatApps = []accountkit.WeChatApp{{AppID: "wx1", Secret: "s3cret"}, {AppID: "wx2", Secret: "t0p"}}
 	ok.AppleBundleIDs = []string{"co.shifang.zavelo", "co.shifang.diet"}
 	ok.WeChatAPIBaseURL = "http://127.0.0.1:9/" // 测试钩子允许 http
 	if err := ok.Validate(); err != nil {
@@ -182,15 +182,15 @@ func TestIdPConfigDefaultsAndValidation(t *testing.T) {
 }
 
 func TestParseWeChatApps(t *testing.T) {
-	apps, err := authserver.ParseWeChatApps(" wx1:s1 , wx2:s2:with:colons ")
-	if err != nil || len(apps) != 2 || apps[0] != (authserver.WeChatApp{AppID: "wx1", Secret: "s1"}) || apps[1] != (authserver.WeChatApp{AppID: "wx2", Secret: "s2:with:colons"}) {
+	apps, err := accountkit.ParseWeChatApps(" wx1:s1 , wx2:s2:with:colons ")
+	if err != nil || len(apps) != 2 || apps[0] != (accountkit.WeChatApp{AppID: "wx1", Secret: "s1"}) || apps[1] != (accountkit.WeChatApp{AppID: "wx2", Secret: "s2:with:colons"}) {
 		t.Fatalf("%+v %v", apps, err)
 	}
-	if apps, err := authserver.ParseWeChatApps(""); err != nil || apps != nil {
+	if apps, err := accountkit.ParseWeChatApps(""); err != nil || apps != nil {
 		t.Fatal("empty spec → nil, nil")
 	}
 	for _, bad := range []string{"wx1", ":s1", "wx1:", "wx1:s1,"} {
-		if _, err := authserver.ParseWeChatApps(bad); err == nil {
+		if _, err := accountkit.ParseWeChatApps(bad); err == nil {
 			t.Fatalf("%q must fail", bad)
 		} else if strings.Contains(err.Error(), "s1") {
 			t.Fatalf("secret leaked: %v", err)
@@ -212,7 +212,7 @@ func TestConfigFromEnvIdP(t *testing.T) {
 	t.Setenv("T_SUBJECT_HMAC_ACTIVE_KEY", "1")
 	t.Setenv("T_SUBJECT_CIPHER_KEYS", "1:"+b64(k(3)))
 	t.Setenv("T_SUBJECT_CIPHER_ACTIVE_KEY", "1")
-	c, err := authserver.ConfigFromEnv("T_")
+	c, err := accountkit.ConfigFromEnv("T_")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +220,7 @@ func TestConfigFromEnvIdP(t *testing.T) {
 		t.Fatalf("%+v", c)
 	}
 	t.Setenv("T_WECHAT_APPS", "broken")
-	if _, err := authserver.ConfigFromEnv("T_"); err == nil {
+	if _, err := accountkit.ConfigFromEnv("T_"); err == nil {
 		t.Fatal("bad WECHAT_APPS must fail")
 	}
 }

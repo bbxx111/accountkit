@@ -1,4 +1,4 @@
-package authserver_test
+package accountkit_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	authserver "github.com/bbxx111/accountkit"
+	"github.com/bbxx111/accountkit"
 	"github.com/bbxx111/accountkit/anonymize"
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/jackc/pgx/v5"
@@ -47,7 +47,7 @@ func TestHostContracts(t *testing.T) {
 		}
 	}
 	before := snapshotSource(t, pool)
-	withHost, err := authserver.New(a.Config(), authserver.Deps{Pool: pool, Redis: rdb, SMSSender: sent, EmailSender: sent, Audit: audit.Noop{}, Anonymizers: []anonymize.Anonymizer{failingHostAnonymizer{}}})
+	withHost, err := accountkit.New(a.Config(), accountkit.Deps{Pool: pool, Redis: rdb, SMSSender: sent, EmailSender: sent, Audit: audit.Noop{}, Anonymizers: []anonymize.Anonymizer{failingHostAnonymizer{}}})
 	if err != nil {
 		t.Fatal(err)
 	}

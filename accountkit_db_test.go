@@ -1,4 +1,4 @@
-package authserver_test
+package accountkit_test
 
 import (
 	"bytes"
@@ -22,7 +22,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
-	authserver "github.com/bbxx111/accountkit"
+	"github.com/bbxx111/accountkit"
 	"github.com/bbxx111/accountkit/anonymize"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/maintenance"
@@ -43,7 +43,7 @@ func TestMigrateStartCloseAgainstRealDB(t *testing.T) {
 	dsn := dbDSN(t)
 	schema := fmt.Sprintf("authtest_%08x", rand.Uint32())
 	ctx := context.Background()
-	poolCfg, err := authserver.PoolConfig(dsn, schema)
+	poolCfg, err := accountkit.PoolConfig(dsn, schema)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestMigrateStartCloseAgainstRealDB(t *testing.T) {
 	cfg := minimal()
 	cfg.Schema = schema
 	cfg.MaintenanceInterval = time.Second
-	a, err := authserver.New(cfg, authserver.Deps{Pool: pool, Redis: testRedis(t), SMSSender: sender.NewLog(nil), EmailSender: sender.NewLog(nil)})
+	a, err := accountkit.New(cfg, accountkit.Deps{Pool: pool, Redis: testRedis(t), SMSSender: sender.NewLog(nil), EmailSender: sender.NewLog(nil)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestAuditEventsPersistedAndExpiredEndToEnd(t *testing.T) {
 	dsn := dbDSN(t)
 	ctx := context.Background()
 	schema := fmt.Sprintf("authtest_%08x", rand.Uint32())
-	poolCfg, err := authserver.PoolConfig(dsn, schema)
+	poolCfg, err := accountkit.PoolConfig(dsn, schema)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestAuditEventsPersistedAndExpiredEndToEnd(t *testing.T) {
 	captured := &captureSender{}
 	cfg := minimal()
 	cfg.Schema = schema
-	a, err := authserver.New(cfg, authserver.Deps{Pool: pool, Redis: testRedis(t), SMSSender: captured, EmailSender: captured})
+	a, err := accountkit.New(cfg, accountkit.Deps{Pool: pool, Redis: testRedis(t), SMSSender: captured, EmailSender: captured})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ func TestConsumerEndToEndAgainstRealDB(t *testing.T) {
 	dsn := dbDSN(t)
 	schema := fmt.Sprintf("authtest_%08x", rand.Uint32())
 	ctx := context.Background()
-	poolCfg, err := authserver.PoolConfig(dsn, schema)
+	poolCfg, err := accountkit.PoolConfig(dsn, schema)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +251,7 @@ func TestConsumerEndToEndAgainstRealDB(t *testing.T) {
 	captured := &captureSender{}
 	cfg := minimal()
 	cfg.Schema = schema
-	a, err := authserver.New(cfg, authserver.Deps{Pool: pool, Redis: testRedis(t), SMSSender: captured, EmailSender: captured})
+	a, err := accountkit.New(cfg, accountkit.Deps{Pool: pool, Redis: testRedis(t), SMSSender: captured, EmailSender: captured})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,9 +358,9 @@ func TestMigrateRejectsPoolWithoutSchemaOnSearchPath(t *testing.T) {
 	defer pool.Close()
 	cfg := minimal()
 	cfg.Schema = "auth_nowhere"
-	a, _ := authserver.New(cfg, authserver.Deps{Pool: pool, Redis: testRedis(t), SMSSender: sender.NewLog(nil), EmailSender: sender.NewLog(nil)})
+	a, _ := accountkit.New(cfg, accountkit.Deps{Pool: pool, Redis: testRedis(t), SMSSender: sender.NewLog(nil), EmailSender: sender.NewLog(nil)})
 	err = a.Migrate(ctx)
-	if !errors.Is(err, authserver.ErrSearchPath) {
+	if !errors.Is(err, accountkit.ErrSearchPath) {
 		t.Fatalf("err = %v, want ErrSearchPath", err)
 	}
 }
@@ -369,7 +369,7 @@ func TestWeChatSignInEndToEndAgainstRealDB(t *testing.T) {
 	dsn := dbDSN(t)
 	ctx := context.Background()
 	schema := fmt.Sprintf("authtest_%08x", rand.Uint32())
-	poolCfg, err := authserver.PoolConfig(dsn, schema)
+	poolCfg, err := accountkit.PoolConfig(dsn, schema)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -395,9 +395,9 @@ func TestWeChatSignInEndToEndAgainstRealDB(t *testing.T) {
 
 	cfg := minimal()
 	cfg.Schema = schema
-	cfg.WeChatApps = []authserver.WeChatApp{{AppID: "wx1", Secret: "s1"}, {AppID: "wx2", Secret: "s2"}}
+	cfg.WeChatApps = []accountkit.WeChatApp{{AppID: "wx1", Secret: "s1"}, {AppID: "wx2", Secret: "s2"}}
 	cfg.WeChatAPIBaseURL = wx.URL
-	a, err := authserver.New(cfg, authserver.Deps{Pool: pool, Redis: testRedis(t), SMSSender: sender.NewLog(nil), EmailSender: sender.NewLog(nil), HTTPClient: wx.Client()})
+	a, err := accountkit.New(cfg, accountkit.Deps{Pool: pool, Redis: testRedis(t), SMSSender: sender.NewLog(nil), EmailSender: sender.NewLog(nil), HTTPClient: wx.Client()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -468,7 +468,7 @@ func TestIdentityBindingEndToEndAgainstRealDB(t *testing.T) {
 	dsn := dbDSN(t)
 	ctx := context.Background()
 	schema := fmt.Sprintf("authtest_%08x", rand.Uint32())
-	poolCfg, err := authserver.PoolConfig(dsn, schema)
+	poolCfg, err := accountkit.PoolConfig(dsn, schema)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -493,7 +493,7 @@ func TestIdentityBindingEndToEndAgainstRealDB(t *testing.T) {
 	captured := &captureSender{}
 	cfg := minimal()
 	cfg.Schema = schema
-	cfg.WeChatApps = []authserver.WeChatApp{{AppID: "wx1", Secret: "s1"}}
+	cfg.WeChatApps = []accountkit.WeChatApp{{AppID: "wx1", Secret: "s1"}}
 	cfg.WeChatAPIBaseURL = wx.URL
 	cfg.ReauthMaxAge = time.Minute
 	cfg.CodeCooldown = time.Second // 端到端需对同一 target 二次发码（见第 7 步）
@@ -502,7 +502,7 @@ func TestIdentityBindingEndToEndAgainstRealDB(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
-	a, err := authserver.New(cfg, authserver.Deps{Pool: pool, Redis: rdb, SMSSender: captured, EmailSender: captured, HTTPClient: wx.Client()})
+	a, err := accountkit.New(cfg, accountkit.Deps{Pool: pool, Redis: rdb, SMSSender: captured, EmailSender: captured, HTTPClient: wx.Client()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -633,7 +633,7 @@ func TestKeyRotationBackfillEndToEnd(t *testing.T) {
 	dsn := dbDSN(t)
 	ctx := context.Background()
 	schema := fmt.Sprintf("authtest_%08x", rand.Uint32())
-	poolCfg, err := authserver.PoolConfig(dsn, schema)
+	poolCfg, err := accountkit.PoolConfig(dsn, schema)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -652,13 +652,13 @@ func TestKeyRotationBackfillEndToEnd(t *testing.T) {
 	const phone = "+8613812340055"
 
 	// build 用给定密钥版本构造并迁移一个 Auth（同一 schema）；返回 Auth 与一个登录助手。
-	build := func(hmacKeys, cipherKeys map[uint16][]byte, active uint16) (*authserver.Auth, func(dev string) map[string]any, error) {
+	build := func(hmacKeys, cipherKeys map[uint16][]byte, active uint16) (*accountkit.Auth, func(dev string) map[string]any, error) {
 		cfg := minimal()
 		cfg.Schema = schema
 		cfg.CodeCooldown = time.Second
 		cfg.SubjectHMACKeys, cfg.SubjectHMACActiveKey = hmacKeys, active
 		cfg.SubjectCipherKeys, cfg.SubjectCipherActiveKey = cipherKeys, active
-		a, err := authserver.New(cfg, authserver.Deps{Pool: pool, Redis: rdb, SMSSender: captured, EmailSender: captured})
+		a, err := accountkit.New(cfg, accountkit.Deps{Pool: pool, Redis: rdb, SMSSender: captured, EmailSender: captured})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -771,7 +771,7 @@ func TestAccountLifecycleEndToEndAgainstRealDB(t *testing.T) {
 	dsn := dbDSN(t)
 	ctx := context.Background()
 	schema := fmt.Sprintf("authtest_%08x", rand.Uint32())
-	poolCfg, err := authserver.PoolConfig(dsn, schema)
+	poolCfg, err := accountkit.PoolConfig(dsn, schema)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -791,7 +791,7 @@ func TestAccountLifecycleEndToEndAgainstRealDB(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
-	a, err := authserver.New(cfg, authserver.Deps{Pool: pool, Redis: rdb, SMSSender: captured, EmailSender: captured, Anonymizers: []anonymize.Anonymizer{hostNoteAnonymizer{}}})
+	a, err := accountkit.New(cfg, accountkit.Deps{Pool: pool, Redis: rdb, SMSSender: captured, EmailSender: captured, Anonymizers: []anonymize.Anonymizer{hostNoteAnonymizer{}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -936,7 +936,7 @@ func TestAdminSurfaceEndToEndAgainstRealDB(t *testing.T) {
 	dsn := dbDSN(t)
 	ctx := context.Background()
 	schema := fmt.Sprintf("authtest_%08x", rand.Uint32())
-	poolCfg, err := authserver.PoolConfig(dsn, schema)
+	poolCfg, err := accountkit.PoolConfig(dsn, schema)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -955,7 +955,7 @@ func TestAdminSurfaceEndToEndAgainstRealDB(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
-	a, err := authserver.New(cfg, authserver.Deps{Pool: pool, Redis: rdb, SMSSender: captured, EmailSender: captured, AdminVerifier: stubVerifier{}, AdminPrincipal: stubPrincipalFrom})
+	a, err := accountkit.New(cfg, accountkit.Deps{Pool: pool, Redis: rdb, SMSSender: captured, EmailSender: captured, AdminVerifier: stubVerifier{}, AdminPrincipal: stubPrincipalFrom})
 	if err != nil {
 		t.Fatal(err)
 	}

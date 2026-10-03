@@ -284,3 +284,5 @@ github.com/bbxx111/accountkit/user/TestUnbindIdentityRejectsFrozenPendingDeletio
 github.com/bbxx111/accountkit/user/TestUnbindLastTwoAnchorsConcurrently
 github.com/bbxx111/accountkit/user/TestUndeleteRestoresActiveAndRefreshWorksAgain
 github.com/bbxx111/accountkit/migrations/TestDriverInitializationFailureReleasesEngineLock
+github.com/bbxx111/accountkit/user/TestDisabledPublicCodePurposesPreserveIdentityConstraints
+github.com/bbxx111/accountkit/user/TestDisabledSenderDoesNotInvalidateIssuedCode

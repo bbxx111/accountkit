@@ -1,0 +1,64 @@
+name: accountsvc-dev
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: accountkit
+      POSTGRES_DB: accountkit
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Generate a development database password}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U accountkit -d accountkit"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+  mailpit:
+    image: axllent/mailpit:v1.31.3
+    ports:
+      - "127.0.0.1:${MAILPIT_HTTP_PORT:-18025}:8025"
+  accountsvc:
+    build:
+      context: ../..
+      dockerfile: deploy/accountsvc/Dockerfile
+    stop_grace_period: 40s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    ports:
+      - "127.0.0.1:${ACCOUNTSVC_PUBLIC_PORT:-18080}:8080"
+      - "127.0.0.1:${ACCOUNTSVC_INTERNAL_PORT:-18081}:8081"
+    environment:
+      ACCOUNTSVC_MODE: development
+      ACCOUNTSVC_DATABASE_URL: postgres://accountkit:${POSTGRES_PASSWORD:?required}@postgres:5432/accountkit?sslmode=disable
+      ACCOUNTSVC_REDIS_URL: redis://redis:6379/0
+      ACCOUNTSVC_HTTP_ADDR: 0.0.0.0:8080
+      ACCOUNTSVC_INTERNAL_ADDR: 0.0.0.0:8081
+      ACCOUNTSVC_SMTP_HOST: mailpit
+      ACCOUNTSVC_SMTP_PORT: "1025"
+      ACCOUNTSVC_SMTP_FROM: accounts@example.test
+      ACCOUNTSVC_SMTP_TLS_MODE: none
+      ACCOUNTSVC_INTROSPECTION_CLIENTS: ${ACCOUNTSVC_INTROSPECTION_CLIENTS:?Generate development client credentials}
+      ACCOUNTKIT_AUTH_SCHEMA: auth
+      ACCOUNTKIT_AUTH_KEY_PREFIX: "accountsvc-dev:"
+      ACCOUNTKIT_JWT_ISSUER: accountsvc-dev
+      ACCOUNTKIT_JWT_AUDIENCE: accountsvc-dev-api
+      ACCOUNTKIT_JWT_KEYS: "1:${JWT_KEY:?Generate a JWT key}"
+      ACCOUNTKIT_JWT_ACTIVE_KEY: "1"
+      ACCOUNTKIT_SUBJECT_HMAC_KEYS: "1:${SUBJECT_HMAC_KEY:?Generate a subject digest key}"
+      ACCOUNTKIT_SUBJECT_HMAC_ACTIVE_KEY: "1"
+      ACCOUNTKIT_SUBJECT_CIPHER_KEYS: "1:${SUBJECT_CIPHER_KEY:?Generate a subject encryption key}"
+      ACCOUNTKIT_SUBJECT_CIPHER_ACTIVE_KEY: "1"
+volumes:
+  pgdata:

@@ -1,0 +1,5 @@
+github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationEmailLifecycle
+github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationAdminLifecycle
+github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationDependencyFailure
+github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationStartupSafety
+github.com/bbxx111/accountkit/internal/accountsvc/TestServiceProcessSIGTERM

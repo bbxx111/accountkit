@@ -35,6 +35,17 @@ func (s *Service) sendCode(ctx context.Context, channel enum.IdentityKind, purpo
 	digest, _ := s.d.Digester.Digest(norm)
 	base := audit.Event{UserID: userID, IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, RequestID: meta.RequestID}
 
+	// 可选可用性契约保持旧宿主兼容：只实现原投递方法的发送器默认启用。
+	var delivery any = s.d.SMS
+	if channel == enum.IdentityEmail {
+		delivery = s.d.Email
+	}
+	if capability, ok := delivery.(interface{ Enabled() bool }); ok && !capability.Enabled() {
+		base.Type, base.Result, base.Reason = enum.EventCodeSendRejected, enum.ResultFailure, "CHANNEL_NOT_ENABLED"
+		s.record(ctx, base)
+		return sender.ErrDisabled
+	}
+
 	plain, err := s.d.Codes.Issue(ctx, channel, purpose, norm, meta.IP)
 	if err != nil {
 		var rl *code.RateLimitedError
@@ -59,6 +70,9 @@ func (s *Service) sendCode(ctx context.Context, channel enum.IdentityKind, purpo
 	if err != nil {
 		base.Type, base.Result, base.Reason = enum.EventCodeSendFailed, enum.ResultFailure, "SEND_FAILED"
 		s.record(ctx, base)
+		if errors.Is(err, sender.ErrUnavailable) {
+			return ErrUnavailable // 不传播投递依赖的响应或收件地址；额度不退还。
+		}
 		return fmt.Errorf("user: send code: %w", err) // 额度不退还，防止失败重试形成发送风暴
 	}
 	base.Type, base.Result, base.Reason = enum.EventCodeSent, enum.ResultSuccess, purpose.String()

@@ -1,5 +1,5 @@
-// Package sender 定义验证码投递接口。服务商实现（阿里云/腾讯云短信、SMTP）作为子包在后续 change 加入；
-// 本包只含接口与开发环境用的 Log 实现。
+// Package sender 定义验证码投递接口、显式禁用发送器与开发环境用的 Log 实现。
+// 可选 SMTP 实现位于 smtp 子包，宿主也可自行注入其他服务商实现。
 package sender
 
 import (

@@ -12,6 +12,7 @@ import (
 	"github.com/bbxx111/accountkit/user"
 	"github.com/bbxx111/accountkit/user/code"
 	"github.com/bbxx111/accountkit/user/idp"
+	"github.com/bbxx111/accountkit/user/sender"
 )
 
 func fmtTime(t time.Time) string { return t.UTC().Format(time.RFC3339) }
@@ -142,6 +143,8 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, r *http.Request, err 
 		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_ARGUMENT", msg))
 	case errors.Is(err, user.ErrNotAnchor):
 		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "TARGET_NOT_ANCHOR", "target must be a phone or email already bound to this account"))
+	case errors.Is(err, sender.ErrDisabled):
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "CHANNEL_NOT_ENABLED", "verification channel is not enabled"))
 	case errors.Is(err, user.ErrUserFrozen):
 		apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, "USER_FROZEN", "this account is frozen"))
 	case errors.Is(err, user.ErrUserPendingDeletion):

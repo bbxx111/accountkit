@@ -10,7 +10,7 @@
 - 首版包含验证码登录、多身份与微信/Apple 登录、JWT/刷新会话、重新认证、身份绑定、注销/恢复/匿名化、管理接口、审计和维护任务。功能对照见 [docs/compatibility.md](docs/compatibility.md)。
 - 单一 Go module，构建必须可在 `GOWORK=off` 下完成，不依赖外部工作区、提交的本地 replace、宿主业务表或部署环境。
 - 当前存储为 PostgreSQL + Redis。库不监听端口，不管理网关，不内置管理员账号系统，不强制 Keycloak，也不承担短信/邮件服务商装配。不要擅自扩展为前端项目或多数据库适配层。
-- accountsvc 定位为本项目自带的可选服务实现，基于 accountkit 装配运行；库不依赖该服务，其他项目仍可直接嵌入库。服务运行时尚待独立变更实现，现有 `examples/embedded` 是开发宿主示例。
+- accountsvc 是本项目自带的可选服务实现，基于 accountkit 装配运行；库不依赖该服务，其他项目仍可直接嵌入库。入口 `cmd/accountsvc`，装配在 `internal/accountsvc`；现有 `examples/embedded` 保留为开发宿主示例。运行边界见 [docs/accountsvc.md](docs/accountsvc.md)。
 - 宿主负责连接池、Redis 客户端、发送器、可信代理/IP 解析、请求 ID、管理员身份验证以及业务匿名化回调。配置与接口细节以 [README.md](README.md) 和公开 Go 类型为准。
 
 ## 技术栈与目录
@@ -31,6 +31,9 @@
 | `user/query.sql`、`audit/query.sql` | 手写查询；生成结果分别进入 `user/db/`、`audit/db/` |
 | `internal/migrationcheck/`、`internal/testgate/` | 发布检查工具，不是宿主公共接口 |
 | `examples/embedded/` | 可独立编译的开发宿主示例 |
+| `cmd/accountsvc/`、`internal/accountsvc/` | 可选服务入口、配置、生命周期、远程内省及外部管理员认证装配 |
+| `user/sender/smtp/`、`examples/remoteauth/` | 可选 SMTP 发送器、业务服务远程鉴权示例 |
+| `deploy/accountsvc/` | 服务镜像、仅本地开发 Compose 与无秘密配置模板 |
 | `tests/testdata/source-baseline/` | 固定源清单、原始 SQL 和合成数据格式 |
 | `scripts/`、`docs/`、`openspec/` | 验证入口、操作手册、规格与变更 |
 

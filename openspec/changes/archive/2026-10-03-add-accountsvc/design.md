@@ -1,10 +1,10 @@
 ## Context
 
-动机见 [proposal.md](proposal.md)。当前 `examples/embedded` 只支持开发日志发送器，根门面已经具备依赖注入、相对路由、启动迁移、后台任务与关闭契约。现有三个变更尚未归档，其规格仍是本设计的兼容依据：
+动机见 [proposal.md](proposal.md)。当前 `examples/embedded` 只支持开发日志发送器，根门面已经具备依赖注入、相对路由、启动迁移、后台任务与关闭契约。以下三个已归档变更的规格是本设计的兼容依据：
 
-- [嵌入式库](../../extract-auth-server/specs/embedded-auth-package/spec.md)
-- [迁移安全](../../harden-migration-safety/specs/migration-safety/spec.md)
-- [包名和可选服务](../../rename-accountkit-package/specs/accountkit-package-identity/spec.md)
+- [嵌入式库](../2026-10-03-extract-auth-server/specs/embedded-auth-package/spec.md)
+- [迁移安全](../2026-10-03-harden-migration-safety/specs/migration-safety/spec.md)
+- [包名和可选服务](../2026-10-03-rename-accountkit-package/specs/accountkit-package-identity/spec.md)
 
 用户已确认：SMTP 邮件先行；消费者使用远程鉴权；支持通用 OIDC JWT 管理员验证且默认关闭。以下端口、配置名、超时及协议细节是实施约定；实际验收状态见 [tasks.md](tasks.md)。
 

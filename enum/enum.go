@@ -70,12 +70,13 @@ const (
 	RevokeUserDeleted                    // 5
 	RevokeReplacedByRelogin              // 6
 	RevokeAdmin                          // 7
+	RevokeIdentityReplaced               // 8
 )
 
-var revokeReasonNames = [...]string{"UNSPECIFIED", "USER_LOGOUT", "USER_REVOKED_DEVICE", "REUSE_DETECTED", "USER_FROZEN", "USER_DELETED", "REPLACED_BY_RELOGIN", "ADMIN"}
+var revokeReasonNames = [...]string{"UNSPECIFIED", "USER_LOGOUT", "USER_REVOKED_DEVICE", "REUSE_DETECTED", "USER_FROZEN", "USER_DELETED", "REPLACED_BY_RELOGIN", "ADMIN", "IDENTITY_REPLACED"}
 
 func (r RevokeReason) String() string { return name(revokeReasonNames[:], int(r)) }
-func (r RevokeReason) Valid() bool    { return r >= RevokeUserLogout && r <= RevokeAdmin }
+func (r RevokeReason) Valid() bool    { return r >= RevokeUserLogout && r <= RevokeIdentityReplaced }
 
 func ParseRevokeReason(v string) (RevokeReason, error) {
 	i, err := parse(revokeReasonNames[:], v, "RevokeReason")
@@ -134,39 +135,40 @@ func (r Result) Valid() bool    { return r == ResultSuccess || r == ResultFailur
 type EventType int16
 
 const (
-	EventTypeUnspecified        EventType = iota
-	EventCodeSent                         // 1
-	EventCodeSendRejected                 // 2
-	EventCodeSendFailed                   // 3
-	EventSignIn                           // 4
-	EventSignInFailed                     // 5
-	EventReauthenticated                  // 6
-	EventReauthenticationFailed           // 7
-	EventTokenRefreshed                   // 8
-	EventRefreshRejected                  // 9
-	EventRefreshReuseDetected             // 10
-	EventSessionRevoked                   // 11
-	EventIdentityBound                    // 12
-	EventIdentityBindRejected             // 13
-	EventIdentityUnbound                  // 14
-	EventIdentityRevealed                 // 15
-	EventUserDeleted                      // 16
-	EventUserUndeleted                    // 17
-	EventUserPurged                       // 18
-	EventUserFrozen                       // 19
-	EventUserUnfrozen                     // 20
-	EventAdminForbidden                   // 21
+	EventTypeUnspecified         EventType = iota
+	EventCodeSent                          // 1
+	EventCodeSendRejected                  // 2
+	EventCodeSendFailed                    // 3
+	EventSignIn                            // 4
+	EventSignInFailed                      // 5
+	EventReauthenticated                   // 6
+	EventReauthenticationFailed            // 7
+	EventTokenRefreshed                    // 8
+	EventRefreshRejected                   // 9
+	EventRefreshReuseDetected              // 10
+	EventSessionRevoked                    // 11
+	EventIdentityBound                     // 12
+	EventIdentityBindRejected              // 13
+	EventIdentityUnbound                   // 14
+	EventIdentityRevealed                  // 15
+	EventUserDeleted                       // 16
+	EventUserUndeleted                     // 17
+	EventUserPurged                        // 18
+	EventUserFrozen                        // 19
+	EventUserUnfrozen                      // 20
+	EventAdminForbidden                    // 21
+	EventIdentityReplaceRejected           // 22
 )
 
 var eventTypeNames = [...]string{
 	"UNSPECIFIED", "CODE_SENT", "CODE_SEND_REJECTED", "CODE_SEND_FAILED", "SIGN_IN", "SIGN_IN_FAILED",
 	"REAUTHENTICATED", "REAUTHENTICATION_FAILED", "TOKEN_REFRESHED", "REFRESH_REJECTED", "REFRESH_REUSE_DETECTED",
 	"SESSION_REVOKED", "IDENTITY_BOUND", "IDENTITY_BIND_REJECTED", "IDENTITY_UNBOUND", "IDENTITY_REVEALED",
-	"USER_DELETED", "USER_UNDELETED", "USER_PURGED", "USER_FROZEN", "USER_UNFROZEN", "ADMIN_FORBIDDEN",
+	"USER_DELETED", "USER_UNDELETED", "USER_PURGED", "USER_FROZEN", "USER_UNFROZEN", "ADMIN_FORBIDDEN", "IDENTITY_REPLACE_REJECTED",
 }
 
 func (e EventType) String() string { return name(eventTypeNames[:], int(e)) }
-func (e EventType) Valid() bool    { return e >= EventCodeSent && e <= EventAdminForbidden }
+func (e EventType) Valid() bool    { return e >= EventCodeSent && e <= EventIdentityReplaceRejected }
 
 func ParseEventType(v string) (EventType, error) {
 	i, err := parse(eventTypeNames[:], v, "EventType")

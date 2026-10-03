@@ -178,10 +178,12 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 		SMS: deps.SMSSender, Email: deps.EmailSender, Audit: deps.Audit, Logger: deps.Logger,
 		WeChat: wechat, Apple: apple,
 		AccessTTL: cfg.AccessTokenTTL, RefreshTTL: cfg.RefreshTokenTTL, RefreshGrace: cfg.RefreshGrace, CodeTTL: cfg.CodeTTL,
-		DefaultRegion:         cfg.DefaultRegion,
-		MaxIdentitiesPerKind:  cfg.MaxIdentitiesPerKind,
-		DeletionCoolingPeriod: cfg.DeletionCoolingPeriod,
-		Anonymizers:           deps.Anonymizers,
+		DefaultRegion:           cfg.DefaultRegion,
+		ReauthMaxAge:            cfg.ReauthMaxAge,
+		SensitiveOpVerification: cfg.SensitiveOpVerification,
+		MaxIdentitiesPerKind:    cfg.MaxIdentitiesPerKind,
+		DeletionCoolingPeriod:   cfg.DeletionCoolingPeriod,
+		Anonymizers:             deps.Anonymizers,
 	})
 	if err != nil {
 		return nil, err

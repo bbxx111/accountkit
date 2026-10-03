@@ -62,6 +62,10 @@ type Deps struct {
 	CodeTTL       time.Duration
 	DefaultRegion string
 	Now           func() time.Time
+	// ReauthMaxAge 为敏感操作的近期认证窗口；零值默认五分钟，负值无效。
+	ReauthMaxAge time.Duration
+	// SensitiveOpVerification 为 nil 时默认启用；false 只跳过近期认证检查。
+	SensitiveOpVerification *bool
 
 	// MaxIdentitiesPerKind 是每个用户、每种身份 kind 的活动身份数上限，必须 ≥ 1。
 	MaxIdentitiesPerKind int
@@ -86,6 +90,20 @@ func NewService(d Deps) (*Service, error) {
 	}
 	if d.MaxIdentitiesPerKind < 1 {
 		return nil, errors.New("user: Deps.MaxIdentitiesPerKind must be >= 1")
+	}
+	if d.ReauthMaxAge < 0 {
+		return nil, errors.New("user: Deps.ReauthMaxAge must not be negative")
+	}
+	if d.ReauthMaxAge == 0 {
+		d.ReauthMaxAge = 5 * time.Minute
+	}
+	if d.SensitiveOpVerification == nil {
+		enabled := true
+		d.SensitiveOpVerification = &enabled
+	} else {
+		// 保存值快照，避免调用方后续修改指针造成安全策略变化或数据竞争。
+		enabled := *d.SensitiveOpVerification
+		d.SensitiveOpVerification = &enabled
 	}
 	if d.DeletionCoolingPeriod <= 0 {
 		return nil, errors.New("user: Deps.DeletionCoolingPeriod must be positive")

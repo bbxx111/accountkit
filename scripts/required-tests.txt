@@ -314,3 +314,16 @@ github.com/bbxx111/accountkit/httpapi/consumer/TestIdentityReplacementRejectsMal
 github.com/bbxx111/accountkit/httpapi/consumer/TestIdentityReplacementErrors
 github.com/bbxx111/accountkit/httpapi/consumer/TestIdentityReplacementPreservesIdentityRoutes
 github.com/bbxx111/accountkit/TestIdentityReplacementEndToEndAgainstRealDB
+github.com/bbxx111/accountkit/user/TestSessionActiveAt
+github.com/bbxx111/accountkit/user/TestSessionExpiryQueries
+github.com/bbxx111/accountkit/user/TestRefreshExpiryAfterSessionLock
+github.com/bbxx111/accountkit/user/TestRefreshUsesLockedDecisionTime
+github.com/bbxx111/accountkit/user/TestRefreshGraceExpiryBoundaries
+github.com/bbxx111/accountkit/user/TestRefreshExpiryAfterQueries
+github.com/bbxx111/accountkit/user/TestRefreshGraceEligibilityAfterQueryAndCAS
+github.com/bbxx111/accountkit/user/TestReauthenticateExpiryAfterLocks
+github.com/bbxx111/accountkit/user/TestReauthenticateUsesLockedDecisionTime
+github.com/bbxx111/accountkit/user/TestReplaceIdentityExpiryMicroseconds
+github.com/bbxx111/accountkit/user/TestReplaceIdentityExpiryAfterLocks
+github.com/bbxx111/accountkit/user/TestExpiredSessionsRemainRevocable
+github.com/bbxx111/accountkit/TestSessionExpiryEndToEndAgainstRealDB

@@ -4,3 +4,4 @@ github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationDependen
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationStartupSafety
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceProcessSIGTERM
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationIdentityReplacement
+github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationSessionExpiry

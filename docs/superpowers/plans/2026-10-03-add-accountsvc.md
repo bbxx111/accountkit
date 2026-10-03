@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、Chi、pgx/v5、go-redis/v9、golang-jwt/jwt/v5 v5.3.1；SMTP 使用标准库 net/smtp，连接取消由 net.Conn deadline/Close 保障。
 
-**Spec:** [add-accountsvc](../../../openspec/changes/add-accountsvc/design.md)，同时读取该 change 的 proposal、tasks 及四份 specs。
+**Spec:** [add-accountsvc](../../../openspec/changes/archive/2026-10-03-add-accountsvc/design.md)，同时读取该 change 的 proposal、tasks 及四份 specs。
 
 ## Global Constraints
 

@@ -6,7 +6,7 @@
 - [迁移安全](../harden-migration-safety/specs/migration-safety/spec.md)
 - [包名和可选服务](../rename-accountkit-package/specs/accountkit-package-identity/spec.md)
 
-用户已确认：SMTP 邮件先行；消费者使用远程鉴权；支持通用 OIDC JWT 管理员验证且默认关闭。以下端口、配置名、超时及协议细节是本提案的设计选择，待整份工件评审；不是已实现行为。
+用户已确认：SMTP 邮件先行；消费者使用远程鉴权；支持通用 OIDC JWT 管理员验证且默认关闭。以下端口、配置名、超时及协议细节是实施约定；实际验收状态见 [tasks.md](tasks.md)。
 
 ## Goals / Non-Goals
 
@@ -40,7 +40,7 @@ embedded host ------> accountkit <------ internal/accountsvc <------ cmd/account
 | `HTTP_ADDR` / `INTERNAL_ADDR` | 默认 `127.0.0.1:8080` / `127.0.0.1:8081`；不同监听地址 |
 | `TLS_CERT_FILE` / `TLS_KEY_FILE` | 生产必填，两个监听器均使用 TLS 1.2 及以上；开发模式允许明文 |
 | `TRUSTED_PROXY_CIDRS` | 默认空；仅显式可信代理可影响来源 IP |
-| `STARTUP_TIMEOUT` / `SHUTDOWN_TIMEOUT` | 默认 60s / 30s，必须为正数 |
+| `STARTUP_TIMEOUT` / `SHUTDOWN_TIMEOUT` | 默认 60s / 30s；启动超时为正，关闭超时大于15s，预留库关闭预算 |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_FROM` | 必填；发件地址必须为单一合法地址，拒绝换行注入 |
 | `SMTP_TLS_MODE` | 默认 `implicit`，可选 `starttls`；仅开发模式可用 `none` |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | 成对配置；生产模式要求 SMTP 认证 |

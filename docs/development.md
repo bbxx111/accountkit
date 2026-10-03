@@ -12,4 +12,8 @@ TestRecoveryFixture 是跨进程恢复演练的合成数据工具，普通测试
 
 独立宿主示例：examples/embedded/main.go。设置 ACCOUNTKIT_DEMO=1、ACCOUNTKIT_DATABASE_URL、ACCOUNTKIT_REDIS_ADDR 及 README 配置表中的 ACCOUNTKIT_ 前缀配置，再 go run ./examples/embedded。仅监听 127.0.0.1:8080；日志发送器仅供开发，管理端未注入验证器时返回 503。
 
+正式可选服务入口为 `cmd/accountsvc`，支持 `serve` 与 `migrate`；配置和本地 Compose 步骤见 [accountsvc 服务手册](accountsvc.md)。服务不读取开发示例的 DATABASE_URL/REDIS_ADDR 变量，连接使用 `ACCOUNTSVC_DATABASE_URL` 与 `ACCOUNTSVC_REDIS_URL`，库参数仍使用 `ACCOUNTKIT_`。
+
+服务严格验证执行 `bash scripts/verify-accountsvc.sh`，要求 `SERVER_TEST_DB_DSN` 与 `ACCOUNTSVC_TEST_REDIS_URL` 指向一次性测试依赖。SMTP 和 OIDC 使用隔离协议 fixture，不需要真实提供方凭据。Linux 验证实际 SIGTERM；Windows 普通测试不能代替该进程验证。
+
 源码清单与兼容对照见 docs/compatibility.md，迁移操作与恢复限制见 docs/migrations.md。宿主实际部署、服务商实机联调和发布 tag/push 独立进行。

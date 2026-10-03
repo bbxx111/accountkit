@@ -163,6 +163,78 @@ func TestCanceledRefreshWaiterDoesNotStartExtraFetch(t *testing.T) {
 	}
 }
 
+func TestCanceledRefreshLeaderDoesNotPoisonSharedRefresh(t *testing.T) {
+	for _, scenario := range []string{"hard-expiry", "key-rotation"} {
+		t.Run(scenario, func(t *testing.T) {
+			f := newFixture(t)
+			now := time.Now().Truncate(time.Second)
+			var clock atomic.Int64
+			clock.Store(now.Unix())
+			v := f.verifier(Options{Now: func() time.Time { return time.Unix(clock.Load(), 0) }})
+			kid := "initial"
+			if scenario == "hard-expiry" {
+				clock.Store(now.Add(time.Hour).Unix())
+			} else {
+				kid = "rotated"
+				f.mu.Lock()
+				f.keys = append(f.keys, jwk(kid, &f.key.PublicKey))
+				f.mu.Unlock()
+			}
+			token := f.token(f.claims(now), kid)
+			entered, release := make(chan struct{}, 1), make(chan struct{})
+			var releaseOnce sync.Once
+			unblock := func() { releaseOnce.Do(func() { close(release) }) }
+			defer unblock()
+			f.mu.Lock()
+			f.entered, f.release = entered, release
+			f.mu.Unlock()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			r := httptest.NewRequest("GET", "/", nil).WithContext(ctx)
+			r.Header.Set("Authorization", "Bearer "+token)
+			leader := make(chan int, 1)
+			go func() {
+				w := httptest.NewRecorder()
+				v.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })).ServeHTTP(w, r)
+				leader <- w.Code
+			}()
+			select {
+			case <-entered:
+			case <-time.After(time.Second):
+				t.Fatal("leader did not start refresh")
+			}
+			waiter := make(chan int, 1)
+			waiterStarted := make(chan struct{})
+			go func() { close(waiterStarted); waiter <- request(v, token, "").Code }()
+			<-waiterStarted
+			cancel()
+			select {
+			case code := <-leader:
+				if code != 503 {
+					t.Fatalf("canceled leader status %d", code)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("caller cancellation did not stop its own wait")
+			}
+			unblock()
+			select {
+			case code := <-waiter:
+				if code != 204 {
+					t.Fatalf("healthy provider poisoned by leader cancellation: waiter status %d", code)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("shared refresh did not release waiter")
+			}
+			if w := request(v, token, ""); w.Code != 204 {
+				t.Fatalf("healthy provider throttled after leader cancellation: status %d", w.Code)
+			}
+			if f.count() != 2 {
+				t.Fatalf("shared refresh downloaded %d times, want 2 including startup", f.count())
+			}
+		})
+	}
+}
+
 func TestRedirectDowngradeAndRequestLimits(t *testing.T) {
 	var insecureRequests atomic.Int32
 	insecure := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { insecureRequests.Add(1); _, _ = w.Write([]byte(`{}`)) }))

@@ -119,6 +119,9 @@ func (v *Verifier) loadKeys(ctx context.Context) (map[string]*rsa.PublicKey, err
 
 func (v *Verifier) key(ctx context.Context, kid string) (*rsa.PublicKey, error) {
 	for {
+		if ctx.Err() != nil {
+			return nil, errUnavailable
+		}
 		v.mu.Lock()
 		now := v.now()
 		if key := v.cache.keys[kid]; key != nil && now.Before(v.cache.loadedAt.Add(keyLifetime)) {
@@ -146,18 +149,25 @@ func (v *Verifier) key(ctx context.Context, kid string) (*rsa.PublicKey, error) 
 		v.cache.refreshing = active
 		v.cache.lastAttempt = now
 		v.mu.Unlock()
-		keys, err := v.loadKeys(ctx)
-		v.mu.Lock()
-		v.cache.lastError = err
-		if err == nil {
-			v.cache.keys = keys
-			v.cache.loadedAt = v.now()
-		}
-		v.cache.refreshing = nil
-		close(active)
-		v.mu.Unlock()
-		if err != nil {
-			return nil, errUnavailable
-		}
+		// The download belongs to the verifier, not its first caller. Every
+		// request, including the trigger, waits through its own cancellable ctx.
+		go v.refresh(active)
 	}
+}
+
+func (v *Verifier) refresh(active chan struct{}) {
+	// One bounded download may outlive a disconnected caller. Caller cancellation
+	// must never become a provider failure or cancel other callers' shared work.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	keys, err := v.loadKeys(ctx)
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.cache.lastError = err
+	if err == nil {
+		v.cache.keys = keys
+		v.cache.loadedAt = v.now()
+	}
+	v.cache.refreshing = nil
+	close(active)
 }

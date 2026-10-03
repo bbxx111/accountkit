@@ -74,3 +74,17 @@ func TestIdentityKindHelpers(t *testing.T) {
 		t.Fatal("CodePurpose.Key mismatch")
 	}
 }
+
+func TestIdentityReplacementEnumValues(t *testing.T) {
+	if enum.RevokeAdmin != 7 || enum.RevokeIdentityReplaced != 8 || enum.EventAdminForbidden != 21 || enum.EventIdentityReplaceRejected != 22 {
+		t.Fatal("append-only enum values changed")
+	}
+	r, err := enum.ParseRevokeReason("IDENTITY_REPLACED")
+	if err != nil || r != enum.RevokeIdentityReplaced || !r.Valid() || r.String() != "IDENTITY_REPLACED" {
+		t.Fatalf("revoke roundtrip: %v %v", r, err)
+	}
+	e, err := enum.ParseEventType("IDENTITY_REPLACE_REJECTED")
+	if err != nil || e != enum.EventIdentityReplaceRejected || !e.Valid() || e.String() != "IDENTITY_REPLACE_REJECTED" {
+		t.Fatalf("event roundtrip: %v %v", e, err)
+	}
+}

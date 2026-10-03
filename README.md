@@ -110,6 +110,18 @@ r.Route("/v1", func(r chi.Router) {
 
 规则：一个 subject 全局只属于一个账号（冲突 409，不合并不迁移）；每 kind 最多 `MaxIdentitiesPerKind`（默认 1）个活动身份；同一 subject 重复绑定到本账号为幂等；解绑是软删除，解绑后同一 subject 可绑到任一账号；解绑后必须仍有至少一个手机或邮箱锚点；绑定不改变已签发 token 的 scope，客户端刷新后生效。`masked_subject` 由检索提示拼出（`+86 138****1234`、`ba***@example.com`），第三方身份为空串。
 
+## 手机号与邮箱换绑
+
+`POST /v1/users/me/identities/{identity}:replace` 将指定的旧活动手机/邮箱身份替换为同类新身份。请求使用既有凭证结构，例如 `{"email":{"target":"new@example.test","code":"123456"}}`；成功返回200及新身份的掩码资源，身份 ID 更新、账号 ID 保持，不返回 token pair。
+
+调用前须有 `user` scope 和有效当前会话，近期认证沿用 `REAUTH_MAX_AGE`（默认5分钟）及 `SENSITIVE_OP_VERIFICATION`（默认true）。需要时先走既有重新认证流程，再通过 `users/me:sendBindCode` 获取新地址 BIND 码。近期登录也满足现有新鲜度语义，不保证本次专门向旧地址发送验证码；首版不提供失去全部既有凭据的账号找回。
+
+身份替换和撤销其他会话在一个数据库事务内完成，当前会话及其 refresh token 保留。正常 Redis 下其他会话的 access/内省无效，refresh 由数据库拒绝；Redis 吊销故障仍按原 fail-open 规则处理。旧地址不再进入原账号，但新的独立登录仍可能按原规则自动注册另一个账号。
+
+只支持 PHONE→PHONE、EMAIL→EMAIL，原绑定/解绑接口不变。同目标返回400 `IDENTITY_UNCHANGED`；旧资源不存在/已删除/归属其他用户返回404；新目标已经绑定返回409 `IDENTITY_ALREADY_BOUND`。已消费的验证码不随数据库回滚退还，重取码仍受冷却/额度限制。成功后重试旧 identity 路径返回404；响应丢失时先列出身份确认状态，不盲目自动重发。新旧摘要版本、密文格式与冻结迁移保持兼容。
+
+直接库调用使用 `Auth.Users().ReplaceIdentity(...)` 并传入已认证 Principal。领域层同样检查 scope、新鲜度、账号/会话和身份归属。自定义 `consumer.Service` 无需增加必需方法；实现可选 `consumer.IdentityReplacer` 即可启用新端点，否则认证后的调用返回503 `IDENTITY_REPLACEMENT_NOT_CONFIGURED`。实际检查与验收边界见[换绑验收记录](docs/identity-replacement-verification.md)。
+
 ## 账号生命周期（阶段 5a）
 
 | 端点 | scope | 近期认证 | 成功 | 失败 |

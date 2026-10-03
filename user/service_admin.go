@@ -141,12 +141,12 @@ func (s *Service) AdminRevokeSession(ctx context.Context, a Admin, userID, sid s
 
 // AdminRevokeAllSessions 吊销用户全部活跃会话（reason ADMIN），返回数量；用户不存在 → ErrNotFound。
 func (s *Service) AdminRevokeAllSessions(ctx context.Context, a Admin, userID string, meta Meta) (int, error) {
-	if err := s.UserExists(ctx, userID); err != nil {
-		return 0, err
-	}
 	now := s.now()
 	var revoked []string
 	err := s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+		if _, err := lockUserAs(ctx, q, userID, ErrNotFound); err != nil {
+			return err
+		}
 		var err error
 		revoked, err = s.revokeAllForUser(ctx, q, userID, nil, enum.RevokeAdmin, now)
 		return err

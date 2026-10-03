@@ -3,6 +3,12 @@ package user
 import "errors"
 
 var (
+	// ErrInsufficientScope：调用者未获得完整账号操作作用域。
+	ErrInsufficientScope = errors.New("user: insufficient scope")
+	// ErrReauthenticationRequired：敏感操作要求近期认证。
+	ErrReauthenticationRequired = errors.New("user: recent authentication required")
+	// ErrIdentityUnchanged：新目标与当前身份相同。
+	ErrIdentityUnchanged = errors.New("user: identity unchanged")
 	// ErrUnavailable：Redis 等依赖不可用，调用方按 fail-closed 返回 503。
 	ErrUnavailable = errors.New("user: dependency unavailable")
 	// ErrInvalidTarget：手机号/邮箱无法归一化。

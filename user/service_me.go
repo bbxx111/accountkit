@@ -173,6 +173,31 @@ func (s *Service) Reauthenticate(ctx context.Context, p Principal, channel enum.
 	now := s.now()
 	var res TokenResult
 	err = s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+		// 与身份写入一致，先锁用户再锁会话；锁后重新确认锚点。
+		u, err := q.LockUserByID(ctx, p.UserID)
+		if err != nil {
+			return fmt.Errorf("user: load user: %w", err)
+		}
+		sess, err := q.LockSessionByID(ctx, p.SessionID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: session not found", ErrInvalidToken)
+		}
+		if err != nil {
+			return fmt.Errorf("user: lock session: %w", err)
+		}
+		if sess.UserID != p.UserID || sess.RevokeTime != nil {
+			return fmt.Errorf("%w: session revoked", ErrInvalidToken)
+		}
+		if u.State == enum.UserFrozen {
+			return ErrUserFrozen
+		}
+		ok, err := s.anchorOfUser(ctx, q, p.UserID, channel, norm)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrNotAnchor
+		}
 		n, err := q.UpdateSessionAuthTime(ctx, db.UpdateSessionAuthTimeParams{ID: p.SessionID, AuthTime: now})
 		if err != nil {
 			return fmt.Errorf("user: update auth_time: %w", err)
@@ -180,17 +205,7 @@ func (s *Service) Reauthenticate(ctx context.Context, p Principal, channel enum.
 		if n == 0 {
 			return fmt.Errorf("%w: session revoked", ErrInvalidToken)
 		}
-		sess, err := q.GetActiveSessionByIDAndUser(ctx, db.GetActiveSessionByIDAndUserParams{ID: p.SessionID, UserID: p.UserID})
-		if err != nil {
-			return fmt.Errorf("%w: session not found", ErrInvalidToken)
-		}
-		u, err := q.GetUserByID(ctx, p.UserID)
-		if err != nil {
-			return fmt.Errorf("user: load user: %w", err)
-		}
-		if u.State == enum.UserFrozen {
-			return ErrUserFrozen
-		}
+		sess.AuthTime = now
 		res, err = s.tokensFor(sess, "", deriveScope(u.State, true), now) // 锚点存在已由 anchorOfUser 证明
 		return err
 	})
@@ -199,6 +214,9 @@ func (s *Service) Reauthenticate(ctx context.Context, p Principal, channel enum.
 		// 500 类错误，由调用方记录日志，这里不应把一次基础设施失败误记成"重新认证失败"的
 		// 业务事件。
 		switch {
+		case errors.Is(err, ErrNotAnchor):
+			ev.Type, ev.Result, ev.Reason = enum.EventReauthenticationFailed, enum.ResultFailure, "NOT_ANCHOR"
+			s.record(ctx, ev)
 		case errors.Is(err, ErrInvalidToken):
 			ev.Type, ev.Result, ev.Reason = enum.EventReauthenticationFailed, enum.ResultFailure, "SESSION_REVOKED"
 			s.record(ctx, ev)

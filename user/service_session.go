@@ -303,6 +303,10 @@ func (s *Service) RevokeOtherSessions(ctx context.Context, userID, currentSID st
 	now := s.now()
 	var revoked []string
 	err := s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+		// 多行会话写入遵循 user → session 锁序；不存在的用户仍是无操作成功。
+		if _, err := q.LockUserByID(ctx, userID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("user: lock user for session revocation: %w", err)
+		}
 		var err error
 		revoked, err = s.revokeAllForUser(ctx, q, userID, &currentSID, enum.RevokeUserRevokedDevice, now)
 		return err

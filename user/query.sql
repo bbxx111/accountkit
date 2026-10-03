@@ -190,6 +190,7 @@ SELECT * FROM session WHERE id = $1 FOR UPDATE;
 
 -- name: GetActiveSessionByUserDevice :one
 -- 同一设备再次登录：先吊销旧会话（REPLACED_BY_RELOGIN）再建新会话。
+-- 此处定位未吊销记录，包含刷新期限已到但尚未清理的会话。
 SELECT * FROM session WHERE user_id = $1 AND device_id = $2 AND revoke_time IS NULL
 ORDER BY create_time DESC, id DESC LIMIT 1;
 
@@ -200,27 +201,31 @@ UPDATE session
 SET refresh_token_hash = @new_hash, previous_refresh_token_hash = @old_hash,
     rotate_time = @now::timestamptz, refresh_expire_time = @refresh_expire_time,
     last_used_time = @now::timestamptz, update_time = @now::timestamptz
-WHERE id = @id AND refresh_token_hash = @old_hash AND revoke_time IS NULL;
+WHERE id = @id AND refresh_token_hash = @old_hash AND revoke_time IS NULL
+  AND refresh_expire_time > @now::timestamptz;
 
 -- name: RevokeSession :execrows
 UPDATE session SET revoke_time = @now::timestamptz, revoke_reason = @reason, update_time = @now::timestamptz
 WHERE id = @id AND revoke_time IS NULL;
 
 -- name: RevokeSessionsByUser :many
--- 吊销该用户全部活跃会话，可排除一个（revokeOthers 保留当前）。返回被吊销的 sid 供写入吊销集。
+-- 吊销该用户全部未吊销会话（包含到期行），可排除一个（revokeOthers 保留当前）。返回被吊销的 sid 供写入吊销集。
 UPDATE session SET revoke_time = @now::timestamptz, revoke_reason = @reason, update_time = @now::timestamptz
 WHERE user_id = @user_id AND revoke_time IS NULL AND (sqlc.narg('except_id')::text IS NULL OR id <> sqlc.narg('except_id')::text)
 RETURNING id;
 
 -- name: ListActiveSessionsByUser :many
-SELECT * FROM session WHERE user_id = $1 AND revoke_time IS NULL ORDER BY create_time, id;
+SELECT * FROM session
+WHERE user_id = @user_id AND revoke_time IS NULL AND refresh_expire_time > @now::timestamptz
+ORDER BY create_time, id;
 
 -- name: GetActiveSessionByIDAndUser :one
+-- 明确撤销定位未吊销记录，不能因为刷新期限已到而遗漏仍有效的 access。
 SELECT * FROM session WHERE id = $1 AND user_id = $2 AND revoke_time IS NULL;
 
 -- name: UpdateSessionAuthTime :execrows
 UPDATE session SET auth_time = @auth_time, update_time = @auth_time
-WHERE id = @id AND revoke_time IS NULL;
+WHERE id = @id AND revoke_time IS NULL AND refresh_expire_time > @auth_time::timestamptz;
 
 -- name: DeleteStaleSessions :execrows
 -- 维护任务 cleanup_sessions：物理删除吊销/过期超过保留期的会话；子查询限批，避免单事务锁太多行。
@@ -235,7 +240,8 @@ WHERE id IN (
 
 -- name: CountActiveSessionsByUser :one
 -- 管理端用户详情：活跃会话数；命中 session_user_id_idx。
-SELECT count(*) FROM session WHERE user_id = $1 AND revoke_time IS NULL;
+SELECT count(*) FROM session
+WHERE user_id = @user_id AND revoke_time IS NULL AND refresh_expire_time > @now::timestamptz;
 
 -- audit_event
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/user"
+	"github.com/bbxx111/accountkit/user/db"
 )
 
 func TestNewServiceRejectsZeroDeletionCoolingPeriod(t *testing.T) {
@@ -35,7 +36,7 @@ func TestDeleteMeSoftDeletesRevokesAllSessionsAndAudits(t *testing.T) {
 		t.Fatalf("me after delete: %+v", me)
 	}
 	// 两个会话都被吊销：DB 无活跃会话；access 因吊销集被拒；refresh 被拒
-	if rows, err := f.repo.Q().ListActiveSessionsByUser(ctx, p.UserID); err != nil || len(rows) != 0 {
+	if rows, err := f.repo.Q().ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: p.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)}); err != nil || len(rows) != 0 {
 		t.Fatalf("active sessions after delete: %d %v", len(rows), err)
 	}
 	for _, tok := range []user.TokenResult{a, b} {
@@ -79,7 +80,7 @@ func TestDeleteMeRejectsFrozenDeletedAndUnknownUser(t *testing.T) {
 		t.Fatalf("frozen: %v", err)
 	}
 	// 拒绝路径不得吊销会话（吊销是冻结动作自己的事，不是这里的）
-	if rows, _ := f.repo.Q().ListActiveSessionsByUser(ctx, p.UserID); len(rows) != 1 {
+	if rows, _ := f.repo.Q().ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: p.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)}); len(rows) != 1 {
 		t.Fatalf("rejected delete must not touch sessions: %d", len(rows))
 	}
 	mustExec(t, f, `UPDATE user_account SET state = 4 WHERE id = $1`, p.UserID) // DELETED

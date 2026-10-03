@@ -103,7 +103,7 @@ func TestRepoRevokeSessionsByUserExceptCurrent(t *testing.T) {
 	if err != nil || len(revoked) != 2 {
 		t.Fatalf("revoked = %v err=%v", revoked, err)
 	}
-	active, _ := q.ListActiveSessionsByUser(ctx, uid)
+	active, _ := q.ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: uid, Now: now})
 	if len(active) != 1 || active[0].ID != keep {
 		t.Fatalf("active = %+v", active)
 	}
@@ -592,7 +592,7 @@ func TestRepoFreezeUnfreezeAndCountSessions(t *testing.T) {
 			}
 		}
 	}
-	if n, err := q.CountActiveSessionsByUser(ctx, uid); err != nil || n != 2 {
+	if n, err := q.CountActiveSessionsByUser(ctx, db.CountActiveSessionsByUserParams{UserID: uid, Now: now}); err != nil || n != 2 {
 		t.Fatalf("active sessions: %d %v", n, err)
 	}
 }

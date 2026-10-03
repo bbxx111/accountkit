@@ -261,7 +261,7 @@ type SessionInfo struct {
 
 // ListSessions 列出用户的活跃会话（不分页）。
 func (s *Service) ListSessions(ctx context.Context, userID, currentSID string) ([]SessionInfo, error) {
-	rows, err := s.d.Repo.Q().ListActiveSessionsByUser(ctx, userID)
+	rows, err := s.d.Repo.Q().ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: userID, Now: sessionTime(s.now())})
 	if err != nil {
 		return nil, fmt.Errorf("user: list sessions: %w", err)
 	}

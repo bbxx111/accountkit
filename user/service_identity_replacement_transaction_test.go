@@ -105,7 +105,7 @@ func TestReplaceIdentityRollback(t *testing.T) {
 			if err != nil || len(list) != 1 || list[0].ID != id {
 				t.Fatalf("rollback identity: %+v %v", list, err)
 			}
-			sessions, err := f.repo.Q().ListActiveSessionsByUser(ctx, p.UserID)
+			sessions, err := f.repo.Q().ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: p.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)})
 			if err != nil || len(sessions) != 2 {
 				t.Fatalf("partial revocation: %+v %v", sessions, err)
 			}

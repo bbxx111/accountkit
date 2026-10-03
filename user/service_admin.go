@@ -235,7 +235,7 @@ func (s *Service) GetUserDetail(ctx context.Context, userID string) (AdminUserDe
 	if err != nil {
 		return AdminUserDetail{}, fmt.Errorf("user: list identities: %w", err)
 	}
-	n, err := q.CountActiveSessionsByUser(ctx, userID)
+	n, err := q.CountActiveSessionsByUser(ctx, db.CountActiveSessionsByUserParams{UserID: userID, Now: sessionTime(s.now())})
 	if err != nil {
 		return AdminUserDetail{}, fmt.Errorf("user: count sessions: %w", err)
 	}

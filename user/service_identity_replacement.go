@@ -77,13 +77,8 @@ func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID s
 		if lockErr != nil {
 			return fmt.Errorf("user: lock replacement session: %w", lockErr)
 		}
-		// 等待用户/会话锁可能跨过认证或会话有效期，必须在取得锁后取当前时间。
-		now := s.now()
-		if sess.UserID != p.UserID || sess.RevokeTime != nil || !sess.RefreshExpireTime.After(now) {
+		if sess.UserID != p.UserID || sess.RevokeTime != nil {
 			return ErrInvalidToken
-		}
-		if authErr := s.replacementRecentAuth(p, now); authErr != nil {
-			return authErr
 		}
 		var idents []db.Identity
 		old, idents, lockErr = s.replacementIdentity(ctx, q, p.UserID, identityID, channel, norm)
@@ -100,6 +95,15 @@ func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID s
 		// 替换前后同类数量相等；不以临时放宽上限来允许写入。
 		if countKind(idents, channel) > s.d.MaxIdentitiesPerKind {
 			return ErrIdentityKindLimit
+		}
+		// 等锁和必要身份读取都可能跨过有效期，写入前以同一微秒时刻复核。
+		decisionTime := s.now()
+		now := sessionTime(decisionTime)
+		if !sessionActiveAt(sess, now) {
+			return ErrInvalidToken
+		}
+		if authErr := s.replacementRecentAuth(p, decisionTime); authErr != nil {
+			return authErr
 		}
 		n, deleteErr := q.SoftDeleteIdentity(ctx, db.SoftDeleteIdentityParams{ID: identityID, UserID: p.UserID, Now: now})
 		if deleteErr != nil {
@@ -159,7 +163,7 @@ func (s *Service) replacementPreflight(ctx context.Context, q *db.Queries, p Pri
 	if err != nil {
 		return db.Identity{}, nil, fmt.Errorf("user: replacement session preflight: %w", err)
 	}
-	if !sess.RefreshExpireTime.After(s.now()) {
+	if !sessionActiveAt(sess, sessionTime(s.now())) {
 		return db.Identity{}, nil, ErrInvalidToken
 	}
 	return s.replacementIdentity(ctx, q, p.UserID, identityID, channel, norm)

@@ -87,7 +87,7 @@ func TestSignInRejectsIdentityRemovedWhileWaiting(t *testing.T) {
 	if err := <-done; !errors.Is(err, code.ErrInvalid) {
 		t.Fatalf("stale identity must reject sign-in with CODE_INVALID, got %v", err)
 	}
-	sessions, err := f.repo.Q().ListActiveSessionsByUser(ctx, first.UserID)
+	sessions, err := f.repo.Q().ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: first.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)})
 	if err != nil || len(sessions) != 1 {
 		t.Fatalf("stale proof created a session: count=%d err=%v", len(sessions), err)
 	}
@@ -171,7 +171,7 @@ func TestBulkSessionRevocationSerializesOnUser(t *testing.T) {
 			if err := <-done; err != nil {
 				t.Fatal(err)
 			}
-			sessions, err := f.repo.Q().ListActiveSessionsByUser(ctx, p.UserID)
+			sessions, err := f.repo.Q().ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: p.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)})
 			want := 1
 			if admin {
 				want = 0

@@ -77,7 +77,7 @@
 
 ### Task 5: 文档与最终交付（OpenSpec 6.1–6.3）
 
-**Files:** README.md、docs/{compatibility,accountsvc}.md、docs/identity-replacement-verification.md、当前change design/tasks。
+**Files:** README.md、docs/{compatibility,accountsvc}.md、openspec/changes/archive/2026-10-03-add-identity-replacement/verification.md、当前change design/tasks。
 
 - [x] 记录最终接口/可选接入、认证语义、旧地址自动注册、码消费/回滚、fail-open、枚举兼容和不确定结果恢复，校验本地链接。
 - [x] 运行 build/vet、真实并发、Linux race、生成/迁移检查、完整库和服务严格入口、OpenSpec strict；清楚区分实际结果和暂缓外部联调。

@@ -111,5 +111,5 @@ SMTP 复用 Go 标准库 BSD-3-Clause 实现；不使用自动机会式 TLS 的 
 
 - [x] 以最终接口更新配置表、serve/migrate/Compose命令、远程接入、管理员 RS256/claims、TLS、匿名化及混跑限制；检查命令和链接。
 - [x] 汇总各任务测试与独立审查，记录必要设计细化；只在对应验收全部通过后勾选 OpenSpec。
-- [x] 全量 build/vet/unit/race、sqlc consistency、历史迁移、真实服务/恢复验证、OpenSpec strict；证据记录在 docs，缺外部提供方联调如实列出。
+- [x] 全量 build/vet/unit/race、sqlc consistency、历史迁移、真实服务/恢复验证、OpenSpec strict；证据见[本变更验收记录](../../../openspec/changes/archive/2026-10-03-add-accountsvc/verification.md)，缺外部提供方联调如实列出。
 - [x] 最终整分支独立审查，集中修复并定向复核；用户仅授权提交实施，完成后不自动推送、合并或归档。

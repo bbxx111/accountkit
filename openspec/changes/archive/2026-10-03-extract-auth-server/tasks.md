@@ -22,3 +22,7 @@
 - [x] 4.1 创建 scripts/verify.sh 和明确列出必需数据库测试的检查入口，执行 GOWORK=off 构建及 go test -race -json -count=1 ./...；正常配置返回零，缺少 DB 配置、必需测试缺失或 skip 返回非零。
 - [x] 4.2 按已确定托管平台接入上述验证入口，文档说明 Go 1.26.5、PostgreSQL/Redis 与 sqlc 的可复现准备步骤；在干净环境验证独立构建和生成检查通过。
 - [x] 4.3 完成 docs/release-checklist.md，明确 harden-migration-safety 未完成不能首次生产发布、服务商实机验证由宿主负责；交付功能对照和实际测试结果，不创建 tag/push，修改范围限于本仓库。
+
+## 验收记录
+
+本次提取与迁移安全加固的联合包级验收证据统一保存在[迁移安全变更的 verification.md](../2026-10-03-harden-migration-safety/verification.md)。

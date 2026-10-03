@@ -32,6 +32,14 @@ accountsvc 是基于本库的可选官方服务；直接嵌入 accountkit 的宿
 
 撤销原因追加 `IDENTITY_REPLACED`，审计类型追加 `IDENTITY_REPLACE_REJECTED`，既有枚举值不重编号。回退旧二进制前须确认其审计/会话展示对新增值的兼容表现；回退不会恢复旧绑定或被撤销会话。登录及重新认证补充持锁后身份复核，旧身份在等待锁期间被移除时分别返回既有 CODE_INVALID、TARGET_NOT_ANCHOR，避免旧读结果重新进入原账号。
 
+## 会话期限边界加固
+
+会话列表和管理员 `active_session_count` 改为过滤已到刷新期限的记录；到期会话重新认证返回既有401 `TOKEN_INVALID`，等待锁期间到期的刷新返回400 OAuth `invalid_grant`。这会改变旧版本在这些边界上的结果，客户端应允许设备列表减少，并在认证失效时重新登录，不反复尝试重新认证。
+
+根 Config、环境变量、公开 Service 方法、DTO和默认TTL不变。sqlc列表/计数查询增加显式时间参数，仓库内调用随生成结果更新；无数据库结构迁移、数据回填或历史SQL修改。原access/内省验证、显式撤销覆盖以及会话清理保留期继续有效，不能把refresh到期当作自动吊销access。
+
+滚动升级期间旧实例仍可能使用旧的期限判断；只有全部实例完成升级后才具备一致行为。回退二进制不会恢复已吊销会话，并会重新引入旧版本的展示和到期边界行为。本轮检查与限制见[会话过期验收记录](../openspec/changes/archive/2026-10-04-harden-session-expiry/verification.md)。
+
 ## 功能对照
 
 | 规格能力 | 生产入口/路径 | 验证 |
@@ -40,7 +48,7 @@ accountsvc 是基于本库的可选官方服务；直接嵌入 accountkit 的宿
 | 手机/邮箱验证码、限流 | user/code、user/service_signin.go、httpapi/consumer | code/store_test.go、service_test.go、signin_test.go、TestConsumerEndToEndAgainstRealDB |
 | 微信/Apple | user/idp、service_idp.go | wechat_test.go、apple_test.go、nonce_test.go、service_idp_test.go、TestWeChatSignInEndToEndAgainstRealDB |
 | 身份绑定解绑 | user/service_identity.go | service_identity_test.go、identities_test.go、TestIdentityBindingEndToEndAgainstRealDB |
-| 同类身份换绑 | user/service_identity_replacement.go、httpapi/consumer/replacement.go | 领域回滚/竞态、嵌入式及服务E2E，见[换绑验收记录](identity-replacement-verification.md) |
+| 同类身份换绑 | user/service_identity_replacement.go、httpapi/consumer/replacement.go | 领域回滚/竞态、嵌入式及服务E2E，见[换绑验收记录](../openspec/changes/archive/2026-10-03-add-identity-replacement/verification.md) |
 | JWT、刷新、会话、重新认证 | tokens、session、service_session.go | tokens_test.go、session/*/*_test.go、service_test.go、TestConsumerEndToEndAgainstRealDB |
 | 资料、注销恢复、冻结 | service_me.go、service_lifecycle.go、service_admin.go | service_lifecycle_test.go、service_admin_test.go、TestAccountLifecycleEndToEndAgainstRealDB |
 | 管理接口、角色、审计 | httpapi/admin、audit | httpapi/admin/*_test.go、audit/*_test.go、TestAdminSurfaceEndToEndAgainstRealDB |

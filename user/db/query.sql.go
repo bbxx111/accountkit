@@ -45,12 +45,18 @@ func (q *Queries) AnonymizeIdentity(ctx context.Context, arg AnonymizeIdentityPa
 }
 
 const countActiveSessionsByUser = `-- name: CountActiveSessionsByUser :one
-SELECT count(*) FROM session WHERE user_id = $1 AND revoke_time IS NULL
+SELECT count(*) FROM session
+WHERE user_id = $1 AND revoke_time IS NULL AND refresh_expire_time > $2::timestamptz
 `
 
+type CountActiveSessionsByUserParams struct {
+	UserID string
+	Now    time.Time
+}
+
 // 管理端用户详情：活跃会话数；命中 session_user_id_idx。
-func (q *Queries) CountActiveSessionsByUser(ctx context.Context, userID string) (int64, error) {
-	row := q.db.QueryRow(ctx, countActiveSessionsByUser, userID)
+func (q *Queries) CountActiveSessionsByUser(ctx context.Context, arg CountActiveSessionsByUserParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveSessionsByUser, arg.UserID, arg.Now)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -368,6 +374,7 @@ type GetActiveSessionByIDAndUserParams struct {
 	UserID string
 }
 
+// 明确撤销定位未吊销记录，不能因为刷新期限已到而遗漏仍有效的 access。
 func (q *Queries) GetActiveSessionByIDAndUser(ctx context.Context, arg GetActiveSessionByIDAndUserParams) (Session, error) {
 	row := q.db.QueryRow(ctx, getActiveSessionByIDAndUser, arg.ID, arg.UserID)
 	var i Session
@@ -401,6 +408,7 @@ type GetActiveSessionByUserDeviceParams struct {
 }
 
 // 同一设备再次登录：先吊销旧会话（REPLACED_BY_RELOGIN）再建新会话。
+// 此处定位未吊销记录，包含刷新期限已到但尚未清理的会话。
 func (q *Queries) GetActiveSessionByUserDevice(ctx context.Context, arg GetActiveSessionByUserDeviceParams) (Session, error) {
 	row := q.db.QueryRow(ctx, getActiveSessionByUserDevice, arg.UserID, arg.DeviceID)
 	var i Session
@@ -591,11 +599,18 @@ func (q *Queries) ListActiveIdentitiesByUser(ctx context.Context, userID string)
 }
 
 const listActiveSessionsByUser = `-- name: ListActiveSessionsByUser :many
-SELECT id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time FROM session WHERE user_id = $1 AND revoke_time IS NULL ORDER BY create_time, id
+SELECT id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time FROM session
+WHERE user_id = $1 AND revoke_time IS NULL AND refresh_expire_time > $2::timestamptz
+ORDER BY create_time, id
 `
 
-func (q *Queries) ListActiveSessionsByUser(ctx context.Context, userID string) ([]Session, error) {
-	rows, err := q.db.Query(ctx, listActiveSessionsByUser, userID)
+type ListActiveSessionsByUserParams struct {
+	UserID string
+	Now    time.Time
+}
+
+func (q *Queries) ListActiveSessionsByUser(ctx context.Context, arg ListActiveSessionsByUserParams) ([]Session, error) {
+	rows, err := q.db.Query(ctx, listActiveSessionsByUser, arg.UserID, arg.Now)
 	if err != nil {
 		return nil, err
 	}
@@ -999,7 +1014,7 @@ type RevokeSessionsByUserParams struct {
 	ExceptID *string
 }
 
-// 吊销该用户全部活跃会话，可排除一个（revokeOthers 保留当前）。返回被吊销的 sid 供写入吊销集。
+// 吊销该用户全部未吊销会话（包含到期行），可排除一个（revokeOthers 保留当前）。返回被吊销的 sid 供写入吊销集。
 func (q *Queries) RevokeSessionsByUser(ctx context.Context, arg RevokeSessionsByUserParams) ([]string, error) {
 	rows, err := q.db.Query(ctx, revokeSessionsByUser,
 		arg.Now,
@@ -1031,6 +1046,7 @@ SET refresh_token_hash = $1, previous_refresh_token_hash = $2,
     rotate_time = $3::timestamptz, refresh_expire_time = $4,
     last_used_time = $3::timestamptz, update_time = $3::timestamptz
 WHERE id = $5 AND refresh_token_hash = $2 AND revoke_time IS NULL
+  AND refresh_expire_time > $3::timestamptz
 `
 
 type RotateSessionParams struct {
@@ -1275,7 +1291,7 @@ func (q *Queries) UpdateIdentityProviderMeta(ctx context.Context, arg UpdateIden
 
 const updateSessionAuthTime = `-- name: UpdateSessionAuthTime :execrows
 UPDATE session SET auth_time = $1, update_time = $1
-WHERE id = $2 AND revoke_time IS NULL
+WHERE id = $2 AND revoke_time IS NULL AND refresh_expire_time > $1::timestamptz
 `
 
 type UpdateSessionAuthTimeParams struct {

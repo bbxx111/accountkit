@@ -15,6 +15,7 @@ import (
 	"github.com/bbxx111/accountkit/anonymize"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/user"
+	"github.com/bbxx111/accountkit/user/db"
 )
 
 // recordingAnonymizer 是宿主匿名化器的替身：在同一事务内把 host_note.user_id 改成 'purged'；fail 非空时报错。
@@ -155,7 +156,7 @@ func TestPurgeAnonymizesAccountIdentitiesSessionsAuditAndHostTables(t *testing.T
 		seen[subject] = true
 	}
 	// 会话：全部吊销；冷静期会话的 access 被吊销集拒绝
-	if rows, _ := f.repo.Q().ListActiveSessionsByUser(ctx, p.UserID); len(rows) != 0 {
+	if rows, _ := f.repo.Q().ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: p.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)}); len(rows) != 0 {
 		t.Fatalf("active sessions after purge: %d", len(rows))
 	}
 	if _, err := f.svc.Authenticate(ctx, pending.AccessToken); !errors.Is(err, user.ErrInvalidToken) {

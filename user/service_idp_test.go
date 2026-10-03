@@ -7,9 +7,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/user"
+	"github.com/bbxx111/accountkit/user/db"
 	"github.com/bbxx111/accountkit/user/idp"
 )
 
@@ -291,7 +293,7 @@ func TestSignInWithIdpRejectsPendingDeletionAccount(t *testing.T) {
 			t.Fatalf("SIGN_IN_FAILED must carry the user id (rejected after the account was found): %+v", e)
 		}
 	}
-	if rows, _ := f.repo.Q().ListActiveSessionsByUser(ctx, p.UserID); len(rows) != 0 {
+	if rows, _ := f.repo.Q().ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: p.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)}); len(rows) != 0 {
 		t.Fatalf("rejected login must not create a session: %d", len(rows))
 	}
 	// 锚点登录仍可进入并拿到 user:undelete

@@ -12,6 +12,7 @@ import (
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/user"
 	"github.com/bbxx111/accountkit/user/code"
+	"github.com/bbxx111/accountkit/user/db"
 )
 
 type replacementRaceResult struct {
@@ -267,7 +268,7 @@ func TestReplacementConcurrentMutations(t *testing.T) {
 				if err != nil || u.State != wantState {
 					t.Fatalf("user state=%v want=%v err=%v", u.State, wantState, err)
 				}
-				active, err := f.repo.Q().ListActiveSessionsByUser(ctx, p.UserID)
+				active, err := f.repo.Q().ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: p.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)})
 				if err != nil {
 					t.Fatal(err)
 				}

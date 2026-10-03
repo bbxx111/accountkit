@@ -170,7 +170,6 @@ func (s *Service) Reauthenticate(ctx context.Context, p Principal, channel enum.
 		return TokenResult{}, err
 	}
 
-	now := s.now()
 	var res TokenResult
 	err = s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
 		// 与身份写入一致，先锁用户再锁会话；锁后重新确认锚点。
@@ -198,6 +197,11 @@ func (s *Service) Reauthenticate(ctx context.Context, p Principal, channel enum.
 		if !ok {
 			return ErrNotAnchor
 		}
+		// 等待 user/session 锁及身份复核后重新判期，不能用消费验证码前后的旧时间。
+		now := sessionTime(s.now())
+		if !sessionActiveAt(sess, now) {
+			return errSessionExpired
+		}
 		n, err := q.UpdateSessionAuthTime(ctx, db.UpdateSessionAuthTimeParams{ID: p.SessionID, AuthTime: now})
 		if err != nil {
 			return fmt.Errorf("user: update auth_time: %w", err)
@@ -216,6 +220,9 @@ func (s *Service) Reauthenticate(ctx context.Context, p Principal, channel enum.
 		switch {
 		case errors.Is(err, ErrNotAnchor):
 			ev.Type, ev.Result, ev.Reason = enum.EventReauthenticationFailed, enum.ResultFailure, "NOT_ANCHOR"
+			s.record(ctx, ev)
+		case errors.Is(err, errSessionExpired):
+			ev.Type, ev.Result, ev.Reason = enum.EventReauthenticationFailed, enum.ResultFailure, "SESSION_EXPIRED"
 			s.record(ctx, ev)
 		case errors.Is(err, ErrInvalidToken):
 			ev.Type, ev.Result, ev.Reason = enum.EventReauthenticationFailed, enum.ResultFailure, "SESSION_REVOKED"

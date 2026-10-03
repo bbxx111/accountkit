@@ -25,6 +25,7 @@ import (
 	"github.com/bbxx111/accountkit/tokens"
 	"github.com/bbxx111/accountkit/user"
 	"github.com/bbxx111/accountkit/user/code"
+	"github.com/bbxx111/accountkit/user/db"
 	"github.com/bbxx111/accountkit/user/sender"
 )
 
@@ -243,7 +244,7 @@ func TestSignInSameDeviceReplacesSession(t *testing.T) {
 	ctx := context.Background()
 	first := f.signIn(t, enum.IdentityPhone, phone1, dev1)
 	second := f.signIn(t, enum.IdentityPhone, phone1, dev1)
-	active, _ := f.repo.Q().ListActiveSessionsByUser(ctx, first.UserID)
+	active, _ := f.repo.Q().ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: first.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)})
 	if len(active) != 1 {
 		t.Fatalf("same device re-login must leave exactly one active session, got %d", len(active))
 	}
@@ -532,7 +533,7 @@ func TestRefreshConcurrentOnlyOneRotatesOthersGetSamePair(t *testing.T) {
 			t.Fatal("all concurrent refreshes must yield the same rotated pair")
 		}
 	}
-	active, _ := f.repo.Q().ListActiveSessionsByUser(ctx, res.UserID)
+	active, _ := f.repo.Q().ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: res.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)})
 	if len(active) != 1 || active[0].RevokeTime != nil {
 		t.Fatalf("session must remain active and single: %+v", active)
 	}

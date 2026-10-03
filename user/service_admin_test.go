@@ -10,6 +10,7 @@ import (
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/user"
+	"github.com/bbxx111/accountkit/user/db"
 )
 
 var admin1 = user.Admin{Issuer: "https://kc.example/realms/shifang-admin", Subject: "adm-1", Username: "ops"}
@@ -61,7 +62,7 @@ func TestFreezeRevokesSessionsSnapshotsAndAudits(t *testing.T) {
 			t.Fatalf("access after freeze: %v", err)
 		}
 	}
-	if rows, _ := f.repo.Q().ListActiveSessionsByUser(ctx, a.UserID); len(rows) != 0 {
+	if rows, _ := f.repo.Q().ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: a.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)}); len(rows) != 0 {
 		t.Fatalf("active sessions after freeze: %d", len(rows))
 	}
 	if _, err := f.svc.Refresh(ctx, a.RefreshToken, meta1); !errors.Is(err, user.ErrInvalidGrant) {

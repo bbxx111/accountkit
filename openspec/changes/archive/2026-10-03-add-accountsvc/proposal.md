@@ -22,7 +22,7 @@ accountkit 已能作为 Go 库嵌入宿主，但仓库只有开发宿主示例�
 
 ### Modified Capabilities
 
-无。沿用尚未归档变更中的 `embedded-auth-package`、`migration-safety` 和 `accountkit-package-identity` 契约；新渠道禁用行为只适用于显式选择该能力的宿主，已有发送器、默认配置和既有认证行为保持兼容。
+无。沿用已归档变更中的 `embedded-auth-package`、`migration-safety` 和 `accountkit-package-identity` 契约；新渠道禁用行为只适用于显式选择该能力的宿主，已有发送器、默认配置和既有认证行为保持兼容。
 
 ## Impact
 

@@ -5,7 +5,7 @@
 **Goal:** 完成用户明确要求的包名重命名、文档清理和可选服务定位。
 **Architecture:** 根模块继续提供独立可嵌入库；accountsvc 是可选宿主。本次为命名维护，不实现认证行为或服务运行时。
 **Tech Stack:** Go 1.26.5、OpenSpec、Markdown。
-**Spec:** [变更设计](../../../openspec/changes/rename-accountkit-package/design.md)、[规格](../../../openspec/changes/rename-accountkit-package/specs/accountkit-package-identity/spec.md)。
+**Spec:** [变更设计](../../../openspec/changes/archive/2026-10-03-rename-accountkit-package/design.md)、[规格](../../../openspec/changes/archive/2026-10-03-rename-accountkit-package/specs/accountkit-package-identity/spec.md)。
 
 ## Global Constraints
 

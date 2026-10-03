@@ -19,9 +19,17 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U postgres -d accountkit_test"
           --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       GOWORK: "off"
       SERVER_TEST_DB_DSN: postgres://postgres:accountkit_test_only@localhost:5432/accountkit_test?sslmode=disable
+      ACCOUNTSVC_TEST_REDIS_URL: redis://localhost:6379/0
       ACCOUNTKIT_RECOVERY_SOURCE_DSN: postgres://postgres:accountkit_test_only@localhost:5432/accountkit_recovery_source?sslmode=disable
       ACCOUNTKIT_RECOVERY_TARGET_DSN: postgres://postgres:accountkit_test_only@localhost:5432/accountkit_recovery_target?sslmode=disable
     steps:
@@ -49,3 +57,11 @@ jobs:
             --mount "type=bind,source=$PWD,target=/src" \
             --mount "type=bind,source=$(go env GOPATH)/pkg/mod,target=/go/pkg/mod" \
             --workdir /src accountkit-verify bash scripts/verify.sh
+      - name: Verify accountsvc with real dependencies and process signals
+        run: |
+          docker run --rm --network host \
+            -e SERVER_TEST_DB_DSN -e ACCOUNTSVC_TEST_REDIS_URL \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/src \
+            --mount "type=bind,source=$PWD,target=/src" \
+            --mount "type=bind,source=$(go env GOPATH)/pkg/mod,target=/go/pkg/mod" \
+            --workdir /src accountkit-verify bash scripts/verify-accountsvc.sh

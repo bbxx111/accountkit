@@ -1,0 +1,26 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Build and test output
+/bin/
+/dist/
+/coverage/
+*.test
+*.exe
+coverage.out
+coverage.html
+
+# Local Go workspace overrides
+/go.work
+/go.work.sum
+
+# Editor and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+.test-output/

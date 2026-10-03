@@ -1,0 +1,85 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "user/query.sql"
+    schema: "migrations"
+    gen:
+      go:
+        package: "db"
+        out: "user/db"
+        sql_package: "pgx/v5"
+        emit_pointers_for_null_types: true
+        overrides:
+          - db_type: "timestamptz"
+            go_type: "time.Time"
+          - db_type: "timestamptz"
+            nullable: true
+            go_type:
+              import: "time"
+              type: "Time"
+              pointer: true
+          - column: "user_account.state"
+            go_type:
+              import: "github.com/bbxx111/accountkit/enum"
+              type: "UserState"
+          - column: "identity.kind"
+            go_type:
+              import: "github.com/bbxx111/accountkit/enum"
+              type: "IdentityKind"
+          - column: "session.revoke_reason"
+            go_type:
+              import: "github.com/bbxx111/accountkit/enum"
+              type: "RevokeReason"
+              pointer: true
+          - column: "audit_event.event_type"
+            go_type:
+              import: "github.com/bbxx111/accountkit/enum"
+              type: "EventType"
+          - column: "audit_event.actor_kind"
+            go_type:
+              import: "github.com/bbxx111/accountkit/enum"
+              type: "ActorKind"
+          - column: "audit_event.result"
+            go_type:
+              import: "github.com/bbxx111/accountkit/enum"
+              type: "Result"
+          - column: "audit_event.identity_kind"
+            go_type:
+              import: "github.com/bbxx111/accountkit/enum"
+              type: "IdentityKind"
+              pointer: true
+  - engine: "postgresql"
+    queries: "audit/query.sql"
+    schema: "migrations"
+    gen:
+      go:
+        package: "db"
+        out: "audit/db"
+        sql_package: "pgx/v5"
+        emit_pointers_for_null_types: true
+        overrides:
+          - db_type: "timestamptz"
+            go_type: "time.Time"
+          - db_type: "timestamptz"
+            nullable: true
+            go_type:
+              import: "time"
+              type: "Time"
+              pointer: true
+          - column: "audit_event.event_type"
+            go_type:
+              import: "github.com/bbxx111/accountkit/enum"
+              type: "EventType"
+          - column: "audit_event.actor_kind"
+            go_type:
+              import: "github.com/bbxx111/accountkit/enum"
+              type: "ActorKind"
+          - column: "audit_event.result"
+            go_type:
+              import: "github.com/bbxx111/accountkit/enum"
+              type: "Result"
+          - column: "audit_event.identity_kind"
+            go_type:
+              import: "github.com/bbxx111/accountkit/enum"
+              type: "IdentityKind"
+              pointer: true

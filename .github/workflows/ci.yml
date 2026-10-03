@@ -1,0 +1,51 @@
+name: verify
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: accountkit_test_only
+          POSTGRES_DB: accountkit_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d accountkit_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      GOWORK: "off"
+      SERVER_TEST_DB_DSN: postgres://postgres:accountkit_test_only@localhost:5432/accountkit_test?sslmode=disable
+      ACCOUNTKIT_RECOVERY_SOURCE_DSN: postgres://postgres:accountkit_test_only@localhost:5432/accountkit_recovery_source?sslmode=disable
+      ACCOUNTKIT_RECOVERY_TARGET_DSN: postgres://postgres:accountkit_test_only@localhost:5432/accountkit_recovery_target?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
+      - run: bash scripts/check-generated.sh
+      - run: docker build -f tests/Dockerfile -t accountkit-verify .
+      - name: Create isolated recovery databases
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec "$PG_CONTAINER" createdb -U postgres accountkit_recovery_source
+          docker exec "$PG_CONTAINER" createdb -U postgres accountkit_recovery_target
+      - name: Verify package and recovery
+        run: |
+          docker run --rm --network host \
+            -e SERVER_TEST_DB_DSN -e ACCOUNTKIT_RECOVERY_SOURCE_DSN -e ACCOUNTKIT_RECOVERY_TARGET_DSN \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/src \
+            --mount "type=bind,source=$PWD,target=/src" \
+            --mount "type=bind,source=$(go env GOPATH)/pkg/mod,target=/go/pkg/mod" \
+            --workdir /src accountkit-verify bash scripts/verify.sh

@@ -19,7 +19,6 @@ import (
 
 // Refresh 实现 refresh_token grant。
 func (s *Service) Refresh(ctx context.Context, refreshToken string, meta Meta) (TokenResult, error) {
-	now := s.now()
 	hash := hashRefresh(refreshToken)
 	ev := audit.Event{IP: meta.IP, RequestID: meta.RequestID}
 
@@ -27,10 +26,10 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string, meta Meta) (
 	switch {
 	case err == nil:
 		ev.UserID, ev.SessionID, ev.DeviceID = sess.UserID, sess.ID, sess.DeviceID
-		if err := s.ensureSessionRefreshable(ctx, sess, now, ev); err != nil {
+		if _, err := s.ensureSessionRefreshable(ctx, sess, ev); err != nil {
 			return TokenResult{}, err
 		}
-		res, rotated, err := s.rotate(ctx, sess, hash, now)
+		res, rotated, err := s.rotate(ctx, sess, hash, ev)
 		if err != nil {
 			return TokenResult{}, err
 		}
@@ -54,7 +53,8 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string, meta Meta) (
 		return TokenResult{}, fmt.Errorf("user: lookup previous hash: %w", err)
 	}
 	ev.UserID, ev.SessionID, ev.DeviceID = sess.UserID, sess.ID, sess.DeviceID
-	if err := s.ensureSessionRefreshable(ctx, sess, now, ev); err != nil {
+	now, err := s.ensureSessionRefreshable(ctx, sess, ev)
+	if err != nil {
 		return TokenResult{}, err
 	}
 	if sess.RotateTime == nil || now.Sub(*sess.RotateTime) > s.d.RefreshGrace {
@@ -69,11 +69,16 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string, meta Meta) (
 		return TokenResult{}, ErrInvalidGrant
 	}
 	pair, ok, err := s.d.Grace.Get(ctx, hash)
-	if err != nil || !ok {
+	if err != nil {
+		s.d.Logger.Warn("user: grace cache read failed", "err", err)
+	}
+	// 资格已在读取会话及账号后确定；缓存等待只复核期限，不重新判断宽限重放。
+	now = sessionTime(s.now())
+	if err := s.ensureRefreshSessionActive(ctx, sess, now, ev); err != nil {
+		return TokenResult{}, err
+	}
+	if err != nil || !ok || !pair.AccessExpiresAt.After(now) || !pair.RefreshExpiresAt.After(now) {
 		// Redis 不可用或缓存已失效：退化为拒绝但不吊销（避免把网络抖动误判为凭证泄露）。
-		if err != nil {
-			s.d.Logger.Warn("user: grace cache read failed", "err", err)
-		}
 		ev.Type, ev.Result, ev.Reason = enum.EventRefreshRejected, enum.ResultFailure, "GRACE_UNAVAILABLE"
 		s.record(ctx, ev)
 		return TokenResult{}, ErrInvalidGrant
@@ -87,41 +92,54 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string, meta Meta) (
 	}, nil
 }
 
-// ensureSessionRefreshable 检查会话未吊销、未过期，且账号状态允许刷新；不允许时吊销并返回对应错误。
-func (s *Service) ensureSessionRefreshable(ctx context.Context, sess db.Session, now time.Time, ev audit.Event) error {
+// ensureRefreshSessionActive 仅分类会话自身的吊销/期限，不产生撤销副作用。
+func (s *Service) ensureRefreshSessionActive(ctx context.Context, sess db.Session, now time.Time, ev audit.Event) error {
 	if sess.RevokeTime != nil {
 		ev.Type, ev.Result, ev.Reason = enum.EventRefreshRejected, enum.ResultFailure, "SESSION_REVOKED"
 		s.record(ctx, ev)
 		return ErrInvalidGrant
 	}
-	if !now.Before(sess.RefreshExpireTime) {
+	if !sessionActiveAt(sess, now) {
 		ev.Type, ev.Result, ev.Reason = enum.EventRefreshRejected, enum.ResultFailure, "SESSION_EXPIRED"
 		s.record(ctx, ev)
 		return ErrInvalidGrant
 	}
+	return nil
+}
+
+// ensureSessionRefreshable 在必要读取后返回最新资格判定时刻；只有账号状态拒绝会吊销。
+func (s *Service) ensureSessionRefreshable(ctx context.Context, sess db.Session, ev audit.Event) (time.Time, error) {
+	now := sessionTime(s.now())
+	if err := s.ensureRefreshSessionActive(ctx, sess, now, ev); err != nil {
+		return now, err
+	}
 	u, err := s.d.Repo.Q().GetUserByID(ctx, sess.UserID)
 	if err != nil {
-		return fmt.Errorf("user: load user for refresh: %w", err)
+		return now, fmt.Errorf("user: load user for refresh: %w", err)
+	}
+	now = sessionTime(s.now())
+	if err := s.ensureRefreshSessionActive(ctx, sess, now, ev); err != nil {
+		return now, err
 	}
 	switch u.State {
 	case enum.UserActive:
-		return nil
+		return now, nil
 	case enum.UserFrozen:
 		// 吊销失败同样必须向上传播（而不是继续返回 ErrUserFrozen）：调用方不能把一次
 		// "遏制动作本身失败"的情形误当作"账号被冻结、已正常拒绝"处理。
 		if err := s.revokeSession(ctx, sess.ID, enum.RevokeUserFrozen, now); err != nil {
-			return err
+			return now, err
 		}
 		ev.Type, ev.Result, ev.Reason = enum.EventRefreshRejected, enum.ResultFailure, "USER_FROZEN"
 		s.record(ctx, ev)
-		return ErrUserFrozen
+		return now, ErrUserFrozen
 	default: // PENDING_DELETION / DELETED：会话不得续期
 		if err := s.revokeSession(ctx, sess.ID, enum.RevokeUserDeleted, now); err != nil {
-			return err
+			return now, err
 		}
 		ev.Type, ev.Result, ev.Reason = enum.EventRefreshRejected, enum.ResultFailure, "USER_"+u.State.String()
 		s.record(ctx, ev)
-		return ErrInvalidGrant
+		return now, ErrInvalidGrant
 	}
 }
 
@@ -141,7 +159,7 @@ func (s *Service) revokeSession(ctx context.Context, sid string, reason enum.Rev
 // rotate 在事务内对会话行加锁后 CAS 轮换 refresh，并在提交前把新 pair 写入宽限缓存。
 // 并发刷新者在行锁上排队：胜者提交时缓存已就位，失败者随后走宽限路径必然命中同一 pair。
 // 返回 rotated=false 表示加锁后发现哈希已被他人轮换（CAS 未命中）。
-func (s *Service) rotate(ctx context.Context, sess db.Session, oldHash []byte, now time.Time) (TokenResult, bool, error) {
+func (s *Service) rotate(ctx context.Context, sess db.Session, oldHash []byte, ev audit.Event) (TokenResult, bool, error) {
 	var res TokenResult
 	rotated := false
 	err := s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
@@ -163,6 +181,10 @@ func (s *Service) rotate(ctx context.Context, sess db.Session, oldHash []byte, n
 		}
 		hasAnchor, err := s.userHasAnchor(ctx, q, locked.UserID)
 		if err != nil {
+			return err
+		}
+		now := sessionTime(s.now())
+		if err := s.ensureRefreshSessionActive(ctx, locked, now, ev); err != nil {
 			return err
 		}
 		scope := deriveScope(u.State, hasAnchor)

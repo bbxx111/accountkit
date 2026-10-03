@@ -1,6 +1,6 @@
 # accountsvc 本地验收记录
 
-日期：2026-10-03。对应 [add-accountsvc](../openspec/changes/add-accountsvc/tasks.md)。本记录只覆盖本地运行结果，不表示 GitHub Actions 已在线通过或已发布服务。
+日期：2026-10-03。对应 [add-accountsvc](../openspec/changes/archive/2026-10-03-add-accountsvc/tasks.md)。本记录只覆盖本地运行结果，不表示 GitHub Actions 已在线通过或已发布服务。
 
 ## 环境
 

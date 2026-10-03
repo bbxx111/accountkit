@@ -38,7 +38,7 @@ accountsvc 是基于本库的可选官方服务；直接嵌入 accountkit 的宿
 
 根 Config、环境变量、公开 Service 方法、DTO和默认TTL不变。sqlc列表/计数查询增加显式时间参数，仓库内调用随生成结果更新；无数据库结构迁移、数据回填或历史SQL修改。原access/内省验证、显式撤销覆盖以及会话清理保留期继续有效，不能把refresh到期当作自动吊销access。
 
-滚动升级期间旧实例仍可能使用旧的期限判断；只有全部实例完成升级后才具备一致行为。回退二进制不会恢复已吊销会话，并会重新引入旧版本的展示和到期边界行为。本轮检查与限制见[会话过期验收记录](../openspec/changes/harden-session-expiry/verification.md)。
+滚动升级期间旧实例仍可能使用旧的期限判断；只有全部实例完成升级后才具备一致行为。回退二进制不会恢复已吊销会话，并会重新引入旧版本的展示和到期边界行为。本轮检查与限制见[会话过期验收记录](../openspec/changes/archive/2026-10-04-harden-session-expiry/verification.md)。
 
 ## 功能对照
 

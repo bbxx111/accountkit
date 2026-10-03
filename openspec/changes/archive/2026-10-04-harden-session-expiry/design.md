@@ -1,6 +1,6 @@
 ## Context
 
-动机见 [proposal.md](proposal.md)。相关约束来自 [嵌入式库](../../specs/embedded-auth-package/spec.md)、[消费者内省](../../specs/consumer-token-introspection/spec.md)、[身份换绑](../../specs/identity-replacement/spec.md) 和 [迁移安全](../../specs/migration-safety/spec.md)。
+动机见 [proposal.md](proposal.md)。相关约束来自 [嵌入式库](../../../specs/embedded-auth-package/spec.md)、[消费者内省](../../../specs/consumer-token-introspection/spec.md)、[身份换绑](../../../specs/identity-replacement/spec.md) 和 [迁移安全](../../../specs/migration-safety/spec.md)。
 
 当前刷新在进入事务前读取 now，rotate 等待 session 行锁后仍复用它；重新认证会锁 user/session，但只复核归属和 revoke_time。ListActiveSessionsByUser 和 CountActiveSessionsByUser 不含 refresh_expire_time 条件。换绑已经检查刷新期限并在取得锁后重新取时钟，可作为对齐依据。
 

@@ -33,7 +33,7 @@ accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可�
 
 宽限资格取会话读取后的时间；缓存返回后再检查会话/pair期限并计算剩余有效期。已符合宽限的请求不会仅因缓存等待跨过宽限而被认定为重放，仍返回同一pair。缓存不可用或到期拒绝不会被误记为已遏制的重放。
 
-刷新期限与access有效性独立：自然到期不写撤销集，原access和内省仍按JWT及Redis吊销规则判断；“不在会话列表中”不等于“所有已发access都已失效”。显式单个/批量撤销、同设备重登和账号生命周期操作仍覆盖未清理的过期会话。列表读取不删除数据，原30天会话清理保留期不变。实际验证见[会话过期验收记录](openspec/changes/harden-session-expiry/verification.md)。
+刷新期限与access有效性独立：自然到期不写撤销集，原access和内省仍按JWT及Redis吊销规则判断；“不在会话列表中”不等于“所有已发access都已失效”。显式单个/批量撤销、同设备重登和账号生命周期操作仍覆盖未清理的过期会话。列表读取不删除数据，原30天会话清理保留期不变。实际验证见[会话过期验收记录](openspec/changes/archive/2026-10-04-harden-session-expiry/verification.md)。
 
 ### Redis 键与失败模式
 

@@ -162,6 +162,17 @@ func (s *Service) findOrCreateUser(ctx context.Context, q *db.Queries, kind enum
 		if err != nil {
 			return db.UserAccount{}, false, fmt.Errorf("user: lock user %s: %w", ident.UserID, err)
 		}
+		// 身份可能在等待用户锁期间被解绑或替换；旧证明不能登录原账号。
+		current, err := q.FindActiveIdentityByDigests(ctx, db.FindActiveIdentityByDigestsParams{Kind: kind, Digests: s.d.Digester.AllDigests(norm)})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return db.UserAccount{}, false, code.ErrInvalid
+		}
+		if err != nil {
+			return db.UserAccount{}, false, fmt.Errorf("user: recheck identity: %w", err)
+		}
+		if current.ID != ident.ID || current.UserID != u.ID {
+			return db.UserAccount{}, false, code.ErrInvalid
+		}
 		return u, false, nil
 	case !errors.Is(err, pgx.ErrNoRows):
 		return db.UserAccount{}, false, fmt.Errorf("user: find identity: %w", err)
@@ -180,10 +191,12 @@ func (s *Service) findOrCreateUser(ctx context.Context, q *db.Queries, kind enum
 	return u, true, nil
 }
 
-// signInRejectReason 把账号状态导致的登录拒绝映射为审计 reason；非状态类错误（DB 故障等）返回 ""，
+// signInRejectReason 把旧证明及账号状态导致的登录拒绝映射为审计 reason；DB 故障等返回 ""，
 // 调用方不为其写业务审计事件。
 func signInRejectReason(err error) string {
 	switch {
+	case errors.Is(err, code.ErrInvalid):
+		return "CODE_INVALID"
 	case errors.Is(err, ErrUserFrozen):
 		return "USER_FROZEN"
 	case errors.Is(err, ErrUserPendingDeletion):

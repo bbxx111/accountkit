@@ -33,7 +33,7 @@ accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可�
 
 宽限资格取会话读取后的时间；缓存返回后再检查会话/pair期限并计算剩余有效期。已符合宽限的请求不会仅因缓存等待跨过宽限而被认定为重放，仍返回同一pair。缓存不可用或到期拒绝不会被误记为已遏制的重放。
 
-刷新期限与access有效性独立：自然到期不写撤销集，原access和内省仍按JWT及Redis吊销规则判断；“不在会话列表中”不等于“所有已发access都已失效”。显式单个/批量撤销、同设备重登和账号生命周期操作仍覆盖未清理的过期会话。列表读取不删除数据，原30天会话清理保留期不变。实际验证见[会话过期验收记录](docs/session-expiry-verification.md)。
+刷新期限与access有效性独立：自然到期不写撤销集，原access和内省仍按JWT及Redis吊销规则判断；“不在会话列表中”不等于“所有已发access都已失效”。显式单个/批量撤销、同设备重登和账号生命周期操作仍覆盖未清理的过期会话。列表读取不删除数据，原30天会话清理保留期不变。实际验证见[会话过期验收记录](openspec/changes/harden-session-expiry/verification.md)。
 
 ### Redis 键与失败模式
 
@@ -130,7 +130,7 @@ r.Route("/v1", func(r chi.Router) {
 
 只支持 PHONE→PHONE、EMAIL→EMAIL，原绑定/解绑接口不变。同目标返回400 `IDENTITY_UNCHANGED`；旧资源不存在/已删除/归属其他用户返回404；新目标已经绑定返回409 `IDENTITY_ALREADY_BOUND`。已消费的验证码不随数据库回滚退还，重取码仍受冷却/额度限制。成功后重试旧 identity 路径返回404；响应丢失时先列出身份确认状态，不盲目自动重发。新旧摘要版本、密文格式与冻结迁移保持兼容。
 
-直接库调用使用 `Auth.Users().ReplaceIdentity(...)` 并传入已认证 Principal。领域层同样检查 scope、新鲜度、账号/会话和身份归属。自定义 `consumer.Service` 无需增加必需方法；实现可选 `consumer.IdentityReplacer` 即可启用新端点，否则认证后的调用返回503 `IDENTITY_REPLACEMENT_NOT_CONFIGURED`。实际检查与验收边界见[换绑验收记录](docs/identity-replacement-verification.md)。
+直接库调用使用 `Auth.Users().ReplaceIdentity(...)` 并传入已认证 Principal。领域层同样检查 scope、新鲜度、账号/会话和身份归属。自定义 `consumer.Service` 无需增加必需方法；实现可选 `consumer.IdentityReplacer` 即可启用新端点，否则认证后的调用返回503 `IDENTITY_REPLACEMENT_NOT_CONFIGURED`。实际检查与验收边界见[换绑验收记录](openspec/changes/archive/2026-10-03-add-identity-replacement/verification.md)。
 
 ## 账号生命周期（阶段 5a）
 
@@ -226,6 +226,6 @@ r.Route("/v1", func(r chi.Router) {
 
 远程仓库：https://github.com/bbxx111/accountkit.git
 
-Go module：github.com/bbxx111/accountkit。完整提取与 P0 迁移安全加固的包级验证已通过，见 [发布检查](docs/release-checklist.md) 和 [验证记录](docs/recovery-verification.md)。实际产品接入及发布尚未执行。产品各自配置 schema、Redis 前缀、issuer/audience 和密钥。
+Go module：github.com/bbxx111/accountkit。完整提取与 P0 迁移安全加固的包级验证已通过，见 [发布检查](docs/release-checklist.md) 和 [验证记录](openspec/changes/archive/2026-10-03-harden-migration-safety/verification.md)。实际产品接入及发布尚未执行。产品各自配置 schema、Redis 前缀、issuer/audience 和密钥。
 
 迁移兼容性变化：原 migrations.Down 保留签名但默认拒绝执行；一次性测试清库改用显式 UnsafeReset。升级、故障处理与恢复步骤见 [迁移手册](docs/migrations.md)。

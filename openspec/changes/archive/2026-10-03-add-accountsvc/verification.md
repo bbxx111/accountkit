@@ -1,6 +1,6 @@
 # accountsvc 本地验收记录
 
-日期：2026-10-03。对应 [add-accountsvc](../openspec/changes/archive/2026-10-03-add-accountsvc/tasks.md)。本记录只覆盖本地运行结果，不表示 GitHub Actions 已在线通过或已发布服务。
+日期：2026-10-03。对应 [add-accountsvc](tasks.md)。本记录只覆盖本地运行结果，不表示 GitHub Actions 已在线通过或已发布服务。
 
 ## 环境
 
@@ -41,6 +41,6 @@
 
 ## 部署验收边界
 
-尚未使用真实 SMTP 服务商验证最终收件，未与实际 OIDC 管理员提供方联调，也未执行生产网络、证书、密钥托管或发布操作。这些项目由 [发布检查表](release-checklist.md) 跟踪。
+尚未使用真实 SMTP 服务商验证最终收件，未与实际 OIDC 管理员提供方联调，也未执行生产网络、证书、密钥托管或发布操作。这些项目由 [发布检查表](../../../../docs/release-checklist.md) 跟踪。
 
-消费者 Redis 吊销查询仍沿用库的 fail-open 语义；SMTP 接受不代表最终送达；服务不执行使用方业务数据匿名化。具体接入责任见 [服务手册](accountsvc.md)。
+消费者 Redis 吊销查询仍沿用库的 fail-open 语义；SMTP 接受不代表最终送达；服务不执行使用方业务数据匿名化。具体接入责任见 [服务手册](../../../../docs/accountsvc.md)。

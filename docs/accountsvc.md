@@ -87,7 +87,7 @@ healthz 只表示进程存活。readyz 要求启动完成、未停机且 Postgre
 
 服务复用 [库的换绑端点](../README.md#手机号与邮箱换绑)：先完成必要的重新认证，向新地址请求 BIND 码，再调用 `POST /v1/users/me/identities/{identity}:replace`。保留当前会话，撤销其他会话；旧身份 ID 失效，客户端应保存响应中的新资源名。服务默认只启用邮件投递，短信禁用策略不变。
 
-数据库明确回滚时旧绑定保持，但已经消费的验证码不能恢复；结果未知时先查询身份列表确认。旧邮箱之后的新登录可能建立另一个账号，不会获得原账号的数据。业务服务继续执行自身 scope/资源归属校验，access 吊销的 Redis fail-open 限制不变。实现的本地检查见[换绑验收记录](identity-replacement-verification.md)。
+数据库明确回滚时旧绑定保持，但已经消费的验证码不能恢复；结果未知时先查询身份列表确认。旧邮箱之后的新登录可能建立另一个账号，不会获得原账号的数据。业务服务继续执行自身 scope/资源归属校验，access 吊销的 Redis fail-open 限制不变。实现的本地检查见[换绑验收记录](../openspec/changes/archive/2026-10-03-add-identity-replacement/verification.md)。
 
 ## 会话到期与重新登录
 
@@ -129,4 +129,4 @@ SIGINT/SIGTERM 触发撤销就绪、HTTP排空、维护停止/审计刷新、连
 
 ## 验证边界
 
-现有库完整门禁仍使用 `scripts/verify.sh`；服务门禁使用 `scripts/verify-accountsvc.sh`，要求一次性 PostgreSQL 和 Redis，内部启动隔离 SMTP/HTTPS OIDC fixtures，缺依赖时失败。本地执行记录见 [验收记录](accountsvc-verification.md)。外部 SMTP 实际送达、实际 OIDC 提供方和生产网络配置属于部署验收，测试 fixture 通过不代替这些联调。
+现有库完整门禁仍使用 `scripts/verify.sh`；服务门禁使用 `scripts/verify-accountsvc.sh`，要求一次性 PostgreSQL 和 Redis，内部启动隔离 SMTP/HTTPS OIDC fixtures，缺依赖时失败。本地执行记录见 [验收记录](../openspec/changes/archive/2026-10-03-add-accountsvc/verification.md)。外部 SMTP 实际送达、实际 OIDC 提供方和生产网络配置属于部署验收，测试 fixture 通过不代替这些联调。

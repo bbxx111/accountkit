@@ -27,6 +27,6 @@
 
 ## 6. 文档与完整核验
 
-- [x] 6.1 更新 README、兼容说明、服务手册和本地验收记录，说明列表过滤、到期reauth需重新登录、JWT独立有效期、明确撤销覆盖、滚动升级/回退及码消费边界；检查链接、字段与实现一致。
+- [x] 6.1 更新 README、兼容说明、服务手册和[本变更验收记录](verification.md)，说明列表过滤、到期reauth需重新登录、JWT独立有效期、明确撤销覆盖、滚动升级/回退及码消费边界；检查链接、字段与实现一致。
 - [x] 6.2 完成独立规格/代码审查，实际运行 GOWORK=off build/vet、相关真实PG并发、Linux race、生成/历史迁移检查、scripts/verify.sh 和 scripts/verify-accountsvc.sh；记录已执行证据、修复复核及暂缓的外部环境验收。
 - [x] 6.3 执行 openspec validate --all --strict 和 git diff --check，核对修改规格保留原场景、冻结SQL/schema/依赖未被无关修改；只有真实完成才勾选任务，不自动归档或发布。

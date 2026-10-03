@@ -17,7 +17,7 @@
 - [x] 3.1 实现 scripts/check-migrations.sh：有正式发布 tag 时逐个比较该 tag 的历史 SQL，无 tag 时比较固定源基线；用临时 Git fixture 验证改写、删除、重编号、非递增新增会失败，合法追加会通过，运行时不新增 checksum 数据表。
 - [x] 3.2 编写 docs/migrations.md 的升级和故障恢复步骤，包含 version/dirty 检查 SQL、部分 DDL 检查、停止自动重试、应用回退条件、前向修复和备份恢复选择，以及密钥与 Redis 状态协调；逐项对照 migration-safety 规格确认全部故障场景有操作路径。
 - [x] 3.3 创建 scripts/verify-recovery.sh，要求不同且经实际数据库身份核验的源库与专用空恢复库，拒绝同库或非空目标；执行 pg_dump/pg_restore，恢复后核对版本、四类记录、身份解密和可用认证行为，禁止覆盖或删除现有数据库。
-- [x] 3.4 在隔离环境实际执行备份恢复演练，将命令、工具版本、成功结果和数据损失窗口说明写入 docs/recovery-verification.md；核验原测试库和其他 schema 未受影响，不用虚构结果替代演练。
+- [x] 3.4 在隔离环境实际执行备份恢复演练，将命令、工具版本、成功结果和数据损失窗口说明写入[本变更验收记录](verification.md)；核验原测试库和其他 schema 未受影响，不用虚构结果替代演练。
 
 ## 4. 首次生产发布验收
 

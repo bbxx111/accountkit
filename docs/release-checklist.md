@@ -11,7 +11,7 @@
 - [ ] 产品侧在自己的预发布环境验证备份恢复和升级窗口。
 
 本地验证不等于 GitHub Actions 已在线运行，也不等于宿主已经完成接入。实际 tag、push、发布和产品部署另行执行。测试数据库权限应限定到一次性数据库；生产密钥不进入示例或测试。
-包级验证已于 2026-10-03 通过：286 个常规顶层测试通过，恢复演练三个阶段通过。详细证据与限制见 [恢复验证记录](recovery-verification.md)。上面两项产品验收仍是实际生产接入的前置条件。
+包级验证的历史证据与限制见 [恢复验证记录](../openspec/changes/archive/2026-10-03-harden-migration-safety/verification.md)，各次变更的实际结果保存在其目录下的 `verification.md`。上面两项产品验收仍是实际生产接入的前置条件；发布前应针对候选版本重新执行门禁。
 
 ## 可选 accountsvc 发布
 
@@ -23,4 +23,4 @@ accountsvc 与库使用同一版本源码；发布服务不改变嵌入式接入
 - [ ] 明确业务数据匿名化责任；不与依赖业务回调的宿主混跑同一实例的维护任务。
 - [ ] 在目标环境验证启动迁移、探针、SIGTERM、终止宽限和备份恢复。
 
-本地服务验收必须执行 `scripts/verify-accountsvc.sh`，使用一次性 PostgreSQL/Redis 和隔离 SMTP/OIDC fixtures。缺依赖或必需测试 skip 不能视为通过；仍须执行原有库验证和恢复入口。本次实际结果见 [accountsvc 验收记录](accountsvc-verification.md)，以上部署验收尚未执行。
+本地服务验收必须执行 `scripts/verify-accountsvc.sh`，使用一次性 PostgreSQL/Redis 和隔离 SMTP/OIDC fixtures。缺依赖或必需测试 skip 不能视为通过；仍须执行原有库验证和恢复入口。本次实际结果见 [accountsvc 验收记录](../openspec/changes/archive/2026-10-03-add-accountsvc/verification.md)，以上部署验收尚未执行。

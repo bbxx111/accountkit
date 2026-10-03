@@ -74,7 +74,7 @@
 
 ### Task 5: 文档和交付（OpenSpec6.1–6.3）
 
-**Files:** README.md、docs/compatibility.md、docs/accountsvc.md、docs/session-expiry-verification.md、change tasks/design与本计划。
+**Files:** README.md、docs/compatibility.md、docs/accountsvc.md、openspec/changes/harden-session-expiry/verification.md、change tasks/design与本计划。
 
 - [x] 写明确升级/回退说明：列表变化、过期reauth重新登录、独立JWT有效期、明确撤销覆盖、码消费及滚动升级边界；检查本地链接。
 - [x] 运行独立build/vet、真实PG并发、Linux race、sqlc/迁移检查、verify.sh及verify-accountsvc.sh，保留实际日志和外部验收暂缓事实。

@@ -132,7 +132,7 @@ bash scripts/verify.sh
 - 恢复脚本要求源库和目标库实际不同且均为空，有 PostgreSQL 17 客户端及读取集群标识的权限。脚本不覆盖既有库，重跑需新空库；数据、备份与日志留在被忽略的 `.test-output/`。
 - race 需要 CGO 工具链。Windows 缺少编译器时使用 `tests/Dockerfile` 的 Linux 验证镜像，不通过禁用 race 伪造完整验证；CI 同时执行 sqlc 检查与完整验证脚本。
 - 按改动范围验证：Go 变更运行相关测试和 vet，认证/事务/迁移变更补真实数据库与并发验证，发布前执行完整入口。纯文档改动检查内容、路径、引用和差异，无需为文档新增镜像实现的测试。
-- 交付说明列出实际运行的检查及未验证项。已有结果见 [docs/recovery-verification.md](docs/recovery-verification.md)，发布前置条件见 [docs/release-checklist.md](docs/release-checklist.md)，环境准备见 [docs/development.md](docs/development.md)。历史记录不等于当前代码或在线 CI 已通过。
+- 交付说明列出实际运行的检查及未验证项，结果写入对应变更的 `verification.md`。发布前置条件见 [docs/release-checklist.md](docs/release-checklist.md)，环境准备见 [docs/development.md](docs/development.md)。历史记录不等于当前代码或在线 CI 已通过。
 
 ## Git 与 OpenSpec 工作流
 
@@ -142,6 +142,7 @@ bash scripts/verify.sh
 - 合并统一保留独立 merge commit：任务分支合入 `develop`、`develop` 合入 `main` 时，本地使用 `git merge --no-ff <source-branch>`，即使可以快进也不省略合并提交；GitHub PR 使用 Create a merge commit，不使用 Squash and merge 或 Rebase and merge，除非用户明确另行指定。
 - 功能、行为、公共接口或架构变更通过 OpenSpec；纯文档维护可直接修改。先读相关 `openspec/specs/`，再读涉及的变更工件；未归档变更的 specs 仍在 `openspec/changes/<change>/specs/`，不能因主规格目录为空就忽略它们。
 - 遵循 `openspec/config.yaml`：工件正文中文，OpenSpec 结构标题和 SHALL/MUST 保留英文。使用已安装的 openspec CLI 和 `.agents/skills/` 中对应工作流，不假定其他版本的命令可用。
+- 每次变更的测试结果、审查结论和未验证项统一保存在 `openspec/changes/<change>/verification.md`，归档时随变更一起移动。`docs/` 保留长期维护的验证方法、开发指南和发布检查表，只引用各次验收记录，不另存重复报告；原始日志、测试输出和恢复材料保留在被忽略的 `.test-output/`。归档或移动记录时同步修复记录内的相对链接和外部引用。
 - 实施前读取 proposal、design、全部相关 specs 和 tasks；只在实际完成且验证后勾选任务。明确的设计偏离记录在该 change 的 design.md，并更新受影响规格/文档；不能以修复为由静默扩大范围或删减已确认要求。
 - 实施后的核验使用 `openspec validate --all --strict`；归档作为单独明确步骤执行，不能因 tasks 全勾选就报告已归档。
 

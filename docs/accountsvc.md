@@ -83,6 +83,12 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 
 healthz 只表示进程存活。readyz 要求启动完成、未停机且 PostgreSQL/Redis 在两秒内可用；SMTP 或运行期 OIDC 故障不影响整个服务就绪，但对应功能会失败。请求/响应携带 X-Request-Id 用于关联；不要记录 Authorization 或请求体中的凭据。
 
+## 更换邮箱或手机号
+
+服务复用 [库的换绑端点](../README.md#手机号与邮箱换绑)：先完成必要的重新认证，向新地址请求 BIND 码，再调用 `POST /v1/users/me/identities/{identity}:replace`。保留当前会话，撤销其他会话；旧身份 ID 失效，客户端应保存响应中的新资源名。服务默认只启用邮件投递，短信禁用策略不变。
+
+数据库明确回滚时旧绑定保持，但已经消费的验证码不能恢复；结果未知时先查询身份列表确认。旧邮箱之后的新登录可能建立另一个账号，不会获得原账号的数据。业务服务继续执行自身 scope/资源归属校验，access 吊销的 Redis fail-open 限制不变。实现的本地检查见[换绑验收记录](identity-replacement-verification.md)。
+
 ## 业务服务远程鉴权
 
 以 HTTPS 向内省端点发送表单 `token=<消费者access_token>`，HTTP Basic 使用独立客户端凭据。成功时返回最小主体上下文：

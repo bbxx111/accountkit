@@ -90,7 +90,7 @@
 
 提交后分别产生旧身份 `IDENTITY_UNBOUND` 和新身份 `IDENTITY_BOUND`，reason 为 `IDENTITY_REPLACED`，通过相同 request_id 关联；其他会话各自记录 SESSION_REVOKED。追加 `IDENTITY_REPLACE_REJECTED` 事件用于进入领域后的可归因业务失败；认证中间件拒绝保持原审计行为，基础设施失败不伪装成成功或账号冲突。
 
-事件只记录现有 kind、digest hint、user_id、sid、request_id 等允许字段；不增加明文目标、验证码或完整摘要。审计仍是有界异步记录，不成为换绑事务的提交依赖。新增枚举需同步解析/序列化和管理审计过滤测试，旧枚举数值不变。
+事件只记录现有 kind、digest hint、user_id、sid、request_id 等允许字段；不增加明文目标、验证码或完整摘要。审计仍是有界异步记录，不成为换绑事务的提交依赖。新增枚举需同步解析/序列化和管理审计 DTO 的事件类型及撤销原因序列化测试，旧枚举数值不变。
 
 验证覆盖纯 HTTP 协议、旧自定义 consumer.Service 编译、直接领域调用、真实 PostgreSQL 并发与回滚、真实 Redis/隔离 SMTP 的 accountsvc 双会话换邮箱链路。服务严格入口增加对应必需测试；不需要实际短信/邮件服务商或 OIDC 平台。
 

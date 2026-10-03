@@ -24,6 +24,14 @@ accountsvc 是基于本库的可选官方服务；直接嵌入 accountkit 的宿
 
 消费者内省沿用当前吊销查询 fail-open；管理员适配位于服务内部，不给消费者增加管理员身份。无数据库迁移、默认库配置变化或令牌格式变化。独立服务不执行宿主业务匿名化回调，不能与依赖此回调的宿主混跑同一实例的维护任务。
 
+## 同类身份换绑扩展
+
+新增 `user.Service.ReplaceIdentity` 和消费者 `:replace` 自定义操作。已有绑定/解绑签名、数量限制与最后身份保护保持；新操作以软删除旧身份、新建同类身份保留账号连续性，无数据库结构迁移。
+
+`user.Deps.ReauthMaxAge` 的零值默认5分钟，`SensitiveOpVerification` 的 nil 默认true；根门面传入现有 Config 值，不新增环境变量。旧自定义 `consumer.Service` 继续编译，可按需实现可选 `consumer.IdentityReplacer`，未实现时换绑端点返回503。近期认证、冲突、验证码消费/回滚和重试边界见 [README](../README.md#手机号与邮箱换绑)。
+
+撤销原因追加 `IDENTITY_REPLACED`，审计类型追加 `IDENTITY_REPLACE_REJECTED`，既有枚举值不重编号。回退旧二进制前须确认其审计/会话展示对新增值的兼容表现；回退不会恢复旧绑定或被撤销会话。登录及重新认证补充持锁后身份复核，旧身份在等待锁期间被移除时分别返回既有 CODE_INVALID、TARGET_NOT_ANCHOR，避免旧读结果重新进入原账号。
+
 ## 功能对照
 
 | 规格能力 | 生产入口/路径 | 验证 |
@@ -32,6 +40,7 @@ accountsvc 是基于本库的可选官方服务；直接嵌入 accountkit 的宿
 | 手机/邮箱验证码、限流 | user/code、user/service_signin.go、httpapi/consumer | code/store_test.go、service_test.go、signin_test.go、TestConsumerEndToEndAgainstRealDB |
 | 微信/Apple | user/idp、service_idp.go | wechat_test.go、apple_test.go、nonce_test.go、service_idp_test.go、TestWeChatSignInEndToEndAgainstRealDB |
 | 身份绑定解绑 | user/service_identity.go | service_identity_test.go、identities_test.go、TestIdentityBindingEndToEndAgainstRealDB |
+| 同类身份换绑 | user/service_identity_replacement.go、httpapi/consumer/replacement.go | 领域回滚/竞态、嵌入式及服务E2E，见[换绑验收记录](identity-replacement-verification.md) |
 | JWT、刷新、会话、重新认证 | tokens、session、service_session.go | tokens_test.go、session/*/*_test.go、service_test.go、TestConsumerEndToEndAgainstRealDB |
 | 资料、注销恢复、冻结 | service_me.go、service_lifecycle.go、service_admin.go | service_lifecycle_test.go、service_admin_test.go、TestAccountLifecycleEndToEndAgainstRealDB |
 | 管理接口、角色、审计 | httpapi/admin、audit | httpapi/admin/*_test.go、audit/*_test.go、TestAdminSurfaceEndToEndAgainstRealDB |
@@ -41,7 +50,7 @@ accountsvc 是基于本库的可选官方服务；直接嵌入 accountkit 的宿
 | 包内 schema/版本/重复迁移 | migrations、Auth.Migrate | migrations_test.go、TestSourceDatabaseTakeover |
 | 旧存储及凭证接管 | 原样 0001、合成旧格式数据 | TestSourceDatabaseTakeover：四类表和版本快照不变、旧 JWT/refresh 可用、旧身份可解密 |
 
-HTTP 请求响应、状态码、错误码和全部环境配置默认值保留 README 中的表格；下列清单记录实际代码入口，测试索引覆盖所有原测试和新增测试。Redis 吊销检查 fail-open、审计失败不阻断、刷新宽限故障拒绝请求等原语义不变。第三方真实发送和设备联调由宿主负责。
+HTTP 请求响应、状态码、错误码和环境配置约定见 README；下列清单保留提取阶段的入口和测试索引，后续服务与换绑验证分别见对应验收记录。Redis 吊销检查 fail-open、审计失败不阻断、刷新宽限故障拒绝请求等原语义不变。第三方真实发送和设备联调由宿主负责。
 
 ## 公开门面与路由
 

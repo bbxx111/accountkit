@@ -89,6 +89,12 @@ healthz 只表示进程存活。readyz 要求启动完成、未停机且 Postgre
 
 数据库明确回滚时旧绑定保持，但已经消费的验证码不能恢复；结果未知时先查询身份列表确认。旧邮箱之后的新登录可能建立另一个账号，不会获得原账号的数据。业务服务继续执行自身 scope/资源归属校验，access 吊销的 Redis fail-open 限制不变。实现的本地检查见[换绑验收记录](identity-replacement-verification.md)。
 
+## 会话到期与重新登录
+
+会话列表和管理员活跃计数不展示已到刷新期限的会话。到期refresh返回400 `invalid_grant`；到期重新认证返回401 `TOKEN_INVALID`并带Bearer challenge，应重新登录。有效重新认证不会延长refresh期限，显式关闭新鲜度检查也不会让到期会话恢复可用。
+
+原access可能仍在自身有效期内，内省继续按既有JWT/Redis规则判断；自然到期不会自动写入吊销集。需要使这些access失效时，仍可按原接口明确撤销未清理的会话，Redis fail-open边界不变。期限判断与码消费细节见 [README](../README.md#会话过期语义)。
+
 ## 业务服务远程鉴权
 
 以 HTTPS 向内省端点发送表单 `token=<消费者access_token>`，HTTP Basic 使用独立客户端凭据。成功时返回最小主体上下文：

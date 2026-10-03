@@ -37,9 +37,9 @@
 - ListActiveSessionsByUser、CountActiveSessionsByUser 增加 `user_id`、`now::timestamptz` sqlc参数，调用处传sessionTime(s.now())。RotateSession已有Now、UpdateSessionAuthTime已有AuthTime分别作为SQL过期保护时刻。
 - 不修改GetActiveSessionByIDAndUser/GetActiveSessionByUserDevice/RevokeSession/RevokeSessionsByUser的期限范围。
 
-- [ ] 写 TestSessionActiveAt 与真实PG TestSessionExpiryQueries：混合有效/到期/撤销/他人行、等号与±1微秒、亚微秒/时区、无读副作用和过期直接写入0行；观察现有实现RED。
-- [ ] 实现辅助规则及查询，sqlc generate；适配所有调用（包括既有测试），保留公开Service签名和旧未吊销查找的用途。
-- [ ] 运行真实PG `go test -count=1 ./user`、`go vet ./user` 和相关根编译，确认既有换绑/冻结/注销/会话测试无回归；独立审查后提交。生成一致性最终由协调者在提交后验证。
+- [x] 写 TestSessionActiveAt 与真实PG TestSessionExpiryQueries：混合有效/到期/撤销/他人行、等号与±1微秒、亚微秒/时区、无读副作用和过期直接写入0行；观察现有实现RED。
+- [x] 实现辅助规则及查询，sqlc generate；适配所有调用（包括既有测试），保留公开Service签名和旧未吊销查找的用途。
+- [x] 运行真实PG `go test -count=1 ./user`、`go vet ./user` 和相关根编译，确认既有换绑/冻结/注销/会话测试无回归；独立审查后提交。生成一致性最终由协调者在提交后验证。
 
 ### Task 2: 刷新时刻与宽限（OpenSpec3.1–3.3）
 
@@ -47,9 +47,9 @@
 
 **Interfaces:** 保持Refresh公开签名；私有rotate可去掉旧now参数，锁后检查直接产生ErrInvalidGrant和一次SESSION_EXPIRED拒绝审计。资格时刻在会话读取后；缓存返回时刻只复核会话/pair期限和计算剩余时间，不重新判定已合格的宽限请求。
 
-- [ ] 先写 TestRefreshExpiryAfterSessionLock、TestRefreshUsesLockedDecisionTime，真实PG锁等待并推进原子时钟；观察旧实现续用/期限偏移错误后修复，验证拒绝无字段/缓存写入，有效情况从锁后时间续期。
-- [ ] 写 TestRefreshGraceExpiryBoundaries：current/previous query等待、资格边界、CAS胜者pair、缓存等待跨期限或仅跨宽限、缺失/失败/过期pair；通过测试专用Redis Hook/代理编排，不增加生产钩子。
-- [ ] 修正时间采样/错误分类和剩余有效期，保证缓存失败/自然到期不误吊销、原宽限外重放处理保留；运行真实PG刷新和完整user测试、vet，独立审查后提交。
+- [x] 先写 TestRefreshExpiryAfterSessionLock、TestRefreshUsesLockedDecisionTime，真实PG锁等待并推进原子时钟；观察旧实现续用/期限偏移错误后修复，验证拒绝无字段/缓存写入，有效情况从锁后时间续期。
+- [x] 写 TestRefreshGraceExpiryBoundaries：current/previous query等待、资格边界、CAS胜者pair、缓存等待跨期限或仅跨宽限、缺失/失败/过期pair；通过测试专用Redis Hook/代理编排，不增加生产钩子。
+- [x] 修正时间采样/错误分类和剩余有效期，保证缓存失败/自然到期不误吊销、原宽限外重放处理保留；运行真实PG刷新和完整user测试、vet，独立审查后提交。
 
 ### Task 3: 重新认证与换绑对齐（OpenSpec4.1–4.2）
 
@@ -57,9 +57,9 @@
 
 **Interfaces:** 使用Task1 sessionTime/sessionActiveAt/errSessionExpired；保持Reauthenticate/ReplaceIdentity公开签名。REAUTH过期仍errors.Is(ErrInvalidToken)，审计SESSION_EXPIRED；auth_time/签发使用锁后时间。
 
-- [ ] 写 TestReauthenticateExpiryAfterLocks、TestReauthenticateUsesLockedDecisionTime，覆盖进入即到期、分别等user/session锁后到期、正常情况和显式false新鲜度开关；观察失败后最小实现。
-- [ ] 复用helper对齐换绑，保留完整授权/身份检查；确保过期拒绝无auth_time/update_time/expiry修改，无新token，已消费码不恢复；重跑换绑22场景及旧身份复核回归。
-- [ ] 运行真实PG `go test -count=1 ./user` 和vet，报告HTTP错误与审计结果的对应，独立审查后提交。
+- [x] 写 TestReauthenticateExpiryAfterLocks、TestReauthenticateUsesLockedDecisionTime，覆盖进入即到期、分别等user/session锁后到期、正常情况和显式false新鲜度开关；观察失败后最小实现。
+- [x] 复用helper对齐换绑，保留完整授权/身份检查；确保过期拒绝无auth_time/update_time/expiry修改，无新token，已消费码不恢复；重跑换绑22场景及旧身份复核回归。
+- [x] 运行真实PG `go test -count=1 ./user` 和vet，报告HTTP错误与审计结果的对应，独立审查后提交。
 
 ### Task 4: 协议、撤销保留和服务验收（OpenSpec5.1–5.3）
 
@@ -67,15 +67,15 @@
 
 **Interfaces:** 复用根dbDSN/miniredis/captureSender与service integrationFixture；根测试只要求SERVER_TEST_DB_DSN，服务使用真实PG/Redis/SMTP/OIDC fixtures。SQL在测试隔离schema中构造期限，不增加生产时间钩子。
 
-- [ ] 按已确定协议先写黑盒TestSessionExpiryEndToEndAgainstRealDB、TestServiceIntegrationSessionExpiry，可独立观察旧端点行为RED；最终GREEN须Task1–3审查通过。
-- [ ] 验证消费者/管理员列表及active_session_count、400invalid_grant、401TOKEN_INVALID/challenge、access/内省仍有效但显式撤销后无效；DTO形状不变，过期拒绝不产生撤销写入。
-- [ ] 写 TestExpiredSessionsRemainRevocable 覆盖单个、双方批量、RFC7009、同设备重登、冻结/注销/换绑的到期行及revoked_count/审计；验证30天清理边界保持。
-- [ ] 定向真实依赖测试/vet并独立审查；注册必需测试，协调者运行全套Linux race、严格库/恢复和服务入口，不用skip代替。
+- [x] 按已确定协议先写黑盒TestSessionExpiryEndToEndAgainstRealDB、TestServiceIntegrationSessionExpiry，可独立观察旧端点行为RED；最终GREEN须Task1–3审查通过。
+- [x] 验证消费者/管理员列表及active_session_count、400invalid_grant、401TOKEN_INVALID/challenge、access/内省仍有效但显式撤销后无效；DTO形状不变，过期拒绝不产生撤销写入。
+- [x] 写 TestExpiredSessionsRemainRevocable 覆盖单个、双方批量、RFC7009、同设备重登、冻结/注销/换绑的到期行及revoked_count/审计；验证30天清理边界保持。
+- [x] 定向真实依赖测试/vet并独立审查；注册必需测试，协调者运行全套Linux race、严格库/恢复和服务入口，不用skip代替。
 
 ### Task 5: 文档和交付（OpenSpec6.1–6.3）
 
 **Files:** README.md、docs/compatibility.md、docs/accountsvc.md、docs/session-expiry-verification.md、change tasks/design与本计划。
 
-- [ ] 写明确升级/回退说明：列表变化、过期reauth重新登录、独立JWT有效期、明确撤销覆盖、码消费及滚动升级边界；检查本地链接。
-- [ ] 运行独立build/vet、真实PG并发、Linux race、sqlc/迁移检查、verify.sh及verify-accountsvc.sh，保留实际日志和外部验收暂缓事实。
-- [ ] 最终整分支独立审查、修正及定向复核；OpenSpec全量严格校验，验证后勾选全部任务并提交，保留任务分支。
+- [x] 写明确升级/回退说明：列表变化、过期reauth重新登录、独立JWT有效期、明确撤销覆盖、码消费及滚动升级边界；检查本地链接。
+- [x] 运行独立build/vet、真实PG并发、Linux race、sqlc/迁移检查、verify.sh及verify-accountsvc.sh，保留实际日志和外部验收暂缓事实。
+- [x] 最终整分支独立审查、修正及定向复核；OpenSpec全量严格校验，验证后勾选全部任务并提交，保留任务分支。

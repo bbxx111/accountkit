@@ -25,6 +25,16 @@ accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可�
 | 资料 | `GetMe` / `UpdateDisplayName` | 显示名 ≤ 32 个字符 |
 | 会话 | `ListSessions` / `RevokeSession` / `RevokeOtherSessions` | 他人的会话一律 `ErrNotFound` |
 
+### 会话过期语义
+
+消费者/管理员会话列表及管理详情的 `active_session_count` 只包含未吊销且 `refresh_expire_time` 严格晚于当前判定时刻的会话，等于期限即过期。判定统一使用应用时钟的UTC微秒精度，刷新期限不额外叠加JWT leeway。
+
+刷新与重新认证在取得行锁后重新判定期限；等待锁期间到期也不能续用。到期refresh返回400 OAuth `invalid_grant`，到期重新认证返回401 `TOKEN_INVALID`，客户端需要重新登录。有效重新认证仍只返回access，不延长refresh期限；关闭敏感操作新鲜度检查也不能绕过会话到期。REAUTH验证码可能已消费，失败不恢复该码。
+
+宽限资格取会话读取后的时间；缓存返回后再检查会话/pair期限并计算剩余有效期。已符合宽限的请求不会仅因缓存等待跨过宽限而被认定为重放，仍返回同一pair。缓存不可用或到期拒绝不会被误记为已遏制的重放。
+
+刷新期限与access有效性独立：自然到期不写撤销集，原access和内省仍按JWT及Redis吊销规则判断；“不在会话列表中”不等于“所有已发access都已失效”。显式单个/批量撤销、同设备重登和账号生命周期操作仍覆盖未清理的过期会话。列表读取不删除数据，原30天会话清理保留期不变。实际验证见[会话过期验收记录](docs/session-expiry-verification.md)。
+
 ### Redis 键与失败模式
 
 键前缀为 `Config.KeyPrefix`（默认 `auth:`）：`code:*`、`cooldown:*`、`quota:*`（验证码与额度，Lua 原子）、`grace:*`（AES-GCM 加密的轮换后 pair，TTL 30s）、`revoked:*`（吊销集，TTL = access TTL + 验签 leeway，覆盖 `Signer.Parse` 对 exp 的容忍窗口，避免吊销条目先于该窗口内仍会验签通过的旧 token 过期）。

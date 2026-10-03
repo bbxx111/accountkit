@@ -1,4 +1,4 @@
-package authserver
+package accountkit
 
 import (
 	"errors"
@@ -20,7 +20,7 @@ type WeChatApp struct {
 	Secret string
 }
 
-// Config 是 auth-server 的全部配置。零值字段由 applyDefaults 填默认；Validate 在 New 中调用。
+// Config 是 accountkit 的全部配置。零值字段由 applyDefaults 填默认；Validate 在 New 中调用。
 // 密钥只来自配置：JWT/HMAC/加密三组都是"版本 → 密钥"映射加一个 active 版本。
 type Config struct {
 	// Schema 是所有表所在的 PostgreSQL schema。默认 "auth"。
@@ -120,16 +120,16 @@ func (c *Config) applyDefaults() {
 func (c Config) Validate() error {
 	c.applyDefaults()
 	if !migrations.ValidSchema(c.Schema) {
-		return fmt.Errorf("authserver: Schema %q must match ^[a-z][a-z0-9_]{0,62}$", c.Schema)
+		return fmt.Errorf("accountkit: Schema %q must match ^[a-z][a-z0-9_]{0,62}$", c.Schema)
 	}
 	if !strings.HasSuffix(c.KeyPrefix, ":") || len(c.KeyPrefix) < 2 {
-		return fmt.Errorf("authserver: KeyPrefix %q must be non-empty and end with ':'", c.KeyPrefix)
+		return fmt.Errorf("accountkit: KeyPrefix %q must be non-empty and end with ':'", c.KeyPrefix)
 	}
 	if err := checkKeySet("JWTKeys", c.JWTKeys, c.JWTActiveKey, tokens.MinKeyLen, false); err != nil {
 		return err
 	}
 	if c.JWTIssuer == "" || c.JWTAudience == "" {
-		return errors.New("authserver: JWTIssuer and JWTAudience are required")
+		return errors.New("accountkit: JWTIssuer and JWTAudience are required")
 	}
 	if err := checkKeySet("SubjectHMACKeys", c.SubjectHMACKeys, c.SubjectHMACActiveKey, pii.MinKeyLen, false); err != nil {
 		return err
@@ -140,65 +140,65 @@ func (c Config) Validate() error {
 		return err
 	}
 	if c.AccessTokenTTL < time.Minute {
-		return errors.New("authserver: AccessTokenTTL must be >= 1m")
+		return errors.New("accountkit: AccessTokenTTL must be >= 1m")
 	}
 	if c.RefreshTokenTTL <= c.AccessTokenTTL {
-		return errors.New("authserver: RefreshTokenTTL must be longer than AccessTokenTTL")
+		return errors.New("accountkit: RefreshTokenTTL must be longer than AccessTokenTTL")
 	}
 	if c.RefreshGrace <= 0 || c.RefreshGrace >= c.AccessTokenTTL {
-		return errors.New("authserver: RefreshGrace must be > 0 and < AccessTokenTTL")
+		return errors.New("accountkit: RefreshGrace must be > 0 and < AccessTokenTTL")
 	}
 	if c.ReauthMaxAge <= 0 {
-		return errors.New("authserver: ReauthMaxAge must be > 0")
+		return errors.New("accountkit: ReauthMaxAge must be > 0")
 	}
 	// CodeTTL/CodeCooldown 在 code.Store 里按整秒传给 Redis 的 EX 选项；一个介于 0 和 1s
 	// 之间的值会被截断成 EX 0，Redis 视为非法参数并报错，而不是"立即过期"。
 	if c.CodeTTL < time.Second || c.CodeCooldown < time.Second {
-		return errors.New("authserver: CodeTTL and CodeCooldown must be >= 1s")
+		return errors.New("accountkit: CodeTTL and CodeCooldown must be >= 1s")
 	}
 	if c.CodeMaxAttempts <= 0 || c.CodeDailyLimitPerTarget <= 0 || c.CodeDailyLimitPerIP <= 0 {
-		return errors.New("authserver: Code* settings must be positive")
+		return errors.New("accountkit: Code* settings must be positive")
 	}
 	if c.MaxIdentitiesPerKind <= 0 {
-		return errors.New("authserver: MaxIdentitiesPerKind must be >= 1")
+		return errors.New("accountkit: MaxIdentitiesPerKind must be >= 1")
 	}
 	if c.DeletionCoolingPeriod <= 0 || c.AuditRetentionDays <= 0 {
-		return errors.New("authserver: DeletionCoolingPeriod and AuditRetentionDays must be positive")
+		return errors.New("accountkit: DeletionCoolingPeriod and AuditRetentionDays must be positive")
 	}
 	if len(c.DefaultRegion) != 2 {
-		return fmt.Errorf("authserver: DefaultRegion %q must be an ISO 3166-1 alpha-2 code", c.DefaultRegion)
+		return fmt.Errorf("accountkit: DefaultRegion %q must be an ISO 3166-1 alpha-2 code", c.DefaultRegion)
 	}
 	seen := map[string]struct{}{}
 	for i, a := range c.WeChatApps {
 		if a.AppID == "" || a.Secret == "" {
-			return fmt.Errorf("authserver: WeChatApps[%d]: app_id and secret are required", i)
+			return fmt.Errorf("accountkit: WeChatApps[%d]: app_id and secret are required", i)
 		}
 		if _, dup := seen[a.AppID]; dup {
-			return fmt.Errorf("authserver: WeChatApps: duplicate app_id %q", a.AppID)
+			return fmt.Errorf("accountkit: WeChatApps: duplicate app_id %q", a.AppID)
 		}
 		seen[a.AppID] = struct{}{}
 	}
 	seenB := map[string]struct{}{}
 	for i, b := range c.AppleBundleIDs {
 		if b == "" {
-			return fmt.Errorf("authserver: AppleBundleIDs[%d] must not be empty", i)
+			return fmt.Errorf("accountkit: AppleBundleIDs[%d] must not be empty", i)
 		}
 		if _, dup := seenB[b]; dup {
-			return fmt.Errorf("authserver: AppleBundleIDs: duplicate %q", b)
+			return fmt.Errorf("accountkit: AppleBundleIDs: duplicate %q", b)
 		}
 		seenB[b] = struct{}{}
 	}
 	if c.AppleNonceTTL < time.Minute {
-		return errors.New("authserver: AppleNonceTTL must be >= 1m")
+		return errors.New("accountkit: AppleNonceTTL must be >= 1m")
 	}
 	for name, raw := range map[string]string{"WeChatAPIBaseURL": c.WeChatAPIBaseURL, "AppleJWKSURL": c.AppleJWKSURL} {
 		u, err := url.Parse(raw)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return fmt.Errorf("authserver: %s %q must be an absolute http(s) URL", name, raw)
+			return fmt.Errorf("accountkit: %s %q must be an absolute http(s) URL", name, raw)
 		}
 	}
 	if c.MaintenanceInterval < time.Second {
-		return errors.New("authserver: MaintenanceInterval must be >= 1s")
+		return errors.New("accountkit: MaintenanceInterval must be >= 1s")
 	}
 	return nil
 }
@@ -207,19 +207,19 @@ func (c Config) Validate() error {
 // 至少 minLen 字节）、以及 active 版本存在。
 func checkKeySet(name string, keys map[uint16][]byte, active uint16, minLen int, exact bool) error {
 	if len(keys) == 0 {
-		return fmt.Errorf("authserver: %s is required", name)
+		return fmt.Errorf("accountkit: %s is required", name)
 	}
 	for v, k := range keys {
 		if exact {
 			if len(k) != minLen {
-				return fmt.Errorf("authserver: %s version %d is %d bytes, AES-256-GCM requires exactly %d", name, v, len(k), minLen)
+				return fmt.Errorf("accountkit: %s version %d is %d bytes, AES-256-GCM requires exactly %d", name, v, len(k), minLen)
 			}
 		} else if len(k) < minLen {
-			return fmt.Errorf("authserver: %s version %d is %d bytes, want at least %d", name, v, len(k), minLen)
+			return fmt.Errorf("accountkit: %s version %d is %d bytes, want at least %d", name, v, len(k), minLen)
 		}
 	}
 	if _, ok := keys[active]; !ok {
-		return fmt.Errorf("authserver: %s active version %d is not configured", name, active)
+		return fmt.Errorf("accountkit: %s active version %d is not configured", name, active)
 	}
 	return nil
 }
@@ -236,7 +236,7 @@ func ParseWeChatApps(spec string) ([]WeChatApp, error) {
 		id, secret, ok := strings.Cut(item, ":")
 		id, secret = strings.TrimSpace(id), strings.TrimSpace(secret)
 		if !ok || id == "" || secret == "" {
-			return nil, fmt.Errorf("authserver: WeChatApps item %d: expected app_id:secret", i)
+			return nil, fmt.Errorf("accountkit: WeChatApps item %d: expected app_id:secret", i)
 		}
 		out = append(out, WeChatApp{AppID: id, Secret: secret})
 	}
@@ -250,7 +250,7 @@ func ConfigFromEnv(prefix string) (Config, error) {
 	var firstErr error
 	fail := func(name string, err error) {
 		if firstErr == nil {
-			firstErr = fmt.Errorf("authserver: %s%s: %w", prefix, name, err)
+			firstErr = fmt.Errorf("accountkit: %s%s: %w", prefix, name, err)
 		}
 	}
 	str := func(name string) string { return strings.TrimSpace(os.Getenv(prefix + name)) }

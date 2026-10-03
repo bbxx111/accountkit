@@ -1,4 +1,4 @@
-package authserver_test
+package accountkit_test
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	authserver "github.com/bbxx111/accountkit"
+	"github.com/bbxx111/accountkit"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/user"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -28,7 +28,7 @@ type sourceFixture struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-func seedSourceFixture(t *testing.T, pool *pgxpool.Pool, cfg authserver.Config) (sourceFixture, string) {
+func seedSourceFixture(t *testing.T, pool *pgxpool.Pool, cfg accountkit.Config) (sourceFixture, string) {
 	t.Helper()
 	ctx := context.Background()
 	raw, err := os.ReadFile("tests/testdata/source-baseline/fixture.json")

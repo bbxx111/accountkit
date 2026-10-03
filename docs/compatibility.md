@@ -1,6 +1,24 @@
-# 功能与来源兼容对照
+# 功能与兼容对照
 
-来源：ai-food 7b4c4ecfdba4a05d54810aa2152b40d5c7da00c2 的 packages/auth-server，共 130 个受版本控制文件。完整文件清单与原始 SHA-256 见 tests/testdata/source-baseline/manifest.json。首版保留根包名 authserver；正式导入 github.com/bbxx111/accountkit。
+固定兼容基线包含 130 个文件，原始文件清单与 SHA-256 见 `tests/testdata/source-baseline/manifest.json`；该清单用于追溯冻结快照，不表示当前文件名和内容必须与历史快照相同。当前根包名为 `accountkit`，导入路径为 `github.com/bbxx111/accountkit`。
+
+## 包名迁移
+
+根包已从 `authserver` 重命名为 `accountkit`，module 路径不变。使用默认导入的调用方将 `authserver.Config`、`authserver.New` 等引用改为 `accountkit.Config`、`accountkit.New`：
+
+```go
+import "github.com/bbxx111/accountkit"
+
+var cfg accountkit.Config
+```
+
+若暂不调整调用点，可显式指定旧别名 `import authserver "github.com/bbxx111/accountkit"`；显式别名不要求实际包声明使用同一名称。`Auth`、`Config`、`Deps` 等公开类型和方法签名保持不变，包级诊断文本前缀改为 `accountkit:`，调用方应使用 `errors.Is` 判断哨兵错误。
+
+此次重命名不改变 HTTP 路由和错误码、环境变量键、数据库结构、Redis 键、令牌或密文格式，无需迁移数据或重新登录。维护任务继续使用历史 advisory lock 标识，以保证新旧版本进程互斥；冻结 SQL 和原始 manifest 保持原样。
+
+accountsvc 是基于本库的可选官方服务，运行时尚待独立变更实现；直接嵌入 accountkit 的宿主无需部署或调用该服务。
+
+## 功能对照
 
 | 规格能力 | 生产入口/路径 | 验证 |
 |---|---|---|
@@ -22,20 +40,20 @@ HTTP 请求响应、状态码、错误码和全部环境配置默认值保留 RE
 ## 公开门面与路由
 
 ```text
-authserver.go:104:func New(cfg Config, deps Deps) (*Auth, error) {
-authserver.go:253:func (a *Auth) Users() *user.Service { return a.users }
-authserver.go:256:func (a *Auth) ConsumerHandler() http.Handler { return a.consumer.Router() }
-authserver.go:260:func (a *Auth) AdminHandler() http.Handler { return a.adminHandler }
-authserver.go:264:func (a *Auth) RecordAdminForbidden(r *http.Request, p AdminPrincipal) {
-authserver.go:273:func (a *Auth) RequireScope(allowed ...string) func(http.Handler) http.Handler {
-authserver.go:278:func (a *Auth) RequireRecentAuth() func(http.Handler) http.Handler {
-authserver.go:283:func PrincipalFrom(ctx context.Context) (user.Principal, bool) { return authn.PrincipalFrom(ctx) }
-authserver.go:286:func (a *Auth) Config() Config { return a.cfg }
-authserver.go:290:func (a *Auth) Migrate(ctx context.Context) error {
-authserver.go:321:func (a *Auth) Start(ctx context.Context) {
-authserver.go:331:func (a *Auth) Close() {
-authserver.go:343:func (a *Auth) RunMaintenanceOnce(ctx context.Context) bool { return a.runner.RunOnce(ctx) }
-authserver.go:346:func PoolConfig(dsn, schema string) (*pgxpool.Config, error) {
+accountkit.go:104:func New(cfg Config, deps Deps) (*Auth, error) {
+accountkit.go:253:func (a *Auth) Users() *user.Service { return a.users }
+accountkit.go:256:func (a *Auth) ConsumerHandler() http.Handler { return a.consumer.Router() }
+accountkit.go:260:func (a *Auth) AdminHandler() http.Handler { return a.adminHandler }
+accountkit.go:264:func (a *Auth) RecordAdminForbidden(r *http.Request, p AdminPrincipal) {
+accountkit.go:273:func (a *Auth) RequireScope(allowed ...string) func(http.Handler) http.Handler {
+accountkit.go:278:func (a *Auth) RequireRecentAuth() func(http.Handler) http.Handler {
+accountkit.go:283:func PrincipalFrom(ctx context.Context) (user.Principal, bool) { return authn.PrincipalFrom(ctx) }
+accountkit.go:286:func (a *Auth) Config() Config { return a.cfg }
+accountkit.go:290:func (a *Auth) Migrate(ctx context.Context) error {
+accountkit.go:321:func (a *Auth) Start(ctx context.Context) {
+accountkit.go:331:func (a *Auth) Close() {
+accountkit.go:343:func (a *Auth) RunMaintenanceOnce(ctx context.Context) bool { return a.runner.RunOnce(ctx) }
+accountkit.go:346:func PoolConfig(dsn, schema string) (*pgxpool.Config, error) {
 config.go:120:func (c Config) Validate() error {
 config.go:228:func ParseWeChatApps(spec string) ([]WeChatApp, error) {
 config.go:248:func ConfigFromEnv(prefix string) (Config, error) {
@@ -116,31 +134,31 @@ httpapi/admin/response.go:168:		apierror.WriteInternal(w, h.d.Logger, reqid.From
 
 | 文件 | 测试 |
 |---|---|
-| `authserver_db_test.go` | `TestMigrateStartCloseAgainstRealDB` |
-| `authserver_db_test.go` | `TestAuditEventsPersistedAndExpiredEndToEnd` |
-| `authserver_db_test.go` | `TestConsumerEndToEndAgainstRealDB` |
-| `authserver_db_test.go` | `TestMigrateRejectsPoolWithoutSchemaOnSearchPath` |
-| `authserver_db_test.go` | `TestWeChatSignInEndToEndAgainstRealDB` |
-| `authserver_db_test.go` | `TestIdentityBindingEndToEndAgainstRealDB` |
-| `authserver_db_test.go` | `TestKeyRotationBackfillEndToEnd` |
-| `authserver_db_test.go` | `TestAccountLifecycleEndToEndAgainstRealDB` |
-| `authserver_db_test.go` | `TestAdminSurfaceEndToEndAgainstRealDB` |
-| `authserver_test.go` | `TestNewIsPureAndAppliesDefaults` |
-| `authserver_test.go` | `TestNewRejectsBadConfigAndMissingDeps` |
-| `authserver_test.go` | `TestNewExposesUsersService` |
-| `authserver_test.go` | `TestPoolConfigSetsSearchPath` |
-| `authserver_test.go` | `TestCloseBeforeStartIsSafe` |
-| `authserver_test.go` | `TestNewDefaultsAuditToAsyncStoreUnlessInjected` |
-| `authserver_test.go` | `TestDefaultRequestIDAndClientIP` |
-| `authserver_test.go` | `TestConsumerHandlerAndMiddlewareWiring` |
-| `authserver_test.go` | `TestHostMountShape` |
-| `authserver_test.go` | `TestNewWiresIdPVerifiersOnlyWhenConfigured` |
-| `authserver_test.go` | `TestNewRejectsBadAnonymizersAndAcceptsDistinctOnes` |
-| `authserver_test.go` | `TestLifecycleRoutesMounted` |
-| `authserver_test.go` | `TestNewRequiresBothAdminDepsOrNeither` |
-| `authserver_test.go` | `TestAdminHandlerUnconfiguredIs503` |
-| `authserver_test.go` | `TestAdminHandlerMountsBehindHostVerifier` |
-| `authserver_test.go` | `TestRecordAdminForbidden` |
+| `accountkit_db_test.go` | `TestMigrateStartCloseAgainstRealDB` |
+| `accountkit_db_test.go` | `TestAuditEventsPersistedAndExpiredEndToEnd` |
+| `accountkit_db_test.go` | `TestConsumerEndToEndAgainstRealDB` |
+| `accountkit_db_test.go` | `TestMigrateRejectsPoolWithoutSchemaOnSearchPath` |
+| `accountkit_db_test.go` | `TestWeChatSignInEndToEndAgainstRealDB` |
+| `accountkit_db_test.go` | `TestIdentityBindingEndToEndAgainstRealDB` |
+| `accountkit_db_test.go` | `TestKeyRotationBackfillEndToEnd` |
+| `accountkit_db_test.go` | `TestAccountLifecycleEndToEndAgainstRealDB` |
+| `accountkit_db_test.go` | `TestAdminSurfaceEndToEndAgainstRealDB` |
+| `accountkit_test.go` | `TestNewIsPureAndAppliesDefaults` |
+| `accountkit_test.go` | `TestNewRejectsBadConfigAndMissingDeps` |
+| `accountkit_test.go` | `TestNewExposesUsersService` |
+| `accountkit_test.go` | `TestPoolConfigSetsSearchPath` |
+| `accountkit_test.go` | `TestCloseBeforeStartIsSafe` |
+| `accountkit_test.go` | `TestNewDefaultsAuditToAsyncStoreUnlessInjected` |
+| `accountkit_test.go` | `TestDefaultRequestIDAndClientIP` |
+| `accountkit_test.go` | `TestConsumerHandlerAndMiddlewareWiring` |
+| `accountkit_test.go` | `TestHostMountShape` |
+| `accountkit_test.go` | `TestNewWiresIdPVerifiersOnlyWhenConfigured` |
+| `accountkit_test.go` | `TestNewRejectsBadAnonymizersAndAcceptsDistinctOnes` |
+| `accountkit_test.go` | `TestLifecycleRoutesMounted` |
+| `accountkit_test.go` | `TestNewRequiresBothAdminDepsOrNeither` |
+| `accountkit_test.go` | `TestAdminHandlerUnconfiguredIs503` |
+| `accountkit_test.go` | `TestAdminHandlerMountsBehindHostVerifier` |
+| `accountkit_test.go` | `TestRecordAdminForbidden` |
 | `compatibility_test.go` | `TestSourceDatabaseTakeover` |
 | `config_test.go` | `TestValidateAppliesDefaults` |
 | `config_test.go` | `TestConfigFromEnvOverridesAndParses` |

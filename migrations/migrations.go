@@ -1,8 +1,8 @@
-// Package migrations 持有 auth-server 的数据库迁移并在可配置 schema 内应用它们。
+// Package migrations 持有 accountkit 的数据库迁移并在可配置 schema 内应用它们。
 //
 // 迁移 SQL 使用非限定表名；Up/UnsafeReset 把连接的 search_path 设为 "<schema>"，并让
 // golang-migrate 的迁移记录表也落在该 schema 内，从而与宿主自己的迁移链互不干扰，
-// 同一数据库可并存多个 auth-server 实例（不同 schema）。
+// 同一数据库可并存多个 accountkit 实例（不同 schema）。
 package migrations
 
 import (

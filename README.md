@@ -1,11 +1,13 @@
 # accountkit
 
 可嵌入宿主服务的 C 端账号体系（多身份账号、JWT + 轮换 refresh 会话、软删除与匿名化、管理面）。
-本 README 覆盖阶段 2–6：配置、密码学原语、迁移、生命周期、C 端 HTTP 面（登录、会话、IdP、身份绑定）、账号注销/恢复/purge、审计落库与密钥回填、管理面；独立模块路径为 `github.com/bbxx111/accountkit`；根包名保留 `authserver`。宿主装配示例见 `examples/embedded`。
+本 README 覆盖配置、密码学原语、迁移、生命周期、C 端 HTTP 面（登录、会话、IdP、身份绑定）、账号注销/恢复/purge、审计落库与密钥回填、管理面。模块路径为 `github.com/bbxx111/accountkit`，根包名为 `accountkit`。宿主装配示例见 `examples/embedded`。
+
+accountkit 支持直接作为库嵌入宿主。accountsvc 定位为项目自带的可选服务实现，使用同一套库能力；选择库集成不需要部署或调用 accountsvc。accountsvc 运行时尚待实现，当前可运行入口是开发示例 `examples/embedded`。
 
 ## 生命周期
 
-完整可编译宿主示例见 [examples/embedded/main.go](examples/embedded/main.go)，开发与验证步骤见 [docs/development.md](docs/development.md)。导入使用 `authserver "github.com/bbxx111/accountkit"`。
+完整可编译宿主示例见 [examples/embedded/main.go](examples/embedded/main.go)，开发与验证步骤见 [docs/development.md](docs/development.md)。导入使用 `"github.com/bbxx111/accountkit"`，通过 `accountkit.Config`、`accountkit.Deps` 和 `accountkit.New` 装配。旧包名调用方见[包名迁移说明](docs/compatibility.md#包名迁移)。
 
 按 `Config/Deps → New → Migrate → Start → Close` 装配；库不绑定端口，宿主挂载 ConsumerHandler 到 /v1，AdminHandler 到 /admin/v1。管理员验证器及主体解析器可选；未配置时管理接口返回 503 ADMIN_NOT_CONFIGURED。生产宿主须在管理路由前完成身份验证，并提供 AdminVerifier/AdminPrincipal，服务商发送器也由宿主注入。
 ## 领域层（阶段 3a）
@@ -106,7 +108,7 @@ r.Route("/v1", func(r chi.Router) {
 | `POST /users/me/identities` 凭证 oneof | `user` / `user:bind` | | 201 新建 / 200 幂等 | 400 `CODE_*` / `IDP_*`；409 `IDENTITY_ALREADY_BOUND` / `IDENTITY_KIND_LIMIT`；403 `USER_FROZEN` |
 | `DELETE /users/me/identities/{identity}` | `user` | 是 | 204 | 400 `LAST_ANCHOR_IDENTITY` / `REAUTHENTICATION_REQUIRED` / `INVALID_ID`；404 |
 
-规则：一个 subject 全局只属于一个账号（冲突 409，不合并不迁移）；每 kind 最多 `MaxIdentitiesPerKind`（默认 1）个活动身份；同一 subject 重复绑定到本账号为幂等；解绑是软删除，解绑后同一 subject 可绑到任一账号；解绑后必须仍有至少一个手机或邮箱锚点；绑定不改变已签发 token 的 scope，客户端刷新后生效。`masked_subject` 由检索提示拼出（`+86 138****1234`、`ba***@shifang.co`），第三方身份为空串。
+规则：一个 subject 全局只属于一个账号（冲突 409，不合并不迁移）；每 kind 最多 `MaxIdentitiesPerKind`（默认 1）个活动身份；同一 subject 重复绑定到本账号为幂等；解绑是软删除，解绑后同一 subject 可绑到任一账号；解绑后必须仍有至少一个手机或邮箱锚点；绑定不改变已签发 token 的 scope，客户端刷新后生效。`masked_subject` 由检索提示拼出（`+86 138****1234`、`ba***@example.com`），第三方身份为空串。
 
 ## 账号生命周期（阶段 5a）
 

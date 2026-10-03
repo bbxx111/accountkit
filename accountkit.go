@@ -1,4 +1,4 @@
-package authserver
+package accountkit
 
 import (
 	"context"
@@ -37,7 +37,7 @@ import (
 
 // ErrSearchPath 表示 Deps.Pool 的连接 search_path 首位不是 Config.Schema。
 // 迁移 SQL 与查询都用非限定表名，search_path 不对会把对象建到别的 schema 里。
-var ErrSearchPath = errors.New("authserver: pool search_path does not include the configured schema")
+var ErrSearchPath = errors.New("accountkit: pool search_path does not include the configured schema")
 
 // AdminVerifier 是宿主管理端 OIDC verifier 的最小契约（路由级角色中间件）；本模块不 import oidc-verifier，
 // *oidcverifier.Verifier 直接满足它。
@@ -77,7 +77,7 @@ type Deps struct {
 	AdminPrincipal func(ctx context.Context) (AdminPrincipal, bool)
 }
 
-// Auth 是 auth-server 的门面。用 New 构造。
+// Auth 是 accountkit 的门面。用 New 构造。
 type Auth struct {
 	cfg      Config
 	deps     Deps
@@ -107,10 +107,10 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 		return nil, err
 	}
 	if deps.Pool == nil {
-		return nil, errors.New("authserver: Deps.Pool is required")
+		return nil, errors.New("accountkit: Deps.Pool is required")
 	}
 	if deps.Redis == nil {
-		return nil, errors.New("authserver: Deps.Redis is required")
+		return nil, errors.New("accountkit: Deps.Redis is required")
 	}
 	if deps.Logger == nil {
 		deps.Logger = slog.Default()
@@ -122,13 +122,13 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 		deps.RequestID = defaultRequestID
 	}
 	if deps.SMSSender == nil || deps.EmailSender == nil {
-		return nil, errors.New("authserver: Deps.SMSSender and Deps.EmailSender are required (use sender.NewLog for development)")
+		return nil, errors.New("accountkit: Deps.SMSSender and Deps.EmailSender are required (use sender.NewLog for development)")
 	}
 	if deps.HTTPClient == nil {
 		deps.HTTPClient = &http.Client{Timeout: 10 * time.Second}
 	}
 	if (deps.AdminVerifier == nil) != (deps.AdminPrincipal == nil) {
-		return nil, errors.New("authserver: Deps.AdminVerifier and Deps.AdminPrincipal must be provided together")
+		return nil, errors.New("accountkit: Deps.AdminVerifier and Deps.AdminPrincipal must be provided together")
 	}
 	cipher, err := pii.NewCipher(cfg.SubjectCipherKeys, cfg.SubjectCipherActiveKey)
 	if err != nil {
@@ -292,13 +292,13 @@ func (a *Auth) Migrate(ctx context.Context) error {
 		return err
 	}
 	if err := a.deps.Redis.Ping(ctx).Err(); err != nil {
-		return fmt.Errorf("authserver: redis ping: %w", err)
+		return fmt.Errorf("accountkit: redis ping: %w", err)
 	}
 	if err := migrations.Up(ctx, a.deps.Pool.Config().ConnConfig, a.cfg.Schema); err != nil {
 		return err
 	}
 	if err := a.users.CheckKeyVersions(ctx); err != nil {
-		return fmt.Errorf("authserver: %w", err)
+		return fmt.Errorf("accountkit: %w", err)
 	}
 	return nil
 }
@@ -307,12 +307,12 @@ func (a *Auth) Migrate(ctx context.Context) error {
 func (a *Auth) checkSearchPath(ctx context.Context) error {
 	var sp string
 	if err := a.deps.Pool.QueryRow(ctx, `SHOW search_path`).Scan(&sp); err != nil {
-		return fmt.Errorf("authserver: show search_path: %w", err)
+		return fmt.Errorf("accountkit: show search_path: %w", err)
 	}
 	first := strings.TrimSpace(strings.Split(sp, ",")[0])
 	first = strings.Trim(first, `"`)
 	if first != a.cfg.Schema {
-		return fmt.Errorf("%w: search_path is %q, want it to start with %q (use authserver.PoolConfig)", ErrSearchPath, sp, a.cfg.Schema)
+		return fmt.Errorf("%w: search_path is %q, want it to start with %q (use accountkit.PoolConfig)", ErrSearchPath, sp, a.cfg.Schema)
 	}
 	return nil
 }
@@ -345,11 +345,11 @@ func (a *Auth) RunMaintenanceOnce(ctx context.Context) bool { return a.runner.Ru
 // PoolConfig 解析 dsn 并把 search_path 设为 "<schema>,public"，供宿主构造 pgxpool。
 func PoolConfig(dsn, schema string) (*pgxpool.Config, error) {
 	if !migrations.ValidSchema(schema) {
-		return nil, fmt.Errorf("authserver: invalid schema name %q", schema)
+		return nil, fmt.Errorf("accountkit: invalid schema name %q", schema)
 	}
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("authserver: parse dsn: %w", err)
+		return nil, fmt.Errorf("accountkit: parse dsn: %w", err)
 	}
 	if cfg.ConnConfig.RuntimeParams == nil {
 		cfg.ConnConfig.RuntimeParams = map[string]string{}

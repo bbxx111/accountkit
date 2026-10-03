@@ -60,7 +60,7 @@ type Store struct {
 }
 
 // NewStore 构造 Store。keyPrefix 以 ':' 结尾（Config.KeyPrefix）。
-// Options 字段的合法性（TTL/Cooldown/MaxAttempts 等须为正）由 authserver.Config.Validate
+// Options 字段的合法性（TTL/Cooldown/MaxAttempts 等须为正）由 accountkit.Config.Validate
 // 在启动时校验，此处不再重复校验。
 func NewStore(rdb redis.UniversalClient, keyPrefix string, digester *pii.Digester, o Options) *Store {
 	if o.Now == nil {

@@ -36,6 +36,7 @@ type PGLocker struct {
 
 // NewPGLocker 由 schema 派生锁 key：同 schema 的副本互斥，不同 schema 互不影响。
 func NewPGLocker(pool *pgxpool.Pool, schema string) *PGLocker {
+	// 保留历史锁命名空间，确保包重命名后仍与旧版本进程互斥。
 	h := fnv.New64a()
 	_, _ = h.Write([]byte("authserver:" + schema))
 	return &PGLocker{pool: pool, key: int64(h.Sum64())}

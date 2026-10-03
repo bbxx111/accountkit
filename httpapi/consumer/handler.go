@@ -153,5 +153,6 @@ func (h *Handler) Router() http.Handler {
 		r.Post("/users/me/identities", h.bindIdentity)
 	})
 	r.With(fullScope, h.RequireRecentAuth()).Delete("/users/me/identities/{identity}", h.unbindIdentity)
+	r.With(fullScope, h.RequireRecentAuth()).Post("/users/me/identities/{identity}:replace", h.replaceIdentity)
 	return r
 }

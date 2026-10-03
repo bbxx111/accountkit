@@ -1,6 +1,6 @@
 ## Context
 
-动机见 [proposal.md](proposal.md)。现有 [库契约](../../specs/embedded-auth-package/spec.md)、[发送契约](../../specs/verification-delivery/spec.md) 和 [内省契约](../../specs/consumer-token-introspection/spec.md) 继续适用。
+动机见 [proposal.md](proposal.md)。现有 [库契约](../../../specs/embedded-auth-package/spec.md)、[发送契约](../../../specs/verification-delivery/spec.md) 和 [内省契约](../../../specs/consumer-token-introspection/spec.md) 继续适用。
 
 `BindWithCode` 在同类数量达到上限时拒绝新增，`UnbindIdentity` 拒绝删除最后一个锚点；两者不能由客户端组合成安全换绑。identity 已支持软删除及活跃身份唯一索引，会话已有排除当前 sid 的批量撤销查询。验证码校验在 Redis Lua 中消费，与 PostgreSQL 不构成同一事务。
 

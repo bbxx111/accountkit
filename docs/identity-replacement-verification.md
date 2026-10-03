@@ -1,6 +1,6 @@
 # 身份换绑本地验收记录
 
-日期：2026-10-03。对应 [add-identity-replacement](../openspec/changes/add-identity-replacement/tasks.md)。本次实现增加同类手机/邮箱换绑、旧身份证明并发复核和统一批量撤销锁序，保留当前会话、撤销其他会话。
+日期：2026-10-03。对应 [add-identity-replacement](../openspec/changes/archive/2026-10-03-add-identity-replacement/tasks.md)。本次实现增加同类手机/邮箱换绑、旧身份证明并发复核和统一批量撤销锁序，保留当前会话、撤销其他会话。
 
 ## 实际验证
 

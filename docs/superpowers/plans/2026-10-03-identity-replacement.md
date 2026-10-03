@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、pgx/v5、PostgreSQL 17、go-redis/v9、Chi、sqlc 1.31.1，沿用既有依赖。
 
-**Spec:** [设计](../../../openspec/changes/add-identity-replacement/design.md)、[规格](../../../openspec/changes/add-identity-replacement/specs/identity-replacement/spec.md)、[任务](../../../openspec/changes/add-identity-replacement/tasks.md)。
+**Spec:** [设计](../../../openspec/changes/archive/2026-10-03-add-identity-replacement/design.md)、[规格](../../../openspec/changes/archive/2026-10-03-add-identity-replacement/specs/identity-replacement/spec.md)、[任务](../../../openspec/changes/archive/2026-10-03-add-identity-replacement/tasks.md)。
 
 ## Global Constraints
 

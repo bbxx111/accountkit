@@ -1,6 +1,6 @@
 # 验证码密钥轮换验收记录
 
-日期：2026-10-04。对应 [harden-code-key-rotation](tasks.md)，行为与部署条件见[设计](design.md)及[规格](specs/code-key-rotation/spec.md)。三个实现步骤已有定向验证和独立审查，协调者的库完整门禁、严格服务门禁与恢复三阶段已通过；Task 4 独立审查已通过，最终整体审查尚待补录，当前不宣告整项变更验收完成。
+日期：2026-10-04。对应 [harden-code-key-rotation](tasks.md)，行为与部署条件见[设计](design.md)及[规格](specs/code-key-rotation/spec.md)。三个实现步骤已有定向验证和独立审查，库完整门禁、严格服务门禁与恢复三阶段已通过；文档审查和最终整体审查均 Approved，本变更实施验收完成。归档、合并和推送另行执行。
 
 ## 实施与定向证据
 
@@ -28,7 +28,7 @@ Task 2 使用真实 PostgreSQL/Redis 和公开 `New → Migrate → Start → Cl
 | 生成/迁移历史检查 | 协调者已执行 `check-generated.sh` 与 `check-migrations.sh` 并报告通过；完整入口也通过历史迁移检查，本次无 SQL、生成代码或冻结基线变更 |
 | 根库独立构建与依赖图 | 完整 build 通过；协调者 `GOWORK=off go list -deps .` 确认根库不依赖 `internal/accountsvc` 或 `cmd/accountsvc`；与 `055b542` 比较迁移、领域 query/db、go.mod/go.sum、config.go 和 pii 无变化 |
 | 文档链接、差异与 OpenSpec strict | Task 4 的34个本地 Markdown 路径均存在，文档差异格式检查通过；协调者执行 `openspec validate --all --strict` 11/11通过、退出0 |
-| Task 4 与最终整体审查 | 文档独立审查 Approved，无新增问题；最终整体审查待执行 |
+| Task 4 与最终整体审查 | 文档独立审查 Approved；最终整体审查覆盖 `055b542..76332eb`，结论 Approved / Ready to merge，无 Critical/Important；后续仅补录本记录及任务状态 |
 
 环境为 Go 1.26.5、Linux CGO/race 验证镜像、PostgreSQL17和真实 Redis7；Task 2 定向验证使用 Windows Go，Task 3 使用 Linux 实际服务进程。仅本任务创建的一次性 PostgreSQL/Redis 容器和网络参与验证，集成测试各自使用随机 schema/Redis 前缀并精准清理，没有 FLUSHDB 或产品库操作。恢复源、目标为两个独立专用空库，由协调者统一执行恢复演练。
 
@@ -36,8 +36,10 @@ Task 2 使用真实 PostgreSQL/Redis 和公开 `New → Migrate → Start → Cl
 
 ## 审查与范围边界
 
-三个实现步骤均经过非作者独立审查，结论 Approved，无 Critical/Important 问题。现有非阻断建议包括预期断连用例的客户端日志噪声、上述日额度 TTL 断言精度，以及实际服务测试跨 UTC 午夜时的配额日稳定性；最终整体审查需核对这些建议的处置，当前未把它们视为已完成修复。
+四个实施计划步骤均经过非作者独立审查，最终整个分支审查结论 Approved，无 Critical/Important 问题。最终审查将预期断连用例的客户端日志噪声、上述日额度 TTL 断言精度、实际服务测试跨 UTC 午夜时的配额日稳定性三项保留为非阻断 Minor，列为后续测试维护建议，未声称已修复；它们不改变本次已验证的生产行为。
 
 本次保留公开接口、配置/默认值、HTTP 错误、Redis 键及 hash 格式、SQL/数据库结构、迁移与依赖；未新增命令、端点、热加载、自动轮换或手动回填动作。周期性数据库回填及默认间隔保持，混合 active 期间方向可能变化。退役条件区分旧 HMAC 摘要引用及 Redis 业务窗口、旧 AES 密文引用和备份密钥保留，见[轮换说明](../../../README.md#密钥轮换)。根库仍按可嵌入契约设计，不要求部署 accountsvc。
 
-产品环境、实际短信/邮件服务商、外部 OIDC 提供方、生产证书/网络、在线 CI、发布/tag/push 和部署按用户决定延期；本地真实协议 fixture 的通过不替代这些联调。本记录尚待最终审查证据补录，不勾选未完成任务，也不归档本 change。
+产品环境、实际短信/邮件服务商、外部 OIDC 提供方、生产证书/网络、在线 CI、发布/tag/push 和部署按用户决定延期；本地真实协议 fixture 的通过不替代这些联调。本 change 的13项任务均已完成；本次不执行归档、合并或推送。
+
+本任务创建的 code-rotation-20261004-pg、code-rotation-20261004-redis 容器及专用网络已清理；既有验证镜像保留，原始日志和合成恢复材料仍留在被忽略的 .test-output/。

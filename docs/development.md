@@ -1,10 +1,12 @@
 # 开发与验证
 
-要求 Go 1.26.5、sqlc 1.31.1、PostgreSQL 17。Redis 测试使用 miniredis；实际宿主示例需独立 Redis。先设置 SERVER_TEST_DB_DSN 指向一次性测试数据库。
+要求 Go 1.26.5、sqlc 1.31.1、PostgreSQL 17。Redis 快速测试使用 miniredis；验证码轮换集成测试使用真实 Redis。先设置 SERVER_TEST_DB_DSN 指向一次性测试数据库。
 
 快速检查：GOWORK=off go test ./...。未提供数据库时部分数据库测试会跳过，不能据此宣称生产发布验证通过。
 
-完整发布检查：还需 ACCOUNTKIT_RECOVERY_SOURCE_DSN 和 ACCOUNTKIT_RECOVERY_TARGET_DSN，分别指向两个专用空数据库，再运行 bash scripts/verify.sh。脚本执行迁移历史校验、独立构建、vet、race 测试、必需用例核验及恢复演练。缺少配置、所需测试 skip、历史 SQL 改写或恢复失败均返回非零。
+完整发布检查：还需 ACCOUNTSVC_TEST_REDIS_URL 指向一次性真实 Redis（如 `redis://127.0.0.1:6379/0`），以及 ACCOUNTKIT_RECOVERY_SOURCE_DSN 和 ACCOUNTKIT_RECOVERY_TARGET_DSN，分别指向两个专用空数据库，再运行 bash scripts/verify.sh。脚本执行迁移历史校验、独立构建、vet、race 测试、必需用例核验及恢复演练。缺少配置、所需测试 skip、历史 SQL 改写或恢复失败均返回非零。
+
+轮换定向验证：提供 SERVER_TEST_DB_DSN 与 ACCOUNTSVC_TEST_REDIS_URL 后运行 `GOWORK=off go test -count=1 . ./user/code -run 'TestCode(KeyRotationIntegration|RotationRedisIntegration)'`。两个集成用例仅操作各自随机 schema/Redis 前缀并局部清理，不调用 FLUSHDB。普通测试缺少真实依赖时明确 skip；完整验证与 CI 把这些用例列为必需，不允许缺验。
 
 Windows 没有 C 编译器时，可用 tests/Dockerfile 构建基于 golang:1.26.5、带 PostgreSQL 17 客户端的 Linux 验证镜像。CI 使用同一镜像；宿主需先安装 sqlc 1.31.1 并运行 bash scripts/check-generated.sh。恢复演练需要客户端读取集群标识的权限，限用于一次性测试库。
 

@@ -2,6 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 : "${SERVER_TEST_DB_DSN:?Set SERVER_TEST_DB_DSN to a disposable PostgreSQL database}"
+: "${ACCOUNTSVC_TEST_REDIS_URL:?Set ACCOUNTSVC_TEST_REDIS_URL to a disposable Redis instance}"
 : "${ACCOUNTKIT_RECOVERY_SOURCE_DSN:?Set a disposable empty recovery source database}"
 : "${ACCOUNTKIT_RECOVERY_TARGET_DSN:?Set a different empty recovery target database}"
 export GOWORK=off

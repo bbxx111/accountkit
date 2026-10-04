@@ -327,3 +327,12 @@ github.com/bbxx111/accountkit/user/TestReplaceIdentityExpiryMicroseconds
 github.com/bbxx111/accountkit/user/TestReplaceIdentityExpiryAfterLocks
 github.com/bbxx111/accountkit/user/TestExpiredSessionsRemainRevocable
 github.com/bbxx111/accountkit/TestSessionExpiryEndToEndAgainstRealDB
+github.com/bbxx111/accountkit/user/code/TestCodeRotationVerify
+github.com/bbxx111/accountkit/user/code/TestCodeRotationLimits
+github.com/bbxx111/accountkit/user/code/TestCodeRotationState
+github.com/bbxx111/accountkit/user/code/TestCodeRotationConcurrent
+github.com/bbxx111/accountkit/user/code/TestCodeRotationBoundaries
+github.com/bbxx111/accountkit/user/code/TestCodeRotationUnavailable
+github.com/bbxx111/accountkit/user/code/TestCodeRotationCorruptState
+github.com/bbxx111/accountkit/user/code/TestCodeRotationRedisIntegration
+github.com/bbxx111/accountkit/TestCodeKeyRotationIntegration

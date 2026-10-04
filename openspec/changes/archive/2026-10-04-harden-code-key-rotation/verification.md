@@ -54,4 +54,4 @@ Task 2 使用真实 PostgreSQL/Redis 和公开 `New → Migrate → Start → Cl
 
 负向断言实验使用 Go overlay 的临时测试副本，在发码后故意把旧目标额度的 TTL 重设为一小时；新版断言按预期失败于 `old quota expiry changed`。该实验未修改生产源码或正式测试文件，证明新的绝对截止时间断言能识别原范围断言遗漏的回归。
 
-本轮日志：`.test-output/rotation-maintenance-tests.jsonl`、`rotation-maintenance-tests.stderr`、`rotation-maintenance-vet.log`、`rotation-maintenance-unit.log`、`rotation-maintenance-fault.log`、`rotation-maintenance-mutation.log`。本轮测试维护的独立审查待补录。
+本轮日志：`.test-output/rotation-maintenance-tests.jsonl`、`rotation-maintenance-tests.stderr`、`rotation-maintenance-vet.log`、`rotation-maintenance-unit.log`、`rotation-maintenance-fault.log`、`rotation-maintenance-mutation.log`。本轮测试维护独立审查覆盖 `ff1fbab..73128f1`，规格及质量均通过，无新增 Critical/Important/Minor，原三项建议可关闭；审查原文保留于 `.test-output/rotation-maintenance-review.md`。本轮创建的 rotation-maintenance-20261004-pg、rotation-maintenance-20261004-redis 容器及专用网络已清理，既有验证镜像与原始证据保留。

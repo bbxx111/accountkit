@@ -6,3 +6,4 @@ github.com/bbxx111/accountkit/internal/accountsvc/TestServiceProcessSIGTERM
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationIdentityReplacement
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationSessionExpiry
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationCodeKeyRotation
+github.com/bbxx111/accountkit/internal/accountsvc/TestServiceRotationQuotaWindow

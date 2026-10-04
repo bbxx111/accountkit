@@ -3,7 +3,11 @@ package code_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
+	"os"
+	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,6 +74,29 @@ func TestCodeRotationUnavailable(t *testing.T) {
 		})
 	}
 	t.Run("redis down", func(t *testing.T) {
+		const completed = "accountkit Redis disconnect probe completed"
+		// go-redis has a process-wide logger. Capture this transport-failure
+		// probe in a child process rather than changing other tests' logging.
+		if os.Getenv("ACCOUNTKIT_CODE_DISCONNECT_HELPER") != "1" {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestCodeRotationUnavailable$/^redis_down$", "-test.count=1")
+			cmd.Env = append(os.Environ(), "ACCOUNTKIT_CODE_DISCONNECT_HELPER=1")
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("Redis disconnect probe failed: %v\n%s", err, output)
+			}
+			if !strings.Contains(string(output), completed+"\n") {
+				t.Fatalf("Redis disconnect probe did not execute:\n%s", output)
+			}
+			for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+				line = strings.TrimSpace(line)
+				if line != "PASS" && line != completed && !strings.Contains(line, "redis: connection pool: failed to dial after") {
+					t.Log(line) // Keep unexpected diagnostics visible.
+				}
+			}
+			return
+		}
 		f := newRotation(t, false)
 		f.mr.Close()
 		if _, err := f.stores[1].Issue(context.Background(), enum.IdentityPhone, enum.PurposeSignIn, target, "test-ip"); !errors.Is(err, code.ErrUnavailable) {
@@ -78,6 +105,7 @@ func TestCodeRotationUnavailable(t *testing.T) {
 		if err := f.stores[1].Verify(context.Background(), enum.IdentityPhone, enum.PurposeSignIn, target, "synthetic-fixture"); !errors.Is(err, code.ErrUnavailable) {
 			t.Error("verify did not fail closed")
 		}
+		fmt.Println(completed)
 	})
 }
 

@@ -43,3 +43,15 @@ Task 2 使用真实 PostgreSQL/Redis 和公开 `New → Migrate → Start → Cl
 产品环境、实际短信/邮件服务商、外部 OIDC 提供方、生产证书/网络、在线 CI、发布/tag/push 和部署按用户决定延期；本地真实协议 fixture 的通过不替代这些联调。本 change 的13项任务均已完成；本次不执行归档、合并或推送。
 
 本任务创建的 code-rotation-20261004-pg、code-rotation-20261004-redis 容器及专用网络已清理；既有验证镜像保留，原始日志和合成恢复材料仍留在被忽略的 .test-output/。
+
+## 后续归档与测试维护（2026-10-04）
+
+原实现已通过 `b84f418` 合入 develop；后续在独立测试维护分支以 `ff1fbab` 同步7项主规格并归档，归档后11项主规格严格校验通过、活跃变更为空。本节补充后续处理，不覆盖上面的原实现验证证据。
+
+三项非阻断建议已处理：真实 Redis 额度测试用 PEXPIRETIME 比较操作前后的绝对截止时间；服务额度场景在 UTC 日界线前90秒内等待下一日，并用固定起点的一分钟 deadline 限定额度检查，新增合成时间边界测试且不通过 skip 绕过门禁；预期断连探测在独立子进程中捕获连接拒绝日志，保留真实断连与 fail-closed 断言，不修改进程全局 Redis logger，子进程必须输出执行完成标记，其他诊断仍可见。
+
+本轮仅修改测试、测试清单及归档文档，生产代码和公开契约不变。GOWORK=off 普通 `go test -count=1 ./...` 通过（缺外部依赖的用例按原规则跳过）；另在本任务一次性 PostgreSQL/Redis 和 Linux 下运行10个轮换顶层测试，全部 PASS、无 fail/skip，启用 race 且实际 accountsvc 二进制也启用 race，定向必需清单核验通过，相关 vet 通过。补充子进程完成标记后，断连用例再次在 Linux race 下通过。没有重复执行整套发布门禁或恢复演练，也没有执行产品环境验证。
+
+负向断言实验使用 Go overlay 的临时测试副本，在发码后故意把旧目标额度的 TTL 重设为一小时；新版断言按预期失败于 `old quota expiry changed`。该实验未修改生产源码或正式测试文件，证明新的绝对截止时间断言能识别原范围断言遗漏的回归。
+
+本轮日志：`.test-output/rotation-maintenance-tests.jsonl`、`rotation-maintenance-tests.stderr`、`rotation-maintenance-vet.log`、`rotation-maintenance-unit.log`、`rotation-maintenance-fault.log`、`rotation-maintenance-mutation.log`。本轮测试维护的独立审查待补录。

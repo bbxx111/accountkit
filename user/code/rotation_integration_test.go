@@ -169,10 +169,16 @@ func TestCodeRotationRedisIntegration(t *testing.T) {
 		if err := f.rdb.Set(ctx, cool, "1", 1200*time.Millisecond).Err(); err != nil {
 			t.Fatal(err)
 		}
+		var quotaDeadlines [2]time.Duration
 		for active := range 2 {
 			if err := f.rdb.Set(ctx, f.key(active, "quota", enum.IdentityPhone, enum.PurposeSignIn), "1", time.Hour).Err(); err != nil {
 				t.Fatal(err)
 			}
+			deadline, err := f.rdb.PExpireTime(ctx, f.key(active, "quota", enum.IdentityPhone, enum.PurposeSignIn)).Result()
+			if err != nil || deadline <= 0 {
+				t.Fatal("read original quota deadline failed")
+			}
+			quotaDeadlines[active] = deadline
 		}
 		_, err := f.stores[1].Issue(ctx, enum.IdentityPhone, enum.PurposeBind, target, "test-ip")
 		if requireLimit(t, err, "COOLDOWN").RetryAfter < time.Second {
@@ -191,8 +197,8 @@ func TestCodeRotationRedisIntegration(t *testing.T) {
 			if err != nil || got != want {
 				t.Fatal("target quota copied or double counted")
 			}
-			ttl, err := f.rdb.PTTL(ctx, key).Result()
-			if err != nil || ttl > time.Hour || ttl < time.Hour-10*time.Second {
+			deadline, err := f.rdb.PExpireTime(ctx, key).Result()
+			if err != nil || deadline != quotaDeadlines[active] {
 				t.Fatal("old quota expiry changed")
 			}
 		}

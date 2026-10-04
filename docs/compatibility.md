@@ -40,12 +40,21 @@ accountsvc 是基于本库的可选官方服务；直接嵌入 accountkit 的宿
 
 滚动升级期间旧实例仍可能使用旧的期限判断；只有全部实例完成升级后才具备一致行为。回退二进制不会恢复已吊销会话，并会重新引入旧版本的展示和到期边界行为。本轮检查与限制见[会话过期验收记录](../openspec/changes/archive/2026-10-04-harden-session-expiry/verification.md)。
 
+## 验证码 HMAC 轮换连续性
+
+验证码、目标冷却和目标日额度改为在一次 Lua 操作内统一处理全部已配置 HMAC 版本。单份旧格式验证码原地继续原 TTL 和错误次数，跨 active 消费至多成功一次；新发码替换全部版本同用途旧码，目标日额度按不同物理键求和，同密钥材料的版本别名不会重复累计。IP 日额度原本独立于 HMAC，计数方式保持。历史混跑产生多份存活验证码时，校验原子作废冲突码并返回原 `CODE_EXPIRED`，冷却和额度不变。
+
+库与 accountsvc 共用此能力，无公共接口、配置字段或默认值、HTTP 协议、Redis 键/hash 格式、SQL、数据库结构和依赖变化。用途/渠道/实例隔离、验证码 fail-closed、投递失败不退额、JWT/refresh/access 吊销及异步审计契约保持；周期性数据库回填和默认间隔不变，混合 active 期间回填方向仍可能变化。
+
+应先升级所有程序、分发完整相同密钥集合并保持策略一致，再重启切换 active。旧 HMAC 退役同时检查未删除身份的旧摘要引用及验证码、冷却、UTC 日界线；AES 的旧密文引用独立检查。回退旧程序可能重新引入状态不可达和额度分裂，完整条件见 [README](../README.md#密钥轮换)。本次行为测试、真实依赖及验收阶段见[轮换验收记录](../openspec/changes/harden-code-key-rotation/verification.md)。
+
 ## 功能对照
 
 | 规格能力 | 生产入口/路径 | 验证 |
 |---|---|---|
 | 独立消费、完整功能 | 根门面、全部子包、sqlc.yaml | 独立构建、临时宿主编译、源文件清单 |
 | 手机/邮箱验证码、限流 | user/code、user/service_signin.go、httpapi/consumer | code/store_test.go、service_test.go、signin_test.go、TestConsumerEndToEndAgainstRealDB |
+| 验证码 HMAC 轮换 | user/code/store.go、user/code/scripts.go，库及 accountsvc 共用 | 多版本旧状态/并发测试、TestCodeKeyRotationIntegration、TestCodeRotationRedisIntegration、TestServiceIntegrationCodeKeyRotation；见[轮换验收记录](../openspec/changes/harden-code-key-rotation/verification.md) |
 | 微信/Apple | user/idp、service_idp.go | wechat_test.go、apple_test.go、nonce_test.go、service_idp_test.go、TestWeChatSignInEndToEndAgainstRealDB |
 | 身份绑定解绑 | user/service_identity.go | service_identity_test.go、identities_test.go、TestIdentityBindingEndToEndAgainstRealDB |
 | 同类身份换绑 | user/service_identity_replacement.go、httpapi/consumer/replacement.go | 领域回滚/竞态、嵌入式及服务E2E，见[换绑验收记录](../openspec/changes/archive/2026-10-03-add-identity-replacement/verification.md) |

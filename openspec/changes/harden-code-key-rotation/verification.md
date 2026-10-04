@@ -1,6 +1,6 @@
 # 验证码密钥轮换验收记录
 
-日期：2026-10-04。对应 [harden-code-key-rotation](tasks.md)，行为与部署条件见[设计](design.md)及[规格](specs/code-key-rotation/spec.md)。三个实现步骤已有定向验证和独立审查，协调者的库完整门禁、严格服务门禁与恢复三阶段已通过；Task 4 独立审查和最终整体审查尚待补录，当前不宣告整项变更验收完成。
+日期：2026-10-04。对应 [harden-code-key-rotation](tasks.md)，行为与部署条件见[设计](design.md)及[规格](specs/code-key-rotation/spec.md)。三个实现步骤已有定向验证和独立审查，协调者的库完整门禁、严格服务门禁与恢复三阶段已通过；Task 4 独立审查已通过，最终整体审查尚待补录，当前不宣告整项变更验收完成。
 
 ## 实施与定向证据
 
@@ -28,7 +28,7 @@ Task 2 使用真实 PostgreSQL/Redis 和公开 `New → Migrate → Start → Cl
 | 生成/迁移历史检查 | 协调者已执行 `check-generated.sh` 与 `check-migrations.sh` 并报告通过；完整入口也通过历史迁移检查，本次无 SQL、生成代码或冻结基线变更 |
 | 根库独立构建与依赖图 | 完整 build 通过；协调者 `GOWORK=off go list -deps .` 确认根库不依赖 `internal/accountsvc` 或 `cmd/accountsvc`；与 `055b542` 比较迁移、领域 query/db、go.mod/go.sum、config.go 和 pii 无变化 |
 | 文档链接、差异与 OpenSpec strict | Task 4 的34个本地 Markdown 路径均存在，文档差异格式检查通过；协调者执行 `openspec validate --all --strict` 11/11通过、退出0 |
-| Task 4 与最终整体审查 | 待文档定稿后的独立审查，当前未执行最终整体审查 |
+| Task 4 与最终整体审查 | 文档独立审查 Approved，无新增问题；最终整体审查待执行 |
 
 环境为 Go 1.26.5、Linux CGO/race 验证镜像、PostgreSQL17和真实 Redis7；Task 2 定向验证使用 Windows Go，Task 3 使用 Linux 实际服务进程。仅本任务创建的一次性 PostgreSQL/Redis 容器和网络参与验证，集成测试各自使用随机 schema/Redis 前缀并精准清理，没有 FLUSHDB 或产品库操作。恢复源、目标为两个独立专用空库，由协调者统一执行恢复演练。
 
@@ -40,4 +40,4 @@ Task 2 使用真实 PostgreSQL/Redis 和公开 `New → Migrate → Start → Cl
 
 本次保留公开接口、配置/默认值、HTTP 错误、Redis 键及 hash 格式、SQL/数据库结构、迁移与依赖；未新增命令、端点、热加载、自动轮换或手动回填动作。周期性数据库回填及默认间隔保持，混合 active 期间方向可能变化。退役条件区分旧 HMAC 摘要引用及 Redis 业务窗口、旧 AES 密文引用和备份密钥保留，见[轮换说明](../../../README.md#密钥轮换)。根库仍按可嵌入契约设计，不要求部署 accountsvc。
 
-产品环境、实际短信/邮件服务商、外部 OIDC 提供方、生产证书/网络、在线 CI、发布/tag/push 和部署按用户决定延期；本地真实协议 fixture 的通过不替代这些联调。本记录尚待 Task 4 和最终审查证据补录，不勾选未完成任务，也不归档本 change。
+产品环境、实际短信/邮件服务商、外部 OIDC 提供方、生产证书/网络、在线 CI、发布/tag/push 和部署按用户决定延期；本地真实协议 fixture 的通过不替代这些联调。本记录尚待最终审查证据补录，不勾选未完成任务，也不归档本 change。

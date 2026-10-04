@@ -18,6 +18,6 @@ TestRecoveryFixture 是跨进程恢复演练的合成数据工具，普通测试
 
 服务严格验证执行 `bash scripts/verify-accountsvc.sh`，要求 `SERVER_TEST_DB_DSN` 与 `ACCOUNTSVC_TEST_REDIS_URL` 指向一次性测试依赖。SMTP 和 OIDC 使用隔离协议 fixture，不需要真实提供方凭据。Linux 验证实际 SIGTERM；Windows 普通测试不能代替该进程验证。
 
-服务轮换定向验证在 Linux 下执行 `GOWORK=off CGO_ENABLED=1 ACCOUNTSVC_TEST_RACE=1 go test -race -count=1 -timeout=5m ./internal/accountsvc -run '^TestServiceIntegrationCodeKeyRotation$'`，提供上述一次性数据库与 Redis。该用例启动真实、同样启用 race 的 accountsvc 二进制和本地 SMTP fixture，验证跨 active 登录、仅切换 active 重启、冷却、目标额度及原 IP 额度；已经加入服务必需清单。定向通过不代替完整库/服务门禁或恢复演练，当前证据与未验证项统一见[轮换验收记录](../openspec/changes/harden-code-key-rotation/verification.md)。
+服务轮换定向验证在 Linux 下执行 `GOWORK=off CGO_ENABLED=1 ACCOUNTSVC_TEST_RACE=1 go test -race -count=1 -timeout=5m ./internal/accountsvc -run '^TestServiceIntegrationCodeKeyRotation$'`，提供上述一次性数据库与 Redis。该用例启动真实、同样启用 race 的 accountsvc 二进制和本地 SMTP fixture，验证跨 active 登录、仅切换 active 重启、冷却、目标额度及原 IP 额度；已经加入服务必需清单。定向通过不代替完整库/服务门禁或恢复演练，当前证据与未验证项统一见[轮换验收记录](../openspec/changes/archive/2026-10-04-harden-code-key-rotation/verification.md)。
 
 源码清单与兼容对照见 docs/compatibility.md，迁移操作与恢复限制见 docs/migrations.md。宿主实际部署、服务商实机联调和发布 tag/push 独立进行。

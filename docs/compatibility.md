@@ -46,7 +46,7 @@ accountsvc 是基于本库的可选官方服务；直接嵌入 accountkit 的宿
 
 库与 accountsvc 共用此能力，无公共接口、配置字段或默认值、HTTP 协议、Redis 键/hash 格式、SQL、数据库结构和依赖变化。用途/渠道/实例隔离、验证码 fail-closed、投递失败不退额、JWT/refresh/access 吊销及异步审计契约保持；周期性数据库回填和默认间隔不变，混合 active 期间回填方向仍可能变化。
 
-应先升级所有程序、分发完整相同密钥集合并保持策略一致，再重启切换 active。旧 HMAC 退役同时检查未删除身份的旧摘要引用及验证码、冷却、UTC 日界线；AES 的旧密文引用独立检查。回退旧程序可能重新引入状态不可达和额度分裂，完整条件见 [README](../README.md#密钥轮换)。本次行为测试、真实依赖及验收阶段见[轮换验收记录](../openspec/changes/harden-code-key-rotation/verification.md)。
+应先升级所有程序、分发完整相同密钥集合并保持策略一致，再重启切换 active。旧 HMAC 退役同时检查未删除身份的旧摘要引用及验证码、冷却、UTC 日界线；AES 的旧密文引用独立检查。回退旧程序可能重新引入状态不可达和额度分裂，完整条件见 [README](../README.md#密钥轮换)。本次行为测试、真实依赖及验收阶段见[轮换验收记录](../openspec/changes/archive/2026-10-04-harden-code-key-rotation/verification.md)。
 
 ## 功能对照
 
@@ -54,7 +54,7 @@ accountsvc 是基于本库的可选官方服务；直接嵌入 accountkit 的宿
 |---|---|---|
 | 独立消费、完整功能 | 根门面、全部子包、sqlc.yaml | 独立构建、临时宿主编译、源文件清单 |
 | 手机/邮箱验证码、限流 | user/code、user/service_signin.go、httpapi/consumer | code/store_test.go、service_test.go、signin_test.go、TestConsumerEndToEndAgainstRealDB |
-| 验证码 HMAC 轮换 | user/code/store.go、user/code/scripts.go，库及 accountsvc 共用 | 多版本旧状态/并发测试、TestCodeKeyRotationIntegration、TestCodeRotationRedisIntegration、TestServiceIntegrationCodeKeyRotation；见[轮换验收记录](../openspec/changes/harden-code-key-rotation/verification.md) |
+| 验证码 HMAC 轮换 | user/code/store.go、user/code/scripts.go，库及 accountsvc 共用 | 多版本旧状态/并发测试、TestCodeKeyRotationIntegration、TestCodeRotationRedisIntegration、TestServiceIntegrationCodeKeyRotation；见[轮换验收记录](../openspec/changes/archive/2026-10-04-harden-code-key-rotation/verification.md) |
 | 微信/Apple | user/idp、service_idp.go | wechat_test.go、apple_test.go、nonce_test.go、service_idp_test.go、TestWeChatSignInEndToEndAgainstRealDB |
 | 身份绑定解绑 | user/service_identity.go | service_identity_test.go、identities_test.go、TestIdentityBindingEndToEndAgainstRealDB |
 | 同类身份换绑 | user/service_identity_replacement.go、httpapi/consumer/replacement.go | 领域回滚/竞态、嵌入式及服务E2E，见[换绑验收记录](../openspec/changes/archive/2026-10-03-add-identity-replacement/verification.md) |

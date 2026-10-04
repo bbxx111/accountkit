@@ -6,7 +6,7 @@
 
 `pii.Digester.AllDigests` 可计算全部已配置版本，active 在前；不同版本允许相同密钥材料，输出可能重复。旧实现每次发码只增加 active 目标计数，因此旧目标日额度可通过去重后的物理键求和，不能取最大值，也不能双写计数后直接求和。
 
-现有 [嵌入契约](../../specs/embedded-auth-package/spec.md) 和 [投递契约](../../specs/verification-delivery/spec.md) 继续适用。数据库摘要回填在维护任务中按本进程 active 执行，默认每 5 分钟调度；本变更保留该行为。
+现有 [嵌入契约](../../../specs/embedded-auth-package/spec.md) 和 [投递契约](../../../specs/verification-delivery/spec.md) 继续适用。数据库摘要回填在维护任务中按本进程 active 执行，默认每 5 分钟调度；本变更保留该行为。
 
 ## Goals / Non-Goals
 

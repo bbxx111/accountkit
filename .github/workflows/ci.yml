@@ -52,7 +52,7 @@ jobs:
       - name: Verify package and recovery
         run: |
           docker run --rm --network host \
-            -e SERVER_TEST_DB_DSN -e ACCOUNTKIT_RECOVERY_SOURCE_DSN -e ACCOUNTKIT_RECOVERY_TARGET_DSN \
+            -e SERVER_TEST_DB_DSN -e ACCOUNTSVC_TEST_REDIS_URL -e ACCOUNTKIT_RECOVERY_SOURCE_DSN -e ACCOUNTKIT_RECOVERY_TARGET_DSN \
             -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/src \
             --mount "type=bind,source=$PWD,target=/src" \
             --mount "type=bind,source=$(go env GOPATH)/pkg/mod,target=/go/pkg/mod" \

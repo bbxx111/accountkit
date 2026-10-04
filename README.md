@@ -211,15 +211,23 @@ r.Route("/v1", func(r chi.Router) {
 
 ## 密钥轮换
 
-三组密钥都是"版本列表 + active 版本"：
-1. 把新版本加入列表并部署（旧版本仍可验签/解密/查找）。
-2. 切换 active 到新版本并部署。
-3. JWT：等待一个 access TTL 后移除旧版本。HMAC/加密：等维护任务 `rekey_digests` / `reencrypt_subjects` 把旧版本的行处理完（`SELECT DISTINCT digest_key_version, cipher_key_version FROM identity WHERE delete_time IS NULL` 只剩 active）再移除旧版本；移除过早时 `Migrate` 会以 `user.ErrUnknownKeyVersion` 失败。切换 HMAC active 后，在飞的验证码冷却/日限键会失联至多 24 小时（额度短暂归零，宿主需自行配置独立的 IP 级限流兜底）。
+三组密钥分别使用“版本列表 + active 版本”，版本编号对应的密钥材料不可改写。JWT、身份 HMAC 和身份 AES 密钥独立轮换，不要求它们的 active 编号一致。JWT 仍按原有 access 有效期要求保留旧验签版本；以下说明身份密钥及验证码的正常轮换。
+
+1. 保持 HMAC active=K1，先将所有服务进程升级到支持多版本验证码处理的实现。
+2. 向全部进程分发相同的完整 K1、K2 密钥集合，仍使用 K1；确认验证码有效期、次数、冷却和额度策略一致，再滚动切换 active=K2。配置在重新装配或服务重启后生效，不提供热加载；实例 Redis 前缀保持不变。
+3. 全部已配置 HMAC 版本共同定位验证码、目标冷却和目标 UTC 日额度。旧码保留原到期时间、错误次数和一次性消费语义，新发码替换全部版本的同用途旧码；目标冷却跨用途共享，日额度合计不同物理键的实际计数。IP 日额度原本就不依赖 HMAC，每次占额仍只增加一次 IP 计数。投递失败不退还冷却或额度。
+4. 记录最后一个 K1 active 进程及其在途请求、维护操作全部结束的时刻 T0，然后按下述条件退役 K1。
+
+周期性 `rekey_digests` / `reencrypt_subjects` 回填及默认5分钟维护间隔保持原状。混合 active 期间，不同进程可能把数据库回填到各自的 active，方向仍可能变化；应在 T0 后确认实际回填结果，不能以等待一个维护周期或重启成功代替检查。HMAC 退役要求实际 `Config.Schema` 下未删除的手机/邮箱 `identity` 不再引用 K1 的 `digest_key_version`。若同时独立轮换 AES，另行确认旧 AES 的 `cipher_key_version` 引用归零；只轮换 HMAC 不要求密文也切到相同版本编号。
+
+HMAC 还须等待旧验证码、目标冷却和当日目标额度的业务窗口结束，截止为 `max(T0 + 旧 CodeTTL, T0 + 旧 CodeCooldown, T0 之后的下一个 UTC 零点)`。配置曾变化时使用仍可能存活记录对应的最大旧期限，并留出部署时钟偏差余量。日额度键额外1小时仅用于垃圾回收，不延长业务窗口。数据库引用与这些 Redis 条件同时满足后，才从全部运行配置移除旧 HMAC 并重新部署；AES 退役按其数据库引用条件处理。`Migrate` 缺少仍被未删除身份引用的密钥时返回 `user.ErrUnknownKeyVersion`，但它不检查 Redis 状态，启动成功不证明 HMAC 可以退役。为仍需恢复的旧备份受控保留相应历史密钥，从运行配置移除不等于立即永久销毁。
+
+旧程序曾在不同 active 下留下多份同用途存活验证码时，无法可靠判断签发先后；新实现原子作废全部冲突码并返回原 `CODE_EXPIRED`，冷却和额度保留，用户按原限制重新发码。连续性仅适用于所有进程已升级、持有相同完整密钥集合且策略一致的正常轮换，不覆盖缺失密钥、丢失 Redis 状态或泄露密钥的紧急撤销。回退优先保留支持本能力的程序与完整密钥集合，仅切回 active 并重新计算退役窗口；切回旧程序不能承诺轮换后状态连续。实际验证与未验证项见[轮换验收记录](openspec/changes/harden-code-key-rotation/verification.md)。
 
 ## 测试
 
-- 单测：`go test ./...`（Redis 用 miniredis 内嵌）。
-- 集成：设置 `SERVER_TEST_DB_DSN` 后运行；用例各自创建随机 schema 并在结束时删除，不污染 `public`。
+- 单测：`go test ./...`（快速 Redis 测试用 miniredis 内嵌，缺少真实依赖的集成用例明确 skip）。
+- 集成：设置 `SERVER_TEST_DB_DSN`；轮换集成还要求 `ACCOUNTSVC_TEST_REDIS_URL` 指向一次性真实 Redis，见[开发与验证](docs/development.md)。用例各自创建随机 schema/Redis 前缀并局部清理。
 - 独立构建：`GOWORK=off go build ./...`；正式发布检查：`bash scripts/verify.sh`。
 
 ## 仓库与发布状态

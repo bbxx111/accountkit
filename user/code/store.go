@@ -69,9 +69,20 @@ func NewStore(rdb redis.UniversalClient, keyPrefix string, digester *pii.Digeste
 	return &Store{rdb: rdb, prefix: keyPrefix, digester: digester, o: o}
 }
 
-func (s *Store) targetDigest(target string) string {
-	d, _ := s.digester.Digest(target)
-	return d
+func uniqueDigests(digests []string) []string {
+	seen := make(map[string]bool, len(digests))
+	out := make([]string, 0, len(digests))
+	for _, digest := range digests {
+		if !seen[digest] {
+			seen[digest] = true
+			out = append(out, digest)
+		}
+	}
+	return out
+}
+
+func (s *Store) targetDigests(target string) []string {
+	return uniqueDigests(s.digester.AllDigests(target))
 }
 
 func (s *Store) codeHMAC(channel enum.IdentityKind, purpose enum.CodePurpose, target, code string) string {
@@ -81,16 +92,20 @@ func (s *Store) codeHMAC(channel enum.IdentityKind, purpose enum.CodePurpose, ta
 
 // codeHMACCandidates 返回 presented 码在全部已配置密钥版本下的摘要（active 在前），供 Verify
 // 传给 Lua 脚本做原子比对；覆盖密钥轮换窗口内、码签发于旧版本尚未过期的情况。
-//
-// 注意：这个多版本回退目前是死代码。keys() 里的 Redis key（codeKey）只由 targetDigest 派生
-// ——即只用 active 版本的摘要定位键——而不是 codeHMAC 本身的版本。因此一次 HMAC 密钥轮换
-// 后，active 版本一变，Issue 时算出的 targetDigest 就变了，键名随之变化，旧键上在飞的验证码
-// 直接找不到（在 CodeTTL 窗口内、最多几分钟内失效，这是可接受的：用户重发一次即可）。
-// codeHMACCandidates 的多候选比对只有在未来把 key() 的键名也改成与 HMAC 密钥版本无关（例如
-// 键名不再依赖 digest 版本）时才会真正生效；在当前实现下这段回退代码永远只会用到 active 版本
-// 那一个候选。
 func (s *Store) codeHMACCandidates(channel enum.IdentityKind, purpose enum.CodePurpose, target, code string) []string {
-	return s.digester.AllDigests("code:" + channel.String() + ":" + purpose.Key() + ":" + target + ":" + code)
+	return uniqueDigests(s.digester.AllDigests("code:" + channel.String() + ":" + purpose.Key() + ":" + target + ":" + code))
+}
+
+// scriptStatus 校验共同的二元素返回格式；各操作再校验状态和第二个元素类型。
+func scriptStatus(result []interface{}) (string, error) {
+	if len(result) != 2 {
+		return "", ErrUnavailable
+	}
+	status, ok := result[0].(string)
+	if !ok {
+		return "", ErrUnavailable
+	}
+	return status, nil
 }
 
 func (s *Store) keys(channel enum.IdentityKind, purpose enum.CodePurpose, digest, ip string, now time.Time) (codeKey, cooldownKey, quotaTargetKey, quotaIPKey string) {
@@ -134,34 +149,55 @@ func (s *Store) Issue(ctx context.Context, channel enum.IdentityKind, purpose en
 		return "", err
 	}
 	now := s.o.Now()
-	digest := s.targetDigest(target)
-	codeKey, cooldownKey, quotaTargetKey, quotaIPKey := s.keys(channel, purpose, digest, ip, now)
+	digests := s.targetDigests(target)
+	// 每组三项依次为 cooldown、quotaTarget、code，active 组在前；最后为唯一 IP 键。
+	keys := make([]string, 0, 3*len(digests)+1)
+	var quotaIPKey string
+	for _, digest := range digests {
+		codeKey, cooldownKey, quotaTargetKey, ipKey := s.keys(channel, purpose, digest, ip, now)
+		keys = append(keys, cooldownKey, quotaTargetKey, codeKey)
+		quotaIPKey = ipKey
+	}
+	keys = append(keys, quotaIPKey)
 	res, err := issueScript.Run(ctx, s.rdb,
-		[]string{cooldownKey, quotaTargetKey, quotaIPKey, codeKey},
+		keys,
 		int64(s.o.Cooldown.Seconds()), s.o.DailyLimitPerTarget, s.o.DailyLimitPerIP,
 		s.codeHMAC(channel, purpose, target, plain), int64(s.o.TTL.Seconds()), quotaTTL(now),
 	).Slice()
 	if err != nil {
 		return "", fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
-	status, _ := res[0].(string)
-	if status != "OK" {
-		var retryAfter time.Duration
-		switch status {
-		case "TARGET_LIMIT", "IP_LIMIT":
-			// 这两个键的 Redis TTL 含 quotaTTL 的 +1 小时 GC 宽限，不能直接当作 RetryAfter
-			// 汇报给调用方；额度实际在 UTC 次日零点重置，从 now 直接算更准确。
-			retryAfter = nextUTCMidnight(now).Sub(now.UTC())
-		default: // COOLDOWN
-			retry, _ := res[1].(int64)
-			if retry < 1 {
-				retry = 1
-			}
-			retryAfter = time.Duration(retry) * time.Second
-		}
-		return "", &RateLimitedError{Dimension: status, RetryAfter: retryAfter}
+	status, err := scriptStatus(res)
+	if err != nil {
+		return "", err
 	}
-	return plain, nil
+	retry, ok := res[1].(int64)
+	if !ok {
+		return "", ErrUnavailable
+	}
+	var retryAfter time.Duration
+	switch status {
+	case "OK":
+		if retry != 0 {
+			return "", ErrUnavailable
+		}
+		return plain, nil
+	case "TARGET_LIMIT", "IP_LIMIT":
+		if retry != 0 {
+			return "", ErrUnavailable
+		}
+		// 这两个键的 Redis TTL 含 quotaTTL 的 +1 小时 GC 宽限，不能直接当作 RetryAfter
+		// 汇报给调用方；额度实际在 UTC 次日零点重置，从 now 直接算更准确。
+		retryAfter = nextUTCMidnight(now).Sub(now.UTC())
+	case "COOLDOWN":
+		if retry < 1 || retry > int64((1<<63-1)/time.Second) {
+			return "", ErrUnavailable
+		}
+		retryAfter = time.Duration(retry) * time.Second
+	default:
+		return "", ErrUnavailable
+	}
+	return "", &RateLimitedError{Dimension: status, RetryAfter: retryAfter}
 }
 
 // Verify 原子地计数并在 Lua 脚本内部完成摘要比对与删除：比对和删除必须同在一次脚本执行内
@@ -170,19 +206,30 @@ func (s *Store) Verify(ctx context.Context, channel enum.IdentityKind, purpose e
 	if !channel.IsChannel() || !purpose.Valid() {
 		return ErrInvalid
 	}
-	digest := s.targetDigest(target)
-	codeKey, _, _, _ := s.keys(channel, purpose, digest, "", s.o.Now())
+	digests := s.targetDigests(target)
+	keys := make([]string, 0, len(digests))
+	for _, digest := range digests {
+		codeKey, _, _, _ := s.keys(channel, purpose, digest, "", s.o.Now())
+		keys = append(keys, codeKey)
+	}
 	candidates := s.codeHMACCandidates(channel, purpose, target, code)
 	argv := make([]interface{}, 0, len(candidates)+1)
 	argv = append(argv, s.o.MaxAttempts)
 	for _, c := range candidates {
 		argv = append(argv, c)
 	}
-	res, err := verifyScript.Run(ctx, s.rdb, []string{codeKey}, argv...).Slice()
+	res, err := verifyScript.Run(ctx, s.rdb, keys, argv...).Slice()
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
-	status, _ := res[0].(string)
+	status, err := scriptStatus(res)
+	if err != nil {
+		return err
+	}
+	unused, ok := res[1].(string)
+	if !ok || unused != "" {
+		return ErrUnavailable
+	}
 	switch status {
 	case "MISSING":
 		return ErrExpired
@@ -190,6 +237,9 @@ func (s *Store) Verify(ctx context.Context, channel enum.IdentityKind, purpose e
 		return ErrExhausted
 	case "MISMATCH":
 		return ErrInvalid
+	case "OK":
+		return nil
+	default:
+		return ErrUnavailable
 	}
-	return nil
 }

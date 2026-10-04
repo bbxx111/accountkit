@@ -70,6 +70,14 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 
 生产要求服务端 HTTPS 和经过证书验证的 SMTP TLS；反向代理到服务也使用 TLS。不要以 development 绕过生产加密要求。启用代理信任前核对实际网络路径，服务默认忽略不可信直接对端的转发头。
 
+## 身份密钥与验证码轮换
+
+服务使用库的 [密钥轮换规则](../README.md#密钥轮换)：保持旧 active 时先升级全部进程，再向所有进程分发相同完整的 `ACCOUNTKIT_SUBJECT_HMAC_KEYS`，确认验证码策略一致后，滚动修改 `ACCOUNTKIT_SUBJECT_HMAC_ACTIVE_KEY` 并重启。配置在进程启动时读取，不新增轮换命令、端点或热加载；实例 schema、Redis 前缀和既有策略保持一致。
+
+满足此前提时，不同 active 进程和重启后的服务可消费旧码，共用目标冷却及累计 UTC 日额度；IP 额度原本独立于 HMAC。旧码不会延长寿命或重置错误次数，历史多份冲突码返回原 `CODE_EXPIRED` 并作废，重新发码仍受原冷却和额度约束。
+
+服务继续周期性回填数据库，默认每5分钟运行；混合 active 期间回填方向仍可能变化。最后一个旧 active 进程及其在途请求、维护结束后记录 T0，同时满足 README 中未删除身份旧摘要引用归零及 Redis 业务窗口条件，才移除旧 HMAC 并重启。AES 单独按旧密文引用退役，不要求与 HMAC 版本编号一致；启动期密钥检查不代替 Redis 退役检查，旧备份恢复所需历史密钥须受控保留。本地实际服务进程与 SMTP fixture 验证见[轮换验收记录](../openspec/changes/harden-code-key-rotation/verification.md)。
+
 ## HTTP 面
 
 | 监听器 | 路径 | 身份 |

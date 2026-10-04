@@ -71,7 +71,7 @@ func TestVerifyWrongCodeCountsAndExhausts(t *testing.T) {
 	ctx := context.Background()
 	c, _ := s.Issue(ctx, enum.IdentityPhone, enum.PurposeSignIn, target, "1.2.3.4")
 	for i := 0; i < 3; i++ {
-		if err := s.Verify(ctx, enum.IdentityPhone, enum.PurposeSignIn, target, "000000"); !errors.Is(err, code.ErrInvalid) {
+		if err := s.Verify(ctx, enum.IdentityPhone, enum.PurposeSignIn, target, "wrong-fixture"); !errors.Is(err, code.ErrInvalid) {
 			t.Fatalf("attempt %d: err = %v, want ErrInvalid", i+1, err)
 		}
 	}
@@ -103,6 +103,12 @@ func TestIssueCooldownAndReissueReplacesCode(t *testing.T) {
 	s, mr := newStore(t, code.Options{Cooldown: 60 * time.Second})
 	ctx := context.Background()
 	c1, _ := s.Issue(ctx, enum.IdentityPhone, enum.PurposeSignIn, target, "1.2.3.4")
+	// 可区分的旧码夹具避免两次随机生成相同数字造成伪失败。
+	c1 = "legacy-fixture"
+	d, _ := pii.NewDigester(map[uint16][]byte{1: bytes.Repeat([]byte{7}, 32)}, 1)
+	digest, _ := d.Digest(target)
+	h, _ := d.Digest("code:PHONE:signin:" + target + ":" + c1)
+	mr.HSet("t:code:PHONE:signin:"+digest, "h", h)
 	_, err := s.Issue(ctx, enum.IdentityPhone, enum.PurposeSignIn, target, "1.2.3.4")
 	var rl *code.RateLimitedError
 	if !errors.As(err, &rl) || rl.Dimension != "COOLDOWN" || rl.RetryAfter <= 0 || rl.RetryAfter > 60*time.Second {

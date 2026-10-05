@@ -14,7 +14,7 @@
 
 ### 1. 一次完成包与公开门面迁移
 
-整体移动 `httpapi/consumer` 至 `httpapi/enduser`，同步包声明、外部测试包声明及导入限定符。Handler、Deps、Service、IdentityReplacer、New、Router、AuthnOptions、RequireRecentAuth的结构与行为保持原样；原诊断前缀 `consumer:` 更新为 `enduser:`，仅影响包构造诊断，HTTP业务错误码/正文不变。
+整体移动 `httpapi/consumer` 至 `httpapi/enduser`，同步包声明、外部测试包声明及导入限定符。Handler、Deps、Service、IdentityReplacer、New、Router、AuthnOptions、RequireRecentAuth的结构与行为保持原样；原诊断前缀 `consumer:` 更新为 `enduser:`，影响包构造及内部运行诊断，HTTP业务错误码/正文不变。
 
 根 Auth 的 ConsumerHandler 直接改为 EndUserHandler。与本HTTP面对应的私有字段/参数采用 endUser，保持原路由构造和中间件委托；AdminHandler、Users、RequireScope、RequireRecentAuth等其余公开方法不变。同步accountsvc装配、根包测试及嵌入式示例。一个实施单元内完成引用迁移，避免提交只有目录移动却不能编译的中间状态。
 

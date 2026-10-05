@@ -30,7 +30,7 @@ accountsvc 是基于本库的可选官方服务；直接嵌入 accountkit 的宿
 | `(*consumer.Handler).Router` / `AuthnOptions` / `RequireRecentAuth` | `(*enduser.Handler).Router` / `AuthnOptions` / `RequireRecentAuth` |
 | `auth.ConsumerHandler()` | `auth.EndUserHandler()` |
 
-宿主更新依赖时同步修改导入路径、包限定符和门面调用，重新编译并运行原接入测试。上述类型内容和方法签名保持不变，自定义 `enduser.Service` 无需新增方法，换绑仍由可选 `enduser.IdentityReplacer` 提供。显式 Go 导入别名可自行选择，但旧导入路径本身不能继续使用。构造诊断前缀由 `consumer:` 改为 `enduser:`；HTTP 错误码与响应正文保持原样。
+宿主更新依赖时同步修改导入路径、包限定符和门面调用，重新编译并运行原接入测试。上述类型内容和方法签名保持不变，自定义 `enduser.Service` 无需新增方法，换绑仍由可选 `enduser.IdentityReplacer` 提供。显式 Go 导入别名可自行选择，但旧导入路径本身不能继续使用。构造及内部运行诊断前缀由 `consumer:` 改为 `enduser:`；HTTP 错误码与响应正文保持原样。
 
 HTTP 调用方继续使用原 URL（包括 `/users`）、DTO、设备头、JWT 和刷新凭据；环境配置键、数据库与 Redis 数据、实例前缀和密钥均不变，无需数据迁移、会话清理或重新登录。相对路由仍由宿主自行挂载，accountsvc 的 `/v1`、`/admin/v1`、`/v1/introspect` 及监听/TLS 行为不变。
 

@@ -63,7 +63,7 @@ func TestClientAuthenticationAndRotation(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			before := calls
-			r := httptest.NewRequest("POST", "/internal/v1/introspect?token=query", strings.NewReader("token=access"))
+			r := httptest.NewRequest("POST", "/v1/introspect?token=query", strings.NewReader("token=access"))
 			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			if tc.user != "" {
 				r.SetBasicAuth(tc.user, tc.password)
@@ -102,7 +102,7 @@ func TestClientAuthenticationAndRotation(t *testing.T) {
 }
 
 func request(h http.Handler, body, password string) *httptest.ResponseRecorder {
-	r := httptest.NewRequest("POST", "/internal/v1/introspect", strings.NewReader(body))
+	r := httptest.NewRequest("POST", "/v1/introspect", strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.SetBasicAuth("business", password)
 	w := httptest.NewRecorder()
@@ -162,7 +162,7 @@ func TestProtocolBoundary(t *testing.T) {
 			if password == "" {
 				password = secret(1)
 			}
-			r := httptest.NewRequest(method, "/internal/v1/introspect"+tc.query, strings.NewReader(tc.body))
+			r := httptest.NewRequest(method, "/v1/introspect"+tc.query, strings.NewReader(tc.body))
 			if ct != "-" {
 				r.Header.Set("Content-Type", ct)
 			}
@@ -254,7 +254,7 @@ func TestAuthenticationPrecedesBodyReadAndRejectsDuplicateHeaders(t *testing.T) 
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			body := &failedBody{}
-			r := httptest.NewRequest("POST", "/internal/v1/introspect", nil)
+			r := httptest.NewRequest("POST", "/v1/introspect", nil)
 			r.Body = body
 			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			if tc.authenticated {
@@ -280,7 +280,7 @@ func TestChunkedBodyCannotBypassLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := httptest.NewRequest("POST", "/internal/v1/introspect", io.NopCloser(strings.NewReader("token="+strings.Repeat("x", 64*1024))))
+	r := httptest.NewRequest("POST", "/v1/introspect", io.NopCloser(strings.NewReader("token="+strings.Repeat("x", 64*1024))))
 	r.ContentLength = -1
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.SetBasicAuth("business", secret(1))

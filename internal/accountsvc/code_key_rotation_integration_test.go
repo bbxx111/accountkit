@@ -32,9 +32,18 @@ func TestServiceIntegrationCodeKeyRotation(t *testing.T) {
 	if err != nil {
 		t.Fatal("invalid synthetic rotation digester")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	// This scenario checks cumulative quotas within one UTC day. Start it
+	// only when its one-minute deadline fits, with 30 seconds of headroom.
+	// Near midnight the wait is bounded by 90 seconds; never skip the gate.
+	start := time.Now()
+	for delay := rotationQuotaStartDelay(start); delay > 0; delay = rotationQuotaStartDelay(start) {
+		t.Log("waiting for a full UTC quota test window")
+		time.Sleep(delay)
+		start = time.Now()
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), start.Add(time.Minute))
 	defer cancel()
-	day := time.Now().UTC().Format("20060102")
+	day := start.UTC().Format("20060102")
 	ipKey := f.prefix + "quota:EMAIL:ip:127.0.0.1:" + day
 	targetKeys := func(target string) []string {
 		var out []string
@@ -83,7 +92,7 @@ func TestServiceIntegrationCodeKeyRotation(t *testing.T) {
 	send := func(p *serviceProcess, target string) string {
 		t.Helper()
 		f.secrets = append(f.secrets, target)
-		f.call("POST", p.public+"/v1/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": target}, 200)
+		f.call("POST", p.baseURL+"/v1/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": target}, 200)
 		mail := f.smtp.mail(t)
 		f.secrets = append(f.secrets, mail.target, mail.code)
 		if mail.target != target || !strings.Contains(mail.body, "登录") {
@@ -93,7 +102,7 @@ func TestServiceIntegrationCodeKeyRotation(t *testing.T) {
 	}
 	signIn := func(p *serviceProcess, target, code string) map[string]any {
 		t.Helper()
-		out := f.call("POST", p.public+"/v1/users:signInWithCode", "", map[string]any{"email": map[string]string{"target": target, "code": code}}, 200)
+		out := f.call("POST", p.baseURL+"/v1/users:signInWithCode", "", map[string]any{"email": map[string]string{"target": target, "code": code}}, 200)
 		for _, field := range []string{"access_token", "refresh_token"} {
 			token, ok := out[field].(string)
 			if !ok || token == "" {
@@ -107,7 +116,7 @@ func TestServiceIntegrationCodeKeyRotation(t *testing.T) {
 	limited := func(p *serviceProcess, target, reason string) {
 		t.Helper()
 		f.secrets = append(f.secrets, target)
-		out := f.call("POST", p.public+"/v1/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": target}, 429)
+		out := f.call("POST", p.baseURL+"/v1/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": target}, 429)
 		errorBody, ok := out["error"].(map[string]any)
 		if !ok || errorBody["status"] != "RESOURCE_EXHAUSTED" || errorBody["reason"] != reason {
 			t.Fatal("rotation rate limit reason changed")
@@ -195,4 +204,38 @@ func TestServiceIntegrationCodeKeyRotation(t *testing.T) {
 	p2.stop()
 	p1.stop()
 	f.assertAuditPrivate()
+}
+
+func rotationQuotaStartDelay(now time.Time) time.Duration {
+	u := now.UTC()
+	midnight := time.Date(u.Year(), u.Month(), u.Day()+1, 0, 0, 0, 0, time.UTC)
+	remaining := midnight.Sub(u)
+	if remaining <= 90*time.Second {
+		return remaining
+	}
+	return 0
+}
+
+func TestServiceRotationQuotaWindow(t *testing.T) {
+	for _, tc := range []struct {
+		at   string
+		wait time.Duration
+	}{
+		{"2026-10-04T12:00:00Z", 0},
+		{"2026-10-04T23:58:29Z", 0},
+		{"2026-10-04T23:58:30Z", 90 * time.Second},
+		{"2026-10-04T23:59:59.500Z", 500 * time.Millisecond},
+		{"2026-10-05T07:59:59+08:00", time.Second},
+		{"2026-10-05T00:00:00Z", 0},
+	} {
+		t.Run(tc.at, func(t *testing.T) {
+			now, err := time.Parse(time.RFC3339Nano, tc.at)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := rotationQuotaStartDelay(now); got != tc.wait {
+				t.Fatalf("quota window wait: got %s, want %s", got, tc.wait)
+			}
+		})
+	}
 }

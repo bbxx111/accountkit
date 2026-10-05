@@ -17,19 +17,20 @@ import (
 func TestServiceIntegrationEmailLifecycle(t *testing.T) {
 	f := newIntegration(t)
 	p := f.start(nil)
-	for _, path := range []string{"/readyz", "/healthz", "/internal/v1/introspect"} {
-		f.call("GET", p.public+path, "", nil, 404)
-	}
-	f.call("GET", p.public+"/admin/v1/users", "", nil, 503)
-	out := f.call("POST", p.public+"/v1/users:sendSignInCode", "", map[string]string{"channel": "PHONE", "target": "+8613812345678"}, 400)
+	f.call("GET", p.baseURL+"/readyz", "", nil, 200)
+	f.call("GET", p.baseURL+"/healthz", "", nil, 200)
+	f.call("GET", p.baseURL+"/v1/introspect", "", nil, 401)
+	f.call("GET", p.baseURL+"/internal/v1/introspect", "", nil, 404)
+	f.call("GET", p.baseURL+"/admin/v1/users", "", nil, 503)
+	out := f.call("POST", p.baseURL+"/v1/users:sendSignInCode", "", map[string]string{"channel": "PHONE", "target": "+8613812345678"}, 400)
 	if errObj, _ := out["error"].(map[string]any); errObj["reason"] != "CHANNEL_NOT_ENABLED" {
 		t.Fatal("SMS not explicitly disabled")
 	}
 	tokens := f.login(p, "lifecycle@example.test")
 	access, refresh := tokens["access_token"].(string), tokens["refresh_token"].(string)
 	f.introspect(p, access, true)
-	rotated := f.call("POST", p.public+"/v1/token", "", map[string]string{"grant_type": "refresh_token", "refresh_token": refresh}, 200)
-	replay := f.call("POST", p.public+"/v1/token", "", map[string]string{"grant_type": "refresh_token", "refresh_token": refresh}, 200)
+	rotated := f.call("POST", p.baseURL+"/v1/token", "", map[string]string{"grant_type": "refresh_token", "refresh_token": refresh}, 200)
+	replay := f.call("POST", p.baseURL+"/v1/token", "", map[string]string{"grant_type": "refresh_token", "refresh_token": refresh}, 200)
 	if rotated["access_token"] != replay["access_token"] || rotated["refresh_token"] != replay["refresh_token"] {
 		t.Fatal("refresh grace did not return the same pair")
 	}
@@ -41,19 +42,19 @@ func TestServiceIntegrationEmailLifecycle(t *testing.T) {
 	f.introspect(p, access, true)
 	// Cooldown is shared across purposes; let the real Redis TTL expire.
 	time.Sleep(1100 * time.Millisecond)
-	f.call("POST", p.public+"/v1/users/me:sendReauthenticationCode", access, map[string]string{"channel": "EMAIL", "target": "lifecycle@example.test"}, 200)
+	f.call("POST", p.baseURL+"/v1/users/me:sendReauthenticationCode", access, map[string]string{"channel": "EMAIL", "target": "lifecycle@example.test"}, 200)
 	m := f.smtp.mail(t)
 	if !strings.Contains(m.body, "重新认证") {
 		t.Fatal("wrong reauthentication email purpose")
 	}
 	f.secrets = append(f.secrets, m.code)
-	reauth := f.call("POST", p.public+"/v1/users/me:reauthenticate", access, map[string]any{"email": map[string]string{"target": m.target, "code": m.code}}, 200)
+	reauth := f.call("POST", p.baseURL+"/v1/users/me:reauthenticate", access, map[string]any{"email": map[string]string{"target": m.target, "code": m.code}}, 200)
 	if _, ok := reauth["refresh_token"]; ok {
 		t.Fatal("reauthentication unexpectedly returns refresh token")
 	}
 	recent := reauth["access_token"].(string)
 	f.secrets = append(f.secrets, recent)
-	deleted := f.call("DELETE", p.public+"/v1/users/me", recent, nil, 200)
+	deleted := f.call("DELETE", p.baseURL+"/v1/users/me", recent, nil, 200)
 	if deleted["state"] != "PENDING_DELETION" {
 		t.Fatalf("wrong lifecycle state: %v", deleted["state"])
 	}
@@ -71,10 +72,10 @@ func TestServiceIntegrationAdminLifecycle(t *testing.T) {
 	access := tokens["access_token"].(string)
 	uid := tokens["user_id"].(string)
 	op, su := f.env["FIXTURE_operator"], f.env["FIXTURE_super-admin"]
-	f.call("GET", p.public+"/admin/v1/users", access, nil, 401)
-	f.call("GET", p.public+"/admin/v1/users", f.secrets[1], nil, 401)
-	f.call("GET", p.public+"/v1/users/me", op, nil, 401)
-	r, _ := http.NewRequest("POST", p.internal+"/internal/v1/introspect", strings.NewReader(url.Values{"token": {access}}.Encode()))
+	f.call("GET", p.baseURL+"/admin/v1/users", access, nil, 401)
+	f.call("GET", p.baseURL+"/admin/v1/users", f.secrets[1], nil, 401)
+	f.call("GET", p.baseURL+"/v1/users/me", op, nil, 401)
+	r, _ := http.NewRequest("POST", p.baseURL+"/v1/introspect", strings.NewReader(url.Values{"token": {access}}.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.Header.Set("Authorization", "Bearer "+op)
 	resp, err := f.client.Do(r)
@@ -85,23 +86,23 @@ func TestServiceIntegrationAdminLifecycle(t *testing.T) {
 	if resp.StatusCode != 401 {
 		t.Fatal("admin token used as introspection caller")
 	}
-	f.call("GET", p.public+"/admin/v1/users/"+uid, op, nil, 200)
+	f.call("GET", p.baseURL+"/admin/v1/users/"+uid, op, nil, 200)
 	var identity string
 	if err := f.pool.QueryRow(context.Background(), "SELECT id FROM identity WHERE user_id=$1", uid).Scan(&identity); err != nil {
 		t.Fatal(err)
 	}
-	revealPath := p.public + "/admin/v1/users/" + uid + "/identities/" + identity + ":reveal"
+	revealPath := p.baseURL + "/admin/v1/users/" + uid + "/identities/" + identity + ":reveal"
 	f.call("GET", revealPath, op, nil, 403)
 	revealed := f.call("GET", revealPath, su, nil, 200)
 	if revealed["subject"] != "admin-subject@example.test" {
 		t.Fatal("authorized reveal missing subject")
 	}
-	frozen := f.call("POST", p.public+"/admin/v1/users/"+uid+":freeze", op, map[string]string{"reason": "integration freeze"}, 200)
+	frozen := f.call("POST", p.baseURL+"/admin/v1/users/"+uid+":freeze", op, map[string]string{"reason": "integration freeze"}, 200)
 	if frozen["state"] != "FROZEN" {
 		t.Fatal("admin freeze did not change state")
 	}
 	f.introspect(p, access, false)
-	active := f.call("POST", p.public+"/admin/v1/users/"+uid+":unfreeze", op, map[string]string{"reason": "integration unfreeze"}, 200)
+	active := f.call("POST", p.baseURL+"/admin/v1/users/"+uid+":unfreeze", op, map[string]string{"reason": "integration unfreeze"}, 200)
 	if active["state"] != "ACTIVE" {
 		t.Fatal("admin unfreeze did not change state")
 	}
@@ -127,24 +128,24 @@ func TestServiceIntegrationDependencyFailure(t *testing.T) {
 	access := tokens["access_token"].(string)
 	proxy.fail(true)
 	started := time.Now()
-	f.call("GET", p.internal+"/readyz", "", nil, 503)
+	f.call("GET", p.baseURL+"/readyz", "", nil, 503)
 	if time.Since(started) > 3*time.Second {
 		t.Fatal("readiness exceeded two-second budget with scheduling margin")
 	}
-	f.call("GET", p.internal+"/healthz", "", nil, 200)
+	f.call("GET", p.baseURL+"/healthz", "", nil, 200)
 	f.introspect(p, access, true)
 	if !strings.Contains(p.output.String(), "fail-open") {
 		t.Fatal("Redis fail-open warning missing")
 	}
 	proxy.fail(false)
-	f.call("GET", p.internal+"/readyz", "", nil, 200)
+	f.call("GET", p.baseURL+"/readyz", "", nil, 200)
 	// SMTP rejection is isolated to send-code and must not make the process unready.
 	f.smtp.reject.Store(true)
-	f.call("POST", p.public+"/v1/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": "failed-mail@example.test"}, 503)
+	f.call("POST", p.baseURL+"/v1/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": "failed-mail@example.test"}, 503)
 	m := f.smtp.mail(t)
 	f.secrets = append(f.secrets, m.target, m.code)
-	f.call("POST", p.public+"/v1/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": "failed-mail@example.test"}, 429)
-	f.call("GET", p.internal+"/readyz", "", nil, 200)
+	f.call("POST", p.baseURL+"/v1/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": "failed-mail@example.test"}, 429)
+	f.call("GET", p.baseURL+"/readyz", "", nil, 200)
 	p.stop()
 	f.assertAuditPrivate()
 }
@@ -153,7 +154,7 @@ func (f *integrationFixture) command(extra map[string]string, args ...string) (s
 	ctx, cancel := context.WithTimeout(context.Background(), 18*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, f.binary, args...)
-	env := map[string]string{"ACCOUNTSVC_HTTP_ADDR": freeAddress(f.t), "ACCOUNTSVC_INTERNAL_ADDR": freeAddress(f.t)}
+	env := map[string]string{"ACCOUNTSVC_HTTP_ADDR": freeAddress(f.t)}
 	for k, v := range extra {
 		env[k] = v
 	}
@@ -238,7 +239,7 @@ func TestServiceProcessSIGTERM(t *testing.T) {
 			f.smtp.hold.Store(true)
 			requestDone := make(chan error, 1)
 			go func() {
-				req, _ := http.NewRequest("POST", p.public+"/v1/users:sendSignInCode", strings.NewReader(`{"channel":"EMAIL","target":"drain@example.test"}`))
+				req, _ := http.NewRequest("POST", p.baseURL+"/v1/users:sendSignInCode", strings.NewReader(`{"channel":"EMAIL","target":"drain@example.test"}`))
 				req.Header.Set("Content-Type", "application/json")
 				resp, err := f.client.Do(req)
 				if err == nil {

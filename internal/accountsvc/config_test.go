@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
@@ -85,7 +86,7 @@ func TestConfigProductionDefaultsAndMigrate(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if c.Mode != "production" || c.HTTPAddr != "127.0.0.1:8080" || c.InternalAddr != "127.0.0.1:8081" || c.StartupTimeout != time.Minute || c.ShutdownTimeout != 30*time.Second || c.SMTP.TLSMode != "implicit" || c.SMTP.Timeout != 10*time.Second || c.AdminEnabled {
+		if c.Mode != "production" || c.HTTPAddr != "127.0.0.1:8080" || c.StartupTimeout != time.Minute || c.ShutdownTimeout != 30*time.Second || c.SMTP.TLSMode != "implicit" || c.SMTP.Timeout != 10*time.Second || c.AdminEnabled {
 			t.Fatal("unsafe service defaults")
 		}
 		if c.Library.Schema != "auth" || c.Library.KeyPrefix != "auth:" || len(c.IntrospectionClients) != 1 {
@@ -94,7 +95,7 @@ func TestConfigProductionDefaultsAndMigrate(t *testing.T) {
 	})
 	t.Run("migrate ignores service-only config", func(t *testing.T) {
 		configEnvironment(t)
-		for _, key := range []string{"MODE", "SMTP_PORT", "ADMIN_ENABLED", "INTROSPECTION_CLIENTS", "HTTP_ADDR", "TLS_CERT_FILE", "SHUTDOWN_TIMEOUT"} {
+		for _, key := range []string{"MODE", "SMTP_PORT", "ADMIN_ENABLED", "INTROSPECTION_CLIENTS", "HTTP_ADDR", "INTERNAL_ADDR", "TLS_ENABLED", "TLS_CERT_FILE", "TLS_KEY_FILE", "SHUTDOWN_TIMEOUT"} {
 			t.Setenv("ACCOUNTSVC_"+key, "malformed-service-only")
 		}
 		if _, err := LoadConfig("migrate"); err != nil {
@@ -113,6 +114,96 @@ func TestConfigProductionDefaultsAndMigrate(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+func TestConfigTLSMode(t *testing.T) {
+	for _, mode := range []string{"production", "development"} {
+		for _, setting := range []string{"unset", "", "true", "false", "synthetic-secret-invalid"} {
+			for _, pair := range []string{"empty", "valid", "cert only", "key only", "invalid cert", "invalid key"} {
+				t.Run(mode+"/"+setting+"/"+pair, func(t *testing.T) {
+					serveEnvironment(t)
+					t.Setenv("ACCOUNTSVC_MODE", mode)
+					if setting == "unset" {
+						t.Setenv("ACCOUNTSVC_TLS_ENABLED", "")
+						if err := os.Unsetenv("ACCOUNTSVC_TLS_ENABLED"); err != nil {
+							t.Fatal(err)
+						}
+					} else {
+						t.Setenv("ACCOUNTSVC_TLS_ENABLED", setting)
+					}
+					cert, key := os.Getenv("ACCOUNTSVC_TLS_CERT_FILE"), os.Getenv("ACCOUNTSVC_TLS_KEY_FILE")
+					switch pair {
+					case "empty":
+						cert, key = "", ""
+					case "cert only":
+						key = ""
+					case "key only":
+						cert = ""
+					case "invalid cert", "invalid key":
+						invalid := filepath.Join(t.TempDir(), "invalid.pem")
+						if err := os.WriteFile(invalid, []byte("synthetic-secret-invalid-pem"), 0600); err != nil {
+							t.Fatal(err)
+						}
+						if pair == "invalid cert" {
+							cert = invalid
+						} else {
+							key = invalid
+						}
+					}
+					t.Setenv("ACCOUNTSVC_TLS_CERT_FILE", cert)
+					t.Setenv("ACCOUNTSVC_TLS_KEY_FILE", key)
+					wantTLS := setting == "true" || ((setting == "unset" || setting == "") && (mode == "production" || pair != "empty"))
+					wantErr := setting == "synthetic-secret-invalid" || (setting == "false" && pair != "empty") || (wantTLS && pair != "valid")
+					cfg, err := LoadConfig("serve")
+					if (err != nil) != wantErr {
+						t.Fatalf("error=%v want failure=%v", err, wantErr)
+					}
+					if err != nil {
+						if !strings.Contains(err.Error(), "ACCOUNTSVC_TLS_") || strings.Contains(err.Error(), "synthetic-secret") || strings.Contains(err.Error(), "invalid.pem") {
+							t.Fatal("TLS configuration error leaked input or omitted field")
+						}
+						return
+					}
+					if cfg.TLSEnabled != wantTLS || (cfg.tlsConfig != nil) != wantTLS {
+						t.Fatalf("effective TLS=%v want %v", cfg.tlsConfig != nil, wantTLS)
+					}
+					if wantTLS && (cfg.tlsConfig.MinVersion < tls.VersionTLS12 || len(cfg.tlsConfig.Certificates) != 1) {
+						t.Fatal("TLS version/certificate requirements lost")
+					}
+				})
+			}
+		}
+	}
+	for _, tc := range []struct{ key, value string }{{"SMTP_TLS_MODE", "none"}, {"SMTP_USERNAME", ""}, {"SMTP_PASSWORD", ""}, {"INTROSPECTION_CLIENTS", ""}, {"ADMIN_ISSUER", "http://synthetic-secret.example.test"}} {
+		t.Run("production HTTP retains "+tc.key, func(t *testing.T) {
+			serveEnvironment(t)
+			t.Setenv("ACCOUNTSVC_TLS_ENABLED", "false")
+			t.Setenv("ACCOUNTSVC_TLS_CERT_FILE", "")
+			t.Setenv("ACCOUNTSVC_TLS_KEY_FILE", "")
+			if tc.key == "ADMIN_ISSUER" {
+				t.Setenv("ACCOUNTSVC_ADMIN_ENABLED", "true")
+				t.Setenv("ACCOUNTSVC_ADMIN_AUDIENCE", "admin-api")
+			}
+			t.Setenv("ACCOUNTSVC_"+tc.key, tc.value)
+			_, err := LoadConfig("serve")
+			if err == nil || !strings.Contains(err.Error(), "ACCOUNTSVC_"+tc.key) || strings.Contains(err.Error(), "synthetic-secret") {
+				t.Fatalf("HTTP weakened %s requirement: %v", tc.key, err)
+			}
+		})
+	}
+}
+
+func TestConfigRejectsInternalAddress(t *testing.T) {
+	for _, addr := range []string{"127.0.0.1:8081", "0.0.0.0:9000", "synthetic-secret-invalid", "   "} {
+		t.Run(addr, func(t *testing.T) {
+			serveEnvironment(t)
+			t.Setenv("ACCOUNTSVC_INTERNAL_ADDR", addr)
+			_, err := LoadConfig("serve")
+			if err == nil || !strings.Contains(err.Error(), "ACCOUNTSVC_INTERNAL_ADDR") || !strings.Contains(err.Error(), "remove") || (strings.TrimSpace(addr) != "" && strings.Contains(err.Error(), addr)) {
+				t.Fatalf("old listener configuration not safely rejected: %v", err)
+			}
+		})
+	}
 }
 
 func TestConfigRejectsUnsafeValuesWithoutLeaks(t *testing.T) {

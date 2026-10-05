@@ -9,6 +9,6 @@ FROM scratch
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /out/accountsvc /accountsvc
 USER 65532:65532
-EXPOSE 8080 8081
+EXPOSE 8080
 ENTRYPOINT ["/accountsvc"]
 CMD ["serve"]

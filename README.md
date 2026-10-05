@@ -5,6 +5,8 @@
 
 accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可选服务实现，使用同一套库能力；选择库集成不需要部署或调用 accountsvc。服务入口是 `cmd/accountsvc`，包含 SMTP 邮件投递、消费者远程鉴权和默认关闭的外部管理员 JWT 验证，运行与配置见 [accountsvc 服务手册](docs/accountsvc.md)。`examples/embedded` 保留为库集成开发示例。
 
+accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect` 和探针；公网暴露、直连限制、TLS 终止与入口流量控制由部署方配置，统一规则见 [网关接入手册](docs/gateway-integration.md)。直接嵌入库的宿主也可沿用该契约。旧双监听部署与调用方需按[服务传输迁移说明](docs/compatibility.md#服务单监听与传输迁移)调整。
+
 ## 生命周期
 
 完整可编译宿主示例见 [examples/embedded/main.go](examples/embedded/main.go)，开发与验证步骤见 [docs/development.md](docs/development.md)。导入使用 `"github.com/bbxx111/accountkit"`，通过 `accountkit.Config`、`accountkit.Deps` 和 `accountkit.New` 装配。旧包名调用方见[包名迁移说明](docs/compatibility.md#包名迁移)。
@@ -222,7 +224,7 @@ r.Route("/v1", func(r chi.Router) {
 
 HMAC 还须等待旧验证码、目标冷却和当日目标额度的业务窗口结束，截止为 `max(T0 + 旧 CodeTTL, T0 + 旧 CodeCooldown, T0 之后的下一个 UTC 零点)`。配置曾变化时使用仍可能存活记录对应的最大旧期限，并留出部署时钟偏差余量。日额度键额外1小时仅用于垃圾回收，不延长业务窗口。数据库引用与这些 Redis 条件同时满足后，才从全部运行配置移除旧 HMAC 并重新部署；AES 退役按其数据库引用条件处理。`Migrate` 缺少仍被未删除身份引用的密钥时返回 `user.ErrUnknownKeyVersion`，但它不检查 Redis 状态，启动成功不证明 HMAC 可以退役。为仍需恢复的旧备份受控保留相应历史密钥，从运行配置移除不等于立即永久销毁。
 
-旧程序曾在不同 active 下留下多份同用途存活验证码时，无法可靠判断签发先后；新实现原子作废全部冲突码并返回原 `CODE_EXPIRED`，冷却和额度保留，用户按原限制重新发码。连续性仅适用于所有进程已升级、持有相同完整密钥集合且策略一致的正常轮换，不覆盖缺失密钥、丢失 Redis 状态或泄露密钥的紧急撤销。回退优先保留支持本能力的程序与完整密钥集合，仅切回 active 并重新计算退役窗口；切回旧程序不能承诺轮换后状态连续。实际验证与未验证项见[轮换验收记录](openspec/changes/harden-code-key-rotation/verification.md)。
+旧程序曾在不同 active 下留下多份同用途存活验证码时，无法可靠判断签发先后；新实现原子作废全部冲突码并返回原 `CODE_EXPIRED`，冷却和额度保留，用户按原限制重新发码。连续性仅适用于所有进程已升级、持有相同完整密钥集合且策略一致的正常轮换，不覆盖缺失密钥、丢失 Redis 状态或泄露密钥的紧急撤销。回退优先保留支持本能力的程序与完整密钥集合，仅切回 active 并重新计算退役窗口；切回旧程序不能承诺轮换后状态连续。实际验证与未验证项见[轮换验收记录](openspec/changes/archive/2026-10-04-harden-code-key-rotation/verification.md)。
 
 ## 测试
 

@@ -29,6 +29,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -435,23 +436,42 @@ func (f *integrationFixture) environment(extra map[string]string) []string {
 }
 
 type serviceProcess struct {
-	fixture          *integrationFixture
-	cmd              *exec.Cmd
-	output           safeBuffer
-	done             chan struct{}
-	err              error
-	public, internal string
-	stopped          bool
+	fixture *integrationFixture
+	cmd     *exec.Cmd
+	output  safeBuffer
+	done    chan struct{}
+	err     error
+	baseURL string
+	stopped bool
 }
 
 func (f *integrationFixture) start(extra map[string]string) *serviceProcess {
 	f.t.Helper()
-	public, internal := freeAddress(f.t), freeAddress(f.t)
-	env := map[string]string{"ACCOUNTSVC_HTTP_ADDR": public, "ACCOUNTSVC_INTERNAL_ADDR": internal}
+	addr := freeAddress(f.t)
+	env := map[string]string{"ACCOUNTSVC_HTTP_ADDR": addr}
 	for k, v := range extra {
 		env[k] = v
 	}
-	p := &serviceProcess{fixture: f, done: make(chan struct{}), public: "https://" + public, internal: "https://" + internal}
+	value := func(name string) string {
+		if v, ok := env[name]; ok {
+			return strings.TrimSpace(v)
+		}
+		return strings.TrimSpace(f.env[name])
+	}
+	mode := value("ACCOUNTSVC_MODE")
+	tlsEnabled := mode == "" || mode == "production" || value("ACCOUNTSVC_TLS_CERT_FILE") != "" || value("ACCOUNTSVC_TLS_KEY_FILE") != ""
+	if raw := value("ACCOUNTSVC_TLS_ENABLED"); raw != "" {
+		var err error
+		tlsEnabled, err = strconv.ParseBool(raw)
+		if err != nil {
+			f.t.Fatal("invalid fixture TLS_ENABLED")
+		}
+	}
+	scheme := "http://"
+	if tlsEnabled {
+		scheme = "https://"
+	}
+	p := &serviceProcess{fixture: f, done: make(chan struct{}), baseURL: scheme + value("ACCOUNTSVC_HTTP_ADDR")}
 	p.cmd = exec.Command(f.binary)
 	p.cmd.Env = f.environment(env)
 	p.cmd.Stdout = &p.output
@@ -475,7 +495,7 @@ func (f *integrationFixture) start(extra map[string]string) *serviceProcess {
 			f.t.Fatalf("service failed startup: %v %s", p.err, p.output.String())
 		default:
 		}
-		resp, err := f.client.Get(p.internal + "/readyz")
+		resp, err := f.client.Get(p.baseURL + "/readyz")
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == 200 {
@@ -556,19 +576,19 @@ func (f *integrationFixture) call(method, address, bearer string, body any, want
 }
 func (f *integrationFixture) login(p *serviceProcess, target string) map[string]any {
 	f.t.Helper()
-	f.call("POST", p.public+"/v1/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": target}, 200)
+	f.call("POST", p.baseURL+"/v1/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": target}, 200)
 	m := f.smtp.mail(f.t)
 	if m.target != target || !strings.Contains(m.body, "登录") {
 		f.t.Fatal("wrong SMTP recipient or purpose")
 	}
 	f.secrets = append(f.secrets, target, m.code)
-	out := f.call("POST", p.public+"/v1/users:signInWithCode", "", map[string]any{"email": map[string]string{"target": target, "code": m.code}}, 200)
+	out := f.call("POST", p.baseURL+"/v1/users:signInWithCode", "", map[string]any{"email": map[string]string{"target": target, "code": m.code}}, 200)
 	f.secrets = append(f.secrets, out["access_token"].(string), out["refresh_token"].(string))
 	return out
 }
 func (f *integrationFixture) introspect(p *serviceProcess, token string, active bool) {
 	f.t.Helper()
-	r, _ := http.NewRequest("POST", p.internal+"/internal/v1/introspect", strings.NewReader(url.Values{"token": {token}}.Encode()))
+	r, _ := http.NewRequest("POST", p.baseURL+"/v1/introspect", strings.NewReader(url.Values{"token": {token}}.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.SetBasicAuth("business", f.secrets[1])
 	resp, err := f.client.Do(r)

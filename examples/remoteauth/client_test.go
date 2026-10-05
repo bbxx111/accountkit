@@ -1,8 +1,10 @@
 package remoteauth_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,7 +21,7 @@ func clientFor(t *testing.T, h http.Handler) *remoteauth.Client {
 	t.Helper()
 	s := httptest.NewTLSServer(h)
 	t.Cleanup(s.Close)
-	c, err := remoteauth.NewClient(remoteauth.Config{Endpoint: s.URL + "/internal/v1/introspect", ClientID: "business", ClientSecret: "service-secret", HTTPClient: s.Client()})
+	c, err := remoteauth.NewClient(remoteauth.Config{Endpoint: s.URL + "/v1/introspect", ClientID: "business", ClientSecret: "service-secret", HTTPClient: s.Client()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +31,7 @@ func clientFor(t *testing.T, h http.Handler) *remoteauth.Client {
 func TestClientCredentialsBodyAndNoCache(t *testing.T) {
 	var calls atomic.Int32
 	c := clientFor(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || r.URL.RawQuery != "" || r.URL.Path != "/internal/v1/introspect" {
+		if r.Method != "POST" || r.URL.RawQuery != "" || r.URL.Path != "/v1/introspect" {
 			t.Errorf("unexpected request %s %s", r.Method, r.URL)
 		}
 		id, secret, ok := r.BasicAuth()
@@ -141,7 +143,7 @@ func (failedTransport) RoundTrip(*http.Request) (*http.Response, error) {
 }
 
 func TestNetworkFailureAndConfiguration(t *testing.T) {
-	c, err := remoteauth.NewClient(remoteauth.Config{Endpoint: "https://account.example/internal/v1/introspect", ClientID: "business", ClientSecret: "secret", HTTPClient: &http.Client{Transport: failedTransport{}}})
+	c, err := remoteauth.NewClient(remoteauth.Config{Endpoint: "https://account.example/v1/introspect", ClientID: "business", ClientSecret: "secret", HTTPClient: &http.Client{Transport: failedTransport{}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,23 +262,62 @@ func TestProtectedResourceFailureIsUnavailable(t *testing.T) {
 	}
 }
 
-func TestExplicitDevelopmentHTTPAndCallerCancellation(t *testing.T) {
+func TestExplicitHTTPAndCallerCancellation(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"active":false}`))
 	}))
 	defer s.Close()
+	if _, err := remoteauth.NewClient(remoteauth.Config{Endpoint: s.URL + "/v1/introspect", ClientID: "business", ClientSecret: "secret"}); err == nil {
+		t.Fatal("HTTP allowed without explicit caller configuration")
+	}
 	c, err := remoteauth.NewClient(remoteauth.Config{Endpoint: s.URL, ClientID: "business", ClientSecret: "secret", AllowHTTP: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	result, err := c.Introspect(context.Background(), "token")
 	if err != nil || result.Active {
-		t.Fatalf("development HTTP failed: %v", err)
+		t.Fatalf("explicit HTTP failed: %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, err = c.Introspect(ctx, "token"); !errors.Is(err, remoteauth.ErrUnavailable) {
 		t.Fatalf("canceled call misclassified: %v", err)
+	}
+}
+
+func TestDefaultHTTPSCertificateVerification(t *testing.T) {
+	var calls atomic.Int32
+	var serverLog bytes.Buffer
+	s := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"active":false}`))
+	}))
+	s.Config.ErrorLog = log.New(&serverLog, "", 0)
+	s.StartTLS()
+	defer func() {
+		s.Close()
+		for _, line := range strings.Split(serverLog.String(), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.Contains(line, "http: TLS handshake error") && strings.Contains(line, "remote error: tls: bad certificate") {
+				continue
+			}
+			t.Log(line)
+		}
+	}()
+	c, err := remoteauth.NewClient(remoteauth.Config{Endpoint: s.URL + "/v1/introspect", ClientID: "business", ClientSecret: "private-service-secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Introspect(context.Background(), "private-consumer-token"); !errors.Is(err, remoteauth.ErrUnavailable) || err.Error() != remoteauth.ErrUnavailable.Error() || calls.Load() != 0 {
+		t.Fatal("untrusted TLS certificate accepted or failure exposed credentials")
+	}
+	trusted, err := remoteauth.NewClient(remoteauth.Config{Endpoint: s.URL + "/v1/introspect", ClientID: "business", ClientSecret: "private-service-secret", HTTPClient: s.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, err := trusted.Introspect(context.Background(), "private-consumer-token"); err != nil || result.Active || calls.Load() != 1 {
+		t.Fatal("explicitly trusted HTTPS failed")
 	}
 }

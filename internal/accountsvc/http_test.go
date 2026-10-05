@@ -1,7 +1,9 @@
 package accountsvc
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"io"
 	"log/slog"
@@ -15,6 +17,8 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/bbxx111/accountkit"
 	"github.com/bbxx111/accountkit/audit"
+	"github.com/bbxx111/accountkit/internal/accountsvc/introspection"
+	"github.com/bbxx111/accountkit/user"
 	"github.com/bbxx111/accountkit/user/sender"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -27,12 +31,12 @@ func TestHTTPBoundaryAndHealth(t *testing.T) {
 	mark := func(status int) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(status) })
 	}
-	public, internal := serviceHandlers(cfg, mark(201), mark(202), mark(203), state)
+	public := serviceHandler(cfg, mark(201), mark(202), mark(203), state)
 	for _, tc := range []struct {
 		h            http.Handler
 		path, method string
 		want         int
-	}{{public, "/v1/test", "GET", 201}, {public, "/admin/v1/test", "GET", 202}, {public, "/internal/v1/introspect", "POST", 404}, {public, "/healthz", "GET", 404}, {public, "/readyz", "GET", 404}, {internal, "/v1/test", "GET", 404}, {internal, "/admin/v1/test", "GET", 404}, {internal, "/internal/v1/introspect", "POST", 203}, {internal, "/healthz", "GET", 200}, {internal, "/readyz", "GET", 503}, {internal, "/healthz", "POST", 405}} {
+	}{{public, "/v1/test", "GET", 201}, {public, "/admin/v1/test", "GET", 202}, {public, "/internal/v1/introspect", "POST", 404}, {public, "/v1/introspect", "POST", 203}, {public, "/v1/introspect", "GET", 203}, {public, "/healthz", "GET", 200}, {public, "/readyz", "GET", 503}, {public, "/healthz", "POST", 405}} {
 		rec := httptest.NewRecorder()
 		tc.h.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
 		if rec.Code != tc.want || rec.Header().Get("X-Request-Id") == "" {
@@ -44,20 +48,84 @@ func TestHTTPBoundaryAndHealth(t *testing.T) {
 	}
 	state.ready.Store(true)
 	rec := httptest.NewRecorder()
-	internal.ServeHTTP(rec, httptest.NewRequest("GET", "/readyz", nil))
+	public.ServeHTTP(rec, httptest.NewRequest("GET", "/readyz", nil))
 	if rec.Code != 200 || probes.Load() != 2 {
 		t.Fatal("ready dependencies not checked")
 	}
 	state.redis = func(context.Context) error { return errors.New("redis://secret@private-address") }
 	rec = httptest.NewRecorder()
-	internal.ServeHTTP(rec, httptest.NewRequest("GET", "/readyz", nil))
+	public.ServeHTTP(rec, httptest.NewRequest("GET", "/readyz", nil))
 	if rec.Code != 503 || strings.Contains(rec.Body.String(), "secret") || strings.Contains(rec.Body.String(), "private-address") {
 		t.Fatal("readiness leaked dependency error")
 	}
 	rec = httptest.NewRecorder()
-	internal.ServeHTTP(rec, httptest.NewRequest("GET", "/healthz", nil))
+	public.ServeHTTP(rec, httptest.NewRequest("GET", "/healthz", nil))
 	if rec.Code != 200 {
 		t.Fatal("dependency failure changed liveness")
+	}
+}
+
+func TestHTTPIntrospectionBoundary(t *testing.T) {
+	secret := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{8}, 32))
+	calls := 0
+	introspect, err := introspection.New(map[string][]string{"business": {secret}}, func(context.Context, string) (user.Principal, error) {
+		calls++
+		return user.Principal{}, user.ErrInvalidToken
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	consumer := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("consumer mount swallowed introspection")
+		w.WriteHeader(418)
+	})
+	public := serviceHandler(Config{}, consumer, http.NotFoundHandler(), introspect, &healthState{})
+	for _, tc := range []struct {
+		method, auth, contentType, body string
+		want                            int
+	}{
+		{"POST", "", "application/x-www-form-urlencoded", "token=access", 401},
+		{"GET", "", "application/json", "", 401},
+		{"POST", "Bearer consumer-token", "application/x-www-form-urlencoded", "token=access", 401},
+		{"POST", "Bearer administrator-token", "application/x-www-form-urlencoded", "token=access", 401},
+		{"POST", "wrong basic", "application/x-www-form-urlencoded", "token=access", 401},
+		{"GET", "basic", "application/x-www-form-urlencoded", "token=access", 405},
+		{"DELETE", "basic", "application/x-www-form-urlencoded", "token=access", 405},
+		{"POST", "basic", "application/json", "{}", 415},
+		{"POST", "basic", "application/x-www-form-urlencoded", "", 400},
+		{"POST", "basic", "application/x-www-form-urlencoded", "token=" + strings.Repeat("x", 65536), 413},
+		{"POST", "", "application/x-www-form-urlencoded", strings.Repeat("x", 65537), 401},
+		{"POST", "basic", "application/x-www-form-urlencoded", "token=access", 200},
+	} {
+		t.Run(tc.method+"/"+tc.auth+"/"+http.StatusText(tc.want), func(t *testing.T) {
+			before := calls
+			r := httptest.NewRequest(tc.method, "/v1/introspect", strings.NewReader(tc.body))
+			r.Header.Set("Content-Type", tc.contentType)
+			if tc.auth == "basic" {
+				r.SetBasicAuth("business", secret)
+			} else if tc.auth == "wrong basic" {
+				r.SetBasicAuth("business", "wrong")
+			} else if tc.auth != "" {
+				r.Header.Set("Authorization", tc.auth)
+			}
+			w := httptest.NewRecorder()
+			public.ServeHTTP(w, r)
+			if w.Code != tc.want || w.Header().Get("Cache-Control") != "no-store" || w.Header().Get("X-Request-Id") == "" {
+				t.Fatalf("status=%d headers=%v body=%s", w.Code, w.Header(), w.Body)
+			}
+			if tc.want == 401 && (w.Header().Get("WWW-Authenticate") != `Basic realm="accountsvc-introspection"` || !strings.Contains(w.Body.String(), `"error":"invalid_client"`)) {
+				t.Fatal("Basic challenge/error lost")
+			}
+			if tc.want != 200 && calls != before {
+				t.Fatal("token authentication ran before caller/format checks")
+			}
+			if tc.want == 405 && w.Header().Get("Allow") != "POST" {
+				t.Fatal("method error lost")
+			}
+			if tc.want == 200 && (calls != before+1 || strings.TrimSpace(w.Body.String()) != `{"active":false}`) {
+				t.Fatal("real introspection handler not reached")
+			}
+		})
 	}
 }
 
@@ -96,7 +164,7 @@ func TestConsumerDecoderRejectsOversizeBeforeCodeIssuance(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer auth.Close()
-	public, _ := serviceHandlers(cfg, auth.ConsumerHandler(), auth.AdminHandler(), http.NotFoundHandler(), &healthState{})
+	public := serviceHandler(cfg, auth.ConsumerHandler(), auth.AdminHandler(), http.NotFoundHandler(), &healthState{})
 	server := httptest.NewServer(public)
 	defer server.Close()
 	valid := `{"channel":"EMAIL","target":"oversize@example.org"}`
@@ -150,7 +218,7 @@ func TestReadinessHasSharedTwoSecondBudget(t *testing.T) {
 		return ctx.Err()
 	}, redis: func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() }}
 	state.ready.Store(true)
-	_, internal := serviceHandlers(Config{}, http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), state)
+	internal := serviceHandler(Config{}, http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), state)
 	start := time.Now()
 	rec := httptest.NewRecorder()
 	internal.ServeHTTP(rec, httptest.NewRequest("GET", "/readyz", nil))
@@ -175,7 +243,7 @@ func TestHTTPServerBudgetsAndBodyLimit(t *testing.T) {
 			w.WriteHeader(400)
 		}
 	})
-	public, _ := serviceHandlers(Config{}, reader, reader, http.NotFoundHandler(), &healthState{})
+	public := serviceHandler(Config{}, reader, reader, http.NotFoundHandler(), &healthState{})
 	rec := httptest.NewRecorder()
 	public.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/test", strings.NewReader(strings.Repeat("x", 65537))))
 	if rec.Code != 413 {

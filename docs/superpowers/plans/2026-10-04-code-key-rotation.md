@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、go-redis/v9、Lua、miniredis、PostgreSQL 17；不新增依赖。
 
-**Spec:** [proposal](../../../openspec/changes/harden-code-key-rotation/proposal.md)、[design](../../../openspec/changes/harden-code-key-rotation/design.md)、[spec](../../../openspec/changes/harden-code-key-rotation/specs/code-key-rotation/spec.md)、[tasks](../../../openspec/changes/harden-code-key-rotation/tasks.md)。
+**Spec:** [proposal](../../../openspec/changes/archive/2026-10-04-harden-code-key-rotation/proposal.md)、[design](../../../openspec/changes/archive/2026-10-04-harden-code-key-rotation/design.md)、[spec](../../../openspec/changes/archive/2026-10-04-harden-code-key-rotation/specs/code-key-rotation/spec.md)、[tasks](../../../openspec/changes/archive/2026-10-04-harden-code-key-rotation/tasks.md)。
 
 ## Global Constraints
 
@@ -88,7 +88,7 @@
 
 **Files:**
 - Modify: `README.md`, `docs/compatibility.md`, `docs/accountsvc.md`, `docs/development.md`（按实际接入变化）
-- Create: `openspec/changes/harden-code-key-rotation/verification.md`
+- Create: `openspec/changes/archive/2026-10-04-harden-code-key-rotation/verification.md`
 - Modify after verified: change `tasks.md`、本计划的任务状态。
 
 **Interfaces:**

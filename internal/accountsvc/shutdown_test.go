@@ -24,6 +24,12 @@ func (e *events) snapshot() []string {
 }
 
 func TestShutdownDrainsBeforeLibraryAndPool(t *testing.T) {
+	for _, path := range []string{"/v1/test", "/admin/v1/test", "/v1/introspect"} {
+		t.Run(path, func(t *testing.T) { testShutdownDrainsServiceHandler(t, path) })
+	}
+}
+
+func testShutdownDrainsServiceHandler(t *testing.T, path string) {
 	tracker := newRequestTracker()
 	state := &healthState{}
 	state.ready.Store(true)
@@ -32,19 +38,20 @@ func TestShutdownDrainsBeforeLibraryAndPool(t *testing.T) {
 	defer cancel()
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	srv := httptest.NewUnstartedServer(tracker.wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	blocking := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		close(entered)
 		<-release
 		trace.add("last request audit")
 		w.WriteHeader(200)
-	})))
+	})
+	srv := httptest.NewUnstartedServer(tracker.wrap(serviceHandler(Config{}, blocking, blocking, blocking, state)))
 	srv.Config.BaseContext = newHTTPServer("", nil, requestCtx).BaseContext
 	srv.Start()
 	defer srv.Close()
 	doneRequest := make(chan struct{})
 	go func() {
 		defer close(doneRequest)
-		resp, err := http.Get(srv.URL)
+		resp, err := http.Get(srv.URL + path)
 		if err == nil {
 			_, _ = io.Copy(io.Discard, resp.Body)
 			_ = resp.Body.Close()

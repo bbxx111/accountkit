@@ -22,7 +22,9 @@ import (
 var ErrUnavailable = errors.New("remote authentication unavailable")
 
 // Config keeps service credentials separate from the consumer token. AllowHTTP
-// is only for explicit local development; production must use HTTPS.
+// explicitly permits local development or an application connection protected
+// by a controlled TLS proxy/service mesh. Deployment owns that transport boundary;
+// HTTPS endpoints still require certificate verification.
 type Config struct {
 	Endpoint, ClientID, ClientSecret string
 	HTTPClient                       *http.Client

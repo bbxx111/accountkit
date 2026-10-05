@@ -1,8 +1,12 @@
 package accountsvc
 
 import (
+	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -12,6 +16,113 @@ import (
 	"testing"
 	"time"
 )
+
+func TestRuntimeSingleListener(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("TLS_%v", enabled), func(t *testing.T) {
+			serveEnvironment(t)
+			if !enabled {
+				t.Setenv("ACCOUNTSVC_TLS_ENABLED", "false")
+				t.Setenv("ACCOUNTSVC_TLS_CERT_FILE", "")
+				t.Setenv("ACCOUNTSVC_TLS_KEY_FILE", "")
+			}
+			cfg, err := LoadConfig("serve")
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg.HTTPAddr = "127.0.0.1:0"
+			ctx, stop := context.WithCancel(context.Background())
+			defer stop()
+			var log bytes.Buffer
+			binds := 0
+			bound := make(chan net.Listener, 2)
+			mark := func(status int) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(status) })
+			}
+			factory := runtimeFactory{
+				open: func(context.Context, Config, *slog.Logger) (*dependencies, error) {
+					return &dependencies{databasePing: func(context.Context) error { return nil }, redisPing: func(context.Context) error { return nil }}, nil
+				},
+				newApp: func(Config, *dependencies, *slog.Logger) (*application, error) {
+					return &application{migrate: func(context.Context) error { return nil }, start: func(context.Context) {}, close: func() {}, consumer: mark(201), admin: mark(202), introspect: mark(203)}, nil
+				},
+				listen: func(ctx context.Context, addr string) (net.Listener, error) {
+					binds++
+					ln, err := net.Listen("tcp", addr)
+					if err == nil {
+						bound <- ln
+					}
+					return ln, err
+				},
+			}
+			result := make(chan error, 1)
+			go func() { result <- runConfig(ctx, cfg, slog.New(slog.NewTextHandler(&log, nil)), factory) }()
+			var ln net.Listener
+			select {
+			case ln = <-bound:
+			case err := <-result:
+				t.Fatalf("startup failed: %v", err)
+			case <-time.After(2 * time.Second):
+				t.Fatal("listener not bound")
+			}
+			_, port, _ := net.SplitHostPort(ln.Addr().String())
+			baseURL := "http://localhost:" + port
+			transport := &http.Transport{}
+			defer transport.CloseIdleConnections()
+			if enabled {
+				baseURL = "https://localhost:" + port
+				roots := x509.NewCertPool()
+				cert, err := x509.ParseCertificate(cfg.tlsConfig.Certificates[0].Certificate[0])
+				if err != nil {
+					t.Fatal(err)
+				}
+				roots.AddCert(cert)
+				transport.TLSClientConfig = &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}
+			}
+			client := &http.Client{Transport: transport, Timeout: time.Second}
+			deadline := time.Now().Add(2 * time.Second)
+			for {
+				resp, err := client.Get(baseURL + "/readyz")
+				if err == nil {
+					resp.Body.Close()
+					if resp.StatusCode == 200 {
+						break
+					}
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("same-address readiness failed: %v", err)
+				}
+				time.Sleep(time.Millisecond)
+			}
+			for _, tc := range []struct {
+				path   string
+				status int
+			}{{"/v1/test", 201}, {"/admin/v1/test", 202}, {"/v1/introspect", 203}, {"/healthz", 200}, {"/readyz", 200}, {"/internal/v1/introspect", 404}} {
+				resp, err := client.Get(baseURL + tc.path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				resp.Body.Close()
+				if resp.StatusCode != tc.status {
+					t.Fatalf("%s status=%d want=%d", tc.path, resp.StatusCode, tc.status)
+				}
+			}
+			stop()
+			if err := <-result; err != nil {
+				t.Fatal(err)
+			}
+			if binds != 1 {
+				t.Fatalf("listener bound %d times, want 1", binds)
+			}
+			if !enabled && !strings.Contains(log.String(), "HTTP TLS is disabled in this process") {
+				t.Fatal("effective HTTP transport log missing")
+			}
+			if enabled && !strings.Contains(log.String(), "HTTPS listener started") {
+				t.Fatal("effective HTTPS transport log missing")
+			}
+		})
+	}
+}
 
 func TestCommandParsing(t *testing.T) {
 	for _, tc := range []struct {
@@ -30,7 +141,7 @@ func TestCommandParsing(t *testing.T) {
 }
 
 func TestRuntimeStartupOrderAndFailureCleanup(t *testing.T) {
-	for _, failure := range []string{"", "open", "new", "migrate", "admin", "listen2"} {
+	for _, failure := range []string{"", "open", "new", "migrate", "admin", "listen", "after listen", "listener stopped"} {
 		t.Run(failure, func(t *testing.T) {
 			ctx, stop := context.WithCancel(context.Background())
 			defer stop()
@@ -44,14 +155,22 @@ func TestRuntimeStartupOrderAndFailureCleanup(t *testing.T) {
 				return nil
 			}
 			deps := &dependencies{databasePing: func(context.Context) error { return nil }, redisPing: func(context.Context) error { return nil }, closeRedis: func() error { trace.add("redis close"); return nil }, closePool: func() { trace.add("pool close") }}
-			app := &application{migrate: func(context.Context) error { return fail("migrate") }, initAdmin: func(context.Context) error { return fail("admin") }, start: func(c context.Context) { serviceCtx = c; trace.add("start"); stop() }, close: func() {
+			var first net.Listener
+			app := &application{migrate: func(context.Context) error { return fail("migrate") }, initAdmin: func(context.Context) error { return fail("admin") }, start: func(c context.Context) {
+				serviceCtx = c
+				trace.add("start")
+				if failure == "listener stopped" {
+					_ = first.Close()
+				} else {
+					stop()
+				}
+			}, close: func() {
 				if serviceCtx != nil && serviceCtx.Err() != nil {
 					t.Error("signal prematurely cancelled library background")
 				}
 				trace.add("library close")
 			}, consumer: http.NotFoundHandler(), admin: http.NotFoundHandler(), introspect: http.NotFoundHandler()}
 			listens := 0
-			var first net.Listener
 			factory := runtimeFactory{
 				open: func(context.Context, Config, *slog.Logger) (*dependencies, error) {
 					if err := fail("open"); err != nil {
@@ -67,10 +186,7 @@ func TestRuntimeStartupOrderAndFailureCleanup(t *testing.T) {
 				},
 				listen: func(ctx context.Context, addr string) (net.Listener, error) {
 					listens++
-					stage := "listen1"
-					if listens == 2 {
-						stage = "listen2"
-					}
+					stage := "listen"
 					if err := fail(stage); err != nil {
 						return nil, err
 					}
@@ -78,10 +194,13 @@ func TestRuntimeStartupOrderAndFailureCleanup(t *testing.T) {
 					if listens == 1 {
 						first = ln
 					}
+					if failure == "after listen" {
+						stop()
+					}
 					return ln, err
 				},
 			}
-			cfg := Config{command: "serve", AdminEnabled: true, StartupTimeout: time.Second, ShutdownTimeout: 16 * time.Second, HTTPAddr: "127.0.0.1:0", InternalAddr: "127.0.0.1:0"}
+			cfg := Config{command: "serve", AdminEnabled: true, StartupTimeout: time.Second, ShutdownTimeout: 16 * time.Second, HTTPAddr: "127.0.0.1:0"}
 			err := runConfig(ctx, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), factory)
 			if (err != nil) != (failure != "") {
 				t.Fatalf("failure %s returned wrong status", failure)
@@ -97,8 +216,8 @@ func TestRuntimeStartupOrderAndFailureCleanup(t *testing.T) {
 					if failure != "migrate" {
 						want = append(want, "admin")
 						if failure != "admin" {
-							want = append(want, "listen1", "listen2")
-							if failure != "listen2" {
+							want = append(want, "listen")
+							if failure != "listen" && failure != "after listen" {
 								want = append(want, "start")
 							}
 						}

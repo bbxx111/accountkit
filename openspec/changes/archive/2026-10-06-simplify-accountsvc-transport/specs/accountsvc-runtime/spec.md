@@ -1,22 +1,4 @@
-# accountsvc-runtime Specification
-
-## Purpose
-
-为 accountkit 提供可选、可直接启动和部署的官方宿主，定义服务配置、网络边界、启动迁移、健康状态、关闭和运维验收，使独立服务与直接嵌入库两种方式共享认证能力并保持各自清晰的资源责任。
-
-## Requirements
-
-### Requirement: 可选服务与库独立消费
-
-项目 SHALL 提供可独立构建的 accountsvc 可执行程序；直接集成 accountkit 的宿主 SHALL 无需运行该服务。两种方式 SHALL 保持现有消费者协议、身份数据、令牌格式和库生命周期契约兼容。
-
-#### Scenario: 独立使用库
-- **WHEN** 外部 Go 宿主只依赖 accountkit 并自行注入依赖
-- **THEN** 在 GOWORK=off 下能够构建和运行，不要求 accountsvc 配置或网络连接
-
-#### Scenario: 服务消费既有认证能力
-- **WHEN** accountsvc 挂载消费者和管理面
-- **THEN** 分别使用 `/v1` 和 `/admin/v1`，请求响应、刷新宽限、角色检查及领域规则沿用库契约
+## MODIFIED Requirements
 
 ### Requirement: 配置校验与安全启动
 
@@ -41,18 +23,6 @@
 #### Scenario: 原开发默认与 migrate 保持兼容
 - **WHEN** development 未设置开关且未配证书，或运行不读取服务专用设置的 migrate
 - **THEN** 前者仍可使用 HTTP；后者不要求或解析监听地址、TLS 开关、证书、SMTP 或内省客户端配置
-
-### Requirement: 有界迁移与资源回收
-
-服务 SHALL 提供 serve 和 migrate 命令，无参数等同 serve；serve SHALL 在监听前执行有超时的幂等迁移、依赖连通性及密钥版本检查。migrate SHALL 不监听、不启动维护任务且不要求邮件或管理员配置。失败 SHALL 阻止服务就绪并回收已创建资源，不自动 Force、回滚清库或清除 dirty。
-
-#### Scenario: dirty 或未知密钥版本
-- **WHEN** 迁移遇到 dirty，或存储引用未配置的密钥版本
-- **THEN** 服务非零退出且保留可诊断状态，不接受认证请求
-
-#### Scenario: 多副本及重复启动
-- **WHEN** 多个副本首次启动或重复执行 migrate
-- **THEN** 沿用既有迁移锁和维护互斥，迁移无重复应用，超时/取消后释放占用资源
 
 ### Requirement: HTTP 边界与可信请求元信息
 
@@ -93,15 +63,3 @@ serve SHALL 仅使用 `ACCOUNTSVC_HTTP_ADDR` 创建一个监听器，默认绑�
 #### Scenario: 在途请求关闭
 - **WHEN** 进程收到终止信号且存在正在执行的请求
 - **THEN** 不再接受新业务请求，在预算内等待旧请求完成后关闭审计和连接，不因先取消后台上下文而提前丢弃在途请求审计
-
-### Requirement: 匿名化责任与可重复验收
-
-服务 SHALL 只承诺自身认证数据匿名化，文档 SHALL 明示业务表/跨库清理责任及不可与依赖业务回调的宿主混跑维护任务。交付 SHALL 包含二进制/容器运行方式、开发依赖环境和严格服务集成入口，缺少必需依赖 SHALL 验收失败而非跳过后报成功。
-
-#### Scenario: 含业务数据的接入方
-- **WHEN** 使用方有额外 user_id 关联表
-- **THEN** 接入说明要求其选择嵌入式同库回调或独立业务清理方案，不把 accountsvc 启动成功当作业务匿名化验收
-
-#### Scenario: 完整服务验收
-- **WHEN** 执行服务集成验证
-- **THEN** 使用真实 PostgreSQL/Redis 和隔离邮件接收器验证邮件登录、刷新、内省、注销以及实际进程退出；缺依赖即失败

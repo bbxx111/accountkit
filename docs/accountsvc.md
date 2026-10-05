@@ -34,7 +34,9 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.yaml down
 ```
 
-默认服务地址为 `http://127.0.0.1:18080`，内部面为 `http://127.0.0.1:18081`，邮件捕获界面为 `http://127.0.0.1:18025`。数据库和 Redis 不映射宿主端口。Compose 明确使用 development、隔离邮件捕获及回环端口，只用于本地开发；`down` 保留开发数据库 volume，清理数据需由使用者明确选择。
+默认统一服务地址为 `http://127.0.0.1:18080`，邮件捕获界面为 `http://127.0.0.1:18025`。`ACCOUNTSVC_PUBLIC_PORT` 保留为统一端口映射变量；数据库和 Redis 不映射宿主端口。Compose 明确使用 development、`TLS_ENABLED=false`、隔离邮件捕获及回环端口，只用于本地开发。这个示例显式选择 HTTP，服务未设置开关时的默认行为见下表；模板不提供证书挂载，使用 true 时需另行装配证书。`down` 保留开发数据库 volume，清理数据需由使用者明确选择。
+
+同一地址检查探针：`curl -f http://127.0.0.1:18080/healthz` 和 `curl -f http://127.0.0.1:18080/readyz`。启用服务 TLS 时，两者改用同址 HTTPS 并校验证书。探针访问范围见[网关接入手册](gateway-integration.md)。
 
 ## 配置
 
@@ -47,8 +49,10 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 | `MODE` | production；开发显式 development |
 | `DATABASE_URL` | 必填 PostgreSQL DSN |
 | `REDIS_URL` | 必填 Redis URI，支持认证、数据库编号及 rediss |
-| `HTTP_ADDR` / `INTERNAL_ADDR` | 127.0.0.1:8080 / 127.0.0.1:8081 |
-| `TLS_CERT_FILE` / `TLS_KEY_FILE` | 生产必填；两个监听器共用证书 |
+| `HTTP_ADDR` | 单一监听地址；127.0.0.1:8080 |
+| `INTERNAL_ADDR` | 已移除；serve 读取到任意非空值即报错，必须删除旧注入 |
+| `TLS_ENABLED` | 未设置/空沿用原模式默认；true 强制 HTTPS；false 显式 HTTP |
+| `TLS_CERT_FILE` / `TLS_KEY_FILE` | 有效 TLS 模式启用时要求完整有效证书对；false 与任一证书项冲突 |
 | `TRUSTED_PROXY_CIDRS` | 空；逗号分隔可信代理网段 |
 | `STARTUP_TIMEOUT` / `SHUTDOWN_TIMEOUT` | 60s / 30s；关闭预算需给库收尾预留15秒 |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_FROM` | serve 必填；一个发件地址 |
@@ -68,7 +72,18 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 
 调用内省时 HTTP Basic 的 password 使用同一 base64 文本。轮换时先同时配置旧、新秘密并重启，再更新调用方，最后移除旧秘密重启。服务不发放消费者签名密钥给业务服务。
 
-生产要求服务端 HTTPS 和经过证书验证的 SMTP TLS；反向代理到服务也使用 TLS。不要以 development 绕过生产加密要求。启用代理信任前核对实际网络路径，服务默认忽略不可信直接对端的转发头。
+`TLS_ENABLED` 的输入与有效协议如下，非法布尔值拒绝启动，不自动降级：
+
+| 输入 | mode | HTTP 证书项 | 有效行为 |
+|---|---|---|---|
+| 未设置或空 | production | 任意 | 要求完整有效证书对，使用 HTTPS |
+| 未设置或空 | development | 均为空 | HTTP |
+| 未设置或空 | development | 任一非空 | 要求完整有效证书对，使用 HTTPS |
+| true | 任一合法模式 | 任意 | 要求完整有效证书对，使用 HTTPS |
+| false | 任一合法模式 | 均为空 | HTTP；日志明确本进程未启用 HTTP TLS |
+| false | 任一合法模式 | 任一非空 | 配置冲突，拒绝启动 |
+
+启用服务 TLS 时最低 TLS1.2。显式 false 可供受控外部 TLS 终止使用，但开关本身不证明网关或网格提供了加密。生产 SMTP 仍要求认证与经过证书验证的 TLS，外部 OIDC 仍使用 HTTPS；PostgreSQL/Redis 的 TLS 分别由 DSN/URI 控制。`migrate` 不读取监听地址、TLS 开关/证书、SMTP、内省或管理员设置，因此这些服务设置即使无效也不影响它。传输部署方式、可信代理与验收职责统一见[网关接入手册](gateway-integration.md)。
 
 ## 身份密钥与验证码轮换
 
@@ -76,18 +91,18 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 
 满足此前提时，不同 active 进程和重启后的服务可消费旧码，共用目标冷却及累计 UTC 日额度；IP 额度原本独立于 HMAC。旧码不会延长寿命或重置错误次数，历史多份冲突码返回原 `CODE_EXPIRED` 并作废，重新发码仍受原冷却和额度约束。
 
-服务继续周期性回填数据库，默认每5分钟运行；混合 active 期间回填方向仍可能变化。最后一个旧 active 进程及其在途请求、维护结束后记录 T0，同时满足 README 中未删除身份旧摘要引用归零及 Redis 业务窗口条件，才移除旧 HMAC 并重启。AES 单独按旧密文引用退役，不要求与 HMAC 版本编号一致；启动期密钥检查不代替 Redis 退役检查，旧备份恢复所需历史密钥须受控保留。本地实际服务进程与 SMTP fixture 验证见[轮换验收记录](../openspec/changes/harden-code-key-rotation/verification.md)。
+服务继续周期性回填数据库，默认每5分钟运行；混合 active 期间回填方向仍可能变化。最后一个旧 active 进程及其在途请求、维护结束后记录 T0，同时满足 README 中未删除身份旧摘要引用归零及 Redis 业务窗口条件，才移除旧 HMAC 并重启。AES 单独按旧密文引用退役，不要求与 HMAC 版本编号一致；启动期密钥检查不代替 Redis 退役检查，旧备份恢复所需历史密钥须受控保留。本地实际服务进程与 SMTP fixture 验证见[轮换验收记录](../openspec/changes/archive/2026-10-04-harden-code-key-rotation/verification.md)。
 
 ## HTTP 面
 
-| 监听器 | 路径 | 身份 |
+| 监听地址 | 路径 | 身份 |
 |---|---|---|
-| 公开 | /v1 | 原消费者登录、身份、会话与生命周期接口 |
-| 公开 | /admin/v1 | 独立外部管理员 JWT，关闭时503 |
-| 内部 | POST /internal/v1/introspect | 独立服务调用 Basic 凭据 |
-| 内部 | GET /healthz、GET /readyz | 探针；通过网络策略限制内部端口 |
+| HTTP_ADDR | /v1 | 原消费者登录、身份、会话与生命周期接口 |
+| HTTP_ADDR | /admin/v1 | 独立外部管理员 JWT，关闭时503 |
+| HTTP_ADDR | POST /v1/introspect | 独立服务调用 Basic 凭据 |
+| HTTP_ADDR | GET /healthz、GET /readyz | 无认证探针；访问范围由部署策略限制 |
 
-公开监听器不提供内部路径。生产只向所需网络开放端口，不将内部监听器直接映射为公共入口。服务无管理前端，不提供 Cookie 登录或默认宽松 CORS。
+服务只绑定一个监听器，路径不构成网络隔离。公网明确允许消费者路由、分别设置管理员策略并阻断内省和探针；不得直接公开全部 `/v1/*`，后端端口也须限制直连来源。具体接入规则见[网关接入手册](gateway-integration.md)。旧 `/internal/v1/introspect` 返回404，无别名或重定向；旧配置、端口、调用方与整体回退见[兼容迁移说明](compatibility.md#服务单监听与传输迁移)。服务无管理前端，不提供 Cookie 登录或默认宽松 CORS。
 
 healthz 只表示进程存活。readyz 要求启动完成、未停机且 PostgreSQL/Redis 在两秒内可用；SMTP 或运行期 OIDC 故障不影响整个服务就绪，但对应功能会失败。请求/响应携带 X-Request-Id 用于关联；不要记录 Authorization 或请求体中的凭据。
 
@@ -105,13 +120,15 @@ healthz 只表示进程存活。readyz 要求启动完成、未停机且 Postgre
 
 ## 业务服务远程鉴权
 
-以 HTTPS 向内省端点发送表单 `token=<消费者access_token>`，HTTP Basic 使用独立客户端凭据。成功时返回最小主体上下文：
+向统一地址的 `POST /v1/introspect` 发送表单 `token=<消费者access_token>`，HTTP Basic 使用独立客户端凭据。生产调用链必须提供经过证书校验的 TLS 保护，外部 TLS 终止的边界见[网关接入手册](gateway-integration.md)。成功时返回最小主体上下文：
 
 ```json
 {"active":true,"sub":"u_...","scope":"user","sid":"s_...","auth_time":1791000000}
 ```
 
 无效、过期、确认吊销、其他实例或 refresh token 返回200 `{"active":false}`。无效调用凭据是401；请求格式错误是400；请求体超限是413；错误内容类型是415。内省响应禁止缓存；接入示例见 [examples/remoteauth](../examples/remoteauth)。
+
+示例客户端默认要求 HTTPS 并校验证书。只有调用方明确设置 `AllowHTTP=true` 才接受 HTTP URL，适用于本地开发或部署方保障传输的受控代理/网格应用段；客户端不根据服务开关、转发头或重定向自动降级。`TLS_ENABLED=false` 不取消 Basic 认证，也不自动设置调用方的 `AllowHTTP`。
 
 每次受保护业务请求查询内省，然后由业务服务校验 scope、必要的近期认证及资源所属。`active:true` 只表示认证通过，不授予全部业务权限；`user:bind`、`user:undelete` 不能访问普通业务。
 
@@ -133,8 +150,8 @@ SMTP 认证使用 AUTH PLAIN，并在生产模式要求证书验证和加密；�
 
 accountsvc 只匿名化自己拥有的认证数据，不知道使用方的业务表。额外 user_id 关联数据需选择嵌入式同库回调，或独立制定业务清理方案。切换部署前，不得让 accountsvc 与依赖业务匿名化回调的宿主同时运行同一实例的维护任务，否则服务可能先取得锁并跳过业务清理责任。
 
-SIGINT/SIGTERM 触发撤销就绪、HTTP排空、维护停止/审计刷新、连接关闭。进程管理器的终止宽限应大于 SHUTDOWN_TIMEOUT；超时非零退出，不能据此声称全部审计已落库。回退只切换二进制/流量，不调用数据库 Down 或 UnsafeReset。
+SIGINT/SIGTERM 触发撤销就绪、统一监听器 HTTP 排空、维护停止/审计刷新、连接关闭。进程管理器的终止宽限应大于 SHUTDOWN_TIMEOUT；超时非零退出，不能据此声称全部审计已落库。回退须成套恢复二进制、监听/证书配置、调用方和网关策略，步骤见[兼容迁移说明](compatibility.md#服务单监听与传输迁移)；不调用数据库 Down 或 UnsafeReset。
 
 ## 验证边界
 
-现有库完整门禁仍使用 `scripts/verify.sh`；服务门禁使用 `scripts/verify-accountsvc.sh`，要求一次性 PostgreSQL 和 Redis，内部启动隔离 SMTP/HTTPS OIDC fixtures，缺依赖时失败。本地执行记录见 [验收记录](../openspec/changes/archive/2026-10-03-add-accountsvc/verification.md)。外部 SMTP 实际送达、实际 OIDC 提供方和生产网络配置属于部署验收，测试 fixture 通过不代替这些联调。
+现有库完整门禁仍使用 `scripts/verify.sh`；服务门禁使用 `scripts/verify-accountsvc.sh`，要求一次性 PostgreSQL 和 Redis，内部启动隔离 SMTP/HTTPS OIDC fixtures，缺依赖时失败。首次服务交付的历史证据见[初始验收记录](../openspec/changes/archive/2026-10-03-add-accountsvc/verification.md)，本次单监听器、TLS 模式及本地代理结果见[传输变更验收记录](../openspec/changes/archive/2026-10-06-simplify-accountsvc-transport/verification.md)。外部 SMTP 实际送达、实际 OIDC 提供方、真实网关/网格和产品环境均属于待执行的部署验收，本地 fixture 通过不代替这些联调。

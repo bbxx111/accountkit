@@ -24,6 +24,25 @@ accountsvc 是基于本库的可选官方服务；直接嵌入 accountkit 的宿
 
 消费者内省沿用当前吊销查询 fail-open；管理员适配位于服务内部，不给消费者增加管理员身份。无数据库迁移、默认库配置变化或令牌格式变化。独立服务不执行宿主业务匿名化回调，不能与依赖此回调的宿主混跑同一实例的维护任务。
 
+## 服务单监听与传输迁移
+
+本次 accountsvc 部署接口为破坏性直接迁移：消费者、管理员、内省与探针使用一个监听地址，独立认证链保持。根库 Config/Deps、嵌入式生命周期、SQL、数据库结构、令牌和业务额度契约不变，无数据迁移或重新登录要求。服务通用入口限流和网络隔离由部署方配置，规则见[网关接入手册](gateway-integration.md)。
+
+| 旧配置/调用 | 新配置/调用 |
+|---|---|
+| `ACCOUNTSVC_HTTP_ADDR` 与 `ACCOUNTSVC_INTERNAL_ADDR` 双监听 | 仅 `ACCOUNTSVC_HTTP_ADDR`，默认 `127.0.0.1:8080`；删除所有 INTERNAL_ADDR 注入，任意非空旧值使 serve 报错 |
+| Docker 暴露8080/8081，Compose `ACCOUNTSVC_PUBLIC_PORT=18080` / `ACCOUNTSVC_INTERNAL_PORT=18081` | Docker仅8080，Compose保留 `ACCOUNTSVC_PUBLIC_PORT=18080` 为统一映射；删除旧内部端口映射和 `ACCOUNTSVC_INTERNAL_PORT` 模板项 |
+| `POST /internal/v1/introspect` | 统一地址的 `POST /v1/introspect`；旧路径404，无别名、重定向或客户端自动回退 |
+| 内部监听上的 `/healthz`、`/readyz` | HTTP_ADDR 同址探针，协议随有效 TLS 模式改变；同步编排探针和网关摘流 |
+| production 强制服务 HTTPS | 未设/空 TLS_ENABLED 仍沿用旧默认；true 强制完整有效证书；false 显式 HTTP 且与任一 HTTP 证书项冲突 |
+| 内省调用方只使用旧内部 HTTPS 地址 | 更新端点地址；HTTPS校验证书，受控 HTTP 应用段必须由调用方显式设置 AllowHTTP=true |
+
+部署前保存旧二进制、服务环境注入、证书、调用方 URL/AllowHTTP、探针和网关配置，作为成套回退材料。先清点全部内省调用与探针，再准备明确公网路由允许范围、阻断内省和探针、限制后端直连。不能因新内省在 `/v1` 下而扩大公网 `/v1/*` 规则。
+
+切换时删除旧监听配置和端口映射，更新调用方/探针至统一地址。保留默认 production HTTPS 时继续提供有效证书；选择受控外部 TLS 终止时，先验收传输保护和网络边界，再显式 false、移除 HTTP 证书项并同步调用方与探针协议。配置均重启生效。`migrate` 仍忽略服务专用监听/TLS/SMTP/内省/管理员设置；HTTP TLS 开关不改变出站 SMTP、OIDC、PostgreSQL或Redis策略。
+
+回退同时恢复旧二进制、INTERNAL_ADDR/内部端口、旧内省路径和双监听探针、调用方传输选择及网关策略。从 production false 回退旧版本必须恢复服务端 TLS 证书；只回退二进制或单改 URL 会造成配置拒绝或调用失败。回退不执行 Down、UnsafeReset 或清空 Redis。真实网关、网格、服务商和产品环境验证继续延期，本地证据见[传输验收记录](../openspec/changes/archive/2026-10-06-simplify-accountsvc-transport/verification.md)；历史归档工件保留原架构和原验收事实。
+
 ## 同类身份换绑扩展
 
 新增 `user.Service.ReplaceIdentity` 和消费者 `:replace` 自定义操作。已有绑定/解绑签名、数量限制与最后身份保护保持；新操作以软删除旧身份、新建同类身份保留账号连续性，无数据库结构迁移。
@@ -46,7 +65,7 @@ accountsvc 是基于本库的可选官方服务；直接嵌入 accountkit 的宿
 
 库与 accountsvc 共用此能力，无公共接口、配置字段或默认值、HTTP 协议、Redis 键/hash 格式、SQL、数据库结构和依赖变化。用途/渠道/实例隔离、验证码 fail-closed、投递失败不退额、JWT/refresh/access 吊销及异步审计契约保持；周期性数据库回填和默认间隔不变，混合 active 期间回填方向仍可能变化。
 
-应先升级所有程序、分发完整相同密钥集合并保持策略一致，再重启切换 active。旧 HMAC 退役同时检查未删除身份的旧摘要引用及验证码、冷却、UTC 日界线；AES 的旧密文引用独立检查。回退旧程序可能重新引入状态不可达和额度分裂，完整条件见 [README](../README.md#密钥轮换)。本次行为测试、真实依赖及验收阶段见[轮换验收记录](../openspec/changes/harden-code-key-rotation/verification.md)。
+应先升级所有程序、分发完整相同密钥集合并保持策略一致，再重启切换 active。旧 HMAC 退役同时检查未删除身份的旧摘要引用及验证码、冷却、UTC 日界线；AES 的旧密文引用独立检查。回退旧程序可能重新引入状态不可达和额度分裂，完整条件见 [README](../README.md#密钥轮换)。本次行为测试、真实依赖及验收阶段见[轮换验收记录](../openspec/changes/archive/2026-10-04-harden-code-key-rotation/verification.md)。
 
 ## 功能对照
 
@@ -54,7 +73,7 @@ accountsvc 是基于本库的可选官方服务；直接嵌入 accountkit 的宿
 |---|---|---|
 | 独立消费、完整功能 | 根门面、全部子包、sqlc.yaml | 独立构建、临时宿主编译、源文件清单 |
 | 手机/邮箱验证码、限流 | user/code、user/service_signin.go、httpapi/consumer | code/store_test.go、service_test.go、signin_test.go、TestConsumerEndToEndAgainstRealDB |
-| 验证码 HMAC 轮换 | user/code/store.go、user/code/scripts.go，库及 accountsvc 共用 | 多版本旧状态/并发测试、TestCodeKeyRotationIntegration、TestCodeRotationRedisIntegration、TestServiceIntegrationCodeKeyRotation；见[轮换验收记录](../openspec/changes/harden-code-key-rotation/verification.md) |
+| 验证码 HMAC 轮换 | user/code/store.go、user/code/scripts.go，库及 accountsvc 共用 | 多版本旧状态/并发测试、TestCodeKeyRotationIntegration、TestCodeRotationRedisIntegration、TestServiceIntegrationCodeKeyRotation；见[轮换验收记录](../openspec/changes/archive/2026-10-04-harden-code-key-rotation/verification.md) |
 | 微信/Apple | user/idp、service_idp.go | wechat_test.go、apple_test.go、nonce_test.go、service_idp_test.go、TestWeChatSignInEndToEndAgainstRealDB |
 | 身份绑定解绑 | user/service_identity.go | service_identity_test.go、identities_test.go、TestIdentityBindingEndToEndAgainstRealDB |
 | 同类身份换绑 | user/service_identity_replacement.go、httpapi/consumer/replacement.go | 领域回滚/竞态、嵌入式及服务E2E，见[换绑验收记录](../openspec/changes/archive/2026-10-03-add-identity-replacement/verification.md) |

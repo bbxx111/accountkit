@@ -154,14 +154,14 @@ func TestDefaultRequestIDAndClientIP(t *testing.T) {
 	}
 }
 
-func TestConsumerHandlerAndMiddlewareWiring(t *testing.T) {
+func TestEndUserHandlerAndMiddlewareWiring(t *testing.T) {
 	a, err := accountkit.New(minimal(), baseDeps(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 1) ConsumerHandler 可挂载、带 X-Request-Id、未知路由 AIP-193 404
+	// 1) EndUserHandler 可挂载、带 X-Request-Id、未知路由 AIP-193 404
 	r := chi.NewRouter()
-	r.Mount("/v1", a.ConsumerHandler())
+	r.Mount("/v1", a.EndUserHandler())
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/v1/nope", nil)
 	req.Header.Set("X-Request-Id", "abc-123")
@@ -224,7 +224,7 @@ func TestConsumerHandlerAndMiddlewareWiring(t *testing.T) {
 	}
 }
 
-// TestHostMountShape 复刻 README §6.3 的宿主挂载形状：ConsumerHandler 挂在 "/"，
+// TestHostMountShape 复刻 README §6.3 的宿主挂载形状：EndUserHandler 挂在 "/"，
 // 宿主自己的业务路由挂在同一 chi.Router 下的兄弟前缀（"/devices"）。证明
 // Mount("/") 与相邻的 Mount("/devices") 能在 chi 下共存，互不吞掉对方的路由。
 func TestHostMountShape(t *testing.T) {
@@ -234,7 +234,7 @@ func TestHostMountShape(t *testing.T) {
 	}
 	r := chi.NewRouter()
 	r.Route("/v1", func(r chi.Router) {
-		r.Mount("/", a.ConsumerHandler())
+		r.Mount("/", a.EndUserHandler())
 		r.Group(func(r chi.Router) {
 			r.Use(a.RequireScope("user"))
 			r.Mount("/devices", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) }))
@@ -245,13 +245,13 @@ func TestHostMountShape(t *testing.T) {
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, httptest.NewRequest("GET", "/v1/nope", nil))
 	if rec.Code != 404 || !strings.Contains(rec.Body.String(), `"status":"NOT_FOUND"`) {
-		t.Fatalf("unknown route must be the consumer handler's AIP-193 404: %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("unknown route must be the enduser handler's AIP-193 404: %d %s", rec.Code, rec.Body.String())
 	}
 
 	rec = httptest.NewRecorder()
 	r.ServeHTTP(rec, httptest.NewRequest("GET", "/v1/users/me", nil))
 	if rec.Code != 401 {
-		t.Fatalf("consumer handler route through Mount(\"/\"): %d", rec.Code)
+		t.Fatalf("enduser handler route through Mount(\"/\"): %d", rec.Code)
 	}
 
 	rec = httptest.NewRecorder()
@@ -276,7 +276,7 @@ func TestNewWiresIdPVerifiersOnlyWhenConfigured(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/users:signInWithIdp", strings.NewReader(`{"wechat":{"app_id":"wx1","code":"c"}}`))
 	req.Header.Set("X-Device-Id", "d1")
-	a.ConsumerHandler().ServeHTTP(rec, req)
+	a.EndUserHandler().ServeHTTP(rec, req)
 	if rec.Code != 400 || !strings.Contains(rec.Body.String(), "IDP_APP_NOT_ALLOWED") {
 		t.Fatalf("disabled idp: %d %s", rec.Code, rec.Body.String())
 	}
@@ -295,14 +295,14 @@ func TestNewWiresIdPVerifiersOnlyWhenConfigured(t *testing.T) {
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest("POST", "/users:signInWithIdp", strings.NewReader(`{"wechat":{"app_id":"wx1","code":"c"}}`))
 	req.Header.Set("X-Device-Id", "d1")
-	a2.ConsumerHandler().ServeHTTP(rec, req)
+	a2.EndUserHandler().ServeHTTP(rec, req)
 	if rec.Code != 503 || !strings.Contains(rec.Body.String(), "IDP_UNAVAILABLE") || rec.Header().Get("Retry-After") != "1" {
 		t.Fatalf("wechat unreachable: %d %s", rec.Code, rec.Body.String())
 	}
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest("POST", "/users:signInWithIdp", strings.NewReader(`{"apple":{"id_token":"x.y.z","nonce":"n"}}`))
 	req.Header.Set("X-Device-Id", "d1")
-	a2.ConsumerHandler().ServeHTTP(rec, req)
+	a2.EndUserHandler().ServeHTTP(rec, req)
 	// 垃圾 id_token 在拉 JWKS 前就解析失败 → 400；证明 Apple 校验器已装配（而非 IDP_APP_NOT_ALLOWED）
 	if rec.Code != 400 || !strings.Contains(rec.Body.String(), "IDP_CREDENTIAL_INVALID") {
 		t.Fatalf("apple wired: %d %s", rec.Code, rec.Body.String())
@@ -340,7 +340,7 @@ func TestLifecycleRoutesMounted(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := chi.NewRouter()
-	r.Mount("/v1", a.ConsumerHandler())
+	r.Mount("/v1", a.EndUserHandler())
 	for _, c := range []struct{ method, path string }{{"DELETE", "/v1/users/me"}, {"POST", "/v1/users/me:undelete"}} {
 		rec := httptest.NewRecorder()
 		r.ServeHTTP(rec, httptest.NewRequest(c.method, c.path, nil))

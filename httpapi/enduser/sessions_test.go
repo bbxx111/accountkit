@@ -1,4 +1,4 @@
-package consumer_test
+package enduser_test
 
 import (
 	"context"

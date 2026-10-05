@@ -1,4 +1,4 @@
-package consumer_test
+package enduser_test
 
 import (
 	"context"
@@ -35,7 +35,7 @@ func TestGetMe(t *testing.T) {
 		switch k {
 		case "name", "state", "display_name", "create_time", "delete_time", "purge_time":
 		default:
-			t.Fatalf("unexpected field on consumer DTO: %s", k)
+			t.Fatalf("unexpected field on enduser DTO: %s", k)
 		}
 	}
 	// 401 形态
@@ -178,7 +178,7 @@ func TestReauthentication(t *testing.T) {
 // 这是服务端配置错误，不是客户端错误，必须 500 而不是把空 IP 传给领域层。
 func TestSendReauthenticationCodeEmptyClientIPIs500(t *testing.T) {
 	f := withAuth(&fakeService{}, principal)
-	hh, err := newHandlerErr(t, func(d *consumerDeps) {
+	hh, err := newHandlerErr(t, func(d *endUserDeps) {
 		d.Users = f
 		d.ClientIP = func(*http.Request) string { return "" }
 	})
@@ -230,7 +230,7 @@ func TestDeleteMe(t *testing.T) {
 		t.Fatalf("stale auth_time: %d %s called=%v", rec.Code, status, called)
 	}
 	// SensitiveOpVerification=false 放行
-	h3 := newHandlerWithDeps(t, withAuth(&fakeService{deleteMe: pendingMe}, stale), func(d *consumerDeps) { d.SensitiveOpVerification = false })
+	h3 := newHandlerWithDeps(t, withAuth(&fakeService{deleteMe: pendingMe}, stale), func(d *endUserDeps) { d.SensitiveOpVerification = false })
 	if rec = do(t, h3, call{method: "DELETE", path: "/users/me", bearer: "good"}); rec.Code != 200 {
 		t.Fatalf("verification off: %d %s", rec.Code, rec.Body.String())
 	}

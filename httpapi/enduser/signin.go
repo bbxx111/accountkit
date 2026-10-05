@@ -1,4 +1,4 @@
-package consumer
+package enduser
 
 import (
 	"errors"
@@ -26,7 +26,7 @@ func (h *Handler) sendSignInCode(w http.ResponseWriter, r *http.Request) {
 	}
 	meta := h.meta(r)
 	if meta.IP == "" {
-		apierror.WriteInternal(w, h.d.Logger, requestIDFrom(r.Context()), errors.New("consumer: Deps.ClientIP returned empty"))
+		apierror.WriteInternal(w, h.d.Logger, requestIDFrom(r.Context()), errors.New("enduser: Deps.ClientIP returned empty"))
 		return
 	}
 	if err := h.d.Users.SendSignInCode(r.Context(), ch, req.Target, meta); err != nil {

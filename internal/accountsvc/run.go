@@ -29,11 +29,11 @@ type dependencies struct {
 	closePool    func()
 }
 type application struct {
-	migrate                     func(context.Context) error
-	initAdmin                   func(context.Context) error
-	start                       func(context.Context)
-	close                       func()
-	consumer, admin, introspect http.Handler
+	migrate                    func(context.Context) error
+	initAdmin                  func(context.Context) error
+	start                      func(context.Context)
+	close                      func()
+	endUser, admin, introspect http.Handler
 }
 type runtimeFactory struct {
 	open   func(context.Context, Config, *slog.Logger) (*dependencies, error)
@@ -132,7 +132,7 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 	if err != nil {
 		return nil, errors.New("accountsvc: accountkit construction failed")
 	}
-	app := &application{migrate: auth.Migrate, start: auth.Start, close: auth.Close, consumer: auth.ConsumerHandler(), admin: auth.AdminHandler()}
+	app := &application{migrate: auth.Migrate, start: auth.Start, close: auth.Close, endUser: auth.EndUserHandler(), admin: auth.AdminHandler()}
 	if cfg.command == "serve" {
 		app.introspect, err = introspection.New(cfg.IntrospectionClients, auth.Users().Authenticate)
 		if err != nil {
@@ -216,7 +216,7 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 	defer cancelRequests()
 	tracker := newRequestTracker()
 	state := &healthState{database: d.databasePing, redis: d.redisPing}
-	handler := serviceHandler(cfg, app.consumer, app.admin, app.introspect, state)
+	handler := serviceHandler(cfg, app.endUser, app.admin, app.introspect, state)
 	server := newHTTPServer(cfg.HTTPAddr, requestMetadata(cfg.TrustedProxyCIDRs, tracker.wrap(handler)), requestCtx)
 	if cfg.TLSEnabled {
 		server.TLSConfig = cfg.tlsConfig.Clone()

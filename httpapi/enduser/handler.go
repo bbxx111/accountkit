@@ -1,7 +1,7 @@
-// Package consumer 提供 C 端 /v1 的 HTTP handler（只做 HTTP 翻译）。
+// Package enduser 提供 C 端 /v1 的 HTTP handler（只做 HTTP 翻译）。
 //
 // 路由相对、无前缀；宿主 r.Mount("/v1", h.Router())。业务规则全部在 user.Service。
-package consumer
+package enduser
 
 import (
 	"context"
@@ -65,13 +65,13 @@ type Handler struct {
 // New 校验依赖并返回 Handler（不做 I/O）。
 func New(d Deps) (*Handler, error) {
 	if d.Users == nil {
-		return nil, errors.New("consumer: Deps.Users is required")
+		return nil, errors.New("enduser: Deps.Users is required")
 	}
 	if d.ClientIP == nil || d.RequestID == nil {
-		return nil, errors.New("consumer: Deps.ClientIP and Deps.RequestID are required")
+		return nil, errors.New("enduser: Deps.ClientIP and Deps.RequestID are required")
 	}
 	if d.ReauthMaxAge <= 0 {
-		return nil, errors.New("consumer: Deps.ReauthMaxAge must be positive")
+		return nil, errors.New("enduser: Deps.ReauthMaxAge must be positive")
 	}
 	if d.Logger == nil {
 		d.Logger = slog.Default()

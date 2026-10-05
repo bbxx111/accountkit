@@ -56,7 +56,7 @@ func (s *healthState) serveReady(w http.ResponseWriter, r *http.Request) {
 	healthResponse(w, 200, "ready")
 }
 
-func serviceHandler(cfg Config, consumer, admin, introspect http.Handler, state *healthState) http.Handler {
+func serviceHandler(cfg Config, endUser, admin, introspect http.Handler, state *healthState) http.Handler {
 	router := chi.NewRouter()
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +65,7 @@ func serviceHandler(cfg Config, consumer, admin, introspect http.Handler, state 
 		})
 	})
 	router.Handle("/v1/introspect", introspect)
-	router.Mount("/v1", consumer)
+	router.Mount("/v1", endUser)
 	router.Mount("/admin/v1", admin)
 	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) { healthResponse(w, 200, "ok") })
 	router.Get("/readyz", state.serveReady)

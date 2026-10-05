@@ -121,7 +121,7 @@ func TestAuditEventsPersistedAndExpiredEndToEnd(t *testing.T) {
 	}
 	a.Start(ctx)
 	r := chi.NewRouter()
-	r.Mount("/v1", a.ConsumerHandler())
+	r.Mount("/v1", a.EndUserHandler())
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
@@ -259,7 +259,7 @@ func TestConsumerEndToEndAgainstRealDB(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := chi.NewRouter()
-	r.Mount("/v1", a.ConsumerHandler())
+	r.Mount("/v1", a.EndUserHandler())
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
@@ -405,7 +405,7 @@ func TestWeChatSignInEndToEndAgainstRealDB(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := chi.NewRouter()
-	r.Mount("/v1", a.ConsumerHandler())
+	r.Mount("/v1", a.EndUserHandler())
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
@@ -510,7 +510,7 @@ func TestIdentityBindingEndToEndAgainstRealDB(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := chi.NewRouter()
-	r.Mount("/v1", a.ConsumerHandler())
+	r.Mount("/v1", a.EndUserHandler())
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
@@ -664,7 +664,7 @@ func TestKeyRotationBackfillEndToEnd(t *testing.T) {
 		}
 		merr := a.Migrate(ctx)
 		r := chi.NewRouter()
-		r.Mount("/v1", a.ConsumerHandler())
+		r.Mount("/v1", a.EndUserHandler())
 		srv := httptest.NewServer(r)
 		t.Cleanup(srv.Close)
 		signIn := func(dev string) map[string]any {
@@ -803,7 +803,7 @@ func TestAccountLifecycleEndToEndAgainstRealDB(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := chi.NewRouter()
-	r.Mount("/v1", a.ConsumerHandler())
+	r.Mount("/v1", a.EndUserHandler())
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
@@ -964,7 +964,7 @@ func TestAdminSurfaceEndToEndAgainstRealDB(t *testing.T) {
 	}
 	a.Start(ctx)
 	r := chi.NewRouter()
-	r.Mount("/v1", a.ConsumerHandler())
+	r.Mount("/v1", a.EndUserHandler())
 	r.Route("/admin/v1", func(r chi.Router) {
 		r.Use(stubVerifier{}.Middleware())
 		r.Mount("/", a.AdminHandler())

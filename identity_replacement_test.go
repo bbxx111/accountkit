@@ -83,7 +83,7 @@ func TestIdentityReplacementEndToEndAgainstRealDB(t *testing.T) {
 	}
 	a.Start(ctx)
 	r := chi.NewRouter()
-	r.Mount("/v1", a.ConsumerHandler())
+	r.Mount("/v1", a.EndUserHandler())
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
 	client := srv.Client()

@@ -1,4 +1,4 @@
-package consumer_test
+package enduser_test
 
 import (
 	"context"
@@ -104,7 +104,7 @@ func TestSendBindCode(t *testing.T) {
 // 这是服务端配置错误，不是客户端错误，必须 500 而不是把空 IP 传给领域层。
 func TestSendBindCodeEmptyClientIPIs500(t *testing.T) {
 	f := withAuth(&fakeService{}, principal)
-	h := newHandlerWithDeps(t, f, func(d *consumerDeps) { d.ClientIP = func(*http.Request) string { return "" } })
+	h := newHandlerWithDeps(t, f, func(d *endUserDeps) { d.ClientIP = func(*http.Request) string { return "" } })
 	rec := do(t, h, call{method: "POST", path: "/users/me:sendBindCode", bearer: "good", body: map[string]string{"channel": "PHONE", "target": "+8613812341234"}})
 	if rec.Code != 500 {
 		t.Fatalf("empty client ip must 500: %d %s", rec.Code, rec.Body.String())
@@ -233,7 +233,7 @@ func TestUnbindIdentityRequiresRecentAuth(t *testing.T) {
 		t.Fatalf("user:bind must not unbind: %d", rec.Code)
 	}
 	// SensitiveOpVerification=false 时 stale 也放行
-	h3 := newHandlerWithDeps(t, f, func(d *consumerDeps) { d.SensitiveOpVerification = false })
+	h3 := newHandlerWithDeps(t, f, func(d *endUserDeps) { d.SensitiveOpVerification = false })
 	if rec = do(t, h3, call{method: "DELETE", path: "/users/me/identities/i_0k3f9c2m1xq7a", bearer: "stale"}); rec.Code != 204 {
 		t.Fatalf("verification off: %d", rec.Code)
 	}

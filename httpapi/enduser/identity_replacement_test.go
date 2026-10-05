@@ -1,4 +1,4 @@
-package consumer_test
+package enduser_test
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/enum"
-	"github.com/bbxx111/accountkit/httpapi/consumer"
+	"github.com/bbxx111/accountkit/httpapi/enduser"
 	"github.com/bbxx111/accountkit/user"
 	"github.com/bbxx111/accountkit/user/code"
 )
@@ -20,9 +20,9 @@ const replacementPath = "/users/me/identities/" + replacementIdentityID + ":repl
 const replacementBody = `{"email":{"target":"new@example.test","code":"123456"}}`
 
 // The old fake deliberately has no replacement method; embedding preserves its interface.
-var _ consumer.Service = (*fakeService)(nil)
-var _ consumer.IdentityReplacer = (*replacementService)(nil)
-var _ consumer.IdentityReplacer = (*user.Service)(nil)
+var _ enduser.Service = (*fakeService)(nil)
+var _ enduser.IdentityReplacer = (*replacementService)(nil)
+var _ enduser.IdentityReplacer = (*user.Service)(nil)
 
 type replacementService struct {
 	*fakeService
@@ -33,9 +33,9 @@ func (f *replacementService) ReplaceIdentity(ctx context.Context, p user.Princip
 	return f.replace(ctx, p, id, kind, target, plainCode, meta)
 }
 
-func replacementHandler(t *testing.T, service consumer.Service, mutate func(*consumer.Deps)) http.Handler {
+func replacementHandler(t *testing.T, service enduser.Service, mutate func(*enduser.Deps)) http.Handler {
 	t.Helper()
-	d := consumer.Deps{
+	d := enduser.Deps{
 		Users: service, ClientIP: func(*http.Request) string { return "203.0.113.9" },
 		RequestID: func(*http.Request) string { return "req-test" }, Now: func() time.Time { return testNow },
 		ReauthMaxAge: 5 * time.Minute, SensitiveOpVerification: true,
@@ -43,7 +43,7 @@ func replacementHandler(t *testing.T, service consumer.Service, mutate func(*con
 	if mutate != nil {
 		mutate(&d)
 	}
-	h, err := consumer.New(d)
+	h, err := enduser.New(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestIdentityReplacementAuthentication(t *testing.T) {
 				t.Fatal("rejected request reached replacement service")
 				return user.IdentityInfo{}, nil
 			}}
-			rec := do(t, replacementHandler(t, f, func(d *consumer.Deps) { d.SensitiveOpVerification = !tc.disabled }), call{method: "POST", path: replacementPath, bearer: tc.bearer, body: "invalid JSON"})
+			rec := do(t, replacementHandler(t, f, func(d *enduser.Deps) { d.SensitiveOpVerification = !tc.disabled }), call{method: "POST", path: replacementPath, bearer: tc.bearer, body: "invalid JSON"})
 			status, _ := aipError(t, rec)
 			if rec.Code != tc.want || status != tc.reason {
 				t.Fatalf("authentication: %d %s", rec.Code, rec.Body.String())
@@ -141,7 +141,7 @@ func TestIdentityReplacementAuthentication(t *testing.T) {
 			f := &replacementService{fakeService: withAuth(&fakeService{}, p), replace: func(context.Context, user.Principal, string, enum.IdentityKind, string, string, user.Meta) (user.IdentityInfo, error) {
 				return replacementResult(enum.IdentityEmail), nil
 			}}
-			rec := do(t, replacementHandler(t, f, func(d *consumer.Deps) { d.SensitiveOpVerification = !tc.disabled }), call{method: "POST", path: replacementPath, bearer: "good", body: replacementBody})
+			rec := do(t, replacementHandler(t, f, func(d *enduser.Deps) { d.SensitiveOpVerification = !tc.disabled }), call{method: "POST", path: replacementPath, bearer: "good", body: replacementBody})
 			if rec.Code != 200 {
 				t.Fatalf("freshness allowed: %d %s", rec.Code, rec.Body.String())
 			}

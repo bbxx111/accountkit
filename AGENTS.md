@@ -21,7 +21,7 @@
 |---|---|
 | `accountkit.go`、`config.go` | 对外门面、依赖注入、配置及生命周期 |
 | `user/` | 账号领域规则、事务、状态机与仓储 |
-| `httpapi/consumer/`、`httpapi/admin/` | 两个独立 HTTP 面及各自 DTO |
+| `httpapi/enduser/`、`httpapi/admin/` | 两个独立 HTTP 面及各自 DTO |
 | `httpapi/authn/`、`httpapi/apierror/` | 认证中间件、协议错误映射 |
 | `user/code/`、`user/idp/`、`user/sender/` | 验证码、第三方身份验证、发送器契约 |
 | `tokens/`、`pii/`、`ids/`、`enum/` | 令牌、隐私数据、资源 ID、枚举 |
@@ -43,7 +43,7 @@
 - HTTP handler 只做协议转换；业务规则、事务和状态约束集中在 `user.Service`，由 C 端、管理面和维护任务复用。不要为管理路径绕开领域约束，也不要添加无业务意义的透传 service 层。
 - SQL 放在领域查询文件，经 sqlc 生成。禁止手改 `user/db/`、`audit/db/`；修改查询、schema 或类型映射后运行 `sqlc generate` 并检查生成差异。
 - 配置通过 `Config` 或 `ConfigFromEnv(prefix)` 注入；环境变量前缀由宿主选择，示例使用 `ACCOUNTKIT_`。不要硬编码 `SERVER_`、产品域名、业务 schema 或产品密钥。
-- `ConsumerHandler()` 与 `AdminHandler()` 返回相对路由，由宿主分别挂载，示例为 `/v1` 和 `/admin/v1`。包内不重复写死前缀，也不引入 `/api`。
+- `EndUserHandler()` 与 `AdminHandler()` 返回相对路由，由宿主分别挂载，示例为 `/v1` 和 `/admin/v1`。直接适配器使用 `httpapi/enduser`；旧 Go 入口迁移见 [兼容指南](docs/compatibility.md#终端用户-http-入口迁移)。包内不重复写死前缀，也不引入 `/api`。
 - `AdminVerifier` 与 `AdminPrincipal` 必须成对提供；均未配置时管理面返回 `503 ADMIN_NOT_CONFIGURED`，普通消费者认证仍可用。管理员认证由宿主前置完成，包内继续执行每条管理路由的角色检查。
 - 宿主通过 `Deps.ClientIP` 提供经过可信代理处理的地址，通过 `Deps.RequestID` 关联日志与审计。不能在库内无条件信任客户端的转发头。
 - 匿名化回调使用传入的同一个 `pgx.Tx`；不得自行提交/回滚或另开连接写同批数据。认证表和业务表必须同库，任一回调失败使整个匿名化事务回滚；跨库事务不在契约内。宿主负责其 user_id 关联表的覆盖性检查。

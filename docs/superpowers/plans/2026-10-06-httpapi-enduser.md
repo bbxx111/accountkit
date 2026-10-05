@@ -37,12 +37,12 @@
 
 **Interfaces:** 消费原 `consumer.Service` 等类型；产出 `enduser.Service` 等同形类型和 `(*accountkit.Auth).EndUserHandler() http.Handler`。Task 2 据此更新文档。
 
-- [ ] 记录 19 文件、导出声明及原 37 选择器。临时外部模块 require 本库并 replace 当前检出，分别引用新根门面及 `enduser.New/Deps/Handler/Service/IdentityReplacer`；`GOWORK=off go build -mod=mod` 在改名前必须因新方法/新包不存在而失败，保存 RED 输出。
-- [ ] 原子移动目录、package 和外部 test package、导入限定符、门面、对应私有字段/参数；构造错误前缀同步，其他消费者语义不全局替换。
-- [ ] 迁移 37 选择器并逐项比对；若 `TestConsumerHandlerAndMiddlewareWiring` 改名为 `TestEndUserHandlerAndMiddlewareWiring`，记录额外映射并同步门禁。保留全部断言。
-- [ ] gofmt 后执行 `GOWORK=off go build ./...`、`go vet ./...`、`go test -count=1 ./httpapi/enduser . ./internal/accountsvc/... ./examples/embedded`；缺少数据库时明确只作快速验证。
-- [ ] 外部宿主 GREEN 构建成功；独立验证旧路径与旧方法编译失败；检查库依赖不含 accountsvc，go.mod/go.sum 不变；检查新旧文件内容规范化后仅名称差异。
-- [ ] 自审并只提交本任务代码/选择器；写报告（RED/GREEN、命令、结果、路径、选择器映射、未验证项），交由控制器独立审查。
+- [x] 记录 19 文件、导出声明及原 37 选择器。临时外部模块 require 本库并 replace 当前检出，分别引用新根门面及 `enduser.New/Deps/Handler/Service/IdentityReplacer`；`GOWORK=off go build -mod=mod` 在改名前必须因新方法/新包不存在而失败，保存 RED 输出。
+- [x] 原子移动目录、package 和外部 test package、导入限定符、门面、对应私有字段/参数；构造错误前缀同步，其他消费者语义不全局替换。
+- [x] 迁移 37 选择器并逐项比对；若 `TestConsumerHandlerAndMiddlewareWiring` 改名为 `TestEndUserHandlerAndMiddlewareWiring`，记录额外映射并同步门禁。保留全部断言。
+- [x] gofmt 后执行 `GOWORK=off go build ./...`、`go vet ./...`、`go test -count=1 ./httpapi/enduser . ./internal/accountsvc/... ./examples/embedded`；缺少数据库时明确只作快速验证。
+- [x] 外部宿主 GREEN 构建成功；独立验证旧路径与旧方法编译失败；检查库依赖不含 accountsvc，go.mod/go.sum 不变；检查新旧文件内容规范化后仅名称差异。
+- [x] 自审并只提交本任务代码/选择器；写报告（RED/GREEN、命令、结果、路径、选择器映射、未验证项），交由控制器独立审查。
 
 ### Task 2: 当前文档迁移与完整验收
 
@@ -53,10 +53,10 @@
 
 **Interfaces:** 消费 Task 1 的新导入/门面；产出清楚的宿主迁移表和实际验证记录，无运行接口新增。
 
-- [ ] 当前可执行示例改为新入口；兼容指南列出 import/type/门面旧新映射及源码破坏性变化，说明 HTTP/配置/数据无需迁移、回退只恢复源码依赖。
-- [ ] 明确兼容索引中的历史入口，分类剩余旧名为迁移说明或历史事实，不改归档、已完成计划和固定基线。检查本次文档相对链接及 diff。
-- [ ] 文档工作者自审、提交文档并报告；控制器安排独立任务审查。
-- [ ] 控制器使用本次创建的一次性 PG17/Redis 和独立空恢复源/目标库，Linux 执行 `bash scripts/verify.sh`、`bash scripts/verify-accountsvc.sh`；保留 JSONL、恢复材料及退出码，检查新包全部必需用例实际 PASS。执行生成检查与 `openspec validate --all --strict`。
+- [x] 当前可执行示例改为新入口；兼容指南列出 import/type/门面旧新映射及源码破坏性变化，说明 HTTP/配置/数据无需迁移、回退只恢复源码依赖。
+- [x] 明确兼容索引中的历史入口，分类剩余旧名为迁移说明或历史事实，不改归档、已完成计划和固定基线。检查本次文档相对链接及 diff。
+- [x] 文档工作者自审、提交文档并报告；控制器安排独立任务审查。
+- [x] 控制器使用本次创建的一次性 PG17/Redis 和独立空恢复源/目标库，Linux 执行 `bash scripts/verify.sh`、`bash scripts/verify-accountsvc.sh`；保留 JSONL、恢复材料及退出码，检查新包全部必需用例实际 PASS。执行生成检查与 `openspec validate --all --strict`。
 - [ ] 控制器记录真实结果、RED/GREEN、接口/选择器比对、分步及最终审查结论到 verification.md；产品环境延期明确列出。全部证据满足后勾选 7 项任务，提交记录，清理仅本次测试资源。
 
 ## Controller Handoff

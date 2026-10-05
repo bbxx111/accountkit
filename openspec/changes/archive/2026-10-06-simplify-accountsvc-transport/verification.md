@@ -1,13 +1,13 @@
 # 单监听与显式 HTTP TLS 验收记录
 
-日期：2026-10-05。运行时及测试基线为 `c00e004`，包含 Task1 `4634dd1` 和 Task2 `c00e004`；Task3 仅更新部署模板和文档。详细实现计划见[计划](../../../docs/superpowers/plans/2026-10-05-accountsvc-transport.md)。本记录区分本地行为、完整库门禁、严格服务门禁和产品部署，不以历史记录或普通测试 skip 代替本次证据。
+日期：2026-10-05。运行时及测试基线为 `c00e004`，包含 Task1 `4634dd1` 和 Task2 `c00e004`；Task3 仅更新部署模板和文档。详细实现计划见[计划](../../../../docs/superpowers/plans/2026-10-05-accountsvc-transport.md)。本记录区分本地行为、完整库门禁、严格服务门禁和产品部署，不以历史记录或普通测试 skip 代替本次证据。
 
 ## 范围与行为
 
 - serve 仅使用 HTTP_ADDR（默认 `127.0.0.1:8080`），独立消费者、管理员、内省和探针同址；新内省 `/v1/introspect` 仍要求 Basic，旧路径404，无别名/重定向。非空旧 INTERNAL_ADDR 拒绝启动。
 - TLS_ENABLED 未设/空保留原默认；true 强制完整有效证书，false 明确使用HTTP且与任一HTTP证书项冲突；非法布尔值拒绝。最低TLS1.2、生产SMTP TLS/OIDC HTTPS和独立认证链保留，migrate不解析服务专用设置。
 - remoteauth接口不变，HTTP须调用方显式AllowHTTP；HTTPS证书验证、禁止重定向、不缓存成功和依赖失败语义保持。
-- 网关职责与[迁移说明](../../../docs/compatibility.md#服务单监听与传输迁移)已更新，统一[网关接入契约](../../../docs/gateway-integration.md)覆盖入口、直连防绕过、三种TLS部署、可信来源/身份、频率/突发/并发、协议透传、不重试及日志保护。跨主机Basic/token仍需加密，单纯VPC/内网不是满足TLS契约的证据。
+- 网关职责与[迁移说明](../../../../docs/compatibility.md#服务单监听与传输迁移)已更新，统一[网关接入契约](../../../../docs/gateway-integration.md)覆盖入口、直连防绕过、三种TLS部署、可信来源/身份、频率/突发/并发、协议透传、不重试及日志保护。跨主机Basic/token仍需加密，单纯VPC/内网不是满足TLS契约的证据。
 - 未修改根库公共API、SQL、生成结果、迁移基线、数据库结构、令牌格式或依赖；未修改历史归档工件以重写旧架构事实。OpenSpec未归档。
 
 ## TDD 与分步验收
@@ -84,7 +84,7 @@ docker compose -p accountsvc-transport-20261005 --env-file .test-output/transpor
 - Task1独立审查：规格符合，Critical/Important/Minor均无，Approved；当时真实服务未验收部分已由最终严格入口补齐。
 - Task2独立审查：Approved，无Critical/Important；原一项非阻断Minor为新增remoteauth默认证书拒绝测试输出预期TLS握手日志，已于2026-10-06通过 `f1a257e` 处理并通过范围复审，证书拒绝断言保持。
 - Task3自审逐项核对增量规格与当前配置/路由、三态默认、完整迁移/回退和部署职责；7份Markdown共56个本地路径/锚点核对无问题（`.test-output/transport-doc-links.log`），本步范围 `git diff --check` exit0。没有修改协调者plan/tasks；Task3独立审查已通过（Approved，无新增问题）；最终全分支审查覆盖 `d4456aa..9546a96` 并获 Approved；`9546a96..f1a257e` 的范围复审确认唯一Minor已解决且无新问题。
-- 真实网关/网格配置、后端直连防绕过、产品证书链与身份策略、流量阈值/集群计数和并发压力、全链路日志保护、实际SMTP送达/OIDC提供方、产品备份恢复与部署窗口继续延期。[发布清单](../../../docs/release-checklist.md#可选-accountsvc-发布)对应项保持未勾选。
+- 真实网关/网格配置、后端直连防绕过、产品证书链与身份策略、流量阈值/集群计数和并发压力、全链路日志保护、实际SMTP送达/OIDC提供方、产品备份恢复与部署窗口继续延期。[发布清单](../../../../docs/release-checklist.md#可选-accountsvc-发布)对应项保持未勾选。
 - 未执行push、tag、发布、产品部署或OpenSpec归档；本地验证不表示在线GitHub Actions已经通过。
 
 ## 续办收尾（2026-10-06）

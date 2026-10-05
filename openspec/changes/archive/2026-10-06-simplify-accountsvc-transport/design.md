@@ -2,7 +2,7 @@
 
 动机及范围见 [proposal.md](proposal.md)。目前 `internal/accountsvc/run.go` 创建两个 listener/server，`http.go` 分别挂载 public/internal 路由，production 在 `config.go` 强制装配 TLS；`migrate` 在读取服务专用配置前返回。`examples/remoteauth` 已有默认 false 的 AllowHTTP，但注释仅描述开发用途。代码及旧规格均明确依赖双端口隔离，需要一起迁移。
 
-依据为 [运行时主规格](../../specs/accountsvc-runtime/spec.md)、[内省主规格](../../specs/consumer-token-introspection/spec.md)；本次改动的契约分别见 [运行时增量](specs/accountsvc-runtime/spec.md)、[内省增量](specs/consumer-token-introspection/spec.md)、[网关接入](specs/gateway-integration/spec.md)。用户已确认直接迁移，移除旧路径并对旧监听配置报错；不提供兼容双监听模式。
+依据为 [运行时主规格](../../../specs/accountsvc-runtime/spec.md)、[内省主规格](../../../specs/consumer-token-introspection/spec.md)；本次改动的契约分别见 [运行时增量](specs/accountsvc-runtime/spec.md)、[内省增量](specs/consumer-token-introspection/spec.md)、[网关接入](specs/gateway-integration/spec.md)。用户已确认直接迁移，移除旧路径并对旧监听配置报错；不提供兼容双监听模式。
 
 RFC 7662 不要求固定内省路径，定义 TLS 保护及调用授权；RFC 8414 的地址发现能力不属于本变更。部署侧终止 TLS 不代表将 Basic 或 token 跨主机明文传输视为合规部署。参考 [RFC 7662](https://www.rfc-editor.org/rfc/rfc7662.html#section-2)。
 

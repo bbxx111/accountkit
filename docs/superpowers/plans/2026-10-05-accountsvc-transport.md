@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go1.26.5、Chi、现有 pgx/Redis/SMTP/OIDC；无新增依赖、SQL或根库接口。
 
-**Spec:** [proposal](../../../openspec/changes/simplify-accountsvc-transport/proposal.md)、[design](../../../openspec/changes/simplify-accountsvc-transport/design.md)、[runtime](../../../openspec/changes/simplify-accountsvc-transport/specs/accountsvc-runtime/spec.md)、[introspection](../../../openspec/changes/simplify-accountsvc-transport/specs/consumer-token-introspection/spec.md)、[gateway](../../../openspec/changes/simplify-accountsvc-transport/specs/gateway-integration/spec.md)。
+**Spec:** [proposal](../../../openspec/changes/archive/2026-10-06-simplify-accountsvc-transport/proposal.md)、[design](../../../openspec/changes/archive/2026-10-06-simplify-accountsvc-transport/design.md)、[runtime](../../../openspec/changes/archive/2026-10-06-simplify-accountsvc-transport/specs/accountsvc-runtime/spec.md)、[introspection](../../../openspec/changes/archive/2026-10-06-simplify-accountsvc-transport/specs/consumer-token-introspection/spec.md)、[gateway](../../../openspec/changes/archive/2026-10-06-simplify-accountsvc-transport/specs/gateway-integration/spec.md)。
 
 ## Global Constraints
 
@@ -69,7 +69,7 @@
 
 **Files:**
 - Modify: `deploy/accountsvc/Dockerfile`, `compose.yaml`, `.env.example`。
-- Create: `docs/gateway-integration.md`, `openspec/changes/simplify-accountsvc-transport/verification.md`。
+- Create: `docs/gateway-integration.md`, `openspec/changes/archive/2026-10-06-simplify-accountsvc-transport/verification.md`。
 - Modify: `README.md`, `docs/accountsvc.md`, `docs/compatibility.md`, `docs/release-checklist.md`, `docs/development.md`（按现有验证说明需要）。
 
 **Interfaces:**

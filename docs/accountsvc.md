@@ -154,4 +154,4 @@ SIGINT/SIGTERM 触发撤销就绪、统一监听器 HTTP 排空、维护停止/�
 
 ## 验证边界
 
-现有库完整门禁仍使用 `scripts/verify.sh`；服务门禁使用 `scripts/verify-accountsvc.sh`，要求一次性 PostgreSQL 和 Redis，内部启动隔离 SMTP/HTTPS OIDC fixtures，缺依赖时失败。首次服务交付的历史证据见[初始验收记录](../openspec/changes/archive/2026-10-03-add-accountsvc/verification.md)，本次单监听器、TLS 模式及本地代理结果见[传输变更验收记录](../openspec/changes/simplify-accountsvc-transport/verification.md)。外部 SMTP 实际送达、实际 OIDC 提供方、真实网关/网格和产品环境均属于待执行的部署验收，本地 fixture 通过不代替这些联调。
+现有库完整门禁仍使用 `scripts/verify.sh`；服务门禁使用 `scripts/verify-accountsvc.sh`，要求一次性 PostgreSQL 和 Redis，内部启动隔离 SMTP/HTTPS OIDC fixtures，缺依赖时失败。首次服务交付的历史证据见[初始验收记录](../openspec/changes/archive/2026-10-03-add-accountsvc/verification.md)，本次单监听器、TLS 模式及本地代理结果见[传输变更验收记录](../openspec/changes/archive/2026-10-06-simplify-accountsvc-transport/verification.md)。外部 SMTP 实际送达、实际 OIDC 提供方、真实网关/网格和产品环境均属于待执行的部署验收，本地 fixture 通过不代替这些联调。

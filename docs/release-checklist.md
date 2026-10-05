@@ -29,4 +29,4 @@ accountsvc 与库使用同一版本源码；发布服务不改变嵌入式接入
 - [ ] 明确业务数据匿名化责任；不与依赖业务回调的宿主混跑同一实例的维护任务。
 - [ ] 在目标环境验证启动迁移、同址探针协议、摘流/连接排空、SIGTERM、终止宽限和备份恢复。
 
-本地服务验收必须执行 `scripts/verify-accountsvc.sh`，使用一次性 PostgreSQL/Redis 和隔离 SMTP/OIDC fixtures。缺依赖或必需测试 skip 不能视为通过；仍须执行原有库验证和恢复入口。初始服务历史结果见[accountsvc 验收记录](../openspec/changes/archive/2026-10-03-add-accountsvc/verification.md)，本次结果见[传输验收记录](../openspec/changes/simplify-accountsvc-transport/verification.md)。本地代理 fixture 不等于真实网关/网格验收，以上实际部署项全部保持待验收。
+本地服务验收必须执行 `scripts/verify-accountsvc.sh`，使用一次性 PostgreSQL/Redis 和隔离 SMTP/OIDC fixtures。缺依赖或必需测试 skip 不能视为通过；仍须执行原有库验证和恢复入口。初始服务历史结果见[accountsvc 验收记录](../openspec/changes/archive/2026-10-03-add-accountsvc/verification.md)，本次结果见[传输验收记录](../openspec/changes/archive/2026-10-06-simplify-accountsvc-transport/verification.md)。本地代理 fixture 不等于真实网关/网格验收，以上实际部署项全部保持待验收。

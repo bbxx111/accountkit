@@ -41,7 +41,7 @@ accountsvc 是基于本库的可选官方服务；直接嵌入 accountkit 的宿
 
 切换时删除旧监听配置和端口映射，更新调用方/探针至统一地址。保留默认 production HTTPS 时继续提供有效证书；选择受控外部 TLS 终止时，先验收传输保护和网络边界，再显式 false、移除 HTTP 证书项并同步调用方与探针协议。配置均重启生效。`migrate` 仍忽略服务专用监听/TLS/SMTP/内省/管理员设置；HTTP TLS 开关不改变出站 SMTP、OIDC、PostgreSQL或Redis策略。
 
-回退同时恢复旧二进制、INTERNAL_ADDR/内部端口、旧内省路径和双监听探针、调用方传输选择及网关策略。从 production false 回退旧版本必须恢复服务端 TLS 证书；只回退二进制或单改 URL 会造成配置拒绝或调用失败。回退不执行 Down、UnsafeReset 或清空 Redis。真实网关、网格、服务商和产品环境验证继续延期，本地证据见[传输验收记录](../openspec/changes/simplify-accountsvc-transport/verification.md)；历史归档工件保留原架构和原验收事实。
+回退同时恢复旧二进制、INTERNAL_ADDR/内部端口、旧内省路径和双监听探针、调用方传输选择及网关策略。从 production false 回退旧版本必须恢复服务端 TLS 证书；只回退二进制或单改 URL 会造成配置拒绝或调用失败。回退不执行 Down、UnsafeReset 或清空 Redis。真实网关、网格、服务商和产品环境验证继续延期，本地证据见[传输验收记录](../openspec/changes/archive/2026-10-06-simplify-accountsvc-transport/verification.md)；历史归档工件保留原架构和原验收事实。
 
 ## 同类身份换绑扩展
 

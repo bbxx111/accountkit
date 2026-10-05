@@ -1,21 +1,49 @@
-# 首次发布检查
+# 版本发布与产品上线检查
 
 发布 module：github.com/bbxx111/accountkit；远程：https://github.com/bbxx111/accountkit.git。
 
-- [x] extract-auth-server 所有必需任务完成，源文件清单、路由、默认配置和公开接口已对照。
-- [x] GOWORK=off 独立构建和独立临时宿主编译通过。
-- [x] Go 1.26.5 race 全套测试通过，必需数据库测试无 skip。
-- [x] sqlc 1.31.1 生成结果一致。
-- [x] harden-migration-safety 所有 P0 任务完成：升级、失败、并发、防误清库、历史 SQL 冻结、备份恢复。
-- [ ] 产品侧确认发送器、微信/Apple 配置、管理员身份验证、可信代理 IP、schema/Redis/密钥隔离。
-- [ ] 产品侧在自己的预发布环境验证备份恢复和升级窗口。
+## v0.1.0 发布范围
 
-本地验证不等于 GitHub Actions 已在线运行，也不等于宿主已经完成接入。实际 tag、push、发布和产品部署另行执行。测试数据库权限应限定到一次性数据库；生产密钥不进入示例或测试。
-包级验证的历史证据与限制见 [恢复验证记录](../openspec/changes/archive/2026-10-03-harden-migration-safety/verification.md)，各次变更的实际结果保存在其目录下的 `verification.md`。上面两项产品验收仍是实际生产接入的前置条件；发布前应针对候选版本重新执行门禁。
+初版面向自有产品接入，交付 Go module 和可选 accountsvc 源码。库集成无需运行 accountsvc。发布说明草稿见 [v0.1.0](releases/v0.1.0.md)；tag 发布、GitHub Release、服务镜像/二进制分发和产品部署分别执行。
 
-## 可选 accountsvc 发布
+本检查表列出三种状态：历史实现验证、待发布版本的门禁、各产品的上线验收。产品环境验收可以在产品接入过程中完成；库版本发布后，产品仍须完成对应上线条件。当前没有开源 LICENSE，本次面向自有产品的发布不替外部使用方定义复用许可；后续开放外部使用时再明确许可方式。
 
-accountsvc 与库使用同一版本源码；发布服务不改变嵌入式接入方式。运行配置见[服务手册](accountsvc.md)，网关统一契约见[网关接入手册](gateway-integration.md)，旧部署成套切换与回退见[兼容说明](compatibility.md#服务单监听与传输迁移)。发布服务前还需在目标环境确认：
+## 历史实现验证
+
+完整功能提取、独立构建、临时宿主消费、race、必需数据库测试、sqlc 一致性、迁移安全和备份恢复已有本地通过记录。最近的[终端用户入口验收](../openspec/changes/archive/2026-10-06-rename-consumer-to-enduser/verification.md)记录了 410 个库顶层测试、338 项库必需测试、65 个服务顶层测试及恢复三阶段通过；P0 迁移安全依据见[恢复验证记录](../openspec/changes/archive/2026-10-03-harden-migration-safety/verification.md)。
+
+这些记录用于追溯已验证源码和限制，不能自动勾选下方待发布版本的门禁，也不等于在线 CI 或产品验收通过。
+
+## 发布前门禁
+
+- [ ] 在 `main` 上确定最终候选提交 SHA，确认工作区干净且 `v0.1.0` 在本地与远端均不存在；记录候选 SHA 和 CI 链接。
+- [ ] 最终候选提交的 CI 完成且全部通过：`check-generated.sh`、`verify.sh` 和 `verify-accountsvc.sh`。核对完整历史/tags、独立构建、vet、race、全部必需用例及真实恢复结果；缺依赖或必需测试 skip 不视为通过。普通套件的 `TestRecoveryFixture` 允许按既有规则 skip，但恢复脚本的 seed、verify、source-unchanged 必须通过。
+- [ ] 核对发布说明中的功能范围、Go/存储要求、当前 Go 入口、accountsvc 限制、宿主责任和产品环境未验证项；声明面向自有产品，未将源码公开可见描述成已经授予开源许可。
+- [ ] 发布说明和其余待交付文件均包含在最终候选提交内；后续改动产生新候选提交时，重新核对该提交对应的门禁。
+
+本地复核使用[开发与验证入口](development.md)，测试数据库权限限定到一次性数据库；生产密钥不进入示例或测试。各次变更的实际结果保存在对应 `openspec/changes/.../verification.md`，原始日志和恢复材料保留于 ignored `.test-output/`。
+
+## 发布动作与消费确认
+
+上述发布前门禁通过后，按明确授权执行版本发布。Go 版本使用完整的 `v0.1.0`，tag 指向已验证的最终候选提交；实际发布流程见 [Go 模块发布说明](https://go.dev/doc/modules/publishing)。
+
+- [ ] 创建并推送指向最终候选 SHA 的 `v0.1.0` tag；核对远端 tag 解析到同一提交。发布后不移动、覆盖或重建该 tag；修复通过新版本交付。
+- [ ] tag 推送后，在独立临时宿主中以 `GOWORK=off` 执行 `go get github.com/bbxx111/accountkit@v0.1.0`，不使用本地 replace；分别编译根 `EndUserHandler` 与直接 `httpapi/enduser` 消费，并核对 `go list -m -json` 返回的版本。临时宿主和输出只放 ignored `.test-output/`。
+- [ ] 远端消费确认后，将发布说明的状态改为已发布，补充 tag/提交、候选 CI 和消费确认依据。需要 GitHub Release 时使用同一份说明；无需另维护一套版本内容。
+
+推送 tag 后版本已可供 Go 使用，因此消费确认属于发布后的检查。若发现缺陷，保留版本和证据，通过修复版本处理；不能回写已发布 tag 来掩盖问题。
+
+## 嵌入式产品上线
+
+- [ ] 产品侧按启用能力确认发送器、微信/Apple 配置、管理员身份验证、可信代理 IP、schema/Redis/issuer/audience/密钥隔离，以及业务数据匿名化回调。
+- [ ] 按[网关接入契约](gateway-integration.md)落实路由保护、TLS、可信 IP、入口频率/并发限制和日志脱敏。
+- [ ] 产品侧在自己的预发布环境验证实际认证链路、备份恢复、升级窗口和回退安排。
+
+以上是各产品生产上线的前置条件，发布库版本不自动完成这些验收。实际发送、第三方身份提供方和设备联调由宿主负责。
+
+## accountsvc 产品上线
+
+accountsvc 与库使用同一版本源码；运行配置见[服务手册](accountsvc.md)，网关统一契约见[网关接入手册](gateway-integration.md)，旧部署成套切换与回退见[兼容说明](compatibility.md#服务单监听与传输迁移)。运行该服务的产品在目标环境确认：
 
 - [ ] 删除旧 INTERNAL_ADDR/内部端口，更新统一内省和探针地址；保存旧二进制、配置、证书、调用方及网关策略的成套回退材料。
 - [ ] 配置明确公网路由范围和独立管理策略，公网内省/探针被拒绝且不进入后端；授权内部调用可访问，未授权直连不能绕过。
@@ -29,4 +57,4 @@ accountsvc 与库使用同一版本源码；发布服务不改变嵌入式接入
 - [ ] 明确业务数据匿名化责任；不与依赖业务回调的宿主混跑同一实例的维护任务。
 - [ ] 在目标环境验证启动迁移、同址探针协议、摘流/连接排空、SIGTERM、终止宽限和备份恢复。
 
-本地服务验收必须执行 `scripts/verify-accountsvc.sh`，使用一次性 PostgreSQL/Redis 和隔离 SMTP/OIDC fixtures。缺依赖或必需测试 skip 不能视为通过；仍须执行原有库验证和恢复入口。初始服务历史结果见[accountsvc 验收记录](../openspec/changes/archive/2026-10-03-add-accountsvc/verification.md)，本次结果见[传输验收记录](../openspec/changes/archive/2026-10-06-simplify-accountsvc-transport/verification.md)。本地代理 fixture 不等于真实网关/网格验收，以上实际部署项全部保持待验收。
+初始服务历史结果见[accountsvc 验收记录](../openspec/changes/archive/2026-10-03-add-accountsvc/verification.md)，传输结果见[传输验收记录](../openspec/changes/archive/2026-10-06-simplify-accountsvc-transport/verification.md)。本地代理、SMTP/OIDC fixtures 不等于真实网关/网格或服务商验收，以上实际部署项保持待验收。

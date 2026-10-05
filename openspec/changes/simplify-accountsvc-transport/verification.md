@@ -48,7 +48,7 @@ Task1 Windows相关单元/协议与vet通过，8个真实服务顶层用例因�
 - `bash scripts/check-generated.sh` exit0，sqlc结果一致。
 - `bash scripts/check-migrations.sh` exit0，冻结源及可达正式tag迁移历史检查通过（完整验证亦执行）。
 - `GOWORK=off go list -deps .` 根库不依赖internal/accountsvc；`d4456aa..HEAD`受保护SQL/生成结果/go.mod/go.sum/根配置/pii无变化。
-- `openspec validate --all --strict` exit0，12/12项通过。Task3完成后仍需协调者最终整体审查与状态核对。
+- `openspec validate --all --strict` exit0，12/12项通过。最终整体审查及续办收尾核验见下节。
 
 ## Compose 单端口部署
 
@@ -82,7 +82,15 @@ docker compose -p accountsvc-transport-20261005 --env-file .test-output/transpor
 ## 审查与未验证项
 
 - Task1独立审查：规格符合，Critical/Important/Minor均无，Approved；当时真实服务未验收部分已由最终严格入口补齐。
-- Task2独立审查：Approved，无Critical/Important；一项非阻断Minor为新增remoteauth默认证书拒绝测试输出预期TLS握手日志，尚未修复，不影响证书拒绝断言或最终exit0。
-- Task3自审逐项核对增量规格与当前配置/路由、三态默认、完整迁移/回退和部署职责；7份Markdown共56个本地路径/锚点核对无问题（`.test-output/transport-doc-links.log`），本步范围 `git diff --check` exit0。没有修改协调者plan/tasks；Task3独立审查已通过（Approved，无新增问题）；最终全分支审查尚待补录，OpenSpec任务只在实际核验后勾选。
+- Task2独立审查：Approved，无Critical/Important；原一项非阻断Minor为新增remoteauth默认证书拒绝测试输出预期TLS握手日志，已于2026-10-06通过 `f1a257e` 处理并通过范围复审，证书拒绝断言保持。
+- Task3自审逐项核对增量规格与当前配置/路由、三态默认、完整迁移/回退和部署职责；7份Markdown共56个本地路径/锚点核对无问题（`.test-output/transport-doc-links.log`），本步范围 `git diff --check` exit0。没有修改协调者plan/tasks；Task3独立审查已通过（Approved，无新增问题）；最终全分支审查覆盖 `d4456aa..9546a96` 并获 Approved；`9546a96..f1a257e` 的范围复审确认唯一Minor已解决且无新问题。
 - 真实网关/网格配置、后端直连防绕过、产品证书链与身份策略、流量阈值/集群计数和并发压力、全链路日志保护、实际SMTP送达/OIDC提供方、产品备份恢复与部署窗口继续延期。[发布清单](../../../docs/release-checklist.md#可选-accountsvc-发布)对应项保持未勾选。
 - 未执行push、tag、发布、产品部署或OpenSpec归档；本地验证不表示在线GitHub Actions已经通过。
+
+## 续办收尾（2026-10-06）
+
+最终审查曾因子代理额度限制中断，用户resume后恢复并完成，未重复派发已完成实施任务。原2026-10-05的全库410项、严格服务65项和恢复/Compose证据保持原日期。最终修复仅调整 TestDefaultHTTPSCertificateVerification 的局部日志夹具：服务器启动前配置ErrorLog缓冲，关闭后仅过滤预期证书拒绝诊断，其他诊断仍可见；生产代码、TLS校验及原有安全断言未改动。
+
+修复后 GOWORK=off 的 remoteauth 包完整verbose测试、vet及Linux race通过（race包1.686s），无需重跑未改变的完整服务/恢复套件。最终范围复审结论 Ready / Approved，Critical、Important、Minor均无遗留。本change的13项任务已完成；归档、合并和推送仍作为独立操作。
+
+本任务手工创建的 transport-verify-20261005-pg、transport-verify-20261005-redis 和专用网络已在核对所有权标签后清理；Compose项目资源此前已清理。既有postgres/redis容器保留，本地构建镜像及ignored原始证据保留。

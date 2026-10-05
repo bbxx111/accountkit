@@ -56,21 +56,20 @@ func (s *healthState) serveReady(w http.ResponseWriter, r *http.Request) {
 	healthResponse(w, 200, "ready")
 }
 
-func serviceHandlers(cfg Config, consumer, admin, introspect http.Handler, state *healthState) (http.Handler, http.Handler) {
-	public := chi.NewRouter()
-	public.Use(func(next http.Handler) http.Handler {
+func serviceHandler(cfg Config, consumer, admin, introspect http.Handler, state *healthState) http.Handler {
+	router := chi.NewRouter()
+	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
 			next.ServeHTTP(w, r)
 		})
 	})
-	public.Mount("/v1", consumer)
-	public.Mount("/admin/v1", admin)
-	internal := chi.NewRouter()
-	internal.Handle("/internal/v1/introspect", introspect)
-	internal.Get("/healthz", func(w http.ResponseWriter, r *http.Request) { healthResponse(w, 200, "ok") })
-	internal.Get("/readyz", state.serveReady)
-	return requestMetadata(cfg.TrustedProxyCIDRs, public), requestMetadata(cfg.TrustedProxyCIDRs, internal)
+	router.Handle("/v1/introspect", introspect)
+	router.Mount("/v1", consumer)
+	router.Mount("/admin/v1", admin)
+	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) { healthResponse(w, 200, "ok") })
+	router.Get("/readyz", state.serveReady)
+	return requestMetadata(cfg.TrustedProxyCIDRs, router)
 }
 
 func newHTTPServer(addr string, handler http.Handler, requestCtx context.Context) *http.Server {

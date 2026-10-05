@@ -204,14 +204,10 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 			return errors.New("accountsvc: administrator initialization failed")
 		}
 	}
-	var listeners []net.Listener
-	for _, addr := range []string{cfg.HTTPAddr, cfg.InternalAddr} {
-		ln, err := factory.listen(startup, addr)
-		if err != nil {
-			_ = startupCleanup(cfg, d, app, listeners)
-			return errors.New("accountsvc: listener binding failed")
-		}
-		listeners = append(listeners, ln)
+	ln, err := factory.listen(startup, cfg.HTTPAddr)
+	if err != nil {
+		_ = startupCleanup(cfg, d, app, nil)
+		return errors.New("accountsvc: listener binding failed")
 	}
 	// 不把信号 context 直接传给审计/维护或请求：信号先触发 HTTP 排空。
 	serviceCtx, cancelService := context.WithCancel(context.Background())
@@ -220,22 +216,23 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 	defer cancelRequests()
 	tracker := newRequestTracker()
 	state := &healthState{database: d.databasePing, redis: d.redisPing}
-	public, internal := serviceHandlers(cfg, app.consumer, app.admin, app.introspect, state)
-	servers := []*http.Server{newHTTPServer(cfg.HTTPAddr, requestMetadata(cfg.TrustedProxyCIDRs, tracker.wrap(public)), requestCtx), newHTTPServer(cfg.InternalAddr, requestMetadata(cfg.TrustedProxyCIDRs, tracker.wrap(internal)), requestCtx)}
-	for i, ln := range listeners {
-		if cfg.tlsConfig != nil {
-			servers[i].TLSConfig = cfg.tlsConfig.Clone()
-			listeners[i] = tls.NewListener(ln, servers[i].TLSConfig)
-		}
+	handler := serviceHandler(cfg, app.consumer, app.admin, app.introspect, state)
+	server := newHTTPServer(cfg.HTTPAddr, requestMetadata(cfg.TrustedProxyCIDRs, tracker.wrap(handler)), requestCtx)
+	if cfg.TLSEnabled {
+		server.TLSConfig = cfg.tlsConfig.Clone()
+		ln = tls.NewListener(ln, server.TLSConfig)
 	}
 	if startup.Err() != nil {
-		_ = startupCleanup(cfg, d, app, listeners)
+		_ = startupCleanup(cfg, d, app, []net.Listener{ln})
 		return errors.New("accountsvc: startup timeout or cancellation")
 	}
 	app.start(serviceCtx)
-	errorsFromServers := make(chan error, 2)
-	for i, server := range servers {
-		go func(server *http.Server, ln net.Listener) { errorsFromServers <- server.Serve(ln) }(server, listeners[i])
+	errorsFromServers := make(chan error, 1)
+	go func() { errorsFromServers <- server.Serve(ln) }()
+	if cfg.TLSEnabled {
+		logger.Info("accountsvc: HTTPS listener started", "http_tls_enabled", true)
+	} else {
+		logger.Info("accountsvc: HTTP listener started; HTTP TLS is disabled in this process", "http_tls_enabled", false)
 	}
 	state.ready.Store(true)
 	cancelStartup()
@@ -247,7 +244,7 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 	}
 	shutdown, cancelShutdown := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancelShutdown()
-	if err = shutdownRuntime(shutdown, cfg.ShutdownTimeout-15*time.Second, servers, state, tracker, cancelRequests, app.close, d.closeRedis, d.closePool); err != nil {
+	if err = shutdownRuntime(shutdown, cfg.ShutdownTimeout-15*time.Second, []*http.Server{server}, state, tracker, cancelRequests, app.close, d.closeRedis, d.closePool); err != nil {
 		return err
 	}
 	return serveError

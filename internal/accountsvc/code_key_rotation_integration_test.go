@@ -92,7 +92,7 @@ func TestServiceIntegrationCodeKeyRotation(t *testing.T) {
 	send := func(p *serviceProcess, target string) string {
 		t.Helper()
 		f.secrets = append(f.secrets, target)
-		f.call("POST", p.public+"/v1/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": target}, 200)
+		f.call("POST", p.baseURL+"/v1/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": target}, 200)
 		mail := f.smtp.mail(t)
 		f.secrets = append(f.secrets, mail.target, mail.code)
 		if mail.target != target || !strings.Contains(mail.body, "登录") {
@@ -102,7 +102,7 @@ func TestServiceIntegrationCodeKeyRotation(t *testing.T) {
 	}
 	signIn := func(p *serviceProcess, target, code string) map[string]any {
 		t.Helper()
-		out := f.call("POST", p.public+"/v1/users:signInWithCode", "", map[string]any{"email": map[string]string{"target": target, "code": code}}, 200)
+		out := f.call("POST", p.baseURL+"/v1/users:signInWithCode", "", map[string]any{"email": map[string]string{"target": target, "code": code}}, 200)
 		for _, field := range []string{"access_token", "refresh_token"} {
 			token, ok := out[field].(string)
 			if !ok || token == "" {
@@ -116,7 +116,7 @@ func TestServiceIntegrationCodeKeyRotation(t *testing.T) {
 	limited := func(p *serviceProcess, target, reason string) {
 		t.Helper()
 		f.secrets = append(f.secrets, target)
-		out := f.call("POST", p.public+"/v1/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": target}, 429)
+		out := f.call("POST", p.baseURL+"/v1/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": target}, 429)
 		errorBody, ok := out["error"].(map[string]any)
 		if !ok || errorBody["status"] != "RESOURCE_EXHAUSTED" || errorBody["reason"] != reason {
 			t.Fatal("rotation rate limit reason changed")

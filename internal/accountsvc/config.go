@@ -28,7 +28,7 @@ type Config struct {
 	DatabaseURL          string
 	RedisURL             string
 	HTTPAddr             string
-	InternalAddr         string
+	TLSEnabled           bool // LoadConfig 解析后的有效 HTTP TLS 模式。
 	TLSCertFile          string
 	TLSKeyFile           string
 	StartupTimeout       time.Duration
@@ -101,12 +101,11 @@ func LoadConfig(command string) (Config, error) {
 		return Config{}, invalidConfig("ACCOUNTSVC_MODE")
 	}
 	c.HTTPAddr = defaultEnv("HTTP_ADDR", "127.0.0.1:8080")
-	c.InternalAddr = defaultEnv("INTERNAL_ADDR", "127.0.0.1:8081")
 	if !validListenAddress(c.HTTPAddr) {
 		return Config{}, invalidConfig("ACCOUNTSVC_HTTP_ADDR")
 	}
-	if !validListenAddress(c.InternalAddr) || c.HTTPAddr == c.InternalAddr {
-		return Config{}, invalidConfig("ACCOUNTSVC_INTERNAL_ADDR")
+	if os.Getenv("ACCOUNTSVC_INTERNAL_ADDR") != "" {
+		return Config{}, errors.New("accountsvc: remove ACCOUNTSVC_INTERNAL_ADDR and update access policies for the single HTTP_ADDR listener")
 	}
 	c.ShutdownTimeout, err = durationEnv("SHUTDOWN_TIMEOUT", 30*time.Second)
 	if err != nil {
@@ -117,7 +116,17 @@ func LoadConfig(command string) (Config, error) {
 	}
 	c.TLSCertFile = env("TLS_CERT_FILE")
 	c.TLSKeyFile = env("TLS_KEY_FILE")
-	if c.Mode == "production" || c.TLSCertFile != "" || c.TLSKeyFile != "" {
+	c.TLSEnabled = c.Mode == "production" || c.TLSCertFile != "" || c.TLSKeyFile != ""
+	if raw := env("TLS_ENABLED"); raw != "" {
+		c.TLSEnabled, err = strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, invalidConfig("ACCOUNTSVC_TLS_ENABLED")
+		}
+		if !c.TLSEnabled && (c.TLSCertFile != "" || c.TLSKeyFile != "") {
+			return Config{}, invalidConfig("ACCOUNTSVC_TLS_ENABLED / TLS_CERT_FILE / TLS_KEY_FILE (certificate conflicts with TLS_ENABLED=false)")
+		}
+	}
+	if c.TLSEnabled {
 		if c.TLSCertFile == "" {
 			return Config{}, invalidConfig("ACCOUNTSVC_TLS_CERT_FILE")
 		}

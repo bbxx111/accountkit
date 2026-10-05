@@ -7,3 +7,7 @@ github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationIdentity
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationSessionExpiry
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationCodeKeyRotation
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceRotationQuotaWindow
+github.com/bbxx111/accountkit/internal/accountsvc/TestConfigTLSMode
+github.com/bbxx111/accountkit/internal/accountsvc/TestConfigRejectsInternalAddress
+github.com/bbxx111/accountkit/internal/accountsvc/TestRuntimeSingleListener
+github.com/bbxx111/accountkit/internal/accountsvc/TestHTTPIntrospectionBoundary

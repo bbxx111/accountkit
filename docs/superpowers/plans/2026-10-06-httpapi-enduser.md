@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、Chi、PostgreSQL 17、Redis；现有 OpenSpec、测试门禁和 Linux race 验证设施。
 
-**Spec:** [proposal](../../../openspec/changes/rename-consumer-to-enduser/proposal.md)、[design](../../../openspec/changes/rename-consumer-to-enduser/design.md)、[delta](../../../openspec/changes/rename-consumer-to-enduser/specs/accountkit-package-identity/spec.md)。
+**Spec:** [proposal](../../../openspec/changes/archive/2026-10-06-rename-consumer-to-enduser/proposal.md)、[design](../../../openspec/changes/archive/2026-10-06-rename-consumer-to-enduser/design.md)、[delta](../../../openspec/changes/archive/2026-10-06-rename-consumer-to-enduser/specs/accountkit-package-identity/spec.md)。
 
 ## Global Constraints
 

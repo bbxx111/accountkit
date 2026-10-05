@@ -1,6 +1,6 @@
 # 验收记录：终端用户 HTTP 包更名
 
-日期：2026-10-06。变更依据：[proposal](proposal.md)、[design](design.md)、[增量规格](specs/accountkit-package-identity/spec.md)。实施计划：[HTTP API EndUser](../../../docs/superpowers/plans/2026-10-06-httpapi-enduser.md)。
+日期：2026-10-06。变更依据：[proposal](proposal.md)、[design](design.md)、[增量规格](specs/accountkit-package-identity/spec.md)。实施计划：[HTTP API EndUser](../../../../docs/superpowers/plans/2026-10-06-httpapi-enduser.md)。
 
 ## 验证范围与源码基线
 
@@ -61,4 +61,8 @@ RED 在修改生产代码前执行，失败原因为缺少目标入口。直接�
 
 ## 未验证项与交付边界
 
-产品环境、真实短信/邮件服务商、生产网关或服务网格联调继续延期；本次不声称完成在线部署验收。7 项实施任务全部完成。当前变更尚未归档、合并或推送，保留于 `refactor/httpapi-enduser`。
+产品环境、真实短信/邮件服务商、生产网关或服务网格联调继续延期；本次不声称完成在线部署验收。7 项实施任务全部完成。实施完成时保留于 `refactor/httpapi-enduser`，未执行归档、合并或推送。后续归档状态见下节。
+
+## 归档
+
+2026-10-06 按用户要求归档至 `openspec/changes/archive/2026-10-06-rename-consumer-to-enduser/`。主规格 `accountkit-package-identity` 已同步两项新增要求及一项运行兼容更新，其余要求保留。归档修复了计划、设计与验收记录之间的相对链接；此次只修改规格与文档，实施阶段的完整测试仍覆盖相同 Go 代码。后续按用户要求以独立 merge commit 合入 develop；实际合并状态以 Git 历史为准，未授权推送。

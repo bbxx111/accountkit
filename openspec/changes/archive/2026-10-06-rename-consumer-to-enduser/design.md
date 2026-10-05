@@ -1,6 +1,6 @@
 ## Context
 
-范围见 [proposal.md](proposal.md)，命名与迁移契约见 [增量规格](specs/accountkit-package-identity/spec.md)。本次涉及公共 Go 导入与门面方法的破坏性迁移，因此保留设计工件；运行约束继续遵循 [嵌入式库](../../specs/embedded-auth-package/spec.md) 与 [包标识](../../specs/accountkit-package-identity/spec.md) 主规格。
+范围见 [proposal.md](proposal.md)，命名与迁移契约见 [增量规格](specs/accountkit-package-identity/spec.md)。本次涉及公共 Go 导入与门面方法的破坏性迁移，因此保留设计工件；运行约束继续遵循 [嵌入式库](../../../specs/embedded-auth-package/spec.md) 与 [包标识](../../../specs/accountkit-package-identity/spec.md) 主规格。
 
 当前包有19个 Go 文件；根 Auth 保存 `*consumer.Handler` 并通过 ConsumerHandler、RequireScope、RequireRecentAuth 使用它，accountsvc及示例通过根门面接入。必需清单中有37项原包路径条目。用户已确认统一更名并不保留旧导入或旧方法。
 

@@ -238,8 +238,8 @@ HMAC 还须等待旧验证码、目标冷却和当日目标额度的业务窗口
 
 远程仓库：https://github.com/bbxx111/accountkit.git
 
-Go module：github.com/bbxx111/accountkit。当前准备面向自有产品接入的 `v0.1.0` 初版，发布说明为[草稿](docs/releases/v0.1.0.md)，尚未发布版本 tag。库及可选服务已有完整本地验证记录，见[最近验收](openspec/changes/archive/2026-10-06-rename-consumer-to-enduser/verification.md)。最终候选提交 CI、tag 发布和远端按版本消费仍按[发布检查](docs/release-checklist.md)执行。
+Go module：github.com/bbxx111/accountkit。面向自有产品接入的 `v0.1.0` 初版已发布，使用 `go get github.com/bbxx111/accountkit@v0.1.0` 接入；功能、运行限制与版本记录见[发布说明](docs/releases/v0.1.0.md)。发布提交 `48603d6` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/37366666273)已通过，独立宿主已确认无本地 replace 的远端拉取与构建；本地实现历史见[最近验收](openspec/changes/archive/2026-10-06-rename-consumer-to-enduser/verification.md)，发布及上线要求见[检查表](docs/release-checklist.md)。
 
-库版本发布与各产品生产上线分别验收。产品实际环境接入、真实服务商与预发布升级/恢复仍待完成；产品各自配置 schema、Redis 前缀、issuer/audience 和密钥，并承担自己的匿名化与网关接入责任。当前未附开源 LICENSE，本次准备的版本供自有产品接入，尚未向外部使用方定义复用许可。
+库版本发布与各产品生产上线分别验收。产品实际环境接入、真实服务商与预发布升级/恢复仍待完成；产品各自配置 schema、Redis 前缀、issuer/audience 和密钥，并承担自己的匿名化与网关接入责任。当前未附开源 LICENSE，本次版本供自有产品接入，尚未向外部使用方定义复用许可。
 
 迁移兼容性变化：原 migrations.Down 保留签名但默认拒绝执行；一次性测试清库改用显式 UnsafeReset。升级、故障处理与恢复步骤见 [迁移手册](docs/migrations.md)。

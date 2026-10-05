@@ -57,7 +57,7 @@
 - [x] 明确兼容索引中的历史入口，分类剩余旧名为迁移说明或历史事实，不改归档、已完成计划和固定基线。检查本次文档相对链接及 diff。
 - [x] 文档工作者自审、提交文档并报告；控制器安排独立任务审查。
 - [x] 控制器使用本次创建的一次性 PG17/Redis 和独立空恢复源/目标库，Linux 执行 `bash scripts/verify.sh`、`bash scripts/verify-accountsvc.sh`；保留 JSONL、恢复材料及退出码，检查新包全部必需用例实际 PASS。执行生成检查与 `openspec validate --all --strict`。
-- [ ] 控制器记录真实结果、RED/GREEN、接口/选择器比对、分步及最终审查结论到 verification.md；产品环境延期明确列出。全部证据满足后勾选 7 项任务，提交记录，清理仅本次测试资源。
+- [x] 控制器记录真实结果、RED/GREEN、接口/选择器比对、分步及最终审查结论到 verification.md；产品环境延期明确列出。全部证据满足后勾选 7 项任务，提交记录，清理仅本次测试资源。
 
 ## Controller Handoff
 

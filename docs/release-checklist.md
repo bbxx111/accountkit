@@ -4,7 +4,7 @@
 
 ## v0.1.0 发布范围
 
-初版面向自有产品接入，交付 Go module 和可选 accountsvc 源码。库集成无需运行 accountsvc。发布说明草稿见 [v0.1.0](releases/v0.1.0.md)；tag 发布、GitHub Release、服务镜像/二进制分发和产品部署分别执行。
+初版面向自有产品接入，交付 Go module 和可选 accountsvc 源码。库集成无需运行 accountsvc。发布说明见 [v0.1.0](releases/v0.1.0.md)；tag 发布、GitHub Release、服务镜像/二进制分发和产品部署分别执行。`v0.1.0` 已发布，下面发布阶段的勾选仅对应该版本；后续版本须重新验证自己的候选提交。
 
 本检查表列出三种状态：历史实现验证、待发布版本的门禁、各产品的上线验收。产品环境验收可以在产品接入过程中完成；库版本发布后，产品仍须完成对应上线条件。当前没有开源 LICENSE，本次面向自有产品的发布不替外部使用方定义复用许可；后续开放外部使用时再明确许可方式。
 
@@ -16,10 +16,10 @@
 
 ## 发布前门禁
 
-- [ ] 在 `main` 上确定最终候选提交 SHA，确认工作区干净且 `v0.1.0` 在本地与远端均不存在；记录候选 SHA 和 CI 链接。
-- [ ] 最终候选提交的 CI 完成且全部通过：`check-generated.sh`、`verify.sh` 和 `verify-accountsvc.sh`。核对完整历史/tags、独立构建、vet、race、全部必需用例及真实恢复结果；缺依赖或必需测试 skip 不视为通过。普通套件的 `TestRecoveryFixture` 允许按既有规则 skip，但恢复脚本的 seed、verify、source-unchanged 必须通过。
-- [ ] 核对发布说明中的功能范围、Go/存储要求、当前 Go 入口、accountsvc 限制、宿主责任和产品环境未验证项；声明面向自有产品，未将源码公开可见描述成已经授予开源许可。
-- [ ] 发布说明和其余待交付文件均包含在最终候选提交内；后续改动产生新候选提交时，重新核对该提交对应的门禁。
+- [x] 在 `main` 上确定最终候选提交 SHA，确认工作区干净且 `v0.1.0` 在本地与远端均不存在；记录候选 SHA 和 CI 链接。
+- [x] 最终候选提交的 CI 完成且全部通过：`check-generated.sh`、`verify.sh` 和 `verify-accountsvc.sh`。核对完整历史/tags、独立构建、vet、race、全部必需用例及真实恢复结果；缺依赖或必需测试 skip 不视为通过。普通套件的 `TestRecoveryFixture` 允许按既有规则 skip，但恢复脚本的 seed、verify、source-unchanged 必须通过。
+- [x] 核对发布说明中的功能范围、Go/存储要求、当前 Go 入口、accountsvc 限制、宿主责任和产品环境未验证项；声明面向自有产品，未将源码公开可见描述成已经授予开源许可。
+- [x] 发布说明和其余待交付文件均包含在最终候选提交内；后续改动产生新候选提交时，重新核对该提交对应的门禁。
 
 本地复核使用[开发与验证入口](development.md)，测试数据库权限限定到一次性数据库；生产密钥不进入示例或测试。各次变更的实际结果保存在对应 `openspec/changes/.../verification.md`，原始日志和恢复材料保留于 ignored `.test-output/`。
 
@@ -27,9 +27,9 @@
 
 上述发布前门禁通过后，按明确授权执行版本发布。Go 版本使用完整的 `v0.1.0`，tag 指向已验证的最终候选提交；实际发布流程见 [Go 模块发布说明](https://go.dev/doc/modules/publishing)。
 
-- [ ] 创建并推送指向最终候选 SHA 的 `v0.1.0` tag；核对远端 tag 解析到同一提交。发布后不移动、覆盖或重建该 tag；修复通过新版本交付。
-- [ ] tag 推送后，在独立临时宿主中以 `GOWORK=off` 执行 `go get github.com/bbxx111/accountkit@v0.1.0`，不使用本地 replace；分别编译根 `EndUserHandler` 与直接 `httpapi/enduser` 消费，并核对 `go list -m -json` 返回的版本。临时宿主和输出只放 ignored `.test-output/`。
-- [ ] 远端消费确认后，将发布说明的状态改为已发布，补充 tag/提交、候选 CI 和消费确认依据。需要 GitHub Release 时使用同一份说明；无需另维护一套版本内容。
+- [x] 创建并推送指向最终候选 SHA 的 `v0.1.0` tag；核对远端 tag 解析到同一提交。发布后不移动、覆盖或重建该 tag；修复通过新版本交付。
+- [x] tag 推送后，在独立临时宿主中以 `GOWORK=off` 执行 `go get github.com/bbxx111/accountkit@v0.1.0`，不使用本地 replace；分别编译根 `EndUserHandler` 与直接 `httpapi/enduser` 消费，并核对 `go list -m -json` 返回的版本。临时宿主和输出只放 ignored `.test-output/`。
+- [x] 远端消费确认后，将发布说明的状态改为已发布，补充 tag/提交、候选 CI 和消费确认依据。需要 GitHub Release 时使用同一份说明；无需另维护一套版本内容。
 
 推送 tag 后版本已可供 Go 使用，因此消费确认属于发布后的检查。若发现缺陷，保留版本和证据，通过修复版本处理；不能回写已发布 tag 来掩盖问题。
 

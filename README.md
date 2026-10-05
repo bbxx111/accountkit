@@ -5,6 +5,8 @@
 
 accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可选服务实现，使用同一套库能力；选择库集成不需要部署或调用 accountsvc。服务入口是 `cmd/accountsvc`，包含 SMTP 邮件投递、消费者远程鉴权和默认关闭的外部管理员 JWT 验证，运行与配置见 [accountsvc 服务手册](docs/accountsvc.md)。`examples/embedded` 保留为库集成开发示例。
 
+accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect` 和探针；公网暴露、直连限制、TLS 终止与入口流量控制由部署方配置，统一规则见 [网关接入手册](docs/gateway-integration.md)。直接嵌入库的宿主也可沿用该契约。旧双监听部署与调用方需按[服务传输迁移说明](docs/compatibility.md#服务单监听与传输迁移)调整。
+
 ## 生命周期
 
 完整可编译宿主示例见 [examples/embedded/main.go](examples/embedded/main.go)，开发与验证步骤见 [docs/development.md](docs/development.md)。导入使用 `"github.com/bbxx111/accountkit"`，通过 `accountkit.Config`、`accountkit.Deps` 和 `accountkit.New` 装配。旧包名调用方见[包名迁移说明](docs/compatibility.md#包名迁移)。

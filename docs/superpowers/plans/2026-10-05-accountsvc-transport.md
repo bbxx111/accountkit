@@ -39,13 +39,13 @@
 - Consumes: `LoadConfig(command string) (Config,error)`、`runConfig`、`newHTTPServer`、既有独立consumer/admin/introspection handlers。
 - Produces: `Config.TLSEnabled bool` 为解析后有效值，删除 `InternalAddr`；私有 `serviceHandler(cfg Config, consumer, admin, introspect http.Handler, state *healthState) http.Handler` 返回统一树；`serviceProcess.baseURL string` 为唯一服务地址，后续测试沿用 `f.start(extra) / f.call / f.introspect / p.stop`。
 
-- [ ] 先补 `TestConfigTLSMode`、`TestConfigRejectsInternalAddress`，断言完整TLS矩阵及旧配置拒绝；migrate携带非法TLS、旧内部地址、服务凭据缺失仍不读取服务设置。执行 `go test -count=1 ./internal/accountsvc -run 'TestConfig'` 记录预期RED。
-- [ ] 实现有效TLS值及安全错误：未设production仍TLS、development无证书HTTP；显式false有任一证书报错、无证书HTTP。HTTP关闭日志说明本进程未启TLS，不声称外部加密已验证。保持SMTP生产TLS/OIDC和客户端配置校验。
-- [ ] 写/更新 `TestHTTPBoundaryAndHealth` 与 `TestRuntimeSingleListener` 行为测试，再实现单listener/server与serviceHandler；断言绑定一次、/v1/introspect正确到达真实Basic handler、旧路径404、所有面在同址、没有角色或scope绕过。沿用现有超时与64KiB上限。
-- [ ] 复核/保留原启动顺序、失败回收、监听异常、health/readiness与SIGTERM排空单元测试；不要删除测试绕过双端口行为变化。HTTP流量排空覆盖全部处理器。
-- [ ] 机械迁移全部已有服务fixture和调用点到baseURL，按TLS开关构造http/https地址；删除内部地址环境注入。将原“公开口内部路由404”断言改为新同址协议行为及旧路径404，不删已有生命周期、认证、故障、换绑、过期、轮换验收内容。
-- [ ] `go test -count=1 ./internal/accountsvc/...` 和 `go vet ./internal/accountsvc/...` 通过；实际Linux既有服务回归由任务2执行。将新增必需顶层测试加入清单，记录测试名、RED/GREEN和未执行项。
-- [ ] 自审并提交 `feat(accountsvc): unify listener and make http tls explicit`，交独立审查；覆盖OpenSpec2.1、2.2、3.1、3.2及4.2的用例迁移（4.2待真实服务通过后勾选）。
+- [x] 先补 `TestConfigTLSMode`、`TestConfigRejectsInternalAddress`，断言完整TLS矩阵及旧配置拒绝；migrate携带非法TLS、旧内部地址、服务凭据缺失仍不读取服务设置。执行 `go test -count=1 ./internal/accountsvc -run 'TestConfig'` 记录预期RED。
+- [x] 实现有效TLS值及安全错误：未设production仍TLS、development无证书HTTP；显式false有任一证书报错、无证书HTTP。HTTP关闭日志说明本进程未启TLS，不声称外部加密已验证。保持SMTP生产TLS/OIDC和客户端配置校验。
+- [x] 写/更新 `TestHTTPBoundaryAndHealth` 与 `TestRuntimeSingleListener` 行为测试，再实现单listener/server与serviceHandler；断言绑定一次、/v1/introspect正确到达真实Basic handler、旧路径404、所有面在同址、没有角色或scope绕过。沿用现有超时与64KiB上限。
+- [x] 复核/保留原启动顺序、失败回收、监听异常、health/readiness与SIGTERM排空单元测试；不要删除测试绕过双端口行为变化。HTTP流量排空覆盖全部处理器。
+- [x] 机械迁移全部已有服务fixture和调用点到baseURL，按TLS开关构造http/https地址；删除内部地址环境注入。将原“公开口内部路由404”断言改为新同址协议行为及旧路径404，不删已有生命周期、认证、故障、换绑、过期、轮换验收内容。
+- [x] `go test -count=1 ./internal/accountsvc/...` 和 `go vet ./internal/accountsvc/...` 通过；实际Linux既有服务回归由任务2执行。将新增必需顶层测试加入清单，记录测试名、RED/GREEN和未执行项。
+- [x] 自审并提交 `feat(accountsvc): unify listener and make http tls explicit`，交独立审查；覆盖OpenSpec2.1、2.2、3.1、3.2及4.2的用例迁移（4.2待真实服务通过后勾选）。
 
 ### Task 2: 远程调用、实际进程与外部终止验收
 
@@ -58,12 +58,12 @@
 - Consumes: 任务1 `serviceProcess.baseURL`、`Config.TLSEnabled`、新路由；原有 `f.start`, `f.call`, `f.smtp.mail`, `f.assertSafe`, `f.assertAuditPrivate`, `p.stop`。
 - Produces: `TestServiceIntegrationTransportModes`、`TestServiceIntegrationGatewayBoundary` 及对应门禁项；remoteauth公开接口不变，AllowHTTP仍默认false。
 
-- [ ] 扩充远程客户端测试：HTTPS默认证书校验、HTTP显式允许、拒绝重定向、逐次调用不缓存、非200/畸形响应为ErrUnavailable；更新文档注释允许受控外部终止，保持Go调用接口。
-- [ ] 新实际进程测试验证未设开关的production HTTPS和显式false的production HTTP，错误Basic/Bearer仍拒绝；完整邮件登录/刷新/内省可用，同址health/ready和旧路径404；子进程旧INTERNAL_ADDR/证书冲突/非法开关以非零退出且不泄露配置值。
-- [ ] 建立只在测试中的TLS反向代理（stdlibhttputil/httptest），连接本地HTTP服务；公网上下文allowlist拒绝内省/探针且计数确认未进入上游，授权内部调用经TLS可内省。验证网关清理伪造转发头、服务仅信任配置代理、认证头/设备头/请求ID/challenge/no-store/Retry-After透传及秘密不泄露。
-- [ ] 保持代理fixture用途有限：不用它实现生产限流，不配置真实网关/网格。fixture的路由策略不改变accountsvc本身的认证处理；检查请求取消/代理退出及测试拥有资源清理。
-- [ ] 真实一次性PG/Redis下运行 Linux `ACCOUNTSVC_TEST_RACE=1 go test -race -count=1 -timeout=5m ./internal/accountsvc/... ./examples/remoteauth`，确认既有及新增服务必需用例无skip；相关vet通过。协调者提供环境；完整恢复门禁不在本步重复跑。
-- [ ] 自审并提交 `test(accountsvc): verify unified transport and gateway boundary`，交独立审查；覆盖OpenSpec4.1、4.2、4.3、4.4。
+- [x] 扩充远程客户端测试：HTTPS默认证书校验、HTTP显式允许、拒绝重定向、逐次调用不缓存、非200/畸形响应为ErrUnavailable；更新文档注释允许受控外部终止，保持Go调用接口。
+- [x] 新实际进程测试验证未设开关的production HTTPS和显式false的production HTTP，错误Basic/Bearer仍拒绝；完整邮件登录/刷新/内省可用，同址health/ready和旧路径404；子进程旧INTERNAL_ADDR/证书冲突/非法开关以非零退出且不泄露配置值。
+- [x] 建立只在测试中的TLS反向代理（stdlibhttputil/httptest），连接本地HTTP服务；公网上下文allowlist拒绝内省/探针且计数确认未进入上游，授权内部调用经TLS可内省。验证网关清理伪造转发头、服务仅信任配置代理、认证头/设备头/请求ID/challenge/no-store/Retry-After透传及秘密不泄露。
+- [x] 保持代理fixture用途有限：不用它实现生产限流，不配置真实网关/网格。fixture的路由策略不改变accountsvc本身的认证处理；检查请求取消/代理退出及测试拥有资源清理。
+- [x] 真实一次性PG/Redis下运行 Linux `scripts/verify-accountsvc.sh`，覆盖全服务/remoteauth/SMTP的race、实际二进制race、vet及必需门禁，确认既有及新增必需用例无skip。协调者提供环境；无后续Go变更时复用同一严格服务证据，不重复跑相同入口；完整库/恢复门禁由协调者另行执行。
+- [x] 自审并提交 `test(accountsvc): verify unified transport and gateway boundary`，交独立审查；覆盖OpenSpec4.1、4.2、4.3、4.4。
 
 ### Task 3: 部署模板、迁移文档与完整交付
 
@@ -76,9 +76,9 @@
 - Consumes: 已批准运行时行为和两个任务报告、协调者完整门禁证据。
 - Produces: 单端口本地开发部署；产品无关接入契约与未勾选的实际部署检查；完整verification记录。
 
-- [ ] Docker仅EXPOSE8080；Compose删除内部端口映射与INTERNAL_ADDR注入，保留PUBLIC_PORT默认18080及development/回环绑定；模板给出TLS_ENABLED显式选择和证书冲突规则，不提交秘密。
-- [ ] 用独立Compose项目、ignored合成.env渲染配置、构建并本地启动，验证统一地址健康/就绪和旧路径404；只清理该项目拥有的容器/网络/volume，不触碰既有postgres/redis。记录实际命令和退出结果。
-- [ ] 写网关职责、入口暴露/直连防绕过、TLS三种部署方式、可信IP、身份可信前提、限流与并发范围、协议/凭据透传、不自动重试及日志保护；README/服务手册引用一份规则，不复制出冲突版本。
-- [ ] 文档列旧配置/端口/路径到新配置迁移及整体回退，解释migrate继续忽略服务设置、AllowHTTP需要调用方明确选择、HTTP开关不影响出站协议；保留历史归档文档，不声称产品环境已验证。
-- [ ] 协调者运行 GOWORK=off build/vet/完整Linuxrace/恢复脚本、服务严格门禁、生成/历史检查、根库依赖图和OpenSpec strict；据实际日志填verification，不以旧证据或skip冒充本次验证。纯文档不强制TDD。
-- [ ] 核对文档链接和diff，记录各步审查与未验收项；提交 `docs(accountsvc): describe unified listener deployment`，交独立审查。OpenSpec5.1、5.2、6.1在实际验证后完成，6.2留到最终整体审查补录。
+- [x] Docker仅EXPOSE8080；Compose删除内部端口映射与INTERNAL_ADDR注入，保留PUBLIC_PORT默认18080及development/回环绑定；模板给出TLS_ENABLED显式选择和证书冲突规则，不提交秘密。
+- [x] 用独立Compose项目、ignored合成.env渲染配置、构建并本地启动，验证统一地址健康/就绪和旧路径404；只清理该项目拥有的容器/网络/volume，不触碰既有postgres/redis。记录实际命令和退出结果。
+- [x] 写网关职责、入口暴露/直连防绕过、TLS三种部署方式、可信IP、身份可信前提、限流与并发范围、协议/凭据透传、不自动重试及日志保护；README/服务手册引用一份规则，不复制出冲突版本。
+- [x] 文档列旧配置/端口/路径到新配置迁移及整体回退，解释migrate继续忽略服务设置、AllowHTTP需要调用方明确选择、HTTP开关不影响出站协议；保留历史归档文档，不声称产品环境已验证。
+- [x] 协调者运行 GOWORK=off build/vet/完整Linuxrace/恢复脚本、服务严格门禁、生成/历史检查、根库依赖图和OpenSpec strict；据实际日志填verification，不以旧证据或skip冒充本次验证。纯文档不强制TDD。
+- [x] 核对文档链接和diff，记录各步审查与未验收项；提交 `docs(accountsvc): describe unified listener deployment`，交独立审查。OpenSpec5.1、5.2、6.1在实际验证后完成，6.2留到最终整体审查补录。

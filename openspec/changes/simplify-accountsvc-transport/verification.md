@@ -83,6 +83,6 @@ docker compose -p accountsvc-transport-20261005 --env-file .test-output/transpor
 
 - Task1独立审查：规格符合，Critical/Important/Minor均无，Approved；当时真实服务未验收部分已由最终严格入口补齐。
 - Task2独立审查：Approved，无Critical/Important；一项非阻断Minor为新增remoteauth默认证书拒绝测试输出预期TLS握手日志，尚未修复，不影响证书拒绝断言或最终exit0。
-- Task3自审逐项核对增量规格与当前配置/路由、三态默认、完整迁移/回退和部署职责；7份Markdown共56个本地路径/锚点核对无问题（`.test-output/transport-doc-links.log`），本步范围 `git diff --check` exit0。没有修改协调者plan/tasks；独立Task3和最终全分支审查尚未执行，由协调者补录，OpenSpec任务只在实际核验后勾选。
+- Task3自审逐项核对增量规格与当前配置/路由、三态默认、完整迁移/回退和部署职责；7份Markdown共56个本地路径/锚点核对无问题（`.test-output/transport-doc-links.log`），本步范围 `git diff --check` exit0。没有修改协调者plan/tasks；Task3独立审查已通过（Approved，无新增问题）；最终全分支审查尚待补录，OpenSpec任务只在实际核验后勾选。
 - 真实网关/网格配置、后端直连防绕过、产品证书链与身份策略、流量阈值/集群计数和并发压力、全链路日志保护、实际SMTP送达/OIDC提供方、产品备份恢复与部署窗口继续延期。[发布清单](../../../docs/release-checklist.md#可选-accountsvc-发布)对应项保持未勾选。
 - 未执行push、tag、发布、产品部署或OpenSpec归档；本地验证不表示在线GitHub Actions已经通过。

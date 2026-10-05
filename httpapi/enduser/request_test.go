@@ -1,4 +1,4 @@
-package consumer_test
+package enduser_test
 
 import (
 	"testing"
@@ -31,16 +31,16 @@ func TestRouterSetsRequestIDAndReturns404ForUnknownRoute(t *testing.T) {
 
 func TestNewRejectsMissingDeps(t *testing.T) {
 	// 逐项缺失
-	if _, err := newHandlerErr(t, func(d *consumerDeps) { d.Users = nil }); err == nil {
+	if _, err := newHandlerErr(t, func(d *endUserDeps) { d.Users = nil }); err == nil {
 		t.Fatal("Users required")
 	}
-	if _, err := newHandlerErr(t, func(d *consumerDeps) { d.ClientIP = nil }); err == nil {
+	if _, err := newHandlerErr(t, func(d *endUserDeps) { d.ClientIP = nil }); err == nil {
 		t.Fatal("ClientIP required")
 	}
-	if _, err := newHandlerErr(t, func(d *consumerDeps) { d.RequestID = nil }); err == nil {
+	if _, err := newHandlerErr(t, func(d *endUserDeps) { d.RequestID = nil }); err == nil {
 		t.Fatal("RequestID required")
 	}
-	if _, err := newHandlerErr(t, func(d *consumerDeps) { d.ReauthMaxAge = 0 }); err == nil {
+	if _, err := newHandlerErr(t, func(d *endUserDeps) { d.ReauthMaxAge = 0 }); err == nil {
 		t.Fatal("ReauthMaxAge required")
 	}
 }

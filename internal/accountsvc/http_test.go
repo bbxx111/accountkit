@@ -75,11 +75,11 @@ func TestHTTPIntrospectionBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	consumer := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Error("consumer mount swallowed introspection")
+	endUser := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("enduser mount swallowed introspection")
 		w.WriteHeader(418)
 	})
-	public := serviceHandler(Config{}, consumer, http.NotFoundHandler(), introspect, &healthState{})
+	public := serviceHandler(Config{}, endUser, http.NotFoundHandler(), introspect, &healthState{})
 	for _, tc := range []struct {
 		method, auth, contentType, body string
 		want                            int
@@ -164,7 +164,7 @@ func TestConsumerDecoderRejectsOversizeBeforeCodeIssuance(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer auth.Close()
-	public := serviceHandler(cfg, auth.ConsumerHandler(), auth.AdminHandler(), http.NotFoundHandler(), &healthState{})
+	public := serviceHandler(cfg, auth.EndUserHandler(), auth.AdminHandler(), http.NotFoundHandler(), &healthState{})
 	server := httptest.NewServer(public)
 	defer server.Close()
 	valid := `{"channel":"EMAIL","target":"oversize@example.org"}`

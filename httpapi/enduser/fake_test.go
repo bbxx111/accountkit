@@ -1,4 +1,4 @@
-package consumer_test
+package enduser_test
 
 import (
 	"bytes"
@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/enum"
-	"github.com/bbxx111/accountkit/httpapi/consumer"
+	"github.com/bbxx111/accountkit/httpapi/enduser"
 	"github.com/bbxx111/accountkit/user"
 )
 
-// fakeService 用函数字段实现 consumer.Service；未设置的方法 panic，暴露测试遗漏。
+// fakeService 用函数字段实现 enduser.Service；未设置的方法 panic，暴露测试遗漏。
 type fakeService struct {
 	sendSignInCode           func(ctx context.Context, ch enum.IdentityKind, target string, meta user.Meta) error
 	signInWithCode           func(ctx context.Context, ch enum.IdentityKind, target, code string, dev user.Device, meta user.Meta) (user.TokenResult, error)
@@ -120,7 +120,7 @@ func withAuth(f *fakeService, p user.Principal) *fakeService {
 
 func newHandler(t *testing.T, f *fakeService) http.Handler {
 	t.Helper()
-	h, err := consumer.New(consumer.Deps{
+	h, err := enduser.New(enduser.Deps{
 		Users:                   f,
 		ClientIP:                func(r *http.Request) string { return "203.0.113.9" },
 		RequestID:               func(r *http.Request) string { return "req-test" },
@@ -135,9 +135,9 @@ func newHandler(t *testing.T, f *fakeService) http.Handler {
 }
 
 // newHandlerWithDeps 与 newHandler 相同，但允许调整 Deps。
-func newHandlerWithDeps(t *testing.T, f *fakeService, mutate func(*consumerDeps)) http.Handler {
+func newHandlerWithDeps(t *testing.T, f *fakeService, mutate func(*endUserDeps)) http.Handler {
 	t.Helper()
-	d := consumerDeps{
+	d := endUserDeps{
 		Users:                   f,
 		ClientIP:                func(r *http.Request) string { return "203.0.113.9" },
 		RequestID:               func(r *http.Request) string { return "req-test" },
@@ -146,7 +146,7 @@ func newHandlerWithDeps(t *testing.T, f *fakeService, mutate func(*consumerDeps)
 		SensitiveOpVerification: true,
 	}
 	mutate(&d)
-	h, err := consumer.New(d)
+	h, err := enduser.New(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,18 +211,18 @@ func devHeaders() map[string]string {
 	return map[string]string{"X-Device-Id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "X-Device-Name": "Pixel 9"}
 }
 
-type consumerDeps = consumer.Deps
+type endUserDeps = enduser.Deps
 
-func newHandlerErr(t *testing.T, mutate func(*consumerDeps)) (*consumer.Handler, error) {
+func newHandlerErr(t *testing.T, mutate func(*endUserDeps)) (*enduser.Handler, error) {
 	t.Helper()
-	d := consumerDeps{
+	d := endUserDeps{
 		Users:        &fakeService{},
 		ClientIP:     func(r *http.Request) string { return "1.1.1.1" },
 		RequestID:    func(r *http.Request) string { return "r" },
 		ReauthMaxAge: time.Minute,
 	}
 	mutate(&d)
-	return consumer.New(d)
+	return enduser.New(d)
 }
 
 func itoa(i int) string { return strconv.Itoa(i) }

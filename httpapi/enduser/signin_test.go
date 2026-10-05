@@ -1,4 +1,4 @@
-package consumer_test
+package enduser_test
 
 import (
 	"context"
@@ -89,7 +89,7 @@ func TestSendSignInCode(t *testing.T) {
 // TestSendSignInCodeEmptyClientIPIs500 覆盖 Deps.ClientIP 返回空字符串的情形：
 // 这是服务端配置错误，不是客户端错误，必须 500 而不是把空 IP 传给领域层。
 func TestSendSignInCodeEmptyClientIPIs500(t *testing.T) {
-	hh, err := newHandlerErr(t, func(d *consumerDeps) { d.ClientIP = func(*http.Request) string { return "" } })
+	hh, err := newHandlerErr(t, func(d *endUserDeps) { d.ClientIP = func(*http.Request) string { return "" } })
 	if err != nil {
 		t.Fatal(err)
 	}

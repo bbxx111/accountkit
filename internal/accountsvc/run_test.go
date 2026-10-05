@@ -44,7 +44,7 @@ func TestRuntimeSingleListener(t *testing.T) {
 					return &dependencies{databasePing: func(context.Context) error { return nil }, redisPing: func(context.Context) error { return nil }}, nil
 				},
 				newApp: func(Config, *dependencies, *slog.Logger) (*application, error) {
-					return &application{migrate: func(context.Context) error { return nil }, start: func(context.Context) {}, close: func() {}, consumer: mark(201), admin: mark(202), introspect: mark(203)}, nil
+					return &application{migrate: func(context.Context) error { return nil }, start: func(context.Context) {}, close: func() {}, endUser: mark(201), admin: mark(202), introspect: mark(203)}, nil
 				},
 				listen: func(ctx context.Context, addr string) (net.Listener, error) {
 					binds++
@@ -169,7 +169,7 @@ func TestRuntimeStartupOrderAndFailureCleanup(t *testing.T) {
 					t.Error("signal prematurely cancelled library background")
 				}
 				trace.add("library close")
-			}, consumer: http.NotFoundHandler(), admin: http.NotFoundHandler(), introspect: http.NotFoundHandler()}
+			}, endUser: http.NotFoundHandler(), admin: http.NotFoundHandler(), introspect: http.NotFoundHandler()}
 			listens := 0
 			factory := runtimeFactory{
 				open: func(context.Context, Config, *slog.Logger) (*dependencies, error) {

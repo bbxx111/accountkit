@@ -130,7 +130,7 @@ func (f *libraryRotation) call(a *accountkit.Auth, method, path, bearer string, 
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
 	w := httptest.NewRecorder()
-	a.ConsumerHandler().ServeHTTP(w, req)
+	a.EndUserHandler().ServeHTTP(w, req)
 	if w.Code != status {
 		f.t.Fatalf("%s: status %d, want %d", path, w.Code, status)
 	}

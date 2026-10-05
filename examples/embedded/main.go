@@ -54,7 +54,7 @@ func run() error {
 	}
 	a.Start(ctx)
 	router := chi.NewRouter()
-	router.Mount("/v1", a.ConsumerHandler())
+	router.Mount("/v1", a.EndUserHandler())
 	// Without AdminVerifier/AdminPrincipal these endpoints return ADMIN_NOT_CONFIGURED.
 	router.Mount("/admin/v1", a.AdminHandler())
 	server := &http.Server{Addr: "127.0.0.1:8080", Handler: router, ReadHeaderTimeout: 5 * time.Second}

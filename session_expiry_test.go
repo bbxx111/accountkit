@@ -58,7 +58,7 @@ func TestSessionExpiryEndToEndAgainstRealDB(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := chi.NewRouter()
-	r.Mount("/v1", a.ConsumerHandler())
+	r.Mount("/v1", a.EndUserHandler())
 	r.Route("/admin/v1", func(r chi.Router) { r.Use(stubVerifier{}.Middleware()); r.Mount("/", a.AdminHandler()) })
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)

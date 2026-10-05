@@ -22,7 +22,7 @@ import (
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/httpapi/admin"
 	"github.com/bbxx111/accountkit/httpapi/authn"
-	"github.com/bbxx111/accountkit/httpapi/consumer"
+	"github.com/bbxx111/accountkit/httpapi/enduser"
 	"github.com/bbxx111/accountkit/maintenance"
 	"github.com/bbxx111/accountkit/migrations"
 	"github.com/bbxx111/accountkit/pii"
@@ -93,7 +93,7 @@ type Auth struct {
 	revocation   *revocation.Set
 	grace        *grace.Cache
 	users        *user.Service
-	consumer     *consumer.Handler
+	endUser      *enduser.Handler
 	adminHandler http.Handler
 
 	startOnce sync.Once
@@ -189,14 +189,14 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 		return nil, err
 	}
 	a.users = users
-	h, err := consumer.New(consumer.Deps{
+	h, err := enduser.New(enduser.Deps{
 		Users: users, Logger: deps.Logger, ClientIP: deps.ClientIP, RequestID: deps.RequestID,
 		ReauthMaxAge: cfg.ReauthMaxAge, SensitiveOpVerification: *cfg.SensitiveOpVerification,
 	})
 	if err != nil {
 		return nil, err
 	}
-	a.consumer = h
+	a.endUser = h
 	if deps.AdminVerifier != nil {
 		ah, err := admin.New(admin.Deps{
 			Users: users, Audit: auditStore, Verifier: deps.AdminVerifier, Principal: deps.AdminPrincipal,
@@ -254,8 +254,8 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 // Users 返回用户域服务，供 HTTP 层与宿主使用。
 func (a *Auth) Users() *user.Service { return a.users }
 
-// ConsumerHandler 返回 C 端相对路由（宿主 Mount 到 /v1）。
-func (a *Auth) ConsumerHandler() http.Handler { return a.consumer.Router() }
+// EndUserHandler 返回 C 端相对路由（宿主 Mount 到 /v1）。
+func (a *Auth) EndUserHandler() http.Handler { return a.endUser.Router() }
 
 // AdminHandler 返回管理面相对路由（宿主在 verifier Middleware 之后 Mount 到 /admin/v1）。
 // 未配置 Deps.AdminVerifier / AdminPrincipal 时所有路由 503 ADMIN_NOT_CONFIGURED。
@@ -273,12 +273,12 @@ func (a *Auth) RecordAdminForbidden(r *http.Request, p AdminPrincipal) {
 
 // RequireScope 返回“Bearer 认证 + scope 检查”中间件，供宿主业务路由使用。
 func (a *Auth) RequireScope(allowed ...string) func(http.Handler) http.Handler {
-	return authn.RequireScope(a.consumer.AuthnOptions(), allowed...)
+	return authn.RequireScope(a.endUser.AuthnOptions(), allowed...)
 }
 
 // RequireRecentAuth 返回近期认证中间件（Config.ReauthMaxAge / SensitiveOpVerification）。
 func (a *Auth) RequireRecentAuth() func(http.Handler) http.Handler {
-	return a.consumer.RequireRecentAuth()
+	return a.endUser.RequireRecentAuth()
 }
 
 // PrincipalFrom 取出请求上下文中的 Principal。

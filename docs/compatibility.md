@@ -18,6 +18,24 @@ var cfg accountkit.Config
 
 accountsvc 是基于本库的可选官方服务；直接嵌入 accountkit 的宿主无需部署或调用该服务。服务配置与匿名化责任见 [服务手册](accountsvc.md)。
 
+## 终端用户 HTTP 入口迁移
+
+终端用户 HTTP 适配包由 `consumer` 直接更名为 `enduser`，根门面改为 `Auth.EndUserHandler() http.Handler`。这是 **Go 源码破坏性变更**：旧导入路径与 `Auth.ConsumerHandler()` 已移除，不提供兼容包、类型别名或转发方法。根 module、package `accountkit` 和领域包 `user` 保持不变。
+
+| 旧导入/调用 | 当前导入/调用 |
+|---|---|
+| `github.com/bbxx111/accountkit/httpapi/consumer` | `github.com/bbxx111/accountkit/httpapi/enduser` |
+| `consumer.New` / `consumer.Deps` / `consumer.Handler` | `enduser.New` / `enduser.Deps` / `enduser.Handler` |
+| `consumer.Service` / `consumer.IdentityReplacer` | `enduser.Service` / `enduser.IdentityReplacer` |
+| `(*consumer.Handler).Router` / `AuthnOptions` / `RequireRecentAuth` | `(*enduser.Handler).Router` / `AuthnOptions` / `RequireRecentAuth` |
+| `auth.ConsumerHandler()` | `auth.EndUserHandler()` |
+
+宿主更新依赖时同步修改导入路径、包限定符和门面调用，重新编译并运行原接入测试。上述类型内容和方法签名保持不变，自定义 `enduser.Service` 无需新增方法，换绑仍由可选 `enduser.IdentityReplacer` 提供。显式 Go 导入别名可自行选择，但旧导入路径本身不能继续使用。构造诊断前缀由 `consumer:` 改为 `enduser:`；HTTP 错误码与响应正文保持原样。
+
+HTTP 调用方继续使用原 URL（包括 `/users`）、DTO、设备头、JWT 和刷新凭据；环境配置键、数据库与 Redis 数据、实例前缀和密钥均不变，无需数据迁移、会话清理或重新登录。相对路由仍由宿主自行挂载，accountsvc 的 `/v1`、`/admin/v1`、`/v1/introspect` 及监听/TLS 行为不变。
+
+回退到旧库版本时同步恢复旧依赖、Go 导入和门面调用并重新编译，无需回退配置或数据；不执行 `Down`、`UnsafeReset` 或清空 Redis。下方明确标注的历史提取索引保留旧路径、方法名与行号，不代表当前可用入口。
+
 ## 可选服务与发送器扩展
 
 新增 `cmd/accountsvc`、可复用 SMTP 子包及内部消费者内省。SMTP 采用显式 TLS 与有限投递预算，短信在服务首版中显式禁用。库的 `SMSSender`/`EmailSender` 原接口不变；原发送器默认启用。只有显式禁用发送器的宿主会在发码前得到 400 `CHANNEL_NOT_ENABLED`，该拒绝不消费额度；SMTP 不可用沿用503，已产生的发送额度不退还。已存在验证码的校验及其他认证行为不变。
@@ -47,7 +65,7 @@ accountsvc 是基于本库的可选官方服务；直接嵌入 accountkit 的宿
 
 新增 `user.Service.ReplaceIdentity` 和消费者 `:replace` 自定义操作。已有绑定/解绑签名、数量限制与最后身份保护保持；新操作以软删除旧身份、新建同类身份保留账号连续性，无数据库结构迁移。
 
-`user.Deps.ReauthMaxAge` 的零值默认5分钟，`SensitiveOpVerification` 的 nil 默认true；根门面传入现有 Config 值，不新增环境变量。旧自定义 `consumer.Service` 继续编译，可按需实现可选 `consumer.IdentityReplacer`，未实现时换绑端点返回503。近期认证、冲突、验证码消费/回滚和重试边界见 [README](../README.md#手机号与邮箱换绑)。
+`user.Deps.ReauthMaxAge` 的零值默认5分钟，`SensitiveOpVerification` 的 nil 默认true；根门面传入现有 Config 值，不新增环境变量。自定义 `enduser.Service` 可按需实现可选 `enduser.IdentityReplacer`，未实现时换绑端点返回503；旧包使用方须先按[终端用户入口迁移](#终端用户-http-入口迁移)修改导入与引用。近期认证、冲突、验证码消费/回滚和重试边界见 [README](../README.md#手机号与邮箱换绑)。
 
 撤销原因追加 `IDENTITY_REPLACED`，审计类型追加 `IDENTITY_REPLACE_REJECTED`，既有枚举值不重编号。回退旧二进制前须确认其审计/会话展示对新增值的兼容表现；回退不会恢复旧绑定或被撤销会话。登录及重新认证补充持锁后身份复核，旧身份在等待锁期间被移除时分别返回既有 CODE_INVALID、TARGET_NOT_ANCHOR，避免旧读结果重新进入原账号。
 
@@ -72,11 +90,11 @@ accountsvc 是基于本库的可选官方服务；直接嵌入 accountkit 的宿
 | 规格能力 | 生产入口/路径 | 验证 |
 |---|---|---|
 | 独立消费、完整功能 | 根门面、全部子包、sqlc.yaml | 独立构建、临时宿主编译、源文件清单 |
-| 手机/邮箱验证码、限流 | user/code、user/service_signin.go、httpapi/consumer | code/store_test.go、service_test.go、signin_test.go、TestConsumerEndToEndAgainstRealDB |
+| 手机/邮箱验证码、限流 | user/code、user/service_signin.go、httpapi/enduser | code/store_test.go、service_test.go、signin_test.go、TestConsumerEndToEndAgainstRealDB |
 | 验证码 HMAC 轮换 | user/code/store.go、user/code/scripts.go，库及 accountsvc 共用 | 多版本旧状态/并发测试、TestCodeKeyRotationIntegration、TestCodeRotationRedisIntegration、TestServiceIntegrationCodeKeyRotation；见[轮换验收记录](../openspec/changes/archive/2026-10-04-harden-code-key-rotation/verification.md) |
 | 微信/Apple | user/idp、service_idp.go | wechat_test.go、apple_test.go、nonce_test.go、service_idp_test.go、TestWeChatSignInEndToEndAgainstRealDB |
 | 身份绑定解绑 | user/service_identity.go | service_identity_test.go、identities_test.go、TestIdentityBindingEndToEndAgainstRealDB |
-| 同类身份换绑 | user/service_identity_replacement.go、httpapi/consumer/replacement.go | 领域回滚/竞态、嵌入式及服务E2E，见[换绑验收记录](../openspec/changes/archive/2026-10-03-add-identity-replacement/verification.md) |
+| 同类身份换绑 | user/service_identity_replacement.go、httpapi/enduser/replacement.go | 领域回滚/竞态、嵌入式及服务E2E，见[换绑验收记录](../openspec/changes/archive/2026-10-03-add-identity-replacement/verification.md) |
 | JWT、刷新、会话、重新认证 | tokens、session、service_session.go | tokens_test.go、session/*/*_test.go、service_test.go、TestConsumerEndToEndAgainstRealDB |
 | 资料、注销恢复、冻结 | service_me.go、service_lifecycle.go、service_admin.go | service_lifecycle_test.go、service_admin_test.go、TestAccountLifecycleEndToEndAgainstRealDB |
 | 管理接口、角色、审计 | httpapi/admin、audit | httpapi/admin/*_test.go、audit/*_test.go、TestAdminSurfaceEndToEndAgainstRealDB |
@@ -86,9 +104,9 @@ accountsvc 是基于本库的可选官方服务；直接嵌入 accountkit 的宿
 | 包内 schema/版本/重复迁移 | migrations、Auth.Migrate | migrations_test.go、TestSourceDatabaseTakeover |
 | 旧存储及凭证接管 | 原样 0001、合成旧格式数据 | TestSourceDatabaseTakeover：四类表和版本快照不变、旧 JWT/refresh 可用、旧身份可解密 |
 
-HTTP 请求响应、状态码、错误码和环境配置约定见 README；下列清单保留提取阶段的入口和测试索引，后续服务与换绑验证分别见对应验收记录。Redis 吊销检查 fail-open、审计失败不阻断、刷新宽限故障拒绝请求等原语义不变。第三方真实发送和设备联调由宿主负责。
+HTTP 请求响应、状态码、错误码和环境配置约定见 README；下列三个索引保留提取阶段的入口、实现与测试事实，其中 `httpapi/consumer`、`ConsumerHandler`、私有字段及源码行号均为历史记录，不是当前路径或可执行示例。当前入口见[终端用户入口迁移](#终端用户-http-入口迁移)及上方功能对照，当前必需测试选择器以 `scripts/required-tests.txt` 为准；后续服务与换绑验证分别见对应验收记录。Redis 吊销检查 fail-open、审计失败不阻断、刷新宽限故障拒绝请求等原语义不变。第三方真实发送和设备联调由宿主负责。
 
-## 公开门面与路由
+## 历史提取索引：公开门面与路由
 
 ```text
 accountkit.go:104:func New(cfg Config, deps Deps) (*Auth, error) {
@@ -139,7 +157,7 @@ httpapi/consumer/handler.go:153:		r.Post("/users/me/identities", h.bindIdentity)
 httpapi/consumer/handler.go:155:	r.With(fullScope, h.RequireRecentAuth()).Delete("/users/me/identities/{identity}", h.unbindIdentity)
 ```
 
-## 错误映射实现
+## 历史提取索引：错误映射实现
 
 ```text
 httpapi/consumer/response.go:110:	apierror.WriteJSON(w, http.StatusOK, newTokenResponse(res))
@@ -181,7 +199,7 @@ httpapi/admin/response.go:166:		apierror.Write(w, apierror.New(apierror.StatusIn
 httpapi/admin/response.go:168:		apierror.WriteInternal(w, h.d.Logger, reqid.From(r.Context()), err)
 ```
 
-## 测试索引
+## 历史提取索引：测试
 
 | 文件 | 测试 |
 |---|---|

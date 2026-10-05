@@ -11,7 +11,7 @@ accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect
 
 完整可编译宿主示例见 [examples/embedded/main.go](examples/embedded/main.go)，开发与验证步骤见 [docs/development.md](docs/development.md)。导入使用 `"github.com/bbxx111/accountkit"`，通过 `accountkit.Config`、`accountkit.Deps` 和 `accountkit.New` 装配。旧包名调用方见[包名迁移说明](docs/compatibility.md#包名迁移)。
 
-按 `Config/Deps → New → Migrate → Start → Close` 装配；库不绑定端口，宿主挂载 ConsumerHandler 到 /v1，AdminHandler 到 /admin/v1。管理员验证器及主体解析器可选；未配置时管理接口返回 503 ADMIN_NOT_CONFIGURED。生产宿主须在管理路由前完成身份验证，并提供 AdminVerifier/AdminPrincipal，服务商发送器也由宿主注入。
+按 `Config/Deps → New → Migrate → Start → Close` 装配；库不绑定端口，宿主挂载 EndUserHandler 到 /v1，AdminHandler 到 /admin/v1。管理员验证器及主体解析器可选；未配置时管理接口返回 503 ADMIN_NOT_CONFIGURED。生产宿主须在管理路由前完成身份验证，并提供 AdminVerifier/AdminPrincipal，服务商发送器也由宿主注入。终端用户 HTTP 包与门面的源码迁移见[终端用户入口迁移说明](docs/compatibility.md#终端用户-http-入口迁移)。
 ## 领域层（阶段 3a）
 
 `auth.Users()` 返回 `*user.Service`，是所有业务规则的唯一所在；HTTP handler（阶段 3b）、维护任务与管理面都只调用它。
@@ -58,11 +58,11 @@ accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect
 
 ## HTTP 面（阶段 3b）
 
-`auth.ConsumerHandler()` 返回相对路由（chi），宿主决定前缀：
+`auth.EndUserHandler()` 返回相对路由（chi），宿主决定前缀。直接构造适配器时导入 `github.com/bbxx111/accountkit/httpapi/enduser`，使用 `enduser.New(enduser.Deps{...})` 后挂载其 `Router()`：
 
 ```go
 r.Route("/v1", func(r chi.Router) {
-    r.Mount("/", auth.ConsumerHandler())
+    r.Mount("/", auth.EndUserHandler())
     r.Group(func(r chi.Router) {
         r.Use(auth.RequireScope("user"))                                   // Bearer 认证 + scope
         r.Mount("/devices", device.ConsumerHandler())
@@ -70,6 +70,8 @@ r.Route("/v1", func(r chi.Router) {
     })
 })
 ```
+
+示例中的 `device.ConsumerHandler()` 是宿主设备业务模块的示意接口，不属于 accountkit 的公开门面。
 
 | 端点 | 认证 | 成功 | 失败 |
 |---|---|---|---|
@@ -132,7 +134,7 @@ r.Route("/v1", func(r chi.Router) {
 
 只支持 PHONE→PHONE、EMAIL→EMAIL，原绑定/解绑接口不变。同目标返回400 `IDENTITY_UNCHANGED`；旧资源不存在/已删除/归属其他用户返回404；新目标已经绑定返回409 `IDENTITY_ALREADY_BOUND`。已消费的验证码不随数据库回滚退还，重取码仍受冷却/额度限制。成功后重试旧 identity 路径返回404；响应丢失时先列出身份确认状态，不盲目自动重发。新旧摘要版本、密文格式与冻结迁移保持兼容。
 
-直接库调用使用 `Auth.Users().ReplaceIdentity(...)` 并传入已认证 Principal。领域层同样检查 scope、新鲜度、账号/会话和身份归属。自定义 `consumer.Service` 无需增加必需方法；实现可选 `consumer.IdentityReplacer` 即可启用新端点，否则认证后的调用返回503 `IDENTITY_REPLACEMENT_NOT_CONFIGURED`。实际检查与验收边界见[换绑验收记录](openspec/changes/archive/2026-10-03-add-identity-replacement/verification.md)。
+直接库调用使用 `Auth.Users().ReplaceIdentity(...)` 并传入已认证 Principal。领域层同样检查 scope、新鲜度、账号/会话和身份归属。自定义 `enduser.Service` 无需增加必需方法；实现可选 `enduser.IdentityReplacer` 即可启用新端点，否则认证后的调用返回503 `IDENTITY_REPLACEMENT_NOT_CONFIGURED`。实际检查与验收边界见[换绑验收记录](openspec/changes/archive/2026-10-03-add-identity-replacement/verification.md)。
 
 ## 账号生命周期（阶段 5a）
 

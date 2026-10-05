@@ -1,8 +1,10 @@
 package remoteauth_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -286,12 +288,24 @@ func TestExplicitHTTPAndCallerCancellation(t *testing.T) {
 
 func TestDefaultHTTPSCertificateVerification(t *testing.T) {
 	var calls atomic.Int32
-	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var serverLog bytes.Buffer
+	s := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"active":false}`))
 	}))
-	defer s.Close()
+	s.Config.ErrorLog = log.New(&serverLog, "", 0)
+	s.StartTLS()
+	defer func() {
+		s.Close()
+		for _, line := range strings.Split(serverLog.String(), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.Contains(line, "http: TLS handshake error") && strings.Contains(line, "remote error: tls: bad certificate") {
+				continue
+			}
+			t.Log(line)
+		}
+	}()
 	c, err := remoteauth.NewClient(remoteauth.Config{Endpoint: s.URL + "/v1/introspect", ClientID: "business", ClientSecret: "private-service-secret"})
 	if err != nil {
 		t.Fatal(err)

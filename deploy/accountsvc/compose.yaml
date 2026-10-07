@@ -50,7 +50,7 @@ services:
       ACCOUNTSVC_SMTP_FROM: accounts@example.test
       ACCOUNTSVC_SMTP_TLS_MODE: none
       ACCOUNTSVC_INTROSPECTION_CLIENTS: ${ACCOUNTSVC_INTROSPECTION_CLIENTS:?Generate development client credentials}
-      ACCOUNTKIT_AUTH_SCHEMA: auth
+      ACCOUNTKIT_AUTH_SCHEMA: account
       ACCOUNTKIT_AUTH_KEY_PREFIX: "accountsvc-dev:"
       ACCOUNTKIT_JWT_ISSUER: accountsvc-dev
       ACCOUNTKIT_JWT_AUDIENCE: accountsvc-dev-api

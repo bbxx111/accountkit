@@ -1,6 +1,6 @@
 # 数据库迁移与恢复
 
-包通过 migrations.Up 或 Auth.Migrate 应用未执行版本。SQL、schema_migrations 均随包管理并落入指定 schema；默认 auth。迁移过程按数据库和 schema 加锁，从 schema 创建开始覆盖初始化和 SQL 执行。外层初始化锁和兼容旧工具的引擎锁，每次等待最多 15 秒，均尊重调用 context 的取消和更短期限；超时返回可重试错误，不意味着迁移已完成。取消等待不会执行 DDL；已经执行中的迁移 SQL 沿用底层引擎语义，不承诺取消会自动回滚。
+包通过 migrations.Up 或 Auth.Migrate 应用未执行版本。SQL、schema_migrations 均随包管理并落入指定 schema；当前开发代码默认 account。迁移过程按数据库和 schema 加锁，从 schema 创建开始覆盖初始化和 SQL 执行。外层初始化锁和兼容旧工具的引擎锁，每次等待最多 15 秒，均尊重调用 context 的取消和更短期限；超时返回可重试错误，不意味着迁移已完成。取消等待不会执行 DDL；已经执行中的迁移 SQL 沿用底层引擎语义，不承诺取消会自动回滚。
 
 Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史身份密钥检查的顺序执行。最后的密钥检查失败不代表数据库迁移没有成功，排障时需同时检查当前版本和实际表结构。
 
@@ -13,11 +13,11 @@ Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史�
 
 ## 诊断失败
 
-使用明确 schema 限定名查询（示例 auth，请替换为已经核验的合法 schema）：
+使用明确 schema 限定名查询（示例 account，请替换为已经核验的合法 schema）：
 
 ```sql
-SELECT version, dirty FROM auth.schema_migrations;
-SELECT tablename FROM pg_tables WHERE schemaname = 'auth' ORDER BY tablename;
+SELECT version, dirty FROM account.schema_migrations;
+SELECT tablename FROM pg_tables WHERE schemaname = 'account' ORDER BY tablename;
 ```
 
 首次失败可能发生在版本表建立前，此时没有记录表；不要据此声称数据库未发生任何变化。dirty=true 时停止自动重试，保留失败 SQL/版本、日志和备份，检查实际结构及数据。包不自动 Force、不清除 dirty、不盲目重放失败版本。不要把手工将 dirty 改为 false 当成修复。

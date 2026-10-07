@@ -23,7 +23,7 @@ type WeChatApp struct {
 // Config 是 accountkit 的全部配置。零值字段由 applyDefaults 填默认；Validate 在 New 中调用。
 // 密钥只来自配置：JWT/HMAC/加密三组都是"版本 → 密钥"映射加一个 active 版本。
 type Config struct {
-	// Schema 是所有表所在的 PostgreSQL schema。默认 "auth"。
+	// Schema 是所有表所在的 PostgreSQL schema。默认 "account"。
 	Schema string
 	// KeyPrefix 是所有 Redis 键的前缀，须以 ':' 结尾。默认 "auth:"。
 	KeyPrefix string
@@ -82,7 +82,7 @@ func (c *Config) applyDefaults() {
 		}
 	}
 	if c.Schema == "" {
-		c.Schema = "auth"
+		c.Schema = "account"
 	}
 	if c.KeyPrefix == "" {
 		c.KeyPrefix = "auth:"

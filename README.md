@@ -7,6 +7,8 @@ accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可�
 
 accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect` 和探针；公网暴露、直连限制、TLS 终止与入口流量控制由部署方配置，统一规则见 [网关接入手册](docs/gateway-integration.md)。直接嵌入库的宿主也可沿用该契约。旧双监听部署与调用方需按[服务传输迁移说明](docs/compatibility.md#服务单监听与传输迁移)调整。
 
+当前开发代码默认使用 `account` schema；已发布的 `v0.1.0` 默认仍为 `auth`，本文配置表说明当前开发代码。宿主可通过 `Config.Schema` 或带宿主前缀的 `AUTH_SCHEMA` 显式设置合法 schema，库与 accountsvc 共用此默认值。
+
 ## 生命周期
 
 完整可编译宿主示例见 [examples/embedded/main.go](examples/embedded/main.go)，开发与验证步骤见 [docs/development.md](docs/development.md)。导入使用 `"github.com/bbxx111/accountkit"`，通过 `accountkit.Config`、`accountkit.Deps` 和 `accountkit.New` 装配。旧包名调用方见[包名迁移说明](docs/compatibility.md#包名迁移)。
@@ -184,7 +186,7 @@ r.Route("/v1", func(r chi.Router) {
 
 ## 数据库与 Redis 隔离
 
-- 所有表位于 `Config.Schema`（默认 `auth`），迁移记录表也在其中；同一库可并存多个实例（不同 schema）。
+- 所有表位于 `Config.Schema`（默认 `account`），迁移记录表也在其中；同一库可并存多个实例（不同 schema）。
 - 表：`user_account`、`identity`、`session`、`audit_event`，无外键；对外 id 带类型前缀（`u_`、`i_`、`s_`、`e_`）+ 13 字符 TSID。
 - 所有 Redis 键以 `Config.KeyPrefix`（默认 `auth:`）开头。
 - `Deps.Pool` 的连接 `search_path` 首位必须是 `Config.Schema`；`Migrate` 会校验并返回 `ErrSearchPath`。宿主业务表建议通过明确的 schema 限定名访问，避免 search_path 名称冲突。
@@ -193,7 +195,7 @@ r.Route("/v1", func(r chi.Router) {
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `AUTH_SCHEMA` | `auth` | PostgreSQL schema，`^[a-z][a-z0-9_]{0,62}$` |
+| `AUTH_SCHEMA` | `account` | PostgreSQL schema，`^[a-z][a-z0-9_]{0,62}$` |
 | `AUTH_KEY_PREFIX` | `auth:` | Redis 键前缀，须以 `:` 结尾 |
 | `JWT_KEYS` / `JWT_ACTIVE_KEY` | 必填 | `1:<base64>,2:<base64>` 版本化 HS256 密钥（≥ 32 字节）与签发版本 |
 | `JWT_ISSUER` / `JWT_AUDIENCE` | 必填 | |

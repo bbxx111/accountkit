@@ -56,8 +56,29 @@ func TestNewIsPureAndAppliesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := a.Config(); got.Schema != "auth" || got.KeyPrefix != "auth:" || got.AccessTokenTTL != 15*time.Minute {
+	if got := a.Config(); got.Schema != "account" || got.KeyPrefix != "auth:" || got.AccessTokenTTL != 15*time.Minute {
 		t.Fatalf("defaults not applied: %+v", got)
+	}
+}
+
+func TestNewSchemaConfiguration(t *testing.T) {
+	for _, tc := range []struct{ name, schema, want string }{
+		{"empty", "", "account"},
+		{"account", "account", "account"},
+		{"auth", "auth", "auth"},
+		{"custom", "custom_account", "custom_account"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := minimal()
+			cfg.Schema = tc.schema
+			a, err := accountkit.New(cfg, baseDeps(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := a.Config(); got.Schema != tc.want || got.KeyPrefix != "auth:" {
+				t.Fatalf("schema=%q prefix=%q, want schema=%q prefix=auth:", got.Schema, got.KeyPrefix, tc.want)
+			}
+		})
 	}
 }
 

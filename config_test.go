@@ -3,6 +3,7 @@ package accountkit_test
 import (
 	"bytes"
 	"encoding/base64"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +24,12 @@ func minimal() accountkit.Config {
 }
 
 func TestValidateAppliesDefaults(t *testing.T) {
+	for _, entry := range os.Environ() {
+		name, _, _ := strings.Cut(entry, "=")
+		if strings.HasPrefix(name, "T_") {
+			t.Setenv(name, "")
+		}
+	}
 	c := minimal()
 	if err := c.Validate(); err != nil {
 		t.Fatal(err)
@@ -40,7 +47,7 @@ func TestValidateAppliesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Schema != "auth" || got.KeyPrefix != "auth:" || got.AccessTokenTTL != 15*time.Minute ||
+	if got.Schema != "account" || got.KeyPrefix != "auth:" || got.AccessTokenTTL != 15*time.Minute ||
 		got.RefreshTokenTTL != 720*time.Hour || got.RefreshGrace != 30*time.Second || got.ReauthMaxAge != 5*time.Minute ||
 		got.SensitiveOpVerification == nil || !*got.SensitiveOpVerification ||
 		got.CodeTTL != 5*time.Minute || got.CodeMaxAttempts != 5 || got.CodeCooldown != 60*time.Second ||
@@ -73,6 +80,47 @@ func TestConfigFromEnvOverridesAndParses(t *testing.T) {
 	if got.Schema != "auth_staging" || got.KeyPrefix != "stg:" || got.AccessTokenTTL != 10*time.Minute ||
 		got.JWTActiveKey != 2 || len(got.JWTKeys) != 2 || *got.SensitiveOpVerification || got.CodeMaxAttempts != 3 || got.DefaultRegion != "US" {
 		t.Fatalf("overrides not applied: %+v", got)
+	}
+}
+
+func TestConfigFromEnvSchema(t *testing.T) {
+	const prefix = "SCHEMA_TEST_"
+	for _, entry := range os.Environ() {
+		name, _, _ := strings.Cut(entry, "=")
+		if strings.HasPrefix(name, prefix) {
+			t.Setenv(name, "")
+		}
+	}
+	for name, value := range map[string]string{
+		"JWT_KEYS": "1:" + b64(k(1)), "JWT_ACTIVE_KEY": "1",
+		"JWT_ISSUER": "test-issuer", "JWT_AUDIENCE": "consumer",
+		"SUBJECT_HMAC_KEYS": "1:" + b64(k(2)), "SUBJECT_HMAC_ACTIVE_KEY": "1",
+		"SUBJECT_CIPHER_KEYS": "1:" + b64(k(3)), "SUBJECT_CIPHER_ACTIVE_KEY": "1",
+	} {
+		t.Setenv(prefix+name, value)
+	}
+	for _, tc := range []struct{ name, value, want string }{
+		{"unset", "", "account"},
+		{"empty", "", "account"},
+		{"account", "account", "account"},
+		{"auth", "auth", "auth"},
+		{"custom", "custom_account", "custom_account"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(prefix+"AUTH_SCHEMA", tc.value)
+			if tc.name == "unset" {
+				if err := os.Unsetenv(prefix + "AUTH_SCHEMA"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			c, err := accountkit.ConfigFromEnv(prefix)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.Schema != tc.want || c.KeyPrefix != "auth:" {
+				t.Fatalf("schema=%q prefix=%q, want schema=%q prefix=auth:", c.Schema, c.KeyPrefix, tc.want)
+			}
+		})
 	}
 }
 

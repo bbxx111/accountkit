@@ -1,6 +1,6 @@
 # 默认 account schema 验收记录
 
-日期：2026-10-07。依据：[proposal](proposal.md)、[design](design.md)、[增量规格](specs/embedded-auth-package/spec.md)。实施计划：[详细计划](../../../docs/superpowers/plans/2026-10-07-default-account-schema.md)。
+日期：2026-10-07。依据：[proposal](proposal.md)、[design](design.md)、[增量规格](specs/embedded-auth-package/spec.md)。实施计划：[详细计划](../../../../docs/superpowers/plans/2026-10-07-default-account-schema.md)。
 
 ## 范围与提交
 
@@ -35,7 +35,7 @@
 
 必需清单在保留全部原 338 条目的基础上追加四项（总计 342）：TestConfigFromEnvSchema、TestNewSchemaConfiguration、TestDefaultSchemaMigrateAgainstRealDB、internal/accountsvc/TestLoadConfigSchema。本次四项均由定向 race 实际执行通过。
 
-本次 PostgreSQL 容器 default-schema-20261007-pg 及网络已清理；原有 postgres/redis 服务未操作。未重跑完整 verify.sh、严格服务进程门禁或恢复三阶段，未进行产品环境验收、合并、推送、归档或新版本发布。
+本次 PostgreSQL 容器 default-schema-20261007-pg 及网络已清理；原有 postgres/redis 服务未操作。未重跑完整 verify.sh、严格服务进程门禁或恢复三阶段，实施阶段未进行产品环境验收、合并、推送、归档或新版本发布。
 
 ## 独立审查与执行决定
 
@@ -44,3 +44,7 @@
 最终分支审查（`71dcace..1a59ed8`）：Spec compliant / Approved，Ready to merge: Yes，无 Critical/Important。缓存权限警告接受为已披露非阻塞环境项；测试选择器修正与原始证据一致，没有待修实现问题。数据搬迁/旧默认探测、完整发布/恢复/产品环境验收和全局缓存权限修复均按已确认范围不在本次交付内。
 
 执行中修正了计划的服务测试选择器：原计划 TestLoadConfig 不是仓库现有测试名，改用 TestConfigProductionDefaultsAndMigrate 并新增 TestLoadConfigSchema 覆盖服务配置。若选择器错误会漏验服务默认值；本次定向必需门禁明确确认两者实际 PASS，未扩大行为范围。
+
+## 归档
+
+2026-10-07 按用户要求归档至 `openspec/changes/archive/2026-10-07-default-account-schema/`。产品部署隔离主规格已同步默认 account、空 Schema 及显式 Schema 场景，原有要求和隔离场景保留。归档修复计划与验收记录的相对链接；随后按用户要求以独立 merge commit 合入 develop，实际合并状态以 Git 历史为准。本次不推送或发布版本，v0.1.0 tag 保持原提交。

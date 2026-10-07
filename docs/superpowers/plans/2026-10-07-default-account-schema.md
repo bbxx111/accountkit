@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、pgx、PostgreSQL 17、现有 Chi/Redis 与 OpenSpec。
 
-**Spec:** [proposal](../../../openspec/changes/default-account-schema/proposal.md)、[design](../../../openspec/changes/default-account-schema/design.md)、[delta](../../../openspec/changes/default-account-schema/specs/embedded-auth-package/spec.md)。
+**Spec:** [proposal](../../../openspec/changes/archive/2026-10-07-default-account-schema/proposal.md)、[design](../../../openspec/changes/archive/2026-10-07-default-account-schema/design.md)、[delta](../../../openspec/changes/archive/2026-10-07-default-account-schema/specs/embedded-auth-package/spec.md)。
 
 ## Global Constraints
 

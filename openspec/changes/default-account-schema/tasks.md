@@ -6,4 +6,4 @@
 ## 2. 验证与交付
 
 - [x] 2.1 新增真实数据库默认迁移用例并加入必需清单，在一次性 PostgreSQL 验证默认 account 落库、版本记录、重复迁移及不创建 auth；运行相关 race、构建、vet 和普通测试，说明 skip 范围。
-- [ ] 2.2 完成分步与最终独立审查，执行迁移历史和 OpenSpec 严格校验，将 RED/GREEN、当前检查及未验证项写入 verification.md，按实际结果勾选任务。
+- [x] 2.2 完成分步与最终独立审查，执行迁移历史和 OpenSpec 严格校验，将 RED/GREEN、当前检查及未验证项写入 verification.md，按实际结果勾选任务。

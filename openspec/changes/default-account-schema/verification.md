@@ -41,6 +41,6 @@
 
 任务独立审查：Spec compliant / Approved，无 Critical/Important。Windows build 的 stat-cache 权限警告列为已披露环境项，原生退出码为 0，Linux 定向 race stderr 无输出。控制器核对冻结 SQL、tag 和 OpenSpec 证据如上。
 
-最终分支审查待补。
+最终分支审查（`71dcace..1a59ed8`）：Spec compliant / Approved，Ready to merge: Yes，无 Critical/Important。缓存权限警告接受为已披露非阻塞环境项；测试选择器修正与原始证据一致，没有待修实现问题。数据搬迁/旧默认探测、完整发布/恢复/产品环境验收和全局缓存权限修复均按已确认范围不在本次交付内。
 
 执行中修正了计划的服务测试选择器：原计划 TestLoadConfig 不是仓库现有测试名，改用 TestConfigProductionDefaultsAndMigrate 并新增 TestLoadConfigSchema 覆盖服务配置。若选择器错误会漏验服务默认值；本次定向必需门禁明确确认两者实际 PASS，未扩大行为范围。

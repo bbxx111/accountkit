@@ -39,7 +39,7 @@
 - [x] 新增 `TestDefaultSchemaMigrateAgainstRealDB`，复用 root `dbDSN/minimal/testRedis`：先确认 account 不存在，若存在则 fail 且不清理；记录 auth 存在状态；创建 PoolConfig(dsn,"account")、用空 Schema 构造 New 并 Migrate，断言 Config.Schema/account search_path，五个包表及 version=1/dirty=false，重复 Migrate 成功，auth 存在状态不变。只清理本例创建的 account；清理应先于连接池 Close。追加全名 `github.com/bbxx111/accountkit/TestDefaultSchemaMigrateAgainstRealDB` 和 `github.com/bbxx111/accountkit/internal/accountsvc/TestLoadConfigSchema` 到必需清单，保留其他项。
 - [x] 当前 README/AGENTS/迁移说明及查询示例默认 account；Compose 明确配置 account。兼容说明仅记录开发默认调整和显式配置能力，不增加搬迁步骤；README 区分开发版默认与 v0.1.0 的 auth。保留历史计划/归档/发布说明与 auth_staging/auth_x 等显式 schema 测试。
 - [x] gofmt；`GOWORK=off go build ./...`、`go vet ./...`、`go test -json -count=1 ./...`，数据库缺少时只报告普通测试与 skip。控制器提供一次性 PG17，Linux 执行 `go test -race -json -count=1 . ./migrations ./internal/accountsvc -run 'TestDefaultSchemaMigrateAgainstRealDB|TestMigrateStartCloseAgainstRealDB|TestMigrateRejectsPoolWithoutSchemaOnSearchPath|TestIndependentInstances|TestSourceDatabaseTakeover|TestTwoSchemasCoexist|TestUpCreatesTablesInsideSchemaOnly|TestSchemaPinsInvariants|TestValidateAppliesDefaults|TestNewIsPureAndAppliesDefaults|TestConfigFromEnv|TestConfigProductionDefaultsAndMigrate|TestLoadConfigSchema'`，确认本次全部定向顶层用例实际 PASS。
-- [ ] 工作者自审并只提交本任务代码/文档/选择器，报告 RED/GREEN、命令/输出、默认值与显式配置、文件范围和 skip。控制器进行任务及最终独立审查，检查迁移历史和 OpenSpec strict，补本 change 验收与完成标记。
+- [x] 工作者自审并只提交本任务代码/文档/选择器，报告 RED/GREEN、命令/输出、默认值与显式配置、文件范围和 skip。控制器进行任务及最终独立审查，检查迁移历史和 OpenSpec strict，补本 change 验收与完成标记。
 
 ## Controller Handoff
 

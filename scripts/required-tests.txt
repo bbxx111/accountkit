@@ -138,9 +138,11 @@ github.com/bbxx111/accountkit/TestCloseBeforeStartIsSafe
 github.com/bbxx111/accountkit/TestConfigFromEnvIdP
 github.com/bbxx111/accountkit/TestConfigFromEnvOverridesAndParses
 github.com/bbxx111/accountkit/TestConfigFromEnvReportsBadValues
+github.com/bbxx111/accountkit/TestConfigFromEnvSchema
 github.com/bbxx111/accountkit/TestConsumerEndToEndAgainstRealDB
 github.com/bbxx111/accountkit/TestEndUserHandlerAndMiddlewareWiring
 github.com/bbxx111/accountkit/TestDefaultRequestIDAndClientIP
+github.com/bbxx111/accountkit/TestDefaultSchemaMigrateAgainstRealDB
 github.com/bbxx111/accountkit/TestHostContracts
 github.com/bbxx111/accountkit/TestHostMountShape
 github.com/bbxx111/accountkit/TestIdentityBindingEndToEndAgainstRealDB
@@ -155,6 +157,7 @@ github.com/bbxx111/accountkit/TestNewExposesUsersService
 github.com/bbxx111/accountkit/TestNewIsPureAndAppliesDefaults
 github.com/bbxx111/accountkit/TestNewRejectsBadAnonymizersAndAcceptsDistinctOnes
 github.com/bbxx111/accountkit/TestNewRejectsBadConfigAndMissingDeps
+github.com/bbxx111/accountkit/TestNewSchemaConfiguration
 github.com/bbxx111/accountkit/TestNewRequiresBothAdminDepsOrNeither
 github.com/bbxx111/accountkit/TestNewWiresIdPVerifiersOnlyWhenConfigured
 github.com/bbxx111/accountkit/TestParseWeChatApps
@@ -336,3 +339,4 @@ github.com/bbxx111/accountkit/user/code/TestCodeRotationUnavailable
 github.com/bbxx111/accountkit/user/code/TestCodeRotationCorruptState
 github.com/bbxx111/accountkit/user/code/TestCodeRotationRedisIntegration
 github.com/bbxx111/accountkit/TestCodeKeyRotationIntegration
+github.com/bbxx111/accountkit/internal/accountsvc/TestLoadConfigSchema

@@ -80,11 +80,12 @@ func (h *Handler) sendReauthenticationCode(w http.ResponseWriter, r *http.Reques
 		apierror.WriteInternal(w, h.d.Logger, requestIDFrom(r.Context()), errors.New("enduser: Deps.ClientIP returned empty"))
 		return
 	}
-	if err := h.d.Users.SendReauthenticationCode(r.Context(), p, ch, req.Target, meta); err != nil {
+	challenge, err := h.d.Users.SendReauthenticationCode(r.Context(), p, ch, req.Target, meta)
+	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
 	}
-	apierror.WriteJSON(w, http.StatusOK, struct{}{})
+	writeChallenge(w, challenge)
 }
 
 // POST /users/me:reauthenticate — 只接受 phone/email 凭证；响应不含 refresh_token。
@@ -103,7 +104,7 @@ func (h *Handler) reauthenticate(w http.ResponseWriter, r *http.Request) {
 		apierror.Write(w, e)
 		return
 	}
-	res, err := h.d.Users.Reauthenticate(r.Context(), p, kind, cc.Target, cc.Code, h.meta(r))
+	res, err := h.d.Users.Reauthenticate(r.Context(), p, user.CodeCredential{Channel: kind, Target: cc.Target, CodeID: cc.CodeID, Code: cc.Code}, h.meta(r))
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return

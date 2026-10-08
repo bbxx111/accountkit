@@ -88,7 +88,7 @@ func TestMigrateStartCloseAgainstRealDB(t *testing.T) {
 
 	// 领域层装配冒烟：通过 Auth.Users() 完成一次发码 + 登录（Log 发送器不返回码，只验证不报错的路径）
 	// 此时 Auth 已 Close：产生的 CODE_SENT 事件会被审计记录器丢弃并计数（Warn 日志），不影响返回值。
-	if err := a.Users().SendSignInCode(ctx, enum.IdentityPhone, "+8613812341234", user.Meta{IP: "127.0.0.1"}); err != nil {
+	if _, err := a.Users().SendSignInCode(ctx, enum.IdentityPhone, "+8613812341234", user.Meta{IP: "127.0.0.1"}); err != nil {
 		t.Fatalf("SendSignInCode via Auth: %v", err)
 	}
 }
@@ -140,18 +140,19 @@ func TestAuditEventsPersistedAndExpiredEndToEnd(t *testing.T) {
 		defer resp.Body.Close()
 		var out map[string]any
 		_ = json.NewDecoder(resp.Body).Decode(&out)
+		captured.rememberChallenge(body, out)
 		return resp, out
 	}
 	const phone = "+8613812340077"
 	if resp, _ := post("/v1/users:sendSignInCode", map[string]string{"channel": "PHONE", "target": phone}, nil); resp.StatusCode != 200 {
 		t.Fatalf("sendSignInCode: %d", resp.StatusCode)
 	}
-	resp, tok := post("/v1/users:signInWithCode", map[string]any{"phone": map[string]string{"target": phone, "code": captured.code(phone)}}, map[string]string{"X-Device-Id": "e2e-audit-dev"})
+	resp, tok := post("/v1/users:signInWithCode", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, map[string]string{"X-Device-Id": "e2e-audit-dev"})
 	if resp.StatusCode != 200 {
 		t.Fatalf("signIn: %d %v", resp.StatusCode, tok)
 	}
 	// 错码一次 → SIGN_IN_FAILED
-	if resp, _ := post("/v1/users:signInWithCode", map[string]any{"phone": map[string]string{"target": phone, "code": "000000"}}, map[string]string{"X-Device-Id": "e2e-audit-dev"}); resp.StatusCode != 400 {
+	if resp, _ := post("/v1/users:signInWithCode", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": "000000"}}, map[string]string{"X-Device-Id": "e2e-audit-dev"}); resp.StatusCode != 400 {
 		t.Fatalf("wrong code: %d", resp.StatusCode)
 	}
 	a.Close() // 刷出队列
@@ -215,8 +216,9 @@ func TestAuditEventsPersistedAndExpiredEndToEnd(t *testing.T) {
 
 // captureSender 记录最后一次发往每个 target 的验证码（仅测试）。
 type captureSender struct {
-	mu    sync.Mutex
-	codes map[string]string
+	codeIDs map[string]string
+	mu      sync.Mutex
+	codes   map[string]string
 }
 
 func (c *captureSender) SendSMS(_ context.Context, to string, m sender.Message) error {
@@ -284,6 +286,7 @@ func TestConsumerEndToEndAgainstRealDB(t *testing.T) {
 		defer resp.Body.Close()
 		var out map[string]any
 		_ = json.NewDecoder(resp.Body).Decode(&out)
+		captured.rememberChallenge(body, out)
 		return resp, out
 	}
 	dev := map[string]string{"X-Device-Id": "e2e-device-1", "X-Device-Name": "E2E"}
@@ -293,7 +296,7 @@ func TestConsumerEndToEndAgainstRealDB(t *testing.T) {
 	if resp.StatusCode != 200 || captured.code(phone) == "" {
 		t.Fatalf("sendSignInCode: %d", resp.StatusCode)
 	}
-	resp, tok := post("/v1/users:signInWithCode", "", map[string]any{"phone": map[string]string{"target": phone, "code": captured.code(phone)}}, dev)
+	resp, tok := post("/v1/users:signInWithCode", "", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, dev)
 	if resp.StatusCode != 200 || tok["is_new_user"] != true || tok["scope"] != "user" {
 		t.Fatalf("signIn: %d %v", resp.StatusCode, tok)
 	}
@@ -342,7 +345,7 @@ func TestConsumerEndToEndAgainstRealDB(t *testing.T) {
 		t.Fatalf("revoked refresh: %d %v", resp.StatusCode, oerr)
 	}
 	// 错码是 400，不是 401
-	resp, aip := post("/v1/users:signInWithCode", "", map[string]any{"phone": map[string]string{"target": phone, "code": "000000"}}, dev)
+	resp, aip := post("/v1/users:signInWithCode", "", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": "000000"}}, dev)
 	if resp.StatusCode != 400 || aip["error"].(map[string]any)["reason"] != "CODE_EXPIRED" { // 码已被消费 → 无有效码
 		t.Fatalf("wrong code after consume: %d %v", resp.StatusCode, aip)
 	}
@@ -535,6 +538,7 @@ func TestIdentityBindingEndToEndAgainstRealDB(t *testing.T) {
 		defer resp.Body.Close()
 		var out map[string]any
 		_ = json.NewDecoder(resp.Body).Decode(&out)
+		captured.rememberChallenge(body, out)
 		return resp, out
 	}
 	dev := map[string]string{"X-Device-Id": "e2e-bind-1"}
@@ -559,7 +563,7 @@ func TestIdentityBindingEndToEndAgainstRealDB(t *testing.T) {
 	if resp, _ = call("POST", "/v1/users/me:sendBindCode", access, map[string]string{"channel": "PHONE", "target": phone}, nil); resp.StatusCode != 200 || captured.code(phone) == "" {
 		t.Fatalf("sendBindCode: %d", resp.StatusCode)
 	}
-	resp, ident := call("POST", "/v1/users/me/identities", access, map[string]any{"phone": map[string]string{"target": phone, "code": captured.code(phone)}}, nil)
+	resp, ident := call("POST", "/v1/users/me/identities", access, map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, nil)
 	if resp.StatusCode != 201 || ident["kind"] != "PHONE" || ident["masked_subject"] != "+86 138****0001" {
 		t.Fatalf("bind phone: %d %v", resp.StatusCode, ident)
 	}
@@ -574,14 +578,14 @@ func TestIdentityBindingEndToEndAgainstRealDB(t *testing.T) {
 	if resp, _ = call("POST", "/v1/users/me:sendBindCode", access, map[string]string{"channel": "EMAIL", "target": mail}, nil); resp.StatusCode != 200 {
 		t.Fatalf("sendBindCode email: %d", resp.StatusCode)
 	}
-	if resp, _ = call("POST", "/v1/users/me/identities", access, map[string]any{"email": map[string]string{"target": mail, "code": captured.code(mail)}}, nil); resp.StatusCode != 201 {
+	if resp, _ = call("POST", "/v1/users/me/identities", access, map[string]any{"email": map[string]string{"code_id": captured.codeID(mail), "target": mail, "code": captured.code(mail)}}, nil); resp.StatusCode != 201 {
 		t.Fatalf("bind email: %d", resp.StatusCode)
 	}
 	// 冷却期内再发同一邮箱会被限流；这里直接用第二个手机号验证 kind 上限
 	if resp, _ = call("POST", "/v1/users/me:sendBindCode", access, map[string]string{"channel": "PHONE", "target": "+8613812340002"}, nil); resp.StatusCode != 200 {
 		t.Fatalf("sendBindCode phone2: %d", resp.StatusCode)
 	}
-	resp, aip := call("POST", "/v1/users/me/identities", access, map[string]any{"phone": map[string]string{"target": "+8613812340002", "code": captured.code("+8613812340002")}}, nil)
+	resp, aip := call("POST", "/v1/users/me/identities", access, map[string]any{"phone": map[string]string{"code_id": captured.codeID("+8613812340002"), "target": "+8613812340002", "code": captured.code("+8613812340002")}}, nil)
 	if resp.StatusCode != 409 || aip["error"].(map[string]any)["reason"] != "IDENTITY_KIND_LIMIT" {
 		t.Fatalf("kind limit: %d %v", resp.StatusCode, aip)
 	}
@@ -616,14 +620,14 @@ func TestIdentityBindingEndToEndAgainstRealDB(t *testing.T) {
 	if resp, _ = call("POST", "/v1/users/me:sendBindCode", accessC, map[string]string{"channel": "PHONE", "target": phone}, nil); resp.StatusCode != 200 {
 		t.Fatalf("C sendBindCode: %d", resp.StatusCode)
 	}
-	if resp, _ = call("POST", "/v1/users/me/identities", accessC, map[string]any{"phone": map[string]string{"target": phone, "code": captured.code(phone)}}, nil); resp.StatusCode != 201 {
+	if resp, _ = call("POST", "/v1/users/me/identities", accessC, map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, nil); resp.StatusCode != 201 {
 		t.Fatalf("C binds the released phone: %d", resp.StatusCode)
 	}
 	mr.FastForward(2 * time.Second)
 	if resp, _ = call("POST", "/v1/users/me:sendBindCode", access, map[string]string{"channel": "PHONE", "target": phone}, nil); resp.StatusCode != 200 {
 		t.Fatalf("A sendBindCode: %d", resp.StatusCode)
 	}
-	resp, aip = call("POST", "/v1/users/me/identities", access, map[string]any{"phone": map[string]string{"target": phone, "code": captured.code(phone)}}, nil)
+	resp, aip = call("POST", "/v1/users/me/identities", access, map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, nil)
 	if resp.StatusCode != 409 || aip["error"].(map[string]any)["reason"] != "IDENTITY_ALREADY_BOUND" {
 		t.Fatalf("conflict: %d %v", resp.StatusCode, aip)
 	}
@@ -683,12 +687,13 @@ func TestKeyRotationBackfillEndToEnd(t *testing.T) {
 				defer resp.Body.Close()
 				var out map[string]any
 				_ = json.NewDecoder(resp.Body).Decode(&out)
+				captured.rememberChallenge(body, out)
 				return resp, out
 			}
 			if resp, _ := post("/v1/users:sendSignInCode", map[string]string{"channel": "PHONE", "target": phone}, nil); resp.StatusCode != 200 {
 				t.Fatalf("sendSignInCode: %d", resp.StatusCode)
 			}
-			resp, tok := post("/v1/users:signInWithCode", map[string]any{"phone": map[string]string{"target": phone, "code": captured.code(phone)}}, map[string]string{"X-Device-Id": dev})
+			resp, tok := post("/v1/users:signInWithCode", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, map[string]string{"X-Device-Id": dev})
 			if resp.StatusCode != 200 {
 				t.Fatalf("signInWithCode: %d %v", resp.StatusCode, tok)
 			}
@@ -828,6 +833,7 @@ func TestAccountLifecycleEndToEndAgainstRealDB(t *testing.T) {
 		defer resp.Body.Close()
 		var out map[string]any
 		_ = json.NewDecoder(resp.Body).Decode(&out)
+		captured.rememberChallenge(body, out)
 		return resp, out
 	}
 	reason := func(m map[string]any) string {
@@ -844,7 +850,7 @@ func TestAccountLifecycleEndToEndAgainstRealDB(t *testing.T) {
 		if resp, _ := call("POST", "/v1/users:sendSignInCode", "", map[string]string{"channel": "PHONE", "target": phone}, nil); resp.StatusCode != 200 {
 			t.Fatalf("sendSignInCode: %d", resp.StatusCode)
 		}
-		resp, tok := call("POST", "/v1/users:signInWithCode", "", map[string]any{"phone": map[string]string{"target": phone, "code": captured.code(phone)}}, dev)
+		resp, tok := call("POST", "/v1/users:signInWithCode", "", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, dev)
 		if resp.StatusCode != 200 {
 			t.Fatalf("signInWithCode: %d %v", resp.StatusCode, tok)
 		}
@@ -993,6 +999,7 @@ func TestAdminSurfaceEndToEndAgainstRealDB(t *testing.T) {
 		defer resp.Body.Close()
 		var out map[string]any
 		_ = json.NewDecoder(resp.Body).Decode(&out)
+		captured.rememberChallenge(body, out)
 		return resp, out
 	}
 	reason := func(m map[string]any) string {
@@ -1011,7 +1018,7 @@ func TestAdminSurfaceEndToEndAgainstRealDB(t *testing.T) {
 		if resp, _ := call("POST", "/v1/users:sendSignInCode", "", map[string]string{"channel": "PHONE", "target": phone}, nil); resp.StatusCode != 200 {
 			t.Fatalf("sendSignInCode: %d", resp.StatusCode)
 		}
-		resp, tok := call("POST", "/v1/users:signInWithCode", "", map[string]any{"phone": map[string]string{"target": phone, "code": captured.code(phone)}}, map[string]string{"X-Device-Id": dev})
+		resp, tok := call("POST", "/v1/users:signInWithCode", "", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, map[string]string{"X-Device-Id": dev})
 		if resp.StatusCode != 200 {
 			t.Fatalf("signInWithCode: %d %v", resp.StatusCode, tok)
 		}
@@ -1048,7 +1055,7 @@ func TestAdminSurfaceEndToEndAgainstRealDB(t *testing.T) {
 	}
 	mr.FastForward(2 * time.Second)
 	_, _ = call("POST", "/v1/users:sendSignInCode", "", map[string]string{"channel": "PHONE", "target": phone}, nil)
-	resp, aip := call("POST", "/v1/users:signInWithCode", "", map[string]any{"phone": map[string]string{"target": phone, "code": captured.code(phone)}}, map[string]string{"X-Device-Id": "adm-e2e-a"})
+	resp, aip := call("POST", "/v1/users:signInWithCode", "", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, map[string]string{"X-Device-Id": "adm-e2e-a"})
 	if resp.StatusCode != 403 || reason(aip) != "USER_FROZEN" {
 		t.Fatalf("login while frozen: %d %v", resp.StatusCode, aip)
 	}
@@ -1139,4 +1146,26 @@ func TestAdminSurfaceEndToEndAgainstRealDB(t *testing.T) {
 			t.Fatalf("event %s missing; saw %v", typ, seen)
 		}
 	}
+}
+
+func (c *captureSender) rememberChallenge(body any, out map[string]any) {
+	id, _ := out["code_id"].(string)
+	if id == "" {
+		return
+	}
+	request, ok := body.(map[string]string)
+	if !ok {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.codeIDs == nil {
+		c.codeIDs = map[string]string{}
+	}
+	c.codeIDs[request["target"]] = id
+}
+func (c *captureSender) codeID(target string) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.codeIDs[target]
 }

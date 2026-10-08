@@ -59,18 +59,19 @@ func (c *capture) code(target string) string {
 }
 
 type fixture struct {
-	svc    *user.Service
-	repo   *user.Repo
-	pool   *pgxpool.Pool
-	mr     *miniredis.Miniredis
-	sent   *capture
-	audit  *audit.Memory
-	dig    *pii.Digester
-	ciph   *pii.Cipher
-	clock  *time.Time // 可推进的时钟
-	deps   user.Deps
-	wechat *fakeWeChat
-	apple  *fakeApple
+	challenges sync.Map
+	svc        *user.Service
+	repo       *user.Repo
+	pool       *pgxpool.Pool
+	mr         *miniredis.Miniredis
+	sent       *capture
+	audit      *audit.Memory
+	dig        *pii.Digester
+	ciph       *pii.Cipher
+	clock      *time.Time // 可推进的时钟
+	deps       user.Deps
+	wechat     *fakeWeChat
+	apple      *fakeApple
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -91,7 +92,7 @@ func newFixture(t *testing.T) *fixture {
 	apple := &fakeApple{}
 	deps := user.Deps{
 		Repo:       repo,
-		Codes:      code.NewStore(rdb, "t:", dig, code.Options{TTL: 5 * time.Minute, Cooldown: 60 * time.Second, MaxAttempts: 5, DailyLimitPerTarget: 10, DailyLimitPerIP: 100, Now: func() time.Time { return *clock }}),
+		Codes:      code.NewStore(rdb, "t:", dig, code.Options{FailureLimitPerTarget: 10, FailureWindow: 15 * time.Minute, TTL: 5 * time.Minute, Cooldown: 60 * time.Second, MaxAttempts: 5, DailyLimitPerTarget: 10, DailyLimitPerIP: 100, Now: func() time.Time { return *clock }}),
 		Revocation: revocation.NewSet(rdb, "t:"), Grace: grace.NewCache(rdb, "t:", ciph),
 		Signer: signer, Cipher: ciph, Digester: dig, SMS: sent, Email: sent, Audit: mem,
 		WeChat:    wechat,
@@ -122,12 +123,12 @@ var meta1 = user.Meta{IP: "203.0.113.5", RequestID: "req-1"}
 func (f *fixture) signIn(t *testing.T, channel enum.IdentityKind, target string, dev user.Device) user.TokenResult {
 	t.Helper()
 	ctx := context.Background()
-	if err := f.svc.SendSignInCode(ctx, channel, target, meta1); err != nil {
+	if err := f.sendSignInCode(ctx, channel, target, meta1); err != nil {
 		t.Fatalf("send: %v", err)
 	}
 	// 服务按渠道归一化后的地址发送验证码（生产行为——短信/邮件永远发到归一化地址），
 	// 因此取码也要按归一化地址查找 capture，而不是调用方传入的原始写法。
-	res, err := f.svc.SignInWithCode(ctx, channel, target, f.sent.code(normalizedTarget(channel, target)), dev, meta1)
+	res, err := f.svc.SignInWithCode(ctx, f.credential(enum.PurposeSignIn, channel, target, f.sent.code(normalizedTarget(channel, target))), dev, meta1)
 	if err != nil {
 		t.Fatalf("sign in: %v", err)
 	}
@@ -220,21 +221,24 @@ func TestSignInWithEmailNormalizes(t *testing.T) {
 func TestSignInWrongCodeAndCrossChannel(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
-	if err := f.svc.SendSignInCode(ctx, enum.IdentityPhone, phone1, meta1); err != nil {
+	if err := f.sendSignInCode(ctx, enum.IdentityPhone, phone1, meta1); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.svc.SignInWithCode(ctx, enum.IdentityPhone, phone1, "000000", dev1, meta1); !errors.Is(err, code.ErrInvalid) {
+	phoneCredential := f.credential(enum.PurposeSignIn, enum.IdentityPhone, phone1, f.sent.code(phone1))
+	if _, err := f.svc.SignInWithCode(ctx, f.credential(enum.PurposeSignIn, enum.IdentityPhone, phone1, "000000"), dev1, meta1); !errors.Is(err, code.ErrInvalid) {
 		t.Fatalf("wrong code: %v", err)
 	}
 	if !hasEvent(f.audit, enum.EventSignInFailed, enum.ResultFailure) {
 		t.Fatal("audit must record SIGN_IN_FAILED")
 	}
-	// 用 phone 的码去 email 渠道：键不同 → 过期/无效
-	if _, err := f.svc.SignInWithCode(ctx, enum.IdentityEmail, "a@b.cd", f.sent.code(phone1), dev1, meta1); !errors.Is(err, code.ErrExpired) && !errors.Is(err, code.ErrInvalid) {
+	// 保留 PHONE 发码的真实 code_id 和验证码，只变更渠道与目标；跨渠道引用应统一失效。
+	crossChannel := phoneCredential
+	crossChannel.Channel, crossChannel.Target = enum.IdentityEmail, "a@b.cd"
+	if _, err := f.svc.SignInWithCode(ctx, crossChannel, dev1, meta1); !errors.Is(err, code.ErrExpired) {
 		t.Fatalf("cross-channel: %v", err)
 	}
-	// 正确码仍可用（上面两次失败只计到各自的键上）
-	if _, err := f.svc.SignInWithCode(ctx, enum.IdentityPhone, phone1, f.sent.code(phone1), dev1, meta1); err != nil {
+	// 跨渠道引用不能消费源 PHONE 轮次；先前错码之后原凭证仍可成功。
+	if _, err := f.svc.SignInWithCode(ctx, phoneCredential, dev1, meta1); err != nil {
 		t.Fatalf("correct code after failures: %v", err)
 	}
 }
@@ -265,14 +269,14 @@ func TestSignInFrozenAndPendingDeletion(t *testing.T) {
 	ctx := context.Background()
 	res := f.signIn(t, enum.IdentityPhone, phone1, dev1)
 	mustExec(t, f, `UPDATE user_account SET state = 2 WHERE id = $1`, res.UserID) // FROZEN
-	_ = f.svc.SendSignInCode(ctx, enum.IdentityPhone, phone1, meta1)
-	if _, err := f.svc.SignInWithCode(ctx, enum.IdentityPhone, phone1, f.sent.code(phone1), dev1, meta1); !errors.Is(err, user.ErrUserFrozen) {
+	_ = f.sendSignInCode(ctx, enum.IdentityPhone, phone1, meta1)
+	if _, err := f.svc.SignInWithCode(ctx, f.credential(enum.PurposeSignIn, enum.IdentityPhone, phone1, f.sent.code(phone1)), dev1, meta1); !errors.Is(err, user.ErrUserFrozen) {
 		t.Fatalf("frozen: %v", err)
 	}
 	f.advance(61 * time.Second)
 	mustExec(t, f, `UPDATE user_account SET state = 3 WHERE id = $1`, res.UserID) // PENDING_DELETION
-	_ = f.svc.SendSignInCode(ctx, enum.IdentityPhone, phone1, meta1)
-	got, err := f.svc.SignInWithCode(ctx, enum.IdentityPhone, phone1, f.sent.code(phone1), dev1, meta1)
+	_ = f.sendSignInCode(ctx, enum.IdentityPhone, phone1, meta1)
+	got, err := f.svc.SignInWithCode(ctx, f.credential(enum.PurposeSignIn, enum.IdentityPhone, phone1, f.sent.code(phone1)), dev1, meta1)
 	if err != nil || got.Scope != user.ScopeUndelete {
 		t.Fatalf("pending deletion via anchor must yield user:undelete scope: %+v %v", got, err)
 	}
@@ -287,10 +291,10 @@ func TestSignInDeletedUserWithLiveIdentityIsInvariantViolation(t *testing.T) {
 	ctx := context.Background()
 	res := f.signIn(t, enum.IdentityPhone, phone1, dev1)
 	mustExec(t, f, `UPDATE user_account SET state = 4 WHERE id = $1`, res.UserID) // DELETED
-	if err := f.svc.SendSignInCode(ctx, enum.IdentityPhone, phone1, meta1); err != nil {
+	if err := f.sendSignInCode(ctx, enum.IdentityPhone, phone1, meta1); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.svc.SignInWithCode(ctx, enum.IdentityPhone, phone1, f.sent.code(phone1), dev1, meta1); err == nil || errors.Is(err, user.ErrUserFrozen) || errors.Is(err, user.ErrInvalidGrant) {
+	if _, err := f.svc.SignInWithCode(ctx, f.credential(enum.PurposeSignIn, enum.IdentityPhone, phone1, f.sent.code(phone1)), dev1, meta1); err == nil || errors.Is(err, user.ErrUserFrozen) || errors.Is(err, user.ErrInvalidGrant) {
 		t.Fatalf("deleted user with a live identity must surface as an error, not ErrUserFrozen/ErrInvalidGrant: %v", err)
 	}
 	var count int
@@ -305,40 +309,40 @@ func TestSignInDeletedUserWithLiveIdentityIsInvariantViolation(t *testing.T) {
 func TestSignInValidationAndRateLimitAndRedisDown(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
-	if err := f.svc.SendSignInCode(ctx, enum.IdentityPhone, "abc", meta1); !errors.Is(err, user.ErrInvalidTarget) {
+	if err := f.sendSignInCode(ctx, enum.IdentityPhone, "abc", meta1); !errors.Is(err, user.ErrInvalidTarget) {
 		t.Fatalf("invalid target: %v", err)
 	}
-	if err := f.svc.SendSignInCode(ctx, enum.IdentityWeChat, phone1, meta1); !errors.Is(err, user.ErrInvalidArgument) {
+	if err := f.sendSignInCode(ctx, enum.IdentityWeChat, phone1, meta1); !errors.Is(err, user.ErrInvalidArgument) {
 		t.Fatalf("non-channel kind: %v", err)
 	}
-	if err := f.svc.SendSignInCode(ctx, enum.IdentityPhone, phone1, meta1); err != nil {
+	if err := f.sendSignInCode(ctx, enum.IdentityPhone, phone1, meta1); err != nil {
 		t.Fatal(err)
 	}
 	var rl *code.RateLimitedError
-	if err := f.svc.SendSignInCode(ctx, enum.IdentityPhone, phone1, meta1); !errors.As(err, &rl) {
+	if err := f.sendSignInCode(ctx, enum.IdentityPhone, phone1, meta1); !errors.As(err, &rl) {
 		t.Fatalf("cooldown must surface as *code.RateLimitedError: %v", err)
 	}
 	if !hasEvent(f.audit, enum.EventCodeSendRejected, enum.ResultFailure) {
 		t.Fatal("audit must record CODE_SEND_REJECTED")
 	}
-	if _, err := f.svc.SignInWithCode(ctx, enum.IdentityPhone, phone1, f.sent.code(phone1), user.Device{}, meta1); !errors.Is(err, user.ErrInvalidArgument) {
+	if _, err := f.svc.SignInWithCode(ctx, f.credential(enum.PurposeSignIn, enum.IdentityPhone, phone1, f.sent.code(phone1)), user.Device{}, meta1); !errors.Is(err, user.ErrInvalidArgument) {
 		t.Fatalf("missing device id: %v", err)
 	}
 	// 发送失败：额度不退（冷却仍在）
 	f.advance(61 * time.Second)
 	f.sent.fail = errors.New("provider down")
-	if err := f.svc.SendSignInCode(ctx, enum.IdentityPhone, phone1, meta1); err == nil || errors.Is(err, user.ErrUnavailable) {
+	if err := f.sendSignInCode(ctx, enum.IdentityPhone, phone1, meta1); err == nil || errors.Is(err, user.ErrUnavailable) {
 		t.Fatalf("provider failure must be returned as a plain error: %v", err)
 	}
 	f.sent.fail = nil
-	if err := f.svc.SendSignInCode(ctx, enum.IdentityPhone, phone1, meta1); !errors.As(err, &rl) || rl.Dimension != "COOLDOWN" {
+	if err := f.sendSignInCode(ctx, enum.IdentityPhone, phone1, meta1); !errors.As(err, &rl) || rl.Dimension != "COOLDOWN" {
 		t.Fatalf("quota must not be refunded after a failed send: %v", err)
 	}
 	if !hasEvent(f.audit, enum.EventCodeSendFailed, enum.ResultFailure) {
 		t.Fatal("audit must record CODE_SEND_FAILED")
 	}
 	f.mr.Close()
-	if err := f.svc.SendSignInCode(ctx, enum.IdentityPhone, "+8613900000001", meta1); !errors.Is(err, user.ErrUnavailable) {
+	if err := f.sendSignInCode(ctx, enum.IdentityPhone, "+8613900000001", meta1); !errors.Is(err, user.ErrUnavailable) {
 		t.Fatalf("redis down must be ErrUnavailable: %v", err)
 	}
 }
@@ -348,7 +352,7 @@ func TestSignInValidationAndRateLimitAndRedisDown(t *testing.T) {
 func TestSendSignInCodeRequiresIP(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
-	if err := f.svc.SendSignInCode(ctx, enum.IdentityPhone, phone1, user.Meta{RequestID: "req-noip"}); !errors.Is(err, user.ErrInvalidArgument) {
+	if err := f.sendSignInCode(ctx, enum.IdentityPhone, phone1, user.Meta{RequestID: "req-noip"}); !errors.Is(err, user.ErrInvalidArgument) {
 		t.Fatalf("empty ip must be ErrInvalidArgument: %v", err)
 	}
 	if got := f.sent.code(normalizedTarget(enum.IdentityPhone, phone1)); got != "" {
@@ -737,14 +741,14 @@ func TestReauthenticateUpdatesAuthTimeOnlyForAnchor(t *testing.T) {
 	f.advance(10 * time.Minute)
 
 	// 非本人锚点 → ErrNotAnchor，且不发码
-	if err := f.svc.SendReauthenticationCode(ctx, p, enum.IdentityPhone, "+8613900000008", meta1); !errors.Is(err, user.ErrNotAnchor) {
+	if err := f.sendReauthenticationCode(ctx, p, enum.IdentityPhone, "+8613900000008", meta1); !errors.Is(err, user.ErrNotAnchor) {
 		t.Fatalf("foreign target: %v", err)
 	}
-	if err := f.svc.SendReauthenticationCode(ctx, p, enum.IdentityPhone, phone1, meta1); err != nil {
+	if err := f.sendReauthenticationCode(ctx, p, enum.IdentityPhone, phone1, meta1); err != nil {
 		t.Fatal(err)
 	}
 	// 错码
-	if _, err := f.svc.Reauthenticate(ctx, p, enum.IdentityPhone, phone1, "000000", meta1); !errors.Is(err, code.ErrInvalid) {
+	if _, err := f.svc.Reauthenticate(ctx, p, f.credential(enum.PurposeReauth, enum.IdentityPhone, phone1, "000000"), meta1); !errors.Is(err, code.ErrInvalid) {
 		t.Fatalf("wrong code: %v", err)
 	}
 	if !hasEvent(f.audit, enum.EventReauthenticationFailed, enum.ResultFailure) {
@@ -752,14 +756,14 @@ func TestReauthenticateUpdatesAuthTimeOnlyForAnchor(t *testing.T) {
 	}
 	// 登录码不能用于重新认证（用途隔离）
 	f.advance(61 * time.Second)
-	_ = f.svc.SendSignInCode(ctx, enum.IdentityPhone, phone1, meta1)
-	if _, err := f.svc.Reauthenticate(ctx, p, enum.IdentityPhone, phone1, f.sent.code(phone1), meta1); err == nil {
+	_ = f.sendSignInCode(ctx, enum.IdentityPhone, phone1, meta1)
+	if _, err := f.svc.Reauthenticate(ctx, p, f.credential(enum.PurposeReauth, enum.IdentityPhone, phone1, f.sent.code(phone1)), meta1); err == nil {
 		t.Fatal("a SIGN_IN code must not satisfy REAUTH")
 	}
 	// 正确的 REAUTH 码
 	f.advance(61 * time.Second)
-	_ = f.svc.SendReauthenticationCode(ctx, p, enum.IdentityPhone, phone1, meta1)
-	out, err := f.svc.Reauthenticate(ctx, p, enum.IdentityPhone, phone1, f.sent.code(phone1), meta1)
+	_ = f.sendReauthenticationCode(ctx, p, enum.IdentityPhone, phone1, meta1)
+	out, err := f.svc.Reauthenticate(ctx, p, f.credential(enum.PurposeReauth, enum.IdentityPhone, phone1, f.sent.code(phone1)), meta1)
 	if err != nil || out.RefreshToken != "" || out.RefreshExpiresIn != 0 || out.ExpiresIn != 900 || out.Scope != user.ScopeUser {
 		t.Fatalf("reauth result: %+v %v", out, err)
 	}
@@ -780,8 +784,8 @@ func TestReauthenticateUpdatesAuthTimeOnlyForAnchor(t *testing.T) {
 	// SESSION_INVALID）：只有能明确归因的业务拒绝才记这个原因。
 	_ = f.svc.Revoke(ctx, next.RefreshToken, meta1)
 	f.advance(61 * time.Second)
-	_ = f.svc.SendReauthenticationCode(ctx, p, enum.IdentityPhone, phone1, meta1)
-	if _, err := f.svc.Reauthenticate(ctx, p, enum.IdentityPhone, phone1, f.sent.code(phone1), meta1); !errors.Is(err, user.ErrInvalidToken) {
+	_ = f.sendReauthenticationCode(ctx, p, enum.IdentityPhone, phone1, meta1)
+	if _, err := f.svc.Reauthenticate(ctx, p, f.credential(enum.PurposeReauth, enum.IdentityPhone, phone1, f.sent.code(phone1)), meta1); !errors.Is(err, user.ErrInvalidToken) {
 		t.Fatalf("revoked session: %v", err)
 	}
 	if !hasEventReason(f.audit, enum.EventReauthenticationFailed, enum.ResultFailure, "SESSION_REVOKED") {
@@ -799,12 +803,12 @@ func TestReauthenticateFrozenUserAudited(t *testing.T) {
 	if err != nil {
 		t.Fatalf("authenticate: %v", err)
 	}
-	if err := f.svc.SendReauthenticationCode(ctx, p, enum.IdentityPhone, phone1, meta1); err != nil {
+	if err := f.sendReauthenticationCode(ctx, p, enum.IdentityPhone, phone1, meta1); err != nil {
 		t.Fatalf("send reauth code: %v", err)
 	}
 	plain := f.sent.code(phone1)
 	mustExec(t, f, `UPDATE user_account SET state = 2 WHERE id = $1`, res.UserID) // FROZEN
-	if _, err := f.svc.Reauthenticate(ctx, p, enum.IdentityPhone, phone1, plain, meta1); !errors.Is(err, user.ErrUserFrozen) {
+	if _, err := f.svc.Reauthenticate(ctx, p, f.credential(enum.PurposeReauth, enum.IdentityPhone, phone1, plain), meta1); !errors.Is(err, user.ErrUserFrozen) {
 		t.Fatalf("frozen user must be ErrUserFrozen: %v", err)
 	}
 	if !hasEventReason(f.audit, enum.EventReauthenticationFailed, enum.ResultFailure, "USER_FROZEN") {
@@ -845,4 +849,48 @@ func TestCleanupSessionsDeletesOnlyStaleRows(t *testing.T) {
 	if n, err := f.svc.CleanupSessions(ctx); err != nil || n != 0 {
 		t.Fatalf("second run: n=%d err=%v", n, err)
 	}
+}
+
+func challengeKey(p enum.CodePurpose, ch enum.IdentityKind, target string) string {
+	return p.String() + ":" + ch.String() + ":" + normalizedTarget(ch, target)
+}
+func (f *fixture) remember(p enum.CodePurpose, ch enum.IdentityKind, target string, c user.CodeChallenge, err error) error {
+	if err == nil {
+		f.challenges.Store(challengeKey(p, ch, target), c.CodeID)
+		f.challenges.Store("latest:"+ch.String()+":"+normalizedTarget(ch, target), c.CodeID)
+	}
+	return err
+}
+func (f *fixture) sendSignInCode(ctx context.Context, ch enum.IdentityKind, target string, meta user.Meta) error {
+	c, err := f.svc.SendSignInCode(ctx, ch, target, meta)
+	return f.remember(enum.PurposeSignIn, ch, target, c, err)
+}
+func (f *fixture) sendBindCode(ctx context.Context, p user.Principal, ch enum.IdentityKind, target string, meta user.Meta) error {
+	c, err := f.svc.SendBindCode(ctx, p, ch, target, meta)
+	return f.remember(enum.PurposeBind, ch, target, c, err)
+}
+func (f *fixture) sendReauthenticationCode(ctx context.Context, p user.Principal, ch enum.IdentityKind, target string, meta user.Meta) error {
+	c, err := f.svc.SendReauthenticationCode(ctx, p, ch, target, meta)
+	return f.remember(enum.PurposeReauth, ch, target, c, err)
+}
+func (f *fixture) credential(p enum.CodePurpose, ch enum.IdentityKind, target, plain string) user.CodeCredential {
+	id := "00000000000000000000000000000000"
+	if value, ok := f.challenges.Load("latest:" + ch.String() + ":" + normalizedTarget(ch, target)); ok {
+		id = value.(string)
+	} else if value, ok := f.challenges.Load(challengeKey(p, ch, target)); ok {
+		id = value.(string)
+	}
+	return user.CodeCredential{Channel: ch, Target: target, CodeID: id, Code: plain}
+}
+
+func (f *fixture) storeCredential(purpose enum.CodePurpose, ch enum.IdentityKind, target, plain string, p user.Principal) code.Credential {
+	c := f.credential(purpose, ch, target, plain)
+	binding := code.Binding{}
+	if purpose == enum.PurposeBind || purpose == enum.PurposeReauth {
+		binding.UserID = p.UserID
+	}
+	if purpose == enum.PurposeReauth {
+		binding.SessionID = p.SessionID
+	}
+	return code.Credential{Channel: ch, Purpose: purpose, Target: normalizedTarget(ch, target), CodeID: c.CodeID, Code: plain, Binding: binding}
 }

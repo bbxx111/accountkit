@@ -30,7 +30,7 @@ func replacementSetup(t *testing.T, kind enum.IdentityKind, old string) (*fixtur
 
 func replacementCode(t *testing.T, f *fixture, p user.Principal, kind enum.IdentityKind, target string) string {
 	t.Helper()
-	if err := f.svc.SendBindCode(context.Background(), p, kind, target, meta1); err != nil {
+	if err := f.sendBindCode(context.Background(), p, kind, target, meta1); err != nil {
 		t.Fatal(err)
 	}
 	return f.sent.code(normalizedTarget(kind, target))
@@ -54,7 +54,7 @@ func TestReplaceIdentity(t *testing.T) {
 				t.Fatal(err)
 			}
 			plain := replacementCode(t, f, p, tc.kind, tc.target)
-			out, err := f.svc.ReplaceIdentity(ctx, p, iid, tc.kind, tc.target, plain, meta1)
+			out, err := f.svc.ReplaceIdentity(ctx, p, iid, f.credential(enum.PurposeBind, tc.kind, tc.target, plain), meta1)
 			if err != nil || out.ID == iid || !ids.Valid(ids.Identity, out.ID) || out.Kind != tc.kind || out.MaskedSubject == "" || out.MaskedSubject == tc.target {
 				t.Fatalf("replacement: %+v %v", out, err)
 			}
@@ -66,7 +66,7 @@ func TestReplaceIdentity(t *testing.T) {
 			if err := f.pool.QueryRow(ctx, "SELECT delete_time IS NOT NULL FROM identity WHERE id=$1", iid).Scan(&deleted); err != nil || !deleted {
 				t.Fatalf("soft deletion: %v %v", deleted, err)
 			}
-			if _, err := f.svc.ReplaceIdentity(ctx, p, iid, tc.kind, tc.target, plain, meta1); !errors.Is(err, user.ErrNotFound) {
+			if _, err := f.svc.ReplaceIdentity(ctx, p, iid, f.credential(enum.PurposeBind, tc.kind, tc.target, plain), meta1); !errors.Is(err, user.ErrNotFound) {
 				t.Fatalf("retry: %v", err)
 			}
 			refreshed, err := f.svc.Refresh(ctx, current.RefreshToken, meta1)
@@ -159,11 +159,11 @@ func TestReplaceIdentityPreflight(t *testing.T) {
 			if tc.change != nil {
 				tc.change(t, f, &p, &id)
 			}
-			if _, err := f.svc.ReplaceIdentity(context.Background(), p, id, tc.kind, tc.target, plain, meta1); !errors.Is(err, tc.want) {
+			if _, err := f.svc.ReplaceIdentity(context.Background(), p, id, f.credential(enum.PurposeBind, tc.kind, tc.target, plain), meta1); !errors.Is(err, tc.want) {
 				t.Fatalf("got %v want %v", err, tc.want)
 			}
 			// 即使预检失败，原 BIND 证明也仍可被消费。
-			if err := f.deps.Codes.Verify(context.Background(), enum.IdentityPhone, enum.PurposeBind, phone2, plain); err != nil {
+			if err := f.deps.Codes.VerifyChallenge(context.Background(), f.storeCredential(enum.PurposeBind, enum.IdentityPhone, phone2, plain, p)); err != nil {
 				t.Fatalf("preflight consumed code: %v", err)
 			}
 			if !hasEvent(f.audit, enum.EventIdentityReplaceRejected, enum.ResultFailure) {
@@ -199,7 +199,7 @@ func TestReplaceIdentityConfiguration(t *testing.T) {
 			}
 			p.AuthTime = f.clock.Add(-tc.authAge)
 			plain := replacementCode(t, f, p, enum.IdentityEmail, "new@example.test")
-			_, err = f.svc.ReplaceIdentity(context.Background(), p, id, enum.IdentityEmail, "new@example.test", plain, meta1)
+			_, err = f.svc.ReplaceIdentity(context.Background(), p, id, f.credential(enum.PurposeBind, enum.IdentityEmail, "new@example.test", plain), meta1)
 			if !errors.Is(err, tc.want) {
 				t.Fatalf("got %v want %v", err, tc.want)
 			}
@@ -226,11 +226,11 @@ func TestReplaceIdentityConfiguration(t *testing.T) {
 		if plain == wrong {
 			wrong = "999999"
 		}
-		if _, err := f.svc.ReplaceIdentity(context.Background(), p, id, enum.IdentityPhone, phone2, wrong, meta1); !errors.Is(err, code.ErrInvalid) {
+		if _, err := f.svc.ReplaceIdentity(context.Background(), p, id, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, wrong), meta1); !errors.Is(err, code.ErrInvalid) {
 			t.Fatalf("disabled freshness bypassed proof: %v", err)
 		}
 		mustExec(t, f, "UPDATE session SET revoke_time=now() WHERE id=$1", p.SessionID)
-		if _, err := f.svc.ReplaceIdentity(context.Background(), p, id, enum.IdentityPhone, phone2, plain, meta1); !errors.Is(err, user.ErrInvalidToken) {
+		if _, err := f.svc.ReplaceIdentity(context.Background(), p, id, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, plain), meta1); !errors.Is(err, user.ErrInvalidToken) {
 			t.Fatalf("disabled freshness bypassed session: %v", err)
 		}
 	})
@@ -240,11 +240,13 @@ func TestReplaceIdentityNewTargetProof(t *testing.T) {
 	for _, purpose := range []enum.CodePurpose{enum.PurposeSignIn, enum.PurposeReauth} {
 		t.Run(purpose.String(), func(t *testing.T) {
 			f, p, id, _ := replacementSetup(t, enum.IdentityPhone, phone1)
-			plain, err := f.deps.Codes.Issue(context.Background(), enum.IdentityPhone, purpose, phone2, meta1.IP)
+			issued, err := f.deps.Codes.IssueChallenge(context.Background(), enum.IdentityPhone, purpose, phone2, meta1.IP, code.Binding{UserID: p.UserID, SessionID: p.SessionID})
+			plain := issued.Code
+			f.challenges.Store(challengeKey(enum.PurposeBind, enum.IdentityPhone, phone2), issued.CodeID)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := f.svc.ReplaceIdentity(context.Background(), p, id, enum.IdentityPhone, phone2, plain, meta1); !errors.Is(err, code.ErrExpired) {
+			if _, err := f.svc.ReplaceIdentity(context.Background(), p, id, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, plain), meta1); !errors.Is(err, code.ErrExpired) {
 				t.Fatalf("wrong purpose: %v", err)
 			}
 		})
@@ -256,11 +258,11 @@ func TestReplaceIdentityNewTargetProof(t *testing.T) {
 		wrong = "999999"
 	}
 	for range 5 {
-		if _, err := f.svc.ReplaceIdentity(context.Background(), p, id, enum.IdentityPhone, phone2, wrong, meta1); !errors.Is(err, code.ErrInvalid) && !errors.Is(err, code.ErrExhausted) {
+		if _, err := f.svc.ReplaceIdentity(context.Background(), p, id, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, wrong), meta1); !errors.Is(err, code.ErrInvalid) && !errors.Is(err, code.ErrExhausted) {
 			t.Fatalf("bad attempt: %v", err)
 		}
 	}
-	if _, err := f.svc.ReplaceIdentity(context.Background(), p, id, enum.IdentityPhone, phone2, plain, meta1); err == nil {
+	if _, err := f.svc.ReplaceIdentity(context.Background(), p, id, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, plain), meta1); err == nil {
 		t.Fatal("exhausted code accepted")
 	}
 	list, _ := f.svc.ListIdentities(context.Background(), p.UserID)

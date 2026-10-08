@@ -73,7 +73,7 @@ func TestServiceIntegrationIdentityReplacement(t *testing.T) {
 	path := "/v1/users/me/identities/" + oldID + ":replace"
 	f.call("POST", p.baseURL+"/v1/users/me:sendBindCode", access, map[string]string{"channel": "EMAIL", "target": newTarget}, 200)
 	bindCode := mail(newTarget, "绑定")
-	body := map[string]any{"email": map[string]string{"target": newTarget, "code": bindCode}}
+	body := map[string]any{"email": map[string]string{"code_id": f.codeID(newTarget), "target": newTarget, "code": bindCode}}
 	time.Sleep(6 * time.Second)
 	rejected := f.call("POST", p.baseURL+path, access, body, 400)
 	privateResponse(rejected)
@@ -82,7 +82,7 @@ func TestServiceIntegrationIdentityReplacement(t *testing.T) {
 	}
 	f.call("POST", p.baseURL+"/v1/users/me:sendReauthenticationCode", access, map[string]string{"channel": "EMAIL", "target": oldTarget}, 200)
 	reauthCode := mail(oldTarget, "重新认证")
-	reauth := f.call("POST", p.baseURL+"/v1/users/me:reauthenticate", access, map[string]any{"email": map[string]string{"target": oldTarget, "code": reauthCode}}, 200)
+	reauth := f.call("POST", p.baseURL+"/v1/users/me:reauthenticate", access, map[string]any{"email": map[string]string{"code_id": f.codeID(oldTarget), "target": oldTarget, "code": reauthCode}}, 200)
 	if _, ok := reauth["refresh_token"]; ok {
 		t.Fatal("reauthentication returned unexpected refresh token")
 	}
@@ -174,7 +174,7 @@ func TestServiceIntegrationIdentityReplacement(t *testing.T) {
 // here so another login cannot accidentally revoke the current session first.
 func replacementDeviceSignIn(t *testing.T, f *integrationFixture, p *serviceProcess, target, code, device string) map[string]any {
 	t.Helper()
-	raw, err := json.Marshal(map[string]any{"email": map[string]string{"target": target, "code": code}})
+	raw, err := json.Marshal(map[string]any{"email": map[string]string{"code_id": f.codeID(target), "target": target, "code": code}})
 	if err != nil {
 		t.Fatal(err)
 	}

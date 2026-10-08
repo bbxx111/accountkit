@@ -7,6 +7,10 @@ RETURNING *;
 -- name: GetUserByID :one
 SELECT * FROM user_account WHERE id = $1;
 
+-- name: BatchPublicProfiles :many
+-- 宿主授权的业务页批量读取最小公开资料；包含注销状态，由领域层清空其显示名。
+SELECT id, display_name, state FROM user_account WHERE id = ANY(@ids::text[]);
+
 -- name: LockUserByID :one
 -- 同设备重登前对用户行加锁：并发登录在此串行化，第二个事务等到第一个提交（含会话吊销/新建）
 -- 后再读，从而看到刚吊销的旧会话，不会与它一起并存两条活跃会话。
@@ -249,3 +253,18 @@ WHERE user_id = @user_id AND revoke_time IS NULL AND refresh_expire_time > @now:
 -- purge：去掉可关联到自然人的请求侧字段，保留事件与 user_id（§3.5）。命中 audit_event_user_id_occur_time_idx 前缀。
 UPDATE audit_event SET ip = NULL, device_id = NULL, subject_hint = NULL
 WHERE user_id = @user_id::text AND (ip IS NOT NULL OR device_id IS NOT NULL OR subject_hint IS NOT NULL);
+
+-- name: ImportUser :exec
+-- 受控离线导入：保存调用者提供的原 ID/时间及匿名墓碑，不执行 upsert。
+INSERT INTO user_account (id, state, display_name, create_time, update_time, delete_time, purge_time)
+VALUES (@id, @state, sqlc.narg('display_name'), @create_time::timestamptz, @update_time::timestamptz,
+        sqlc.narg('delete_time')::timestamptz, sqlc.narg('purge_time')::timestamptz);
+
+-- name: ImportIdentity :exec
+-- 离线 PHONE/EMAIL 锚点使用库当前密钥，保留历史时间；冲突不得静默跳过。
+INSERT INTO identity (id, user_id, kind, subject_digest, digest_key_version,
+                      subject_ciphertext, cipher_key_version, hint_prefix, hint_suffix, create_time, update_time)
+VALUES (@id, @user_id, @kind, sqlc.narg('subject_digest')::text, sqlc.narg('digest_key_version')::smallint,
+        @subject_ciphertext, sqlc.narg('cipher_key_version')::smallint,
+        sqlc.narg('hint_prefix')::text, sqlc.narg('hint_suffix')::text,
+        @create_time::timestamptz, @update_time::timestamptz);

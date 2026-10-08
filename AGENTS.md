@@ -72,7 +72,7 @@
 
 ## 数据库与实例隔离
 
-- 包拥有 `user_account`、`identity`、`session`、`audit_event` 和 `schema_migrations`，位于 `Config.Schema` 指定的 schema，默认 `auth`。使用无业务前缀的单数 snake_case 表名；隔离靠 schema，不添加产品专用表前缀。
+- 包拥有 `user_account`、`identity`、`session`、`audit_event` 和 `schema_migrations`，位于 `Config.Schema` 指定的 schema，默认 `account`。使用无业务前缀的单数 snake_case 表名；隔离靠 schema，不添加产品专用表前缀。
 - 同一数据库可有多个独立实例。宿主使用 `PoolConfig` 设置 search_path，并独立配置 schema、Redis `KeyPrefix`（以 `:` 结尾）、JWT issuer/audience 和密钥。新增 Redis 键必须包含实例前缀。
 - PostgreSQL 同库可以跨 schema 查询、join、事务及定义外键；本包不使用外键是领域设计选择，不是数据库不支持跨 schema。不要改变既有无外键契约；引用一致性由领域写路径和测试保证。
 - 主键使用 `ids` 的类型前缀 TSID：`u_`、`i_`、`s_`、`e_` 加 13 位小写 Crockford base32；TEXT/COLLATE C 和格式 CHECK 保持一致。ID 只承诺相等查找；分页排序必须有时间字段和唯一的次级排序键。

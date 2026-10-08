@@ -28,6 +28,7 @@ func (h *Handler) decodeJSON(w http.ResponseWriter, r *http.Request, dst any) er
 func malformed() *apierror.Error { return jsonbody.Malformed() }
 
 var deviceIDRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+var codeIDRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 const maxDeviceNameRunes = 64
 
@@ -47,6 +48,7 @@ func deviceFrom(r *http.Request) (user.Device, *apierror.Error) {
 // codeCredential 是 phone/email 凭证成员。
 type codeCredential struct {
 	Target string `json:"target"`
+	CodeID string `json:"code_id"`
 	Code   string `json:"code"`
 }
 
@@ -95,8 +97,12 @@ func (c credential) anchor() (enum.IdentityKind, codeCredential, *apierror.Error
 	if c.Email != nil {
 		kind, cc = enum.IdentityEmail, c.Email
 	}
+
 	if cc.Target == "" || cc.Code == "" {
 		return 0, codeCredential{}, apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_INCOMPLETE", "target and code are required")
+	}
+	if !codeIDRe.MatchString(cc.CodeID) {
+		return 0, codeCredential{}, apierror.New(apierror.StatusInvalidArgument, "INVALID_ARGUMENT", "code_id must be 32 lowercase hexadecimal characters")
 	}
 	return kind, *cc, nil
 }

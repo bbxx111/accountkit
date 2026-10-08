@@ -20,23 +20,23 @@ func TestSendSignInCode(t *testing.T) {
 		target string
 		meta   user.Meta
 	}
-	f := &fakeService{sendSignInCode: func(_ context.Context, ch enum.IdentityKind, target string, meta user.Meta) error {
+	f := &fakeService{sendSignInCode: func(_ context.Context, ch enum.IdentityKind, target string, meta user.Meta) (user.CodeChallenge, error) {
 		got.ch, got.target, got.meta = ch, target, meta
 		if target == "" {
-			return user.ErrInvalidTarget // 领域层归一化失败的行为
+			return user.CodeChallenge{}, user.ErrInvalidTarget // 领域层归一化失败的行为
 		}
 		if target == "+8613800000000" {
-			return &code.RateLimitedError{Dimension: "COOLDOWN", RetryAfter: 42 * time.Second}
+			return user.CodeChallenge{}, &code.RateLimitedError{Dimension: "COOLDOWN", RetryAfter: 42 * time.Second}
 		}
 		if target == "down" {
-			return user.ErrUnavailable
+			return user.CodeChallenge{}, user.ErrUnavailable
 		}
-		return nil
+		return user.CodeChallenge{}, nil
 	}}
 	h := newHandler(t, f)
 
 	rec := do(t, h, call{method: "POST", path: "/users:sendSignInCode", body: map[string]string{"channel": "PHONE", "target": "+8613812341234"}})
-	if rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != "{}" || rec.Header().Get("X-Request-Id") != "req-test" {
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"code_id"`) || rec.Header().Get("Cache-Control") != "no-store" || rec.Header().Get("X-Request-Id") != "req-test" {
 		t.Fatalf("ok: %d %s", rec.Code, rec.Body.String())
 	}
 	if got.ch != enum.IdentityPhone || got.target != "+8613812341234" || got.meta.IP != "203.0.113.9" || got.meta.RequestID != "req-test" {
@@ -106,7 +106,9 @@ func TestSignInWithCode(t *testing.T) {
 		target, code string
 		dev          user.Device
 	}
-	f := &fakeService{signInWithCode: func(_ context.Context, ch enum.IdentityKind, target, c string, dev user.Device, meta user.Meta) (user.TokenResult, error) {
+	f := &fakeService{signInWithCode: func(_ context.Context, cred user.CodeCredential, dev user.Device, meta user.Meta) (user.TokenResult, error) {
+		ch, target, c := cred.Channel, cred.Target, cred.Code
+
 		got.ch, got.target, got.code, got.dev = ch, target, c, dev
 		switch c {
 		case "000000":
@@ -123,7 +125,7 @@ func TestSignInWithCode(t *testing.T) {
 		return user.TokenResult{AccessToken: "at", RefreshToken: "rt", ExpiresIn: 900, RefreshExpiresIn: 2592000, Scope: "user", UserID: "u_1", IsNewUser: true}, nil
 	}}
 	h := newHandler(t, f)
-	body := map[string]any{"phone": map[string]string{"target": "+8613812341234", "code": "123456"}}
+	body := map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "123456"}}
 
 	rec := do(t, h, call{method: "POST", path: "/users:signInWithCode", body: body, headers: devHeaders()})
 	var tok map[string]any
@@ -151,7 +153,7 @@ func TestSignInWithCode(t *testing.T) {
 	// 凭证形状
 	for name, b := range map[string]any{
 		"none": map[string]any{},
-		"both": map[string]any{"phone": map[string]string{"target": "a", "code": "b"}, "email": map[string]string{"target": "a", "code": "b"}},
+		"both": map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "a", "code": "b"}, "email": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "a", "code": "b"}},
 	} {
 		rec = do(t, h, call{method: "POST", path: "/users:signInWithCode", body: b, headers: devHeaders()})
 		if status, _ := aipError(t, rec); rec.Code != 400 || status != "INVALID_ARGUMENT/CREDENTIAL_ONEOF" {
@@ -162,14 +164,14 @@ func TestSignInWithCode(t *testing.T) {
 	if status, _ := aipError(t, rec); status != "INVALID_ARGUMENT/CREDENTIAL_KIND_NOT_ALLOWED" {
 		t.Fatalf("wechat here: %s", status)
 	}
-	rec = do(t, h, call{method: "POST", path: "/users:signInWithCode", body: map[string]any{"email": map[string]string{"target": "a@b.co"}}, headers: devHeaders()})
+	rec = do(t, h, call{method: "POST", path: "/users:signInWithCode", body: map[string]any{"email": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "a@b.co"}}, headers: devHeaders()})
 	if status, _ := aipError(t, rec); status != "INVALID_ARGUMENT/CREDENTIAL_INCOMPLETE" {
 		t.Fatalf("incomplete: %s", status)
 	}
 
 	// 领域错误映射（码错不是 401）
 	for c, want := range map[string]string{"000000": "400 INVALID_ARGUMENT/CODE_INVALID", "111111": "400 INVALID_ARGUMENT/CODE_EXPIRED", "222222": "400 INVALID_ARGUMENT/CODE_ATTEMPTS_EXHAUSTED", "333333": "403 PERMISSION_DENIED/USER_FROZEN", "444444": "500 INTERNAL/"} {
-		rec = do(t, h, call{method: "POST", path: "/users:signInWithCode", body: map[string]any{"phone": map[string]string{"target": "+8613812341234", "code": c}}, headers: devHeaders()})
+		rec = do(t, h, call{method: "POST", path: "/users:signInWithCode", body: map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": c}}, headers: devHeaders()})
 		status, _ := aipError(t, rec)
 		if got := itoa(rec.Code) + " " + status; got != want {
 			t.Fatalf("code %s: got %q want %q", c, got, want)
@@ -232,7 +234,7 @@ func TestSignInWithIdp(t *testing.T) {
 	if status, _ := aipError(t, rec); status != "INVALID_ARGUMENT/DEVICE_ID_INVALID" {
 		t.Fatalf("no device: %s", status)
 	}
-	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"phone": map[string]string{"target": "+86138", "code": "1"}}, headers: devHeaders()})
+	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+86138", "code": "1"}}, headers: devHeaders()})
 	if status, _ := aipError(t, rec); status != "INVALID_ARGUMENT/CREDENTIAL_KIND_NOT_ALLOWED" {
 		t.Fatalf("phone here: %s", status)
 	}

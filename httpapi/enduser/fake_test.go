@@ -19,33 +19,33 @@ import (
 
 // fakeService 用函数字段实现 enduser.Service；未设置的方法 panic，暴露测试遗漏。
 type fakeService struct {
-	sendSignInCode           func(ctx context.Context, ch enum.IdentityKind, target string, meta user.Meta) error
-	signInWithCode           func(ctx context.Context, ch enum.IdentityKind, target, code string, dev user.Device, meta user.Meta) (user.TokenResult, error)
+	sendSignInCode           func(ctx context.Context, ch enum.IdentityKind, target string, meta user.Meta) (user.CodeChallenge, error)
+	signInWithCode           func(ctx context.Context, cred user.CodeCredential, dev user.Device, meta user.Meta) (user.TokenResult, error)
 	signInWithIdp            func(ctx context.Context, cred user.IdpCredential, dev user.Device, meta user.Meta) (user.TokenResult, error)
 	refresh                  func(ctx context.Context, rt string, meta user.Meta) (user.TokenResult, error)
 	revoke                   func(ctx context.Context, rt string, meta user.Meta) error
 	authenticate             func(ctx context.Context, raw string) (user.Principal, error)
 	getMe                    func(ctx context.Context, uid string) (user.Me, error)
 	updateDisplayName        func(ctx context.Context, uid, name string) (user.Me, error)
-	sendReauthenticationCode func(ctx context.Context, p user.Principal, ch enum.IdentityKind, target string, meta user.Meta) error
-	reauthenticate           func(ctx context.Context, p user.Principal, ch enum.IdentityKind, target, code string, meta user.Meta) (user.TokenResult, error)
+	sendReauthenticationCode func(ctx context.Context, p user.Principal, ch enum.IdentityKind, target string, meta user.Meta) (user.CodeChallenge, error)
+	reauthenticate           func(ctx context.Context, p user.Principal, cred user.CodeCredential, meta user.Meta) (user.TokenResult, error)
 	listSessions             func(ctx context.Context, uid, sid string) ([]user.SessionInfo, error)
 	revokeSession            func(ctx context.Context, uid, sid string, meta user.Meta) error
 	revokeOtherSessions      func(ctx context.Context, uid, sid string, meta user.Meta) error
 	listIdentities           func(ctx context.Context, uid string) ([]user.IdentityInfo, error)
-	sendBindCode             func(ctx context.Context, p user.Principal, ch enum.IdentityKind, target string, meta user.Meta) error
-	bindWithCode             func(ctx context.Context, p user.Principal, ch enum.IdentityKind, target, code string, meta user.Meta) (user.IdentityInfo, bool, error)
+	sendBindCode             func(ctx context.Context, p user.Principal, ch enum.IdentityKind, target string, meta user.Meta) (user.CodeChallenge, error)
+	bindWithCode             func(ctx context.Context, p user.Principal, cred user.CodeCredential, meta user.Meta) (user.IdentityInfo, bool, error)
 	bindWithIdp              func(ctx context.Context, p user.Principal, cred user.IdpCredential, meta user.Meta) (user.IdentityInfo, bool, error)
 	unbindIdentity           func(ctx context.Context, p user.Principal, id string, meta user.Meta) error
 	deleteMe                 func(ctx context.Context, p user.Principal, meta user.Meta) (user.Me, error)
 	undelete                 func(ctx context.Context, p user.Principal, meta user.Meta) (user.Me, error)
 }
 
-func (f *fakeService) SendSignInCode(ctx context.Context, ch enum.IdentityKind, target string, meta user.Meta) error {
+func (f *fakeService) SendSignInCode(ctx context.Context, ch enum.IdentityKind, target string, meta user.Meta) (user.CodeChallenge, error) {
 	return f.sendSignInCode(ctx, ch, target, meta)
 }
-func (f *fakeService) SignInWithCode(ctx context.Context, ch enum.IdentityKind, target, code string, dev user.Device, meta user.Meta) (user.TokenResult, error) {
-	return f.signInWithCode(ctx, ch, target, code, dev, meta)
+func (f *fakeService) SignInWithCode(ctx context.Context, cred user.CodeCredential, dev user.Device, meta user.Meta) (user.TokenResult, error) {
+	return f.signInWithCode(ctx, cred, dev, meta)
 }
 func (f *fakeService) SignInWithIdp(ctx context.Context, cred user.IdpCredential, dev user.Device, meta user.Meta) (user.TokenResult, error) {
 	return f.signInWithIdp(ctx, cred, dev, meta)
@@ -65,11 +65,11 @@ func (f *fakeService) GetMe(ctx context.Context, uid string) (user.Me, error) {
 func (f *fakeService) UpdateDisplayName(ctx context.Context, uid, name string) (user.Me, error) {
 	return f.updateDisplayName(ctx, uid, name)
 }
-func (f *fakeService) SendReauthenticationCode(ctx context.Context, p user.Principal, ch enum.IdentityKind, target string, meta user.Meta) error {
+func (f *fakeService) SendReauthenticationCode(ctx context.Context, p user.Principal, ch enum.IdentityKind, target string, meta user.Meta) (user.CodeChallenge, error) {
 	return f.sendReauthenticationCode(ctx, p, ch, target, meta)
 }
-func (f *fakeService) Reauthenticate(ctx context.Context, p user.Principal, ch enum.IdentityKind, target, code string, meta user.Meta) (user.TokenResult, error) {
-	return f.reauthenticate(ctx, p, ch, target, code, meta)
+func (f *fakeService) Reauthenticate(ctx context.Context, p user.Principal, cred user.CodeCredential, meta user.Meta) (user.TokenResult, error) {
+	return f.reauthenticate(ctx, p, cred, meta)
 }
 func (f *fakeService) ListSessions(ctx context.Context, uid, sid string) ([]user.SessionInfo, error) {
 	return f.listSessions(ctx, uid, sid)
@@ -83,11 +83,11 @@ func (f *fakeService) RevokeOtherSessions(ctx context.Context, uid, sid string, 
 func (f *fakeService) ListIdentities(ctx context.Context, uid string) ([]user.IdentityInfo, error) {
 	return f.listIdentities(ctx, uid)
 }
-func (f *fakeService) SendBindCode(ctx context.Context, p user.Principal, ch enum.IdentityKind, target string, meta user.Meta) error {
+func (f *fakeService) SendBindCode(ctx context.Context, p user.Principal, ch enum.IdentityKind, target string, meta user.Meta) (user.CodeChallenge, error) {
 	return f.sendBindCode(ctx, p, ch, target, meta)
 }
-func (f *fakeService) BindWithCode(ctx context.Context, p user.Principal, ch enum.IdentityKind, target, code string, meta user.Meta) (user.IdentityInfo, bool, error) {
-	return f.bindWithCode(ctx, p, ch, target, code, meta)
+func (f *fakeService) BindWithCode(ctx context.Context, p user.Principal, cred user.CodeCredential, meta user.Meta) (user.IdentityInfo, bool, error) {
+	return f.bindWithCode(ctx, p, cred, meta)
 }
 func (f *fakeService) BindWithIdp(ctx context.Context, p user.Principal, cred user.IdpCredential, meta user.Meta) (user.IdentityInfo, bool, error) {
 	return f.bindWithIdp(ctx, p, cred, meta)

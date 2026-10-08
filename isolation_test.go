@@ -59,12 +59,21 @@ func TestIndependentInstances(t *testing.T) {
 	if _, err := b.Users().Authenticate(ctx, tb.AccessToken); err != nil {
 		t.Fatalf("A revoked B: %v", err)
 	}
+	var challengeA, challengeB user.CodeChallenge
 	for _, x := range []struct {
 		send func() error
 		code func() string
 	}{
-		{func() error { return a.Users().SendSignInCode(ctx, enum.IdentityPhone, fa.Phone, meta) }, func() string { return sa.code(fa.Phone) }},
-		{func() error { return b.Users().SendSignInCode(ctx, enum.IdentityPhone, fb.Phone, meta) }, func() string { return sb.code(fb.Phone) }},
+		{func() error {
+			var err error
+			challengeA, err = a.Users().SendSignInCode(ctx, enum.IdentityPhone, fa.Phone, meta)
+			return err
+		}, func() string { return sa.code(fa.Phone) }},
+		{func() error {
+			var err error
+			challengeB, err = b.Users().SendSignInCode(ctx, enum.IdentityPhone, fb.Phone, meta)
+			return err
+		}, func() string { return sb.code(fb.Phone) }},
 	} {
 		if err := x.send(); err != nil {
 			t.Fatal(err)
@@ -78,10 +87,10 @@ func TestIndependentInstances(t *testing.T) {
 		signIn func() (user.TokenResult, error)
 	}{
 		{func() (user.TokenResult, error) {
-			return a.Users().SignInWithCode(ctx, enum.IdentityPhone, fa.Phone, sa.code(fa.Phone), user.Device{ID: "otp-device"}, meta)
+			return a.Users().SignInWithCode(ctx, user.CodeCredential{Channel: enum.IdentityPhone, Target: fa.Phone, CodeID: challengeA.CodeID, Code: sa.code(fa.Phone)}, user.Device{ID: "otp-device"}, meta)
 		}},
 		{func() (user.TokenResult, error) {
-			return b.Users().SignInWithCode(ctx, enum.IdentityPhone, fb.Phone, sb.code(fb.Phone), user.Device{ID: "otp-device"}, meta)
+			return b.Users().SignInWithCode(ctx, user.CodeCredential{Channel: enum.IdentityPhone, Target: fb.Phone, CodeID: challengeB.CodeID, Code: sb.code(fb.Phone)}, user.Device{ID: "otp-device"}, meta)
 		}},
 	} {
 		if _, err := x.signIn(); err != nil {

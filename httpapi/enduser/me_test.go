@@ -109,14 +109,16 @@ func TestReauthentication(t *testing.T) {
 		target string
 	}
 	f := withAuth(&fakeService{
-		sendReauthenticationCode: func(_ context.Context, p user.Principal, ch enum.IdentityKind, target string, meta user.Meta) error {
+		sendReauthenticationCode: func(_ context.Context, p user.Principal, ch enum.IdentityKind, target string, meta user.Meta) (user.CodeChallenge, error) {
 			sent.p, sent.ch, sent.target = p, ch, target
 			if target == "+8613900000009" {
-				return user.ErrNotAnchor
+				return user.CodeChallenge{}, user.ErrNotAnchor
 			}
-			return nil
+			return user.CodeChallenge{}, nil
 		},
-		reauthenticate: func(_ context.Context, p user.Principal, ch enum.IdentityKind, target, c string, meta user.Meta) (user.TokenResult, error) {
+		reauthenticate: func(_ context.Context, p user.Principal, cred user.CodeCredential, meta user.Meta) (user.TokenResult, error) {
+			c := cred.Code
+
 			switch c {
 			case "000000":
 				return user.TokenResult{}, code.ErrInvalid
@@ -143,7 +145,7 @@ func TestReauthentication(t *testing.T) {
 		t.Fatalf("needs bearer: %d", rec.Code)
 	}
 
-	body := map[string]any{"phone": map[string]string{"target": "+8613812341234", "code": "123456"}}
+	body := map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "123456"}}
 	rec = do(t, h, call{method: "POST", path: "/users/me:reauthenticate", bearer: "good", body: body})
 	var tok map[string]any
 	decode(t, rec, &tok)
@@ -156,11 +158,11 @@ func TestReauthentication(t *testing.T) {
 	if _, has := tok["refresh_expires_in"]; has {
 		t.Fatal("reauthenticate must not return refresh_expires_in")
 	}
-	rec = do(t, h, call{method: "POST", path: "/users/me:reauthenticate", bearer: "good", body: map[string]any{"phone": map[string]string{"target": "+8613812341234", "code": "000000"}}})
+	rec = do(t, h, call{method: "POST", path: "/users/me:reauthenticate", bearer: "good", body: map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "000000"}}})
 	if status, _ := aipError(t, rec); rec.Code != 400 || status != "INVALID_ARGUMENT/CODE_INVALID" {
 		t.Fatalf("wrong code: %d %s", rec.Code, status)
 	}
-	rec = do(t, h, call{method: "POST", path: "/users/me:reauthenticate", bearer: "good", body: map[string]any{"phone": map[string]string{"target": "+8613812341234", "code": "999999"}}})
+	rec = do(t, h, call{method: "POST", path: "/users/me:reauthenticate", bearer: "good", body: map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "999999"}}})
 	if status, _ := aipError(t, rec); rec.Code != 401 || status != "UNAUTHENTICATED/TOKEN_INVALID" || rec.Header().Get("WWW-Authenticate") == "" {
 		t.Fatalf("revoked session: %d %s", rec.Code, status)
 	}
@@ -168,7 +170,7 @@ func TestReauthentication(t *testing.T) {
 	if status, _ := aipError(t, rec); status != "INVALID_ARGUMENT/CREDENTIAL_KIND_NOT_ALLOWED" {
 		t.Fatalf("reauth accepts only phone/email: %s", status)
 	}
-	rec = do(t, h, call{method: "POST", path: "/users/me:reauthenticate", bearer: "good", body: map[string]any{"phone": map[string]string{"target": "+8613812341234", "code": "888888"}}})
+	rec = do(t, h, call{method: "POST", path: "/users/me:reauthenticate", bearer: "good", body: map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "888888"}}})
 	if rec.Code != 500 || contains(rec.Body.String(), "pg") {
 		t.Fatalf("500: %d %s", rec.Code, rec.Body.String())
 	}

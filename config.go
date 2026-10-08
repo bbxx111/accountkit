@@ -23,7 +23,7 @@ type WeChatApp struct {
 // Config 是 accountkit 的全部配置。零值字段由 applyDefaults 填默认；Validate 在 New 中调用。
 // 密钥只来自配置：JWT/HMAC/加密三组都是"版本 → 密钥"映射加一个 active 版本。
 type Config struct {
-	// Schema 是所有表所在的 PostgreSQL schema。默认 "auth"。
+	// Schema 是所有表所在的 PostgreSQL schema。默认 "account"。
 	Schema string
 	// KeyPrefix 是所有 Redis 键的前缀，须以 ':' 结尾。默认 "auth:"。
 	KeyPrefix string
@@ -45,12 +45,14 @@ type Config struct {
 	SubjectCipherKeys      map[uint16][]byte
 	SubjectCipherActiveKey uint16
 
-	CodeTTL                 time.Duration // 默认 5m
-	CodeMaxAttempts         int           // 默认 5
-	CodeCooldown            time.Duration // 默认 60s
-	CodeDailyLimitPerTarget int           // 默认 10
-	CodeDailyLimitPerIP     int           // 默认 100
-	MaxIdentitiesPerKind    int           // 默认 1
+	CodeTTL                   time.Duration // 默认 5m
+	CodeMaxAttempts           int           // 默认 5
+	CodeCooldown              time.Duration // 默认 60s
+	CodeDailyLimitPerTarget   int           // 默认 10
+	CodeDailyLimitPerIP       int           // 默认 100
+	CodeFailureLimitPerTarget int           // 默认 10，跨用途累计错误预算
+	CodeFailureWindow         time.Duration // 默认 15m，从首次错误起固定窗口
+	MaxIdentitiesPerKind      int           // 默认 1
 
 	DeletionCoolingPeriod time.Duration // 默认 360h（15 天）
 	AuditRetentionDays    int           // 默认 180
@@ -82,7 +84,7 @@ func (c *Config) applyDefaults() {
 		}
 	}
 	if c.Schema == "" {
-		c.Schema = "auth"
+		c.Schema = "account"
 	}
 	if c.KeyPrefix == "" {
 		c.KeyPrefix = "auth:"
@@ -99,6 +101,8 @@ func (c *Config) applyDefaults() {
 	def(&c.CodeCooldown, 60*time.Second)
 	defi(&c.CodeDailyLimitPerTarget, 10)
 	defi(&c.CodeDailyLimitPerIP, 100)
+	defi(&c.CodeFailureLimitPerTarget, 10)
+	def(&c.CodeFailureWindow, 15*time.Minute)
 	defi(&c.MaxIdentitiesPerKind, 1)
 	def(&c.DeletionCoolingPeriod, 360*time.Hour)
 	defi(&c.AuditRetentionDays, 180)
@@ -156,8 +160,11 @@ func (c Config) Validate() error {
 	if c.CodeTTL < time.Second || c.CodeCooldown < time.Second {
 		return errors.New("accountkit: CodeTTL and CodeCooldown must be >= 1s")
 	}
-	if c.CodeMaxAttempts <= 0 || c.CodeDailyLimitPerTarget <= 0 || c.CodeDailyLimitPerIP <= 0 {
+	if c.CodeMaxAttempts <= 0 || c.CodeDailyLimitPerTarget <= 0 || c.CodeDailyLimitPerIP <= 0 || c.CodeFailureLimitPerTarget <= 0 {
 		return errors.New("accountkit: Code* settings must be positive")
+	}
+	if c.CodeFailureWindow < time.Second {
+		return errors.New("accountkit: CodeFailureWindow must be >= 1s")
 	}
 	if c.MaxIdentitiesPerKind <= 0 {
 		return errors.New("accountkit: MaxIdentitiesPerKind must be >= 1")
@@ -322,6 +329,8 @@ func ConfigFromEnv(prefix string) (Config, error) {
 	dur("CODE_COOLDOWN", &c.CodeCooldown)
 	integer("CODE_DAILY_LIMIT_PER_TARGET", &c.CodeDailyLimitPerTarget)
 	integer("CODE_DAILY_LIMIT_PER_IP", &c.CodeDailyLimitPerIP)
+	integer("CODE_FAILURE_LIMIT_PER_TARGET", &c.CodeFailureLimitPerTarget)
+	dur("CODE_FAILURE_WINDOW", &c.CodeFailureWindow)
 	integer("MAX_IDENTITIES_PER_KIND", &c.MaxIdentitiesPerKind)
 	dur("DELETION_COOLING_PERIOD", &c.DeletionCoolingPeriod)
 	integer("AUDIT_RETENTION_DAYS", &c.AuditRetentionDays)

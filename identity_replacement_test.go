@@ -141,6 +141,7 @@ func TestIdentityReplacementEndToEndAgainstRealDB(t *testing.T) {
 				t.Fatal("invalid JSON response")
 			}
 		}
+		captured.rememberChallenge(body, out)
 		return out
 	}
 	rememberPair := func(pair map[string]any) {
@@ -154,7 +155,7 @@ func TestIdentityReplacementEndToEndAgainstRealDB(t *testing.T) {
 			t.Fatal("sender did not deliver login code")
 		}
 		secrets = append(secrets, c)
-		pair := call("POST", "/v1/users:signInWithCode", "", device, map[string]any{"email": map[string]string{"target": target, "code": c}}, 200)
+		pair := call("POST", "/v1/users:signInWithCode", "", device, map[string]any{"email": map[string]string{"code_id": captured.codeID(target), "target": target, "code": c}}, 200)
 		rememberPair(pair)
 		return pair
 	}
@@ -183,7 +184,7 @@ func TestIdentityReplacementEndToEndAgainstRealDB(t *testing.T) {
 		t.Fatal("sender did not deliver BIND code")
 	}
 	secrets = append(secrets, bindCode)
-	body := map[string]any{"email": map[string]string{"target": newTarget, "code": bindCode}}
+	body := map[string]any{"email": map[string]string{"code_id": captured.codeID(newTarget), "target": newTarget, "code": bindCode}}
 	// Let the configured freshness window expire; the first attempt must not consume BIND proof.
 	time.Sleep(6 * time.Second)
 	rejected := call("POST", path, access, "", body, 400)
@@ -194,7 +195,7 @@ func TestIdentityReplacementEndToEndAgainstRealDB(t *testing.T) {
 	call("POST", "/v1/users/me:sendReauthenticationCode", access, "", map[string]string{"channel": "EMAIL", "target": oldTarget}, 200)
 	reauthCode := captured.code(oldTarget)
 	secrets = append(secrets, reauthCode)
-	reauth := call("POST", "/v1/users/me:reauthenticate", access, "", map[string]any{"email": map[string]string{"target": oldTarget, "code": reauthCode}}, 200)
+	reauth := call("POST", "/v1/users/me:reauthenticate", access, "", map[string]any{"email": map[string]string{"code_id": captured.codeID(oldTarget), "target": oldTarget, "code": reauthCode}}, 200)
 	access = reauth["access_token"].(string)
 	secrets = append(secrets, access)
 	before, err := a.Users().Authenticate(ctx, access)

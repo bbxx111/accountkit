@@ -70,6 +70,8 @@ type Deps struct {
 	// Anonymizers 是宿主业务域的匿名化器：purge 到期账号时，在库表匿名化之后按此顺序、同一事务内调用。
 	// 可空。业务表须与库表同库；Name 须唯一。
 	Anonymizers []anonymize.Anonymizer
+	// BeforeDelete 在注销事务中、账号锁和 ACTIVE 校验之后执行宿主检查；可空。
+	BeforeDelete user.BeforeDelete
 	// AdminVerifier / AdminPrincipal 启用管理面（§4.2/§6.3）：宿主在 /admin/v1 先挂 verifier 的 Middleware，
 	// 再 Mount AdminHandler()；库内每条路由用 AdminVerifier.RequireRole 放行，并用 AdminPrincipal 取当前管理员。
 	// 二者须同时提供；都为空时 AdminHandler() 的所有路由返回 503 ADMIN_NOT_CONFIGURED。
@@ -154,6 +156,7 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 	a.codes = code.NewStore(deps.Redis, cfg.KeyPrefix, digester, code.Options{
 		TTL: cfg.CodeTTL, Cooldown: cfg.CodeCooldown, MaxAttempts: cfg.CodeMaxAttempts,
 		DailyLimitPerTarget: cfg.CodeDailyLimitPerTarget, DailyLimitPerIP: cfg.CodeDailyLimitPerIP,
+		FailureLimitPerTarget: cfg.CodeFailureLimitPerTarget, FailureWindow: cfg.CodeFailureWindow,
 	})
 	a.revocation = revocation.NewSet(deps.Redis, cfg.KeyPrefix)
 	a.grace = grace.NewCache(deps.Redis, cfg.KeyPrefix, cipher)
@@ -184,6 +187,7 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 		MaxIdentitiesPerKind:    cfg.MaxIdentitiesPerKind,
 		DeletionCoolingPeriod:   cfg.DeletionCoolingPeriod,
 		Anonymizers:             deps.Anonymizers,
+		BeforeDelete:            deps.BeforeDelete,
 	})
 	if err != nil {
 		return nil, err

@@ -113,13 +113,13 @@ func TestReauthenticateExpiryAfterLocks(t *testing.T) {
 				}
 				before := reauthSession(t, ctx, f, p)
 				nanos := reauthAtomicClock(t, f, entry.Add(999*time.Nanosecond), sensitive)
-				if err := f.svc.SendReauthenticationCode(ctx, p, enum.IdentityPhone, phone1, meta1); err != nil {
+				if err := f.sendReauthenticationCode(ctx, p, enum.IdentityPhone, phone1, meta1); err != nil {
 					t.Fatal(err)
 				}
 				plain := f.sent.code(phone1)
 				eventStart := len(f.audit.Events())
 				invoke := func() replacementRaceResult {
-					out, err := f.svc.Reauthenticate(ctx, p, enum.IdentityPhone, phone1, plain, meta1)
+					out, err := f.svc.Reauthenticate(ctx, p, f.credential(enum.PurposeReauth, enum.IdentityPhone, phone1, plain), meta1)
 					return replacementRaceResult{token: out, err: err}
 				}
 				var out replacementRaceResult
@@ -130,7 +130,7 @@ func TestReauthenticateExpiryAfterLocks(t *testing.T) {
 					if stage == "identity" {
 						gate = reauthIdentityReadGate(t, ctx, f, gate, done)
 					}
-					if err := f.deps.Codes.Verify(ctx, enum.IdentityPhone, enum.PurposeReauth, phone1, plain); !errors.Is(err, code.ErrExpired) {
+					if err := f.deps.Codes.VerifyChallenge(ctx, f.storeCredential(enum.PurposeReauth, enum.IdentityPhone, phone1, plain, p)); !errors.Is(err, code.ErrExpired) {
 						t.Fatalf("proof not consumed before lock wait: %v", err)
 					}
 					nanos.Store(expiry.UnixNano())
@@ -147,7 +147,7 @@ func TestReauthenticateExpiryAfterLocks(t *testing.T) {
 				if after := reauthSession(t, ctx, f, p); !reflect.DeepEqual(before, after) {
 					t.Error("expired reauth changed stored session")
 				}
-				if err := f.deps.Codes.Verify(ctx, enum.IdentityPhone, enum.PurposeReauth, phone1, plain); !errors.Is(err, code.ErrExpired) {
+				if err := f.deps.Codes.VerifyChallenge(ctx, f.storeCredential(enum.PurposeReauth, enum.IdentityPhone, phone1, plain, p)); !errors.Is(err, code.ErrExpired) {
 					t.Errorf("expiry rejection restored proof: %v", err)
 				}
 				events := f.audit.Events()[eventStart:]
@@ -185,12 +185,12 @@ func TestReauthenticateUsesLockedDecisionTime(t *testing.T) {
 			}
 			before := reauthSession(t, ctx, f, p)
 			nanos := reauthAtomicClock(t, f, entry.Add(999*time.Nanosecond), true)
-			if err := f.svc.SendReauthenticationCode(ctx, p, enum.IdentityPhone, phone1, meta1); err != nil {
+			if err := f.sendReauthenticationCode(ctx, p, enum.IdentityPhone, phone1, meta1); err != nil {
 				t.Fatal(err)
 			}
 			plain := f.sent.code(phone1)
 			invoke := func() replacementRaceResult {
-				out, err := f.svc.Reauthenticate(ctx, p, enum.IdentityPhone, phone1, plain, meta1)
+				out, err := f.svc.Reauthenticate(ctx, p, f.credential(enum.PurposeReauth, enum.IdentityPhone, phone1, plain), meta1)
 				return replacementRaceResult{token: out, err: err}
 			}
 			var out replacementRaceResult
@@ -245,7 +245,7 @@ func TestReplaceIdentityExpiryMicroseconds(t *testing.T) {
 	before := reauthSession(t, ctx, f, p)
 	reauthAtomicClock(t, f, decision.Add(999*time.Nanosecond), true)
 	plain := replacementCode(t, f, p, enum.IdentityPhone, phone2)
-	_, err := f.svc.ReplaceIdentity(ctx, p, id, enum.IdentityPhone, phone2, plain, meta1)
+	_, err := f.svc.ReplaceIdentity(ctx, p, id, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, plain), meta1)
 	if err != nil {
 		t.Fatalf("replacement remains valid before normalized expiry: %v", err)
 	}
@@ -279,7 +279,7 @@ func TestReplaceIdentityExpiryAfterLocks(t *testing.T) {
 				plain := replacementCode(t, f, p, enum.IdentityPhone, phone2)
 				gate := reauthLock(t, ctx, f, p, stage)
 				done := startReplacementRace(func() replacementRaceResult {
-					out, err := f.svc.ReplaceIdentity(ctx, p, id, enum.IdentityPhone, phone2, plain, meta1)
+					out, err := f.svc.ReplaceIdentity(ctx, p, id, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, plain), meta1)
 					return replacementRaceResult{identity: out, err: err}
 				})
 				replacementWaitForPID(t, ctx, f, gate.Conn().PgConn().PID(), done)
@@ -298,7 +298,7 @@ func TestReplaceIdentityExpiryAfterLocks(t *testing.T) {
 				if err != nil || len(identities) != 1 || identities[0].ID != id {
 					t.Errorf("expired replacement changed identity: %v", err)
 				}
-				if err := f.deps.Codes.Verify(ctx, enum.IdentityPhone, enum.PurposeBind, phone2, plain); !errors.Is(err, code.ErrExpired) {
+				if err := f.deps.Codes.VerifyChallenge(ctx, f.storeCredential(enum.PurposeBind, enum.IdentityPhone, phone2, plain, p)); !errors.Is(err, code.ErrExpired) {
 					t.Errorf("expired replacement restored consumed code: %v", err)
 				}
 				if !hasEventReason(f.audit, enum.EventIdentityReplaceRejected, enum.ResultFailure, "TOKEN_INVALID") {

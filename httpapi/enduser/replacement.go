@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/ids"
 	"github.com/bbxx111/accountkit/user"
@@ -16,7 +15,7 @@ import (
 // IdentityReplacer 是可选的同类手机/邮箱换绑能力；*user.Service 满足它。
 // 旧 Service 实现无需增加此方法；未提供能力时换绑端点返回 503。
 type IdentityReplacer interface {
-	ReplaceIdentity(ctx context.Context, p user.Principal, identityID string, channel enum.IdentityKind, target, plainCode string, meta user.Meta) (user.IdentityInfo, error)
+	ReplaceIdentity(ctx context.Context, p user.Principal, identityID string, cred user.CodeCredential, meta user.Meta) (user.IdentityInfo, error)
 }
 
 // POST /users/me/identities/{identity}:replace
@@ -45,7 +44,7 @@ func (h *Handler) replaceIdentity(w http.ResponseWriter, r *http.Request) {
 		apierror.Write(w, e)
 		return
 	}
-	info, err := replacer.ReplaceIdentity(r.Context(), p, id, kind, cc.Target, cc.Code, h.meta(r))
+	info, err := replacer.ReplaceIdentity(r.Context(), p, id, user.CodeCredential{Channel: kind, Target: cc.Target, CodeID: cc.CodeID, Code: cc.Code}, h.meta(r))
 	if err != nil {
 		h.writeReplacementError(w, r, err)
 		return

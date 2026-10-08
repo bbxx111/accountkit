@@ -101,7 +101,7 @@ func TestReplacementConcurrentMutations(t *testing.T) {
 				}
 				if operation == "unbind" {
 					plain := replacementCode(t, f, p, enum.IdentityEmail, email1)
-					if _, _, err := f.svc.BindWithCode(ctx, p, enum.IdentityEmail, email1, plain, meta1); err != nil {
+					if _, _, err := f.svc.BindWithCode(ctx, p, f.credential(enum.PurposeBind, enum.IdentityEmail, email1, plain), meta1); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -112,29 +112,29 @@ func TestReplacementConcurrentMutations(t *testing.T) {
 				case "same-identity":
 					mutationCode = replacementCode(t, f, p, enum.IdentityPhone, thirdPhone)
 				case "sign-in":
-					if err := f.svc.SendSignInCode(ctx, enum.IdentityPhone, phone1, meta1); err != nil {
+					if err := f.sendSignInCode(ctx, enum.IdentityPhone, phone1, meta1); err != nil {
 						t.Fatal(err)
 					}
 					mutationCode = f.sent.code(phone1)
 				case "reauthenticate":
-					if err := f.svc.SendReauthenticationCode(ctx, p, enum.IdentityPhone, phone1, meta1); err != nil {
+					if err := f.sendReauthenticationCode(ctx, p, enum.IdentityPhone, phone1, meta1); err != nil {
 						t.Fatal(err)
 					}
 					mutationCode = f.sent.code(phone1)
 				}
 				replace := func() replacementRaceResult {
-					out, err := f.svc.ReplaceIdentity(ctx, p, oldID, enum.IdentityPhone, phone2, newCode, meta1)
+					out, err := f.svc.ReplaceIdentity(ctx, p, oldID, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, newCode), meta1)
 					return replacementRaceResult{identity: out, err: err}
 				}
 				mutate := func() replacementRaceResult {
 					var out replacementRaceResult
 					switch operation {
 					case "same-identity":
-						out.identity, out.err = f.svc.ReplaceIdentity(ctx, p, oldID, enum.IdentityPhone, thirdPhone, mutationCode, meta1)
+						out.identity, out.err = f.svc.ReplaceIdentity(ctx, p, oldID, f.credential(enum.PurposeBind, enum.IdentityPhone, thirdPhone, mutationCode), meta1)
 					case "sign-in":
-						out.token, out.err = f.svc.SignInWithCode(ctx, enum.IdentityPhone, phone1, mutationCode, user.Device{ID: "race-login"}, meta1)
+						out.token, out.err = f.svc.SignInWithCode(ctx, f.credential(enum.PurposeSignIn, enum.IdentityPhone, phone1, mutationCode), user.Device{ID: "race-login"}, meta1)
 					case "reauthenticate":
-						out.token, out.err = f.svc.Reauthenticate(ctx, p, enum.IdentityPhone, phone1, mutationCode, meta1)
+						out.token, out.err = f.svc.Reauthenticate(ctx, p, f.credential(enum.PurposeReauth, enum.IdentityPhone, phone1, mutationCode), meta1)
 					case "unbind":
 						out.err = f.svc.UnbindIdentity(ctx, p, oldID, meta1)
 					case "freeze":
@@ -306,7 +306,7 @@ func TestReplacementConcurrentMutations(t *testing.T) {
 					t.Fatalf("old identity soft-deletion=%v want=%v", oldDeleted, wantOldDeleted)
 				}
 				// 第二请求已经通过预检并消费码才进入锁等待，拒绝不能恢复已消费证明。
-				if err := f.deps.Codes.Verify(ctx, enum.IdentityPhone, enum.PurposeBind, phone2, newCode); !errors.Is(err, code.ErrExpired) {
+				if err := f.deps.Codes.VerifyChallenge(ctx, f.storeCredential(enum.PurposeBind, enum.IdentityPhone, phone2, newCode, p)); !errors.Is(err, code.ErrExpired) {
 					t.Fatalf("replacement proof was not consumed: %v", err)
 				}
 				for _, session := range []struct {

@@ -104,6 +104,7 @@ func TestSessionExpiryEndToEndAgainstRealDB(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		sent.rememberChallenge(body, out)
 		return out
 	}
 	const target = "expiry@example.test"
@@ -111,7 +112,7 @@ func TestSessionExpiryEndToEndAgainstRealDB(t *testing.T) {
 		t.Helper()
 		mr.FastForward(2 * time.Second)
 		call("POST", "/v1/users:sendSignInCode", "", device, map[string]string{"channel": "EMAIL", "target": target}, 200)
-		return call("POST", "/v1/users:signInWithCode", "", device, map[string]any{"email": map[string]string{"target": target, "code": sent.code(target)}}, 200)
+		return call("POST", "/v1/users:signInWithCode", "", device, map[string]any{"email": map[string]string{"code_id": sent.codeID(target), "target": target, "code": sent.code(target)}}, 200)
 	}
 	expired := login("expired")
 	live := login("live")
@@ -199,7 +200,7 @@ func TestSessionExpiryEndToEndAgainstRealDB(t *testing.T) {
 	}
 	mr.FastForward(2 * time.Second)
 	call("POST", "/v1/users/me:sendReauthenticationCode", access, "", map[string]string{"channel": "EMAIL", "target": target}, 200)
-	reauth := call("POST", "/v1/users/me:reauthenticate", access, "", map[string]any{"email": map[string]string{"target": target, "code": sent.code(target)}}, 401)
+	reauth := call("POST", "/v1/users/me:reauthenticate", access, "", map[string]any{"email": map[string]string{"code_id": sent.codeID(target), "target": target, "code": sent.code(target)}}, 401)
 	if reauth["error"].(map[string]any)["reason"] != "TOKEN_INVALID" {
 		t.Error("reauth expiry error changed")
 	}

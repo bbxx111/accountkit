@@ -152,6 +152,8 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, r *http.Request, err 
 	switch {
 	case errors.Is(err, user.ErrNotFound):
 		apierror.Write(w, apierror.New(apierror.StatusNotFound, "NOT_FOUND", "resource not found"))
+	case errors.Is(err, user.ErrDeletionBlocked):
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "DELETION_BLOCKED", "account deletion is blocked"))
 	case errors.Is(err, user.ErrInvalidState):
 		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "INVALID_ACCOUNT_STATE", "operation not allowed in the account's current state"))
 	case errors.Is(err, user.ErrUserFrozen):

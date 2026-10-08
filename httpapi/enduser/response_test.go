@@ -197,11 +197,11 @@ func TestDeviceFromHeaders(t *testing.T) {
 }
 
 func TestCredentialOneof(t *testing.T) {
-	kind, cc, e := credential{Phone: &codeCredential{Target: "+86138", Code: "123456"}}.anchor()
+	kind, cc, e := credential{Phone: &codeCredential{CodeID: "0123456789abcdef0123456789abcdef", Target: "+86138", Code: "123456"}}.anchor()
 	if e != nil || kind != enum.IdentityPhone || cc.Code != "123456" {
 		t.Fatalf("%v %v %+v", e, kind, cc)
 	}
-	if kind, _, e := (credential{Email: &codeCredential{Target: "a@b.co", Code: "1"}}).anchor(); e != nil || kind != enum.IdentityEmail {
+	if kind, _, e := (credential{Email: &codeCredential{CodeID: "0123456789abcdef0123456789abcdef", Target: "a@b.co", Code: "1"}}).anchor(); e != nil || kind != enum.IdentityEmail {
 		t.Fatal("email")
 	}
 	if _, _, e := (credential{}).anchor(); e == nil || e.Reason != "CREDENTIAL_ONEOF" {
@@ -216,14 +216,14 @@ func TestCredentialOneof(t *testing.T) {
 	if _, _, e := (credential{Apple: &appleCredential{}}).anchor(); e == nil || e.Reason != "CREDENTIAL_KIND_NOT_ALLOWED" {
 		t.Fatal("apple")
 	}
-	if _, _, e := (credential{Phone: &codeCredential{Target: "+86138"}}).anchor(); e == nil || e.Reason != "CREDENTIAL_INCOMPLETE" {
+	if _, _, e := (credential{Phone: &codeCredential{CodeID: "0123456789abcdef0123456789abcdef", Target: "+86138"}}).anchor(); e == nil || e.Reason != "CREDENTIAL_INCOMPLETE" {
 		t.Fatal("missing code")
 	}
 }
 
 func TestCredentialExplicitNullIsAbsent(t *testing.T) {
 	var c credential
-	if err := json.Unmarshal([]byte(`{"phone":{"target":"+86138","code":"1"},"wechat":null,"apple":null}`), &c); err != nil {
+	if err := json.Unmarshal([]byte(`{"phone":{"code_id":"0123456789abcdef0123456789abcdef","target":"+86138","code":"1"},"wechat":null,"apple":null}`), &c); err != nil {
 		t.Fatal(err)
 	}
 	if c.present() != 1 {
@@ -249,7 +249,7 @@ func TestCredentialIdp(t *testing.T) {
 	if _, e := (credential{Wechat: &wechatCredential{AppID: "a", Code: "c"}, Apple: &appleCredential{IDToken: "t", Nonce: "n"}}).idp(); e == nil || e.Reason != "CREDENTIAL_ONEOF" {
 		t.Fatal("two")
 	}
-	if _, e := (credential{Phone: &codeCredential{Target: "x", Code: "y"}}).idp(); e == nil || e.Reason != "CREDENTIAL_KIND_NOT_ALLOWED" {
+	if _, e := (credential{Phone: &codeCredential{CodeID: "0123456789abcdef0123456789abcdef", Target: "x", Code: "y"}}).idp(); e == nil || e.Reason != "CREDENTIAL_KIND_NOT_ALLOWED" {
 		t.Fatal("phone on idp endpoint")
 	}
 	if _, e := (credential{Wechat: &wechatCredential{AppID: "a"}}).idp(); e == nil || e.Reason != "CREDENTIAL_INCOMPLETE" {

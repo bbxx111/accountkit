@@ -21,22 +21,22 @@ import (
 
 // Service 是 handler 依赖的领域面；*user.Service 满足它。
 type Service interface {
-	SendSignInCode(ctx context.Context, channel enum.IdentityKind, target string, meta user.Meta) error
-	SignInWithCode(ctx context.Context, channel enum.IdentityKind, target, code string, dev user.Device, meta user.Meta) (user.TokenResult, error)
+	SendSignInCode(ctx context.Context, channel enum.IdentityKind, target string, meta user.Meta) (user.CodeChallenge, error)
+	SignInWithCode(ctx context.Context, cred user.CodeCredential, dev user.Device, meta user.Meta) (user.TokenResult, error)
 	SignInWithIdp(ctx context.Context, cred user.IdpCredential, dev user.Device, meta user.Meta) (user.TokenResult, error)
 	Refresh(ctx context.Context, refreshToken string, meta user.Meta) (user.TokenResult, error)
 	Revoke(ctx context.Context, refreshToken string, meta user.Meta) error
 	Authenticate(ctx context.Context, rawAccess string) (user.Principal, error)
 	GetMe(ctx context.Context, userID string) (user.Me, error)
 	UpdateDisplayName(ctx context.Context, userID, name string) (user.Me, error)
-	SendReauthenticationCode(ctx context.Context, p user.Principal, channel enum.IdentityKind, target string, meta user.Meta) error
-	Reauthenticate(ctx context.Context, p user.Principal, channel enum.IdentityKind, target, code string, meta user.Meta) (user.TokenResult, error)
+	SendReauthenticationCode(ctx context.Context, p user.Principal, channel enum.IdentityKind, target string, meta user.Meta) (user.CodeChallenge, error)
+	Reauthenticate(ctx context.Context, p user.Principal, cred user.CodeCredential, meta user.Meta) (user.TokenResult, error)
 	ListSessions(ctx context.Context, userID, currentSID string) ([]user.SessionInfo, error)
 	RevokeSession(ctx context.Context, userID, sid string, meta user.Meta) error
 	RevokeOtherSessions(ctx context.Context, userID, currentSID string, meta user.Meta) error
 	ListIdentities(ctx context.Context, userID string) ([]user.IdentityInfo, error)
-	SendBindCode(ctx context.Context, p user.Principal, channel enum.IdentityKind, target string, meta user.Meta) error
-	BindWithCode(ctx context.Context, p user.Principal, channel enum.IdentityKind, target, code string, meta user.Meta) (user.IdentityInfo, bool, error)
+	SendBindCode(ctx context.Context, p user.Principal, channel enum.IdentityKind, target string, meta user.Meta) (user.CodeChallenge, error)
+	BindWithCode(ctx context.Context, p user.Principal, cred user.CodeCredential, meta user.Meta) (user.IdentityInfo, bool, error)
 	BindWithIdp(ctx context.Context, p user.Principal, cred user.IdpCredential, meta user.Meta) (user.IdentityInfo, bool, error)
 	UnbindIdentity(ctx context.Context, p user.Principal, identityID string, meta user.Meta) error
 	DeleteMe(ctx context.Context, p user.Principal, meta user.Meta) (user.Me, error)

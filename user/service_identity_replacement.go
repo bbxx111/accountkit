@@ -11,13 +11,18 @@ import (
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
+	"github.com/bbxx111/accountkit/user/code"
 	"github.com/bbxx111/accountkit/user/db"
 )
 
 // ReplaceIdentity 使用新目标的 BIND 证明原子替换同类锚点身份。宿主传入已认证的
 // Principal；此方法继续复核账号、作用域、近期认证和数据库当前会话。
 // 当前会话及 auth_time 保留，其他会话与身份变更一并撤销。已消费的码不随回滚恢复。
-func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID string, channel enum.IdentityKind, target, plainCode string, meta Meta) (info IdentityInfo, err error) {
+func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID string, cred CodeCredential, meta Meta) (info IdentityInfo, err error) {
+	if err := validateCodeCredential(cred); err != nil {
+		return IdentityInfo{}, err
+	}
+	channel, target := cred.Channel, cred.Target
 	ev := userEvent(p, meta)
 	ev.IdentityKind = channel
 	rejectReason := ""
@@ -55,7 +60,7 @@ func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID s
 	if err != nil {
 		return IdentityInfo{}, err
 	}
-	if reason, verifyErr := s.verifyCode(ctx, channel, enum.PurposeBind, norm, plainCode); verifyErr != nil {
+	if reason, verifyErr := s.verifyCode(ctx, channel, enum.PurposeBind, norm, cred, code.Binding{UserID: p.UserID}); verifyErr != nil {
 		if !errors.Is(verifyErr, ErrUnavailable) && reason != "INTERNAL" {
 			rejectReason = reason
 		}

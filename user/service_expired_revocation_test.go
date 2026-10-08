@@ -62,9 +62,9 @@ func TestExpiredSessionsRemainRevocable(t *testing.T) {
 			case "rfc7009":
 				err = f.svc.Revoke(ctx, old.RefreshToken, meta1)
 			case "same-device-relogin":
-				if err = f.svc.SendSignInCode(ctx, enum.IdentityEmail, email1, meta1); err == nil {
+				if err = f.sendSignInCode(ctx, enum.IdentityEmail, email1, meta1); err == nil {
 					var pair user.TokenResult
-					pair, err = f.svc.SignInWithCode(ctx, enum.IdentityEmail, email1, f.sent.code(email1), otherDevice, meta1)
+					pair, err = f.svc.SignInWithCode(ctx, f.credential(enum.PurposeSignIn, enum.IdentityEmail, email1, f.sent.code(email1)), otherDevice, meta1)
 					if err == nil && pair.UserID != p.UserID {
 						t.Error("relogin changed user")
 					}
@@ -82,10 +82,10 @@ func TestExpiredSessionsRemainRevocable(t *testing.T) {
 				var identities []user.IdentityInfo
 				identities, err = f.svc.ListIdentities(ctx, p.UserID)
 				if err == nil {
-					err = f.svc.SendBindCode(ctx, p, enum.IdentityEmail, "replacement-expiry@example.test", meta1)
+					err = f.sendBindCode(ctx, p, enum.IdentityEmail, "replacement-expiry@example.test", meta1)
 				}
 				if err == nil {
-					_, err = f.svc.ReplaceIdentity(ctx, p, identities[0].ID, enum.IdentityEmail, "replacement-expiry@example.test", f.sent.code("replacement-expiry@example.test"), meta1)
+					_, err = f.svc.ReplaceIdentity(ctx, p, identities[0].ID, f.credential(enum.PurposeBind, enum.IdentityEmail, "replacement-expiry@example.test", f.sent.code("replacement-expiry@example.test")), meta1)
 				}
 			}
 			if err != nil {

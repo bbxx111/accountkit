@@ -34,7 +34,7 @@ func TestReplaceIdentityConflictAndKeyRotation(t *testing.T) {
 				deps.MaxIdentitiesPerKind = 2
 				f.svc, _ = user.NewService(deps)
 				plain := replacementCode(t, f, p, enum.IdentityEmail, target)
-				if _, _, err := f.svc.BindWithCode(ctx, p, enum.IdentityEmail, target, plain, meta1); err != nil {
+				if _, _, err := f.svc.BindWithCode(ctx, p, f.credential(enum.PurposeBind, enum.IdentityEmail, target, plain), meta1); err != nil {
 					t.Fatal(err)
 				}
 				f.advance(61 * time.Second)
@@ -52,17 +52,17 @@ func TestReplaceIdentityConflictAndKeyRotation(t *testing.T) {
 				t.Fatal(err)
 			}
 			plain := replacementCode(t, f, p, enum.IdentityEmail, target)
-			if _, err := f.svc.ReplaceIdentity(ctx, p, id, enum.IdentityEmail, target, plain, meta1); !errors.Is(err, user.ErrIdentityConflict) {
+			if _, err := f.svc.ReplaceIdentity(ctx, p, id, f.credential(enum.PurposeBind, enum.IdentityEmail, target, plain), meta1); !errors.Is(err, user.ErrIdentityConflict) {
 				t.Fatalf("legacy digest conflict: %v", err)
 			}
-			if err := f.deps.Codes.Verify(ctx, enum.IdentityEmail, enum.PurposeBind, target, plain); !errors.Is(err, code.ErrExpired) {
+			if err := f.deps.Codes.VerifyChallenge(ctx, f.storeCredential(enum.PurposeBind, enum.IdentityEmail, target, plain, p)); !errors.Is(err, code.ErrExpired) {
 				t.Fatalf("conflict restored code: %v", err)
 			}
 			if !hasEventReason(f.audit, enum.EventIdentityReplaceRejected, enum.ResultFailure, "IDENTITY_ALREADY_BOUND") {
 				t.Fatal("missing conflict audit")
 			}
 			plain = replacementCode(t, f, p, enum.IdentityEmail, "fresh@example.test")
-			out, err := f.svc.ReplaceIdentity(ctx, p, id, enum.IdentityEmail, "fresh@example.test", plain, meta1)
+			out, err := f.svc.ReplaceIdentity(ctx, p, id, f.credential(enum.PurposeBind, enum.IdentityEmail, "fresh@example.test", plain), meta1)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -98,7 +98,7 @@ func TestReplaceIdentityRollback(t *testing.T) {
 			case "revoke":
 				mustExec(t, f, `CREATE TRIGGER test_replacement_trg BEFORE UPDATE ON session FOR EACH ROW WHEN (NEW.revoke_time IS NOT NULL) EXECUTE FUNCTION test_replacement_fail()`)
 			}
-			if _, err := f.svc.ReplaceIdentity(ctx, p, id, enum.IdentityPhone, phone2, plain, meta1); err == nil || errors.Is(err, user.ErrIdentityConflict) {
+			if _, err := f.svc.ReplaceIdentity(ctx, p, id, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, plain), meta1); err == nil || errors.Is(err, user.ErrIdentityConflict) {
 				t.Fatalf("write failure hidden: %v", err)
 			}
 			list, err := f.svc.ListIdentities(ctx, p.UserID)
@@ -109,7 +109,7 @@ func TestReplaceIdentityRollback(t *testing.T) {
 			if err != nil || len(sessions) != 2 {
 				t.Fatalf("partial revocation: %+v %v", sessions, err)
 			}
-			if err := f.deps.Codes.Verify(ctx, enum.IdentityPhone, enum.PurposeBind, phone2, plain); !errors.Is(err, code.ErrExpired) {
+			if err := f.deps.Codes.VerifyChallenge(ctx, f.storeCredential(enum.PurposeBind, enum.IdentityPhone, phone2, plain, p)); !errors.Is(err, code.ErrExpired) {
 				t.Fatalf("rollback restored code: %v", err)
 			}
 			for _, e := range f.audit.Events() {
@@ -132,7 +132,7 @@ func TestReplaceIdentityFinalKindLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	plain := replacementCode(t, f, p, enum.IdentityEmail, "second@example.test")
-	if _, _, err := f.svc.BindWithCode(ctx, p, enum.IdentityEmail, "second@example.test", plain, meta1); err != nil {
+	if _, _, err := f.svc.BindWithCode(ctx, p, f.credential(enum.PurposeBind, enum.IdentityEmail, "second@example.test", plain), meta1); err != nil {
 		t.Fatal(err)
 	}
 	f.svc, err = user.NewService(f.deps)
@@ -140,7 +140,7 @@ func TestReplaceIdentityFinalKindLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	plain = replacementCode(t, f, p, enum.IdentityEmail, "new@example.test")
-	if _, err := f.svc.ReplaceIdentity(ctx, p, id, enum.IdentityEmail, "new@example.test", plain, meta1); !errors.Is(err, user.ErrIdentityKindLimit) {
+	if _, err := f.svc.ReplaceIdentity(ctx, p, id, f.credential(enum.PurposeBind, enum.IdentityEmail, "new@example.test", plain), meta1); !errors.Is(err, user.ErrIdentityKindLimit) {
 		t.Fatalf("final count over configured limit: %v", err)
 	}
 	list, err := f.svc.ListIdentities(ctx, p.UserID)
@@ -153,7 +153,7 @@ func TestReplaceIdentityVerificationUnavailable(t *testing.T) {
 	f, p, id, _ := replacementSetup(t, enum.IdentityPhone, phone1)
 	plain := replacementCode(t, f, p, enum.IdentityPhone, phone2)
 	f.mr.Close()
-	if _, err := f.svc.ReplaceIdentity(context.Background(), p, id, enum.IdentityPhone, phone2, plain, meta1); !errors.Is(err, user.ErrUnavailable) {
+	if _, err := f.svc.ReplaceIdentity(context.Background(), p, id, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, plain), meta1); !errors.Is(err, user.ErrUnavailable) {
 		t.Fatalf("code Redis must fail closed: %v", err)
 	}
 	list, err := f.svc.ListIdentities(context.Background(), p.UserID)
@@ -227,12 +227,12 @@ func TestReplaceIdentityLockedRecheck(t *testing.T) {
 			}
 			done := make(chan error, 1)
 			go func() {
-				_, err := f.svc.ReplaceIdentity(ctx, p, id, enum.IdentityPhone, phone2, plain, meta1)
+				_, err := f.svc.ReplaceIdentity(ctx, p, id, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, plain), meta1)
 				done <- err
 			}()
 			replacementWait(t, ctx, f, tx, done)
 			// 请求已消费 BIND 码，随后才尝试获取 user 锁。
-			if err := f.deps.Codes.Verify(ctx, enum.IdentityPhone, enum.PurposeBind, phone2, plain); !errors.Is(err, code.ErrExpired) {
+			if err := f.deps.Codes.VerifyChallenge(ctx, f.storeCredential(enum.PurposeBind, enum.IdentityPhone, phone2, plain, p)); !errors.Is(err, code.ErrExpired) {
 				t.Fatalf("code verification held database lock or did not consume: %v", err)
 			}
 			tc.mutate(t, f, tx, p, id)
@@ -269,21 +269,26 @@ func TestReplaceIdentityConcurrent(t *testing.T) {
 			}
 			plain1 := replacementCode(t, f, p, enum.IdentityPhone, target1)
 			plain2 := plain1
+			cred2 := f.credential(enum.PurposeBind, enum.IdentityPhone, target1, plain1)
 			secondSvc := f.svc
 			if sameUser {
 				plain2 = replacementCode(t, f, p2, enum.IdentityPhone, target2)
+				cred2 = f.credential(enum.PurposeBind, enum.IdentityPhone, target2, plain2)
 			} else {
 				// 分别有效的 BIND 证明使数据库唯一性竞争真实发生，而不是在 Redis 先淘汰一个请求。
 				rdb := redis.NewClient(&redis.Options{Addr: f.mr.Addr()})
 				defer rdb.Close()
 				deps := f.deps
-				deps.Codes = code.NewStore(rdb, "contender:", f.dig, code.Options{TTL: 5 * time.Minute, Cooldown: time.Minute, MaxAttempts: 5, DailyLimitPerTarget: 10, DailyLimitPerIP: 100})
+				deps.Codes = code.NewStore(rdb, "contender:", f.dig, code.Options{FailureLimitPerTarget: 10, FailureWindow: 15 * time.Minute, TTL: 5 * time.Minute, Cooldown: time.Minute, MaxAttempts: 5, DailyLimitPerTarget: 10, DailyLimitPerIP: 100})
 				var err error
 				secondSvc, err = user.NewService(deps)
 				if err != nil {
 					t.Fatal(err)
 				}
-				plain2, err = deps.Codes.Issue(ctx, enum.IdentityPhone, enum.PurposeBind, target2, meta1.IP)
+				issued, issueErr := deps.Codes.IssueChallenge(ctx, enum.IdentityPhone, enum.PurposeBind, target2, meta1.IP, code.Binding{UserID: p2.UserID})
+				err = issueErr
+				plain2 = issued.Code
+				cred2 = user.CodeCredential{Channel: enum.IdentityPhone, Target: target2, CodeID: issued.CodeID, Code: plain2}
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -293,11 +298,11 @@ func TestReplaceIdentityConcurrent(t *testing.T) {
 			start := make(chan struct{})
 			wg.Go(func() {
 				<-start
-				_, errs[0] = f.svc.ReplaceIdentity(ctx, p, id, enum.IdentityPhone, target1, plain1, meta1)
+				_, errs[0] = f.svc.ReplaceIdentity(ctx, p, id, f.credential(enum.PurposeBind, enum.IdentityPhone, target1, plain1), meta1)
 			})
 			wg.Go(func() {
 				<-start
-				_, errs[1] = secondSvc.ReplaceIdentity(ctx, p2, id2, enum.IdentityPhone, target2, plain2, meta1)
+				_, errs[1] = secondSvc.ReplaceIdentity(ctx, p2, id2, cred2, meta1)
 			})
 			close(start)
 			wg.Wait()
@@ -348,7 +353,7 @@ func TestReplaceIdentityFreshnessExpiresWhileWaiting(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() {
-		_, err := f.svc.ReplaceIdentity(ctx, p, id, enum.IdentityPhone, phone2, plain, meta1)
+		_, err := f.svc.ReplaceIdentity(ctx, p, id, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, plain), meta1)
 		done <- err
 	}()
 	replacementWait(t, ctx, f, tx, done)
@@ -384,7 +389,7 @@ func TestReplaceIdentityUniqueInsertConflict(t *testing.T) {
 	mustExec(t, f, `CREATE TRIGGER test_replacement_barrier_trg BEFORE INSERT ON identity FOR EACH ROW EXECUTE FUNCTION test_replacement_barrier()`)
 	done := make(chan error, 1)
 	go func() {
-		_, err := f.svc.ReplaceIdentity(ctx, p, id, enum.IdentityPhone, phone2, plain, meta1)
+		_, err := f.svc.ReplaceIdentity(ctx, p, id, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, plain), meta1)
 		done <- err
 	}()
 	replacementWait(t, ctx, f, barrier, done)
@@ -430,7 +435,7 @@ func TestReplaceIdentityRedisRevocationFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	plain := replacementCode(t, f, p, enum.IdentityPhone, phone2)
-	if _, err := f.svc.ReplaceIdentity(ctx, p, id, enum.IdentityPhone, phone2, plain, meta1); err != nil {
+	if _, err := f.svc.ReplaceIdentity(ctx, p, id, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, plain), meta1); err != nil {
 		t.Fatalf("committed replacement must stay successful: %v", err)
 	}
 	if !strings.Contains(logs.String(), "revocation set write failed (fail-open)") {

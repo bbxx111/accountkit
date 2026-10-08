@@ -40,7 +40,7 @@ func TestNewWiresIdentityReplacementConfiguration(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
 			p := user.Principal{UserID: "u_0000000000000", SessionID: "s_0000000000000", Scope: user.ScopeUser, AuthTime: time.Now().Add(-tc.authAge)}
-			_, err = a.Users().ReplaceIdentity(ctx, p, "i_0000000000000", enum.IdentityEmail, "new@example.test", "123456", user.Meta{})
+			_, err = a.Users().ReplaceIdentity(ctx, p, "i_0000000000000", user.CodeCredential{Channel: enum.IdentityEmail, Target: "new@example.test", CodeID: "00000000000000000000000000000000", Code: "123456"}, user.Meta{})
 			if err == nil || errors.Is(err, user.ErrReauthenticationRequired) != tc.wantReauth {
 				t.Fatalf("configuration was not wired: %v wantReauth=%v", err, tc.wantReauth)
 			}

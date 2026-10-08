@@ -44,6 +44,37 @@ func (q *Queries) AnonymizeIdentity(ctx context.Context, arg AnonymizeIdentityPa
 	return result.RowsAffected(), nil
 }
 
+const batchPublicProfiles = `-- name: BatchPublicProfiles :many
+SELECT id, display_name, state FROM user_account WHERE id = ANY($1::text[])
+`
+
+type BatchPublicProfilesRow struct {
+	ID          string
+	DisplayName *string
+	State       enum.UserState
+}
+
+// 宿主授权的业务页批量读取最小公开资料；包含注销状态，由领域层清空其显示名。
+func (q *Queries) BatchPublicProfiles(ctx context.Context, ids []string) ([]BatchPublicProfilesRow, error) {
+	rows, err := q.db.Query(ctx, batchPublicProfiles, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BatchPublicProfilesRow
+	for rows.Next() {
+		var i BatchPublicProfilesRow
+		if err := rows.Scan(&i.ID, &i.DisplayName, &i.State); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countActiveSessionsByUser = `-- name: CountActiveSessionsByUser :one
 SELECT count(*) FROM session
 WHERE user_id = $1 AND revoke_time IS NULL AND refresh_expire_time > $2::timestamptz
@@ -504,6 +535,77 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (UserAccount, erro
 		&i.UpdateTime,
 	)
 	return i, err
+}
+
+const importIdentity = `-- name: ImportIdentity :exec
+INSERT INTO identity (id, user_id, kind, subject_digest, digest_key_version,
+                      subject_ciphertext, cipher_key_version, hint_prefix, hint_suffix, create_time, update_time)
+VALUES ($1, $2, $3, $4::text, $5::smallint,
+        $6, $7::smallint,
+        $8::text, $9::text,
+        $10::timestamptz, $11::timestamptz)
+`
+
+type ImportIdentityParams struct {
+	ID                string
+	UserID            string
+	Kind              enum.IdentityKind
+	SubjectDigest     *string
+	DigestKeyVersion  *int16
+	SubjectCiphertext []byte
+	CipherKeyVersion  *int16
+	HintPrefix        *string
+	HintSuffix        *string
+	CreateTime        time.Time
+	UpdateTime        time.Time
+}
+
+// 离线 PHONE/EMAIL 锚点使用库当前密钥，保留历史时间；冲突不得静默跳过。
+func (q *Queries) ImportIdentity(ctx context.Context, arg ImportIdentityParams) error {
+	_, err := q.db.Exec(ctx, importIdentity,
+		arg.ID,
+		arg.UserID,
+		arg.Kind,
+		arg.SubjectDigest,
+		arg.DigestKeyVersion,
+		arg.SubjectCiphertext,
+		arg.CipherKeyVersion,
+		arg.HintPrefix,
+		arg.HintSuffix,
+		arg.CreateTime,
+		arg.UpdateTime,
+	)
+	return err
+}
+
+const importUser = `-- name: ImportUser :exec
+INSERT INTO user_account (id, state, display_name, create_time, update_time, delete_time, purge_time)
+VALUES ($1, $2, $3, $4::timestamptz, $5::timestamptz,
+        $6::timestamptz, $7::timestamptz)
+`
+
+type ImportUserParams struct {
+	ID          string
+	State       enum.UserState
+	DisplayName *string
+	CreateTime  time.Time
+	UpdateTime  time.Time
+	DeleteTime  *time.Time
+	PurgeTime   *time.Time
+}
+
+// 受控离线导入：保存调用者提供的原 ID/时间及匿名墓碑，不执行 upsert。
+func (q *Queries) ImportUser(ctx context.Context, arg ImportUserParams) error {
+	_, err := q.db.Exec(ctx, importUser,
+		arg.ID,
+		arg.State,
+		arg.DisplayName,
+		arg.CreateTime,
+		arg.UpdateTime,
+		arg.DeleteTime,
+		arg.PurgeTime,
+	)
+	return err
 }
 
 const listActiveCipherKeyVersions = `-- name: ListActiveCipherKeyVersions :many

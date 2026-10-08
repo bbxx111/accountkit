@@ -52,6 +52,7 @@ func TestValidateAppliesDefaults(t *testing.T) {
 		got.SensitiveOpVerification == nil || !*got.SensitiveOpVerification ||
 		got.CodeTTL != 5*time.Minute || got.CodeMaxAttempts != 5 || got.CodeCooldown != 60*time.Second ||
 		got.CodeDailyLimitPerTarget != 10 || got.CodeDailyLimitPerIP != 100 || got.MaxIdentitiesPerKind != 1 ||
+		got.CodeFailureLimitPerTarget != 10 || got.CodeFailureWindow != 15*time.Minute ||
 		got.DeletionCoolingPeriod != 360*time.Hour || got.AuditRetentionDays != 180 || got.DefaultRegion != "CN" ||
 		got.MaintenanceInterval != 5*time.Minute {
 		t.Fatalf("defaults not applied: %+v", got)
@@ -72,13 +73,15 @@ func TestConfigFromEnvOverridesAndParses(t *testing.T) {
 	t.Setenv("T_ACCESS_TOKEN_TTL", "10m")
 	t.Setenv("T_SENSITIVE_OP_VERIFICATION", "false")
 	t.Setenv("T_CODE_MAX_ATTEMPTS", "3")
+	t.Setenv("T_CODE_FAILURE_LIMIT_PER_TARGET", "12")
+	t.Setenv("T_CODE_FAILURE_WINDOW", "20m")
 	t.Setenv("T_DEFAULT_REGION", "us")
 	got, err := accountkit.ConfigFromEnv("T_")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.Schema != "auth_staging" || got.KeyPrefix != "stg:" || got.AccessTokenTTL != 10*time.Minute ||
-		got.JWTActiveKey != 2 || len(got.JWTKeys) != 2 || *got.SensitiveOpVerification || got.CodeMaxAttempts != 3 || got.DefaultRegion != "US" {
+		got.JWTActiveKey != 2 || len(got.JWTKeys) != 2 || *got.SensitiveOpVerification || got.CodeMaxAttempts != 3 || got.DefaultRegion != "US" || got.CodeFailureLimitPerTarget != 12 || got.CodeFailureWindow != 20*time.Minute {
 		t.Fatalf("overrides not applied: %+v", got)
 	}
 }
@@ -126,25 +129,27 @@ func TestConfigFromEnvSchema(t *testing.T) {
 
 func TestValidateRejects(t *testing.T) {
 	cases := map[string]func(*accountkit.Config){
-		"missing jwt keys":         func(c *accountkit.Config) { c.JWTKeys = nil },
-		"jwt active missing":       func(c *accountkit.Config) { c.JWTActiveKey = 9 },
-		"jwt key short":            func(c *accountkit.Config) { c.JWTKeys = map[uint16][]byte{1: k(1)[:16]} },
-		"issuer empty":             func(c *accountkit.Config) { c.JWTIssuer = "" },
-		"audience empty":           func(c *accountkit.Config) { c.JWTAudience = "" },
-		"hmac active missing":      func(c *accountkit.Config) { c.SubjectHMACActiveKey = 7 },
-		"cipher keys missing":      func(c *accountkit.Config) { c.SubjectCipherKeys = nil },
-		"cipher key not 32 bytes":  func(c *accountkit.Config) { c.SubjectCipherKeys = map[uint16][]byte{1: bytes.Repeat([]byte{3}, 64)} },
-		"bad schema":               func(c *accountkit.Config) { c.Schema = "Auth-1" },
-		"prefix without colon":     func(c *accountkit.Config) { c.KeyPrefix = "auth" },
-		"access ttl too short":     func(c *accountkit.Config) { c.AccessTokenTTL = 10 * time.Second },
-		"refresh shorter than acc": func(c *accountkit.Config) { c.AccessTokenTTL = time.Hour; c.RefreshTokenTTL = 30 * time.Minute },
-		"grace >= access":          func(c *accountkit.Config) { c.RefreshGrace = 20 * time.Minute },
-		"attempts zero":            func(c *accountkit.Config) { c.CodeMaxAttempts = -1 },
-		"code ttl sub-second":      func(c *accountkit.Config) { c.CodeTTL = 500 * time.Millisecond },
-		"code cooldown sub-second": func(c *accountkit.Config) { c.CodeCooldown = 500 * time.Millisecond },
-		"max identities zero":      func(c *accountkit.Config) { c.MaxIdentitiesPerKind = -1 },
-		"region not 2 letters":     func(c *accountkit.Config) { c.DefaultRegion = "CHN" },
-		"maintenance too short":    func(c *accountkit.Config) { c.MaintenanceInterval = 500 * time.Millisecond },
+		"missing jwt keys":          func(c *accountkit.Config) { c.JWTKeys = nil },
+		"jwt active missing":        func(c *accountkit.Config) { c.JWTActiveKey = 9 },
+		"jwt key short":             func(c *accountkit.Config) { c.JWTKeys = map[uint16][]byte{1: k(1)[:16]} },
+		"issuer empty":              func(c *accountkit.Config) { c.JWTIssuer = "" },
+		"audience empty":            func(c *accountkit.Config) { c.JWTAudience = "" },
+		"hmac active missing":       func(c *accountkit.Config) { c.SubjectHMACActiveKey = 7 },
+		"cipher keys missing":       func(c *accountkit.Config) { c.SubjectCipherKeys = nil },
+		"cipher key not 32 bytes":   func(c *accountkit.Config) { c.SubjectCipherKeys = map[uint16][]byte{1: bytes.Repeat([]byte{3}, 64)} },
+		"bad schema":                func(c *accountkit.Config) { c.Schema = "Auth-1" },
+		"prefix without colon":      func(c *accountkit.Config) { c.KeyPrefix = "auth" },
+		"access ttl too short":      func(c *accountkit.Config) { c.AccessTokenTTL = 10 * time.Second },
+		"refresh shorter than acc":  func(c *accountkit.Config) { c.AccessTokenTTL = time.Hour; c.RefreshTokenTTL = 30 * time.Minute },
+		"grace >= access":           func(c *accountkit.Config) { c.RefreshGrace = 20 * time.Minute },
+		"attempts zero":             func(c *accountkit.Config) { c.CodeMaxAttempts = -1 },
+		"failure limit negative":    func(c *accountkit.Config) { c.CodeFailureLimitPerTarget = -1 },
+		"failure window sub-second": func(c *accountkit.Config) { c.CodeFailureWindow = 500 * time.Millisecond },
+		"code ttl sub-second":       func(c *accountkit.Config) { c.CodeTTL = 500 * time.Millisecond },
+		"code cooldown sub-second":  func(c *accountkit.Config) { c.CodeCooldown = 500 * time.Millisecond },
+		"max identities zero":       func(c *accountkit.Config) { c.MaxIdentitiesPerKind = -1 },
+		"region not 2 letters":      func(c *accountkit.Config) { c.DefaultRegion = "CHN" },
+		"maintenance too short":     func(c *accountkit.Config) { c.MaintenanceInterval = 500 * time.Millisecond },
 	}
 	for name, mutate := range cases {
 		c := minimal()

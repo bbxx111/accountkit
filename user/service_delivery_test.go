@@ -50,7 +50,7 @@ func deliveryService(t *testing.T, sms sender.SMSSender, email sender.EmailSende
 	t.Cleanup(func() { _ = rdb.Close() })
 	dig, _ := pii.NewDigester(map[uint16][]byte{1: bytes.Repeat([]byte{1}, 32)}, 1)
 	mem := &audit.Memory{}
-	return &Service{d: Deps{Now: time.Now, SMS: sms, Email: email, Digester: dig, Audit: mem, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), DefaultRegion: "CN", CodeTTL: 5 * time.Minute, Codes: code.NewStore(rdb, "delivery:", dig, code.Options{TTL: 5 * time.Minute, Cooldown: time.Minute, MaxAttempts: 5, DailyLimitPerTarget: 2, DailyLimitPerIP: 3})}}, mr, mem
+	return &Service{d: Deps{Now: time.Now, SMS: sms, Email: email, Digester: dig, Audit: mem, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), DefaultRegion: "CN", CodeTTL: 5 * time.Minute, Codes: code.NewStore(rdb, "delivery:", dig, code.Options{FailureLimitPerTarget: 10, FailureWindow: 15 * time.Minute, TTL: 5 * time.Minute, Cooldown: time.Minute, MaxAttempts: 5, DailyLimitPerTarget: 2, DailyLimitPerIP: 3})}}, mr, mem
 }
 
 func TestDisabledChannel(t *testing.T) {
@@ -62,7 +62,7 @@ func TestDisabledChannel(t *testing.T) {
 				if ch == enum.IdentityPhone {
 					target = "+8613812341234"
 				}
-				if err := s.sendCode(context.Background(), ch, purpose, target, "", Meta{IP: "203.0.113.4"}); !errors.Is(err, sender.ErrDisabled) {
+				if _, err := s.sendCode(context.Background(), ch, purpose, target, code.Binding{}, Meta{IP: "203.0.113.4"}); !errors.Is(err, sender.ErrDisabled) {
 					t.Fatal("disabled channel must reject")
 				}
 				if keys := mr.Keys(); len(keys) != 0 {
@@ -81,7 +81,7 @@ func TestLegacyDeliveryPurposesAndFailureQuota(t *testing.T) {
 	for _, purpose := range []enum.CodePurpose{enum.PurposeSignIn, enum.PurposeBind, enum.PurposeReauth} {
 		d := &legacyDelivery{}
 		s, _, _ := deliveryService(t, d, d)
-		if err := s.sendCode(context.Background(), enum.IdentityEmail, purpose, "person@example.org", "", Meta{IP: "203.0.113.4"}); err != nil {
+		if _, err := s.sendCode(context.Background(), enum.IdentityEmail, purpose, "person@example.org", code.Binding{}, Meta{IP: "203.0.113.4"}); err != nil {
 			t.Fatal(err)
 		}
 		if len(d.messages) != 1 || d.messages[0].Purpose != purpose || d.messages[0].TTL != 5*time.Minute || len(d.messages[0].Code) != 6 {
@@ -91,11 +91,11 @@ func TestLegacyDeliveryPurposesAndFailureQuota(t *testing.T) {
 	oldErr := errors.New("old sender error")
 	d := &legacyDelivery{err: oldErr}
 	s, _, mem := deliveryService(t, d, d)
-	if err := s.SendSignInCode(context.Background(), enum.IdentityEmail, "person@example.org", Meta{IP: "203.0.113.4"}); !errors.Is(err, oldErr) || errors.Is(err, ErrUnavailable) {
+	if _, err := s.SendSignInCode(context.Background(), enum.IdentityEmail, "person@example.org", Meta{IP: "203.0.113.4"}); !errors.Is(err, oldErr) || errors.Is(err, ErrUnavailable) {
 		t.Fatal("ordinary sender error contract changed")
 	}
 	var rl *code.RateLimitedError
-	if err := s.SendSignInCode(context.Background(), enum.IdentityEmail, "person@example.org", Meta{IP: "203.0.113.4"}); !errors.As(err, &rl) || rl.Dimension != "COOLDOWN" {
+	if _, err := s.SendSignInCode(context.Background(), enum.IdentityEmail, "person@example.org", Meta{IP: "203.0.113.4"}); !errors.As(err, &rl) || rl.Dimension != "COOLDOWN" {
 		t.Fatal("failed delivery must retain cooldown")
 	}
 	if ev := mem.Events(); len(ev) != 2 || ev[0].Type != enum.EventCodeSendFailed {
@@ -106,12 +106,12 @@ func TestLegacyDeliveryPurposesAndFailureQuota(t *testing.T) {
 func TestUnavailableDeliveryIsSafeAndRetainsQuota(t *testing.T) {
 	d := &legacyDelivery{err: fmt.Errorf("%w: person@example.org password body 123456", sender.ErrUnavailable)}
 	s, mr, mem := deliveryService(t, d, d)
-	err := s.SendSignInCode(context.Background(), enum.IdentityEmail, "person@example.org", Meta{IP: "203.0.113.4"})
+	_, err := s.SendSignInCode(context.Background(), enum.IdentityEmail, "person@example.org", Meta{IP: "203.0.113.4"})
 	if !errors.Is(err, ErrUnavailable) || strings.Contains(err.Error(), "person@example.org") || strings.Contains(err.Error(), "123456") {
 		t.Fatal("unavailable delivery must map to safe dependency error")
 	}
 	var rl *code.RateLimitedError
-	if err := s.SendSignInCode(context.Background(), enum.IdentityEmail, "person@example.org", Meta{IP: "203.0.113.4"}); !errors.As(err, &rl) {
+	if _, err := s.SendSignInCode(context.Background(), enum.IdentityEmail, "person@example.org", Meta{IP: "203.0.113.4"}); !errors.As(err, &rl) {
 		t.Fatal("unavailable delivery refunded cooldown")
 	}
 	if events := mem.Events(); len(events) != 2 || events[0].Reason != "SEND_FAILED" {
@@ -126,17 +126,17 @@ func TestUnavailableDeliveryIsSafeAndRetainsQuota(t *testing.T) {
 		}
 	}
 	mr.FastForward(61 * time.Second)
-	if err := s.SendSignInCode(context.Background(), enum.IdentityEmail, "person@example.org", Meta{IP: "203.0.113.4"}); !errors.Is(err, ErrUnavailable) {
+	if _, err := s.SendSignInCode(context.Background(), enum.IdentityEmail, "person@example.org", Meta{IP: "203.0.113.4"}); !errors.Is(err, ErrUnavailable) {
 		t.Fatal("second quota slot must attempt delivery")
 	}
 	mr.FastForward(61 * time.Second)
-	if err := s.SendSignInCode(context.Background(), enum.IdentityEmail, "person@example.org", Meta{IP: "203.0.113.4"}); !errors.As(err, &rl) || rl.Dimension != "TARGET_LIMIT" {
+	if _, err := s.SendSignInCode(context.Background(), enum.IdentityEmail, "person@example.org", Meta{IP: "203.0.113.4"}); !errors.As(err, &rl) || rl.Dimension != "TARGET_LIMIT" {
 		t.Fatal("failed submissions did not exhaust target quota")
 	}
-	if err := s.SendSignInCode(context.Background(), enum.IdentityEmail, "second@example.org", Meta{IP: "203.0.113.4"}); !errors.Is(err, ErrUnavailable) {
+	if _, err := s.SendSignInCode(context.Background(), enum.IdentityEmail, "second@example.org", Meta{IP: "203.0.113.4"}); !errors.Is(err, ErrUnavailable) {
 		t.Fatal("third IP quota slot must attempt delivery")
 	}
-	if err := s.SendSignInCode(context.Background(), enum.IdentityEmail, "third@example.org", Meta{IP: "203.0.113.4"}); !errors.As(err, &rl) || rl.Dimension != "IP_LIMIT" {
+	if _, err := s.SendSignInCode(context.Background(), enum.IdentityEmail, "third@example.org", Meta{IP: "203.0.113.4"}); !errors.As(err, &rl) || rl.Dimension != "IP_LIMIT" {
 		t.Fatal("failed submissions did not exhaust IP quota")
 	}
 }

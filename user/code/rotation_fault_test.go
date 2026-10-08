@@ -65,10 +65,10 @@ func TestCodeRotationUnavailable(t *testing.T) {
 					t.Error("malformed response panicked")
 				}
 			}()
-			if _, err := f.stores[1].Issue(context.Background(), enum.IdentityPhone, enum.PurposeSignIn, target, "test-ip"); !errors.Is(err, code.ErrUnavailable) {
+			if _, err := f.stores[1].IssueChallenge(context.Background(), enum.IdentityPhone, enum.PurposeSignIn, target, "test-ip", code.Binding{}); !errors.Is(err, code.ErrUnavailable) {
 				t.Error("issue did not fail closed")
 			}
-			if err := f.stores[1].Verify(context.Background(), enum.IdentityPhone, enum.PurposeSignIn, target, "synthetic-fixture"); !errors.Is(err, code.ErrUnavailable) {
+			if err := f.stores[1].VerifyChallenge(context.Background(), credential(code.Issued{CodeID: strings.Repeat("a", 32), Code: "synthetic-fixture"}, enum.IdentityPhone, enum.PurposeSignIn, target)); !errors.Is(err, code.ErrUnavailable) {
 				t.Error("verify did not fail closed")
 			}
 		})
@@ -99,14 +99,60 @@ func TestCodeRotationUnavailable(t *testing.T) {
 		}
 		f := newRotation(t, false)
 		f.mr.Close()
-		if _, err := f.stores[1].Issue(context.Background(), enum.IdentityPhone, enum.PurposeSignIn, target, "test-ip"); !errors.Is(err, code.ErrUnavailable) {
-			t.Error("issue did not fail closed")
+		if _, err := f.stores[1].IssueChallenge(context.Background(), enum.IdentityPhone, enum.PurposeSignIn, target, "test-ip", code.Binding{}); !errors.Is(err, code.ErrUnavailable) {
+			t.Error("challenge issue did not fail closed")
 		}
-		if err := f.stores[1].Verify(context.Background(), enum.IdentityPhone, enum.PurposeSignIn, target, "synthetic-fixture"); !errors.Is(err, code.ErrUnavailable) {
-			t.Error("verify did not fail closed")
+		if err := f.stores[1].VerifyChallenge(context.Background(), code.Credential{Channel: enum.IdentityPhone, Purpose: enum.PurposeSignIn, Target: target, CodeID: strings.Repeat("a", 32), Code: "synthetic-fixture"}); !errors.Is(err, code.ErrUnavailable) {
+			t.Error("challenge verify did not fail closed")
+		}
+		if err := f.stores[1].DiscardChallenge(context.Background(), enum.IdentityPhone, enum.PurposeSignIn, target, strings.Repeat("a", 32)); !errors.Is(err, code.ErrUnavailable) {
+			t.Error("challenge discard did not fail closed")
 		}
 		fmt.Println(completed)
 	})
+}
+
+func TestChallengeUnavailable(t *testing.T) {
+	for _, res := range []interface{}{nil, []interface{}{}, []interface{}{"OK"}, []interface{}{"OK", ""}, []interface{}{"MISSING", int64(1)}, []interface{}{"TARGET_VERIFY_LIMIT", int64(0)}, []interface{}{"TARGET_VERIFY_LIMIT", int64(-1)}, []interface{}{"UNKNOWN", int64(0)}} {
+		f := challengeFixture(t, false)
+		c := issueChallenge(t, f, 0, enum.PurposeSignIn, code.Binding{})
+		f.rdb.AddHook(scriptResponseHook{result: res})
+		if err := f.stores[0].VerifyChallenge(context.Background(), c); !errors.Is(err, code.ErrUnavailable) {
+			t.Fatal("malformed verify response accepted")
+		}
+		if _, err := f.stores[0].IssueChallenge(context.Background(), c.Channel, c.Purpose, c.Target, "test-ip", c.Binding); !errors.Is(err, code.ErrUnavailable) {
+			t.Fatal("malformed issue response accepted")
+		}
+		if err := f.stores[0].DiscardChallenge(context.Background(), c.Channel, c.Purpose, c.Target, c.CodeID); !errors.Is(err, code.ErrUnavailable) {
+			t.Fatal("malformed discard response accepted")
+		}
+	}
+}
+
+func TestChallengeUnexpectedOperationResponse(t *testing.T) {
+	for _, op := range []string{"issue", "verify", "discard"} {
+		t.Run(op, func(t *testing.T) {
+			f := challengeFixture(t, false)
+			c := issueChallenge(t, f, 0, enum.PurposeSignIn, code.Binding{})
+			response := []interface{}{"MISSING", int64(0)}
+			if op == "verify" {
+				response = []interface{}{"COOLDOWN", int64(1)}
+			}
+			f.rdb.AddHook(scriptResponseHook{result: response})
+			var err error
+			switch op {
+			case "issue":
+				_, err = f.stores[0].IssueChallenge(context.Background(), c.Channel, c.Purpose, c.Target, "test-ip", c.Binding)
+			case "verify":
+				err = f.stores[0].VerifyChallenge(context.Background(), c)
+			case "discard":
+				err = f.stores[0].DiscardChallenge(context.Background(), c.Channel, c.Purpose, c.Target, c.CodeID)
+			}
+			if !errors.Is(err, code.ErrUnavailable) {
+				t.Fatalf("unexpected script status: %v", err)
+			}
+		})
+	}
 }
 
 func TestCodeRotationCorruptState(t *testing.T) {
@@ -114,22 +160,23 @@ func TestCodeRotationCorruptState(t *testing.T) {
 	t.Run("cooldown without ttl", func(t *testing.T) {
 		f := newRotation(t, false)
 		f.mr.Set(f.key(0, "cooldown", enum.IdentityPhone, enum.PurposeSignIn), "1")
-		if _, err := f.stores[1].Issue(ctx, enum.IdentityPhone, enum.PurposeSignIn, target, "test-ip"); !errors.Is(err, code.ErrUnavailable) {
+
+		if _, err := f.stores[1].IssueChallenge(ctx, enum.IdentityPhone, enum.PurposeSignIn, target, "test-ip", code.Binding{}); !errors.Is(err, code.ErrUnavailable) {
 			t.Fatal("persistent cooldown not rejected")
 		}
 	})
 	t.Run("wrong quota type", func(t *testing.T) {
 		f := newRotation(t, false)
 		f.mr.HSet(f.key(0, "quota", enum.IdentityPhone, enum.PurposeSignIn), "n", "1")
-		if _, err := f.stores[1].Issue(ctx, enum.IdentityPhone, enum.PurposeSignIn, target, "test-ip"); !errors.Is(err, code.ErrUnavailable) {
+		if _, err := f.stores[1].IssueChallenge(ctx, enum.IdentityPhone, enum.PurposeSignIn, target, "test-ip", code.Binding{}); !errors.Is(err, code.ErrUnavailable) {
 			t.Fatal("invalid quota not rejected")
 		}
 	})
 	for _, kind := range []string{"no ttl", "wrong type", "missing count"} {
 		t.Run(kind, func(t *testing.T) {
 			f := newRotation(t, false)
-			plain := f.legacy(t, 0, 0, 0)
-			key := f.key(0, "code", enum.IdentityPhone, enum.PurposeSignIn)
+			plain := f.priorChallenge(t, 0, 0, 0)
+			key := f.key(0, "challenge", enum.IdentityPhone, enum.PurposeSignIn)
 			switch kind {
 			case "wrong type":
 				f.mr.Del(key)
@@ -139,7 +186,7 @@ func TestCodeRotationCorruptState(t *testing.T) {
 				f.mr.HDel(key, "n")
 				f.mr.SetTTL(key, time.Minute)
 			}
-			if err := f.stores[1].Verify(ctx, enum.IdentityPhone, enum.PurposeSignIn, target, plain); !errors.Is(err, code.ErrUnavailable) {
+			if err := f.stores[1].VerifyChallenge(ctx, credential(plain, enum.IdentityPhone, enum.PurposeSignIn, target)); !errors.Is(err, code.ErrUnavailable) {
 				t.Fatal("invalid code state not rejected")
 			}
 		})

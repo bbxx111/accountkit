@@ -70,15 +70,15 @@ func TestSendBindCode(t *testing.T) {
 		ch     enum.IdentityKind
 		target string
 	}
-	f := withAuth(&fakeService{sendBindCode: func(_ context.Context, p user.Principal, ch enum.IdentityKind, target string, meta user.Meta) error {
+	f := withAuth(&fakeService{sendBindCode: func(_ context.Context, p user.Principal, ch enum.IdentityKind, target string, meta user.Meta) (user.CodeChallenge, error) {
 		got.ch, got.target = ch, target
 		if p.UserID != principal.UserID {
 			t.Fatal("principal")
 		}
 		if target == "+8613800000000" {
-			return &code.RateLimitedError{Dimension: "COOLDOWN", RetryAfter: 30 * time.Second}
+			return user.CodeChallenge{}, &code.RateLimitedError{Dimension: "COOLDOWN", RetryAfter: 30 * time.Second}
 		}
-		return nil
+		return user.CodeChallenge{}, nil
 	}}, principal)
 	h := newHandler(t, f)
 	rec := do(t, h, call{method: "POST", path: "/users/me:sendBindCode", bearer: "good", body: map[string]string{"channel": "EMAIL", "target": "a@b.co"}})
@@ -113,7 +113,9 @@ func TestSendBindCodeEmptyClientIPIs500(t *testing.T) {
 
 func TestBindIdentity(t *testing.T) {
 	f := withAuth(&fakeService{
-		bindWithCode: func(_ context.Context, p user.Principal, ch enum.IdentityKind, target, c string, meta user.Meta) (user.IdentityInfo, bool, error) {
+		bindWithCode: func(_ context.Context, p user.Principal, cred user.CodeCredential, meta user.Meta) (user.IdentityInfo, bool, error) {
+			ch, c := cred.Channel, cred.Code
+
 			switch c {
 			case "000000":
 				return user.IdentityInfo{}, false, code.ErrInvalid
@@ -135,13 +137,13 @@ func TestBindIdentity(t *testing.T) {
 	}, principal)
 	h := newHandler(t, f)
 
-	rec := do(t, h, call{method: "POST", path: "/users/me/identities", bearer: "good", body: map[string]any{"email": map[string]string{"target": "ba@b.co", "code": "123456"}}})
+	rec := do(t, h, call{method: "POST", path: "/users/me/identities", bearer: "good", body: map[string]any{"email": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "ba@b.co", "code": "123456"}}})
 	var res map[string]any
 	decode(t, rec, &res)
 	if rec.Code != 201 || res["name"] != "users/"+principal.UserID+"/identities/i_0k3f9c2m1xq7c" || res["kind"] != "EMAIL" || res["masked_subject"] != "ba***@b.co" {
 		t.Fatalf("bind email: %d %v", rec.Code, res)
 	}
-	rec = do(t, h, call{method: "POST", path: "/users/me/identities", bearer: "good", body: map[string]any{"phone": map[string]string{"target": "+86138", "code": "333333"}}})
+	rec = do(t, h, call{method: "POST", path: "/users/me/identities", bearer: "good", body: map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+86138", "code": "333333"}}})
 	if rec.Code != 200 {
 		t.Fatalf("idempotent bind must be 200: %d", rec.Code)
 	}
@@ -154,13 +156,13 @@ func TestBindIdentity(t *testing.T) {
 		body any
 		want string
 	}{
-		"wrong code": {map[string]any{"phone": map[string]string{"target": "+86138", "code": "000000"}}, "400 INVALID_ARGUMENT/CODE_INVALID"},
-		"conflict":   {map[string]any{"phone": map[string]string{"target": "+86138", "code": "111111"}}, "409 ALREADY_EXISTS/IDENTITY_ALREADY_BOUND"},
-		"limit":      {map[string]any{"phone": map[string]string{"target": "+86138", "code": "222222"}}, "409 ALREADY_EXISTS/IDENTITY_KIND_LIMIT"},
+		"wrong code": {map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+86138", "code": "000000"}}, "400 INVALID_ARGUMENT/CODE_INVALID"},
+		"conflict":   {map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+86138", "code": "111111"}}, "409 ALREADY_EXISTS/IDENTITY_ALREADY_BOUND"},
+		"limit":      {map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+86138", "code": "222222"}}, "409 ALREADY_EXISTS/IDENTITY_KIND_LIMIT"},
 		"replay":     {map[string]any{"apple": map[string]string{"id_token": "t", "nonce": "replay"}}, "400 INVALID_ARGUMENT/IDP_NONCE_REPLAYED"},
 		"none":       {map[string]any{}, "400 INVALID_ARGUMENT/CREDENTIAL_ONEOF"},
-		"two":        {map[string]any{"phone": map[string]string{"target": "a", "code": "b"}, "wechat": map[string]string{"app_id": "a", "code": "b"}}, "400 INVALID_ARGUMENT/CREDENTIAL_ONEOF"},
-		"incomplete": {map[string]any{"email": map[string]string{"target": "a@b.co"}}, "400 INVALID_ARGUMENT/CREDENTIAL_INCOMPLETE"},
+		"two":        {map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "a", "code": "b"}, "wechat": map[string]string{"app_id": "a", "code": "b"}}, "400 INVALID_ARGUMENT/CREDENTIAL_ONEOF"},
+		"incomplete": {map[string]any{"email": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "a@b.co"}}, "400 INVALID_ARGUMENT/CREDENTIAL_INCOMPLETE"},
 		"malformed":  {"{", "400 INVALID_ARGUMENT/MALFORMED_BODY"},
 	} {
 		rec = do(t, h, call{method: "POST", path: "/users/me/identities", bearer: "good", body: c.body})
@@ -175,7 +177,7 @@ func TestBindIdentity(t *testing.T) {
 	// user:bind 可以绑；user:undelete 不行
 	bind := principal
 	bind.Scope = "user:bind"
-	if rec = do(t, newHandler(t, withAuth(&fakeService{bindWithCode: f.bindWithCode}, bind)), call{method: "POST", path: "/users/me/identities", bearer: "good", body: map[string]any{"email": map[string]string{"target": "ba@b.co", "code": "123456"}}}); rec.Code != 201 {
+	if rec = do(t, newHandler(t, withAuth(&fakeService{bindWithCode: f.bindWithCode}, bind)), call{method: "POST", path: "/users/me/identities", bearer: "good", body: map[string]any{"email": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "ba@b.co", "code": "123456"}}}); rec.Code != 201 {
 		t.Fatalf("user:bind may bind: %d", rec.Code)
 	}
 }

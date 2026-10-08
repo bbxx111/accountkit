@@ -16,7 +16,7 @@
 - 不改变已完成的 account 默认 schema 决策、JWT/refresh 格式或管理员身份系统。
 - 不内置业务所有者判断、产品表、手机号国家码产品策略或客户端 UI。
 - 不创建公共用户资料查询或公开导入 HTTP 端点。
-- 本次只建立 Change，实施、归档、tag、发布和产品部署分别执行。
+- 实施、归档、tag、发布和产品部署分别执行；apply 不自动授权归档、发布或产品部署。
 
 ## Decisions
 
@@ -48,9 +48,9 @@
 
 - CodeChallenge 包含 CodeID/ExpireTime；CodeCredential 包含 Channel/Target/CodeID/Code。发码返回结果，登录、绑定、重新认证和换绑接受完整凭证；终端用户接口、可选换绑接口、示例、accountsvc 同步迁移。
 - BatchPublicProfiles 批量返回 ID/DisplayName/State，不返回身份字段。未知账号略去，注销账号清空显示名，宿主在业务范围过滤后调用，不创建额外公共 HTTP API。
-- BeforeDelete 回调在账号锁及状态确认后、改变状态前调用，共用于 DeleteMe/AdminDeleteUser。ErrDeletionBlocked 对应稳定 DELETION_BLOCKED 原因，宿主业务细节不泄露。
-- WithActiveUsers 通过库连接池开事务，去重排序锁账号、确认 ACTIVE 后执行宿主回调；库提交/回滚。宿主锁序为账号后业务资源，不自行提交回调事务。
-- ImportAccounts 接受调用者事务，只导入 ACTIVE PHONE/EMAIL 锚点账号及无身份、无显示名的 DELETED 墓碑。保存原 ID/时间，冲突失败，不发码、不建会话、不签令牌。批次记录和业务引用迁移留给调用者。
+- BeforeDelete 回调在账号锁及状态确认后、改变状态前调用，共用于 DeleteMe/AdminDeleteUser。ErrDeletionBlocked 对应稳定 DELETION_BLOCKED 原因，宿主业务细节不泄露。其余回调错误为内部错误，不参与现有领域哨兵分类；通过私有不解包错误保留内部诊断而固定 HTTP 500，不新增公共分类类型。调用者不依赖对这些底层错误的 errors.Is/errors.As。
+- WithActiveUsers 要求非空账号集合和非 nil 回调，通过库连接池开事务，去重排序锁账号、确认 ACTIVE 后执行宿主回调；库提交/回滚。宿主锁序为账号后业务资源，不自行提交回调事务。空集合不作为通用裸事务入口，宿主空批次直接跳过。
+- ImportAccounts 接受调用者事务，只导入 ACTIVE PHONE/EMAIL 锚点账号及无身份、无显示名的 DELETED 墓碑。必需的创建/更新时间应非零并保存原值，不额外强制更新时间晚于创建时间，以容纳历史时钟回退；ACTIVE 不携带删除/匿名化时间。冲突失败，不发码、不建会话、不签令牌。批次记录和业务引用迁移留给调用者。
 
 使用私有 Repo 结构或让宿主直接更新账号状态容易绕过同一不变量，故采用这些范围明确的公开方法。资料读取和导入查询经 sqlc 生成，冻结 SQL 不修改。
 

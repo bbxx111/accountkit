@@ -17,7 +17,7 @@ import (
 
 const replacementIdentityID = "i_0k3f9c2m1xq7z"
 const replacementPath = "/users/me/identities/" + replacementIdentityID + ":replace"
-const replacementBody = `{"email":{"target":"new@example.test","code":"123456"}}`
+const replacementBody = `{"email":{"code_id":"0123456789abcdef0123456789abcdef","target":"new@example.test","code":"123456"}}`
 
 // The old fake deliberately has no replacement method; embedding preserves its interface.
 var _ enduser.Service = (*fakeService)(nil)
@@ -26,11 +26,12 @@ var _ enduser.IdentityReplacer = (*user.Service)(nil)
 
 type replacementService struct {
 	*fakeService
-	replace func(context.Context, user.Principal, string, enum.IdentityKind, string, string, user.Meta) (user.IdentityInfo, error)
+	replace func(context.Context, user.Principal, string, user.CodeCredential, user.Meta) (user.IdentityInfo, error)
 }
 
-func (f *replacementService) ReplaceIdentity(ctx context.Context, p user.Principal, id string, kind enum.IdentityKind, target, plainCode string, meta user.Meta) (user.IdentityInfo, error) {
-	return f.replace(ctx, p, id, kind, target, plainCode, meta)
+func (f *replacementService) ReplaceIdentity(ctx context.Context, p user.Principal, id string, cred user.CodeCredential, meta user.Meta) (user.IdentityInfo, error) {
+
+	return f.replace(ctx, p, id, cred, meta)
 }
 
 func replacementHandler(t *testing.T, service enduser.Service, mutate func(*enduser.Deps)) http.Handler {
@@ -75,11 +76,13 @@ func TestIdentityReplacementReturnsMaskedResource(t *testing.T) {
 		kind               enum.IdentityKind
 	}{
 		{"email", replacementBody, "new@example.test", enum.IdentityEmail},
-		{"phone", `{"phone":{"target":"+8613812345678","code":"123456"}}`, "+8613812345678", enum.IdentityPhone},
+		{"phone", `{"phone":{"code_id":"0123456789abcdef0123456789abcdef","target":"+8613812345678","code":"123456"}}`, "+8613812345678", enum.IdentityPhone},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			f := &replacementService{fakeService: withAuth(&fakeService{}, principal), replace: func(_ context.Context, p user.Principal, id string, kind enum.IdentityKind, target, plainCode string, meta user.Meta) (user.IdentityInfo, error) {
-				if p != principal || id != replacementIdentityID || kind != tc.kind || target != tc.target || plainCode != "123456" || meta.IP != "203.0.113.9" || meta.RequestID != "req-test" {
+			f := &replacementService{fakeService: withAuth(&fakeService{}, principal), replace: func(_ context.Context, p user.Principal, id string, cred user.CodeCredential, meta user.Meta) (user.IdentityInfo, error) {
+				kind, target, plainCode := cred.Channel, cred.Target, cred.Code
+
+				if p != principal || id != replacementIdentityID || kind != tc.kind || target != tc.target || plainCode != "123456" || cred.CodeID != challengeID || meta.IP != "203.0.113.9" || meta.RequestID != "req-test" {
 					t.Fatalf("incorrect replacement inputs: principal=%+v id=%q kind=%v meta=%+v", p, id, kind, meta)
 				}
 				return replacementResult(kind), nil
@@ -116,7 +119,7 @@ func TestIdentityReplacementAuthentication(t *testing.T) {
 		{"disabled still authenticates", "", principal, true, 401, "UNAUTHENTICATED/TOKEN_MISSING"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			f := &replacementService{fakeService: withAuth(&fakeService{}, tc.p), replace: func(context.Context, user.Principal, string, enum.IdentityKind, string, string, user.Meta) (user.IdentityInfo, error) {
+			f := &replacementService{fakeService: withAuth(&fakeService{}, tc.p), replace: func(context.Context, user.Principal, string, user.CodeCredential, user.Meta) (user.IdentityInfo, error) {
 				t.Fatal("rejected request reached replacement service")
 				return user.IdentityInfo{}, nil
 			}}
@@ -138,7 +141,7 @@ func TestIdentityReplacementAuthentication(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			p := principal
 			p.AuthTime = testNow.Add(-tc.age)
-			f := &replacementService{fakeService: withAuth(&fakeService{}, p), replace: func(context.Context, user.Principal, string, enum.IdentityKind, string, string, user.Meta) (user.IdentityInfo, error) {
+			f := &replacementService{fakeService: withAuth(&fakeService{}, p), replace: func(context.Context, user.Principal, string, user.CodeCredential, user.Meta) (user.IdentityInfo, error) {
 				return replacementResult(enum.IdentityEmail), nil
 			}}
 			rec := do(t, replacementHandler(t, f, func(d *enduser.Deps) { d.SensitiveOpVerification = !tc.disabled }), call{method: "POST", path: replacementPath, bearer: "good", body: replacementBody})
@@ -156,19 +159,19 @@ func TestIdentityReplacementRejectsMalformedInputs(t *testing.T) {
 		{"empty", replacementPath, "", "MALFORMED_BODY"},
 		{"invalid json", replacementPath, "{", "MALFORMED_BODY"},
 		{"null", replacementPath, "null", "MALFORMED_BODY"},
-		{"unknown field", replacementPath, `{"email":{"target":"new@example.test","code":"123456","extra":true}}`, "MALFORMED_BODY"},
+		{"unknown field", replacementPath, `{"email":{"code_id":"0123456789abcdef0123456789abcdef","target":"new@example.test","code":"123456","extra":true}}`, "MALFORMED_BODY"},
 		{"extra object", replacementPath, replacementBody + ` {}`, "MALFORMED_BODY"},
-		{"oversize", replacementPath, `{"email":{"target":"` + strings.Repeat("a", 64<<10) + `","code":"123456"}}`, "MALFORMED_BODY"},
+		{"oversize", replacementPath, `{"email":{"code_id":"0123456789abcdef0123456789abcdef","target":"` + strings.Repeat("a", 64<<10) + `","code":"123456"}}`, "MALFORMED_BODY"},
 		{"none", replacementPath, `{}`, "CREDENTIAL_ONEOF"},
 		{"all null", replacementPath, `{"phone":null,"email":null}`, "CREDENTIAL_ONEOF"},
-		{"two credentials", replacementPath, `{"email":{"target":"new@example.test","code":"123456"},"phone":{"target":"+8613812345678","code":"123456"}}`, "CREDENTIAL_ONEOF"},
+		{"two credentials", replacementPath, `{"email":{"code_id":"0123456789abcdef0123456789abcdef","target":"new@example.test","code":"123456"},"phone":{"code_id":"0123456789abcdef0123456789abcdef","target":"+8613812345678","code":"123456"}}`, "CREDENTIAL_ONEOF"},
 		{"wechat", replacementPath, `{"wechat":{"app_id":"wx","code":"c"}}`, "CREDENTIAL_KIND_NOT_ALLOWED"},
 		{"apple", replacementPath, `{"apple":{"id_token":"token","nonce":"n"}}`, "CREDENTIAL_KIND_NOT_ALLOWED"},
-		{"missing code", replacementPath, `{"email":{"target":"new@example.test"}}`, "CREDENTIAL_INCOMPLETE"},
-		{"missing target", replacementPath, `{"phone":{"code":"123456"}}`, "CREDENTIAL_INCOMPLETE"},
+		{"missing code", replacementPath, `{"email":{"code_id":"0123456789abcdef0123456789abcdef","target":"new@example.test"}}`, "CREDENTIAL_INCOMPLETE"},
+		{"missing target", replacementPath, `{"phone":{"code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`, "CREDENTIAL_INCOMPLETE"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			f := &replacementService{fakeService: withAuth(&fakeService{}, principal), replace: func(context.Context, user.Principal, string, enum.IdentityKind, string, string, user.Meta) (user.IdentityInfo, error) {
+			f := &replacementService{fakeService: withAuth(&fakeService{}, principal), replace: func(context.Context, user.Principal, string, user.CodeCredential, user.Meta) (user.IdentityInfo, error) {
 				t.Fatal("malformed input reached service")
 				return user.IdentityInfo{}, nil
 			}}
@@ -204,12 +207,12 @@ func TestIdentityReplacementErrors(t *testing.T) {
 		{"code invalid", code.ErrInvalid, 400, "INVALID_ARGUMENT/CODE_INVALID"},
 		{"code expired", code.ErrExpired, 400, "INVALID_ARGUMENT/CODE_EXPIRED"},
 		{"code exhausted", code.ErrExhausted, 400, "INVALID_ARGUMENT/CODE_ATTEMPTS_EXHAUSTED"},
-		{"rate limited", &code.RateLimitedError{Dimension: "CODE_VERIFY_LIMIT", RetryAfter: 1500 * time.Millisecond}, 429, "RESOURCE_EXHAUSTED/CODE_VERIFY_LIMIT"},
+		{"rate limited", &code.RateLimitedError{Dimension: "TARGET_VERIFY_LIMIT", RetryAfter: 1500 * time.Millisecond}, 429, "RESOURCE_EXHAUSTED/TARGET_VERIFY_LIMIT"},
 		{"unavailable", user.ErrUnavailable, 503, "UNAVAILABLE/DEPENDENCY_UNAVAILABLE"},
 		{"internal", errors.New("private database detail"), 500, "INTERNAL/"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			f := &replacementService{fakeService: withAuth(&fakeService{}, principal), replace: func(context.Context, user.Principal, string, enum.IdentityKind, string, string, user.Meta) (user.IdentityInfo, error) {
+			f := &replacementService{fakeService: withAuth(&fakeService{}, principal), replace: func(context.Context, user.Principal, string, user.CodeCredential, user.Meta) (user.IdentityInfo, error) {
 				return user.IdentityInfo{}, fmt.Errorf("replacement: %w", tc.err)
 			}}
 			rec := do(t, replacementHandler(t, f, nil), call{method: "POST", path: replacementPath, bearer: "good", body: replacementBody})
@@ -244,10 +247,10 @@ func TestIdentityReplacementPreservesIdentityRoutes(t *testing.T) {
 			}
 			return nil
 		},
-		bindWithCode: func(context.Context, user.Principal, enum.IdentityKind, string, string, user.Meta) (user.IdentityInfo, bool, error) {
+		bindWithCode: func(context.Context, user.Principal, user.CodeCredential, user.Meta) (user.IdentityInfo, bool, error) {
 			return user.IdentityInfo{}, false, user.ErrIdentityConflict
 		},
-	}, principal), replace: func(context.Context, user.Principal, string, enum.IdentityKind, string, string, user.Meta) (user.IdentityInfo, error) {
+	}, principal), replace: func(context.Context, user.Principal, string, user.CodeCredential, user.Meta) (user.IdentityInfo, error) {
 		return replacementResult(enum.IdentityEmail), nil
 	}}
 	h := replacementHandler(t, f, nil)

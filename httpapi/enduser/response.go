@@ -149,6 +149,8 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, r *http.Request, err 
 		apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, "USER_FROZEN", "this account is frozen"))
 	case errors.Is(err, user.ErrUserPendingDeletion):
 		apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, "USER_PENDING_DELETION", "this account is pending deletion; sign in with its phone or email to restore it"))
+	case errors.Is(err, user.ErrDeletionBlocked):
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "DELETION_BLOCKED", "account deletion is blocked"))
 	case errors.Is(err, user.ErrInvalidState):
 		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "INVALID_ACCOUNT_STATE", "operation not allowed in the account's current state"))
 	case errors.Is(err, user.ErrIdentityConflict):
@@ -184,4 +186,15 @@ func (h *Handler) writeOAuthError(w http.ResponseWriter, r *http.Request, err er
 		h.d.Logger.Error("internal error", "request_id", requestIDFrom(r.Context()), "err", err)
 		apierror.WriteOAuth(w, http.StatusInternalServerError, "server_error", "internal error", nil)
 	}
+}
+
+// challengeResponse 是发码成功的凭证 DTO。
+type challengeResponse struct {
+	CodeID     string    `json:"code_id"`
+	ExpireTime time.Time `json:"expire_time"`
+}
+
+func writeChallenge(w http.ResponseWriter, c user.CodeChallenge) {
+	w.Header().Set("Cache-Control", "no-store")
+	apierror.WriteJSON(w, http.StatusOK, challengeResponse{CodeID: c.CodeID, ExpireTime: c.ExpireTime})
 }

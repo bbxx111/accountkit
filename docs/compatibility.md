@@ -6,6 +6,48 @@
 
 当前开发代码在 `Config.Schema` 未指定或为空时采用 `account`；已发布 `v0.1.0` 的默认值为 `auth`。显式合法 schema（包括 `auth`）继续按配置使用，宿主通过 `Config.Schema` 或带宿主前缀的 `AUTH_SCHEMA` 设置。库与 accountsvc 共用默认值，连接池仍须通过 `PoolConfig` 配置匹配的 search_path。环境变量名称 `AUTH_SCHEMA` 和 Redis 默认前缀 `auth:` 保持不变。
 
+## 验证码轮次契约升级
+
+`add-host-account-contracts` 修改 Go、HTTP 和短期 Redis 验证码格式；当前开发代码尚未形成新固定版本，不能将以下能力视为已发布的 `v0.1.0` 接口。发布状态和本轮实际检查见[验收记录](../openspec/changes/add-host-account-contracts/verification.md)。JWT、refresh、身份密文、数据库结构、冻结迁移和发送器签名保持。
+
+| 旧调用 | 新调用 |
+|---|---|
+| 三类 `Send*Code(...) error` | 三类 `Send*Code(...) (user.CodeChallenge, error)`；保存 `CodeID` 和 `ExpireTime` |
+| `SignInWithCode(ctx, channel, target, code, dev, meta)` | `SignInWithCode(ctx, user.CodeCredential{Channel, Target, CodeID, Code}, dev, meta)` |
+| `BindWithCode(ctx, p, channel, target, code, meta)` | `BindWithCode(ctx, p, cred, meta)` |
+| `Reauthenticate(ctx, p, channel, target, code, meta)` | `Reauthenticate(ctx, p, cred, meta)` |
+| `ReplaceIdentity(ctx, p, identityID, channel, target, code, meta)` | `ReplaceIdentity(ctx, p, identityID, cred, meta)` |
+| PHONE/EMAIL `{target, code}` | `{target, code_id, code}`；`code_id` 必需，为 32 位小写十六进制 |
+| 发码成功 `{}` | `{code_id, expire_time}`，RFC3339 时间，`Cache-Control: no-store` |
+
+自定义 `enduser.Service`、可选 `enduser.IdentityReplacer`、嵌入示例、测试 fake 和服务客户端都须同步迁移。用途由服务器方法决定；BIND 固定用户，REAUTH 固定用户/会话。合法但未知、被替换、已消费或绑定不符的标识为 400 `CODE_EXPIRED`；缺失/非法标识为 400 `INVALID_ARGUMENT`。错误验证码仍为 400，不能触发凭据失效的 401 处理。
+
+每轮次数仍默认 5，3 次策略由宿主显式配置。新增 `CodeFailureLimitPerTarget`/`CodeFailureWindow`，环境键为带宿主前缀的 `CODE_FAILURE_LIMIT_PER_TARGET`/`CODE_FAILURE_WINDOW`，默认 10/15m。同渠道归一化目标跨用途、重发轮次累计错误，从首次错误起固定窗口；重发和成功不清预算。达到上限为 429 `RESOURCE_EXHAUSTED`、reason `TARGET_VERIFY_LIMIT`、剩余 `Retry-After`。旧标识不扣新轮次或目标预算，宿主仍需接口/IP 限流。
+
+达到每轮次数上限的错误请求返回 400 `CODE_INVALID` 并立即作废轮次，之后该标识返回 `CODE_EXPIRED`；第三次正确仍可成功。若同时达到目标累计上限，第十次错误本身返回 429 `TARGET_VERIFY_LIMIT`。旧 `code.ErrExhausted` 符号和 HTTP 兼容映射保留供自定义实现使用，但库的新轮次协议不再产生 `CODE_ATTEMPTS_EXHAUSTED`，调用者须同步更新该边界处理。
+
+升级须逐账号实例安排停写窗口：停止全部旧验证码发码和校验进程，同步切换 Go/HTTP 调用者，再启用新实例。旧无标识轮次不接管，按原 TTL 淘汰；不要清空整个 Redis，身份、会话和吊销状态保留。无法同时切换的其他独立实例可另行安排，不允许同一实例新旧协议混跑。
+
+全部进程支持新协议且持有相同完整密钥集合后，才执行正常 HMAC active 轮换。轮次、发送冷却、日额度和目标失败预算保持原期限和次数，同密钥材料别名不重复计数。退役除数据库摘要引用外，还须等旧轮次、冷却、日额度和失败预算窗口结束。回退须停止新验证码写/校验、同步回退调用者并等待新短期状态失效，核对新增错误值和存储兼容；只回退二进制或清 Redis 不能保证安全恢复，见[密钥轮换](../README.md#密钥轮换)。
+
+## 宿主账号契约
+
+`BatchPublicProfiles(ctx, ids)` 是 Go 批量查询，结果仅含 ID/DisplayName/State。输入去重，非法 ID 返回参数错误，未知账号略去，待注销及已删除账号清空显示名；宿主在调用前按业务权限过滤 ID。无任意用户资料 HTTP 端点。
+
+`Deps.BeforeDelete` 在账号锁和状态检查后、改变状态前使用同一 `pgx.Tx`，消费者和管理员共享。返回 `user.ErrDeletionBlocked` 为 400 `FAILED_PRECONDITION`、reason `DELETION_BLOCKED` 和固定消息；其他错误为固定 500，同批账号、会话和业务写入回滚。其他回调错误不进入库的业务错误分类，不能通过返回旧 `ErrNotFound` 等哨兵变成 404；调用者不要依赖对这些底层错误的 `errors.Is`/`errors.As`，明确业务拒绝使用 `ErrDeletionBlocked`。
+
+`WithActiveUsers(ctx, ids, fn)` 要求非空账号集合和非 nil 回调，先验证/去重/排序锁定 ACTIVE 账号，再执行宿主回调；锁序为账号后业务资源。库拥有提交/回滚，回调不得自行结束事务；回调错误按原事务契约返回，panic 回滚并向上传递。未知或非 ACTIVE 账号拒绝，回调不运行。
+
+## 离线账号导入
+
+`ImportAccounts(ctx, tx, accounts)` 只用于受控停写工具，事务来自 schema 匹配的认证连接池。库不另开连接、不提交、不回滚；调用者负责空目标核验、批次记录、重复执行、业务引用迁移和最终提交。发生任何错误时必须回滚整个批次，不继续提交部分成功数据。
+
+`user.ImportAccount` 保留合法 `u_` ID 和原创建/更新时间；账号和锚点创建/更新时间必需非零，允许历史时钟回退，不强制更新时间晚于创建时间。ACTIVE 至少包含一个 `user.ImportAnchor` 的 PHONE/EMAIL 合法目标，删除/匿名化时间为空；DELETED 只允许无显示名、无锚点的匿名墓碑，可保留删除/匿名化时间，不重新抢占旧地址。FROZEN、PENDING_DELETION、第三方身份和非法目标拒绝。归一化和版本化加密/摘要沿用库配置；重复 ID 或归一化身份冲突失败，不合并、不静默跳过。
+
+导入错误的 `Error()` 文本脱敏，唯一冲突可用 `errors.Is(err, user.ErrIdentityConflict)` 分类，`errors.As` 仍能获取数据库诊断。解包后的诊断可能包含原始详情，不能直接写入日志或对外输出。
+
+此入口不发验证码、不创建会话、不签令牌、不调用 IdP，也没有导入 HTTP 路由。宿主停写、引用迁移和批次幂等在宿主工具中完成，不属于 accountkit 的认证行为。
+
 ## 包名迁移
 
 根包已从 `authserver` 重命名为 `accountkit`，module 路径不变。使用默认导入的调用方将 `authserver.Config`、`authserver.New` 等引用改为 `accountkit.Config`、`accountkit.New`：
@@ -82,6 +124,8 @@ HTTP 调用方继续使用原 URL（包括 `/users`）、DTO、设备头、JWT �
 滚动升级期间旧实例仍可能使用旧的期限判断；只有全部实例完成升级后才具备一致行为。回退二进制不会恢复已吊销会话，并会重新引入旧版本的展示和到期边界行为。本轮检查与限制见[会话过期验收记录](../openspec/changes/archive/2026-10-04-harden-session-expiry/verification.md)。
 
 ## 验证码 HMAC 轮换连续性
+
+本节记录此前轮换能力的兼容范围；当前开发代码还包含上文的[轮次契约升级](#验证码轮次契约升级)。旧无标识记录不再接管，当前仅保证同一新协议内旧 active 完整轮次的连续性；本次新增 Go/HTTP 字段、配置及 Redis 格式以上文为准。
 
 验证码、目标冷却和目标日额度改为在一次 Lua 操作内统一处理全部已配置 HMAC 版本。单份旧格式验证码原地继续原 TTL 和错误次数，跨 active 消费至多成功一次；新发码替换全部版本同用途旧码，目标日额度按不同物理键求和，同密钥材料的版本别名不会重复累计。IP 日额度原本独立于 HMAC，计数方式保持。历史混跑产生多份存活验证码时，校验原子作废冲突码并返回原 `CODE_EXPIRED`，冷却和额度不变。
 

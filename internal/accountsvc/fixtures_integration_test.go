@@ -258,6 +258,7 @@ func (p *redisProxy) fail(down bool) {
 }
 
 type integrationFixture struct {
+	challenges                                 map[string]string
 	t                                          *testing.T
 	binary, dir, schema, prefix, dsn, redisURL string
 	env                                        map[string]string
@@ -572,6 +573,7 @@ func (f *integrationFixture) call(method, address, bearer string, body any, want
 	}
 	out := map[string]any{}
 	_ = json.Unmarshal(raw, &out)
+	f.rememberChallenge(body, out)
 	return out
 }
 func (f *integrationFixture) login(p *serviceProcess, target string) map[string]any {
@@ -582,7 +584,7 @@ func (f *integrationFixture) login(p *serviceProcess, target string) map[string]
 		f.t.Fatal("wrong SMTP recipient or purpose")
 	}
 	f.secrets = append(f.secrets, target, m.code)
-	out := f.call("POST", p.baseURL+"/v1/users:signInWithCode", "", map[string]any{"email": map[string]string{"target": target, "code": m.code}}, 200)
+	out := f.call("POST", p.baseURL+"/v1/users:signInWithCode", "", map[string]any{"email": map[string]string{"code_id": f.codeID(target), "target": target, "code": m.code}}, 200)
 	f.secrets = append(f.secrets, out["access_token"].(string), out["refresh_token"].(string))
 	return out
 }
@@ -641,3 +643,20 @@ func (f *integrationFixture) oidc() *httptest.Server {
 	}
 	return s
 }
+
+func (f *integrationFixture) rememberChallenge(body any, out map[string]any) {
+	id, _ := out["code_id"].(string)
+	if id == "" {
+		return
+	}
+	request, ok := body.(map[string]string)
+	if !ok {
+		return
+	}
+	if f.challenges == nil {
+		f.challenges = map[string]string{}
+	}
+	f.challenges[request["target"]] = id
+	f.secrets = append(f.secrets, id)
+}
+func (f *integrationFixture) codeID(target string) string { return f.challenges[target] }

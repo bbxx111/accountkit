@@ -109,7 +109,8 @@ func TestServiceIntegrationGatewayBoundary(t *testing.T) {
 	}
 	target := "gateway@example.test"
 	body := `{"channel":"EMAIL","target":"` + target + `"}`
-	h, _ := transportRequest(t, f.client, "POST", public.server.URL+"/v1/users:sendSignInCode", "application/json", body, headers, 200)
+	h, challenge := transportRequest(t, f.client, "POST", public.server.URL+"/v1/users:sendSignInCode", "application/json", body, headers, 200)
+	f.rememberChallenge(map[string]string{"target": target}, challenge)
 	if h.Get("X-Request-Id") != "gateway-send" {
 		t.Fatal("request ID not preserved")
 	}
@@ -125,7 +126,7 @@ func TestServiceIntegrationGatewayBoundary(t *testing.T) {
 		t.Fatal("library cooldown Retry-After changed at gateway")
 	}
 	headers["X-Request-Id"] = "gateway-signin"
-	raw, _ := json.Marshal(map[string]any{"email": map[string]string{"target": target, "code": m.code}})
+	raw, _ := json.Marshal(map[string]any{"email": map[string]string{"code_id": f.codeID(target), "target": target, "code": m.code}})
 	h, pair := transportRequest(t, f.client, "POST", public.server.URL+"/v1/users:signInWithCode", "application/json", string(raw), headers, 200)
 	if h.Get("Cache-Control") != "no-store" || h.Get("X-Request-Id") != "gateway-signin" {
 		t.Fatal("credential response cache or tracing semantics changed")

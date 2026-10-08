@@ -3,6 +3,8 @@ package user
 import "errors"
 
 var (
+	// ErrDeletionBlocked：宿主业务检查拒绝注销 → 400 FAILED_PRECONDITION。
+	ErrDeletionBlocked = errors.New("user: deletion blocked")
 	// ErrInsufficientScope：调用者未获得完整账号操作作用域。
 	ErrInsufficientScope = errors.New("user: insufficient scope")
 	// ErrReauthenticationRequired：敏感操作要求近期认证。

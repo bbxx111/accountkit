@@ -73,6 +73,8 @@ type Deps struct {
 	DeletionCoolingPeriod time.Duration
 	// Anonymizers 是宿主业务域的匿名化器，purge 时在库表匿名化之后按顺序、同一事务内执行；可空。
 	Anonymizers []anonymize.Anonymizer
+	// BeforeDelete 在注销事务中、账号锁和 ACTIVE 校验之后执行宿主检查；可空。
+	BeforeDelete BeforeDelete
 }
 
 // Service 持有用户域的全部业务规则。

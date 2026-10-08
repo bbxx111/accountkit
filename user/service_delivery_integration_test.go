@@ -35,9 +35,9 @@ func TestDisabledPublicCodePurposesPreserveIdentityConstraints(t *testing.T) {
 			before := f.mr.Keys()
 			auditBefore := len(f.audit.Events())
 			calls := []func() error{
-				func() error { return disabled.SendSignInCode(ctx, ch, target, meta1) },
-				func() error { return disabled.SendBindCode(ctx, p, ch, target, meta1) },
-				func() error { return disabled.SendReauthenticationCode(ctx, p, ch, target, meta1) },
+				func() error { _, err := disabled.SendSignInCode(ctx, ch, target, meta1); return err },
+				func() error { _, err := disabled.SendBindCode(ctx, p, ch, target, meta1); return err },
+				func() error { _, err := disabled.SendReauthenticationCode(ctx, p, ch, target, meta1); return err },
 			}
 			for _, call := range calls {
 				if !errors.Is(call(), sender.ErrDisabled) {
@@ -56,14 +56,14 @@ func TestDisabledPublicCodePurposesPreserveIdentityConstraints(t *testing.T) {
 					t.Fatal("public disabled request audit was unsafe or missing")
 				}
 			}
-			if err := disabled.SendSignInCode(ctx, ch, "invalid target", meta1); !errors.Is(err, user.ErrInvalidTarget) {
+			if _, err := disabled.SendSignInCode(ctx, ch, "invalid target", meta1); !errors.Is(err, user.ErrInvalidTarget) {
 				t.Fatal("disabled channel masked target validation")
 			}
 			other := phone2
 			if ch == enum.IdentityEmail {
 				other = "other@example.org"
 			}
-			if err := disabled.SendReauthenticationCode(ctx, p, ch, other, meta1); !errors.Is(err, user.ErrNotAnchor) {
+			if _, err := disabled.SendReauthenticationCode(ctx, p, ch, other, meta1); !errors.Is(err, user.ErrNotAnchor) {
 				t.Fatal("disabled channel bypassed reauthentication anchor constraint")
 			}
 		})
@@ -73,7 +73,7 @@ func TestDisabledPublicCodePurposesPreserveIdentityConstraints(t *testing.T) {
 func TestDisabledSenderDoesNotInvalidateIssuedCode(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
-	if err := f.svc.SendSignInCode(ctx, enum.IdentityPhone, phone1, meta1); err != nil {
+	if err := f.sendSignInCode(ctx, enum.IdentityPhone, phone1, meta1); err != nil {
 		t.Fatal(err)
 	}
 	issued := f.sent.code(phone1)
@@ -84,7 +84,7 @@ func TestDisabledSenderDoesNotInvalidateIssuedCode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := disabled.SignInWithCode(ctx, enum.IdentityPhone, phone1, issued, dev1, meta1)
+	result, err := disabled.SignInWithCode(ctx, f.credential(enum.PurposeSignIn, enum.IdentityPhone, phone1, issued), dev1, meta1)
 	if err != nil || result.AccessToken == "" || result.Scope != user.ScopeUser {
 		t.Fatal("disabling future delivery invalidated existing code sign-in")
 	}

@@ -102,7 +102,7 @@ func TestServiceIntegrationCodeKeyRotation(t *testing.T) {
 	}
 	signIn := func(p *serviceProcess, target, code string) map[string]any {
 		t.Helper()
-		out := f.call("POST", p.baseURL+"/v1/users:signInWithCode", "", map[string]any{"email": map[string]string{"target": target, "code": code}}, 200)
+		out := f.call("POST", p.baseURL+"/v1/users:signInWithCode", "", map[string]any{"email": map[string]string{"code_id": f.codeID(target), "target": target, "code": code}}, 200)
 		for _, field := range []string{"access_token", "refresh_token"} {
 			token, ok := out[field].(string)
 			if !ok || token == "" {

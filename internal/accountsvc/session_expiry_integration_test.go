@@ -100,7 +100,7 @@ func TestServiceIntegrationSessionExpiry(t *testing.T) {
 		t.Fatal("wrong reauthentication delivery")
 	}
 	// Preserve the WWW-Authenticate header in addition to asserting the error body.
-	raw := mustExpiryJSON(t, map[string]any{"email": map[string]string{"target": target, "code": m.code}})
+	raw := mustExpiryJSON(t, map[string]any{"email": map[string]string{"code_id": f.codeID(target), "target": target, "code": m.code}})
 	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/v1/users/me:reauthenticate", bytes.NewBufferString(raw))
 	if err != nil {
 		t.Fatal(err)

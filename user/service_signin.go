@@ -16,24 +16,24 @@ import (
 )
 
 // SendSignInCode 发送登录验证码（purpose SIGN_IN）。额度先占后发，发送失败不退还。
-func (s *Service) SendSignInCode(ctx context.Context, channel enum.IdentityKind, target string, meta Meta) error {
-	return s.sendCode(ctx, channel, enum.PurposeSignIn, target, "", meta)
+func (s *Service) SendSignInCode(ctx context.Context, channel enum.IdentityKind, target string, meta Meta) (CodeChallenge, error) {
+	return s.sendCode(ctx, channel, enum.PurposeSignIn, target, code.Binding{}, meta)
 }
 
-// sendCode 是三种用途共用的发码流程；userID 仅用于审计（未登录时为空）。
-func (s *Service) sendCode(ctx context.Context, channel enum.IdentityKind, purpose enum.CodePurpose, target, userID string, meta Meta) error {
+// sendCode 是三种用途共用的发码流程；binding 用于轮次主体绑定和审计，登录时为空。
+func (s *Service) sendCode(ctx context.Context, channel enum.IdentityKind, purpose enum.CodePurpose, target string, binding code.Binding, meta Meta) (CodeChallenge, error) {
 	if meta.IP == "" {
 		// 空 IP 会让 code.Store 的 IP 维度限流把所有调用方并入同一个配额桶（quota:*:ip::<day>），
 		// 一个客户端耗尽额度就会连带拒绝其余所有人；在触碰验证码存储之前先拒绝。
 		s.d.Logger.Error("user: send code rejected: missing client ip", "channel", channel.String(), "purpose", purpose.String())
-		return fmt.Errorf("%w: client ip is required", ErrInvalidArgument)
+		return CodeChallenge{}, fmt.Errorf("%w: client ip is required", ErrInvalidArgument)
 	}
 	norm, _, _, err := s.normalizeTarget(channel, target)
 	if err != nil {
-		return err
+		return CodeChallenge{}, err
 	}
 	digest, _ := s.d.Digester.Digest(norm)
-	base := audit.Event{UserID: userID, IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, RequestID: meta.RequestID}
+	base := audit.Event{UserID: binding.UserID, IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, RequestID: meta.RequestID}
 
 	// 可选可用性契约保持旧宿主兼容：只实现原投递方法的发送器默认启用。
 	var delivery any = s.d.SMS
@@ -43,24 +43,24 @@ func (s *Service) sendCode(ctx context.Context, channel enum.IdentityKind, purpo
 	if capability, ok := delivery.(interface{ Enabled() bool }); ok && !capability.Enabled() {
 		base.Type, base.Result, base.Reason = enum.EventCodeSendRejected, enum.ResultFailure, "CHANNEL_NOT_ENABLED"
 		s.record(ctx, base)
-		return sender.ErrDisabled
+		return CodeChallenge{}, sender.ErrDisabled
 	}
 
-	plain, err := s.d.Codes.Issue(ctx, channel, purpose, norm, meta.IP)
+	issued, err := s.d.Codes.IssueChallenge(ctx, channel, purpose, norm, meta.IP, binding)
 	if err != nil {
 		var rl *code.RateLimitedError
 		switch {
 		case errors.As(err, &rl):
 			base.Type, base.Result, base.Reason = enum.EventCodeSendRejected, enum.ResultFailure, rl.Dimension
 			s.record(ctx, base)
-			return err
+			return CodeChallenge{}, err
 		case errors.Is(err, code.ErrUnavailable):
-			return fmt.Errorf("%w: %v", ErrUnavailable, err)
+			return CodeChallenge{}, fmt.Errorf("%w: %v", ErrUnavailable, err)
 		default:
-			return err
+			return CodeChallenge{}, err
 		}
 	}
-	msg := sender.Message{Purpose: purpose, Code: plain, TTL: s.d.CodeTTL}
+	msg := sender.Message{Purpose: purpose, Code: issued.Code, TTL: s.d.CodeTTL}
 	switch channel {
 	case enum.IdentityPhone:
 		err = s.d.SMS.SendSMS(ctx, norm, msg)
@@ -68,22 +68,26 @@ func (s *Service) sendCode(ctx context.Context, channel enum.IdentityKind, purpo
 		err = s.d.Email.SendEmail(ctx, norm, msg)
 	}
 	if err != nil {
+		_ = s.d.Codes.DiscardChallenge(ctx, channel, purpose, norm, issued.CodeID)
 		base.Type, base.Result, base.Reason = enum.EventCodeSendFailed, enum.ResultFailure, "SEND_FAILED"
 		s.record(ctx, base)
 		if errors.Is(err, sender.ErrUnavailable) {
-			return ErrUnavailable // 不传播投递依赖的响应或收件地址；额度不退还。
+			return CodeChallenge{}, ErrUnavailable // 不传播投递依赖的响应或收件地址；额度不退还。
 		}
-		return fmt.Errorf("user: send code: %w", err) // 额度不退还，防止失败重试形成发送风暴
+		return CodeChallenge{}, &deliveryError{cause: err} // 额度不退还，防止失败重试形成发送风暴
 	}
 	base.Type, base.Result, base.Reason = enum.EventCodeSent, enum.ResultSuccess, purpose.String()
 	s.record(ctx, base)
-	return nil
+	return CodeChallenge{CodeID: issued.CodeID, ExpireTime: issued.ExpireTime}, nil
 }
 
 // verifyCode 校验验证码并把 code 包的错误映射为审计原因。
-func (s *Service) verifyCode(ctx context.Context, channel enum.IdentityKind, purpose enum.CodePurpose, norm, plain string) (reason string, err error) {
-	err = s.d.Codes.Verify(ctx, channel, purpose, norm, plain)
+func (s *Service) verifyCode(ctx context.Context, channel enum.IdentityKind, purpose enum.CodePurpose, norm string, cred CodeCredential, binding code.Binding) (reason string, err error) {
+	err = s.d.Codes.VerifyChallenge(ctx, code.Credential{Channel: channel, Purpose: purpose, Target: norm, CodeID: cred.CodeID, Code: cred.Code, Binding: binding})
+	var rl *code.RateLimitedError
 	switch {
+	case errors.As(err, &rl):
+		return rl.Dimension, err
 	case err == nil:
 		return "", nil
 	case errors.Is(err, code.ErrInvalid):
@@ -100,7 +104,11 @@ func (s *Service) verifyCode(ctx context.Context, channel enum.IdentityKind, pur
 }
 
 // SignInWithCode 验证码登录；subject 不存在则同一事务内创建账号与身份（登录即注册）。
-func (s *Service) SignInWithCode(ctx context.Context, channel enum.IdentityKind, target, plainCode string, dev Device, meta Meta) (TokenResult, error) {
+func (s *Service) SignInWithCode(ctx context.Context, cred CodeCredential, dev Device, meta Meta) (TokenResult, error) {
+	if err := validateCodeCredential(cred); err != nil {
+		return TokenResult{}, err
+	}
+	channel, target := cred.Channel, cred.Target
 	if err := validDevice(dev); err != nil {
 		return TokenResult{}, err
 	}
@@ -111,7 +119,7 @@ func (s *Service) SignInWithCode(ctx context.Context, channel enum.IdentityKind,
 	digest, _ := s.d.Digester.Digest(norm)
 	ev := audit.Event{IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, DeviceID: dev.ID, RequestID: meta.RequestID}
 
-	if reason, err := s.verifyCode(ctx, channel, enum.PurposeSignIn, norm, plainCode); err != nil {
+	if reason, err := s.verifyCode(ctx, channel, enum.PurposeSignIn, norm, cred, code.Binding{}); err != nil {
 		if !errors.Is(err, ErrUnavailable) {
 			ev.Type, ev.Result, ev.Reason = enum.EventSignInFailed, enum.ResultFailure, reason
 			s.record(ctx, ev)
@@ -205,3 +213,9 @@ func signInRejectReason(err error) string {
 		return ""
 	}
 }
+
+// deliveryError 使用固定错误文本，防止提供方私密消息进入日志；Unwrap 保留 errors.Is/As 识别。
+type deliveryError struct{ cause error }
+
+func (e *deliveryError) Error() string { return "user: verification delivery failed" }
+func (e *deliveryError) Unwrap() error { return e.cause }

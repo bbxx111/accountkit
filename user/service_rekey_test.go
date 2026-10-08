@@ -57,10 +57,10 @@ func TestRekeyDigestsRecomputesOnlyActiveOldVersionRows(t *testing.T) {
 	res := f.signIn(t, enum.IdentityPhone, phone1, dev1) // digest v1 / cipher v1
 	p := principalOf(t, f, res)
 	// 绑邮箱再解绑：留一条软删行（v1，不得被改）；绑微信：无版本列，不得被碰
-	if err := f.svc.SendBindCode(ctx, p, enum.IdentityEmail, email1, meta1); err != nil {
+	if err := f.sendBindCode(ctx, p, enum.IdentityEmail, email1, meta1); err != nil {
 		t.Fatal(err)
 	}
-	mail, _, err := f.svc.BindWithCode(ctx, p, enum.IdentityEmail, email1, f.sent.code(email1), meta1)
+	mail, _, err := f.svc.BindWithCode(ctx, p, f.credential(enum.PurposeBind, enum.IdentityEmail, email1, f.sent.code(email1)), meta1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,10 +180,10 @@ func TestCheckKeyVersionsRejectsUnconfiguredVersions(t *testing.T) {
 	// 软删行上的未知版本不算（已解绑的行不再参与查找与展示）
 	mustExec(t, f, `UPDATE identity SET cipher_key_version = 1 WHERE user_id = $1`, res.UserID)
 	p := principalOf(t, f, res)
-	if err := f.svc.SendBindCode(ctx, p, enum.IdentityEmail, email1, meta1); err != nil {
+	if err := f.sendBindCode(ctx, p, enum.IdentityEmail, email1, meta1); err != nil {
 		t.Fatal(err)
 	}
-	mail, _, err := f.svc.BindWithCode(ctx, p, enum.IdentityEmail, email1, f.sent.code(email1), meta1)
+	mail, _, err := f.svc.BindWithCode(ctx, p, f.credential(enum.PurposeBind, enum.IdentityEmail, email1, f.sent.code(email1)), meta1)
 	if err != nil {
 		t.Fatal(err)
 	}

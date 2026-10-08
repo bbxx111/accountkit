@@ -7,7 +7,7 @@ accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可�
 
 accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect` 和探针；公网暴露、直连限制、TLS 终止与入口流量控制由部署方配置，统一规则见 [网关接入手册](docs/gateway-integration.md)。直接嵌入库的宿主也可沿用该契约。旧双监听部署与调用方需按[服务传输迁移说明](docs/compatibility.md#服务单监听与传输迁移)调整。
 
-当前开发代码默认使用 `account` schema；已发布的 `v0.1.0` 默认仍为 `auth`，本文配置表说明当前开发代码。宿主可通过 `Config.Schema` 或带宿主前缀的 `AUTH_SCHEMA` 显式设置合法 schema，库与 accountsvc 共用此默认值。
+`v0.2.0` 默认使用 `account` schema；`v0.1.0` 默认仍为 `auth`。升级已有实例时须显式保留原 schema。宿主可通过 `Config.Schema` 或带宿主前缀的 `AUTH_SCHEMA` 设置合法 schema，库与 accountsvc 共用此默认值。
 
 ## 生命周期
 
@@ -260,7 +260,7 @@ HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额
 
 远程仓库：https://github.com/bbxx111/accountkit.git
 
-Go module：github.com/bbxx111/accountkit。面向自有产品接入的 `v0.1.0` 初版已发布，使用 `go get github.com/bbxx111/accountkit@v0.1.0` 接入；功能、运行限制与版本记录见[发布说明](docs/releases/v0.1.0.md)。发布提交 `48603d6` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/37366666273)已通过，独立宿主已确认无本地 replace 的远端拉取与构建；本地实现历史见[最近验收](openspec/changes/archive/2026-10-06-rename-consumer-to-enduser/verification.md)，发布及上线要求见[检查表](docs/release-checklist.md)。
+Go module：github.com/bbxx111/accountkit。`v0.2.0` 已发布，使用 `go get github.com/bbxx111/accountkit@v0.2.0` 接入；破坏性验证码协议和默认 schema 升级见[发布说明](docs/releases/v0.2.0.md)。固定提交 `e19af85` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/37814180599)已通过，两个独立宿主已确认无本地 replace 的远端拉取与构建，涵盖根门面和直接 enduser 接口。[验收记录](openspec/changes/add-host-account-contracts/verification.md)保存本轮证据；发布及上线要求见[检查表](docs/release-checklist.md)。`v0.1.0` 历史说明继续保留，tag 不变。
 
 库版本发布与各产品生产上线分别验收。产品实际环境接入、真实服务商与预发布升级/恢复仍待完成；产品各自配置 schema、Redis 前缀、issuer/audience 和密钥，并承担自己的匿名化与网关接入责任。当前未附开源 LICENSE，本次版本供自有产品接入，尚未向外部使用方定义复用许可。
 

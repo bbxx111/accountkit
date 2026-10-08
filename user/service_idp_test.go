@@ -317,10 +317,10 @@ func TestSignInWithCodeFrozenAuditCarriesUserID(t *testing.T) {
 	res := f.signIn(t, enum.IdentityPhone, phone1, dev1)
 	mustExec(t, f, `UPDATE user_account SET state = 2 WHERE id = $1`, res.UserID)
 	mem := resetAudit(f)
-	if err := f.svc.SendSignInCode(ctx, enum.IdentityPhone, phone1, meta1); err != nil {
+	if err := f.sendSignInCode(ctx, enum.IdentityPhone, phone1, meta1); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.svc.SignInWithCode(ctx, enum.IdentityPhone, phone1, f.sent.code(phone1), dev1, meta1); !errors.Is(err, user.ErrUserFrozen) {
+	if _, err := f.svc.SignInWithCode(ctx, f.credential(enum.PurposeSignIn, enum.IdentityPhone, phone1, f.sent.code(phone1)), dev1, meta1); !errors.Is(err, user.ErrUserFrozen) {
 		t.Fatalf("frozen: %v", err)
 	}
 	found := false

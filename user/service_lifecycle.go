@@ -2,11 +2,13 @@ package user
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/user/db"
+	"github.com/jackc/pgx/v5"
 )
 
 // userEvent 构造 C 端写操作的审计事件模板（Actor=USER，带当前会话与请求元数据）。
@@ -48,13 +50,22 @@ func (s *Service) softDelete(ctx context.Context, userID string, missing error, 
 		row     db.UserAccount
 		revoked []string
 	)
-	err := s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+	err := s.d.Repo.WithTxRaw(ctx, func(tx pgx.Tx, q *db.Queries) error {
 		u, err := lockUserAs(ctx, q, userID, missing)
 		if err != nil {
 			return err
 		}
 		if err := requireState(u, enum.UserActive); err != nil {
 			return err
+		}
+		if s.d.BeforeDelete != nil {
+			if err := s.d.BeforeDelete(ctx, tx, userID); err != nil {
+				if errors.Is(err, ErrDeletionBlocked) {
+					return ErrDeletionBlocked
+				}
+				// 不展开宿主错误链，防止宿主返回的领域哨兵被 HTTP 面误分类或泄露业务细节。
+				return fmt.Errorf("user: before delete: %v", err)
+			}
 		}
 		row, err = q.SoftDeleteUser(ctx, db.SoftDeleteUserParams{
 			ID: userID, State: enum.UserPendingDeletion, Now: now, PurgeTime: now.Add(s.d.DeletionCoolingPeriod),

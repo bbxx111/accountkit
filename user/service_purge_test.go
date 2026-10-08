@@ -76,10 +76,10 @@ func TestPurgeAnonymizesAccountIdentitiesSessionsAuditAndHostTables(t *testing.T
 	// 账号：手机锚点 + 一条已解绑的邮箱（软删行）+ 微信；一行宿主数据；一行带 ip/device/hint 的审计
 	res := f.signIn(t, enum.IdentityPhone, phone1, dev1)
 	p := principalOf(t, f, res)
-	if err := f.svc.SendBindCode(ctx, p, enum.IdentityEmail, email1, meta1); err != nil {
+	if err := f.sendBindCode(ctx, p, enum.IdentityEmail, email1, meta1); err != nil {
 		t.Fatal(err)
 	}
-	mail, _, err := f.svc.BindWithCode(ctx, p, enum.IdentityEmail, email1, f.sent.code(email1), meta1)
+	mail, _, err := f.svc.BindWithCode(ctx, p, f.credential(enum.PurposeBind, enum.IdentityEmail, email1, f.sent.code(email1)), meta1)
 	if err != nil {
 		t.Fatal(err)
 	}

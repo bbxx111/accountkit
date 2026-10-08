@@ -14,6 +14,7 @@ import (
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
 	"github.com/bbxx111/accountkit/phone"
+	"github.com/bbxx111/accountkit/user/code"
 	"github.com/bbxx111/accountkit/user/db"
 	"github.com/bbxx111/accountkit/user/idp"
 )
@@ -54,12 +55,12 @@ func (s *Service) ListIdentities(ctx context.Context, userID string) ([]Identity
 }
 
 // SendBindCode 向即将绑定的新锚点发送 BIND 码。不预检占用（避免枚举），冲突在绑定时报告。
-func (s *Service) SendBindCode(ctx context.Context, p Principal, channel enum.IdentityKind, target string, meta Meta) error {
+func (s *Service) SendBindCode(ctx context.Context, p Principal, channel enum.IdentityKind, target string, meta Meta) (CodeChallenge, error) {
 	norm, _, _, err := s.normalizeTarget(channel, target)
 	if err != nil {
-		return err
+		return CodeChallenge{}, err
 	}
-	return s.sendCode(ctx, channel, enum.PurposeBind, norm, p.UserID, meta)
+	return s.sendCode(ctx, channel, enum.PurposeBind, norm, code.Binding{UserID: p.UserID}, meta)
 }
 
 // createAnchorIdentity 创建 PHONE/EMAIL 身份行：digest + 密文 + hint，均带密钥版本。
@@ -124,14 +125,18 @@ func bindRejectReason(err error) string {
 }
 
 // BindWithCode 用 BIND 验证码把 PHONE/EMAIL 绑定到当前账号。
-func (s *Service) BindWithCode(ctx context.Context, p Principal, channel enum.IdentityKind, target, plainCode string, meta Meta) (IdentityInfo, bool, error) {
+func (s *Service) BindWithCode(ctx context.Context, p Principal, cred CodeCredential, meta Meta) (IdentityInfo, bool, error) {
+	if err := validateCodeCredential(cred); err != nil {
+		return IdentityInfo{}, false, err
+	}
+	channel, target := cred.Channel, cred.Target
 	norm, hintPrefix, hintSuffix, err := s.normalizeTarget(channel, target)
 	if err != nil {
 		return IdentityInfo{}, false, err
 	}
 	digest, _ := s.d.Digester.Digest(norm)
 	ev := audit.Event{UserID: p.UserID, SessionID: p.SessionID, IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, RequestID: meta.RequestID}
-	if reason, err := s.verifyCode(ctx, channel, enum.PurposeBind, norm, plainCode); err != nil {
+	if reason, err := s.verifyCode(ctx, channel, enum.PurposeBind, norm, cred, code.Binding{UserID: p.UserID}); err != nil {
 		if !errors.Is(err, ErrUnavailable) {
 			ev.Type, ev.Result, ev.Reason = enum.EventIdentityBindRejected, enum.ResultFailure, reason
 			s.record(ctx, ev)

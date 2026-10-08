@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/bbxx111/accountkit/httpapi/apierror"
+	"github.com/bbxx111/accountkit/user"
 )
 
 type sendCodeRequest struct {
@@ -29,11 +30,12 @@ func (h *Handler) sendSignInCode(w http.ResponseWriter, r *http.Request) {
 		apierror.WriteInternal(w, h.d.Logger, requestIDFrom(r.Context()), errors.New("enduser: Deps.ClientIP returned empty"))
 		return
 	}
-	if err := h.d.Users.SendSignInCode(r.Context(), ch, req.Target, meta); err != nil {
+	challenge, err := h.d.Users.SendSignInCode(r.Context(), ch, req.Target, meta)
+	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
 	}
-	apierror.WriteJSON(w, http.StatusOK, struct{}{})
+	writeChallenge(w, challenge)
 }
 
 // POST /users:signInWithCode
@@ -53,7 +55,7 @@ func (h *Handler) signInWithCode(w http.ResponseWriter, r *http.Request) {
 		apierror.Write(w, e)
 		return
 	}
-	res, err := h.d.Users.SignInWithCode(r.Context(), kind, cc.Target, cc.Code, dev, h.meta(r))
+	res, err := h.d.Users.SignInWithCode(r.Context(), user.CodeCredential{Channel: kind, Target: cc.Target, CodeID: cc.CodeID, Code: cc.Code}, dev, h.meta(r))
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return

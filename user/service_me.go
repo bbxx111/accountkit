@@ -13,6 +13,7 @@ import (
 
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/user/code"
 	"github.com/bbxx111/accountkit/user/db"
 )
 
@@ -129,29 +130,41 @@ func (s *Service) anchorOfUser(ctx context.Context, q *db.Queries, userID string
 }
 
 // SendReauthenticationCode 向用户自己的锚点身份发送 REAUTH 码。
-func (s *Service) SendReauthenticationCode(ctx context.Context, p Principal, channel enum.IdentityKind, target string, meta Meta) error {
+func (s *Service) SendReauthenticationCode(ctx context.Context, p Principal, channel enum.IdentityKind, target string, meta Meta) (CodeChallenge, error) {
 	norm, _, _, err := s.normalizeTarget(channel, target)
 	if err != nil {
-		return err
+		return CodeChallenge{}, err
 	}
 	ok, err := s.anchorOfUser(ctx, s.d.Repo.Q(), p.UserID, channel, norm)
 	if err != nil {
-		return err
+		return CodeChallenge{}, err
 	}
 	if !ok {
-		return ErrNotAnchor
+		return CodeChallenge{}, ErrNotAnchor
 	}
-	return s.sendCode(ctx, channel, enum.PurposeReauth, norm, p.UserID, meta)
+	return s.sendCode(ctx, channel, enum.PurposeReauth, norm, code.Binding{UserID: p.UserID, SessionID: p.SessionID}, meta)
 }
 
 // Reauthenticate 校验 REAUTH 码，刷新会话的 auth_time 并重签 access。
-func (s *Service) Reauthenticate(ctx context.Context, p Principal, channel enum.IdentityKind, target, plainCode string, meta Meta) (TokenResult, error) {
+func (s *Service) Reauthenticate(ctx context.Context, p Principal, cred CodeCredential, meta Meta) (TokenResult, error) {
+	if err := validateCodeCredential(cred); err != nil {
+		return TokenResult{}, err
+	}
+	channel, target := cred.Channel, cred.Target
 	norm, _, _, err := s.normalizeTarget(channel, target)
 	if err != nil {
 		return TokenResult{}, err
 	}
 	digest, _ := s.d.Digester.Digest(norm)
 	ev := audit.Event{UserID: p.UserID, SessionID: p.SessionID, IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, RequestID: meta.RequestID}
+
+	if reason, err := s.verifyCode(ctx, channel, enum.PurposeReauth, norm, cred, code.Binding{UserID: p.UserID, SessionID: p.SessionID}); err != nil {
+		if !errors.Is(err, ErrUnavailable) {
+			ev.Type, ev.Result, ev.Reason = enum.EventReauthenticationFailed, enum.ResultFailure, reason
+			s.record(ctx, ev)
+		}
+		return TokenResult{}, err
+	}
 
 	ok, err := s.anchorOfUser(ctx, s.d.Repo.Q(), p.UserID, channel, norm)
 	if err != nil {
@@ -161,13 +174,6 @@ func (s *Service) Reauthenticate(ctx context.Context, p Principal, channel enum.
 		ev.Type, ev.Result, ev.Reason = enum.EventReauthenticationFailed, enum.ResultFailure, "NOT_ANCHOR"
 		s.record(ctx, ev)
 		return TokenResult{}, ErrNotAnchor
-	}
-	if reason, err := s.verifyCode(ctx, channel, enum.PurposeReauth, norm, plainCode); err != nil {
-		if !errors.Is(err, ErrUnavailable) {
-			ev.Type, ev.Result, ev.Reason = enum.EventReauthenticationFailed, enum.ResultFailure, reason
-			s.record(ctx, ev)
-		}
-		return TokenResult{}, err
 	}
 
 	var res TokenResult

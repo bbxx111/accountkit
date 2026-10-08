@@ -48,7 +48,7 @@ func TestServiceIntegrationEmailLifecycle(t *testing.T) {
 		t.Fatal("wrong reauthentication email purpose")
 	}
 	f.secrets = append(f.secrets, m.code)
-	reauth := f.call("POST", p.baseURL+"/v1/users/me:reauthenticate", access, map[string]any{"email": map[string]string{"target": m.target, "code": m.code}}, 200)
+	reauth := f.call("POST", p.baseURL+"/v1/users/me:reauthenticate", access, map[string]any{"email": map[string]string{"code_id": f.codeID(m.target), "target": m.target, "code": m.code}}, 200)
 	if _, ok := reauth["refresh_token"]; ok {
 		t.Fatal("reauthentication unexpectedly returns refresh token")
 	}

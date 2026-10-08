@@ -42,7 +42,7 @@ func TestSendBindCodeUsesBindPurposeAndQuota(t *testing.T) {
 	ctx := context.Background()
 	res := f.signIn(t, enum.IdentityPhone, phone1, dev1)
 	p := principalOf(t, f, res)
-	if err := f.svc.SendBindCode(ctx, p, enum.IdentityEmail, "Bind.Me@Shifang.co ", meta1); err != nil {
+	if err := f.sendBindCode(ctx, p, enum.IdentityEmail, "Bind.Me@Shifang.co ", meta1); err != nil {
 		t.Fatal(err)
 	}
 	if f.sent.code(email1) == "" {
@@ -52,14 +52,14 @@ func TestSendBindCodeUsesBindPurposeAndQuota(t *testing.T) {
 		t.Fatal("audit CODE_SENT")
 	}
 	// 冷却生效（与登录码共用额度）
-	if err := f.svc.SendBindCode(ctx, p, enum.IdentityEmail, email1, meta1); err == nil {
+	if err := f.sendBindCode(ctx, p, enum.IdentityEmail, email1, meta1); err == nil {
 		t.Fatal("cooldown must apply")
 	}
 	// 非锚点渠道 / 非法 target
-	if err := f.svc.SendBindCode(ctx, p, enum.IdentityWeChat, "x", meta1); !errors.Is(err, user.ErrInvalidArgument) && !errors.Is(err, user.ErrInvalidTarget) {
+	if err := f.sendBindCode(ctx, p, enum.IdentityWeChat, "x", meta1); !errors.Is(err, user.ErrInvalidArgument) && !errors.Is(err, user.ErrInvalidTarget) {
 		t.Fatalf("wechat channel: %v", err)
 	}
-	if err := f.svc.SendBindCode(ctx, p, enum.IdentityEmail, "not-an-email", meta1); !errors.Is(err, user.ErrInvalidTarget) {
+	if err := f.sendBindCode(ctx, p, enum.IdentityEmail, "not-an-email", meta1); !errors.Is(err, user.ErrInvalidTarget) {
 		t.Fatalf("bad target: %v", err)
 	}
 }
@@ -73,30 +73,26 @@ func TestBindWithCodeHappyPathIdempotentAndScopeAfterRefresh(t *testing.T) {
 		t.Fatalf("wechat sign-in: %+v %v", res, err)
 	}
 	p := principalOf(t, f, res)
-	if err := f.svc.SendBindCode(ctx, p, enum.IdentityPhone, phone2, meta1); err != nil {
+	if err := f.sendBindCode(ctx, p, enum.IdentityPhone, phone2, meta1); err != nil {
 		t.Fatal(err)
 	}
-	// 登录码不能用于绑定（用途隔离）。code.Store 的 codeKey 按 purpose 区分，但此刻 BIND 用途
-	// 下 phone2 仍有一个未消费、未过期的活码（上面 SendBindCode 签发的那个），因此这里递交的
-	// SIGN_IN 码比对的是同一把 BIND 键、不同的摘要 → MISMATCH（ErrInvalid），而不是键缺失
-	// （ErrExpired）；两者都是"这码不能用于绑定"的合法体现，与既有的
-	// TestReauthenticateUpdatesAuthTimeOnlyForAnchor 用途隔离断言（只判 err != nil，不钉死具体
-	// sentinel）同一取舍，避免对 code 包内部键控实现细节的偶然性做过度断言。
+	// 登录轮次不能用于绑定：即使同目标已有未消费的 BIND 轮次，SIGN_IN 的 code_id
+	// 也不能匹配或消费 BIND 轮次，统一返回 ErrExpired；不依赖两轮数字是否相同。
 	f.advance(61 * time.Second)
-	_ = f.svc.SendSignInCode(ctx, enum.IdentityPhone, phone2, meta1)
-	if _, _, err := f.svc.BindWithCode(ctx, p, enum.IdentityPhone, phone2, f.sent.code(phone2), meta1); !errors.Is(err, code.ErrInvalid) && !errors.Is(err, code.ErrExpired) {
+	_ = f.sendSignInCode(ctx, enum.IdentityPhone, phone2, meta1)
+	if _, _, err := f.svc.BindWithCode(ctx, p, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, f.sent.code(phone2)), meta1); !errors.Is(err, code.ErrInvalid) && !errors.Is(err, code.ErrExpired) {
 		t.Fatalf("SIGN_IN code must not bind: %v", err)
 	}
 	if !hasEvent(f.audit, enum.EventIdentityBindRejected, enum.ResultFailure) {
 		t.Fatal("audit IDENTITY_BIND_REJECTED")
 	}
 	f.advance(61 * time.Second)
-	_ = f.svc.SendBindCode(ctx, p, enum.IdentityPhone, phone2, meta1)
+	_ = f.sendBindCode(ctx, p, enum.IdentityPhone, phone2, meta1)
 	// 错码
-	if _, _, err := f.svc.BindWithCode(ctx, p, enum.IdentityPhone, phone2, "000000", meta1); !errors.Is(err, code.ErrInvalid) {
+	if _, _, err := f.svc.BindWithCode(ctx, p, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, "000000"), meta1); !errors.Is(err, code.ErrInvalid) {
 		t.Fatalf("wrong code: %v", err)
 	}
-	info, created, err := f.svc.BindWithCode(ctx, p, enum.IdentityPhone, phone2, f.sent.code(phone2), meta1)
+	info, created, err := f.svc.BindWithCode(ctx, p, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, f.sent.code(phone2)), meta1)
 	if err != nil || !created || info.Kind != enum.IdentityPhone || info.MaskedSubject != "+86 138****0002" {
 		t.Fatalf("bind: %+v %v %v", info, created, err)
 	}
@@ -117,8 +113,8 @@ func TestBindWithCodeHappyPathIdempotentAndScopeAfterRefresh(t *testing.T) {
 	}
 	// 幂等：同 subject 再绑到本账号 → 既有身份、created=false、不计上限
 	f.advance(61 * time.Second)
-	_ = f.svc.SendBindCode(ctx, p, enum.IdentityPhone, phone2, meta1)
-	again, created, err := f.svc.BindWithCode(ctx, p, enum.IdentityPhone, phone2, f.sent.code(phone2), meta1)
+	_ = f.sendBindCode(ctx, p, enum.IdentityPhone, phone2, meta1)
+	again, created, err := f.svc.BindWithCode(ctx, p, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, f.sent.code(phone2)), meta1)
 	if err != nil || created || again.ID != info.ID {
 		t.Fatalf("idempotent bind: %+v %v %v", again, created, err)
 	}
@@ -135,8 +131,8 @@ func TestBindWithCodeConflictAndKindLimit(t *testing.T) {
 	resB, _ := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:UB2@o1"}, dev2, meta1)
 	pB := principalOf(t, f, resB)
 	f.advance(61 * time.Second)
-	_ = f.svc.SendBindCode(ctx, pB, enum.IdentityPhone, phone1, meta1)
-	if _, _, err := f.svc.BindWithCode(ctx, pB, enum.IdentityPhone, phone1, f.sent.code(phone1), meta1); !errors.Is(err, user.ErrIdentityConflict) {
+	_ = f.sendBindCode(ctx, pB, enum.IdentityPhone, phone1, meta1)
+	if _, _, err := f.svc.BindWithCode(ctx, pB, f.credential(enum.PurposeBind, enum.IdentityPhone, phone1, f.sent.code(phone1)), meta1); !errors.Is(err, user.ErrIdentityConflict) {
 		t.Fatalf("conflict: %v", err)
 	}
 	if !hasEventReason(f.audit, enum.EventIdentityBindRejected, enum.ResultFailure, "IDENTITY_ALREADY_BOUND") {
@@ -152,23 +148,23 @@ func TestBindWithCodeConflictAndKindLimit(t *testing.T) {
 	resA := f.signIn(t, enum.IdentityPhone, phone1, dev1)
 	pA := principalOf(t, f, resA)
 	f.advance(61 * time.Second)
-	_ = f.svc.SendBindCode(ctx, pA, enum.IdentityPhone, phone2, meta1)
-	if _, _, err := f.svc.BindWithCode(ctx, pA, enum.IdentityPhone, phone2, f.sent.code(phone2), meta1); !errors.Is(err, user.ErrIdentityKindLimit) {
+	_ = f.sendBindCode(ctx, pA, enum.IdentityPhone, phone2, meta1)
+	if _, _, err := f.svc.BindWithCode(ctx, pA, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, f.sent.code(phone2)), meta1); !errors.Is(err, user.ErrIdentityKindLimit) {
 		t.Fatalf("kind limit: %v", err)
 	}
 	if !hasEventReason(f.audit, enum.EventIdentityBindRejected, enum.ResultFailure, "IDENTITY_KIND_LIMIT") {
 		t.Fatal("audit IDENTITY_KIND_LIMIT")
 	}
 	// 不同 kind 不受影响：A 绑邮箱成功
-	_ = f.svc.SendBindCode(ctx, pA, enum.IdentityEmail, email1, meta1)
-	if _, created, err := f.svc.BindWithCode(ctx, pA, enum.IdentityEmail, email1, f.sent.code(email1), meta1); err != nil || !created {
+	_ = f.sendBindCode(ctx, pA, enum.IdentityEmail, email1, meta1)
+	if _, created, err := f.svc.BindWithCode(ctx, pA, f.credential(enum.PurposeBind, enum.IdentityEmail, email1, f.sent.code(email1)), meta1); err != nil || !created {
 		t.Fatalf("email bind: %v", err)
 	}
 	// 冻结用户不能绑
 	mustExec(t, f, "UPDATE user_account SET state = 2 WHERE id = $1", resB.UserID)
 	f.advance(61 * time.Second)
-	_ = f.svc.SendBindCode(ctx, pB, enum.IdentityPhone, phone2, meta1)
-	if _, _, err := f.svc.BindWithCode(ctx, pB, enum.IdentityPhone, phone2, f.sent.code(phone2), meta1); !errors.Is(err, user.ErrUserFrozen) {
+	_ = f.sendBindCode(ctx, pB, enum.IdentityPhone, phone2, meta1)
+	if _, _, err := f.svc.BindWithCode(ctx, pB, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, f.sent.code(phone2)), meta1); !errors.Is(err, user.ErrUserFrozen) {
 		t.Fatalf("frozen: %v", err)
 	}
 }
@@ -272,8 +268,8 @@ func TestUnbindIdentityGuardsLastAnchorAndOwnership(t *testing.T) {
 		t.Fatalf("last anchor: %v", err)
 	}
 	// 绑一个邮箱后可以解绑手机
-	_ = f.svc.SendBindCode(ctx, p, enum.IdentityEmail, email1, meta1)
-	emailInfo, _, err := f.svc.BindWithCode(ctx, p, enum.IdentityEmail, email1, f.sent.code(email1), meta1)
+	_ = f.sendBindCode(ctx, p, enum.IdentityEmail, email1, meta1)
+	emailInfo, _, err := f.svc.BindWithCode(ctx, p, f.credential(enum.PurposeBind, enum.IdentityEmail, email1, f.sent.code(email1)), meta1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,8 +302,8 @@ func TestUnbindIdentityGuardsLastAnchorAndOwnership(t *testing.T) {
 	pB := principalOf(t, f, resB)
 	// A 解绑的 phone1 可被 B 绑定（部分唯一索引）
 	f.advance(61 * time.Second)
-	_ = f.svc.SendBindCode(ctx, pB, enum.IdentityPhone, phone1, meta1)
-	if _, created, err := f.svc.BindWithCode(ctx, pB, enum.IdentityPhone, phone1, f.sent.code(phone1), meta1); err != nil || !created {
+	_ = f.sendBindCode(ctx, pB, enum.IdentityPhone, phone1, meta1)
+	if _, created, err := f.svc.BindWithCode(ctx, pB, f.credential(enum.PurposeBind, enum.IdentityPhone, phone1, f.sent.code(phone1)), meta1); err != nil || !created {
 		t.Fatalf("rebind phone1 to B: %v", err)
 	}
 	// A 解绑的 WeChat UU1 也可被 C 绑定
@@ -342,8 +338,8 @@ func TestBindWithCodeRejectsNonActiveAccountStates(t *testing.T) {
 	p := principalOf(t, f, res)
 
 	mustExec(t, f, "UPDATE user_account SET state = 3 WHERE id = $1", res.UserID)
-	_ = f.svc.SendBindCode(ctx, p, enum.IdentityEmail, email1, meta1)
-	if _, _, err := f.svc.BindWithCode(ctx, p, enum.IdentityEmail, email1, f.sent.code(email1), meta1); !errors.Is(err, user.ErrInvalidToken) {
+	_ = f.sendBindCode(ctx, p, enum.IdentityEmail, email1, meta1)
+	if _, _, err := f.svc.BindWithCode(ctx, p, f.credential(enum.PurposeBind, enum.IdentityEmail, email1, f.sent.code(email1)), meta1); !errors.Is(err, user.ErrInvalidToken) {
 		t.Fatalf("pending deletion: %v", err)
 	}
 	if hasEvent(f.audit, enum.EventIdentityBound, enum.ResultSuccess) || hasEvent(f.audit, enum.EventIdentityBindRejected, enum.ResultFailure) {
@@ -352,8 +348,8 @@ func TestBindWithCodeRejectsNonActiveAccountStates(t *testing.T) {
 
 	f.advance(61 * time.Second)
 	mustExec(t, f, "UPDATE user_account SET state = 4 WHERE id = $1", res.UserID)
-	_ = f.svc.SendBindCode(ctx, p, enum.IdentityEmail, email1, meta1)
-	if _, _, err := f.svc.BindWithCode(ctx, p, enum.IdentityEmail, email1, f.sent.code(email1), meta1); !errors.Is(err, user.ErrInvalidToken) {
+	_ = f.sendBindCode(ctx, p, enum.IdentityEmail, email1, meta1)
+	if _, _, err := f.svc.BindWithCode(ctx, p, f.credential(enum.PurposeBind, enum.IdentityEmail, email1, f.sent.code(email1)), meta1); !errors.Is(err, user.ErrInvalidToken) {
 		t.Fatalf("deleted: %v", err)
 	}
 	if hasEvent(f.audit, enum.EventIdentityBound, enum.ResultSuccess) || hasEvent(f.audit, enum.EventIdentityBindRejected, enum.ResultFailure) {
@@ -394,8 +390,8 @@ func TestUnbindIdentityRejectsFrozenPendingDeletionAndDeletedAccounts(t *testing
 	ctx := context.Background()
 	res := f.signIn(t, enum.IdentityPhone, phone1, dev1)
 	p := principalOf(t, f, res)
-	_ = f.svc.SendBindCode(ctx, p, enum.IdentityEmail, email1, meta1)
-	emailInfo, _, err := f.svc.BindWithCode(ctx, p, enum.IdentityEmail, email1, f.sent.code(email1), meta1)
+	_ = f.sendBindCode(ctx, p, enum.IdentityEmail, email1, meta1)
+	emailInfo, _, err := f.svc.BindWithCode(ctx, p, f.credential(enum.PurposeBind, enum.IdentityEmail, email1, f.sent.code(email1)), meta1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,8 +424,8 @@ func TestUnbindLastTwoAnchorsConcurrently(t *testing.T) {
 	p := principalOf(t, f, res)
 	list, _ := f.svc.ListIdentities(ctx, res.UserID)
 	phoneID := list[0].ID
-	_ = f.svc.SendBindCode(ctx, p, enum.IdentityEmail, email1, meta1)
-	emailInfo, _, err := f.svc.BindWithCode(ctx, p, enum.IdentityEmail, email1, f.sent.code(email1), meta1)
+	_ = f.sendBindCode(ctx, p, enum.IdentityEmail, email1, meta1)
+	emailInfo, _, err := f.svc.BindWithCode(ctx, p, f.credential(enum.PurposeBind, enum.IdentityEmail, email1, f.sent.code(email1)), meta1)
 	if err != nil {
 		t.Fatal(err)
 	}

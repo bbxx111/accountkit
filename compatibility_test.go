@@ -130,10 +130,11 @@ func TestSourceDatabaseTakeover(t *testing.T) {
 		t.Fatalf("source refresh: %v", err)
 	}
 	// Old digest lookup must resolve the original account, never register a duplicate.
-	if err := a.Users().SendSignInCode(ctx, enum.IdentityPhone, f.Phone, user.Meta{IP: "127.0.0.1"}); err != nil {
+	challenge, err := a.Users().SendSignInCode(ctx, enum.IdentityPhone, f.Phone, user.Meta{IP: "127.0.0.1"})
+	if err != nil {
 		t.Fatal(err)
 	}
-	signed, err := a.Users().SignInWithCode(ctx, enum.IdentityPhone, f.Phone, sent.code(f.Phone), user.Device{ID: "takeover-device"}, user.Meta{IP: "127.0.0.1"})
+	signed, err := a.Users().SignInWithCode(ctx, user.CodeCredential{Channel: enum.IdentityPhone, Target: f.Phone, CodeID: challenge.CodeID, Code: sent.code(f.Phone)}, user.Device{ID: "takeover-device"}, user.Meta{IP: "127.0.0.1"})
 	if err != nil || signed.UserID != f.UserID || signed.IsNewUser {
 		t.Fatalf("source digest lookup created another account: user=%s new=%v err=%v", signed.UserID, signed.IsNewUser, err)
 	}

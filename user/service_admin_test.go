@@ -68,8 +68,8 @@ func TestFreezeRevokesSessionsSnapshotsAndAudits(t *testing.T) {
 	if _, err := f.svc.Refresh(ctx, a.RefreshToken, meta1); !errors.Is(err, user.ErrInvalidGrant) {
 		t.Fatalf("refresh of a revoked session: %v", err)
 	}
-	_ = f.svc.SendSignInCode(ctx, enum.IdentityPhone, phone1, meta1)
-	if _, err := f.svc.SignInWithCode(ctx, enum.IdentityPhone, phone1, f.sent.code(phone1), dev1, meta1); !errors.Is(err, user.ErrUserFrozen) {
+	_ = f.sendSignInCode(ctx, enum.IdentityPhone, phone1, meta1)
+	if _, err := f.svc.SignInWithCode(ctx, f.credential(enum.PurposeSignIn, enum.IdentityPhone, phone1, f.sent.code(phone1)), dev1, meta1); !errors.Is(err, user.ErrUserFrozen) {
 		t.Fatalf("login while frozen: %v", err)
 	}
 	// 审计：USER_FROZEN（reason 为管理员填写值）+ 每个会话一条 SESSION_REVOKED（reason USER_FROZEN），全部 ADMIN

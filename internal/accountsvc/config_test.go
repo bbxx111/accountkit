@@ -89,7 +89,7 @@ func TestConfigProductionDefaultsAndMigrate(t *testing.T) {
 		if c.Mode != "production" || c.HTTPAddr != "127.0.0.1:8080" || c.StartupTimeout != time.Minute || c.ShutdownTimeout != 30*time.Second || c.SMTP.TLSMode != "implicit" || c.SMTP.Timeout != 10*time.Second || c.AdminEnabled {
 			t.Fatal("unsafe service defaults")
 		}
-		if c.Library.Schema != "auth" || c.Library.KeyPrefix != "auth:" || len(c.IntrospectionClients) != 1 {
+		if c.Library.Schema != "account" || c.Library.KeyPrefix != "auth:" || len(c.IntrospectionClients) != 1 {
 			t.Fatal("library defaults/clients not loaded")
 		}
 	})
@@ -114,6 +114,35 @@ func TestConfigProductionDefaultsAndMigrate(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+}
+
+func TestLoadConfigSchema(t *testing.T) {
+	for _, command := range []string{"serve", "migrate"} {
+		for _, tc := range []struct{ name, value, want string }{
+			{"unset", "", "account"},
+			{"empty", "", "account"},
+			{"account", "account", "account"},
+			{"auth", "auth", "auth"},
+			{"custom", "custom_account", "custom_account"},
+		} {
+			t.Run(command+"/"+tc.name, func(t *testing.T) {
+				serveEnvironment(t)
+				t.Setenv("ACCOUNTKIT_AUTH_SCHEMA", tc.value)
+				if tc.name == "unset" {
+					if err := os.Unsetenv("ACCOUNTKIT_AUTH_SCHEMA"); err != nil {
+						t.Fatal(err)
+					}
+				}
+				c, err := LoadConfig(command)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if c.Library.Schema != tc.want || c.Library.KeyPrefix != "auth:" {
+					t.Fatalf("schema=%q prefix=%q, want schema=%q prefix=auth:", c.Library.Schema, c.Library.KeyPrefix, tc.want)
+				}
+			})
+		}
+	}
 }
 
 func TestConfigTLSMode(t *testing.T) {

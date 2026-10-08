@@ -63,7 +63,7 @@ func TestSignInRejectsIdentityRemovedWhileWaiting(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	first := f.signIn(t, enum.IdentityPhone, phone1, dev1)
-	if err := f.svc.SendSignInCode(ctx, enum.IdentityPhone, phone1, meta1); err != nil {
+	if err := f.sendSignInCode(ctx, enum.IdentityPhone, phone1, meta1); err != nil {
 		t.Fatal(err)
 	}
 	plain := f.sent.code(phone1)
@@ -74,7 +74,7 @@ func TestSignInRejectsIdentityRemovedWhileWaiting(t *testing.T) {
 	tx := identityRaceLock(t, ctx, f, first.UserID, "")
 	done := make(chan error, 1)
 	go func() {
-		_, err := f.svc.SignInWithCode(ctx, enum.IdentityPhone, phone1, plain, user.Device{ID: "stale-login"}, meta1)
+		_, err := f.svc.SignInWithCode(ctx, f.credential(enum.PurposeSignIn, enum.IdentityPhone, phone1, plain), user.Device{ID: "stale-login"}, meta1)
 		done <- err
 	}()
 	waitIdentityRaceBlocked(t, ctx, f, tx, done)
@@ -105,7 +105,7 @@ func TestReauthenticateRejectsIdentityRemovedWhileWaiting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := f.svc.SendReauthenticationCode(ctx, p, enum.IdentityPhone, phone1, meta1); err != nil {
+	if err := f.sendReauthenticationCode(ctx, p, enum.IdentityPhone, phone1, meta1); err != nil {
 		t.Fatal(err)
 	}
 	plain := f.sent.code(phone1)
@@ -116,7 +116,7 @@ func TestReauthenticateRejectsIdentityRemovedWhileWaiting(t *testing.T) {
 	tx := identityRaceLock(t, ctx, f, p.UserID, p.SessionID)
 	done := make(chan error, 1)
 	go func() {
-		_, err := f.svc.Reauthenticate(ctx, p, enum.IdentityPhone, phone1, plain, meta1)
+		_, err := f.svc.Reauthenticate(ctx, p, f.credential(enum.PurposeReauth, enum.IdentityPhone, phone1, plain), meta1)
 		done <- err
 	}()
 	waitIdentityRaceBlocked(t, ctx, f, tx, done)

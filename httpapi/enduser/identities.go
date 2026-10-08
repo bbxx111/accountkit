@@ -32,11 +32,12 @@ func (h *Handler) sendBindCode(w http.ResponseWriter, r *http.Request) {
 		apierror.WriteInternal(w, h.d.Logger, requestIDFrom(r.Context()), errors.New("enduser: Deps.ClientIP returned empty"))
 		return
 	}
-	if err := h.d.Users.SendBindCode(r.Context(), p, ch, req.Target, meta); err != nil {
+	challenge, err := h.d.Users.SendBindCode(r.Context(), p, ch, req.Target, meta)
+	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
 	}
-	apierror.WriteJSON(w, http.StatusOK, struct{}{})
+	writeChallenge(w, challenge)
 }
 
 // GET /users/me/identities
@@ -83,7 +84,7 @@ func (h *Handler) bindIdentity(w http.ResponseWriter, r *http.Request) {
 			apierror.Write(w, e)
 			return
 		}
-		info, created, err = h.d.Users.BindWithCode(r.Context(), p, kind, cc.Target, cc.Code, h.meta(r))
+		info, created, err = h.d.Users.BindWithCode(r.Context(), p, user.CodeCredential{Channel: kind, Target: cc.Target, CodeID: cc.CodeID, Code: cc.Code}, h.meta(r))
 	} else {
 		ic, e := cred.idp()
 		if e != nil {

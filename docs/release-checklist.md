@@ -40,9 +40,9 @@
 - [x] PHONE/EMAIL 的登录、绑定、重新认证和换绑全部要求 `code_id`，Go/HTTP 调用者和 accountsvc 同步升级，旧无标识验证旁路已移除。
 - [x] 核对默认每轮 5 次、跨用途/轮次 10 次/15m 预算，Redis 原子消费、重发/清理竞争、多版本窗口和别名去重用例实际通过。
 - [x] 批量资料只有公开字段，两个注销入口共用 `BeforeDelete`，ACTIVE 账号锁序、回调错误/panic、导入冲突和同事务回滚在真实 PostgreSQL 执行。
-- [ ] 完整库及服务 build/vet/race、sqlc 生成、迁移历史、必需测试门禁和恢复 seed/verify/source-unchanged 对最终候选代码通过，未以 skip 代替。
+- [x] 完整库及服务 build/vet/race、sqlc 生成、迁移历史、必需测试门禁和恢复 seed/verify/source-unchanged 对最终候选代码通过，未以 skip 代替；main 候选 e19af85 的在线 verify #37814180599 全部成功。
 - [x] 保存 Go/HTTP/Redis 升级与回退步骤：同实例停止旧验证码写/校验、同步客户端、不清空整个 Redis；HMAC 退役等待失败预算窗口。
-- [ ] 单独取得新固定版本发布授权，不修改 `v0.1.0`；新 tag 指向已验证提交，再用无本地 replace 的独立宿主从远端消费全部公开契约。
+- [x] 单独取得新固定版本发布授权，不修改 `v0.1.0`；v0.2.0 tag 固定到 e19af8542f099f14103627140c0fe23f14c99b7e，两个独立宿主从远端无 replace 消费通过。
 
 ## 嵌入式产品上线
 

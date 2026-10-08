@@ -4,11 +4,11 @@
 
 ## 开发版默认 schema 调整
 
-当前开发代码在 `Config.Schema` 未指定或为空时采用 `account`；已发布 `v0.1.0` 的默认值为 `auth`。显式合法 schema（包括 `auth`）继续按配置使用，宿主通过 `Config.Schema` 或带宿主前缀的 `AUTH_SCHEMA` 设置。库与 accountsvc 共用默认值，连接池仍须通过 `PoolConfig` 配置匹配的 search_path。环境变量名称 `AUTH_SCHEMA` 和 Redis 默认前缀 `auth:` 保持不变。
+`v0.2.0` 在 `Config.Schema` 未指定或为空时采用 `account`；`v0.1.0` 的默认值为 `auth`。升级已有实例须显式保留原 schema。显式合法 schema（包括 `auth`）继续按配置使用，宿主通过 `Config.Schema` 或带宿主前缀的 `AUTH_SCHEMA` 设置。库与 accountsvc 共用默认值，连接池仍须通过 `PoolConfig` 配置匹配的 search_path。环境变量名称 `AUTH_SCHEMA` 和 Redis 默认前缀 `auth:` 保持不变。
 
 ## 验证码轮次契约升级
 
-`add-host-account-contracts` 修改 Go、HTTP 和短期 Redis 验证码格式；当前开发代码尚未形成新固定版本，不能将以下能力视为已发布的 `v0.1.0` 接口。发布状态和本轮实际检查见[验收记录](../openspec/changes/add-host-account-contracts/verification.md)。JWT、refresh、身份密文、数据库结构、冻结迁移和发送器签名保持。
+`v0.2.0` 的 `add-host-account-contracts` 修改 Go、HTTP 和短期 Redis 验证码格式；以下能力已在该固定版本发布，不属于 `v0.1.0` 接口。发布状态和本轮实际检查见[验收记录](../openspec/changes/add-host-account-contracts/verification.md)。JWT、refresh、身份密文、数据库结构、冻结迁移和发送器签名保持。
 
 | 旧调用 | 新调用 |
 |---|---|

@@ -114,7 +114,7 @@
 - WithActiveUsers 拒绝空 ID 集合/nil 回调，避免作为裸事务入口；宿主空批次自行跳过。
 - BeforeDelete 仅业务 ErrDeletionBlocked 参与领域分类，其他 hook 原因不解包而固定 500；代价是宿主不能对任意 hook 底层原因做 errors.Is/As，WithActiveUsers 原错误链/panic 保持。
 
-### 未执行项
+### 实施阶段未执行项（后续发布结果见下节）
 
 - task 6.5：新固定版本、tag/发布以及无本地 replace 的远端宿主消费尚未执行，必须先取得单独发布授权；v0.1.0 未修改。当前检查不能声称新版本已可远端消费。
 - 未推送、合并、归档或产品部署；本地结果不等于在线 CI 或宿主真实网关/服务商/IdP/产品环境验收。
@@ -125,6 +125,26 @@
 用户已明确授权“发布新版本”。选择尚未占用的 `v0.2.0`，包含本变更和已实施的默认 account schema，保留 v0.1.0 tag。按项目默认 PR/独立 merge commit 流程进入 develop 和 main，最终 main 候选 CI 通过后发布新 tag/Release，再验证无本地 replace 的远端宿主消费。OpenSpec 归档和产品部署不在此次发布动作内。
 
 实施提交为 `61cfa0a6cfb5d857d81154bc221910e89004350c`，发布说明保存于 `docs/releases/v0.2.0.md`。当前正准备发布候选，最终版本 SHA、CI、PR、远端消费和原生退出码将在动作实际完成后补充，不预先勾选 task 6.5。
+
+### 已完成发布与远端消费
+
+| 项目 | 实际结果 |
+|---|---|
+| 功能 PR | [#1](https://github.com/bbxx111/accountkit/pull/1)，以独立 merge commit `42e125f3aa001c5ecd37fc331851f8dfb5a5c2a9` 合入 develop；两个父提交保留 |
+| 发布 PR | [#2](https://github.com/bbxx111/accountkit/pull/2)，以独立 merge commit 合入 main |
+| 最终发布 SHA | `e19af8542f099f14103627140c0fe23f14c99b7e`，main 与已验证 develop 文件树一致 |
+| 最终候选在线 CI | [verify #37814180599](https://github.com/bbxx111/accountkit/actions/runs/37814180599)，head SHA 与发布 SHA 一致，所有步骤 success，含生成/完整库与恢复/严格服务门禁 |
+| 新固定版本 | annotated `v0.2.0`；远端 tag 对象 `050a83d3522c389b72706e0f98ab12a8f693d8cd` 解引用为上述 SHA，git tag/push/ls-remote 均 exit 0 |
+| GitHub Release | [v0.2.0](https://github.com/bbxx111/accountkit/releases/tag/v0.2.0)，已发布，非 draft、非 prerelease |
+| 根门面独立宿主 | 公共远端 `go get ...@v0.2.0` exit 0、`GOWORK=off go build ./...` exit 0；编译 EndUserHandler、CodeCredential/CodeChallenge、三用途/换绑、BatchPublicProfiles、BeforeDelete、WithActiveUsers、ImportAccounts |
+| 直接 enduser 宿主 | 远端 go get/build 均 exit 0；编译 enduser.New/Router 与 Service/IdentityReplacer 实际接口 |
+| 消费版本核验 | 两个 `go list -m -json` 均 Version=v0.2.0、无 Replace；GOWORK=off，未依赖本地源码或 accountsvc 进程 |
+
+功能候选 push/PR CI #37811165586/#37811285344、develop push/发布 PR CI #37812505118/#37812513191 也全部成功。发布前核验实施时 233 项受测源码/脚本未发生语义变化；分支 checkout 对门禁 .txt 的 CRLF 转换经原受测 LF hash 核对后恢复，不改内容。
+
+发布与消费的原始 API 结果、版本JSON、go.mod/go.sum、源码和命令日志保留于 ignored `.test-output/v0.2-release/`。task 6.5 仅在新 tag/Release 和两宿主实际消费全部完成后勾选，现为 24/24；OpenSpec change 仍未归档。
+
+已发布 v0.1.0 的 tag 对象/提交保持 `29ab9c22fcb8d2307bee75ea7c09287f0a517c87` / `48603d6d349c57910328d393d5e17decec934f11`，没有重建、移动或覆盖。GitHub Release 复用本版本说明；没有发布镜像/二进制或执行产品部署，产品实际环境/服务商/网关验收仍由宿主负责。
 
 - 原库详细计划已迁入 accountkit，迁移前核对任务正文一致，再将宿主示例策略改为通用可配置表达；duopandian 移除重复库计划并引用外部 Change。
 

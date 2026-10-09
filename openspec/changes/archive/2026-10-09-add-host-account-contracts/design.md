@@ -44,7 +44,7 @@
 
 ### 4 公开 Go 契约
 
-具体签名和测试步骤以 [详细计划](../../../docs/superpowers/plans/2026-10-08-host-account-contracts.md) 为准：
+具体签名和测试步骤以 [详细计划](../../../../docs/superpowers/plans/2026-10-08-host-account-contracts.md) 为准：
 
 - CodeChallenge 包含 CodeID/ExpireTime；CodeCredential 包含 Channel/Target/CodeID/Code。发码返回结果，登录、绑定、重新认证和换绑接受完整凭证；终端用户接口、可选换绑接口、示例、accountsvc 同步迁移。
 - BatchPublicProfiles 批量返回 ID/DisplayName/State，不返回身份字段。未知账号略去，注销账号清空显示名，宿主在业务范围过滤后调用，不创建额外公共 HTTP API。

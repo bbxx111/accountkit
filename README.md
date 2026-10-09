@@ -260,7 +260,7 @@ HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额
 
 远程仓库：https://github.com/bbxx111/accountkit.git
 
-Go module：github.com/bbxx111/accountkit。`v0.2.0` 已发布，使用 `go get github.com/bbxx111/accountkit@v0.2.0` 接入；破坏性验证码协议和默认 schema 升级见[发布说明](docs/releases/v0.2.0.md)。固定提交 `e19af85` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/37814180599)已通过，两个独立宿主已确认无本地 replace 的远端拉取与构建，涵盖根门面和直接 enduser 接口。[验收记录](openspec/changes/add-host-account-contracts/verification.md)保存本轮证据；发布及上线要求见[检查表](docs/release-checklist.md)。`v0.1.0` 历史说明继续保留，tag 不变。
+Go module：github.com/bbxx111/accountkit。`v0.2.0` 已发布，使用 `go get github.com/bbxx111/accountkit@v0.2.0` 接入；破坏性验证码协议和默认 schema 升级见[发布说明](docs/releases/v0.2.0.md)。固定提交 `e19af85` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/37814180599)已通过，两个独立宿主已确认无本地 replace 的远端拉取与构建，涵盖根门面和直接 enduser 接口。[验收记录](openspec/changes/archive/2026-10-09-add-host-account-contracts/verification.md)保存本轮证据；发布及上线要求见[检查表](docs/release-checklist.md)。`v0.1.0` 历史说明继续保留，tag 不变。
 
 库版本发布与各产品生产上线分别验收。产品实际环境接入、真实服务商与预发布升级/恢复仍待完成；产品各自配置 schema、Redis 前缀、issuer/audience 和密钥，并承担自己的匿名化与网关接入责任。当前未附开源 LICENSE，本次版本供自有产品接入，尚未向外部使用方定义复用许可。
 

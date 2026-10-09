@@ -8,7 +8,7 @@
 
 ## 验证码轮次契约升级
 
-`v0.2.0` 的 `add-host-account-contracts` 修改 Go、HTTP 和短期 Redis 验证码格式；以下能力已在该固定版本发布，不属于 `v0.1.0` 接口。发布状态和本轮实际检查见[验收记录](../openspec/changes/add-host-account-contracts/verification.md)。JWT、refresh、身份密文、数据库结构、冻结迁移和发送器签名保持。
+`v0.2.0` 的 `add-host-account-contracts` 修改 Go、HTTP 和短期 Redis 验证码格式；以下能力已在该固定版本发布，不属于 `v0.1.0` 接口。发布状态和本轮实际检查见[验收记录](../openspec/changes/archive/2026-10-09-add-host-account-contracts/verification.md)。JWT、refresh、身份密文、数据库结构、冻结迁移和发送器签名保持。
 
 | 旧调用 | 新调用 |
 |---|---|

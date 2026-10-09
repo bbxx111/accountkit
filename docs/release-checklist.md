@@ -35,7 +35,7 @@
 
 ## 宿主账号契约新版本门禁
 
-以下条目用于 `add-host-account-contracts` 的 `v0.2.0` 发布，历史 `v0.1.0` 勾选不能替代。发布授权已取得，说明见 [v0.2.0](releases/v0.2.0.md)，本轮实际执行结果与最终 SHA/CI 集中在[变更验收记录](../openspec/changes/add-host-account-contracts/verification.md)。
+以下条目用于 `add-host-account-contracts` 的 `v0.2.0` 发布，历史 `v0.1.0` 勾选不能替代。发布授权已取得，说明见 [v0.2.0](releases/v0.2.0.md)，本轮实际执行结果与最终 SHA/CI 集中在[变更验收记录](../openspec/changes/archive/2026-10-09-add-host-account-contracts/verification.md)。
 
 - [x] PHONE/EMAIL 的登录、绑定、重新认证和换绑全部要求 `code_id`，Go/HTTP 调用者和 accountsvc 同步升级，旧无标识验证旁路已移除。
 - [x] 核对默认每轮 5 次、跨用途/轮次 10 次/15m 预算，Redis 原子消费、重发/清理竞争、多版本窗口和别名去重用例实际通过。

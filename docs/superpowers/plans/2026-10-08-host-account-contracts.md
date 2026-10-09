@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、Chi、pgx/v5、PostgreSQL、go-redis/v9、Lua、sqlc 1.31.1、miniredis。
 
-**Spec:** [OpenSpec Change](../../../openspec/changes/add-host-account-contracts/proposal.md) 与 [技术设计](../../../openspec/changes/add-host-account-contracts/design.md)；全部规格位于该 Change 的 specs/，任务状态以 tasks.md 为准。
+**Spec:** [OpenSpec Change](../../../openspec/changes/archive/2026-10-09-add-host-account-contracts/proposal.md) 与 [技术设计](../../../openspec/changes/archive/2026-10-09-add-host-account-contracts/design.md)；全部规格位于该 Change 的 specs/，任务状态以 tasks.md 为准。
 
 **工作仓库:** accountkit。下面 Files 均相对于本仓库；执行者读取本仓库 AGENTS.md 和 Change 的完整工件。宿主接入在宿主仓库单独处理。
 
@@ -159,6 +159,6 @@ if countAfterRollback != 0 { t.Fatal("failed import left rows behind") }
 
 ## 自审与交接
 
-需求以本仓库 openspec/changes/add-host-account-contracts/ 的 proposal、design、全部 specs 和 tasks 为准。任务 1/2 实现 verification-challenges、verification-delivery 和 code-key-rotation 增量；任务 3/4 实现 host-account-contracts；任务 5 实现 legacy-account-import；任务 6 完成 embedded-auth-package 的独立消费、兼容说明和发布门禁。每轮默认 5 次保持，测试中的 3 次为显式宿主策略。
+需求以本仓库 openspec/changes/archive/2026-10-09-add-host-account-contracts/ 的 proposal、design、全部 specs 和 tasks 为准。任务 1/2 实现 verification-challenges、verification-delivery 和 code-key-rotation 增量；任务 3/4 实现 host-account-contracts；任务 5 实现 legacy-account-import；任务 6 完成 embedded-auth-package 的独立消费、兼容说明和发布门禁。每轮默认 5 次保持，测试中的 3 次为显式宿主策略。
 
 本计划只定义实施步骤，不表示任何代码、数据库或发布任务已完成。验收统一写入该 Change 的 verification.md，不在其他仓库保留本库实施结果。

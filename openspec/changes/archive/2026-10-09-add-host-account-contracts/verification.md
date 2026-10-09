@@ -142,9 +142,21 @@
 
 功能候选 push/PR CI #37811165586/#37811285344、develop push/发布 PR CI #37812505118/#37812513191 也全部成功。发布前核验实施时 233 项受测源码/脚本未发生语义变化；分支 checkout 对门禁 .txt 的 CRLF 转换经原受测 LF hash 核对后恢复，不改内容。
 
-发布与消费的原始 API 结果、版本JSON、go.mod/go.sum、源码和命令日志保留于 ignored `.test-output/v0.2-release/`。task 6.5 仅在新 tag/Release 和两宿主实际消费全部完成后勾选，现为 24/24；OpenSpec change 仍未归档。
+发布与消费的原始 API 结果、版本JSON、go.mod/go.sum、源码和命令日志保留于 ignored `.test-output/v0.2-release/`。task 6.5 仅在新 tag/Release 和两宿主实际消费全部完成后勾选，发布阶段为 24/24；后续已在 2026-10-09 归档，见下节。
 
 已发布 v0.1.0 的 tag 对象/提交保持 `29ab9c22fcb8d2307bee75ea7c09287f0a517c87` / `48603d6d349c57910328d393d5e17decec934f11`，没有重建、移动或覆盖。GitHub Release 复用本版本说明；没有发布镜像/二进制或执行产品部署，产品实际环境/服务商/网关验收仍由宿主负责。
+
+## 归档与提交核验（2026-10-09）
+
+用户明确要求“归档，并提交”。24 项任务和全部规划工件已完成，本轮在 `docs/archive-host-account-contracts` 文档分支处理，归档目录为 `openspec/changes/archive/2026-10-09-add-host-account-contracts/`，保留 `.openspec.yaml` 与本验收记录。
+
+- 读取 archive/specs CLI 指令及当前规格规则，内联同步六项增量；新增 verification-challenges、host-account-contracts、legacy-account-import 三项主规格，更新 code-key-rotation、embedded-auth-package、verification-delivery 三项。共新增 12 个要求、修改 8 个要求，没有删除或重命名。
+- 每个修改要求的既有场景均保留，三份既有主规格的未涉及要求逐字保留；六份主规格逐项包含完整增量，没有待同步内容。`openspec validate --specs --strict` 退出 0，15 passed、0 failed。
+- 同步已核验后执行 `openspec archive add-host-account-contracts --yes --skip-specs --json`，原生退出 0；skip-specs 仅避免 CLI 二次写入已完成同步的主规格，不代表跳过同步或校验。源/目标绝对路径事先确认在本仓库，无覆盖已有归档；原活动目录移走且元数据保留。
+- 修复 README、兼容指南、发布检查、版本说明和实施计划的归档路径，并调整归档 design 中计划链接的相对层级；46 个本轮涉及的仓库 Markdown 链接均解析为存在路径，没有旧活动路径残留。
+- GitHub Release 的验收链接改为固定到发布记录提交 `4368eb70c579160f7802332354e7fefede55a34e`，已通过 API 确认该文件存在；避免本次仅本地提交而将外部链接提前指向未推送的归档目录。仅修复 body 链接，Release/tag/发布状态不变。
+- `openspec validate --all --strict` 退出 0，15 passed、0 failed；`openspec list --json` 显示无活动变更，`git diff --check` 退出 0。本轮纯规格/归档/引用维护，没有 Go/SQL/module/验证脚本变化，因此未重跑构建与真实依赖测试，也未把历史测试称为本轮测试。
+- 归档操作和引用核验原始材料在 ignored `.test-output/archive-host-account-contracts/`。本轮按请求仅本地提交，不推送、不合并，不创建或改写版本 tag，不执行产品部署。
 
 - 原库详细计划已迁入 accountkit，迁移前核对任务正文一致，再将宿主示例策略改为通用可配置表达；duopandian 移除重复库计划并引用外部 Change。
 

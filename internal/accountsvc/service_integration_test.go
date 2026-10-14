@@ -171,6 +171,9 @@ func TestServiceIntegrationStartupSafety(t *testing.T) {
 	f := newIntegration(t)
 	// Both processes start from an absent schema and use the same migration locks.
 	minimal := map[string]string{"ACCOUNTSVC_SMTP_HOST": "", "ACCOUNTSVC_SMTP_PORT": "", "ACCOUNTSVC_SMTP_FROM": "", "ACCOUNTSVC_SMTP_USERNAME": "", "ACCOUNTSVC_SMTP_PASSWORD": "", "ACCOUNTSVC_INTROSPECTION_CLIENTS": "", "ACCOUNTSVC_TLS_CERT_FILE": "", "ACCOUNTSVC_TLS_KEY_FILE": ""}
+	minimal["ACCOUNTKIT_ENABLED_IDENTITY_KINDS"] = "PHONE,WECHAT"
+	minimal["ACCOUNTKIT_REQUIRED_IDENTITY_KINDS"] = "PHONE"
+	minimal["ACCOUNTKIT_WECHAT_APPS"] = ""
 	var wg sync.WaitGroup
 	errs := make(chan error, 2)
 	for range 2 {
@@ -188,7 +191,7 @@ func TestServiceIntegrationStartupSafety(t *testing.T) {
 	}
 	var version int
 	var dirty bool
-	if err := f.pool.QueryRow(context.Background(), "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil || version != 1 || dirty {
+	if err := f.pool.QueryRow(context.Background(), "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil || version != 2 || dirty {
 		t.Fatalf("migration state version=%d dirty=%v err=%v", version, dirty, err)
 	}
 	p := f.start(nil)
@@ -202,6 +205,9 @@ func TestServiceIntegrationStartupSafety(t *testing.T) {
 	}
 	if _, err := f.command(nil, "serve"); err == nil {
 		t.Fatal("unknown key version started service")
+	}
+	if _, err := f.command(minimal, "migrate"); err == nil {
+		t.Fatal("migration ignored unknown key version")
 	}
 	var keyVersion int
 	if err := f.pool.QueryRow(context.Background(), "SELECT cipher_key_version FROM identity LIMIT 1").Scan(&keyVersion); err != nil || keyVersion != 99 {

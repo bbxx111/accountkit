@@ -15,12 +15,14 @@ import (
 
 // Event 是一条审计事件。
 type Event struct {
-	Type         enum.EventType
-	Actor        enum.ActorKind
-	Result       enum.Result
-	Reason       string
-	UserID       string
-	SessionID    string
+	Type      enum.EventType
+	Actor     enum.ActorKind
+	Result    enum.Result
+	Reason    string
+	UserID    string
+	SessionID string
+	// FlowID 是内部 f_ 流程资源 ID，不是 sign_in_completion_token 或凭证摘要。
+	FlowID       string
 	IdentityKind enum.IdentityKind
 	SubjectHint  string
 	IP           string

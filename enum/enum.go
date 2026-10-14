@@ -92,13 +92,14 @@ const (
 	PurposeSignIn                      // 1
 	PurposeBind                        // 2
 	PurposeReauth                      // 3
+	PurposeSignInComplete              // 4
 )
 
-var codePurposeNames = [...]string{"UNSPECIFIED", "SIGN_IN", "BIND", "REAUTH"}
-var codePurposeKeys = [...]string{"unspecified", "signin", "bind", "reauth"}
+var codePurposeNames = [...]string{"UNSPECIFIED", "SIGN_IN", "BIND", "REAUTH", "SIGN_IN_COMPLETE"}
+var codePurposeKeys = [...]string{"unspecified", "signin", "bind", "reauth", "signin_complete"}
 
 func (p CodePurpose) String() string { return name(codePurposeNames[:], int(p)) }
-func (p CodePurpose) Valid() bool    { return p >= PurposeSignIn && p <= PurposeReauth }
+func (p CodePurpose) Valid() bool    { return p >= PurposeSignIn && p <= PurposeSignInComplete }
 
 // Key 返回 Redis 键中使用的小写片段。
 func (p CodePurpose) Key() string { return name(codePurposeKeys[:], int(p)) }
@@ -135,29 +136,33 @@ func (r Result) Valid() bool    { return r == ResultSuccess || r == ResultFailur
 type EventType int16
 
 const (
-	EventTypeUnspecified         EventType = iota
-	EventCodeSent                          // 1
-	EventCodeSendRejected                  // 2
-	EventCodeSendFailed                    // 3
-	EventSignIn                            // 4
-	EventSignInFailed                      // 5
-	EventReauthenticated                   // 6
-	EventReauthenticationFailed            // 7
-	EventTokenRefreshed                    // 8
-	EventRefreshRejected                   // 9
-	EventRefreshReuseDetected              // 10
-	EventSessionRevoked                    // 11
-	EventIdentityBound                     // 12
-	EventIdentityBindRejected              // 13
-	EventIdentityUnbound                   // 14
-	EventIdentityRevealed                  // 15
-	EventUserDeleted                       // 16
-	EventUserUndeleted                     // 17
-	EventUserPurged                        // 18
-	EventUserFrozen                        // 19
-	EventUserUnfrozen                      // 20
-	EventAdminForbidden                    // 21
-	EventIdentityReplaceRejected           // 22
+	EventTypeUnspecified               EventType = iota
+	EventCodeSent                                // 1
+	EventCodeSendRejected                        // 2
+	EventCodeSendFailed                          // 3
+	EventSignIn                                  // 4
+	EventSignInFailed                            // 5
+	EventReauthenticated                         // 6
+	EventReauthenticationFailed                  // 7
+	EventTokenRefreshed                          // 8
+	EventRefreshRejected                         // 9
+	EventRefreshReuseDetected                    // 10
+	EventSessionRevoked                          // 11
+	EventIdentityBound                           // 12
+	EventIdentityBindRejected                    // 13
+	EventIdentityUnbound                         // 14
+	EventIdentityRevealed                        // 15
+	EventUserDeleted                             // 16
+	EventUserUndeleted                           // 17
+	EventUserPurged                              // 18
+	EventUserFrozen                              // 19
+	EventUserUnfrozen                            // 20
+	EventAdminForbidden                          // 21
+	EventIdentityReplaceRejected                 // 22
+	EventSignInCompletionStarted                 // 23
+	EventSignInCompletionProofVerified           // 24
+	EventSignInCompletionCompleted               // 25
+	EventSignInCompletionRejected                // 26
 )
 
 var eventTypeNames = [...]string{
@@ -165,10 +170,11 @@ var eventTypeNames = [...]string{
 	"REAUTHENTICATED", "REAUTHENTICATION_FAILED", "TOKEN_REFRESHED", "REFRESH_REJECTED", "REFRESH_REUSE_DETECTED",
 	"SESSION_REVOKED", "IDENTITY_BOUND", "IDENTITY_BIND_REJECTED", "IDENTITY_UNBOUND", "IDENTITY_REVEALED",
 	"USER_DELETED", "USER_UNDELETED", "USER_PURGED", "USER_FROZEN", "USER_UNFROZEN", "ADMIN_FORBIDDEN", "IDENTITY_REPLACE_REJECTED",
+	"SIGN_IN_COMPLETION_STARTED", "SIGN_IN_COMPLETION_PROOF_VERIFIED", "SIGN_IN_COMPLETION_COMPLETED", "SIGN_IN_COMPLETION_REJECTED",
 }
 
 func (e EventType) String() string { return name(eventTypeNames[:], int(e)) }
-func (e EventType) Valid() bool    { return e >= EventCodeSent && e <= EventIdentityReplaceRejected }
+func (e EventType) Valid() bool    { return e >= EventCodeSent && e <= EventSignInCompletionRejected }
 
 func ParseEventType(v string) (EventType, error) {
 	i, err := parse(eventTypeNames[:], v, "EventType")
@@ -191,4 +197,24 @@ func parse(names []string, v, typ string) (int, error) {
 		}
 	}
 	return 0, fmt.Errorf("enum: invalid %s %q", typ, v)
+}
+
+type FlowState int16
+
+const (
+	FlowStateUnspecified FlowState = iota
+	FlowPending
+	FlowVerified
+	FlowCompleted
+	FlowExpired
+	FlowRejected
+)
+
+var flowStateNames = [...]string{"UNSPECIFIED", "PENDING", "VERIFIED", "COMPLETED", "EXPIRED", "REJECTED"}
+
+func (s FlowState) String() string { return name(flowStateNames[:], int(s)) }
+func (s FlowState) Valid() bool    { return s >= FlowPending && s <= FlowRejected }
+func ParseFlowState(v string) (FlowState, error) {
+	i, err := parse(flowStateNames[:], v, "FlowState")
+	return FlowState(i), err
 }

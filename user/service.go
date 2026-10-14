@@ -40,17 +40,24 @@ const maxDeviceField = 64
 
 // Deps 是 Service 的依赖。
 type Deps struct {
-	Repo       *Repo
-	Codes      *code.Store
-	Revocation *revocation.Set
-	Grace      *grace.Cache
-	Signer     *tokens.Signer
-	Cipher     *pii.Cipher
-	Digester   *pii.Digester
-	SMS        sender.SMSSender
-	Email      sender.EmailSender
-	Audit      audit.Recorder
-	Logger     *slog.Logger
+	// IdentityFlowContext 可补充宿主稳定实例标识；内置数据库/Redis/JWT域仍自动绑定。
+	IdentityFlowContext string
+	// ProviderConfiguration 是自定义 IdP 验证器的稳定配置标识，应用允许列表变化时应变化。
+	// 内置验证器自动提供 PolicyFingerprint；此字段不含秘密。
+	ProviderConfiguration string
+	EnabledIdentityKinds  []enum.IdentityKind
+	RequiredIdentityKinds []enum.IdentityKind
+	Repo                  *Repo
+	Codes                 *code.Store
+	Revocation            *revocation.Set
+	Grace                 *grace.Cache
+	Signer                *tokens.Signer
+	Cipher                *pii.Cipher
+	Digester              *pii.Digester
+	SMS                   sender.SMSSender
+	Email                 sender.EmailSender
+	Audit                 audit.Recorder
+	Logger                *slog.Logger
 
 	// WeChat / Apple 为 nil 表示未启用对应 IdP。
 	WeChat idp.WeChatVerifier
@@ -78,10 +85,53 @@ type Deps struct {
 }
 
 // Service 持有用户域的全部业务规则。
-type Service struct{ d Deps }
+type Service struct {
+	d           Deps
+	policy      *IdentityPolicy
+	flowContext string
+	flowPolicy  string
+}
+
+// IdentityPolicy 返回策略值的副本，避免调用方整体覆盖服务内的策略。
+func (s *Service) IdentityPolicy() *IdentityPolicy {
+	policy := *s.policy
+	return &policy
+}
 
 // NewService 校验依赖并构造。
 func NewService(d Deps) (*Service, error) {
+	var providers []enum.IdentityKind
+	if d.WeChat != nil {
+		providers = append(providers, enum.IdentityWeChat)
+	}
+	if d.Apple != nil {
+		providers = append(providers, enum.IdentityApple)
+	}
+	policy, err := NewIdentityPolicy(d.EnabledIdentityKinds, d.RequiredIdentityKinds, providers...)
+	if err != nil {
+		return nil, err
+	}
+	if d.EnabledIdentityKinds != nil {
+		available := func(v any) bool {
+			if v == nil {
+				return false
+			}
+			if e, ok := v.(interface{ Enabled() bool }); ok {
+				return e.Enabled()
+			}
+			return true
+		}
+		if err := policy.ValidateCapabilities(IdentityCapabilities{Phone: available(d.SMS), Email: available(d.Email), WeChat: d.WeChat != nil, Apple: d.Apple != nil}); err != nil {
+			return nil, err
+		}
+		if d.SMS == nil {
+			d.SMS = sender.Disabled{}
+		}
+		if d.Email == nil {
+			d.Email = sender.Disabled{}
+		}
+	}
+
 	switch {
 	case d.Repo == nil, d.Codes == nil, d.Revocation == nil, d.Grace == nil, d.Signer == nil, d.Cipher == nil, d.Digester == nil, d.SMS == nil, d.Email == nil:
 		return nil, errors.New("user: Deps.Repo/Codes/Revocation/Grace/Signer/Cipher/Digester/SMS/Email are required")
@@ -132,7 +182,8 @@ func NewService(d Deps) (*Service, error) {
 	if d.Now == nil {
 		d.Now = time.Now
 	}
-	return &Service{d: d}, nil
+	flowContext, flowPolicy := identityFlowConfiguration(d, policy)
+	return &Service{d: d, policy: policy, flowContext: flowContext, flowPolicy: flowPolicy}, nil
 }
 
 // Device 是客户端设备身份（X-Device-Id / X-Device-Name）。
@@ -166,6 +217,20 @@ type TokenResult struct {
 	IsNewUser        bool
 	// HintEmail 是 Apple 已验证的邮箱（含 Apple 私密转发地址），仅供客户端预填绑定页，不代表已绑定。
 	HintEmail string
+}
+
+// SignInResult 是登录结果；成功返回 Tokens，等待身份补全返回 Pending，恰好一个成员非 nil。
+type SignInResult struct {
+	Tokens  *TokenResult
+	Pending *PendingSignIn
+}
+
+// PendingSignIn 不代表已经创建账号，也不能作为访问或刷新令牌使用。
+type PendingSignIn struct {
+	SignInCompletionToken string
+	ExpireTime            time.Time
+	EnabledIdentityKinds  []enum.IdentityKind
+	RequiredIdentityKinds []enum.IdentityKind
 }
 
 func (s *Service) now() time.Time { return s.d.Now() }
@@ -339,7 +404,7 @@ func (s *Service) establishSession(ctx context.Context, q *db.Queries, u db.User
 func (s *Service) finishSignIn(ctx context.Context, ev audit.Event, res TokenResult, replaced []string, dev Device, meta Meta) {
 	for _, sid := range replaced {
 		s.revokeInSet(ctx, sid)
-		s.record(ctx, audit.Event{Type: enum.EventSessionRevoked, Result: enum.ResultSuccess, Reason: enum.RevokeReplacedByRelogin.String(), UserID: ev.UserID, SessionID: sid, IP: meta.IP, DeviceID: dev.ID, RequestID: meta.RequestID})
+		s.record(ctx, audit.Event{Type: enum.EventSessionRevoked, Result: enum.ResultSuccess, Reason: enum.RevokeReplacedByRelogin.String(), FlowID: ev.FlowID, UserID: ev.UserID, SessionID: sid, IP: meta.IP, DeviceID: dev.ID, RequestID: meta.RequestID})
 	}
 	ev.Type, ev.Result = enum.EventSignIn, enum.ResultSuccess
 	if res.IsNewUser {

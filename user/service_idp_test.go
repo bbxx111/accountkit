@@ -54,11 +54,13 @@ func (f *fakeApple) VerifyApple(_ context.Context, idToken, nonce string) (idp.I
 
 var dev2 = user.Device{ID: "dev-2", Name: "iPad"}
 
-func TestSignInWithIdpWeChatRegistersWithBindScopeAndMergesOpenIDs(t *testing.T) {
+func TestSignInWithIdpWeChatEmptyRequiredRegistersAndMergesOpenIDs(t *testing.T) {
 	f := newFixture(t)
+	newServiceWith(t, f, func(d *user.Deps) { d.RequiredIdentityKinds = []enum.IdentityKind{} })
 	ctx := context.Background()
-	res, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:U1@o-wx1"}, dev1, meta1)
-	if err != nil || !res.IsNewUser || res.Scope != user.ScopeBind || res.RefreshToken == "" || res.HintEmail != "" {
+	outcome, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:U1@o-wx1"}, dev1, meta1)
+	res := requireSignInTokens(t, outcome)
+	if err != nil || !res.IsNewUser || res.Scope != user.ScopeUser || res.RefreshToken == "" || res.HintEmail != "" {
 		t.Fatalf("first wechat login: %+v %v", res, err)
 	}
 	idents, _ := f.repo.Q().ListActiveIdentitiesByUser(ctx, res.UserID)
@@ -69,8 +71,9 @@ func TestSignInWithIdpWeChatRegistersWithBindScopeAndMergesOpenIDs(t *testing.T)
 		t.Fatal("audit SIGN_IN")
 	}
 	// 从另一 App 登录同一 UnionID：同一用户、不是新用户、openid 合并
-	res2, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx2", Code: "union:U1@o-wx2"}, dev2, meta1)
-	if err != nil || res2.IsNewUser || res2.UserID != res.UserID || res2.Scope != user.ScopeBind {
+	outcome2, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx2", Code: "union:U1@o-wx2"}, dev2, meta1)
+	res2 := requireSignInTokens(t, outcome2)
+	if err != nil || res2.IsNewUser || res2.UserID != res.UserID || res2.Scope != user.ScopeUser {
 		t.Fatalf("second app login: %+v %v", res2, err)
 	}
 	idents, _ = f.repo.Q().ListActiveIdentitiesByUser(ctx, res.UserID)
@@ -83,23 +86,26 @@ func TestSignInWithIdpWeChatRegistersWithBindScopeAndMergesOpenIDs(t *testing.T)
 		t.Fatalf("sessions: %d", len(sessions))
 	}
 	// 同设备再登录 → 替换旧会话
-	res3, _ := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:U1@o-wx1"}, dev1, meta1)
+	outcome3, _ := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:U1@o-wx1"}, dev1, meta1)
+	res3 := requireSignInTokens(t, outcome3)
 	sessions, _ = f.svc.ListSessions(ctx, res.UserID, "")
 	if len(sessions) != 2 || res3.UserID != res.UserID {
 		t.Fatalf("same-device relogin must replace: %d", len(sessions))
 	}
-	// 刷新保持 user:bind（无锚点）
+	// Required=[] 时纯第三方身份的新一轮刷新仍满足完整性。
 	next, err := f.svc.Refresh(ctx, res3.RefreshToken, meta1)
-	if err != nil || next.Scope != user.ScopeBind {
+	if err != nil || next.Scope != user.ScopeUser {
 		t.Fatalf("refresh scope: %+v %v", next, err)
 	}
 }
 
 func TestSignInWithIdpAppleHintEmailAndReplay(t *testing.T) {
 	f := newFixture(t)
+	newServiceWith(t, f, func(d *user.Deps) { d.RequiredIdentityKinds = []enum.IdentityKind{} })
 	ctx := context.Background()
-	res, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityApple, IDToken: "tok1+email", Nonce: "n1"}, dev1, meta1)
-	if err != nil || !res.IsNewUser || res.Scope != user.ScopeBind || res.HintEmail != "x@privaterelay.appleid.com" {
+	outcome, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityApple, IDToken: "tok1+email", Nonce: "n1"}, dev1, meta1)
+	res := requireSignInTokens(t, outcome)
+	if err != nil || !res.IsNewUser || res.Scope != user.ScopeUser || res.HintEmail != "x@privaterelay.appleid.com" {
 		t.Fatalf("apple login: %+v %v", res, err)
 	}
 	idents, _ := f.repo.Q().ListActiveIdentitiesByUser(ctx, res.UserID)
@@ -159,7 +165,9 @@ func TestSignInWithIdpRejections(t *testing.T) {
 	}
 	// 冻结用户
 	f3 := newFixture(t)
-	res, _ := f3.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:UF@o"}, dev1, meta1)
+	newServiceWith(t, f3, func(d *user.Deps) { d.RequiredIdentityKinds = []enum.IdentityKind{} })
+	outcome, _ := f3.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:UF@o"}, dev1, meta1)
+	res := requireSignInTokens(t, outcome)
 	mustExec(t, f3, "UPDATE user_account SET state = 2 WHERE id = $1", res.UserID)
 	if _, err := f3.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:UF@o"}, dev1, meta1); !errors.Is(err, user.ErrUserFrozen) {
 		t.Fatalf("frozen: %v", err)
@@ -173,17 +181,20 @@ func TestSignInWithIdpRejections(t *testing.T) {
 // 映射写入 provider_meta（既不该在创建账号时写入，也不该在合并时写入）。
 func TestSignInWithIdpWeChatIgnoresEmptyOpenID(t *testing.T) {
 	f := newFixture(t)
+	newServiceWith(t, f, func(d *user.Deps) { d.RequiredIdentityKinds = []enum.IdentityKind{} })
 	ctx := context.Background()
-	res, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:U-empty"}, dev1, meta1)
+	outcome, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:U-empty"}, dev1, meta1)
 	if err != nil {
 		t.Fatalf("signin: %v", err)
 	}
+	res := requireSignInTokens(t, outcome)
 	idents, _ := f.repo.Q().ListActiveIdentitiesByUser(ctx, res.UserID)
 	if len(idents) != 1 || idents[0].ProviderMeta != nil {
 		t.Fatalf("empty openid must not be persisted: %+v", idents)
 	}
 	// 再从另一个 app 用同一 UnionID 登录、同样是空 openid：合并路径也不能写入。
-	res2, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx2", Code: "union:U-empty"}, dev2, meta1)
+	outcome2, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx2", Code: "union:U-empty"}, dev2, meta1)
+	res2 := requireSignInTokens(t, outcome2)
 	if err != nil || res2.UserID != res.UserID {
 		t.Fatalf("second empty-openid login: %+v %v", res2, err)
 	}
@@ -198,11 +209,12 @@ func TestSignInWithIdpWeChatIgnoresEmptyOpenID(t *testing.T) {
 // 调用方看到 IsNewUser。这需要真实数据库上的唯一约束，不能用 fake repo 模拟。
 func TestSignInWithIdpWeChatConcurrentFirstLoginCreatesOneUser(t *testing.T) {
 	f := newFixture(t)
+	newServiceWith(t, f, func(d *user.Deps) { d.RequiredIdentityKinds = []enum.IdentityKind{} })
 	ctx := context.Background()
 	const n = 8
 
 	var wg sync.WaitGroup
-	results := make([]user.TokenResult, n)
+	results := make([]user.SignInResult, n)
 	errs := make([]error, n)
 	for i := 0; i < n; i++ {
 		wg.Add(1)
@@ -221,12 +233,13 @@ func TestSignInWithIdpWeChatConcurrentFirstLoginCreatesOneUser(t *testing.T) {
 		if err != nil {
 			t.Fatalf("goroutine %d: %v", i, err)
 		}
+		pair := requireSignInTokens(t, results[i])
 		if userID == "" {
-			userID = results[i].UserID
-		} else if results[i].UserID != userID {
-			t.Fatalf("goroutine %d: user id mismatch: got %s want %s", i, results[i].UserID, userID)
+			userID = pair.UserID
+		} else if pair.UserID != userID {
+			t.Fatalf("goroutine %d: user id mismatch: got %s want %s", i, pair.UserID, userID)
 		}
-		if results[i].IsNewUser {
+		if pair.IsNewUser {
 			newUserCount++
 		}
 	}
@@ -306,7 +319,7 @@ func TestSignInWithIdpRejectsPendingDeletionAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 	back, err := f.svc.SignInWithIdp(ctx, cred, dev2, meta1)
-	if err != nil || back.UserID != p.UserID || back.Scope != user.ScopeUser {
+	if err != nil || back.Tokens == nil || back.Pending != nil || back.Tokens.UserID != p.UserID || back.Tokens.Scope != user.ScopeUser {
 		t.Fatalf("idp login after undelete: %+v %v", back, err)
 	}
 }

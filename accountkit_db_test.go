@@ -398,6 +398,7 @@ func TestWeChatSignInEndToEndAgainstRealDB(t *testing.T) {
 
 	cfg := minimal()
 	cfg.Schema = schema
+	cfg.RequiredIdentityKinds = []enum.IdentityKind{}
 	cfg.WeChatApps = []accountkit.WeChatApp{{AppID: "wx1", Secret: "s1"}, {AppID: "wx2", Secret: "s2"}}
 	cfg.WeChatAPIBaseURL = wx.URL
 	a, err := accountkit.New(cfg, accountkit.Deps{Pool: pool, Redis: testRedis(t), SMSSender: sender.NewLog(nil), EmailSender: sender.NewLog(nil), HTTPClient: wx.Client()})
@@ -427,13 +428,13 @@ func TestWeChatSignInEndToEndAgainstRealDB(t *testing.T) {
 		return resp, out
 	}
 	resp, tok := signIn("wx1", "ok-UNION-1", "dev-a")
-	if resp.StatusCode != 200 || tok["is_new_user"] != true || tok["scope"] != "user:bind" {
+	if resp.StatusCode != 200 || tok["is_new_user"] != true || tok["scope"] != "user" {
 		t.Fatalf("first: %d %v", resp.StatusCode, tok)
 	}
 	if _, has := tok["hint_email"]; has {
 		t.Fatal("wechat has no hint_email")
 	}
-	// user:bind 只能读 users/me，不能改
+	// Explicit empty Required permits the complete user scope.
 	get := func(path, bearer string) int {
 		req, _ := http.NewRequest("GET", srv.URL+path, nil)
 		req.Header.Set("Authorization", "Bearer "+bearer)
@@ -445,10 +446,10 @@ func TestWeChatSignInEndToEndAgainstRealDB(t *testing.T) {
 		return resp.StatusCode
 	}
 	if get("/v1/users/me", tok["access_token"].(string)) != 200 {
-		t.Fatal("user:bind can read me")
+		t.Fatal("user can read me")
 	}
-	if get("/v1/users/me/sessions", tok["access_token"].(string)) != 403 {
-		t.Fatal("user:bind must not list sessions")
+	if get("/v1/users/me/sessions", tok["access_token"].(string)) != 200 {
+		t.Fatal("user must not list sessions")
 	}
 	// 同 UnionID 从 wx2 登录 → 同一用户、非新用户
 	resp, tok2 := signIn("wx2", "ok-UNION-1", "dev-b")
@@ -545,6 +546,17 @@ func TestIdentityBindingEndToEndAgainstRealDB(t *testing.T) {
 	const phone = "+8613812340001"
 	const mail = "bind@shifang.co"
 
+	// Existing incomplete accounts retain user:bind under the default required policy.
+	for i, subject := range []string{"UNION-B", "UNION-C"} {
+		uid := fmt.Sprintf("u_000000000000%d", i+1)
+		iid := fmt.Sprintf("i_000000000000%d", i+1)
+		if _, err := pool.Exec(ctx, "INSERT INTO user_account(id,state) VALUES($1,1)", uid); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, "INSERT INTO identity(id,user_id,kind,provider_subject,provider_meta) VALUES($1,$2,3,$3,'{}')", iid, uid, subject); err != nil {
+			t.Fatal(err)
+		}
+	}
 	// 1. 微信登录 → user:bind
 	resp, tok := call("POST", "/v1/users:signInWithIdp", "", map[string]any{"wechat": map[string]string{"app_id": "wx1", "code": "ok-UNION-B"}}, dev)
 	if resp.StatusCode != 200 || tok["scope"] != "user:bind" {

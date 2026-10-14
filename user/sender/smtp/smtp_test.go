@@ -231,7 +231,7 @@ func TestSMTPTemplatesAndEncryptedAuth(t *testing.T) {
 		for _, tc := range []struct {
 			purpose enum.CodePurpose
 			word    string
-		}{{enum.PurposeSignIn, "登录"}, {enum.PurposeBind, "绑定"}, {enum.PurposeReauth, "重新认证"}} {
+		}{{enum.PurposeSignIn, "登录"}, {enum.PurposeBind, "绑定"}, {enum.PurposeReauth, "重新认证"}, {enum.PurposeSignInComplete, "完成登录并关联身份"}} {
 			t.Run(mode+tc.purpose.String(), func(t *testing.T) {
 				f := newSMTPFixture(t, mode, nil)
 				s, err := delivery.New(f.config())

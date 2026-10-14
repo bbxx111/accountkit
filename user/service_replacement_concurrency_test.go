@@ -132,7 +132,15 @@ func TestReplacementConcurrentMutations(t *testing.T) {
 					case "same-identity":
 						out.identity, out.err = f.svc.ReplaceIdentity(ctx, p, oldID, f.credential(enum.PurposeBind, enum.IdentityPhone, thirdPhone, mutationCode), meta1)
 					case "sign-in":
-						out.token, out.err = f.svc.SignInWithCode(ctx, f.credential(enum.PurposeSignIn, enum.IdentityPhone, phone1, mutationCode), user.Device{ID: "race-login"}, meta1)
+						var signed user.SignInResult
+						signed, out.err = f.svc.SignInWithCode(ctx, f.credential(enum.PurposeSignIn, enum.IdentityPhone, phone1, mutationCode), user.Device{ID: "race-login"}, meta1)
+						if out.err == nil {
+							if signed.Tokens == nil || signed.Pending != nil {
+								out.err = fmt.Errorf("existing PHONE account did not return token result")
+							} else {
+								out.token = *signed.Tokens
+							}
+						}
 					case "reauthenticate":
 						out.token, out.err = f.svc.Reauthenticate(ctx, p, f.credential(enum.PurposeReauth, enum.IdentityPhone, phone1, mutationCode), meta1)
 					case "unbind":

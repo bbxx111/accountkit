@@ -42,16 +42,26 @@ func NewCipher(keys map[uint16][]byte, active uint16) (*Cipher, error) {
 
 // Encrypt 用 active 版本加密，返回 nonce||密文 与版本号。
 func (c *Cipher) Encrypt(plain string) ([]byte, uint16, error) {
+	return c.EncryptWithAAD(plain, nil)
+}
+
+// EncryptWithAAD authenticates the supplied context.
+func (c *Cipher) EncryptWithAAD(plain string, aad []byte) ([]byte, uint16, error) {
 	gcm := c.aeads[c.active]
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		return nil, 0, fmt.Errorf("pii: generating nonce: %w", err)
 	}
-	return gcm.Seal(nonce, nonce, []byte(plain), nil), c.active, nil
+	return gcm.Seal(nonce, nonce, []byte(plain), aad), c.active, nil
 }
 
 // Decrypt 只用指定版本解密；版本未配置或认证失败即报错，不回退到其他密钥。
 func (c *Cipher) Decrypt(ct []byte, version uint16) (string, error) {
+	return c.DecryptWithAAD(ct, version, nil)
+}
+
+// DecryptWithAAD requires the original context.
+func (c *Cipher) DecryptWithAAD(ct []byte, version uint16, aad []byte) (string, error) {
 	gcm, ok := c.aeads[version]
 	if !ok {
 		return "", fmt.Errorf("pii: no key configured for version %d", version)
@@ -59,7 +69,7 @@ func (c *Cipher) Decrypt(ct []byte, version uint16) (string, error) {
 	if len(ct) < gcm.NonceSize() {
 		return "", fmt.Errorf("pii: ciphertext shorter than nonce")
 	}
-	plain, err := gcm.Open(nil, ct[:gcm.NonceSize()], ct[gcm.NonceSize():], nil)
+	plain, err := gcm.Open(nil, ct[:gcm.NonceSize()], ct[gcm.NonceSize():], aad)
 	if err != nil {
 		return "", fmt.Errorf("pii: decrypt with version %d: %w", version, err)
 	}

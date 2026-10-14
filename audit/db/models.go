@@ -28,6 +28,7 @@ type AuditEvent struct {
 	DeviceID      *string
 	RequestID     *string
 	OccurTime     time.Time
+	FlowID        *string
 }
 
 type Identity struct {
@@ -45,6 +46,22 @@ type Identity struct {
 	CreateTime        time.Time
 	UpdateTime        time.Time
 	DeleteTime        *time.Time
+}
+
+type IdentityFlow struct {
+	ID                string
+	TokenDigest       string
+	State             int16
+	PolicyFingerprint string
+	Payload           []byte
+	CipherVersion     int16
+	Revision          int64
+	ProofUserIds      []string
+	UserID            *string
+	SessionID         *string
+	CreateTime        time.Time
+	UpdateTime        time.Time
+	ExpireTime        time.Time
 }
 
 type Session struct {

@@ -3,6 +3,8 @@
 可嵌入宿主服务的 C 端账号体系（多身份账号、JWT + 轮换 refresh 会话、软删除与匿名化、管理面）。
 本 README 覆盖配置、密码学原语、迁移、生命周期、C 端 HTTP 面（登录、会话、IdP、身份绑定）、账号注销/恢复/purge、审计落库与密钥回填、管理面。模块路径为 `github.com/bbxx111/accountkit`，根包名为 `accountkit`。宿主装配示例见 `examples/embedded`。
 
+本文描述当前开发代码；身份策略与登录补全尚未发布到 v0.2.0，账号资源沿用 `/users`。升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
+
 accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可选服务实现，使用同一套库能力；选择库集成不需要部署或调用 accountsvc。服务入口是 `cmd/accountsvc`，包含 SMTP 邮件投递、消费者远程鉴权和默认关闭的外部管理员 JWT 验证，运行与配置见 [accountsvc 服务手册](docs/accountsvc.md)。`examples/embedded` 保留为库集成开发示例。
 
 accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect` 和探针；公网暴露、直连限制、TLS 终止与入口流量控制由部署方配置，统一规则见 [网关接入手册](docs/gateway-integration.md)。直接嵌入库的宿主也可沿用该契约。旧双监听部署与调用方需按[服务传输迁移说明](docs/compatibility.md#服务单监听与传输迁移)调整。
@@ -21,24 +23,40 @@ accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect
 | 能力 | 方法 | 备注 |
 |---|---|---|
 | 发登录码 | `SendSignInCode(ctx, channel, target, meta)` | 返回 `(user.CodeChallenge, error)`；先占额再发送，发送失败不退额；被限流返回 `*code.RateLimitedError` |
-| 验证码登录即注册 | `SignInWithCode(ctx, cred, dev, meta)` | `cred` 为包含轮次标识的 `user.CodeCredential`；同一事务创建账号 + 身份；同设备再登录先吊销旧会话 |
+| 验证码登录 | `SignInWithCode(ctx, cred, dev, meta)` | `cred` 为包含轮次标识的 `user.CodeCredential`；返回 SignInResult 的 Tokens/Pending 联合；满足策略才建号；同设备再登录先吊销旧会话 |
 | 刷新 | `Refresh(ctx, refreshToken, meta)` | 行锁 + CAS 轮换；30s 宽限内重放返回同一 pair；宽限外重放吊销会话 |
 | 登出 | `Revoke(ctx, refreshToken, meta)` | RFC 7009 语义：未知 token 也返回成功 |
 | 校验 access | `Authenticate(ctx, raw)` | 验签 + id 格式 + Redis 吊销集（Redis 不可用时 fail-open） |
-| 重新认证 | `SendReauthenticationCode` / `Reauthenticate` | 只接受本账号锚点身份；刷新 `auth_time` 并重签 access（不发 refresh） |
+| 重新认证 | `SendReauthenticationCode` / `Reauthenticate` | 只接受本账号已启用手机/邮箱身份；刷新 `auth_time` 并重签 access（不发 refresh） |
 | 资料 | `GetMe` / `UpdateDisplayName` | 显示名 ≤ 32 个字符 |
 | 批量公开资料 | `BatchPublicProfiles(ctx, ids)` | 一次查询返回 ID/DisplayName/State；未知账号略去，待注销/已删除账号显示名为空；宿主先过滤业务权限 |
 | 宿主事务保护 | `WithActiveUsers(ctx, ids, fn)` | 验证、去重并排序锁定 ACTIVE 账号后执行 `fn(pgx.Tx)`；库提交，错误或 panic 回滚 |
 | 离线导入 | `ImportAccounts(ctx, tx, accounts)` | 调用者事务中的 ACTIVE PHONE/EMAIL 锚点账号或 DELETED 匿名墓碑；调用者提交/回滚 |
 | 会话 | `ListSessions` / `RevokeSession` / `RevokeOtherSessions` | 他人的会话一律 `ErrNotFound` |
 
+### 身份策略与登录补全
+
+`Config.EnabledIdentityKinds`（E）决定可使用的身份；`Config.RequiredIdentityKinds`（R）决定账号完整性。R 只接受 PHONE/EMAIL，按 any-of 判断，并须为 E 的子集。账号至少有一个已验证、未删除且启用的身份，并且 R 为空或其中任意一种身份已具备，才取得 `user` scope。R 不是 MFA，也不要求每次使用其中的身份登录。
+
+Go 的 nil 表示省略；非 nil 空切片表示显式空。E 省略时沿用 PHONE、EMAIL 和已配置 IdP，R 省略时默认 PHONE/EMAIL 二选一。显式空 E 非法，显式空 R 允许纯第三方注册。环境键为宿主前缀加 `ENABLED_IDENTITY_KINDS` / `REQUIRED_IDENTITY_KINDS`，使用逗号分隔的 UPPER_SNAKE_CASE；只有 `[]` 表示显式空，已设置但空白非法。例如 E=`EMAIL,WECHAT`、R=`EMAIL`；E=`WECHAT` 时 R 必须为 `[]`。显式启用的类型必须具备真实发送器或验证器；禁用渠道可省略发送器。省略 E 的旧宿主仍保留原发送器必填和 Disabled 装配规则。策略为装配时快照，不随短暂依赖故障改变。
+
+`SignInWithCode` 和 `SignInWithIdp` 返回 `user.SignInResult{Tokens *user.TokenResult, Pending *user.PendingSignIn}`，恰有一个成员。已知账号按全部可用身份推导 `user` 或 `user:bind`；未知身份满足策略时直接注册，否则只返回 pending，尚无账号、身份或会话。pending 不含 user_id、scope 或 token pair。
+
+补全通过 `SendSignInCompletionCode(ctx, token, channel, target, dev, meta)` 获取专用轮次，再调用 `CompleteSignIn(ctx, token, cred, dev, meta)`。初次登录必须提供设备 ID；后续设备字段可省略，重复提供则须与首次一致。补全只接受已启用的 PHONE/EMAIL 验证码。目标属于活动账号 B 时关联尚未占用的本次身份并沿用 B 的 user_id；目标无归属且满足 R 时原子注册。页面应说明“验证并继续”会关联本次身份，未注册时自动注册。第三方 hint_email 不能证明邮箱归属，已有两个账号不会自动合并。R=[] 时未知第三方直接注册，不能自动发现另一邮箱账号；应先登录原账号再主动绑定。
+
+HTTP 新增 `POST /users:sendSignInCompletionCode`（`{sign_in_completion_token,channel,target}`）和 `POST /users:completeSignIn`（`{sign_in_completion_token,phone|email:{target,code_id,code}}`）。唯一票据字段为 `sign_in_completion_token`，普通发码不接收它，也不接收公开 purpose。pending 返回 HTTP 200、no-store，仅含 `next_action=COMPLETE_IDENTITY`、票据、`expire_time`、`enabled_identity_kinds`、`required_identity_kinds`；成功继续使用顶层 RFC 6749 token 字段。
+
+票据使用独立随机秘密，数据库仅存摘要；`identity_flow` 中的证明、设备与完成结果按版本加密并绑定实例和流程。原期限最多5分钟，取原证明更早期限，追加证明和重试不续期。只有相同完成请求、原期限内且账号/会话/refresh 仍有效时才能读取原 token pair；refresh 已轮换则返回 `SIGN_IN_ALREADY_COMPLETED`，票据过期返回 `SIGN_IN_COMPLETION_INVALID`。验证码消费不会随 SQL 回滚恢复，证明落库失败须按原额度重新取证；数据库备份不含 Redis，恢复不能跳过缺失证明。
+
+直接构造 `user.NewService` 的宿主可用 `IdentityFlowContext` 补充稳定实例域；自定义 IdP 的应用允许列表等配置变化时须改变 `ProviderConfiguration`。内置验证器自动提供配置指纹。策略或实例上下文变化拒绝旧流程；有效流程引用的旧加密密钥须保留到到期或清理。
+
 ### 验证码轮次
 
-三类发码方法返回 `user.CodeChallenge{CodeID, ExpireTime}`。发送器接受投递后才返回轮次；发送失败保留冷却和额度，只清理仍匹配本次标识的轮次，不恢复旧轮次。发送器的 `sender.Message` 签名保持原样。PHONE/EMAIL 的登录、绑定、重新认证和换绑统一传 `user.CodeCredential{Channel, Target, CodeID, Code}`，用途由方法确定，不提供无标识验证旁路。
+四类发码方法返回 `user.CodeChallenge{CodeID, ExpireTime}`。发送器接受投递后才返回轮次；发送失败保留冷却和额度，只清理仍匹配本次标识的轮次，不恢复旧轮次。发送器的 `sender.Message` 签名保持原样。PHONE/EMAIL 的登录、绑定、重新认证和换绑统一传 `user.CodeCredential{Channel, Target, CodeID, Code}`，用途由方法确定，不提供无标识验证旁路。
 
-`code_id` 是 128 bit 随机值的 32 位小写十六进制编码。重发使同渠道、用途和目标的旧轮次失效，即使验证码数字相同；BIND 绑定用户，REAUTH 绑定用户和会话。轮次匹配、绑定校验、错误次数和一次性消费在 Redis 原子执行；并发正确提交至多成功一次。格式错误标识为 400 `INVALID_ARGUMENT`，合法但未知、过期、已消费或绑定不符为 400 `CODE_EXPIRED`，不扣当前轮次或目标失败预算。每轮默认最多 5 次，可显式配置为 3 次；第三次正确可以成功，第三次错误返回 `CODE_INVALID` 并使轮次作废，之后为 `CODE_EXPIRED`。若同时达到目标累计失败上限，优先返回下述 `TARGET_VERIFY_LIMIT`。
+`code_id` 是 128 bit 随机值的 32 位小写十六进制编码。重发使同渠道、用途和目标的旧轮次失效，即使验证码数字相同；BIND 绑定用户，REAUTH 绑定用户和会话，SIGN_IN_COMPLETE 单独绑定流程。轮次匹配、绑定校验、错误次数和一次性消费在 Redis 原子执行；并发正确提交至多成功一次。格式错误标识为 400 `INVALID_ARGUMENT`，合法但未知、过期、已消费或绑定不符为 400 `CODE_EXPIRED`，不扣当前轮次或目标失败预算。每轮默认最多 5 次，可显式配置为 3 次；第三次正确可以成功，第三次错误返回 `CODE_INVALID` 并使轮次作废，之后为 `CODE_EXPIRED`。若同时达到目标累计失败上限，优先返回下述 `TARGET_VERIFY_LIMIT`。
 
-另有跨 SIGN_IN/BIND/REAUTH 和重发轮次共享的目标失败预算：同渠道、归一化目标从首次有效轮次错误起，默认 15 分钟内最多 10 次错误。重发、正确验证和后续错误均不清除或延长窗口。达到上限后发码和有效轮次验证返回 429 `TARGET_VERIFY_LIMIT`，`Retry-After` 指向原窗口结束。失效标识流量仍由宿主接口/IP 限流控制。所有凭证响应设置 `Cache-Control: no-store`；不要将完整轮次标识、验证码或目标放入日志、审计或 URL。
+另有跨 SIGN_IN/BIND/REAUTH/SIGN_IN_COMPLETE 和重发轮次共享的目标失败预算：同渠道、归一化目标从首次有效轮次错误起，默认 15 分钟内最多 10 次错误。重发、正确验证和后续错误均不清除或延长窗口。达到上限后发码和有效轮次验证返回 429 `TARGET_VERIFY_LIMIT`，`Retry-After` 指向原窗口结束。失效标识流量仍由宿主接口/IP 限流控制。所有凭证响应设置 `Cache-Control: no-store`；不要将完整轮次标识、验证码或目标放入日志、审计或 URL。
 
 ### 宿主账号事务
 
@@ -71,7 +89,7 @@ accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect
 
 ### 发送器
 
-`Deps.SMSSender` / `Deps.EmailSender` 必填。开发环境用 `sender.NewLog(logger)`（把验证码打进日志，**禁止用于生产**）；服务商实现由宿主通过接口注入。
+省略 Enabled 时 `Deps.SMSSender` / `Deps.EmailSender` 必填；显式策略只要求已启用渠道的发送器。开发环境用 `sender.NewLog(logger)`（把验证码打进日志，**禁止用于生产**）；服务商实现由宿主通过接口注入。
 
 ### 枚举
 
@@ -97,8 +115,8 @@ r.Route("/v1", func(r chi.Router) {
 | 端点 | 认证 | 成功 | 失败 |
 |---|---|---|---|
 | `POST /users:sendSignInCode` `{channel, target}` | 无 | 200 `{code_id, expire_time}` | 429 `RESOURCE_EXHAUSTED` + `retry_after_seconds`；400 `CHANNEL_INVALID` / `INVALID_TARGET` |
-| `POST /users:signInWithCode` `{phone\|email:{target,code_id,code}}` + `X-Device-Id`/`X-Device-Name` | 无 | 200 token | 400 `CODE_INVALID` / `CODE_EXPIRED` / `DEVICE_ID_INVALID`；429 `TARGET_VERIFY_LIMIT`；403 `USER_FROZEN` |
-| `POST /users:signInWithIdp` `{wechat\|apple:{...}}` + `X-Device-Id`/`X-Device-Name`（阶段 4a，见下） | 无 | 200 token | 400 `IDP_CREDENTIAL_INVALID` / `IDP_APP_NOT_ALLOWED` / `IDP_NONCE_REPLAYED`；403 `USER_FROZEN`；503 `IDP_UNAVAILABLE`；403 USER_PENDING_DELETION（冷静期账号） |
+| `POST /users:signInWithCode` `{phone\|email:{target,code_id,code}}` + `X-Device-Id`/`X-Device-Name` | 无 | 200 token 或 pending | 400 `CODE_INVALID` / `CODE_EXPIRED` / `DEVICE_ID_INVALID`；429 `TARGET_VERIFY_LIMIT`；403 `USER_FROZEN` |
+| `POST /users:signInWithIdp` `{wechat\|apple:{...}}` + `X-Device-Id`/`X-Device-Name`（阶段 4a，见下） | 无 | 200 token 或 pending | 400 `IDP_CREDENTIAL_INVALID` / `IDP_APP_NOT_ALLOWED` / `IDP_NONCE_REPLAYED`；403 `USER_FROZEN`；503 `IDP_UNAVAILABLE`；403 USER_PENDING_DELETION（冷静期账号） |
 | `POST /token` `{grant_type:"refresh_token", refresh_token}` | 无 | 200 token | RFC 6749：400 `invalid_grant`；403 `invalid_grant`+`reason:USER_FROZEN`；503 `temporarily_unavailable` |
 | `POST /revoke` `{token}` | 无 | 200 空 | 400 `invalid_request`（缺 token） |
 | `GET /users/me` | 任意 scope | 200 资源 | |
@@ -130,9 +148,11 @@ r.Route("/v1", func(r chi.Router) {
 
 - **微信**：服务端用 `WeChatApps` 中对应的 secret 调 `sns/oauth2/access_token` 取 `unionid`（身份 subject）与 `openid`（按 app_id 存入 `provider_meta.openids`，从另一 App 登录时增量合并）。换回的微信 token 用完即弃。缺 `unionid` 视为配置错误（500 + Error 日志），不会降级用 openid。
 - **Apple**：仅 RS256；校验 `iss`、`aud ∈ AppleBundleIDs`、`exp`（30s leeway）、`nonce = sha256hex(原值)`；通过后 nonce 以 `SETNX` 登记 `AppleNonceTTL`，重复 → 400 `IDP_NONCE_REPLAYED`。JWKS 懒加载、缓存，未知 kid 触发 ≥ 60s 节流的刷新。`email` 仅在 `email_verified` 为真时作为 `hint_email` 返回，**不会**自动绑定为 EMAIL 身份。
-- **scope**：无锚点（手机/邮箱）身份的账号得到 `user:bind`，只能读 `users/me` 与走绑定接口（阶段 4b）；绑定后刷新即得 `user`。
+- **scope**：已知账号按当前 E/R 的全部可用身份得到 `user` 或 `user:bind`；未知第三方在默认 R 下返回 pending，补全后才关联或建号。已有 user:bind 账号绑定补齐后，新一轮刷新取得 user。
 - **错误**：400 `IDP_CREDENTIAL_INVALID` / `IDP_APP_NOT_ALLOWED`（含 IdP 未启用）/ `IDP_NONCE_REPLAYED`；503 `IDP_UNAVAILABLE`（IdP 网络、JWKS 不可得、Redis 不可用；带 `Retry-After: 1`）；500（appid/secret 无效、缺 unionid）。
-- **配置**：`SERVER_WECHAT_APPS`、`SERVER_APPLE_BUNDLE_IDS`、`SERVER_APPLE_NONCE_TTL`；`SERVER_WECHAT_API_BASE_URL` / `SERVER_APPLE_JWKS_URL` 仅供测试或代理部署覆盖。`Deps.HTTPClient` 默认 10 秒超时。
+- **配置**：宿主前缀加 `WECHAT_APPS`、`APPLE_BUNDLE_IDS`、`APPLE_NONCE_TTL`；`WECHAT_API_BASE_URL` / `APPLE_JWKS_URL` 仅供测试或代理部署覆盖。`Deps.HTTPClient` 默认 10 秒超时。
+
+只有第三方身份的账号需要近期认证时，重新走普通 IdP 登录；同设备会话被替换，客户端更新 token pair 并确认仍为同一 user_id 后再继续敏感动作。手机/邮箱重新认证仍只更新当前会话 auth_time 和 access，不延长 refresh。纯第三方账号没有手机/邮箱自助恢复路径；普通 IdP 登录仍拒绝冷静期账号，合法管理员恢复保持。
 
 ## 身份绑定（阶段 4b）
 
@@ -143,7 +163,7 @@ r.Route("/v1", func(r chi.Router) {
 | `POST /users/me/identities` 凭证 oneof | `user` / `user:bind` | | 201 新建 / 200 幂等 | 400 `CODE_*` / `IDP_*`；409 `IDENTITY_ALREADY_BOUND` / `IDENTITY_KIND_LIMIT`；403 `USER_FROZEN` |
 | `DELETE /users/me/identities/{identity}` | `user` | 是 | 204 | 400 `LAST_ANCHOR_IDENTITY` / `REAUTHENTICATION_REQUIRED` / `INVALID_ID`；404 |
 
-规则：一个 subject 全局只属于一个账号（冲突 409，不合并不迁移）；每 kind 最多 `MaxIdentitiesPerKind`（默认 1）个活动身份；同一 subject 重复绑定到本账号为幂等；解绑是软删除，解绑后同一 subject 可绑到任一账号；解绑后必须仍有至少一个手机或邮箱锚点；绑定不改变已签发 token 的 scope，客户端刷新后生效。`masked_subject` 由检索提示拼出（`+86 138****1234`、`ba***@example.com`），第三方身份为空串。
+规则：一个 subject 全局只属于一个账号（冲突 409，不合并不迁移）；每 kind 最多 `MaxIdentitiesPerKind`（默认 1）个活动身份；同一 subject 重复绑定到本账号为幂等；解绑是软删除，解绑后同一 subject 可绑到任一账号；解绑或换绑后的最终身份集合必须仍有至少一个已启用身份并满足当前 R；绑定不改变已签发 token 的 scope，客户端新一轮刷新后生效。`masked_subject` 由检索提示拼出（`+86 138****1234`、`ba***@example.com`），第三方身份为空串。
 
 ## 手机号与邮箱换绑
 
@@ -165,7 +185,7 @@ r.Route("/v1", func(r chi.Router) {
 | `POST /users/me:undelete` | `user:undelete` | | 200 账号资源（`state=ACTIVE`） | 400 `INVALID_ACCOUNT_STATE`；403 `USER_FROZEN` |
 
 - **软删除**：`state → PENDING_DELETION`，`purge_time = now + DeletionCoolingPeriod`（默认 15 天）；该账号**全部**会话（含当前）立即吊销，客户端随后收到 401。冻结中的账号不能注销（403 `USER_FROZEN`，需先解冻）。
-- **冷静期**：用手机/邮箱验证码登录得到 `user:undelete`（只能读 `users/me`、调用 `:undelete`、`/token`、`/revoke`）；用微信/Apple 登录 → 403 `USER_PENDING_DELETION`；冷静期内会话不可刷新（`invalid_grant` 并吊销）。`:undelete` 不吊销当前会话，客户端刷新一次即得 `user`。`:undelete` 只接受 `user:undelete` 凭证；`user` 凭证 → 403 `INSUFFICIENT_SCOPE`。
+- **冷静期**：用手机/邮箱验证码登录得到 `user:undelete`（只能读 `users/me`、调用 `:undelete`、`/token`、`/revoke`）；用微信/Apple 登录 → 403 `USER_PENDING_DELETION`；冷静期内会话不可刷新（`invalid_grant` 并吊销）。`:undelete` 不吊销当前会话，客户端新一轮刷新按当前 R 取得 `user` 或 `user:bind`。`:undelete` 只接受 `user:undelete` 凭证；`user` 凭证 → 403 `INSUFFICIENT_SCOPE`。
 - **purge**（维护任务 `purge_users`）：`purge_time` 到期后单事务匿名化：身份行（含已解绑的）软删并把 subject 摘要/第三方 subject 换成随机值，清空密文、hint、`provider_meta` 与密钥版本；账号行清空 `display_name` 与冻结快照、`state = DELETED`、`purge_time` 改为实际执行时刻；兜底吊销会话；审计事件的 `ip` / `device_id` / `subject_hint` 置 NULL（事件与 `user_id` 保留）；最后按注册顺序调用宿主 `anonymize.Anonymizer`。任一步失败整事务回滚，账号留在 `PENDING_DELETION`，下一轮重试。purge 后原手机号/微信可重新注册为新账号；已 purge 的账号不可 undelete。
 - **宿主匿名化器**：实现 `anonymize.Anonymizer{Name() string; Tables() []string; Anonymize(ctx, tx pgx.Tx, userID string) error}` 并通过 `Deps.Anonymizers` 注册（`Name` 唯一；业务表须与库表同库）。宿主应仿照库内 `TestPurgeCoversEveryTableWithUserID` 写覆盖性测试：每张含 `user_id` 的业务表要么被某个 `Anonymizer.Tables()` 覆盖，要么逐表写明豁免理由。
 - **维护任务**（`auth.Start` 的 ticker，多副本用 advisory lock 互斥；`auth.RunMaintenanceOnce(ctx)` 供一次性作业/测试手动跑一轮）：`purge_users`（每批 100 个账号，逐账号独立事务，批内失败记日志继续、下一轮重试）→ `cleanup_sessions`（物理删除吊销或 refresh 过期 30 天以上的会话行，每批 1000）。完整任务列表见下节。
@@ -177,7 +197,7 @@ r.Route("/v1", func(r chi.Router) {
 - **分页排序**：管理端 `auditEvents`（阶段 6）按 `occur_time, id`，索引 `(user_id, occur_time, id)`。
 - **密钥回填**：任务 `rekey_digests` / `reencrypt_subjects` 逐批（100）把仍用非 active 版本的活跃手机/邮箱身份重算摘要 / 重加密（CAS 更新，与并发登录/绑定不冲突；查找始终覆盖全部已配置版本，回填期间登录不受影响）。单行失败只记日志（`identity_id`）、计数，下一轮重试；第三方身份与已解绑/已 purge 的行不参与。
 - **启动期校验**：`auth.Migrate` 在迁移后检查 `identity` 活跃行使用的密钥版本都在配置内，否则返回 `user.ErrUnknownKeyVersion`——在回填完成前移除旧密钥会在启动时失败，而不是在第一次登录时。
-- **维护任务全集**（`auth.Start` 的 ticker；`auth.RunMaintenanceOnce(ctx)` 手动跑一轮）：`purge_users` → `cleanup_sessions` → `audit_retention` → `rekey_digests` → `reencrypt_subjects`，顺序执行、失败互不影响。
+- **维护任务全集**（`auth.Start` 的 ticker；`auth.RunMaintenanceOnce(ctx)` 手动跑一轮）：`purge_users` → `cleanup_sessions` → `cleanup_identity_flows`（每批最多1000条到期流程，清除密文与结果）→ `audit_retention` → `rekey_digests` → `reencrypt_subjects`，顺序执行、失败互不影响。
 
 ## 管理面（阶段 6）
 
@@ -206,14 +226,16 @@ r.Route("/v1", func(r chi.Router) {
 ## 数据库与 Redis 隔离
 
 - 所有表位于 `Config.Schema`（默认 `account`），迁移记录表也在其中；同一库可并存多个实例（不同 schema）。
-- 表：`user_account`、`identity`、`session`、`audit_event`，无外键；对外 id 带类型前缀（`u_`、`i_`、`s_`、`e_`）+ 13 字符 TSID。
+- 表：`user_account`、`identity`、`session`、`audit_event`、`identity_flow`，无外键；对外 id 带类型前缀（`u_`、`i_`、`s_`、`e_`）+ 13 字符 TSID。
 - 所有 Redis 键以 `Config.KeyPrefix`（默认 `auth:`）开头。
 - `Deps.Pool` 的连接 `search_path` 首位必须是 `Config.Schema`；`Migrate` 会校验并返回 `ErrSearchPath`。宿主业务表建议通过明确的 schema 限定名访问，避免 search_path 名称冲突。
 
-## 配置（环境变量，前缀默认 `SERVER_`）
+## 配置（环境变量，前缀由宿主传给 ConfigFromEnv）
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
+| `ENABLED_IDENTITY_KINDS` | 省略 | PHONE、EMAIL 与已配置 IdP；显式列表非空，见身份策略 |
+| `REQUIRED_IDENTITY_KINDS` | PHONE,EMAIL | PHONE/EMAIL any-of；`[]` 表示不限定类型 |
 | `AUTH_SCHEMA` | `account` | PostgreSQL schema，`^[a-z][a-z0-9_]{0,62}$` |
 | `AUTH_KEY_PREFIX` | `auth:` | Redis 键前缀，须以 `:` 结尾 |
 | `JWT_KEYS` / `JWT_ACTIVE_KEY` | 必填 | `1:<base64>,2:<base64>` 版本化 HS256 密钥（≥ 32 字节）与签发版本 |
@@ -246,7 +268,7 @@ r.Route("/v1", func(r chi.Router) {
 
 周期性 `rekey_digests` / `reencrypt_subjects` 回填及默认5分钟维护间隔保持原状。混合 active 期间，不同进程可能把数据库回填到各自的 active，方向仍可能变化；应在 T0 后确认实际回填结果，不能以等待一个维护周期或重启成功代替检查。HMAC 退役要求实际 `Config.Schema` 下未删除的手机/邮箱 `identity` 不再引用 K1 的 `digest_key_version`。若同时独立轮换 AES，另行确认旧 AES 的 `cipher_key_version` 引用归零；只轮换 HMAC 不要求密文也切到相同版本编号。
 
-HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额度的业务窗口结束，截止为 `max(T0 + 旧 CodeTTL, T0 + 旧 CodeFailureWindow, T0 + 旧 CodeCooldown, T0 之后的下一个 UTC 零点)`。配置曾变化时使用仍可能存活记录对应的最大旧期限，并留出部署时钟偏差余量。日额度键额外1小时仅用于垃圾回收，不延长业务窗口。数据库引用与这些 Redis 条件同时满足后，才从全部运行配置移除旧 HMAC 并重新部署；AES 退役按其数据库引用条件处理。`Migrate` 缺少仍被未删除身份引用的密钥时返回 `user.ErrUnknownKeyVersion`，但它不检查 Redis 状态，启动成功不证明 HMAC 可以退役。为仍需恢复的旧备份受控保留相应历史密钥，从运行配置移除不等于立即永久销毁。
+HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额度的业务窗口结束，截止为 `max(T0 + 旧 CodeTTL, T0 + 旧 CodeFailureWindow, T0 + 旧 CodeCooldown, T0 之后的下一个 UTC 零点)`。配置曾变化时使用仍可能存活记录对应的最大旧期限，并留出部署时钟偏差余量。日额度键额外1小时仅用于垃圾回收，不延长业务窗口。数据库引用与这些 Redis 条件同时满足后，才从全部运行配置移除旧 HMAC 并重新部署；AES 退役还须确认有效 identity_flow 的 cipher_version 不再引用旧版本；等待流程原期限或完成清理后再移除。`Migrate` 缺少仍被未删除身份引用的密钥时返回 `user.ErrUnknownKeyVersion`，但它不检查 Redis 状态，启动成功不证明 HMAC 可以退役。为仍需恢复的旧备份受控保留相应历史密钥，从运行配置移除不等于立即永久销毁。
 
 旧程序曾在不同 active 下留下多份同用途存活验证码时，无法可靠判断签发先后；新实现原子作废全部冲突码并返回原 `CODE_EXPIRED`，冷却和额度保留，用户按原限制重新发码。连续性仅适用于所有进程已升级、持有相同完整密钥集合且策略一致的正常轮换，不覆盖缺失密钥、丢失 Redis 状态或泄露密钥的紧急撤销。回退优先保留支持本能力的程序与完整密钥集合，仅切回 active 并重新计算退役窗口；切回旧程序不能承诺轮换后状态连续。实际验证与未验证项见[轮换验收记录](openspec/changes/archive/2026-10-04-harden-code-key-rotation/verification.md)。
 

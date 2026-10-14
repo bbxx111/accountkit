@@ -18,6 +18,10 @@ sql:
               import: "time"
               type: "Time"
               pointer: true
+          - column: "identity_flow.state"
+            go_type:
+              import: "github.com/bbxx111/accountkit/enum"
+              type: "FlowState"
           - column: "user_account.state"
             go_type:
               import: "github.com/bbxx111/accountkit/enum"

@@ -21,9 +21,10 @@ const PurgeBatchSize = 100
 // 新增含 user_id 的表必须在此登记并在 purgeOne 中处理（或写明豁免理由），否则 TestPurgeCoversEveryTableWithUserID
 // 会失败。宿主业务表由宿主的 Anonymizer.Tables 与宿主自己的覆盖性测试负责。
 var PurgeCoveredTables = map[string]string{
-	"identity":    "全部行（含已解绑的软删行）软删；subject_digest / provider_subject 替换为随机值；密文、provider_meta、hint、密钥版本置 NULL（AnonymizeIdentity）",
-	"session":     "豁免 user_id 置空：全部会话在 purge 事务内吊销并写吊销集；账号行与身份已匿名化，user_id 不再指向可识别的自然人；行由 CleanupSessions 在 SessionRetention 后物理删除",
-	"audit_event": "保留事件与 user_id（注销后仍需可追溯，§3.5）；ip / device_id / subject_hint 置 NULL（ScrubAuditEventsByUser）",
+	"identity_flow": "按 user_id 与 proof_user_ids 在账号锁之后删除关联流程，清除加密证明及完成结果",
+	"identity":      "全部行（含已解绑的软删行）软删；subject_digest / provider_subject 替换为随机值；密文、provider_meta、hint、密钥版本置 NULL（AnonymizeIdentity）",
+	"session":       "豁免 user_id 置空：全部会话在 purge 事务内吊销并写吊销集；账号行与身份已匿名化，user_id 不再指向可识别的自然人；行由 CleanupSessions 在 SessionRetention 后物理删除",
+	"audit_event":   "保留事件与 user_id（注销后仍需可追溯，§3.5）；ip / device_id / subject_hint 置 NULL（ScrubAuditEventsByUser）",
 }
 
 // PurgeDueUsers 匿名化所有 purge_time 已到的 PENDING_DELETION 账号（§3.5），返回成功 purge 的账号数。
@@ -86,6 +87,12 @@ func (s *Service) purgeOne(ctx context.Context, userID string) (bool, error) {
 		}
 		if u.State != enum.UserPendingDeletion || u.PurgeTime == nil || u.PurgeTime.After(now) {
 			return nil // 取批之后被 undelete，或已被另一副本 purge
+		}
+		if _, err := q.ScrubIdentityFlowAuditForUser(ctx, userID); err != nil {
+			return fmt.Errorf("user: scrub sign-in flow audit for purge: %w", err)
+		}
+		if _, err := q.DeleteIdentityFlowsForUser(ctx, userID); err != nil {
+			return fmt.Errorf("user: purge sign-in flows: %w", err)
 		}
 		idents, err := q.ListIdentitiesByUserIncludingDeleted(ctx, userID)
 		if err != nil {

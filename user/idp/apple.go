@@ -137,6 +137,9 @@ func (a *Apple) VerifyApple(ctx context.Context, idToken, rawNonce string) (Iden
 		return Identity{}, err // ErrNonceReplayed / ErrUnavailable / ErrInvalidCredential 原样透出
 	}
 	id := Identity{Kind: enum.IdentityApple, Subject: sub}
+	if exp, err := claims.GetExpirationTime(); err == nil && exp != nil {
+		id.ExpireTime = exp.Time
+	}
 	if email, _ := claims["email"].(string); email != "" && emailVerified(claims["email_verified"]) {
 		id.HintEmail = email
 	}

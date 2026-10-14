@@ -4,14 +4,14 @@
 
 项目 SHALL 提供与具体网关产品无关的接入说明，区分消费者、管理员、内省和探针入口。公网网关 SHALL 使用明确的路由暴露策略，不因内省位于 `/v1` 下而直接透传全部 `/v1/*`。部署方 SHALL 限制服务端口的直接访问来源。网关认证 SHALL 不替代服务中的消费者/管理员身份验证、内省 Basic 或角色与资源归属检查。
 
-消费者与管理端的账号路由及引用 SHALL 按 accounts 迁移；两个新增消费者端点 /accounts:sendSignInCompletionCode 和 /accounts:completeSignIn SHALL 分别列入允许清单，不以 /v1/* 通配开放。两者使用请求体中的 sign_in_completion_token；已有 Bearer 路由的身份要求 SHALL 保留。旧 users 路径不得被网关隐式映射为新版接口。
+消费者与管理端的账号路由及引用 SHALL 沿用 users；两个新增消费者端点 /users:sendSignInCompletionCode 和 /users:completeSignIn SHALL 分别列入允许清单，不以 /v1/* 通配开放。两者使用请求体中的 sign_in_completion_token；已有 Bearer 路由的身份要求 SHALL 保留。此前未发布的 accounts 路径 SHALL 不被网关隐式映射或重定向为 users 接口。
 
 #### Scenario: 内省与探针不经公网暴露
 - **WHEN** 部署方执行网关接入验收
 - **THEN** 检查公网访问内省/探针被拦截且不进入后端、授权内部调用可以访问、非授权来源不能通过直连端口绕过策略
 
 #### Scenario: 开放新增消费者端点
-- **WHEN** 部署方升级网关允许清单以支持accounts 路由及两个登录补全端点
+- **WHEN** 部署方在既有 users 网关允许清单中增加两个登录补全端点
 - **THEN** 只有明确的消费者新路由被开放，内省、管理和探针边界不变；服务自身继续校验票据及证明
 
 ### Requirement: 分层限流与错误处理

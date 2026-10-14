@@ -4,14 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
-	"github.com/jackc/pgx/v5"
+	"time"
 
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
-	"github.com/bbxx111/accountkit/ids"
 	"github.com/bbxx111/accountkit/user/code"
-	"github.com/bbxx111/accountkit/user/db"
+	"github.com/bbxx111/accountkit/user/idp"
 	"github.com/bbxx111/accountkit/user/sender"
 )
 
@@ -22,6 +20,13 @@ func (s *Service) SendSignInCode(ctx context.Context, channel enum.IdentityKind,
 
 // sendCode 是三种用途共用的发码流程；binding 用于轮次主体绑定和审计，登录时为空。
 func (s *Service) sendCode(ctx context.Context, channel enum.IdentityKind, purpose enum.CodePurpose, target string, binding code.Binding, meta Meta) (CodeChallenge, error) {
+	return s.sendCodeUntil(ctx, channel, purpose, target, binding, meta, time.Time{})
+}
+
+func (s *Service) sendCodeUntil(ctx context.Context, channel enum.IdentityKind, purpose enum.CodePurpose, target string, binding code.Binding, meta Meta, deadline time.Time) (CodeChallenge, error) {
+	if err := s.requireIdentityEnabled(channel); err != nil {
+		return CodeChallenge{}, err
+	}
 	if meta.IP == "" {
 		// 空 IP 会让 code.Store 的 IP 维度限流把所有调用方并入同一个配额桶（quota:*:ip::<day>），
 		// 一个客户端耗尽额度就会连带拒绝其余所有人；在触碰验证码存储之前先拒绝。
@@ -33,7 +38,7 @@ func (s *Service) sendCode(ctx context.Context, channel enum.IdentityKind, purpo
 		return CodeChallenge{}, err
 	}
 	digest, _ := s.d.Digester.Digest(norm)
-	base := audit.Event{UserID: binding.UserID, IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, RequestID: meta.RequestID}
+	base := audit.Event{UserID: binding.UserID, FlowID: binding.FlowID, IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, RequestID: meta.RequestID}
 
 	// 可选可用性契约保持旧宿主兼容：只实现原投递方法的发送器默认启用。
 	var delivery any = s.d.SMS
@@ -46,7 +51,7 @@ func (s *Service) sendCode(ctx context.Context, channel enum.IdentityKind, purpo
 		return CodeChallenge{}, sender.ErrDisabled
 	}
 
-	issued, err := s.d.Codes.IssueChallenge(ctx, channel, purpose, norm, meta.IP, binding)
+	issued, err := s.d.Codes.IssueChallengeUntil(ctx, channel, purpose, norm, meta.IP, binding, deadline)
 	if err != nil {
 		var rl *code.RateLimitedError
 		switch {
@@ -61,6 +66,9 @@ func (s *Service) sendCode(ctx context.Context, channel enum.IdentityKind, purpo
 		}
 	}
 	msg := sender.Message{Purpose: purpose, Code: issued.Code, TTL: s.d.CodeTTL}
+	if !deadline.IsZero() {
+		msg.TTL = issued.ExpireTime.Sub(s.now())
+	}
 	switch channel {
 	case enum.IdentityPhone:
 		err = s.d.SMS.SendSMS(ctx, norm, msg)
@@ -83,7 +91,14 @@ func (s *Service) sendCode(ctx context.Context, channel enum.IdentityKind, purpo
 
 // verifyCode 校验验证码并把 code 包的错误映射为审计原因。
 func (s *Service) verifyCode(ctx context.Context, channel enum.IdentityKind, purpose enum.CodePurpose, norm string, cred CodeCredential, binding code.Binding) (reason string, err error) {
+	if err := s.requireIdentityEnabled(channel); err != nil {
+		return "IDENTITY_KIND_NOT_ENABLED", err
+	}
 	err = s.d.Codes.VerifyChallenge(ctx, code.Credential{Channel: channel, Purpose: purpose, Target: norm, CodeID: cred.CodeID, Code: cred.Code, Binding: binding})
+	return codeFailure(err)
+}
+
+func codeFailure(err error) (string, error) {
 	var rl *code.RateLimitedError
 	switch {
 	case errors.As(err, &rl):
@@ -103,100 +118,34 @@ func (s *Service) verifyCode(ctx context.Context, channel enum.IdentityKind, pur
 	}
 }
 
-// SignInWithCode 验证码登录；subject 不存在则同一事务内创建账号与身份（登录即注册）。
-func (s *Service) SignInWithCode(ctx context.Context, cred CodeCredential, dev Device, meta Meta) (TokenResult, error) {
+// SignInWithCode 验证码登录；未知身份按策略直接注册或返回待补全结果。
+func (s *Service) SignInWithCode(ctx context.Context, cred CodeCredential, dev Device, meta Meta) (SignInResult, error) {
 	if err := validateCodeCredential(cred); err != nil {
-		return TokenResult{}, err
+		return SignInResult{}, err
+	}
+	if err := s.requireIdentityEnabled(cred.Channel); err != nil {
+		return SignInResult{}, err
 	}
 	channel, target := cred.Channel, cred.Target
 	if err := validDevice(dev); err != nil {
-		return TokenResult{}, err
+		return SignInResult{}, err
 	}
-	norm, hintPrefix, hintSuffix, err := s.normalizeTarget(channel, target)
+	norm, _, _, err := s.normalizeTarget(channel, target)
 	if err != nil {
-		return TokenResult{}, err
+		return SignInResult{}, err
 	}
 	digest, _ := s.d.Digester.Digest(norm)
 	ev := audit.Event{IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, DeviceID: dev.ID, RequestID: meta.RequestID}
 
-	if reason, err := s.verifyCode(ctx, channel, enum.PurposeSignIn, norm, cred, code.Binding{}); err != nil {
+	expiry, verifyErr := s.d.Codes.VerifyChallengeWithExpiry(ctx, code.Credential{Channel: channel, Purpose: enum.PurposeSignIn, Target: norm, CodeID: cred.CodeID, Code: cred.Code})
+	if reason, err := codeFailure(verifyErr); err != nil {
 		if !errors.Is(err, ErrUnavailable) {
 			ev.Type, ev.Result, ev.Reason = enum.EventSignInFailed, enum.ResultFailure, reason
 			s.record(ctx, ev)
 		}
-		return TokenResult{}, err
+		return SignInResult{}, err
 	}
-
-	now := s.now()
-	var res TokenResult
-	var replaced []string
-	err = s.withRetryOnUnique(ctx, func(q *db.Queries) error {
-		replaced = replaced[:0]
-		u, isNew, err := s.findOrCreateUser(ctx, q, channel, norm, hintPrefix, hintSuffix)
-		if err != nil {
-			return err
-		}
-		ev.UserID = u.ID
-		sess, r, rep, err := s.establishSession(ctx, q, u, channel.IsAnchor(), dev, now)
-		if err != nil {
-			return err
-		}
-		res, replaced = r, rep
-		res.IsNewUser = isNew
-		ev.UserID, ev.SessionID = u.ID, sess.ID
-		return nil
-	})
-	if err != nil {
-		if reason := signInRejectReason(err); reason != "" {
-			ev.Type, ev.Result, ev.Reason = enum.EventSignInFailed, enum.ResultFailure, reason
-			s.record(ctx, ev)
-		}
-		return TokenResult{}, err
-	}
-	s.finishSignIn(ctx, ev, res, replaced, dev, meta)
-	return res, nil
-}
-
-// findOrCreateUser 按 (kind, 多版本 digest) 查身份；不存在则创建账号 + 身份。
-func (s *Service) findOrCreateUser(ctx context.Context, q *db.Queries, kind enum.IdentityKind, norm, hintPrefix, hintSuffix string) (db.UserAccount, bool, error) {
-	ident, err := q.FindActiveIdentityByDigests(ctx, db.FindActiveIdentityByDigestsParams{Kind: kind, Digests: s.d.Digester.AllDigests(norm)})
-	switch {
-	case err == nil:
-		// 加行锁而非普通读：同一用户、同一设备的两次并发登录都会走到这里，锁把它们串行化，
-		// 第二个事务要等第一个提交（吊销旧会话 + 建新会话）之后才能继续，从而不会与刚吊销的
-		// 会话一起并存出两条活跃会话。新用户路径已经被下面的 CreateUser 唯一约束天然串行化，
-		// 无需额外加锁。
-		u, err := q.LockUserByID(ctx, ident.UserID)
-		if err != nil {
-			return db.UserAccount{}, false, fmt.Errorf("user: lock user %s: %w", ident.UserID, err)
-		}
-		// 身份可能在等待用户锁期间被解绑或替换；旧证明不能登录原账号。
-		current, err := q.FindActiveIdentityByDigests(ctx, db.FindActiveIdentityByDigestsParams{Kind: kind, Digests: s.d.Digester.AllDigests(norm)})
-		if errors.Is(err, pgx.ErrNoRows) {
-			return db.UserAccount{}, false, code.ErrInvalid
-		}
-		if err != nil {
-			return db.UserAccount{}, false, fmt.Errorf("user: recheck identity: %w", err)
-		}
-		if current.ID != ident.ID || current.UserID != u.ID {
-			return db.UserAccount{}, false, code.ErrInvalid
-		}
-		return u, false, nil
-	case !errors.Is(err, pgx.ErrNoRows):
-		return db.UserAccount{}, false, fmt.Errorf("user: find identity: %w", err)
-	}
-	uid, err := ids.New(ids.User)
-	if err != nil {
-		return db.UserAccount{}, false, err
-	}
-	u, err := q.CreateUser(ctx, db.CreateUserParams{ID: uid, State: enum.UserActive})
-	if err != nil {
-		return db.UserAccount{}, false, err // 唯一冲突由 withRetryOnUnique 重试
-	}
-	if _, err := s.createAnchorIdentity(ctx, q, uid, kind, norm, hintPrefix, hintSuffix); err != nil {
-		return db.UserAccount{}, false, err // 并发首次登录同一 subject → 唯一冲突 → 重试后走"已存在"分支
-	}
-	return u, true, nil
+	return s.signInVerified(ctx, completionProof{Kind: channel, Target: norm}, expiry, dev, meta)
 }
 
 // signInRejectReason 把旧证明及账号状态导致的登录拒绝映射为审计 reason；DB 故障等返回 ""，
@@ -205,6 +154,8 @@ func signInRejectReason(err error) string {
 	switch {
 	case errors.Is(err, code.ErrInvalid):
 		return "CODE_INVALID"
+	case errors.Is(err, idp.ErrInvalidCredential):
+		return "IDP_CREDENTIAL_INVALID"
 	case errors.Is(err, ErrUserFrozen):
 		return "USER_FROZEN"
 	case errors.Is(err, ErrUserPendingDeletion):

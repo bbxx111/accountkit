@@ -47,6 +47,10 @@ err := migrations.UnsafeReset(ctx, connCfg, schema,
 
 ## 历史检查与恢复演练
 
+身份策略升级新增递增迁移 `0002_identity_flow`，保存加密的短期登录证明和完成结果，不改写冻结0001。备份恢复须覆盖 identity_flow 的密文、cipher_version、原 expire_time、账号/会话引用和迁移 version/dirty；保留有效流程所需旧加密密钥。恢复演练先核验冻结源四个业务表在升级前后数据保持，再核验新表。源库和目标库必须为两个独立一次性空库。
+
+Redis 验证码状态不在数据库备份中；恢复后的 PENDING 流程缺少验证码轮次时必须拒绝，不能仅凭数据库票据放行。COMPLETED 的相同请求只有在原期限内、账号和会话有效且 refresh 未轮换时可读取原结果；期限自然经过后应拒绝票据，仍可验证已完成会话的 refresh。演练不延长5分钟流程期限，也不宣称数据库备份实现零数据损失。
+
 bash scripts/check-migrations.sh 校验固定源 0001 和所有可达正式 vX.Y.Z tag 的历史 SQL，包括合并分支及 HEAD 上的 tag；发布过的内容不能被后续 tag 覆盖；浅克隆必须先获取完整历史和 tags。源码基线哈希来自固定 Git 提交经 git cat-file 读取的原始 LF 字节，不受 Windows checkout 的换行策略影响。
 
 bash scripts/verify-recovery.sh 需要 psql/pg_dump/pg_restore 17、Go 和两个明确指定的独立空测试库。脚本通过集群 system_identifier 和实际数据库名称判断同库，要求具备读取 pg_control_system 的测试权限，并拒绝非空库。只生成合成数据，不删除或覆盖既有库。恢复后检查四类表、版本、解密和旧访问/刷新令牌，并验证源库未改变。证据保留在被 Git 忽略的 .test-output/recovery.* 下；重跑需提供新的空库。

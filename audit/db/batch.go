@@ -22,8 +22,8 @@ var (
 const insertAuditEvents = `-- name: InsertAuditEvents :batchexec
 
 INSERT INTO audit_event (id, event_type, actor_kind, user_id, admin_issuer, admin_subject, admin_username,
-                         session_id, identity_kind, subject_hint, result, reason, ip, device_id, request_id, occur_time)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                         session_id, identity_kind, subject_hint, result, reason, ip, device_id, request_id, occur_time, flow_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 `
 
 type InsertAuditEventsBatchResults struct {
@@ -49,6 +49,7 @@ type InsertAuditEventsParams struct {
 	DeviceID      *string
 	RequestID     *string
 	OccurTime     time.Time
+	FlowID        *string
 }
 
 // audit_event：审计事件的写入与保留期清理（读侧的管理端分页在阶段 6）。
@@ -73,6 +74,7 @@ func (q *Queries) InsertAuditEvents(ctx context.Context, arg []InsertAuditEvents
 			a.DeviceID,
 			a.RequestID,
 			a.OccurTime,
+			a.FlowID,
 		}
 		batch.Queue(insertAuditEvents, vals...)
 	}

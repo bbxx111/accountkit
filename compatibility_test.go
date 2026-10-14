@@ -91,7 +91,7 @@ func snapshotSource(t *testing.T, pool *pgxpool.Pool) string {
  'users',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM user_account t),
  'identities',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM identity t),
  'sessions',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM session t),
- 'audit',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM audit_event t),
+ 'audit',(SELECT jsonb_agg(to_jsonb(t)-'flow_id' ORDER BY id) FROM audit_event t),
  'version',(SELECT jsonb_agg(to_jsonb(t)) FROM schema_migrations t))::text`).Scan(&out)
 	if err != nil {
 		t.Fatal(err)
@@ -110,8 +110,28 @@ func TestSourceDatabaseTakeover(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if got := snapshotSource(t, pool); got != before {
-		t.Fatal("migration changed source data or version")
+	var oldData, newData map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(before), &oldData); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(snapshotSource(t, pool)), &newData); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"users", "identities", "sessions", "audit"} {
+		if string(oldData[table]) != string(newData[table]) {
+			t.Fatalf("migration changed source %s data", table)
+		}
+	}
+	// 0002 only adds a nullable flow correlation column to historical audit rows;
+	// all original columns are compared above and every new value must remain NULL.
+	var linkedAudit int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM audit_event WHERE flow_id IS NOT NULL").Scan(&linkedAudit); err != nil || linkedAudit != 0 {
+		t.Fatalf("migration rewrote historical audit flow association: %d %v", linkedAudit, err)
+	}
+	var version, flows int
+	var dirty bool
+	if err := pool.QueryRow(ctx, "SELECT version,dirty,(SELECT count(*) FROM identity_flow) FROM schema_migrations").Scan(&version, &dirty, &flows); err != nil || version != 2 || dirty || flows != 0 {
+		t.Fatalf("upgrade version=%d dirty=%v flows=%d: %v", version, dirty, flows, err)
 	}
 	principal, err := a.Users().Authenticate(ctx, access)
 	if err != nil || principal.UserID != f.UserID {
@@ -135,8 +155,8 @@ func TestSourceDatabaseTakeover(t *testing.T) {
 		t.Fatal(err)
 	}
 	signed, err := a.Users().SignInWithCode(ctx, user.CodeCredential{Channel: enum.IdentityPhone, Target: f.Phone, CodeID: challenge.CodeID, Code: sent.code(f.Phone)}, user.Device{ID: "takeover-device"}, user.Meta{IP: "127.0.0.1"})
-	if err != nil || signed.UserID != f.UserID || signed.IsNewUser {
-		t.Fatalf("source digest lookup created another account: user=%s new=%v err=%v", signed.UserID, signed.IsNewUser, err)
+	if err != nil || signed.Tokens == nil || signed.Tokens.UserID != f.UserID || signed.Tokens.IsNewUser {
+		t.Fatalf("source digest lookup did not preserve account: tokens=%v pending=%v err=%v", signed.Tokens != nil, signed.Pending != nil, err)
 	}
 	var users, identities int
 	if err := pool.QueryRow(ctx, "SELECT (SELECT count(*) FROM user_account),(SELECT count(*) FROM identity)").Scan(&users, &identities); err != nil {

@@ -54,7 +54,7 @@ func TestStoreInsertBatchMapsFieldsAndNulls(t *testing.T) {
 	now := time.Now().Truncate(time.Microsecond)
 	full := audit.Event{
 		Type: enum.EventSignIn, Actor: enum.ActorUser, Result: enum.ResultSuccess, Reason: "NEW_USER",
-		UserID: "u_0000000000001", SessionID: "s_0000000000001", IdentityKind: enum.IdentityPhone, SubjectHint: "abcdefgh",
+		UserID: "u_0000000000001", SessionID: "s_0000000000001", FlowID: "f_0000000000001", IdentityKind: enum.IdentityPhone, SubjectHint: "abcdefgh",
 		IP: "203.0.113.5", DeviceID: "dev-1", RequestID: "req-1",
 		AdminIssuer: "https://kc/realms/x", AdminSubject: "admin-sub", AdminUsername: "ops",
 		OccurTime: now,
@@ -80,6 +80,10 @@ func TestStoreInsertBatchMapsFieldsAndNulls(t *testing.T) {
 	}
 	if len(id) != 15 || id[:2] != "e_" || reason != "NEW_USER" || userID != full.UserID || sessionID != full.SessionID || kind == nil || *kind != int16(enum.IdentityPhone) || hint != "abcdefgh" || ip == nil || *ip != "203.0.113.5" || deviceID != "dev-1" || requestID != "req-1" || adminSub != "admin-sub" {
 		t.Fatalf("full row mapping: id=%q reason=%q user=%q sess=%q kind=%v hint=%q ip=%v dev=%q req=%q admin=%q", id, reason, userID, sessionID, kind, hint, ip, deviceID, requestID, adminSub)
+	}
+	rows, err := s.ListByUser(ctx, full.UserID, nil, 10)
+	if err != nil || len(rows) != 2 || rows[0].FlowID == nil || *rows[0].FlowID != full.FlowID || rows[1].FlowID != nil {
+		t.Fatalf("flow mapping/nullable read: %+v %v", rows, err)
 	}
 	// 稀疏事件：空串 → NULL，零值 identity_kind → NULL，actor 原样
 	var nulls int
@@ -126,6 +130,106 @@ func TestStoreInsertBatchIsAllOrNothing(t *testing.T) {
 	}
 	if errors.Is(err, context.Canceled) {
 		t.Fatal("error must be the pool error, not a ctx error")
+	}
+}
+
+func TestStoreInsertBatchFailureConcurrentPoolQueries(t *testing.T) {
+	base := testPool(t)
+	cfg := base.Config()
+	// 单连接池让审计与业务查询不断交接同一条连接，覆盖失败批次关闭后的复用。
+	cfg.MaxConns = 1
+	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if _, err := pool.Exec(ctx, `CREATE FUNCTION fail_audit_batch() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic audit outage'; END $$`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `CREATE TRIGGER fail_audit_batch BEFORE INSERT ON audit_event FOR EACH ROW EXECUTE FUNCTION fail_audit_batch()`); err != nil {
+		t.Fatal(err)
+	}
+	events := make([]audit.Event, 512)
+	for i := range events {
+		events[i] = audit.Event{Type: enum.EventSignIn, Actor: enum.ActorUser, Result: enum.ResultSuccess, OccurTime: time.Now()}
+	}
+	store := audit.NewStore(pool)
+	queryDone := make(chan error, 1)
+	go func() {
+		for i := 0; i < 200; i++ {
+			var count int
+			// 不同语句模拟业务查询不断填充 statement cache。
+			if err := pool.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM user_account /* audit reuse %d */", i)).Scan(&count); err != nil {
+				queryDone <- err
+				return
+			}
+			if count != 0 {
+				queryDone <- fmt.Errorf("unexpected users: %d", count)
+				return
+			}
+		}
+		queryDone <- nil
+	}()
+	for i := 0; i < 50; i++ {
+		failed, err := store.InsertBatch(ctx, events)
+		var pgErr *pgconn.PgError
+		if failed != len(events) || !errors.As(err, &pgErr) || pgErr.Code != "P0001" {
+			t.Errorf("batch %d: failed=%d err=%v", i, failed, err)
+			break
+		}
+	}
+	if err := <-queryDone; err != nil {
+		t.Fatal(err)
+	}
+	if acquired := pool.Stat().AcquiredConns(); acquired != 0 {
+		t.Fatalf("batch/query leaked %d connections", acquired)
+	}
+	var count int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM audit_event").Scan(&count); err != nil || count != 0 {
+		t.Fatalf("failed batches must leave no rows: count=%d err=%v", count, err)
+	}
+}
+
+func TestStoreInsertBatchReportsDeferredCommitFailure(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `CREATE FUNCTION fail_audit_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic deferred audit failure'; END $$`); err != nil {
+		t.Fatal(err)
+	}
+	// INSERT 的命令结果成功，隐式事务提交时才触发错误；必须保留最终 Close 错误。
+	if _, err := pool.Exec(ctx, `CREATE CONSTRAINT TRIGGER fail_audit_commit AFTER INSERT ON audit_event DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fail_audit_commit()`); err != nil {
+		t.Fatal(err)
+	}
+	store := audit.NewStore(pool)
+	events := []audit.Event{
+		{Type: enum.EventSignIn, Actor: enum.ActorUser, Result: enum.ResultSuccess, OccurTime: time.Now()},
+		{Type: enum.EventCodeSent, Actor: enum.ActorUser, Result: enum.ResultSuccess, OccurTime: time.Now()},
+	}
+	failed, err := store.InsertBatch(ctx, events)
+	var pgErr *pgconn.PgError
+	if failed != len(events) || !errors.As(err, &pgErr) || pgErr.Code != "P0001" {
+		t.Fatalf("deferred commit failure: failed=%d err=%v", failed, err)
+	}
+	if acquired := pool.Stat().AcquiredConns(); acquired != 0 {
+		t.Fatalf("commit failure leaked %d connections", acquired)
+	}
+	var count int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM audit_event").Scan(&count); err != nil || count != 0 {
+		t.Fatalf("failed commit must roll back all rows: count=%d err=%v", count, err)
+	}
+	if _, err := pool.Exec(ctx, "DROP TRIGGER fail_audit_commit ON audit_event"); err != nil {
+		t.Fatal(err)
+	}
+	if failed, err := store.InsertBatch(ctx, events); err != nil || failed != 0 {
+		t.Fatalf("reuse after failed commit: failed=%d err=%v", failed, err)
+	}
+	if acquired := pool.Stat().AcquiredConns(); acquired != 0 {
+		t.Fatalf("successful batch leaked %d connections", acquired)
+	}
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM audit_event").Scan(&count); err != nil || count != len(events) {
+		t.Fatalf("successful commit: count=%d err=%v", count, err)
 	}
 }
 

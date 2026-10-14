@@ -2,7 +2,7 @@
 
 ### Requirement: 真实 SMTP 邮件投递
 
-项目 SHALL 提供可选 SMTP 邮件发送能力，支持登录、绑定、重新认证及登录补全用途，消息 SHALL 包含对应验证码和有效期。补全投递 SHALL 通过独立 /accounts:sendSignInCompletionCode 触发，普通 /accounts:sendSignInCode 不接收补全票据或切换用途。accountsvc SHALL 在 EMAIL 启用时使用 SMTP 邮件，未启用时无需邮件依赖；其现有未配置身份策略的默认部署继续使用 SMTP 并禁用短信，不使用日志发送器作为运行回退。
+项目 SHALL 提供可选 SMTP 邮件发送能力，支持登录、绑定、重新认证及登录补全用途，消息 SHALL 包含对应验证码和有效期。补全投递 SHALL 通过独立 /users:sendSignInCompletionCode 触发，普通 /users:sendSignInCode 不接收补全票据或切换用途。accountsvc SHALL 在 EMAIL 启用时使用 SMTP 邮件，未启用时无需邮件依赖；其现有未配置身份策略的默认部署继续使用 SMTP 并禁用短信，不使用日志发送器作为运行回退。
 
 #### Scenario: 邮件登录闭环
 - **WHEN** 用户请求邮箱登录验证码且 SMTP 接受邮件

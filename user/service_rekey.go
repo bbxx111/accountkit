@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/bbxx111/accountkit/pii"
 	"github.com/bbxx111/accountkit/user/db"
 )
 
@@ -135,20 +136,32 @@ func (s *Service) ReencryptSubjects(ctx context.Context) (int, error) {
 // CheckKeyVersions 断言 identity 活跃行使用的每个密钥版本都在配置内(§5.2 轮换第 3 步的硬约束)。
 // 违反时返回包装 ErrUnknownKeyVersion 的错误，点名列与版本号；不含任何 PII。
 func (s *Service) CheckKeyVersions(ctx context.Context) error {
-	q := s.d.Repo.Q()
+	return CheckKeyVersions(ctx, s.d.Repo, s.d.Digester, s.d.Cipher, s.now())
+}
+
+// CheckKeyVersions 只检查存储所需密钥，迁移宿主不必装配认证发送器或提供方。
+func CheckKeyVersions(ctx context.Context, repo *Repo, digester *pii.Digester, cipher *pii.Cipher, now time.Time) error {
+	q := repo.Q()
 	digestUsed, err := q.ListActiveDigestKeyVersions(ctx)
 	if err != nil {
 		return fmt.Errorf("user: list digest key versions: %w", err)
 	}
-	if bad := unconfigured(digestUsed, s.d.Digester.Versions()); len(bad) > 0 {
-		return fmt.Errorf("%w: identity.digest_key_version %v not in configured SubjectHMACKeys %v", ErrUnknownKeyVersion, bad, s.d.Digester.Versions())
+	if bad := unconfigured(digestUsed, digester.Versions()); len(bad) > 0 {
+		return fmt.Errorf("%w: identity.digest_key_version %v not in configured SubjectHMACKeys %v", ErrUnknownKeyVersion, bad, digester.Versions())
 	}
 	cipherUsed, err := q.ListActiveCipherKeyVersions(ctx)
 	if err != nil {
 		return fmt.Errorf("user: list cipher key versions: %w", err)
 	}
-	if bad := unconfigured(cipherUsed, s.d.Cipher.Versions()); len(bad) > 0 {
-		return fmt.Errorf("%w: identity.cipher_key_version %v not in configured SubjectCipherKeys %v", ErrUnknownKeyVersion, bad, s.d.Cipher.Versions())
+	if bad := unconfigured(cipherUsed, cipher.Versions()); len(bad) > 0 {
+		return fmt.Errorf("%w: identity.cipher_key_version %v not in configured SubjectCipherKeys %v", ErrUnknownKeyVersion, bad, cipher.Versions())
+	}
+	flowUsed, err := q.RequiredIdentityFlowCipherVersions(ctx, now)
+	if err != nil {
+		return fmt.Errorf("user: list flow cipher versions: %w", err)
+	}
+	if bad := unconfigured(flowUsed, cipher.Versions()); len(bad) > 0 {
+		return fmt.Errorf("%w: identity_flow.cipher_version %v", ErrUnknownKeyVersion, bad)
 	}
 	return nil
 }

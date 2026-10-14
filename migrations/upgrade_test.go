@@ -15,25 +15,25 @@ import (
 func safetySource(t *testing.T, failure bool) fstest.MapFS {
 	t.Helper()
 	out := fstest.MapFS{}
-	for _, name := range []string{"0001_init.up.sql", "0001_init.down.sql"} {
+	for _, name := range []string{"0001_init.up.sql", "0001_init.down.sql", "0002_identity_flow.up.sql", "0002_identity_flow.down.sql"} {
 		b, err := fs.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)
 		}
 		out[name] = &fstest.MapFile{Data: b}
 	}
-	name := "testdata/0002_success.up.sql"
+	name := "testdata/0003_success.up.sql"
 	if failure {
-		name = "testdata/0002_failure.up.sql"
+		name = "testdata/0003_failure.up.sql"
 	}
 	b, err := os.ReadFile(name)
 	if err != nil {
 		t.Fatal(err)
 	}
-	out["0002_probe.up.sql"] = &fstest.MapFile{Data: b}
-	out["0002_probe.down.sql"] = &fstest.MapFile{Data: []byte("DROP TABLE upgrade_probe")}
+	out["0003_probe.up.sql"] = &fstest.MapFile{Data: b}
+	out["0003_probe.down.sql"] = &fstest.MapFile{Data: []byte("DROP TABLE upgrade_probe")}
 	if failure {
-		out["0003_after.up.sql"] = &fstest.MapFile{Data: []byte("CREATE TABLE after_failure (id integer)")}
+		out["0004_after.up.sql"] = &fstest.MapFile{Data: []byte("CREATE TABLE after_failure (id integer)")}
 	}
 	return out
 }
@@ -79,7 +79,7 @@ func TestUpgradePreservesDataAndIsRepeatable(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	assertVersion(t, cfg, schema, 2, false)
+	assertVersion(t, cfg, schema, 3, false)
 	if snapshot() != before {
 		t.Fatal("upgrade changed existing data")
 	}

@@ -14,7 +14,7 @@
 ### Requirement: 轮次绑定与最新轮次隔离
 轮次 SHALL 绑定实例、渠道、归一化目标、用途和有效期；BIND SHALL 另绑定当前用户，REAUTH SHALL 另绑定当前用户和会话。同一渠道、用途、目标 SHALL 最多一轮有效。重新占额发码 SHALL 使旧轮次失效；合法格式的未知、过期、已消费、被替换或绑定不匹配轮次 SHALL 统一返回 400 CODE_EXPIRED，不扣当前有效轮次次数或目标累计失败预算，但仍受接口频率限制。
 
-SIGN_IN_COMPLETE SHALL 仅由独立的 /accounts:sendSignInCompletionCode 签发，并由 /accounts:completeSignIn 消费；请求使用 sign_in_completion_token 定位流程。该用途 SHALL 绑定待完成流程标识及本次操作，不能伪造为某个 user_id，也不能与 SIGN_IN、BIND、REAUTH 互换。原轮次协议的字段、最新轮次和尝试计数行为 SHALL 保持。
+SIGN_IN_COMPLETE SHALL 仅由独立的 /users:sendSignInCompletionCode 签发，并由 /users:completeSignIn 消费；请求使用 sign_in_completion_token 定位流程。该用途 SHALL 绑定待完成流程标识及本次操作，不能伪造为某个 user_id，也不能与 SIGN_IN、BIND、REAUTH 互换。原轮次协议的字段、最新轮次和尝试计数行为 SHALL 保持。
 
 #### Scenario: 旧页面不消耗新轮次
 - **WHEN** A 轮次已被 B 替换，旧页面提交 A 的正确或错误验证码

@@ -20,9 +20,10 @@ func TestListAuditEvents(t *testing.T) {
 	}
 	ip := netip.MustParseAddr("203.0.113.5")
 	reason, session, hint, dev, req := "NEW_USER", sid, "abcdefgh", "dev-1", "req-1"
+	flow := "f_0000000000001"
 	kind := enum.IdentityPhone
 	rows := []auditdb.AuditEvent{
-		{ID: "e_0k3f9c2m1xq71", EventType: enum.EventSignIn, ActorKind: enum.ActorUser, UserID: &uid, SessionID: &session, IdentityKind: &kind, SubjectHint: &hint, Result: enum.ResultSuccess, Reason: &reason, Ip: &ip, DeviceID: &dev, RequestID: &req, OccurTime: testNow},
+		{ID: "e_0k3f9c2m1xq71", EventType: enum.EventSignIn, ActorKind: enum.ActorUser, UserID: &uid, SessionID: &session, FlowID: &flow, IdentityKind: &kind, SubjectHint: &hint, Result: enum.ResultSuccess, Reason: &reason, Ip: &ip, DeviceID: &dev, RequestID: &req, OccurTime: testNow},
 		{ID: "e_0k3f9c2m1xq72", EventType: enum.EventUserFrozen, ActorKind: enum.ActorAdmin, UserID: &uid, Result: enum.ResultSuccess, OccurTime: testNow.Add(time.Second)},
 		{ID: "e_0k3f9c2m1xq73", EventType: enum.EventUserUnfrozen, ActorKind: enum.ActorAdmin, UserID: &uid, Result: enum.ResultSuccess, OccurTime: testNow.Add(2 * time.Second)},
 	}
@@ -61,11 +62,17 @@ func TestListAuditEvents(t *testing.T) {
 		t.Fatalf("page: %v", out)
 	}
 	first := evs[0].(map[string]any)
-	assertKeys(t, first, "name", "event_type", "actor_kind", "result", "reason", "session_id", "identity_kind", "subject_hint", "ip", "device_id", "request_id", "admin_issuer", "admin_subject", "admin_username", "occur_time")
+	assertKeys(t, first, "name", "event_type", "actor_kind", "result", "reason", "session_id", "flow_id", "identity_kind", "subject_hint", "ip", "device_id", "request_id", "admin_issuer", "admin_subject", "admin_username", "occur_time")
+	if first["flow_id"] != flow {
+		t.Fatal("missing flow correlation")
+	}
 	if first["name"] != "users/"+uid+"/auditEvents/e_0k3f9c2m1xq71" || first["event_type"] != "SIGN_IN" || first["actor_kind"] != "USER" || first["result"] != "SUCCESS" || first["identity_kind"] != "PHONE" || first["ip"] != "203.0.113.5" || first["reason"] != "NEW_USER" {
 		t.Fatalf("event 1: %v", first)
 	}
 	second := evs[1].(map[string]any)
+	if _, ok := second["flow_id"]; ok {
+		t.Fatal("absent flow_id must remain optional")
+	}
 	if second["actor_kind"] != "ADMIN" || second["reason"] != nil || second["identity_kind"] != nil || second["ip"] != nil || second["session_id"] != nil {
 		t.Fatalf("nullable fields must be null: %v", second)
 	}

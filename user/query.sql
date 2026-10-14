@@ -251,8 +251,11 @@ WHERE user_id = @user_id AND revoke_time IS NULL AND refresh_expire_time > @now:
 
 -- name: ScrubAuditEventsByUser :execrows
 -- purge：去掉可关联到自然人的请求侧字段，保留事件与 user_id（§3.5）。命中 audit_event_user_id_occur_time_idx 前缀。
+-- 初始补全事件尚无 user_id；以之后已归属的 flow_id 关联同流程事件，命中 flow 关联索引。
 UPDATE audit_event SET ip = NULL, device_id = NULL, subject_hint = NULL
-WHERE user_id = @user_id::text AND (ip IS NOT NULL OR device_id IS NOT NULL OR subject_hint IS NOT NULL);
+WHERE (user_id = @user_id::text OR flow_id IN (
+    SELECT flow_id FROM audit_event WHERE user_id = @user_id::text AND flow_id IS NOT NULL
+)) AND (ip IS NOT NULL OR device_id IS NOT NULL OR subject_hint IS NOT NULL);
 
 -- name: ImportUser :exec
 -- 受控离线导入：保存调用者提供的原 ID/时间及匿名墓碑，不执行 upsert。
@@ -268,3 +271,70 @@ VALUES (@id, @user_id, @kind, sqlc.narg('subject_digest')::text, sqlc.narg('dige
         @subject_ciphertext, sqlc.narg('cipher_key_version')::smallint,
         sqlc.narg('hint_prefix')::text, sqlc.narg('hint_suffix')::text,
         @create_time::timestamptz, @update_time::timestamptz);
+
+-- identity_flow: callers lock existing users in sorted order before locking flows.
+-- State constants: PENDING=1, VERIFIED=2, COMPLETED=3, EXPIRED=4, REJECTED=5.
+
+-- name: CreateIdentityFlow :one
+INSERT INTO identity_flow (
+    id, token_digest, state, policy_fingerprint, payload, cipher_version,
+    proof_user_ids, create_time, update_time, expire_time
+)
+VALUES (
+    @id, @token_digest, @state, @policy_fingerprint, @payload, @cipher_version,
+    @proof_user_ids::text[], @create_time::timestamptz, @create_time::timestamptz,
+    @expire_time::timestamptz
+)
+RETURNING *;
+
+-- name: GetIdentityFlowByTokenDigest :one
+SELECT * FROM identity_flow WHERE token_digest = @token_digest;
+
+-- name: LockIdentityFlow :one
+SELECT * FROM identity_flow WHERE id = @id FOR UPDATE;
+
+-- name: UpdateIdentityFlow :one
+UPDATE identity_flow
+SET state = @state, payload = @payload, cipher_version = @cipher_version,
+    proof_user_ids = @proof_user_ids::text[], revision = revision + 1,
+    update_time = @now::timestamptz
+WHERE id = @id AND revision = @revision
+  AND state IN (1, 2) AND expire_time > @now::timestamptz
+RETURNING *;
+
+-- name: CompleteIdentityFlow :one
+UPDATE identity_flow
+SET state = 3, payload = @payload, cipher_version = @cipher_version,
+    proof_user_ids = @proof_user_ids::text[], user_id = @user_id::text,
+    session_id = @session_id::text, revision = revision + 1,
+    update_time = @now::timestamptz
+WHERE id = @id AND revision = @revision
+  AND state IN (1, 2) AND expire_time > @now::timestamptz
+RETURNING *;
+
+-- name: DeleteIdentityFlowsForUser :execrows
+WITH locked AS (
+    SELECT id FROM identity_flow
+    WHERE user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text]
+    ORDER BY id FOR UPDATE
+)
+DELETE FROM identity_flow WHERE id IN (SELECT id FROM locked);
+
+-- name: ScrubIdentityFlowAuditForUser :execrows
+-- 用户锁内、删除 flow 前清理已落库事件；不依赖异步队列中的最终用户关联事件。
+UPDATE audit_event SET ip = NULL, device_id = NULL, subject_hint = NULL
+WHERE flow_id IN (
+    SELECT id FROM identity_flow
+    WHERE user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text]
+) AND (ip IS NOT NULL OR device_id IS NOT NULL OR subject_hint IS NOT NULL);
+
+-- name: DeleteExpiredIdentityFlows :execrows
+DELETE FROM identity_flow
+WHERE id IN (
+    SELECT id FROM identity_flow WHERE expire_time <= @now::timestamptz
+    ORDER BY expire_time, id LIMIT @batch_size::int FOR UPDATE SKIP LOCKED
+);
+
+-- name: RequiredIdentityFlowCipherVersions :many
+SELECT DISTINCT cipher_version FROM identity_flow
+WHERE expire_time > @now::timestamptz ORDER BY cipher_version;

@@ -9,7 +9,7 @@ accountsvc 是 accountkit 的可选官方宿主。同一个 Go module 同时支�
 | 嵌入 accountkit | 连接、发送器、HTTP 挂载、管理员验证和业务匿名化回调 | 需要同库业务事务或定制装配 |
 | 运行 accountsvc | 运行配置、TLS、SMTP、外部管理员提供方、业务端授权 | 通过消费者 API 和内部令牌内省接入 |
 
-服务首版提供 SMTP 邮件验证码，短信显式禁用；禁用渠道请求返回 400 `CHANNEL_NOT_ENABLED`，不生成验证码、不扣发送额度。库宿主原有短信/邮件发送器继续可用。
+服务提供可选 SMTP 邮件验证码；显式身份策略启用 EMAIL 时要求 SMTP，禁用 EMAIL 时不解析或要求 SMTP。未设置新策略保留原 SMTP 装配，短信显式禁用；禁用渠道请求返回 400 `CHANNEL_NOT_ENABLED`，不生成验证码、不扣发送额度。库宿主原有短信/邮件发送器继续可用。
 
 ## 构建与运行
 
@@ -38,6 +38,14 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 
 同一地址检查探针：`curl -f http://127.0.0.1:18080/healthz` 和 `curl -f http://127.0.0.1:18080/readyz`。启用服务 TLS 时，两者改用同址 HTTPS 并校验证书。探针访问范围见[网关接入手册](gateway-integration.md)。
 
+## 身份策略与登录补全
+
+服务读取 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS` 和 `ACCOUNTKIT_REQUIRED_IDENTITY_KINDS`。省略 E 沿用原装配，省略 R 为 PHONE/EMAIL any-of；非空 R 只能包含 PHONE/EMAIL 且为 E 子集，`[]` 显式不限定类型。仅邮件可设 E=EMAIL、R=EMAIL；纯微信可设 E=WECHAT、R=[] 并配置微信应用，无需 SMTP。显式启用 PHONE 报错，因为服务没有 SMS 服务商。配置在重启后生效，所有同实例副本须一致。
+
+消费者沿用 `/v1/users`，管理面沿用 `/admin/v1/users`；资源 name 使用 users 及其子资源。此前未发布的 accounts 路径返回 404，不注册别名或重定向。未知第三方身份不满足 R 时返回 pending，尚不建号。客户端调用 `/v1/users:sendSignInCompletionCode` 和 `/v1/users:completeSignIn`，只用 `sign_in_completion_token` 和 PHONE/EMAIL 轮次；验证后关联已有活动账号或注册，详见 [库协议](../README.md#身份策略与登录补全)及[协议升级说明](compatibility.md#身份策略与登录补全协议升级)。
+
+普通第三方绑定从已登录账号设置发起。纯第三方近期认证要重新登录并替换 token pair，核对 user_id 后继续；普通 IdP 仍不能恢复冷静期账号，手机/邮箱和管理员恢复保留。migrate 只检查静态 E/R 与迁移依赖，不构造发送器、IdP 或认证 handler；serve 才校验显式启用类型的真实运行能力。
+
 ## 配置
 
 库配置按 [README](../README.md) 的变量表使用 `ACCOUNTKIT_` 前缀。例如 `ACCOUNTKIT_AUTH_SCHEMA`、`ACCOUNTKIT_AUTH_KEY_PREFIX`、`ACCOUNTKIT_JWT_KEYS`、`ACCOUNTKIT_JWT_ISSUER`。当前开发代码的 `ACCOUNTKIT_AUTH_SCHEMA` 未设置或为空时默认 `account`，Compose 也显式使用 `account`；合法的显式 schema 仍按配置使用。已有宿主的环境变量契约不变。
@@ -55,7 +63,7 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 | `TLS_CERT_FILE` / `TLS_KEY_FILE` | 有效 TLS 模式启用时要求完整有效证书对；false 与任一证书项冲突 |
 | `TRUSTED_PROXY_CIDRS` | 空；逗号分隔可信代理网段 |
 | `STARTUP_TIMEOUT` / `SHUTDOWN_TIMEOUT` | 60s / 30s；关闭预算需给库收尾预留15秒 |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_FROM` | serve 必填；一个发件地址 |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_FROM` | serve 在 EMAIL 启用时必填；一个发件地址 |
 | `SMTP_TLS_MODE` | implicit；可选 starttls；none 仅限 development |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | 成对配置，生产必填 |
 | `SMTP_TIMEOUT` | 10s，包含连接、TLS、认证和提交 |
@@ -83,7 +91,7 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 | false | 任一合法模式 | 均为空 | HTTP；日志明确本进程未启用 HTTP TLS |
 | false | 任一合法模式 | 任一非空 | 配置冲突，拒绝启动 |
 
-启用服务 TLS 时最低 TLS1.2。显式 false 可供受控外部 TLS 终止使用，但开关本身不证明网关或网格提供了加密。生产 SMTP 仍要求认证与经过证书验证的 TLS，外部 OIDC 仍使用 HTTPS；PostgreSQL/Redis 的 TLS 分别由 DSN/URI 控制。`migrate` 不读取监听地址、TLS 开关/证书、SMTP、内省或管理员设置，因此这些服务设置即使无效也不影响它。传输部署方式、可信代理与验收职责统一见[网关接入手册](gateway-integration.md)。
+启用服务 TLS 时最低 TLS1.2。显式 false 可供受控外部 TLS 终止使用，但开关本身不证明网关或网格提供了加密。启用 EMAIL 时生产 SMTP 仍要求认证与经过证书验证的 TLS，外部 OIDC 仍使用 HTTPS；PostgreSQL/Redis 的 TLS 分别由 DSN/URI 控制。`migrate` 不读取监听地址、TLS 开关/证书、SMTP、内省或管理员设置，因此这些服务设置即使无效也不影响它。传输部署方式、可信代理与验收职责统一见[网关接入手册](gateway-integration.md)。
 
 ## 身份密钥与验证码轮换
 

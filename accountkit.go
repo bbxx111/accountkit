@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -104,6 +105,8 @@ type Auth struct {
 
 // New 应用默认、校验配置与依赖，构造密码学原语与维护运行器。不做任何 I/O。
 func New(cfg Config, deps Deps) (*Auth, error) {
+	cfg.EnabledIdentityKinds = slices.Clone(cfg.EnabledIdentityKinds)
+	cfg.RequiredIdentityKinds = slices.Clone(cfg.RequiredIdentityKinds)
 	cfg.applyDefaults()
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -123,7 +126,7 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 	if deps.RequestID == nil {
 		deps.RequestID = defaultRequestID
 	}
-	if deps.SMSSender == nil || deps.EmailSender == nil {
+	if cfg.EnabledIdentityKinds == nil && (deps.SMSSender == nil || deps.EmailSender == nil) {
 		return nil, errors.New("accountkit: Deps.SMSSender and Deps.EmailSender are required (use sender.NewLog for development)")
 	}
 	if deps.HTTPClient == nil {
@@ -176,6 +179,8 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 		})
 	}
 	users, err := user.NewService(user.Deps{
+		IdentityFlowContext:  cfg.Schema,
+		EnabledIdentityKinds: cfg.EnabledIdentityKinds, RequiredIdentityKinds: cfg.RequiredIdentityKinds,
 		Repo: user.NewRepo(deps.Pool), Codes: a.codes, Revocation: a.revocation, Grace: a.grace,
 		Signer: signer, Cipher: cipher, Digester: digester,
 		SMS: deps.SMSSender, Email: deps.EmailSender, Audit: deps.Audit, Logger: deps.Logger,
@@ -215,6 +220,10 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 	}
 	// 维护任务（§5.6 #1–#5）：顺序执行、失败互不影响。
 	a.runner = maintenance.NewRunner(cfg.MaintenanceInterval, maintenance.NewPGLocker(deps.Pool, cfg.Schema), deps.Logger,
+		maintenance.Task{Name: "cleanup_identity_flows", Run: func(ctx context.Context) error {
+			_, err := users.CleanupIdentityFlows(ctx)
+			return err
+		}},
 		maintenance.Task{Name: "purge_users", Run: func(ctx context.Context) error {
 			n, err := users.PurgeDueUsers(ctx)
 			if n > 0 {
@@ -289,7 +298,12 @@ func (a *Auth) RequireRecentAuth() func(http.Handler) http.Handler {
 func PrincipalFrom(ctx context.Context) (user.Principal, bool) { return authn.PrincipalFrom(ctx) }
 
 // Config 返回应用默认值后的配置副本。
-func (a *Auth) Config() Config { return a.cfg }
+func (a *Auth) Config() Config {
+	c := a.cfg
+	c.EnabledIdentityKinds = slices.Clone(c.EnabledIdentityKinds)
+	c.RequiredIdentityKinds = slices.Clone(c.RequiredIdentityKinds)
+	return c
+}
 
 // Migrate 校验 search_path 与 Redis 连通性，创建 schema 并应用迁移，然后校验 identity 中使用的密钥版本
 // 都在配置内（在回填完成前移除旧密钥 → 启动失败，而不是第一次登录时失败）。

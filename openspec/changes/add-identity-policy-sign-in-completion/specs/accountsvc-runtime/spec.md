@@ -2,7 +2,7 @@
 
 ### Requirement: 可选服务与库独立消费
 
-项目 SHALL 提供可独立构建的 accountsvc 可执行程序；直接集成 accountkit 的宿主 SHALL 无需运行该服务。两种方式 SHALL 使用同一新版消费者协议；保留身份数据、成功令牌格式和库生命周期契约，accounts 资源迁移、登录待完成结果及相关 Go/HTTP 升级 SHALL 有明确迁移说明。
+项目 SHALL 提供可独立构建的 accountsvc 可执行程序；直接集成 accountkit 的宿主 SHALL 无需运行该服务。两种方式 SHALL 使用同一新版消费者协议；保留 users 资源、身份数据、成功令牌格式和库生命周期契约，登录待完成结果及相关 Go/HTTP 升级 SHALL 有明确迁移说明。
 
 #### Scenario: 独立使用库
 - **WHEN** 外部 Go 宿主只依赖 accountkit 并自行注入依赖
@@ -55,7 +55,7 @@ serve SHALL 读取 ACCOUNTKIT_ENABLED_IDENTITY_KINDS 和 ACCOUNTKIT_REQUIRED_IDE
 
 serve SHALL 仅使用 `ACCOUNTSVC_HTTP_ADDR` 创建一个监听器，默认绑定 `127.0.0.1:8080`，挂载消费者 `/v1`、管理员 `/admin/v1`、内省 `/v1/introspect` 与 `/healthz`、`/readyz`。不同身份体系和处理器 SHALL 保持独立。服务 SHALL 不再创建内部监听器；serve 遇到非空 `ACCOUNTSVC_INTERNAL_ADDR` SHALL 非零退出并明确提示迁移配置，旧内省路径 SHALL 返回404而非别名或重定向。网关和网络策略 SHALL 承担对公网暴露范围控制，不把路径名称视为网络隔离。服务 SHALL 保留有限 HTTP 超时、请求体上限并按显式 TLS 配置决定传输；来源 IP SHALL 只信任明确配置 CIDR 的代理链，请求 ID SHALL 校验或生成并回传。
 
-消费者和管理账号集合 SHALL 同步迁移为 accounts，挂载后分别位于 /v1/accounts 和 /admin/v1/accounts；新增消费者补全端点 SHALL 为 /v1/accounts:sendSignInCompletionCode 与 /v1/accounts:completeSignIn。旧 users 路径 SHALL 返回 404，不改变 token/revoke、内省和探针路径。
+消费者和管理账号集合 SHALL 沿用 users，挂载后分别位于 /v1/users 和 /admin/v1/users；新增消费者补全端点 SHALL 为 /v1/users:sendSignInCompletionCode 与 /v1/users:completeSignIn。此前未发布的 accounts 路径 SHALL 返回 404，不注册别名或重定向；token/revoke、内省和探针路径 SHALL 保持。
 
 #### Scenario: 公网请求内部路径
 - **WHEN** 公网调用者通过按接入契约配置的网关请求 `/v1/introspect`、`/healthz` 或 `/readyz`
@@ -75,4 +75,4 @@ serve SHALL 仅使用 `ACCOUNTSVC_HTTP_ADDR` 创建一个监听器，默认绑�
 
 #### Scenario: 两个新增补全端点
 - **WHEN** 服务启用新版消费者协议
-- **THEN** 独立提供 accounts:sendSignInCompletionCode 和 accounts:completeSignIn，普通发码用途不通过补全票据切换，管理面不暴露未认证的补全操作
+- **THEN** 独立提供 users:sendSignInCompletionCode 和 users:completeSignIn，普通发码用途不通过补全票据切换，管理面不暴露未认证的补全操作

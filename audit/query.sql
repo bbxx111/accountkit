@@ -3,8 +3,8 @@
 
 -- name: InsertAuditEvents :batchexec
 INSERT INTO audit_event (id, event_type, actor_kind, user_id, admin_issuer, admin_subject, admin_username,
-                         session_id, identity_kind, subject_hint, result, reason, ip, device_id, request_id, occur_time)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16);
+                         session_id, identity_kind, subject_hint, result, reason, ip, device_id, request_id, occur_time, flow_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17);
 
 -- name: DeleteAuditEventsBefore :execrows
 -- 维护任务 audit_retention：按 occur_time 分批删除超过保留期的行；命中 audit_event_occur_time_idx。

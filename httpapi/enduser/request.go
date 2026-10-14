@@ -47,7 +47,11 @@ func parseDevice(r *http.Request, required bool) (user.Device, *apierror.Error) 
 	if (required || id != "") && !deviceIDRe.MatchString(id) {
 		return user.Device{}, apierror.New(apierror.StatusInvalidArgument, "DEVICE_ID_INVALID", "X-Device-Id header is required and must match ^[A-Za-z0-9._-]{1,64}$")
 	}
-	name := strings.TrimSpace(r.Header.Get("X-Device-Name"))
+	name := r.Header.Get("X-Device-Name")
+	if required {
+		// 初始登录保留既有规范化；补全时原值参与领域层的设备匹配。
+		name = strings.TrimSpace(name)
+	}
 	if !utf8.ValidString(name) || utf8.RuneCountInString(name) > maxDeviceNameRunes || strings.ContainsFunc(name, unicode.IsControl) {
 		return user.Device{}, apierror.New(apierror.StatusInvalidArgument, "DEVICE_NAME_INVALID", "X-Device-Name must be <= 64 characters without control characters")
 	}

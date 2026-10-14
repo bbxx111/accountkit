@@ -273,3 +273,51 @@ func TestSignInCompletionDeviceHeaders(t *testing.T) {
 		}
 	}
 }
+
+func TestSignInCompletionDeviceNamePreservesRawHeader(t *testing.T) {
+	for _, rawName := range []string{"\u00a0", "\u00a0Pixel 9\u00a0", " Pixel 9 "} {
+		for path, body := range map[string]string{"/accounts:sendSignInCompletionCode": completionCodeBody, "/accounts:completeSignIn": completionBody} {
+			t.Run(path+rawName, func(t *testing.T) {
+				var gotName string
+				check := func(dev user.Device) error {
+					gotName = dev.Name
+					if dev.Name != "" && dev.Name != "Pixel 9" {
+						return user.ErrSignInCompletionInvalid
+					}
+					return nil
+				}
+				f := &completionService{
+					fakeService: &fakeService{},
+					send: func(_ context.Context, _ string, _ enum.IdentityKind, _ string, dev user.Device, _ user.Meta) (user.CodeChallenge, error) {
+						return user.CodeChallenge{}, check(dev)
+					},
+					complete: func(_ context.Context, _ string, _ user.CodeCredential, dev user.Device, _ user.Meta) (user.SignInResult, error) {
+						return user.SignInResult{Tokens: &user.TokenResult{}}, check(dev)
+					},
+				}
+				r := do(t, completionHandler(t, f), call{method: "POST", path: path, body: body, headers: map[string]string{"X-Device-Name": rawName}})
+				if gotName != rawName || r.Code != 400 {
+					t.Fatalf("raw name %q became %q: %d %s", rawName, gotName, r.Code, r.Body.String())
+				}
+				if s, _ := aipError(t, r); s != "FAILED_PRECONDITION/SIGN_IN_COMPLETION_INVALID" {
+					t.Fatalf("mismatched device: %s", s)
+				}
+			})
+		}
+	}
+}
+
+func TestInitialSignInDeviceNameRetainsTrimming(t *testing.T) {
+	f := &fakeService{
+		signInWithCode: func(_ context.Context, _ user.CodeCredential, dev user.Device, _ user.Meta) (user.SignInResult, error) {
+			if dev.Name != "Pixel 9" {
+				t.Fatalf("initial device name: %q", dev.Name)
+			}
+			return user.SignInResult{Tokens: &user.TokenResult{AccessToken: "at"}}, nil
+		},
+	}
+	r := do(t, newHandler(t, f), call{method: "POST", path: "/accounts:signInWithCode", body: `{"email":{"target":"a@example.test","code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`, headers: map[string]string{"X-Device-Id": "device", "X-Device-Name": "\u00a0Pixel 9\u00a0"}})
+	if r.Code != 200 {
+		t.Fatalf("initial login: %d %s", r.Code, r.Body.String())
+	}
+}

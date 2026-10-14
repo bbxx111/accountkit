@@ -9,9 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/migrations"
 	"github.com/bbxx111/accountkit/pii"
 	"github.com/bbxx111/accountkit/tokens"
+	"github.com/bbxx111/accountkit/user"
 )
 
 // WeChatApp 是一个微信应用（小程序/App/公众号）的凭据；Secret 只在服务端换取 token 时使用。
@@ -23,6 +25,9 @@ type WeChatApp struct {
 // Config 是 accountkit 的全部配置。零值字段由 applyDefaults 填默认；Validate 在 New 中调用。
 // 密钥只来自配置：JWT/HMAC/加密三组都是"版本 → 密钥"映射加一个 active 版本。
 type Config struct {
+	// nil 使用默认策略，非 nil 空切片表示显式空列表。
+	EnabledIdentityKinds  []enum.IdentityKind
+	RequiredIdentityKinds []enum.IdentityKind
 	// Schema 是所有表所在的 PostgreSQL schema。默认 "account"。
 	Schema string
 	// KeyPrefix 是所有 Redis 键的前缀，须以 ':' 结尾。默认 "auth:"。
@@ -68,6 +73,17 @@ type Config struct {
 	AppleJWKSURL     string
 
 	MaintenanceInterval time.Duration // 默认 5m
+}
+
+func (c Config) identityPolicy() (*user.IdentityPolicy, error) {
+	var providers []enum.IdentityKind
+	if len(c.WeChatApps) > 0 {
+		providers = append(providers, enum.IdentityWeChat)
+	}
+	if len(c.AppleBundleIDs) > 0 {
+		providers = append(providers, enum.IdentityApple)
+	}
+	return user.NewIdentityPolicy(c.EnabledIdentityKinds, c.RequiredIdentityKinds, providers...)
 }
 
 func boolPtr(b bool) *bool { return &b }
@@ -123,6 +139,9 @@ func (c *Config) applyDefaults() {
 // Validate 应用默认值后校验配置。宿主可在启动早期调用以尽早失败。
 func (c Config) Validate() error {
 	c.applyDefaults()
+	if _, err := c.identityPolicy(); err != nil {
+		return err
+	}
 	if !migrations.ValidSchema(c.Schema) {
 		return fmt.Errorf("accountkit: Schema %q must match ^[a-z][a-z0-9_]{0,62}$", c.Schema)
 	}
@@ -302,6 +321,39 @@ func ConfigFromEnv(prefix string) (Config, error) {
 		}
 	}
 
+	kinds := func(name string, dst *[]enum.IdentityKind) {
+		raw, ok := os.LookupEnv(prefix + name)
+		if !ok {
+			return
+		}
+		raw = strings.TrimSpace(raw)
+		if raw == "[]" {
+			*dst = []enum.IdentityKind{}
+			return
+		}
+		if raw == "" {
+			fail(name, errors.New("empty value; use [] for an explicit empty list"))
+			return
+		}
+		values := []enum.IdentityKind{}
+		seen := map[enum.IdentityKind]bool{}
+		for _, v := range strings.Split(raw, ",") {
+			k, err := enum.ParseIdentityKind(strings.TrimSpace(v))
+			if err != nil {
+				fail(name, err)
+				return
+			}
+			if seen[k] {
+				fail(name, errors.New("duplicate identity kind"))
+				return
+			}
+			seen[k] = true
+			values = append(values, k)
+		}
+		*dst = values
+	}
+	kinds("ENABLED_IDENTITY_KINDS", &c.EnabledIdentityKinds)
+	kinds("REQUIRED_IDENTITY_KINDS", &c.RequiredIdentityKinds)
 	c.Schema = str("AUTH_SCHEMA")
 	c.KeyPrefix = str("AUTH_KEY_PREFIX")
 	keylist("JWT_KEYS", &c.JWTKeys)

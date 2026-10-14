@@ -40,17 +40,19 @@ const maxDeviceField = 64
 
 // Deps 是 Service 的依赖。
 type Deps struct {
-	Repo       *Repo
-	Codes      *code.Store
-	Revocation *revocation.Set
-	Grace      *grace.Cache
-	Signer     *tokens.Signer
-	Cipher     *pii.Cipher
-	Digester   *pii.Digester
-	SMS        sender.SMSSender
-	Email      sender.EmailSender
-	Audit      audit.Recorder
-	Logger     *slog.Logger
+	EnabledIdentityKinds  []enum.IdentityKind
+	RequiredIdentityKinds []enum.IdentityKind
+	Repo                  *Repo
+	Codes                 *code.Store
+	Revocation            *revocation.Set
+	Grace                 *grace.Cache
+	Signer                *tokens.Signer
+	Cipher                *pii.Cipher
+	Digester              *pii.Digester
+	SMS                   sender.SMSSender
+	Email                 sender.EmailSender
+	Audit                 audit.Recorder
+	Logger                *slog.Logger
 
 	// WeChat / Apple 为 nil 表示未启用对应 IdP。
 	WeChat idp.WeChatVerifier
@@ -78,10 +80,47 @@ type Deps struct {
 }
 
 // Service 持有用户域的全部业务规则。
-type Service struct{ d Deps }
+type Service struct {
+	d      Deps
+	policy *IdentityPolicy
+}
+
+func (s *Service) IdentityPolicy() *IdentityPolicy { return s.policy }
 
 // NewService 校验依赖并构造。
 func NewService(d Deps) (*Service, error) {
+	var providers []enum.IdentityKind
+	if d.WeChat != nil {
+		providers = append(providers, enum.IdentityWeChat)
+	}
+	if d.Apple != nil {
+		providers = append(providers, enum.IdentityApple)
+	}
+	policy, err := NewIdentityPolicy(d.EnabledIdentityKinds, d.RequiredIdentityKinds, providers...)
+	if err != nil {
+		return nil, err
+	}
+	if d.EnabledIdentityKinds != nil {
+		available := func(v any) bool {
+			if v == nil {
+				return false
+			}
+			if e, ok := v.(interface{ Enabled() bool }); ok {
+				return e.Enabled()
+			}
+			return true
+		}
+		if err := policy.ValidateCapabilities(IdentityCapabilities{Phone: available(d.SMS), Email: available(d.Email), WeChat: d.WeChat != nil, Apple: d.Apple != nil}); err != nil {
+			return nil, err
+		}
+		if d.SMS == nil {
+			d.SMS = sender.Disabled{}
+		}
+		if d.Email == nil {
+			d.Email = sender.Disabled{}
+		}
+	}
+
 	switch {
 	case d.Repo == nil, d.Codes == nil, d.Revocation == nil, d.Grace == nil, d.Signer == nil, d.Cipher == nil, d.Digester == nil, d.SMS == nil, d.Email == nil:
 		return nil, errors.New("user: Deps.Repo/Codes/Revocation/Grace/Signer/Cipher/Digester/SMS/Email are required")
@@ -132,7 +171,7 @@ func NewService(d Deps) (*Service, error) {
 	if d.Now == nil {
 		d.Now = time.Now
 	}
-	return &Service{d: d}, nil
+	return &Service{d: d, policy: policy}, nil
 }
 
 // Device 是客户端设备身份（X-Device-Id / X-Device-Name）。

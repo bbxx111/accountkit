@@ -27,7 +27,7 @@ func TestListIdentities(t *testing.T) {
 		return identityFixture(), nil
 	}}, principal)
 	h := newHandler(t, f)
-	rec := do(t, h, call{method: "GET", path: "/users/me/identities", bearer: "good"})
+	rec := do(t, h, call{method: "GET", path: "/accounts/me/identities", bearer: "good"})
 	var body struct {
 		Identities []map[string]any `json:"identities"`
 	}
@@ -36,7 +36,7 @@ func TestListIdentities(t *testing.T) {
 		t.Fatalf("list: %d %s", rec.Code, rec.Body.String())
 	}
 	i0 := body.Identities[0]
-	if i0["name"] != "users/"+principal.UserID+"/identities/i_0k3f9c2m1xq7a" || i0["kind"] != "PHONE" || i0["masked_subject"] != "+86 138****1234" || i0["create_time"] != "2026-09-10T10:00:00Z" {
+	if i0["name"] != "accounts/"+principal.UserID+"/identities/i_0k3f9c2m1xq7a" || i0["kind"] != "PHONE" || i0["masked_subject"] != "+86 138****1234" || i0["create_time"] != "2026-09-10T10:00:00Z" {
 		t.Fatalf("dto: %v", i0)
 	}
 	for k := range i0 {
@@ -52,15 +52,15 @@ func TestListIdentities(t *testing.T) {
 	// user:bind 可读；user:undelete 不可
 	bind := principal
 	bind.Scope = "user:bind"
-	if rec = do(t, newHandler(t, withAuth(&fakeService{listIdentities: f.listIdentities}, bind)), call{method: "GET", path: "/users/me/identities", bearer: "good"}); rec.Code != 200 {
+	if rec = do(t, newHandler(t, withAuth(&fakeService{listIdentities: f.listIdentities}, bind)), call{method: "GET", path: "/accounts/me/identities", bearer: "good"}); rec.Code != 200 {
 		t.Fatalf("user:bind must list: %d", rec.Code)
 	}
 	undel := principal
 	undel.Scope = "user:undelete"
-	if rec = do(t, newHandler(t, withAuth(&fakeService{}, undel)), call{method: "GET", path: "/users/me/identities", bearer: "good"}); rec.Code != 403 {
+	if rec = do(t, newHandler(t, withAuth(&fakeService{}, undel)), call{method: "GET", path: "/accounts/me/identities", bearer: "good"}); rec.Code != 403 {
 		t.Fatalf("user:undelete must be 403: %d", rec.Code)
 	}
-	if rec = do(t, h, call{method: "GET", path: "/users/me/identities"}); rec.Code != 401 {
+	if rec = do(t, h, call{method: "GET", path: "/accounts/me/identities"}); rec.Code != 401 {
 		t.Fatal("401")
 	}
 }
@@ -81,21 +81,21 @@ func TestSendBindCode(t *testing.T) {
 		return user.CodeChallenge{}, nil
 	}}, principal)
 	h := newHandler(t, f)
-	rec := do(t, h, call{method: "POST", path: "/users/me:sendBindCode", bearer: "good", body: map[string]string{"channel": "EMAIL", "target": "a@b.co"}})
+	rec := do(t, h, call{method: "POST", path: "/accounts/me:sendBindCode", bearer: "good", body: map[string]string{"channel": "EMAIL", "target": "a@b.co"}})
 	if rec.Code != 200 || got.ch != enum.IdentityEmail || got.target != "a@b.co" {
 		t.Fatalf("send: %d %+v", rec.Code, got)
 	}
-	rec = do(t, h, call{method: "POST", path: "/users/me:sendBindCode", bearer: "good", body: map[string]string{"channel": "PHONE", "target": "+8613800000000"}})
+	rec = do(t, h, call{method: "POST", path: "/accounts/me:sendBindCode", bearer: "good", body: map[string]string{"channel": "PHONE", "target": "+8613800000000"}})
 	if status, body := aipError(t, rec); rec.Code != 429 || status != "RESOURCE_EXHAUSTED/COOLDOWN" || body["retry_after_seconds"] != float64(30) {
 		t.Fatalf("cooldown: %d %s", rec.Code, status)
 	}
-	rec = do(t, h, call{method: "POST", path: "/users/me:sendBindCode", bearer: "good", body: map[string]string{"channel": "WECHAT", "target": "x"}})
+	rec = do(t, h, call{method: "POST", path: "/accounts/me:sendBindCode", bearer: "good", body: map[string]string{"channel": "WECHAT", "target": "x"}})
 	if status, _ := aipError(t, rec); status != "INVALID_ARGUMENT/CHANNEL_INVALID" {
 		t.Fatalf("channel: %s", status)
 	}
 	bind := principal
 	bind.Scope = "user:bind"
-	if rec = do(t, newHandler(t, withAuth(&fakeService{sendBindCode: f.sendBindCode}, bind)), call{method: "POST", path: "/users/me:sendBindCode", bearer: "good", body: map[string]string{"channel": "EMAIL", "target": "a@b.co"}}); rec.Code != 200 {
+	if rec = do(t, newHandler(t, withAuth(&fakeService{sendBindCode: f.sendBindCode}, bind)), call{method: "POST", path: "/accounts/me:sendBindCode", bearer: "good", body: map[string]string{"channel": "EMAIL", "target": "a@b.co"}}); rec.Code != 200 {
 		t.Fatalf("user:bind may send bind code: %d", rec.Code)
 	}
 }
@@ -105,7 +105,7 @@ func TestSendBindCode(t *testing.T) {
 func TestSendBindCodeEmptyClientIPIs500(t *testing.T) {
 	f := withAuth(&fakeService{}, principal)
 	h := newHandlerWithDeps(t, f, func(d *endUserDeps) { d.ClientIP = func(*http.Request) string { return "" } })
-	rec := do(t, h, call{method: "POST", path: "/users/me:sendBindCode", bearer: "good", body: map[string]string{"channel": "PHONE", "target": "+8613812341234"}})
+	rec := do(t, h, call{method: "POST", path: "/accounts/me:sendBindCode", bearer: "good", body: map[string]string{"channel": "PHONE", "target": "+8613812341234"}})
 	if rec.Code != 500 {
 		t.Fatalf("empty client ip must 500: %d %s", rec.Code, rec.Body.String())
 	}
@@ -137,17 +137,17 @@ func TestBindIdentity(t *testing.T) {
 	}, principal)
 	h := newHandler(t, f)
 
-	rec := do(t, h, call{method: "POST", path: "/users/me/identities", bearer: "good", body: map[string]any{"email": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "ba@b.co", "code": "123456"}}})
+	rec := do(t, h, call{method: "POST", path: "/accounts/me/identities", bearer: "good", body: map[string]any{"email": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "ba@b.co", "code": "123456"}}})
 	var res map[string]any
 	decode(t, rec, &res)
-	if rec.Code != 201 || res["name"] != "users/"+principal.UserID+"/identities/i_0k3f9c2m1xq7c" || res["kind"] != "EMAIL" || res["masked_subject"] != "ba***@b.co" {
+	if rec.Code != 201 || res["name"] != "accounts/"+principal.UserID+"/identities/i_0k3f9c2m1xq7c" || res["kind"] != "EMAIL" || res["masked_subject"] != "ba***@b.co" {
 		t.Fatalf("bind email: %d %v", rec.Code, res)
 	}
-	rec = do(t, h, call{method: "POST", path: "/users/me/identities", bearer: "good", body: map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+86138", "code": "333333"}}})
+	rec = do(t, h, call{method: "POST", path: "/accounts/me/identities", bearer: "good", body: map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+86138", "code": "333333"}}})
 	if rec.Code != 200 {
 		t.Fatalf("idempotent bind must be 200: %d", rec.Code)
 	}
-	rec = do(t, h, call{method: "POST", path: "/users/me/identities", bearer: "good", body: map[string]any{"wechat": map[string]string{"app_id": "wx1", "code": "c"}}})
+	rec = do(t, h, call{method: "POST", path: "/accounts/me/identities", bearer: "good", body: map[string]any{"wechat": map[string]string{"app_id": "wx1", "code": "c"}}})
 	decode(t, rec, &res)
 	if rec.Code != 201 || res["kind"] != "WECHAT" || res["masked_subject"] != "" {
 		t.Fatalf("bind wechat: %d %v", rec.Code, res)
@@ -165,7 +165,7 @@ func TestBindIdentity(t *testing.T) {
 		"incomplete": {map[string]any{"email": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "a@b.co"}}, "400 INVALID_ARGUMENT/CREDENTIAL_INCOMPLETE"},
 		"malformed":  {"{", "400 INVALID_ARGUMENT/MALFORMED_BODY"},
 	} {
-		rec = do(t, h, call{method: "POST", path: "/users/me/identities", bearer: "good", body: c.body})
+		rec = do(t, h, call{method: "POST", path: "/accounts/me/identities", bearer: "good", body: c.body})
 		status, _ := aipError(t, rec)
 		if got := itoa(rec.Code) + " " + status; got != c.want {
 			t.Errorf("%s: got %q want %q", name, got, c.want)
@@ -177,7 +177,7 @@ func TestBindIdentity(t *testing.T) {
 	// user:bind 可以绑；user:undelete 不行
 	bind := principal
 	bind.Scope = "user:bind"
-	if rec = do(t, newHandler(t, withAuth(&fakeService{bindWithCode: f.bindWithCode}, bind)), call{method: "POST", path: "/users/me/identities", bearer: "good", body: map[string]any{"email": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "ba@b.co", "code": "123456"}}}); rec.Code != 201 {
+	if rec = do(t, newHandler(t, withAuth(&fakeService{bindWithCode: f.bindWithCode}, bind)), call{method: "POST", path: "/accounts/me/identities", bearer: "good", body: map[string]any{"email": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "ba@b.co", "code": "123456"}}}); rec.Code != 201 {
 		t.Fatalf("user:bind may bind: %d", rec.Code)
 	}
 }
@@ -207,23 +207,23 @@ func TestUnbindIdentityRequiresRecentAuth(t *testing.T) {
 		return user.Principal{}, user.ErrInvalidToken
 	}
 	h := newHandler(t, f)
-	rec := do(t, h, call{method: "DELETE", path: "/users/me/identities/i_0k3f9c2m1xq7a", bearer: "good"})
+	rec := do(t, h, call{method: "DELETE", path: "/accounts/me/identities/i_0k3f9c2m1xq7a", bearer: "good"})
 	if rec.Code != 204 || rec.Body.Len() != 0 || gotID != "i_0k3f9c2m1xq7a" {
 		t.Fatalf("delete: %d %q", rec.Code, rec.Body.String())
 	}
-	rec = do(t, h, call{method: "DELETE", path: "/users/me/identities/i_0k3f9c2m1xq7a", bearer: "stale"})
+	rec = do(t, h, call{method: "DELETE", path: "/accounts/me/identities/i_0k3f9c2m1xq7a", bearer: "stale"})
 	if status, _ := aipError(t, rec); rec.Code != 400 || status != "FAILED_PRECONDITION/REAUTHENTICATION_REQUIRED" {
 		t.Fatalf("stale auth_time: %d %s", rec.Code, status)
 	}
-	rec = do(t, h, call{method: "DELETE", path: "/users/me/identities/i_0k3f9c2m1xq7z", bearer: "good"})
+	rec = do(t, h, call{method: "DELETE", path: "/accounts/me/identities/i_0k3f9c2m1xq7z", bearer: "good"})
 	if status, _ := aipError(t, rec); rec.Code != 404 || status != "NOT_FOUND/NOT_FOUND" {
 		t.Fatalf("foreign: %d %s", rec.Code, status)
 	}
-	rec = do(t, h, call{method: "DELETE", path: "/users/me/identities/i_0k3f9c2m1xq7y", bearer: "good"})
+	rec = do(t, h, call{method: "DELETE", path: "/accounts/me/identities/i_0k3f9c2m1xq7y", bearer: "good"})
 	if status, _ := aipError(t, rec); rec.Code != 400 || status != "FAILED_PRECONDITION/LAST_ANCHOR_IDENTITY" {
 		t.Fatalf("last anchor: %d %s", rec.Code, status)
 	}
-	rec = do(t, h, call{method: "DELETE", path: "/users/me/identities/s_0k3f9c2m1xq7a", bearer: "good"})
+	rec = do(t, h, call{method: "DELETE", path: "/accounts/me/identities/s_0k3f9c2m1xq7a", bearer: "good"})
 	if status, _ := aipError(t, rec); rec.Code != 400 || status != "INVALID_ARGUMENT/INVALID_ID" {
 		t.Fatalf("wrong prefix: %d %s", rec.Code, status)
 	}
@@ -231,12 +231,12 @@ func TestUnbindIdentityRequiresRecentAuth(t *testing.T) {
 	bind := principal
 	bind.Scope = "user:bind"
 	h2 := newHandler(t, withAuth(&fakeService{}, bind))
-	if rec = do(t, h2, call{method: "DELETE", path: "/users/me/identities/i_0k3f9c2m1xq7a", bearer: "good"}); rec.Code != 403 {
+	if rec = do(t, h2, call{method: "DELETE", path: "/accounts/me/identities/i_0k3f9c2m1xq7a", bearer: "good"}); rec.Code != 403 {
 		t.Fatalf("user:bind must not unbind: %d", rec.Code)
 	}
 	// SensitiveOpVerification=false 时 stale 也放行
 	h3 := newHandlerWithDeps(t, f, func(d *endUserDeps) { d.SensitiveOpVerification = false })
-	if rec = do(t, h3, call{method: "DELETE", path: "/users/me/identities/i_0k3f9c2m1xq7a", bearer: "stale"}); rec.Code != 204 {
+	if rec = do(t, h3, call{method: "DELETE", path: "/accounts/me/identities/i_0k3f9c2m1xq7a", bearer: "stale"}); rec.Code != 204 {
 		t.Fatalf("verification off: %d", rec.Code)
 	}
 }

@@ -9,7 +9,7 @@ import (
 	"github.com/bbxx111/accountkit/user"
 )
 
-// GET /users?filter=&show_deleted=&page_size=&page_token=
+// GET /accounts?filter=&show_deleted=&page_size=&page_token=
 func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	f, e := parseFilter(q.Get("filter"))
@@ -52,7 +52,7 @@ func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
 	apierror.WriteJSON(w, http.StatusOK, out)
 }
 
-// GET /users/{user}
+// GET /accounts/{user}
 func (h *Handler) getUser(w http.ResponseWriter, r *http.Request) {
 	uid, ok := userID(w, r)
 	if !ok {
@@ -66,24 +66,24 @@ func (h *Handler) getUser(w http.ResponseWriter, r *http.Request) {
 	apierror.WriteJSON(w, http.StatusOK, newUserDetailResource(d))
 }
 
-// POST /users/{user}:freeze  body {reason}
+// POST /accounts/{user}:freeze  body {reason}
 func (h *Handler) freeze(w http.ResponseWriter, r *http.Request) {
 	h.stateChange(w, r, true, h.d.Users.Freeze)
 }
 
-// POST /users/{user}:unfreeze  body {reason?}
+// POST /accounts/{user}:unfreeze  body {reason?}
 func (h *Handler) unfreeze(w http.ResponseWriter, r *http.Request) {
 	h.stateChange(w, r, true, h.d.Users.Unfreeze)
 }
 
-// DELETE /users/{user}（super-admin 代办软删除）
+// DELETE /accounts/{user}（super-admin 代办软删除）
 func (h *Handler) deleteUser(w http.ResponseWriter, r *http.Request) {
 	h.stateChange(w, r, false, func(ctx context.Context, a user.Admin, uid, _ string, meta user.Meta) (user.AdminUser, error) {
 		return h.d.Users.AdminDeleteUser(ctx, a, uid, meta)
 	})
 }
 
-// POST /users/{user}:undelete（super-admin 代办恢复）
+// POST /accounts/{user}:undelete（super-admin 代办恢复）
 func (h *Handler) undeleteUser(w http.ResponseWriter, r *http.Request) {
 	h.stateChange(w, r, false, func(ctx context.Context, a user.Admin, uid, _ string, meta user.Meta) (user.AdminUser, error) {
 		return h.d.Users.AdminUndeleteUser(ctx, a, uid, meta)

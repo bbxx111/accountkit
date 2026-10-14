@@ -136,15 +136,15 @@ func TestDTOShapes(t *testing.T) {
 	}
 	del := testNowInternal.Add(time.Hour)
 	me := newMeResource(user.Me{ID: "u_1", State: enum.UserPendingDeletion, DisplayName: "白博", CreateTime: testNowInternal, DeleteTime: &del})
-	if me.Name != "users/u_1" || me.State != "PENDING_DELETION" || me.DisplayName != "白博" || me.CreateTime != "2026-09-10T12:00:00Z" || me.DeleteTime == nil || *me.DeleteTime != "2026-09-10T13:00:00Z" || me.PurgeTime != nil {
+	if me.Name != "accounts/u_1" || me.State != "PENDING_DELETION" || me.DisplayName != "白博" || me.CreateTime != "2026-09-10T12:00:00Z" || me.DeleteTime == nil || *me.DeleteTime != "2026-09-10T13:00:00Z" || me.PurgeTime != nil {
 		t.Fatalf("%+v", me)
 	}
 	s := newSessionResource("u_1", user.SessionInfo{ID: "s_1", DeviceID: "d", DeviceName: "n", CreateTime: testNowInternal, LastUsedTime: testNowInternal, IsCurrent: true})
-	if s.Name != "users/u_1/sessions/s_1" || !s.IsCurrent || s.LastUsedTime != "2026-09-10T12:00:00Z" {
+	if s.Name != "accounts/u_1/sessions/s_1" || !s.IsCurrent || s.LastUsedTime != "2026-09-10T12:00:00Z" {
 		t.Fatalf("%+v", s)
 	}
 	ir := newIdentityResource("u_1", user.IdentityInfo{ID: "i_1", Kind: enum.IdentityPhone, MaskedSubject: "+86 138****1234", CreateTime: testNowInternal})
-	if ir.Name != "users/u_1/identities/i_1" || ir.Kind != "PHONE" || ir.MaskedSubject != "+86 138****1234" || ir.CreateTime != "2026-09-10T12:00:00Z" {
+	if ir.Name != "accounts/u_1/identities/i_1" || ir.Kind != "PHONE" || ir.MaskedSubject != "+86 138****1234" || ir.CreateTime != "2026-09-10T12:00:00Z" {
 		t.Fatalf("%+v", ir)
 	}
 	if b, _ := json.Marshal(newIdentityResource("u_1", user.IdentityInfo{ID: "i_2", Kind: enum.IdentityWeChat})); !strings.Contains(string(b), `"masked_subject":""`) {

@@ -26,7 +26,7 @@ func TestIdentityReplacementAuditResponse(t *testing.T) {
 	}
 	f := &fakeService{userExists: func(context.Context, string) error { return nil }}
 	fa := &fakeAudit{listByUser: func(context.Context, string, *audit.EventCursor, int) ([]auditdb.AuditEvent, error) { return rows, nil }}
-	rec := do(t, newHandler(t, f, fa), call{method: "GET", path: "/users/" + uid + "/auditEvents", headers: operator})
+	rec := do(t, newHandler(t, f, fa), call{method: "GET", path: "/accounts/" + uid + "/auditEvents", headers: operator})
 	var out struct {
 		AuditEvents []map[string]any `json:"audit_events"`
 	}

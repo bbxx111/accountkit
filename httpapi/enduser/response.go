@@ -59,7 +59,7 @@ type meResource struct {
 
 func newMeResource(m user.Me) meResource {
 	return meResource{
-		Name: "users/" + m.ID, State: m.State.String(), DisplayName: m.DisplayName,
+		Name: "accounts/" + m.ID, State: m.State.String(), DisplayName: m.DisplayName,
 		CreateTime: fmtTime(m.CreateTime), DeleteTime: fmtTimePtr(m.DeleteTime), PurgeTime: fmtTimePtr(m.PurgeTime),
 	}
 }
@@ -75,7 +75,7 @@ type sessionResource struct {
 
 func newSessionResource(userID string, s user.SessionInfo) sessionResource {
 	return sessionResource{
-		Name: "users/" + userID + "/sessions/" + s.ID, DeviceID: s.DeviceID, DeviceName: s.DeviceName,
+		Name: "accounts/" + userID + "/sessions/" + s.ID, DeviceID: s.DeviceID, DeviceName: s.DeviceName,
 		CreateTime: fmtTime(s.CreateTime), LastUsedTime: fmtTime(s.LastUsedTime), IsCurrent: s.IsCurrent,
 	}
 }
@@ -89,7 +89,7 @@ type identityResource struct {
 }
 
 func newIdentityResource(userID string, i user.IdentityInfo) identityResource {
-	return identityResource{Name: "users/" + userID + "/identities/" + i.ID, Kind: i.Kind.String(), MaskedSubject: i.MaskedSubject, CreateTime: fmtTime(i.CreateTime)}
+	return identityResource{Name: "accounts/" + userID + "/identities/" + i.ID, Kind: i.Kind.String(), MaskedSubject: i.MaskedSubject, CreateTime: fmtTime(i.CreateTime)}
 }
 
 type identityList struct {

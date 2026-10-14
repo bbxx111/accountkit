@@ -16,7 +16,7 @@ import (
 )
 
 const replacementIdentityID = "i_0k3f9c2m1xq7z"
-const replacementPath = "/users/me/identities/" + replacementIdentityID + ":replace"
+const replacementPath = "/accounts/me/identities/" + replacementIdentityID + ":replace"
 const replacementBody = `{"email":{"code_id":"0123456789abcdef0123456789abcdef","target":"new@example.test","code":"123456"}}`
 
 // The old fake deliberately has no replacement method; embedding preserves its interface.
@@ -65,7 +65,7 @@ func TestIdentityReplacementOptionalCapability(t *testing.T) {
 	if rec.Code != 503 || status != "UNAVAILABLE/IDENTITY_REPLACEMENT_NOT_CONFIGURED" {
 		t.Fatalf("old service replacement: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec = do(t, h, call{method: "GET", path: "/users/me/identities", bearer: "good"}); rec.Code != 200 {
+	if rec = do(t, h, call{method: "GET", path: "/accounts/me/identities", bearer: "good"}); rec.Code != 200 {
 		t.Fatalf("old service list: %d %s", rec.Code, rec.Body.String())
 	}
 }
@@ -90,7 +90,7 @@ func TestIdentityReplacementReturnsMaskedResource(t *testing.T) {
 			rec := do(t, replacementHandler(t, f, nil), call{method: "POST", path: replacementPath, bearer: "good", body: tc.body})
 			var out map[string]any
 			decode(t, rec, &out)
-			if rec.Code != 200 || len(out) != 4 || out["name"] != "users/u_0k3f9c2m1xq7z/identities/i_0k3f9c2m1xq71" || out["kind"] != tc.kind.String() || out["masked_subject"] != "n**@example.test" || out["create_time"] != "2026-09-10T12:00:00Z" {
+			if rec.Code != 200 || len(out) != 4 || out["name"] != "accounts/u_0k3f9c2m1xq7z/identities/i_0k3f9c2m1xq71" || out["kind"] != tc.kind.String() || out["masked_subject"] != "n**@example.test" || out["create_time"] != "2026-09-10T12:00:00Z" {
 				t.Fatalf("replacement response: %d %s", rec.Code, rec.Body.String())
 			}
 			for _, secret := range []string{tc.target, "123456", "access_token", "refresh_token", "subject_digest", "subject_ciphertext"} {
@@ -154,8 +154,8 @@ func TestIdentityReplacementAuthentication(t *testing.T) {
 
 func TestIdentityReplacementRejectsMalformedInputs(t *testing.T) {
 	for _, tc := range []struct{ name, path, body, reason string }{
-		{"bad id", "/users/me/identities/not-an-id:replace", replacementBody, "INVALID_ID"},
-		{"wrong id kind", "/users/me/identities/u_0k3f9c2m1xq7z:replace", replacementBody, "INVALID_ID"},
+		{"bad id", "/accounts/me/identities/not-an-id:replace", replacementBody, "INVALID_ID"},
+		{"wrong id kind", "/accounts/me/identities/u_0k3f9c2m1xq7z:replace", replacementBody, "INVALID_ID"},
 		{"empty", replacementPath, "", "MALFORMED_BODY"},
 		{"invalid json", replacementPath, "{", "MALFORMED_BODY"},
 		{"null", replacementPath, "null", "MALFORMED_BODY"},
@@ -254,7 +254,7 @@ func TestIdentityReplacementPreservesIdentityRoutes(t *testing.T) {
 		return replacementResult(enum.IdentityEmail), nil
 	}}
 	h := replacementHandler(t, f, nil)
-	if rec := do(t, h, call{method: "DELETE", path: "/users/me/identities/" + replacementIdentityID, bearer: "good"}); rec.Code != 204 {
+	if rec := do(t, h, call{method: "DELETE", path: "/accounts/me/identities/" + replacementIdentityID, bearer: "good"}); rec.Code != 204 {
 		t.Fatalf("original DELETE: %d %s", rec.Code, rec.Body.String())
 	}
 	if rec := do(t, h, call{method: "POST", path: replacementPath, bearer: "good", body: replacementBody}); rec.Code != 200 {
@@ -264,7 +264,7 @@ func TestIdentityReplacementPreservesIdentityRoutes(t *testing.T) {
 	for _, tc := range []struct {
 		method, path string
 		want         int
-	}{{"DELETE", replacementPath, 400}, {"POST", "/users/me/identities/" + replacementIdentityID, 405}} {
+	}{{"DELETE", replacementPath, 400}, {"POST", "/accounts/me/identities/" + replacementIdentityID, 405}} {
 		rec := do(t, h, call{method: tc.method, path: tc.path, bearer: "good", body: replacementBody})
 		if rec.Code != tc.want {
 			t.Fatalf("wrong action method: %s %s => %d %s", tc.method, tc.path, rec.Code, rec.Body.String())
@@ -275,7 +275,7 @@ func TestIdentityReplacementPreservesIdentityRoutes(t *testing.T) {
 			}
 		}
 	}
-	rec := do(t, h, call{method: "POST", path: "/users/me/identities", bearer: "good", body: replacementBody})
+	rec := do(t, h, call{method: "POST", path: "/accounts/me/identities", bearer: "good", body: replacementBody})
 	_, body := aipError(t, rec)
 	if rec.Code != 409 || !strings.Contains(body["message"].(string), "another account") {
 		t.Fatalf("existing bind conflict changed: %d %s", rec.Code, rec.Body.String())

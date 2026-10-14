@@ -13,7 +13,7 @@ type sendCodeRequest struct {
 	Target  string `json:"target"`
 }
 
-// POST /users:sendSignInCode
+// POST /accounts:sendSignInCode
 func (h *Handler) sendSignInCode(w http.ResponseWriter, r *http.Request) {
 	var req sendCodeRequest
 	if err := h.decodeJSON(w, r, &req); err != nil {
@@ -38,7 +38,7 @@ func (h *Handler) sendSignInCode(w http.ResponseWriter, r *http.Request) {
 	writeChallenge(w, challenge)
 }
 
-// POST /users:signInWithCode
+// POST /accounts:signInWithCode
 func (h *Handler) signInWithCode(w http.ResponseWriter, r *http.Request) {
 	dev, e := deviceFrom(r)
 	if e != nil {
@@ -63,7 +63,7 @@ func (h *Handler) signInWithCode(w http.ResponseWriter, r *http.Request) {
 	writeToken(w, res)
 }
 
-// POST /users:signInWithIdp — 微信 / Apple 登录即注册。
+// POST /accounts:signInWithIdp — 微信 / Apple 登录即注册。
 func (h *Handler) signInWithIdp(w http.ResponseWriter, r *http.Request) {
 	dev, e := deviceFrom(r)
 	if e != nil {

@@ -24,7 +24,7 @@ func TestDeletionBlockedSafeResponse(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			testHandler(t).writeServiceError(rec, httptest.NewRequest("DELETE", "/users/me", nil), tc.err)
+			testHandler(t).writeServiceError(rec, httptest.NewRequest("DELETE", "/accounts/me", nil), tc.err)
 			got, body := aipErrorInternal(t, rec)
 			if rec.Code != tc.code || got != tc.status+"/"+tc.reason || body["message"] != tc.message {
 				t.Fatalf("response=%d %s", rec.Code, rec.Body.String())

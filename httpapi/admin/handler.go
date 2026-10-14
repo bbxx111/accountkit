@@ -132,17 +132,17 @@ func (h *Handler) Router() http.Handler {
 	op := h.d.Verifier.RequireRole(RoleOperator)
 	su := h.d.Verifier.RequireRole(RoleSuperAdmin)
 
-	r.With(op).Get("/users", h.listUsers)
-	r.With(op).Get("/users/{user}", h.getUser)
-	r.With(su).Delete("/users/{user}", h.deleteUser)
-	r.With(op).Post("/users/{user}:freeze", h.freeze)
-	r.With(op).Post("/users/{user}:unfreeze", h.unfreeze)
-	r.With(su).Post("/users/{user}:undelete", h.undeleteUser)
-	r.With(su).Get("/users/{user}/identities/{identity}:reveal", h.revealIdentity)
-	r.With(op).Get("/users/{user}/sessions", h.listSessions)
-	r.With(op).Delete("/users/{user}/sessions/{session}", h.deleteSession)
-	r.With(op).Post("/users/{user}/sessions:revokeAll", h.revokeAllSessions)
-	r.With(op).Get("/users/{user}/auditEvents", h.listAuditEvents)
+	r.With(op).Get("/accounts", h.listUsers)
+	r.With(op).Get("/accounts/{user}", h.getUser)
+	r.With(su).Delete("/accounts/{user}", h.deleteUser)
+	r.With(op).Post("/accounts/{user}:freeze", h.freeze)
+	r.With(op).Post("/accounts/{user}:unfreeze", h.unfreeze)
+	r.With(su).Post("/accounts/{user}:undelete", h.undeleteUser)
+	r.With(su).Get("/accounts/{user}/identities/{identity}:reveal", h.revealIdentity)
+	r.With(op).Get("/accounts/{user}/sessions", h.listSessions)
+	r.With(op).Delete("/accounts/{user}/sessions/{session}", h.deleteSession)
+	r.With(op).Post("/accounts/{user}/sessions:revokeAll", h.revokeAllSessions)
+	r.With(op).Get("/accounts/{user}/auditEvents", h.listAuditEvents)
 	return r
 }
 

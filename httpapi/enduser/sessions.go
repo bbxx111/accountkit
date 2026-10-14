@@ -13,7 +13,7 @@ type sessionList struct {
 	Sessions []sessionResource `json:"sessions"`
 }
 
-// GET /users/me/sessions
+// GET /accounts/me/sessions
 func (h *Handler) listSessions(w http.ResponseWriter, r *http.Request) {
 	p, ok := principal(w, r)
 	if !ok {
@@ -31,7 +31,7 @@ func (h *Handler) listSessions(w http.ResponseWriter, r *http.Request) {
 	apierror.WriteJSON(w, http.StatusOK, out)
 }
 
-// DELETE /users/me/sessions/{session}
+// DELETE /accounts/me/sessions/{session}
 func (h *Handler) deleteSession(w http.ResponseWriter, r *http.Request) {
 	p, ok := principal(w, r)
 	if !ok {
@@ -49,7 +49,7 @@ func (h *Handler) deleteSession(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// POST /users/me/sessions:revokeOthers
+// POST /accounts/me/sessions:revokeOthers
 func (h *Handler) revokeOtherSessions(w http.ResponseWriter, r *http.Request) {
 	p, ok := principal(w, r)
 	if !ok {

@@ -1,6 +1,13 @@
 ## Scope
 
-本轮按用户已确认的简化方案更新既有规划工件，未修改产品代码、主规格、SQL 或部署配置。变更为 add-identity-policy-sign-in-completion，任务分支为 docs/identity-policy-sign-in-proposal，未提交、推送或归档。
+变更为 add-identity-policy-sign-in-completion。提案提交 9b0cb03 已以独立 merge commit 6d8f3ec 本地合入 develop；实施分支为 feat/identity-policy-sign-in-completion。已开始 apply，未推送或归档。下面 Planning Review 和 Current Checks 为实施前规划检查快照；当前实施证据见 Implementation Progress。
+
+## Implementation Progress
+
+- 已建立[详细实现计划](../../../docs/superpowers/plans/2026-10-14-identity-policy-sign-in-completion.md)，覆盖八个 capability 和全部 35 项任务；计划及接口依赖已自查。
+- 固定基线 HEAD 6d8f3ec 的 `scripts/verify.sh` 完成：迁移历史、build、vet、Linux race、必需测试检查及 PostgreSQL 17 的 seed/verify/source-unchanged 恢复演练均通过，验证容器退出码 0。普通套件的 TestRecoveryFixture 为约定跳过，恢复脚本已单独强制执行。
+- 基线使用一次性 PostgreSQL 17.11、Redis 7.4.3、Go 1.26.5 Linux 验证镜像，运行说明及资源记录在 [.test-output/identity-policy/environment.txt](../../../.test-output/identity-policy/environment.txt)，日志在 [baseline-verify.log](../../../.test-output/identity-policy/baseline-verify.log)。这是变更前基线，不代表后续实施通过。
+- 身份策略和验证码/流程存储基础正在实施；完成状态以 tasks.md 为准。
 
 ## Planning Review
 

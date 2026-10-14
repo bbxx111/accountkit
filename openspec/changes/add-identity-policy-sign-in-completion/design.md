@@ -2,7 +2,7 @@
 
 动机见 [proposal.md](proposal.md)。当前实现使用 users HTTP 资源、固定 PHONE/EMAIL 锚点及登录即注册；自动关联已有账号尚未实现。本次按已确认的简化方案收敛：Required 只包含 PHONE/EMAIL，补全只使用验证码，独立发码、统一 accounts 路径，票据字段命名为 sign_in_completion_token。
 
-本工件描述拟议实现；实际产品代码和主规格本轮均未修改。验收以本 change 的八个 delta spec 为准。
+本工件记录已确认的设计及实施中的必要修正。验收以本 change 的八个 delta spec 为准，实际实现、审查及验证状态见 [verification.md](verification.md)。
 
 ## Goals / Non-Goals
 
@@ -190,7 +190,7 @@ migrate 只检查静态策略语法/集合及迁移必要依赖，不构造认�
 3. 全部认证副本升级后再启用新 E/R 与补全流量，不混跑旧登录即建号写路径；策略仅重启/重新装配生效，副本保持一致。
 4. 部署收紧要求前核验存量账号的可用身份；保持完整轮换密钥、实例 schema/KeyPrefix。保留旧会话到期、刷新宽限和 Redis 故障契约。
 5. 应用回退先停止新流程并排空最长 TTL/在途操作，保留新表与密钥；旧应用若不能等价执行身份策略，不可作为安全回退。客户端和网关必须同步回退，恢复先在独立空库验证。
-6. 实际检查与未验证项写入 [verification.md](verification.md)；本次更新仅规划，不执行实现、发布或归档。
+6. 实际检查与未验证项写入 [verification.md](verification.md)；归档、发布及目标环境验收按独立步骤执行。
 
 ## References
 

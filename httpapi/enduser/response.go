@@ -47,7 +47,7 @@ func newTokenResponse(t user.TokenResult) tokenResponse {
 	}
 }
 
-// meResource 是 users/me 的 C 端 DTO；显式选字段，绝不序列化领域结构体。
+// meResource 是 accounts/me 的 C 端 DTO；显式选字段，绝不序列化领域结构体。
 type meResource struct {
 	Name        string  `json:"name"`
 	State       string  `json:"state"`
@@ -80,7 +80,7 @@ func newSessionResource(userID string, s user.SessionInfo) sessionResource {
 	}
 }
 
-// identityResource 是 users/me/identities 的 C 端 DTO；第三方身份的 masked_subject 为空串。
+// identityResource 是 accounts/me/identities 的 C 端 DTO；第三方身份的 masked_subject 为空串。
 type identityResource struct {
 	Name          string `json:"name"`
 	Kind          string `json:"kind"`

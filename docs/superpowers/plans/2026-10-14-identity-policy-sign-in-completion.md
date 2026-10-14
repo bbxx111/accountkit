@@ -73,7 +73,7 @@
 
 对应 OpenSpec 2.4、6.1–6.3。
 
-**Files:** user/service_identity.go、user/service_identity_replacement.go、user/service_session.go、user/service_lifecycle.go、user/service_idp.go、相关测试。
+**Files:** user/service_identity.go、user/service_identity_replacement.go、user/service_session.go、user/service_me.go、user/service_lifecycle.go、user/service_idp.go、相关测试。
 
 1. 先测显式禁用 Kind 在消费/外部调用前拒绝、普通第三方绑定不受 Required 限制、存量禁用身份可列表。
 2. 所有发码、登录、绑定、换绑、重新认证和补全使用相同 Enabled 检查。

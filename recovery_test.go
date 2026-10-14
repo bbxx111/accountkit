@@ -152,7 +152,7 @@ func TestRecoveryFixture(t *testing.T) {
 		t.Fatal(e)
 	}
 	if time.Now().Before(completedDeadline) {
-		if err != nil || completedResult.Tokens == nil || completedResult.Tokens.RefreshToken != state.CompletedPair.RefreshToken {
+		if err != nil || completedResult.Tokens == nil || *completedResult.Tokens != state.CompletedPair {
 			t.Fatalf("restored durable result replay: %v", err)
 		}
 	} else if !errors.Is(err, user.ErrSignInCompletionInvalid) {

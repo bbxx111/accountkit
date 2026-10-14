@@ -117,7 +117,7 @@ func TestIdentityPolicySignInCompletionAgainstRealDB(t *testing.T) {
 				t.Fatal("wrong account, scope or creation result")
 			}
 			replay, err := a.Users().CompleteSignIn(ctx, token, cred, user.Device{}, meta)
-			if err != nil || replay.Tokens == nil || replay.Tokens.RefreshToken != result.Tokens.RefreshToken {
+			if err != nil || replay.Tokens == nil || *replay.Tokens != *result.Tokens {
 				t.Fatalf("restricted replay: %v", err)
 			}
 			if existing {

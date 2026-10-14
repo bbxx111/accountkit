@@ -54,7 +54,7 @@
 
 适用于具体问题的行业标准优先，其次 Google API Design Guide/AIPs，最后才是本地偏好。令牌响应与错误遵循 RFC 6749，Bearer 认证遵循 RFC 6750，撤销遵循 RFC 7009，JWT claims 遵循 RFC 7519。不能改名 `access_token`、`refresh_token`、`token_type`、`expires_in` 等协议字段；也不要把完整授权码流程套到第一方验证码登录上。
 
-- 资源导向：标准 Get/List/Create/Update/Delete 对应 GET/GET/POST/PATCH/DELETE；标准方法无法表达的操作使用 `:verb`，如 `POST /users/me/sessions:revokeOthers`。有副作用的自定义操作使用 POST。
+- 资源导向：标准 Get/List/Create/Update/Delete 对应 GET/GET/POST/PATCH/DELETE；标准方法无法表达的操作使用 `:verb`，如 `POST /accounts/me/sessions:revokeOthers`。有副作用的自定义操作使用 POST。
 - 集合名复数，资源名分层；时间字段统一为 `<verb>_time`；生命周期字段为 `state`，状态迁移走明确的领域方法。JWT 标准字段和第三方库字段不为本地命名偏好改名。
 - 枚举在 API 中使用 UPPER_SNAKE_CASE 字符串，非法值返回 400；零值 UNSPECIFIED 不存储、不作为有效领域状态输出。
 - 业务错误体沿用 `httpapi/apierror`：`{"error":{"code","message","status",...}}`，`code` 对应 HTTP 状态，`status` 为 google.rpc.Code 名称。`FAILED_PRECONDITION` 映射 400；token 端点保留 OAuth 错误格式；Bearer 401 带 `WWW-Authenticate`。
@@ -65,14 +65,14 @@
 ### 两个身份系统、两个 HTTP 面
 
 - C 端账号与管理员身份分离，不能用一个共享 handler 加角色判断代替两套路由边界。管理员角色属于管理员系统内部授权，不是给消费者加一个 admin 标志。
-- 消费者 JWT 的 `sub` 是 `u_…`，`sid` 是 `s_…`；不使用 `users/{id}` 资源名作为 sub。`aud` 表示令牌接收服务，不表示用户/管理员身份类型。`iss`、`aud`、密钥及作用域校验均须保留。
+- 消费者 JWT 的 `sub` 是 `u_…`，`sid` 是 `s_…`；不使用 `accounts/{id}` 资源名作为 sub。`aud` 表示令牌接收服务，不表示用户/管理员身份类型。`iss`、`aud`、密钥及作用域校验均须保留。
 - C 端权限范围下沉到 SQL 的 user_id 条件；格式错误的 ID 返回 400，合法但不存在或属于其他用户的资源返回 404，不暴露资源存在性。
 - 每个面使用明确 DTO，禁止直接序列化 sqlc 行，也不共享一个按角色删字段的 DTO。摘要、密文、密钥版本等内部字段不得泄露；管理面身份默认掩码，明文仅经授权且带审计的 `:reveal` 返回。
 - 管理写操作仍经过领域方法；列表沿用既有 filter、show_deleted 和游标协议。角色拒绝审计通过宿主接入 `RecordAdminForbidden`，不要移除该契约。
 
 ## 数据库与实例隔离
 
-- 包拥有 `user_account`、`identity`、`session`、`audit_event` 和 `schema_migrations`，位于 `Config.Schema` 指定的 schema，默认 `account`。使用无业务前缀的单数 snake_case 表名；隔离靠 schema，不添加产品专用表前缀。
+- 包拥有 `user_account`、`identity`、`session`、`audit_event`、`identity_flow` 和 `schema_migrations`，位于 `Config.Schema` 指定的 schema，默认 `account`。使用无业务前缀的单数 snake_case 表名；隔离靠 schema，不添加产品专用表前缀。
 - 同一数据库可有多个独立实例。宿主使用 `PoolConfig` 设置 search_path，并独立配置 schema、Redis `KeyPrefix`（以 `:` 结尾）、JWT issuer/audience 和密钥。新增 Redis 键必须包含实例前缀。
 - PostgreSQL 同库可以跨 schema 查询、join、事务及定义外键；本包不使用外键是领域设计选择，不是数据库不支持跨 schema。不要改变既有无外键契约；引用一致性由领域写路径和测试保证。
 - 主键使用 `ids` 的类型前缀 TSID：`u_`、`i_`、`s_`、`e_` 加 13 位小写 Crockford base32；TEXT/COLLATE C 和格式 CHECK 保持一致。ID 只承诺相等查找；分页排序必须有时间字段和唯一的次级排序键。

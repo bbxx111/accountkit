@@ -79,7 +79,7 @@ func TestDefaultSchemaMigrateAgainstRealDB(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	wantTables := []string{"audit_event", "identity", "schema_migrations", "session", "user_account"}
+	wantTables := []string{"audit_event", "identity", "identity_flow", "schema_migrations", "session", "user_account"}
 	if !reflect.DeepEqual(tables, wantTables) {
 		t.Fatalf("account tables = %v, want %v", tables, wantTables)
 	}
@@ -88,8 +88,8 @@ func TestDefaultSchemaMigrateAgainstRealDB(t *testing.T) {
 	}
 	var version int64
 	var dirty bool
-	if err := pool.QueryRow(ctx, `SELECT version, dirty FROM account.schema_migrations`).Scan(&version, &dirty); err != nil || version != 1 || dirty {
-		t.Fatalf("migration version=%d dirty=%t, want version=1 dirty=false: %v", version, dirty, err)
+	if err := pool.QueryRow(ctx, `SELECT version, dirty FROM account.schema_migrations`).Scan(&version, &dirty); err != nil || version != 2 || dirty {
+		t.Fatalf("migration version=%d dirty=%t, want version=2 dirty=false: %v", version, dirty, err)
 	}
 	if authExists := schemaExists("auth"); authExists != authExisted {
 		t.Fatalf("auth existence changed: before=%t after=%t", authExisted, authExists)

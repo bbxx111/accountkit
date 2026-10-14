@@ -144,15 +144,15 @@ func TestAuditEventsPersistedAndExpiredEndToEnd(t *testing.T) {
 		return resp, out
 	}
 	const phone = "+8613812340077"
-	if resp, _ := post("/v1/users:sendSignInCode", map[string]string{"channel": "PHONE", "target": phone}, nil); resp.StatusCode != 200 {
+	if resp, _ := post("/v1/accounts:sendSignInCode", map[string]string{"channel": "PHONE", "target": phone}, nil); resp.StatusCode != 200 {
 		t.Fatalf("sendSignInCode: %d", resp.StatusCode)
 	}
-	resp, tok := post("/v1/users:signInWithCode", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, map[string]string{"X-Device-Id": "e2e-audit-dev"})
+	resp, tok := post("/v1/accounts:signInWithCode", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, map[string]string{"X-Device-Id": "e2e-audit-dev"})
 	if resp.StatusCode != 200 {
 		t.Fatalf("signIn: %d %v", resp.StatusCode, tok)
 	}
 	// 错码一次 → SIGN_IN_FAILED
-	if resp, _ := post("/v1/users:signInWithCode", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": "000000"}}, map[string]string{"X-Device-Id": "e2e-audit-dev"}); resp.StatusCode != 400 {
+	if resp, _ := post("/v1/accounts:signInWithCode", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": "000000"}}, map[string]string{"X-Device-Id": "e2e-audit-dev"}); resp.StatusCode != 400 {
 		t.Fatalf("wrong code: %d", resp.StatusCode)
 	}
 	a.Close() // 刷出队列
@@ -292,11 +292,11 @@ func TestConsumerEndToEndAgainstRealDB(t *testing.T) {
 	dev := map[string]string{"X-Device-Id": "e2e-device-1", "X-Device-Name": "E2E"}
 	const phone = "+8613812341234"
 
-	resp, _ := post("/v1/users:sendSignInCode", "", map[string]string{"channel": "PHONE", "target": phone}, nil)
+	resp, _ := post("/v1/accounts:sendSignInCode", "", map[string]string{"channel": "PHONE", "target": phone}, nil)
 	if resp.StatusCode != 200 || captured.code(phone) == "" {
 		t.Fatalf("sendSignInCode: %d", resp.StatusCode)
 	}
-	resp, tok := post("/v1/users:signInWithCode", "", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, dev)
+	resp, tok := post("/v1/accounts:signInWithCode", "", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, dev)
 	if resp.StatusCode != 200 || tok["is_new_user"] != true || tok["scope"] != "user" {
 		t.Fatalf("signIn: %d %v", resp.StatusCode, tok)
 	}
@@ -314,11 +314,11 @@ func TestConsumerEndToEndAgainstRealDB(t *testing.T) {
 		_ = json.NewDecoder(resp.Body).Decode(&out)
 		return resp, out
 	}
-	resp, me := get("/v1/users/me", access)
-	if resp.StatusCode != 200 || me["state"] != "ACTIVE" || me["name"] != "users/"+tok["user_id"].(string) {
+	resp, me := get("/v1/accounts/me", access)
+	if resp.StatusCode != 200 || me["state"] != "ACTIVE" || me["name"] != "accounts/"+tok["user_id"].(string) {
 		t.Fatalf("me: %d %v", resp.StatusCode, me)
 	}
-	resp, sessions := get("/v1/users/me/sessions", access)
+	resp, sessions := get("/v1/accounts/me/sessions", access)
 	if resp.StatusCode != 200 || len(sessions["sessions"].([]any)) != 1 {
 		t.Fatalf("sessions: %d %v", resp.StatusCode, sessions)
 	}
@@ -336,7 +336,7 @@ func TestConsumerEndToEndAgainstRealDB(t *testing.T) {
 		t.Fatalf("revoke: %d", resp.StatusCode)
 	}
 	// 吊销后：新 access 立即 401；旧 refresh 也拒绝
-	resp, body := get("/v1/users/me", tok2["access_token"].(string))
+	resp, body := get("/v1/accounts/me", tok2["access_token"].(string))
 	if resp.StatusCode != 401 || resp.Header.Get("WWW-Authenticate") == "" {
 		t.Fatalf("revoked access must 401: %d %v", resp.StatusCode, body)
 	}
@@ -345,7 +345,7 @@ func TestConsumerEndToEndAgainstRealDB(t *testing.T) {
 		t.Fatalf("revoked refresh: %d %v", resp.StatusCode, oerr)
 	}
 	// 错码是 400，不是 401
-	resp, aip := post("/v1/users:signInWithCode", "", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": "000000"}}, dev)
+	resp, aip := post("/v1/accounts:signInWithCode", "", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": "000000"}}, dev)
 	if resp.StatusCode != 400 || aip["error"].(map[string]any)["reason"] != "CODE_EXPIRED" { // 码已被消费 → 无有效码
 		t.Fatalf("wrong code after consume: %d %v", resp.StatusCode, aip)
 	}
@@ -398,6 +398,7 @@ func TestWeChatSignInEndToEndAgainstRealDB(t *testing.T) {
 
 	cfg := minimal()
 	cfg.Schema = schema
+	cfg.RequiredIdentityKinds = []enum.IdentityKind{}
 	cfg.WeChatApps = []accountkit.WeChatApp{{AppID: "wx1", Secret: "s1"}, {AppID: "wx2", Secret: "s2"}}
 	cfg.WeChatAPIBaseURL = wx.URL
 	a, err := accountkit.New(cfg, accountkit.Deps{Pool: pool, Redis: testRedis(t), SMSSender: sender.NewLog(nil), EmailSender: sender.NewLog(nil), HTTPClient: wx.Client()})
@@ -415,7 +416,7 @@ func TestWeChatSignInEndToEndAgainstRealDB(t *testing.T) {
 	signIn := func(appID, code, device string) (*http.Response, map[string]any) {
 		t.Helper()
 		body, _ := json.Marshal(map[string]any{"wechat": map[string]string{"app_id": appID, "code": code}})
-		req, _ := http.NewRequest("POST", srv.URL+"/v1/users:signInWithIdp", bytes.NewReader(body))
+		req, _ := http.NewRequest("POST", srv.URL+"/v1/accounts:signInWithIdp", bytes.NewReader(body))
 		req.Header.Set("X-Device-Id", device)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -427,13 +428,13 @@ func TestWeChatSignInEndToEndAgainstRealDB(t *testing.T) {
 		return resp, out
 	}
 	resp, tok := signIn("wx1", "ok-UNION-1", "dev-a")
-	if resp.StatusCode != 200 || tok["is_new_user"] != true || tok["scope"] != "user:bind" {
+	if resp.StatusCode != 200 || tok["is_new_user"] != true || tok["scope"] != "user" {
 		t.Fatalf("first: %d %v", resp.StatusCode, tok)
 	}
 	if _, has := tok["hint_email"]; has {
 		t.Fatal("wechat has no hint_email")
 	}
-	// user:bind 只能读 users/me，不能改
+	// Explicit empty Required permits the complete user scope.
 	get := func(path, bearer string) int {
 		req, _ := http.NewRequest("GET", srv.URL+path, nil)
 		req.Header.Set("Authorization", "Bearer "+bearer)
@@ -444,11 +445,11 @@ func TestWeChatSignInEndToEndAgainstRealDB(t *testing.T) {
 		resp.Body.Close()
 		return resp.StatusCode
 	}
-	if get("/v1/users/me", tok["access_token"].(string)) != 200 {
-		t.Fatal("user:bind can read me")
+	if get("/v1/accounts/me", tok["access_token"].(string)) != 200 {
+		t.Fatal("user can read me")
 	}
-	if get("/v1/users/me/sessions", tok["access_token"].(string)) != 403 {
-		t.Fatal("user:bind must not list sessions")
+	if get("/v1/accounts/me/sessions", tok["access_token"].(string)) != 200 {
+		t.Fatal("user must not list sessions")
 	}
 	// 同 UnionID 从 wx2 登录 → 同一用户、非新用户
 	resp, tok2 := signIn("wx2", "ok-UNION-1", "dev-b")
@@ -545,25 +546,36 @@ func TestIdentityBindingEndToEndAgainstRealDB(t *testing.T) {
 	const phone = "+8613812340001"
 	const mail = "bind@shifang.co"
 
+	// Existing incomplete accounts retain user:bind under the default required policy.
+	for i, subject := range []string{"UNION-B", "UNION-C"} {
+		uid := fmt.Sprintf("u_000000000000%d", i+1)
+		iid := fmt.Sprintf("i_000000000000%d", i+1)
+		if _, err := pool.Exec(ctx, "INSERT INTO user_account(id,state) VALUES($1,1)", uid); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, "INSERT INTO identity(id,user_id,kind,provider_subject,provider_meta) VALUES($1,$2,3,$3,'{}')", iid, uid, subject); err != nil {
+			t.Fatal(err)
+		}
+	}
 	// 1. 微信登录 → user:bind
-	resp, tok := call("POST", "/v1/users:signInWithIdp", "", map[string]any{"wechat": map[string]string{"app_id": "wx1", "code": "ok-UNION-B"}}, dev)
+	resp, tok := call("POST", "/v1/accounts:signInWithIdp", "", map[string]any{"wechat": map[string]string{"app_id": "wx1", "code": "ok-UNION-B"}}, dev)
 	if resp.StatusCode != 200 || tok["scope"] != "user:bind" {
 		t.Fatalf("wechat sign-in: %d %v", resp.StatusCode, tok)
 	}
 	access, refresh := tok["access_token"].(string), tok["refresh_token"].(string)
 	// user:bind 不能列会话，但能列身份
-	if resp, _ = call("GET", "/v1/users/me/sessions", access, nil, nil); resp.StatusCode != 403 {
+	if resp, _ = call("GET", "/v1/accounts/me/sessions", access, nil, nil); resp.StatusCode != 403 {
 		t.Fatalf("sessions with user:bind: %d", resp.StatusCode)
 	}
-	resp, list := call("GET", "/v1/users/me/identities", access, nil, nil)
+	resp, list := call("GET", "/v1/accounts/me/identities", access, nil, nil)
 	if resp.StatusCode != 200 || len(list["identities"].([]any)) != 1 {
 		t.Fatalf("identities: %d %v", resp.StatusCode, list)
 	}
 	// 2. 发绑定码并绑定手机 → 201
-	if resp, _ = call("POST", "/v1/users/me:sendBindCode", access, map[string]string{"channel": "PHONE", "target": phone}, nil); resp.StatusCode != 200 || captured.code(phone) == "" {
+	if resp, _ = call("POST", "/v1/accounts/me:sendBindCode", access, map[string]string{"channel": "PHONE", "target": phone}, nil); resp.StatusCode != 200 || captured.code(phone) == "" {
 		t.Fatalf("sendBindCode: %d", resp.StatusCode)
 	}
-	resp, ident := call("POST", "/v1/users/me/identities", access, map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, nil)
+	resp, ident := call("POST", "/v1/accounts/me/identities", access, map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, nil)
 	if resp.StatusCode != 201 || ident["kind"] != "PHONE" || ident["masked_subject"] != "+86 138****0001" {
 		t.Fatalf("bind phone: %d %v", resp.StatusCode, ident)
 	}
@@ -575,27 +587,27 @@ func TestIdentityBindingEndToEndAgainstRealDB(t *testing.T) {
 	}
 	access = tok2["access_token"].(string)
 	// 4. 绑邮箱（用户已 user）→ 201；再绑同一邮箱 → 200 幂等
-	if resp, _ = call("POST", "/v1/users/me:sendBindCode", access, map[string]string{"channel": "EMAIL", "target": mail}, nil); resp.StatusCode != 200 {
+	if resp, _ = call("POST", "/v1/accounts/me:sendBindCode", access, map[string]string{"channel": "EMAIL", "target": mail}, nil); resp.StatusCode != 200 {
 		t.Fatalf("sendBindCode email: %d", resp.StatusCode)
 	}
-	if resp, _ = call("POST", "/v1/users/me/identities", access, map[string]any{"email": map[string]string{"code_id": captured.codeID(mail), "target": mail, "code": captured.code(mail)}}, nil); resp.StatusCode != 201 {
+	if resp, _ = call("POST", "/v1/accounts/me/identities", access, map[string]any{"email": map[string]string{"code_id": captured.codeID(mail), "target": mail, "code": captured.code(mail)}}, nil); resp.StatusCode != 201 {
 		t.Fatalf("bind email: %d", resp.StatusCode)
 	}
 	// 冷却期内再发同一邮箱会被限流；这里直接用第二个手机号验证 kind 上限
-	if resp, _ = call("POST", "/v1/users/me:sendBindCode", access, map[string]string{"channel": "PHONE", "target": "+8613812340002"}, nil); resp.StatusCode != 200 {
+	if resp, _ = call("POST", "/v1/accounts/me:sendBindCode", access, map[string]string{"channel": "PHONE", "target": "+8613812340002"}, nil); resp.StatusCode != 200 {
 		t.Fatalf("sendBindCode phone2: %d", resp.StatusCode)
 	}
-	resp, aip := call("POST", "/v1/users/me/identities", access, map[string]any{"phone": map[string]string{"code_id": captured.codeID("+8613812340002"), "target": "+8613812340002", "code": captured.code("+8613812340002")}}, nil)
+	resp, aip := call("POST", "/v1/accounts/me/identities", access, map[string]any{"phone": map[string]string{"code_id": captured.codeID("+8613812340002"), "target": "+8613812340002", "code": captured.code("+8613812340002")}}, nil)
 	if resp.StatusCode != 409 || aip["error"].(map[string]any)["reason"] != "IDENTITY_KIND_LIMIT" {
 		t.Fatalf("kind limit: %d %v", resp.StatusCode, aip)
 	}
 	// 5. 解绑手机（邮箱仍是锚点）→ 204；近期认证在 ReauthMaxAge=1m 内
 	phoneID := phoneName[strings.LastIndex(phoneName, "/")+1:]
-	if resp, _ = call("DELETE", "/v1/users/me/identities/"+phoneID, access, nil, nil); resp.StatusCode != 204 {
+	if resp, _ = call("DELETE", "/v1/accounts/me/identities/"+phoneID, access, nil, nil); resp.StatusCode != 204 {
 		t.Fatalf("unbind phone: %d", resp.StatusCode)
 	}
 	// 6. 解绑邮箱 → 最后锚点 → 400 FAILED_PRECONDITION
-	resp, list = call("GET", "/v1/users/me/identities", access, nil, nil)
+	resp, list = call("GET", "/v1/accounts/me/identities", access, nil, nil)
 	var emailID string
 	for _, it := range list["identities"].([]any) {
 		m := it.(map[string]any)
@@ -604,30 +616,30 @@ func TestIdentityBindingEndToEndAgainstRealDB(t *testing.T) {
 			emailID = n[strings.LastIndex(n, "/")+1:]
 		}
 	}
-	resp, aip = call("DELETE", "/v1/users/me/identities/"+emailID, access, nil, nil)
+	resp, aip = call("DELETE", "/v1/accounts/me/identities/"+emailID, access, nil, nil)
 	if resp.StatusCode != 400 || aip["error"].(map[string]any)["reason"] != "LAST_ANCHOR_IDENTITY" {
 		t.Fatalf("last anchor: %d %v", resp.StatusCode, aip)
 	}
 	// 7. 解绑后的手机号可被另一账号绑定；随后原账号再绑同一号 → 409（属于他人）。
 	//    同一 target 二次发码要跨过 CodeCooldown（本测试设为 1s）；miniredis 的 TTL 是虚拟
 	//    倒计时、不随真实时钟流逝而过期，所以用 FastForward 推进它，而不是 time.Sleep。
-	resp, tokC := call("POST", "/v1/users:signInWithIdp", "", map[string]any{"wechat": map[string]string{"app_id": "wx1", "code": "ok-UNION-C"}}, map[string]string{"X-Device-Id": "e2e-bind-2"})
+	resp, tokC := call("POST", "/v1/accounts:signInWithIdp", "", map[string]any{"wechat": map[string]string{"app_id": "wx1", "code": "ok-UNION-C"}}, map[string]string{"X-Device-Id": "e2e-bind-2"})
 	if resp.StatusCode != 200 {
 		t.Fatalf("second account: %d", resp.StatusCode)
 	}
 	accessC := tokC["access_token"].(string)
 	mr.FastForward(2 * time.Second)
-	if resp, _ = call("POST", "/v1/users/me:sendBindCode", accessC, map[string]string{"channel": "PHONE", "target": phone}, nil); resp.StatusCode != 200 {
+	if resp, _ = call("POST", "/v1/accounts/me:sendBindCode", accessC, map[string]string{"channel": "PHONE", "target": phone}, nil); resp.StatusCode != 200 {
 		t.Fatalf("C sendBindCode: %d", resp.StatusCode)
 	}
-	if resp, _ = call("POST", "/v1/users/me/identities", accessC, map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, nil); resp.StatusCode != 201 {
+	if resp, _ = call("POST", "/v1/accounts/me/identities", accessC, map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, nil); resp.StatusCode != 201 {
 		t.Fatalf("C binds the released phone: %d", resp.StatusCode)
 	}
 	mr.FastForward(2 * time.Second)
-	if resp, _ = call("POST", "/v1/users/me:sendBindCode", access, map[string]string{"channel": "PHONE", "target": phone}, nil); resp.StatusCode != 200 {
+	if resp, _ = call("POST", "/v1/accounts/me:sendBindCode", access, map[string]string{"channel": "PHONE", "target": phone}, nil); resp.StatusCode != 200 {
 		t.Fatalf("A sendBindCode: %d", resp.StatusCode)
 	}
-	resp, aip = call("POST", "/v1/users/me/identities", access, map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, nil)
+	resp, aip = call("POST", "/v1/accounts/me/identities", access, map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, nil)
 	if resp.StatusCode != 409 || aip["error"].(map[string]any)["reason"] != "IDENTITY_ALREADY_BOUND" {
 		t.Fatalf("conflict: %d %v", resp.StatusCode, aip)
 	}
@@ -690,10 +702,10 @@ func TestKeyRotationBackfillEndToEnd(t *testing.T) {
 				captured.rememberChallenge(body, out)
 				return resp, out
 			}
-			if resp, _ := post("/v1/users:sendSignInCode", map[string]string{"channel": "PHONE", "target": phone}, nil); resp.StatusCode != 200 {
+			if resp, _ := post("/v1/accounts:sendSignInCode", map[string]string{"channel": "PHONE", "target": phone}, nil); resp.StatusCode != 200 {
 				t.Fatalf("sendSignInCode: %d", resp.StatusCode)
 			}
-			resp, tok := post("/v1/users:signInWithCode", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, map[string]string{"X-Device-Id": dev})
+			resp, tok := post("/v1/accounts:signInWithCode", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, map[string]string{"X-Device-Id": dev})
 			if resp.StatusCode != 200 {
 				t.Fatalf("signInWithCode: %d %v", resp.StatusCode, tok)
 			}
@@ -847,10 +859,10 @@ func TestAccountLifecycleEndToEndAgainstRealDB(t *testing.T) {
 	signIn := func(dev map[string]string) map[string]any {
 		t.Helper()
 		mr.FastForward(2 * time.Second) // 跨过 CodeCooldown
-		if resp, _ := call("POST", "/v1/users:sendSignInCode", "", map[string]string{"channel": "PHONE", "target": phone}, nil); resp.StatusCode != 200 {
+		if resp, _ := call("POST", "/v1/accounts:sendSignInCode", "", map[string]string{"channel": "PHONE", "target": phone}, nil); resp.StatusCode != 200 {
 			t.Fatalf("sendSignInCode: %d", resp.StatusCode)
 		}
-		resp, tok := call("POST", "/v1/users:signInWithCode", "", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, dev)
+		resp, tok := call("POST", "/v1/accounts:signInWithCode", "", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, dev)
 		if resp.StatusCode != 200 {
 			t.Fatalf("signInWithCode: %d %v", resp.StatusCode, tok)
 		}
@@ -864,13 +876,13 @@ func TestAccountLifecycleEndToEndAgainstRealDB(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 2. 软删除（刚登录，auth_time 新鲜）→ 200 PENDING_DELETION
-	resp, me := call("DELETE", "/v1/users/me", tokA["access_token"].(string), nil, nil)
+	resp, me := call("DELETE", "/v1/accounts/me", tokA["access_token"].(string), nil, nil)
 	if resp.StatusCode != 200 || me["state"] != "PENDING_DELETION" || me["delete_time"] == nil || me["purge_time"] == nil {
 		t.Fatalf("delete: %d %v", resp.StatusCode, me)
 	}
 	// 3. 两台设备的会话都失效：access 401，refresh 400 invalid_grant
 	for _, tok := range []map[string]any{tokA, tokB} {
-		if resp, _ = call("GET", "/v1/users/me", tok["access_token"].(string), nil, nil); resp.StatusCode != 401 {
+		if resp, _ = call("GET", "/v1/accounts/me", tok["access_token"].(string), nil, nil); resp.StatusCode != 401 {
 			t.Fatalf("revoked access must be 401: %d", resp.StatusCode)
 		}
 		resp, body := call("POST", "/v1/token", "", map[string]string{"grant_type": "refresh_token", "refresh_token": tok["refresh_token"].(string)}, nil)
@@ -884,16 +896,16 @@ func TestAccountLifecycleEndToEndAgainstRealDB(t *testing.T) {
 		t.Fatalf("pending-deletion login: %v", tokP)
 	}
 	accessP := tokP["access_token"].(string)
-	if resp, me = call("GET", "/v1/users/me", accessP, nil, nil); resp.StatusCode != 200 || me["state"] != "PENDING_DELETION" {
+	if resp, me = call("GET", "/v1/accounts/me", accessP, nil, nil); resp.StatusCode != 200 || me["state"] != "PENDING_DELETION" {
 		t.Fatalf("me while pending: %d %v", resp.StatusCode, me)
 	}
-	resp, aip := call("PATCH", "/v1/users/me", accessP, map[string]string{"display_name": "x"}, nil)
+	resp, aip := call("PATCH", "/v1/accounts/me", accessP, map[string]string{"display_name": "x"}, nil)
 	if resp.StatusCode != 403 || reason(aip) != "INSUFFICIENT_SCOPE" {
 		t.Fatalf("patch with user:undelete: %d %v", resp.StatusCode, aip)
 	}
 	// 5. undelete → 200 ACTIVE；刷新 → user；ACTIVE 账号持 user 凭证调 :undelete → 403
 	//    INSUFFICIENT_SCOPE（scope 只给 user:undelete）
-	if resp, me = call("POST", "/v1/users/me:undelete", accessP, nil, nil); resp.StatusCode != 200 || me["state"] != "ACTIVE" || me["delete_time"] != nil || me["purge_time"] != nil {
+	if resp, me = call("POST", "/v1/accounts/me:undelete", accessP, nil, nil); resp.StatusCode != 200 || me["state"] != "ACTIVE" || me["delete_time"] != nil || me["purge_time"] != nil {
 		t.Fatalf("undelete: %d %v", resp.StatusCode, me)
 	}
 	resp, tok2 := call("POST", "/v1/token", "", map[string]string{"grant_type": "refresh_token", "refresh_token": tokP["refresh_token"].(string)}, nil)
@@ -901,11 +913,11 @@ func TestAccountLifecycleEndToEndAgainstRealDB(t *testing.T) {
 		t.Fatalf("refresh after undelete: %d %v", resp.StatusCode, tok2)
 	}
 	access2 := tok2["access_token"].(string)
-	if resp, aip = call("POST", "/v1/users/me:undelete", access2, nil, nil); resp.StatusCode != 403 || reason(aip) != "INSUFFICIENT_SCOPE" {
+	if resp, aip = call("POST", "/v1/accounts/me:undelete", access2, nil, nil); resp.StatusCode != 403 || reason(aip) != "INSUFFICIENT_SCOPE" {
 		t.Fatalf("undelete an active account: %d %v", resp.StatusCode, aip)
 	}
 	// 6. 再次软删除（auth_time 仍在 1 分钟内）；把 purge_time 拨到过去；跑一轮维护 → 匿名化
-	if resp, _ = call("DELETE", "/v1/users/me", access2, nil, nil); resp.StatusCode != 200 {
+	if resp, _ = call("DELETE", "/v1/accounts/me", access2, nil, nil); resp.StatusCode != 200 {
 		t.Fatalf("second delete: %d", resp.StatusCode)
 	}
 	if _, err := pool.Exec(ctx, `UPDATE user_account SET purge_time = now() - interval '1 second' WHERE id = $1`, uid); err != nil {
@@ -1015,10 +1027,10 @@ func TestAdminSurfaceEndToEndAgainstRealDB(t *testing.T) {
 	signIn := func(dev string) map[string]any {
 		t.Helper()
 		mr.FastForward(2 * time.Second)
-		if resp, _ := call("POST", "/v1/users:sendSignInCode", "", map[string]string{"channel": "PHONE", "target": phone}, nil); resp.StatusCode != 200 {
+		if resp, _ := call("POST", "/v1/accounts:sendSignInCode", "", map[string]string{"channel": "PHONE", "target": phone}, nil); resp.StatusCode != 200 {
 			t.Fatalf("sendSignInCode: %d", resp.StatusCode)
 		}
-		resp, tok := call("POST", "/v1/users:signInWithCode", "", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, map[string]string{"X-Device-Id": dev})
+		resp, tok := call("POST", "/v1/accounts:signInWithCode", "", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, map[string]string{"X-Device-Id": dev})
 		if resp.StatusCode != 200 {
 			t.Fatalf("signInWithCode: %d %v", resp.StatusCode, tok)
 		}
@@ -1029,24 +1041,24 @@ func TestAdminSurfaceEndToEndAgainstRealDB(t *testing.T) {
 	tokA, tokB := signIn("adm-e2e-a"), signIn("adm-e2e-b")
 	uid := tokA["user_id"].(string)
 	// 2. 列表：按手机号过滤命中；无凭证 401；operator 可读
-	resp, out := call("GET", "/admin/v1/users?filter=identity.phone%20%3D%20%22"+phone+"%22", operator, nil, nil)
-	if resp.StatusCode != 200 || len(out["users"].([]any)) != 1 || out["users"].([]any)[0].(map[string]any)["name"] != "users/"+uid {
+	resp, out := call("GET", "/admin/v1/accounts?filter=identity.phone%20%3D%20%22"+phone+"%22", operator, nil, nil)
+	if resp.StatusCode != 200 || len(out["users"].([]any)) != 1 || out["users"].([]any)[0].(map[string]any)["name"] != "accounts/"+uid {
 		t.Fatalf("list by phone: %d %v", resp.StatusCode, out)
 	}
-	if resp, _ = call("GET", "/admin/v1/users", "", nil, nil); resp.StatusCode != 401 {
+	if resp, _ = call("GET", "/admin/v1/accounts", "", nil, nil); resp.StatusCode != 401 {
 		t.Fatalf("no credential: %d", resp.StatusCode)
 	}
 	// 3. 详情：掩码身份 + 2 个活跃会话
-	resp, d := call("GET", "/admin/v1/users/"+uid, operator, nil, nil)
+	resp, d := call("GET", "/admin/v1/accounts/"+uid, operator, nil, nil)
 	if resp.StatusCode != 200 || d["active_session_count"] != float64(2) || d["identities"].([]any)[0].(map[string]any)["masked_subject"] != "+86 138****0099" || d["freeze"] != nil {
 		t.Fatalf("detail: %d %v", resp.StatusCode, d)
 	}
 	// 4. 冻结：C 端 access 401、refresh 400 invalid_grant（会话已被冻结吊销）、登录 403
-	resp, u := call("POST", "/admin/v1/users/"+uid+":freeze", operator, map[string]string{"reason": "abuse"}, nil)
+	resp, u := call("POST", "/admin/v1/accounts/"+uid+":freeze", operator, map[string]string{"reason": "abuse"}, nil)
 	if resp.StatusCode != 200 || u["state"] != "FROZEN" || u["freeze"].(map[string]any)["actor_username"] != "ops" {
 		t.Fatalf("freeze: %d %v", resp.StatusCode, u)
 	}
-	if resp, _ = call("GET", "/v1/users/me", "", nil, map[string]string{"Authorization": "Bearer " + tokA["access_token"].(string)}); resp.StatusCode != 401 {
+	if resp, _ = call("GET", "/v1/accounts/me", "", nil, map[string]string{"Authorization": "Bearer " + tokA["access_token"].(string)}); resp.StatusCode != 401 {
 		t.Fatalf("frozen user's access: %d", resp.StatusCode)
 	}
 	resp, body := call("POST", "/v1/token", "", map[string]string{"grant_type": "refresh_token", "refresh_token": tokB["refresh_token"].(string)}, nil)
@@ -1054,18 +1066,18 @@ func TestAdminSurfaceEndToEndAgainstRealDB(t *testing.T) {
 		t.Fatalf("refresh after freeze: %d %v", resp.StatusCode, body)
 	}
 	mr.FastForward(2 * time.Second)
-	_, _ = call("POST", "/v1/users:sendSignInCode", "", map[string]string{"channel": "PHONE", "target": phone}, nil)
-	resp, aip := call("POST", "/v1/users:signInWithCode", "", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, map[string]string{"X-Device-Id": "adm-e2e-a"})
+	_, _ = call("POST", "/v1/accounts:sendSignInCode", "", map[string]string{"channel": "PHONE", "target": phone}, nil)
+	resp, aip := call("POST", "/v1/accounts:signInWithCode", "", map[string]any{"phone": map[string]string{"code_id": captured.codeID(phone), "target": phone, "code": captured.code(phone)}}, map[string]string{"X-Device-Id": "adm-e2e-a"})
 	if resp.StatusCode != 403 || reason(aip) != "USER_FROZEN" {
 		t.Fatalf("login while frozen: %d %v", resp.StatusCode, aip)
 	}
 	// 5. 解冻 → 登录恢复；踢出单个会话 → 204；revokeAll → 计数
-	if resp, u = call("POST", "/admin/v1/users/"+uid+":unfreeze", operator, map[string]any{}, nil); resp.StatusCode != 200 || u["state"] != "ACTIVE" || u["freeze"] != nil {
+	if resp, u = call("POST", "/admin/v1/accounts/"+uid+":unfreeze", operator, map[string]any{}, nil); resp.StatusCode != 200 || u["state"] != "ACTIVE" || u["freeze"] != nil {
 		t.Fatalf("unfreeze: %d %v", resp.StatusCode, u)
 	}
 	tokC := signIn("adm-e2e-c")
 	_ = signIn("adm-e2e-d")
-	resp, sessions := call("GET", "/admin/v1/users/"+uid+"/sessions", operator, nil, nil)
+	resp, sessions := call("GET", "/admin/v1/accounts/"+uid+"/sessions", operator, nil, nil)
 	if resp.StatusCode != 200 || len(sessions["sessions"].([]any)) != 2 {
 		t.Fatalf("sessions: %d %v", resp.StatusCode, sessions)
 	}
@@ -1073,11 +1085,11 @@ func TestAdminSurfaceEndToEndAgainstRealDB(t *testing.T) {
 	if resp, _ = call("DELETE", "/admin/v1/"+firstName, operator, nil, nil); resp.StatusCode != 204 {
 		t.Fatalf("revoke one: %d", resp.StatusCode)
 	}
-	resp, ra := call("POST", "/admin/v1/users/"+uid+"/sessions:revokeAll", operator, nil, nil)
+	resp, ra := call("POST", "/admin/v1/accounts/"+uid+"/sessions:revokeAll", operator, nil, nil)
 	if resp.StatusCode != 200 || ra["revoked_count"] != float64(1) {
 		t.Fatalf("revoke all: %d %v", resp.StatusCode, ra)
 	}
-	if resp, _ = call("GET", "/v1/users/me", "", nil, map[string]string{"Authorization": "Bearer " + tokC["access_token"].(string)}); resp.StatusCode != 401 {
+	if resp, _ = call("GET", "/v1/accounts/me", "", nil, map[string]string{"Authorization": "Bearer " + tokC["access_token"].(string)}); resp.StatusCode != 401 {
 		t.Fatalf("revoked session's access: %d", resp.StatusCode)
 	}
 	// 6. :reveal：operator 403；super-admin 得到明文
@@ -1090,22 +1102,22 @@ func TestAdminSurfaceEndToEndAgainstRealDB(t *testing.T) {
 		t.Fatalf("reveal: %d %v", resp.StatusCode, rv)
 	}
 	// 7. 代办删除 / 恢复（super-admin）；operator 403；show_deleted 控制列表可见性
-	if resp, _ = call("DELETE", "/admin/v1/users/"+uid, operator, nil, nil); resp.StatusCode != 403 {
+	if resp, _ = call("DELETE", "/admin/v1/accounts/"+uid, operator, nil, nil); resp.StatusCode != 403 {
 		t.Fatalf("operator delete: %d", resp.StatusCode)
 	}
-	if resp, u = call("DELETE", "/admin/v1/users/"+uid, super, nil, nil); resp.StatusCode != 200 || u["state"] != "PENDING_DELETION" {
+	if resp, u = call("DELETE", "/admin/v1/accounts/"+uid, super, nil, nil); resp.StatusCode != 200 || u["state"] != "PENDING_DELETION" {
 		t.Fatalf("admin delete: %d %v", resp.StatusCode, u)
 	}
-	if resp, out = call("GET", "/admin/v1/users", operator, nil, nil); resp.StatusCode != 200 || len(out["users"].([]any)) != 0 {
+	if resp, out = call("GET", "/admin/v1/accounts", operator, nil, nil); resp.StatusCode != 200 || len(out["users"].([]any)) != 0 {
 		t.Fatalf("pending user hidden by default: %v", out)
 	}
-	if resp, out = call("GET", "/admin/v1/users?show_deleted=true", operator, nil, nil); resp.StatusCode != 200 || len(out["users"].([]any)) != 1 {
+	if resp, out = call("GET", "/admin/v1/accounts?show_deleted=true", operator, nil, nil); resp.StatusCode != 200 || len(out["users"].([]any)) != 1 {
 		t.Fatalf("show_deleted: %v", out)
 	}
-	if resp, u = call("POST", "/admin/v1/users/"+uid+":undelete", super, nil, nil); resp.StatusCode != 200 || u["state"] != "ACTIVE" {
+	if resp, u = call("POST", "/admin/v1/accounts/"+uid+":undelete", super, nil, nil); resp.StatusCode != 200 || u["state"] != "ACTIVE" {
 		t.Fatalf("admin undelete: %d %v", resp.StatusCode, u)
 	}
-	if resp, aip = call("POST", "/admin/v1/users/"+uid+":undelete", super, nil, nil); resp.StatusCode != 400 || reason(aip) != "INVALID_ACCOUNT_STATE" {
+	if resp, aip = call("POST", "/admin/v1/accounts/"+uid+":undelete", super, nil, nil); resp.StatusCode != 400 || reason(aip) != "INVALID_ACCOUNT_STATE" {
 		t.Fatalf("undelete active: %d %v", resp.StatusCode, aip)
 	}
 	// 8. 审计：Close 刷出后分页读取，ADMIN 事件带管理员快照，USER 事件带设备
@@ -1114,7 +1126,7 @@ func TestAdminSurfaceEndToEndAgainstRealDB(t *testing.T) {
 	seen := map[string]int{}
 	token := ""
 	for {
-		resp, page := call("GET", "/admin/v1/users/"+uid+"/auditEvents?page_size=3&page_token="+token, operator, nil, nil)
+		resp, page := call("GET", "/admin/v1/accounts/"+uid+"/auditEvents?page_size=3&page_token="+token, operator, nil, nil)
 		if resp.StatusCode != 200 {
 			t.Fatalf("auditEvents: %d %v", resp.StatusCode, page)
 		}

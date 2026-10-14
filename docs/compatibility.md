@@ -2,6 +2,18 @@
 
 固定兼容基线包含 130 个文件，原始文件清单与 SHA-256 见 `tests/testdata/source-baseline/manifest.json`；该清单用于追溯冻结快照，不表示当前文件名和内容必须与历史快照相同。当前根包名为 `accountkit`，导入路径为 `github.com/bbxx111/accountkit`。
 
+## 身份策略与 accounts 协议升级
+
+当前开发分支包含破坏性 Go/HTTP 升级，尚不表示已发布的 v0.2.0 具备这些能力。C 端及管理端全部 `/users` 账号路由改为 `/accounts`，包括自定义动作、me、身份和会话；响应 `name` 同步为 `accounts/{user_id}` 及其子资源。旧路径返回404，不重定向。客户端、网关、管理调用和资源名解析须同步迁移。管理列表顶层 JSON 字段 `users` 保留；`user_id`、u_ ID、JWT claims、scope、Go `user` 包和 `Auth.Users()` 均保留。
+
+`SignInWithCode` / `SignInWithIdp` 的返回类型由 `TokenResult` 改为 `SignInResult`，调用方先检查 `Tokens` 或 `Pending`，两者恰一非 nil。自定义 `enduser.Service` 同步改签名；新增补全能力为可选接口，缺能力返回503。成功 HTTP token 字段保持，pending 只有 next_action、`sign_in_completion_token`、期限和策略集合。新增两个端点及配置 nil/[]、自动关联与注册、设备绑定、幂等和失败边界见 [README](../README.md#身份策略与登录补全)。旧 `user:bind` 表示已有账号不完整；pending 尚无账号，不能把补全票据作为 Bearer 或 refresh 使用。
+
+E/R 环境键沿宿主前缀，R 仅 PHONE/EMAIL any-of；省略 R 默认二选一，`[]` 允许纯第三方。服务显式禁用 EMAIL 时无需 SMTP，显式启用 PHONE 因未装配 SMS 服务商而报错。纯第三方账号需要近期认证时重走普通 IdP 登录，会按同设备规则替换会话；客户端保存新 pair、核对仍为原 user_id 后再继续敏感操作。此操作不保证提供方强制输入密码或 MFA。手机/邮箱及管理员恢复保留，普通 IdP 仍拒绝冷静期账号；纯第三方没有手机/邮箱自助恢复路径。
+
+迁移新增 `0002_identity_flow`，冻结0001与历史业务数据保持。全部认证副本及调用者一起升级后再启用新策略，避免同实例混跑旧登录即建号流程。收紧策略前核验存量可用身份；新登录和新一轮 refresh 可能取得 user:bind，已有 access 沿原期限与吊销规则处理。保留 schema、Redis 前缀、issuer/audience 和完整旧密钥。回退先停新流程并排空最长 TTL 与在途请求，保留新表和密钥；旧程序无法等价执行策略时不能作为安全回退。恢复先落独立空库，数据库备份不包含 Redis 或密钥系统，不能通过清 Redis 恢复证明。
+
+以下旧变更的说明与提取索引记录各自升级边界；当前调用应优先遵循本节。
+
 ## 开发版默认 schema 调整
 
 `v0.2.0` 在 `Config.Schema` 未指定或为空时采用 `account`；`v0.1.0` 的默认值为 `auth`。升级已有实例须显式保留原 schema。显式合法 schema（包括 `auth`）继续按配置使用，宿主通过 `Config.Schema` 或带宿主前缀的 `AUTH_SCHEMA` 设置。库与 accountsvc 共用默认值，连接池仍须通过 `PoolConfig` 配置匹配的 search_path。环境变量名称 `AUTH_SCHEMA` 和 Redis 默认前缀 `auth:` 保持不变。

@@ -149,13 +149,13 @@ func TestIdentityReplacementEndToEndAgainstRealDB(t *testing.T) {
 	}
 	login := func(target, device string) map[string]any {
 		t.Helper()
-		call("POST", "/v1/users:sendSignInCode", "", device, map[string]string{"channel": "EMAIL", "target": target}, 200)
+		call("POST", "/v1/accounts:sendSignInCode", "", device, map[string]string{"channel": "EMAIL", "target": target}, 200)
 		c := captured.code(target)
 		if c == "" {
 			t.Fatal("sender did not deliver login code")
 		}
 		secrets = append(secrets, c)
-		pair := call("POST", "/v1/users:signInWithCode", "", device, map[string]any{"email": map[string]string{"code_id": captured.codeID(target), "target": target, "code": c}}, 200)
+		pair := call("POST", "/v1/accounts:signInWithCode", "", device, map[string]any{"email": map[string]string{"code_id": captured.codeID(target), "target": target, "code": c}}, 200)
 		rememberPair(pair)
 		return pair
 	}
@@ -170,15 +170,15 @@ func TestIdentityReplacementEndToEndAgainstRealDB(t *testing.T) {
 	previousOther := other["refresh_token"].(string)
 	rotatedOther := call("POST", "/v1/token", "", "", map[string]string{"grant_type": "refresh_token", "refresh_token": previousOther}, 200)
 	rememberPair(rotatedOther)
-	list := call("GET", "/v1/users/me/identities", access, "", nil, 200)
+	list := call("GET", "/v1/accounts/me/identities", access, "", nil, 200)
 	identities := list["identities"].([]any)
 	if len(identities) != 1 {
 		t.Fatal("expected one original email")
 	}
 	oldName := identities[0].(map[string]any)["name"].(string)
 	oldID := oldName[strings.LastIndex(oldName, "/")+1:]
-	path := "/v1/users/me/identities/" + oldID + ":replace"
-	call("POST", "/v1/users/me:sendBindCode", access, "", map[string]string{"channel": "EMAIL", "target": newTarget}, 200)
+	path := "/v1/accounts/me/identities/" + oldID + ":replace"
+	call("POST", "/v1/accounts/me:sendBindCode", access, "", map[string]string{"channel": "EMAIL", "target": newTarget}, 200)
 	bindCode := captured.code(newTarget)
 	if bindCode == "" {
 		t.Fatal("sender did not deliver BIND code")
@@ -192,10 +192,10 @@ func TestIdentityReplacementEndToEndAgainstRealDB(t *testing.T) {
 		t.Fatal("expired auth was not rejected as reauthentication required")
 	}
 	mr.FastForward(2 * time.Second)
-	call("POST", "/v1/users/me:sendReauthenticationCode", access, "", map[string]string{"channel": "EMAIL", "target": oldTarget}, 200)
+	call("POST", "/v1/accounts/me:sendReauthenticationCode", access, "", map[string]string{"channel": "EMAIL", "target": oldTarget}, 200)
 	reauthCode := captured.code(oldTarget)
 	secrets = append(secrets, reauthCode)
-	reauth := call("POST", "/v1/users/me:reauthenticate", access, "", map[string]any{"email": map[string]string{"code_id": captured.codeID(oldTarget), "target": oldTarget, "code": reauthCode}}, 200)
+	reauth := call("POST", "/v1/accounts/me:reauthenticate", access, "", map[string]any{"email": map[string]string{"code_id": captured.codeID(oldTarget), "target": oldTarget, "code": reauthCode}}, 200)
 	access = reauth["access_token"].(string)
 	secrets = append(secrets, access)
 	before, err := a.Users().Authenticate(ctx, access)
@@ -208,14 +208,14 @@ func TestIdentityReplacementEndToEndAgainstRealDB(t *testing.T) {
 		t.Fatal("replacement did not return only the new masked identity resource")
 	}
 	call("POST", path, access, "", body, 404)
-	list = call("GET", "/v1/users/me/identities", access, "", nil, 200)
+	list = call("GET", "/v1/accounts/me/identities", access, "", nil, 200)
 	identities = list["identities"].([]any)
 	if len(identities) != 1 || identities[0].(map[string]any)["name"] != newName {
 		t.Fatal("identity list did not confirm replacement")
 	}
-	call("GET", "/v1/users/me", access, "", nil, 200)
+	call("GET", "/v1/accounts/me", access, "", nil, 200)
 	for _, token := range []string{other["access_token"].(string), rotatedOther["access_token"].(string)} {
-		call("GET", "/v1/users/me", token, "", nil, 401)
+		call("GET", "/v1/accounts/me", token, "", nil, 401)
 	}
 	for _, token := range []string{previousOther, rotatedOther["refresh_token"].(string)} {
 		out := call("POST", "/v1/token", "", "", map[string]string{"grant_type": "refresh_token", "refresh_token": token}, 400)
@@ -230,7 +230,7 @@ func TestIdentityReplacementEndToEndAgainstRealDB(t *testing.T) {
 	if err != nil || after.UserID != uid || after.SessionID != before.SessionID || !after.AuthTime.Equal(before.AuthTime) {
 		t.Fatal("replacement or refresh changed current session/auth_time")
 	}
-	call("GET", "/v1/users/me", access, "", nil, 200)
+	call("GET", "/v1/accounts/me", access, "", nil, 200)
 	newLogin := login(newTarget, "replacement-new-login")
 	if newLogin["user_id"] != uid || newLogin["is_new_user"] != false {
 		t.Fatal("new target did not enter original account")

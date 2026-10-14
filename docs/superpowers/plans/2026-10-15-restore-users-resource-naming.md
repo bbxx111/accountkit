@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、Chi、PostgreSQL 17、Redis、OpenSpec spec-driven。
 
-**Spec:** [当前变更](../../../openspec/changes/add-identity-policy-sign-in-completion/proposal.md)及对应 design/specs/tasks；这是对 2026-10-14 计划中 accounts 命名决策的修订。
+**Spec:** [当前变更](../../../openspec/changes/archive/2026-10-15-add-identity-policy-sign-in-completion/proposal.md)及对应 design/specs/tasks；这是对 2026-10-14 计划中 accounts 命名决策的修订。
 
 ## Global Constraints
 

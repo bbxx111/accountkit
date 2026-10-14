@@ -22,8 +22,8 @@ import (
 // Service 是 handler 依赖的领域面；*user.Service 满足它。
 type Service interface {
 	SendSignInCode(ctx context.Context, channel enum.IdentityKind, target string, meta user.Meta) (user.CodeChallenge, error)
-	SignInWithCode(ctx context.Context, cred user.CodeCredential, dev user.Device, meta user.Meta) (user.TokenResult, error)
-	SignInWithIdp(ctx context.Context, cred user.IdpCredential, dev user.Device, meta user.Meta) (user.TokenResult, error)
+	SignInWithCode(ctx context.Context, cred user.CodeCredential, dev user.Device, meta user.Meta) (user.SignInResult, error)
+	SignInWithIdp(ctx context.Context, cred user.IdpCredential, dev user.Device, meta user.Meta) (user.SignInResult, error)
 	Refresh(ctx context.Context, refreshToken string, meta user.Meta) (user.TokenResult, error)
 	Revoke(ctx context.Context, refreshToken string, meta user.Meta) error
 	Authenticate(ctx context.Context, rawAccess string) (user.Principal, error)
@@ -124,6 +124,8 @@ func (h *Handler) Router() http.Handler {
 	r.Post("/accounts:sendSignInCode", h.sendSignInCode)
 	r.Post("/accounts:signInWithCode", h.signInWithCode)
 	r.Post("/accounts:signInWithIdp", h.signInWithIdp)
+	r.Post("/accounts:sendSignInCompletionCode", h.sendSignInCompletionCode)
+	r.Post("/accounts:completeSignIn", h.completeSignIn)
 	r.Post("/token", h.token)
 	r.Post("/revoke", h.revoke)
 

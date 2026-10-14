@@ -10,6 +10,8 @@ func TestLegacyUsersRoutesAreNotAliases(t *testing.T) {
 		{"POST", "/users:sendSignInCode"},
 		{"POST", "/users:signInWithCode"},
 		{"POST", "/users:signInWithIdp"},
+		{"POST", "/users:sendSignInCompletionCode"},
+		{"POST", "/users:completeSignIn"},
 		{"GET", "/users/me"},
 		{"PATCH", "/users/me"},
 		{"POST", "/users/me:sendReauthenticationCode"},

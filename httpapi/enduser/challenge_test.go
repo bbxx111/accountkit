@@ -56,8 +56,8 @@ func TestCodeChallengeHTTPContract(t *testing.T) {
 		}
 		return nil
 	}
-	f.signInWithCode = func(_ context.Context, c user.CodeCredential, _ user.Device, _ user.Meta) (user.TokenResult, error) {
-		return user.TokenResult{}, check(c)
+	f.signInWithCode = func(_ context.Context, c user.CodeCredential, _ user.Device, _ user.Meta) (user.SignInResult, error) {
+		return user.SignInResult{}, check(c)
 	}
 	f.bindWithCode = func(_ context.Context, _ user.Principal, c user.CodeCredential, _ user.Meta) (user.IdentityInfo, bool, error) {
 		return user.IdentityInfo{}, false, check(c)

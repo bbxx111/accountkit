@@ -20,8 +20,8 @@ import (
 // fakeService 用函数字段实现 enduser.Service；未设置的方法 panic，暴露测试遗漏。
 type fakeService struct {
 	sendSignInCode           func(ctx context.Context, ch enum.IdentityKind, target string, meta user.Meta) (user.CodeChallenge, error)
-	signInWithCode           func(ctx context.Context, cred user.CodeCredential, dev user.Device, meta user.Meta) (user.TokenResult, error)
-	signInWithIdp            func(ctx context.Context, cred user.IdpCredential, dev user.Device, meta user.Meta) (user.TokenResult, error)
+	signInWithCode           func(ctx context.Context, cred user.CodeCredential, dev user.Device, meta user.Meta) (user.SignInResult, error)
+	signInWithIdp            func(ctx context.Context, cred user.IdpCredential, dev user.Device, meta user.Meta) (user.SignInResult, error)
 	refresh                  func(ctx context.Context, rt string, meta user.Meta) (user.TokenResult, error)
 	revoke                   func(ctx context.Context, rt string, meta user.Meta) error
 	authenticate             func(ctx context.Context, raw string) (user.Principal, error)
@@ -44,10 +44,10 @@ type fakeService struct {
 func (f *fakeService) SendSignInCode(ctx context.Context, ch enum.IdentityKind, target string, meta user.Meta) (user.CodeChallenge, error) {
 	return f.sendSignInCode(ctx, ch, target, meta)
 }
-func (f *fakeService) SignInWithCode(ctx context.Context, cred user.CodeCredential, dev user.Device, meta user.Meta) (user.TokenResult, error) {
+func (f *fakeService) SignInWithCode(ctx context.Context, cred user.CodeCredential, dev user.Device, meta user.Meta) (user.SignInResult, error) {
 	return f.signInWithCode(ctx, cred, dev, meta)
 }
-func (f *fakeService) SignInWithIdp(ctx context.Context, cred user.IdpCredential, dev user.Device, meta user.Meta) (user.TokenResult, error) {
+func (f *fakeService) SignInWithIdp(ctx context.Context, cred user.IdpCredential, dev user.Device, meta user.Meta) (user.SignInResult, error) {
 	return f.signInWithIdp(ctx, cred, dev, meta)
 }
 func (f *fakeService) Refresh(ctx context.Context, rt string, meta user.Meta) (user.TokenResult, error) {

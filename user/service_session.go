@@ -179,7 +179,7 @@ func (s *Service) rotate(ctx context.Context, sess db.Session, oldHash []byte, e
 			// pair。交给调用方的宽限/拒绝路径重新读取账号状态并按 frozen/deleted 正确处理。
 			return nil
 		}
-		hasAnchor, err := s.userHasAnchor(ctx, q, locked.UserID)
+		complete, err := s.userIdentityComplete(ctx, q, locked.UserID)
 		if err != nil {
 			return err
 		}
@@ -187,7 +187,7 @@ func (s *Service) rotate(ctx context.Context, sess db.Session, oldHash []byte, e
 		if err := s.ensureRefreshSessionActive(ctx, locked, now, ev); err != nil {
 			return err
 		}
-		scope := deriveScope(u.State, hasAnchor)
+		scope := deriveScope(u.State, complete)
 
 		plain, newHash, err := newRefreshToken()
 		if err != nil {

@@ -22,6 +22,9 @@ func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID s
 	if err := validateCodeCredential(cred); err != nil {
 		return IdentityInfo{}, err
 	}
+	if err := s.requireIdentityEnabled(cred.Channel); err != nil {
+		return IdentityInfo{}, err
+	}
 	channel, target := cred.Channel, cred.Target
 	ev := userEvent(p, meta)
 	ev.IdentityKind = channel
@@ -195,6 +198,10 @@ func (s *Service) replacementIdentity(ctx context.Context, q *db.Queries, userID
 	idents, err := q.ListActiveIdentitiesByUser(ctx, userID)
 	if err != nil {
 		return db.Identity{}, nil, fmt.Errorf("user: replacement identity count: %w", err)
+	}
+	// 同类换绑不改变有效 Kind 集合，但旧 user token 不能绕过收紧后的完整性要求。
+	if !s.identitiesComplete(idents) {
+		return db.Identity{}, nil, ErrLastAnchor
 	}
 	return old, idents, nil
 }

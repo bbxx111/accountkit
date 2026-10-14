@@ -22,9 +22,6 @@ func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID s
 	if err := validateCodeCredential(cred); err != nil {
 		return IdentityInfo{}, err
 	}
-	if err := s.requireIdentityEnabled(cred.Channel); err != nil {
-		return IdentityInfo{}, err
-	}
 	channel, target := cred.Channel, cred.Target
 	ev := userEvent(p, meta)
 	ev.IdentityKind = channel
@@ -41,6 +38,9 @@ func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID s
 			s.record(ctx, ev)
 		}
 	}()
+	if err := s.requireIdentityEnabled(channel); err != nil {
+		return IdentityInfo{}, err
+	}
 	if !ids.Valid(ids.User, p.UserID) || !ids.Valid(ids.Session, p.SessionID) {
 		return IdentityInfo{}, ErrInvalidToken
 	}
@@ -209,6 +209,10 @@ func (s *Service) replacementIdentity(ctx context.Context, q *db.Queries, userID
 // 基础设施错误不伪装成业务拒绝，审计原因固定且不包含原始输入或错误文本。
 func identityReplaceRejectReason(err error) string {
 	switch {
+	case errors.Is(err, ErrIdentityKindNotEnabled):
+		return "IDENTITY_KIND_NOT_ENABLED"
+	case errors.Is(err, ErrLastAnchor):
+		return "LAST_ANCHOR"
 	case errors.Is(err, ErrInsufficientScope):
 		return "INSUFFICIENT_SCOPE"
 	case errors.Is(err, ErrReauthenticationRequired):

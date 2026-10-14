@@ -3,6 +3,7 @@ package user_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,6 +35,28 @@ func bindPolicyIdentity(t *testing.T, f *fixture, p user.Principal, kind enum.Id
 	return info
 }
 
+func assertPolicyReplacementRejectedAudit(t *testing.T, f *fixture, p user.Principal, start int, reason, target, plain string) {
+	t.Helper()
+	count := 0
+	for _, event := range f.audit.Events()[start:] {
+		switch event.Type {
+		case enum.EventIdentityReplaceRejected:
+			count++
+			if event.Result != enum.ResultFailure || event.Reason != reason || event.UserID != p.UserID || event.SessionID != p.SessionID || event.RequestID != meta1.RequestID || event.IdentityKind != enum.IdentityPhone {
+				t.Fatalf("incorrect replacement rejection attribution: %+v", event)
+			}
+			if (event.SubjectHint != "" && len(event.SubjectHint) != 8) || strings.Contains(event.SubjectHint, target) || strings.Contains(event.Reason, target) || strings.Contains(event.Reason, plain) {
+				t.Fatal("replacement rejection audit exposed a credential or complete target")
+			}
+		case enum.EventIdentityBound, enum.EventIdentityUnbound, enum.EventSessionRevoked:
+			t.Fatalf("rejected replacement produced success event: %s", event.Type)
+		}
+	}
+	if count != 1 {
+		t.Fatalf("replacement rejection audit count=%d want 1", count)
+	}
+}
+
 // Removing the policy gate must allow use of a previously issued disabled code and consume it.
 func TestIdentityPolicyDisabledCodeIsNotConsumed(t *testing.T) {
 	for _, operation := range []string{"bind", "replace", "reauth"} {
@@ -56,6 +79,7 @@ func TestIdentityPolicyDisabledCodeIsNotConsumed(t *testing.T) {
 			credential := f.credential(purpose, enum.IdentityPhone, target, plain)
 			storeCredential := f.storeCredential(purpose, enum.IdentityPhone, target, plain, p)
 			setIdentityPolicy(t, f, []enum.IdentityKind{enum.IdentityEmail}, []enum.IdentityKind{enum.IdentityEmail})
+			auditStart := len(f.audit.Events())
 			var err error
 			switch operation {
 			case "bind":
@@ -74,6 +98,9 @@ func TestIdentityPolicyDisabledCodeIsNotConsumed(t *testing.T) {
 			identities, err := f.svc.ListIdentities(ctx, p.UserID)
 			if err != nil || len(identities) != 1 || identities[0].ID != list[0].ID {
 				t.Fatalf("disabled identity was modified: %+v %v", identities, err)
+			}
+			if operation == "replace" {
+				assertPolicyReplacementRejectedAudit(t, f, p, auditStart, "IDENTITY_KIND_NOT_ENABLED", target, plain)
 			}
 		})
 	}
@@ -157,12 +184,14 @@ func TestIdentityPolicyReplacementRejectsIncompleteAccountBeforeConsumption(t *t
 	cred := f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, plain)
 	stored := f.storeCredential(enum.PurposeBind, enum.IdentityPhone, phone2, plain, p)
 	setIdentityPolicy(t, f, []enum.IdentityKind{enum.IdentityPhone, enum.IdentityEmail}, []enum.IdentityKind{enum.IdentityEmail})
+	auditStart := len(f.audit.Events())
 	if _, err := f.svc.ReplaceIdentity(ctx, p, iid, cred, meta1); !errors.Is(err, user.ErrLastAnchor) {
 		t.Fatalf("incomplete replacement: %v", err)
 	}
 	if err := f.deps.Codes.VerifyChallenge(ctx, stored); err != nil {
 		t.Fatalf("incomplete replacement consumed code: %v", err)
 	}
+	assertPolicyReplacementRejectedAudit(t, f, p, auditStart, "LAST_ANCHOR", phone2, plain)
 }
 
 func TestIdentityPolicyReplacementAllowsEnabledNonRequiredKind(t *testing.T) {
@@ -204,6 +233,7 @@ func TestIdentityPolicyReplacementRechecksCompletenessAfterLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
+	auditStart := len(f.audit.Events())
 	go func() {
 		_, err := f.svc.ReplaceIdentity(ctx, p, iid, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, plain), meta1)
 		done <- err
@@ -222,6 +252,7 @@ func TestIdentityPolicyReplacementRechecksCompletenessAfterLock(t *testing.T) {
 	if err != nil || len(list) != 1 || list[0].ID != iid {
 		t.Fatalf("rejected replacement changed identity: %+v %v", list, err)
 	}
+	assertPolicyReplacementRejectedAudit(t, f, p, auditStart, "LAST_ANCHOR", phone2, plain)
 }
 
 func TestIdentityPolicyCodeSendAndMalformedKinds(t *testing.T) {

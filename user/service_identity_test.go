@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/ids"
 	"github.com/bbxx111/accountkit/user"
 	"github.com/bbxx111/accountkit/user/code"
+	"github.com/bbxx111/accountkit/user/db"
 	"github.com/bbxx111/accountkit/user/idp"
 )
 
@@ -22,6 +24,36 @@ func principalOf(t *testing.T, f *fixture, res user.TokenResult) user.Principal 
 		t.Fatal(err)
 	}
 	return p
+}
+
+// seedExistingBindScopeProvider 模拟升级前已存在但缺少必需身份的账号。
+// 这类账号登录仍返回 user:bind；未知第三方身份则进入待完成流程。
+func seedExistingBindScopeProvider(t *testing.T, f *fixture, subject string, device user.Device) user.TokenResult {
+	t.Helper()
+	uid, err := ids.New(ids.User)
+	if err != nil {
+		t.Fatal(err)
+	}
+	iid, err := ids.New(ids.Identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	err = f.repo.WithTx(ctx, func(q *db.Queries) error {
+		if _, err := q.CreateUser(ctx, db.CreateUserParams{ID: uid, State: enum.UserActive}); err != nil {
+			return err
+		}
+		_, err := q.CreateIdentity(ctx, db.CreateIdentityParams{ID: iid, UserID: uid, Kind: enum.IdentityWeChat, ProviderSubject: &subject})
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:" + subject + "@o1"}, device, meta1)
+	if err != nil || result.Tokens == nil || result.Pending != nil || result.Tokens.UserID != uid || result.Tokens.Scope != user.ScopeBind {
+		t.Fatalf("existing incomplete provider sign-in: %+v %v", result, err)
+	}
+	return *result.Tokens
 }
 
 func TestListIdentitiesMasksAnchors(t *testing.T) {
@@ -67,11 +99,8 @@ func TestSendBindCodeUsesBindPurposeAndQuota(t *testing.T) {
 func TestBindWithCodeHappyPathIdempotentAndScopeAfterRefresh(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
-	// 微信登录 → user:bind
-	res, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:UB1@o1"}, dev1, meta1)
-	if err != nil || res.Scope != user.ScopeBind {
-		t.Fatalf("wechat sign-in: %+v %v", res, err)
-	}
+	// 已有未补齐身份的微信账号登录 → user:bind。
+	res := seedExistingBindScopeProvider(t, f, "UB1", dev1)
 	p := principalOf(t, f, res)
 	if err := f.sendBindCode(ctx, p, enum.IdentityPhone, phone2, meta1); err != nil {
 		t.Fatal(err)
@@ -128,7 +157,7 @@ func TestBindWithCodeConflictAndKindLimit(t *testing.T) {
 	ctx := context.Background()
 	// 账号 A 拥有 phone1；账号 B（微信）尝试绑定 phone1 → 冲突
 	f.signIn(t, enum.IdentityPhone, phone1, dev1)
-	resB, _ := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:UB2@o1"}, dev2, meta1)
+	resB := seedExistingBindScopeProvider(t, f, "UB2", dev2)
 	pB := principalOf(t, f, resB)
 	f.advance(61 * time.Second)
 	_ = f.sendBindCode(ctx, pB, enum.IdentityPhone, phone1, meta1)
@@ -298,7 +327,7 @@ func TestUnbindIdentityGuardsLastAnchorAndOwnership(t *testing.T) {
 	if err := f.svc.UnbindIdentity(ctx, p, wx.ID, meta1); err != nil {
 		t.Fatalf("unbind wechat: %v", err)
 	}
-	resB, _ := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:UB2@o1"}, dev2, meta1)
+	resB := seedExistingBindScopeProvider(t, f, "UB2", dev2)
 	pB := principalOf(t, f, resB)
 	// A 解绑的 phone1 可被 B 绑定（部分唯一索引）
 	f.advance(61 * time.Second)

@@ -3,6 +3,8 @@ package user
 import "errors"
 
 var (
+	ErrSignInCompletionInvalid = errors.New("user: sign-in completion invalid")
+	ErrSignInAlreadyCompleted  = errors.New("user: sign-in already completed")
 	// ErrIdentityKindNotEnabled 表示部署策略拒绝使用该身份类型。
 	ErrIdentityKindNotEnabled = errors.New("user: identity kind not enabled")
 	// ErrDeletionBlocked：宿主业务检查拒绝注销 → 400 FAILED_PRECONDITION。

@@ -6,7 +6,9 @@ package tokens
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -87,6 +89,13 @@ func NewSigner(o Options) (*Signer, error) {
 
 // Active 返回当前签发用的密钥版本。
 func (s *Signer) Active() uint16 { return s.active }
+
+// ContextFingerprint 标识令牌接收域，不包含签名密钥。
+func (s *Signer) ContextFingerprint() string {
+	b, _ := json.Marshal([]string{s.issuer, s.audience})
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:])
+}
 
 // Leeway 返回 Parse 校验 exp/nbf/iat 时容忍的时钟漂移窗口。调用方吊销会话时应把这段窗口
 // 计入吊销集 TTL：exp 之后的 Leeway 内，一个已吊销的 token 仍会通过签名与过期校验。

@@ -192,8 +192,8 @@ func TestPurgeAnonymizesAccountIdentitiesSessionsAuditAndHostTables(t *testing.T
 		t.Fatalf("re-register phone: %+v", fresh)
 	}
 	wxAgain, err := f.svc.SignInWithIdp(ctx, wx, dev2, meta1)
-	if err != nil || !wxAgain.IsNewUser || wxAgain.UserID == p.UserID {
-		t.Fatalf("re-register wechat: %+v %v", wxAgain, err)
+	if err != nil || wxAgain.Tokens != nil || wxAgain.Pending == nil {
+		t.Fatalf("purged wechat must start a new pending flow: %+v %v", wxAgain, err)
 	}
 	if n, err := f.svc.PurgeDueUsers(ctx); err != nil || n != 0 {
 		t.Fatalf("second purge round: n=%d err=%v", n, err)

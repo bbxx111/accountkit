@@ -179,6 +179,7 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 		})
 	}
 	users, err := user.NewService(user.Deps{
+		IdentityFlowContext:  cfg.Schema,
 		EnabledIdentityKinds: cfg.EnabledIdentityKinds, RequiredIdentityKinds: cfg.RequiredIdentityKinds,
 		Repo: user.NewRepo(deps.Pool), Codes: a.codes, Revocation: a.revocation, Grace: a.grace,
 		Signer: signer, Cipher: cipher, Digester: digester,
@@ -219,6 +220,10 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 	}
 	// 维护任务（§5.6 #1–#5）：顺序执行、失败互不影响。
 	a.runner = maintenance.NewRunner(cfg.MaintenanceInterval, maintenance.NewPGLocker(deps.Pool, cfg.Schema), deps.Logger,
+		maintenance.Task{Name: "cleanup_identity_flows", Run: func(ctx context.Context) error {
+			_, err := users.CleanupIdentityFlows(ctx)
+			return err
+		}},
 		maintenance.Task{Name: "purge_users", Run: func(ctx context.Context) error {
 			n, err := users.PurgeDueUsers(ctx)
 			if n > 0 {

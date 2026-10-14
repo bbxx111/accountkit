@@ -133,7 +133,15 @@ func (f *fixture) signIn(t *testing.T, channel enum.IdentityKind, target string,
 		t.Fatalf("sign in: %v", err)
 	}
 	f.advance(61 * time.Second) // 过冷却，便于后续再次发码
-	return res
+	return requireSignInTokens(t, res)
+}
+
+func requireSignInTokens(t *testing.T, res user.SignInResult) user.TokenResult {
+	t.Helper()
+	if res.Tokens == nil || res.Pending != nil {
+		t.Fatalf("expected token branch, got %+v", res)
+	}
+	return *res.Tokens
 }
 
 // normalizedTarget 镜像 Service.normalizeTarget 对 channel 的归一化，仅供测试查找 capture 用。
@@ -277,7 +285,7 @@ func TestSignInFrozenAndPendingDeletion(t *testing.T) {
 	mustExec(t, f, `UPDATE user_account SET state = 3 WHERE id = $1`, res.UserID) // PENDING_DELETION
 	_ = f.sendSignInCode(ctx, enum.IdentityPhone, phone1, meta1)
 	got, err := f.svc.SignInWithCode(ctx, f.credential(enum.PurposeSignIn, enum.IdentityPhone, phone1, f.sent.code(phone1)), dev1, meta1)
-	if err != nil || got.Scope != user.ScopeUndelete {
+	if err != nil || got.Tokens == nil || got.Pending != nil || got.Tokens.Scope != user.ScopeUndelete {
 		t.Fatalf("pending deletion via anchor must yield user:undelete scope: %+v %v", got, err)
 	}
 }

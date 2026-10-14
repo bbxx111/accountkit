@@ -63,8 +63,12 @@ func TestExpiredSessionsRemainRevocable(t *testing.T) {
 				err = f.svc.Revoke(ctx, old.RefreshToken, meta1)
 			case "same-device-relogin":
 				if err = f.sendSignInCode(ctx, enum.IdentityEmail, email1, meta1); err == nil {
+					var outcome user.SignInResult
+					outcome, err = f.svc.SignInWithCode(ctx, f.credential(enum.PurposeSignIn, enum.IdentityEmail, email1, f.sent.code(email1)), otherDevice, meta1)
 					var pair user.TokenResult
-					pair, err = f.svc.SignInWithCode(ctx, f.credential(enum.PurposeSignIn, enum.IdentityEmail, email1, f.sent.code(email1)), otherDevice, meta1)
+					if err == nil {
+						pair = requireSignInTokens(t, outcome)
+					}
 					if err == nil && pair.UserID != p.UserID {
 						t.Error("relogin changed user")
 					}

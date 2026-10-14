@@ -7,6 +7,7 @@ package idp
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/bbxx111/accountkit/enum"
 )
@@ -17,6 +18,8 @@ type Identity struct {
 	Subject   string
 	OpenIDs   map[string]string
 	HintEmail string
+	// ExpireTime 是已验证凭证的原始期限；未知期限保持零值。
+	ExpireTime time.Time
 }
 
 var (

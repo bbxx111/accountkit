@@ -40,6 +40,11 @@ const maxDeviceField = 64
 
 // Deps 是 Service 的依赖。
 type Deps struct {
+	// IdentityFlowContext 可补充宿主稳定实例标识；内置数据库/Redis/JWT域仍自动绑定。
+	IdentityFlowContext string
+	// ProviderConfiguration 是自定义 IdP 验证器的稳定配置标识，应用允许列表变化时应变化。
+	// 内置验证器自动提供 PolicyFingerprint；此字段不含秘密。
+	ProviderConfiguration string
 	EnabledIdentityKinds  []enum.IdentityKind
 	RequiredIdentityKinds []enum.IdentityKind
 	Repo                  *Repo
@@ -81,8 +86,10 @@ type Deps struct {
 
 // Service 持有用户域的全部业务规则。
 type Service struct {
-	d      Deps
-	policy *IdentityPolicy
+	d           Deps
+	policy      *IdentityPolicy
+	flowContext string
+	flowPolicy  string
 }
 
 // IdentityPolicy 返回策略值的副本，避免调用方整体覆盖服务内的策略。
@@ -175,7 +182,8 @@ func NewService(d Deps) (*Service, error) {
 	if d.Now == nil {
 		d.Now = time.Now
 	}
-	return &Service{d: d, policy: policy}, nil
+	flowContext, flowPolicy := identityFlowConfiguration(d, policy)
+	return &Service{d: d, policy: policy, flowContext: flowContext, flowPolicy: flowPolicy}, nil
 }
 
 // Device 是客户端设备身份（X-Device-Id / X-Device-Name）。
@@ -209,6 +217,20 @@ type TokenResult struct {
 	IsNewUser        bool
 	// HintEmail 是 Apple 已验证的邮箱（含 Apple 私密转发地址），仅供客户端预填绑定页，不代表已绑定。
 	HintEmail string
+}
+
+// SignInResult 是登录结果；成功返回 Tokens，等待身份补全返回 Pending，恰好一个成员非 nil。
+type SignInResult struct {
+	Tokens  *TokenResult
+	Pending *PendingSignIn
+}
+
+// PendingSignIn 不代表已经创建账号，也不能作为访问或刷新令牌使用。
+type PendingSignIn struct {
+	SignInCompletionToken string
+	ExpireTime            time.Time
+	EnabledIdentityKinds  []enum.IdentityKind
+	RequiredIdentityKinds []enum.IdentityKind
 }
 
 func (s *Service) now() time.Time { return s.d.Now() }

@@ -73,6 +73,9 @@ func (s *Service) softDelete(ctx context.Context, userID string, missing error, 
 		if err != nil {
 			return fmt.Errorf("user: soft delete user: %w", err)
 		}
+		if _, err = q.DeleteIdentityFlowsForUser(ctx, userID); err != nil {
+			return fmt.Errorf("user: delete sign-in flows: %w", err)
+		}
 		revoked, err = s.revokeAllForUser(ctx, q, userID, nil, enum.RevokeUserDeleted, now)
 		return err
 	})

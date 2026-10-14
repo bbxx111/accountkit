@@ -29,7 +29,7 @@ end
 `
 
 // KEYS: {cooldown, target quota, challenge, failure} per unique digest; IP quota last.
-// ARGV: cooldownSec, dailyTarget, dailyIP, HMAC, ttlSec, quotaSec, id, user, session, failureLimit.
+// ARGV: cooldownSec, dailyTarget, dailyIP, HMAC, ttlSec, quotaSec, id, user, session, failureLimit, flow, expireTimeMS.
 var issueChallengeScript = redis.NewScript(challengeBudgetLua + `
 -- Lua tonumber accepts forms (1.0, 1e0, +1, 01) that Redis INCR rejects.
 -- Validate every writable quota before the first write; script errors cannot
@@ -70,13 +70,13 @@ redis.call('SET', KEYS[1], '1', 'EX', ARGV[1])
 if redis.call('INCR', KEYS[2]) == 1 then redis.call('EXPIRE', KEYS[2], ARGV[6]) end
 if redis.call('INCR', ipKey) == 1 then redis.call('EXPIRE', ipKey, ARGV[6]) end
 for j = 1, groups do redis.call('DEL', KEYS[(j - 1) * 4 + 3]) end
-redis.call('HSET', KEYS[3], 'h', ARGV[4], 'n', '0', 'code_id', ARGV[7], 'user_id', ARGV[8], 'session_id', ARGV[9])
+redis.call('HSET', KEYS[3], 'h', ARGV[4], 'n', '0', 'code_id', ARGV[7], 'user_id', ARGV[8], 'session_id', ARGV[9], 'flow_id', ARGV[11], 'expire_time', ARGV[12])
 redis.call('EXPIRE', KEYS[3], ARGV[5])
 return {'OK', 0}
 `)
 
 // KEYS: {challenge, failure} per unique digest. ARGV: id, user, session,
-// maxAttempts, failureLimit, failureWindowMS, candidateHMACs...
+// maxAttempts, failureLimit, failureWindowMS, flow, candidateHMACs...
 var verifyChallengeScript = redis.NewScript(challengeBudgetLua + `
 local key = nil
 local count = 0
@@ -94,17 +94,23 @@ if redis.call('PTTL', key) < 0 then return redis.error_reply('code: challenge ha
 local id = redis.call('HGET', key, 'code_id')
 local user = redis.call('HGET', key, 'user_id')
 local session = redis.call('HGET', key, 'session_id')
+local flow = redis.call('HGET', key, 'flow_id') or ''
 local stored = redis.call('HGET', key, 'h')
 local attempts = tonumber(redis.call('HGET', key, 'n'))
 if not id or not user or not session or not stored or not attempts or attempts < 0 or attempts ~= math.floor(attempts) then
   return redis.error_reply('code: invalid challenge')
 end
-if id ~= ARGV[1] or user ~= ARGV[2] or session ~= ARGV[3] then return {'MISSING', 0} end
+if id ~= ARGV[1] or user ~= ARGV[2] or session ~= ARGV[3] or flow ~= ARGV[7] then return {'MISSING', 0} end
 if attempts >= tonumber(ARGV[4]) then redis.call('DEL', key); return {'MISSING', 0} end
 local failed, expiry = failureBudget(failures)
 if failed >= tonumber(ARGV[5]) then return {'TARGET_VERIFY_LIMIT', retrySeconds(expiry)} end
-for i = 7, #ARGV do
-  if stored == ARGV[i] then redis.call('DEL', key); return {'OK', 0} end
+for i = 8, #ARGV do
+  if stored == ARGV[i] then
+    local expiry = redis.call('HGET', key, 'expire_time')
+    if not expiry then expiry = tostring(-redis.call('PTTL', key)) end
+    if not tonumber(expiry) then return redis.error_reply('code: invalid challenge expiry') end
+    redis.call('DEL', key); return {'OK', 0, expiry}
+  end
 end
 -- Both counters change only after the current id/binding and digest checks.
 if attempts + 1 >= tonumber(ARGV[4]) then redis.call('DEL', key)

@@ -14,7 +14,7 @@ func TestFailedMigrationBlocksRetry(t *testing.T) {
 	if err := sourceUp(t, cfg, schema, true); err == nil {
 		t.Fatal("failed SQL reported success")
 	}
-	assertVersion(t, cfg, schema, 2, true)
+	assertVersion(t, cfg, schema, 3, true)
 	var dirty migrate.ErrDirty
 	if err := sourceUp(t, cfg, schema, false); !errors.As(err, &dirty) {
 		t.Fatalf("dirty did not block: %v", err)

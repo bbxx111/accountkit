@@ -107,6 +107,8 @@ func message(from, to string, m sender.Message) ([]byte, error) {
 		purpose = "登录"
 	case enum.PurposeBind:
 		purpose = "绑定"
+	case enum.PurposeSignInComplete:
+		purpose = "完成登录并关联身份，未注册时自动注册"
 	case enum.PurposeReauth:
 		purpose = "重新认证"
 	default:

@@ -5,15 +5,18 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/ids"
 )
 
 // Binding 将敏感用途的轮次绑定到发码时的用户和会话。
 type Binding struct {
 	UserID    string
 	SessionID string
+	FlowID    string
 }
 
 // Issued 是成功占额后的轮次；Code 仅供调用方投递，不应记录到日志。
@@ -61,7 +64,12 @@ func (s *Store) challengeHMAC(c Credential) string {
 // IssueChallenge 原子检查目标失败预算、占用发送额度并替换该用途的全部旧轮次。
 // 投递由调用方处理；投递失败不退还额度和冷却。
 func (s *Store) IssueChallenge(ctx context.Context, channel enum.IdentityKind, purpose enum.CodePurpose, target, ip string, binding Binding) (Issued, error) {
-	if !channel.IsChannel() || !purpose.Valid() {
+	return s.IssueChallengeUntil(ctx, channel, purpose, target, ip, binding, time.Time{})
+}
+
+// IssueChallengeUntil caps the challenge lifetime to the original flow deadline.
+func (s *Store) IssueChallengeUntil(ctx context.Context, channel enum.IdentityKind, purpose enum.CodePurpose, target, ip string, binding Binding, deadline time.Time) (Issued, error) {
+	if !channel.IsChannel() || !purpose.Valid() || !validBinding(purpose, binding) {
 		return Issued{}, ErrInvalid
 	}
 	var id [16]byte
@@ -73,7 +81,14 @@ func (s *Store) IssueChallenge(ctx context.Context, channel enum.IdentityKind, p
 		return Issued{}, err
 	}
 	now := s.o.Now()
-	issued := Issued{CodeID: hex.EncodeToString(id[:]), Code: plain, ExpireTime: now.Add(time.Duration(int64(s.o.TTL.Seconds())) * time.Second)}
+	ttl := int64(s.o.TTL.Seconds())
+	if !deadline.IsZero() && deadline.Sub(now) < time.Duration(ttl)*time.Second {
+		ttl = int64(deadline.Sub(now) / time.Second)
+	}
+	if ttl < 1 {
+		return Issued{}, ErrExpired
+	}
+	issued := Issued{CodeID: hex.EncodeToString(id[:]), Code: plain, ExpireTime: now.Add(time.Duration(ttl) * time.Second)}
 	c := Credential{Channel: channel, Purpose: purpose, Target: target, CodeID: issued.CodeID, Code: plain, Binding: binding}
 	digest, _ := s.digester.Digest(s.challengeHMAC(c))
 	digests := s.targetDigests(target)
@@ -85,7 +100,7 @@ func (s *Store) IssueChallenge(ctx context.Context, channel enum.IdentityKind, p
 		keys = append(keys, cool, quota, s.prefix+"challenge:"+channel.String()+":"+purpose.Key()+":"+d, s.prefix+"verify_failure:"+channel.String()+":"+d)
 	}
 	keys = append(keys, ipKey)
-	res, err := issueChallengeScript.Run(ctx, s.rdb, keys, int64(s.o.Cooldown.Seconds()), s.o.DailyLimitPerTarget, s.o.DailyLimitPerIP, digest, int64(s.o.TTL.Seconds()), quotaTTL(now), issued.CodeID, binding.UserID, binding.SessionID, s.o.FailureLimitPerTarget).Slice()
+	res, err := issueChallengeScript.Run(ctx, s.rdb, keys, int64(s.o.Cooldown.Seconds()), s.o.DailyLimitPerTarget, s.o.DailyLimitPerIP, digest, ttl, quotaTTL(now), issued.CodeID, binding.UserID, binding.SessionID, s.o.FailureLimitPerTarget, binding.FlowID, issued.ExpireTime.UnixMilli()).Slice()
 	if err != nil {
 		return Issued{}, fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
@@ -99,18 +114,45 @@ func (s *Store) IssueChallenge(ctx context.Context, channel enum.IdentityKind, p
 // VerifyChallenge 匹配轮次和主体后，在同一次 Lua 中完成预算检查、摘要比对及消费。
 // 未知或旧轮次不会消耗当前轮次或累计失败预算。
 func (s *Store) VerifyChallenge(ctx context.Context, c Credential) error {
-	if !c.Channel.IsChannel() || !c.Purpose.Valid() || !validCodeID(c.CodeID) {
-		return ErrInvalid
+	_, err := s.VerifyChallengeWithExpiry(ctx, c)
+	return err
+}
+
+// VerifyChallengeWithExpiry returns the consumed challenge's original deadline.
+func (s *Store) VerifyChallengeWithExpiry(ctx context.Context, c Credential) (time.Time, error) {
+	if !c.Channel.IsChannel() || !c.Purpose.Valid() || !validCodeID(c.CodeID) || !validBinding(c.Purpose, c.Binding) {
+		return time.Time{}, ErrInvalid
 	}
-	argv := []interface{}{c.CodeID, c.Binding.UserID, c.Binding.SessionID, s.o.MaxAttempts, s.o.FailureLimitPerTarget, s.o.FailureWindow.Milliseconds()}
+	argv := []interface{}{c.CodeID, c.Binding.UserID, c.Binding.SessionID, s.o.MaxAttempts, s.o.FailureLimitPerTarget, s.o.FailureWindow.Milliseconds(), c.Binding.FlowID}
 	for _, d := range uniqueDigests(s.digester.AllDigests(s.challengeHMAC(c))) {
 		argv = append(argv, d)
 	}
+	now := s.o.Now()
 	res, err := verifyChallengeScript.Run(ctx, s.rdb, s.challengeKeys(c.Channel, c.Purpose, c.Target), argv...).Slice()
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrUnavailable, err)
+		return time.Time{}, fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
-	return challengeResult(res, s.o.Now(), "OK", "MISSING", "MISMATCH", "TARGET_VERIFY_LIMIT")
+	if len(res) < 2 {
+		return time.Time{}, ErrUnavailable
+	}
+	if err := challengeResult(res[:2], s.o.Now(), "OK", "MISSING", "MISMATCH", "TARGET_VERIFY_LIMIT"); err != nil {
+		return time.Time{}, err
+	}
+	if len(res) != 3 {
+		return time.Time{}, ErrUnavailable
+	}
+	raw, ok := res[2].(string)
+	if !ok {
+		return time.Time{}, ErrUnavailable
+	}
+	ms, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return time.Time{}, ErrUnavailable
+	}
+	if ms < 0 {
+		return now.Add(time.Duration(-ms) * time.Millisecond), nil
+	}
+	return time.UnixMilli(ms), nil
 }
 
 // DiscardChallenge 只清理仍属于指定轮次的记录，不恢复发送额度或失败预算。
@@ -172,4 +214,11 @@ func challengeResult(res []interface{}, now time.Time, allowed ...string) error 
 		}
 	}
 	return ErrUnavailable
+}
+
+func validBinding(p enum.CodePurpose, b Binding) bool {
+	if p == enum.PurposeSignInComplete {
+		return ids.Valid(ids.IdentityFlow, b.FlowID) && b.UserID == "" && b.SessionID == ""
+	}
+	return b.FlowID == ""
 }

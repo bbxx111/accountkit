@@ -92,13 +92,14 @@ const (
 	PurposeSignIn                      // 1
 	PurposeBind                        // 2
 	PurposeReauth                      // 3
+	PurposeSignInComplete              // 4
 )
 
-var codePurposeNames = [...]string{"UNSPECIFIED", "SIGN_IN", "BIND", "REAUTH"}
-var codePurposeKeys = [...]string{"unspecified", "signin", "bind", "reauth"}
+var codePurposeNames = [...]string{"UNSPECIFIED", "SIGN_IN", "BIND", "REAUTH", "SIGN_IN_COMPLETE"}
+var codePurposeKeys = [...]string{"unspecified", "signin", "bind", "reauth", "signin_complete"}
 
 func (p CodePurpose) String() string { return name(codePurposeNames[:], int(p)) }
-func (p CodePurpose) Valid() bool    { return p >= PurposeSignIn && p <= PurposeReauth }
+func (p CodePurpose) Valid() bool    { return p >= PurposeSignIn && p <= PurposeSignInComplete }
 
 // Key 返回 Redis 键中使用的小写片段。
 func (p CodePurpose) Key() string { return name(codePurposeKeys[:], int(p)) }
@@ -191,4 +192,24 @@ func parse(names []string, v, typ string) (int, error) {
 		}
 	}
 	return 0, fmt.Errorf("enum: invalid %s %q", typ, v)
+}
+
+type FlowState int16
+
+const (
+	FlowStateUnspecified FlowState = iota
+	FlowPending
+	FlowVerified
+	FlowCompleted
+	FlowExpired
+	FlowRejected
+)
+
+var flowStateNames = [...]string{"UNSPECIFIED", "PENDING", "VERIFIED", "COMPLETED", "EXPIRED", "REJECTED"}
+
+func (s FlowState) String() string { return name(flowStateNames[:], int(s)) }
+func (s FlowState) Valid() bool    { return s >= FlowPending && s <= FlowRejected }
+func ParseFlowState(v string) (FlowState, error) {
+	i, err := parse(flowStateNames[:], v, "FlowState")
+	return FlowState(i), err
 }

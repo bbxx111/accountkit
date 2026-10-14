@@ -75,7 +75,7 @@ func TestLegacyMigrationLockCancellation(t *testing.T) {
 			if err := Up(ctx, cfg, schema); err != nil {
 				t.Fatalf("retry after cancellation: %v", err)
 			}
-			assertVersion(t, cfg, schema, 1, false)
+			assertVersion(t, cfg, schema, 2, false)
 		})
 	}
 }
@@ -120,5 +120,5 @@ func TestDriverInitializationFailureReleasesEngineLock(t *testing.T) {
 	if err := Up(retry, cfg, schema); err != nil {
 		t.Fatalf("retry after removing conflict: %v", err)
 	}
-	assertVersion(t, cfg, schema, 1, false)
+	assertVersion(t, cfg, schema, 2, false)
 }

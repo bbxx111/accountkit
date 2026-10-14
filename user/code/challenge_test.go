@@ -3,6 +3,9 @@ package code_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"github.com/redis/go-redis/v9"
+	"os"
 	"regexp"
 	"sync"
 	"sync/atomic"
@@ -438,5 +441,160 @@ func TestChallengeQuotaCorruptionIsReadOnly(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestCompletionChallengeFlowAndDeadline(t *testing.T) {
+	f := challengeFixture(t, false)
+	ctx := context.Background()
+	deadline := f.now.Add(1500 * time.Millisecond)
+	issued, err := f.stores[0].IssueChallengeUntil(ctx, enum.IdentityPhone, enum.PurposeSignInComplete, target, "test-ip", code.Binding{FlowID: "f_0000000000001"}, deadline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if issued.ExpireTime.After(deadline) {
+		t.Fatal("challenge outlives flow")
+	}
+	c := code.Credential{Channel: enum.IdentityPhone, Purpose: enum.PurposeSignInComplete, Target: target, CodeID: issued.CodeID, Code: issued.Code, Binding: code.Binding{FlowID: "f_0000000000002"}}
+	if err := f.stores[1].VerifyChallenge(ctx, c); !errors.Is(err, code.ErrExpired) {
+		t.Fatalf("cross flow: %v", err)
+	}
+	if f.mr.Exists(failureKey(f, 0)) || f.mr.HGet(challengeKey(f, 0, c.Purpose), "n") != "0" {
+		t.Fatal("cross flow spent budget")
+	}
+	c.Binding.FlowID = "f_0000000000001"
+	if err := f.stores[1].VerifyChallenge(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	advanceChallenge(f, time.Second)
+	if _, err := f.stores[0].IssueChallengeUntil(ctx, enum.IdentityPhone, enum.PurposeSignInComplete, target, "test-ip", c.Binding, f.now); !errors.Is(err, code.ErrExpired) {
+		t.Fatalf("expired deadline: %v", err)
+	}
+}
+
+func TestChallengeVerificationPreservesDeadline(t *testing.T) {
+	f := challengeFixture(t, false)
+	ctx := context.Background()
+	c := issueChallenge(t, f, 0, enum.PurposeSignIn, code.Binding{})
+	deadline := f.now.Add(f.o.TTL)
+	advanceChallenge(f, f.o.TTL-time.Second)
+	expiry, err := f.stores[1].VerifyChallengeWithExpiry(ctx, c)
+	if err != nil || !expiry.Equal(deadline) {
+		t.Fatalf("expiry %v want %v: %v", expiry, deadline, err)
+	}
+}
+
+func TestCompletionChallengeSharedLimits(t *testing.T) {
+	ctx := context.Background()
+	binding := code.Binding{FlowID: "f_0000000000001"}
+	t.Run("cooldown", func(t *testing.T) {
+		f := challengeFixture(t, false)
+		issueChallenge(t, f, 0, enum.PurposeSignIn, code.Binding{})
+		_, err := f.stores[1].IssueChallenge(ctx, enum.IdentityPhone, enum.PurposeSignInComplete, target, "test-ip", binding)
+		requireLimit(t, err, "COOLDOWN")
+	})
+	t.Run("target", func(t *testing.T) {
+		f := challengeFixture(t, false)
+		f.o.DailyLimitPerTarget = 1
+		for i := range 2 {
+			f.stores[i] = code.NewStore(f.rdb, "rot:", f.digesters[i], f.o)
+		}
+		issueChallenge(t, f, 0, enum.PurposeBind, code.Binding{})
+		advanceChallenge(f, time.Second)
+		_, err := f.stores[1].IssueChallenge(ctx, enum.IdentityPhone, enum.PurposeSignInComplete, target, "test-ip", binding)
+		requireLimit(t, err, "TARGET_LIMIT")
+	})
+	t.Run("ip", func(t *testing.T) {
+		f := challengeFixture(t, false)
+		f.o.DailyLimitPerIP = 1
+		for i := range 2 {
+			f.stores[i] = code.NewStore(f.rdb, "rot:", f.digesters[i], f.o)
+		}
+		issueChallenge(t, f, 0, enum.PurposeReauth, code.Binding{})
+		_, err := f.stores[1].IssueChallenge(ctx, enum.IdentityPhone, enum.PurposeSignInComplete, "another-target", "test-ip", binding)
+		requireLimit(t, err, "IP_LIMIT")
+	})
+	t.Run("failure", func(t *testing.T) {
+		f := challengeFixture(t, false)
+		a := issueChallenge(t, f, 0, enum.PurposeSignIn, code.Binding{})
+		advanceChallenge(f, time.Second)
+		b := issueChallenge(t, f, 1, enum.PurposeSignInComplete, binding)
+		f.mr.Set(failureKey(f, 0), "9")
+		f.mr.SetTTL(failureKey(f, 0), 10*time.Second)
+		requireLimit(t, f.stores[0].VerifyChallenge(ctx, wrongChallenge(b)), "TARGET_VERIFY_LIMIT")
+		requireLimit(t, f.stores[1].VerifyChallenge(ctx, a), "TARGET_VERIFY_LIMIT")
+		advanceChallenge(f, time.Second)
+		_, err := f.stores[0].IssueChallenge(ctx, enum.IdentityPhone, enum.PurposeSignInComplete, target, "test-ip", binding)
+		requireLimit(t, err, "TARGET_VERIFY_LIMIT")
+	})
+}
+func TestCompletionChallengeConcurrentRotation(t *testing.T) {
+	f := challengeFixture(t, false)
+	c := issueChallenge(t, f, 0, enum.PurposeSignInComplete, code.Binding{FlowID: "f_0000000000001"})
+	var wins atomic.Int32
+	var wg sync.WaitGroup
+	for i := range 20 {
+		wg.Go(func() {
+			err := f.stores[i%2].VerifyChallenge(context.Background(), c)
+			if err == nil {
+				wins.Add(1)
+			} else if !errors.Is(err, code.ErrExpired) {
+				t.Errorf("verify: %v", err)
+			}
+		})
+	}
+	wg.Wait()
+	if wins.Load() != 1 {
+		t.Fatalf("wins %d", wins.Load())
+	}
+}
+func TestChallengeBindingValidation(t *testing.T) {
+	f := challengeFixture(t, false)
+	for _, tc := range []struct {
+		p enum.CodePurpose
+		b code.Binding
+	}{{enum.PurposeSignIn, code.Binding{FlowID: "f_0000000000001"}}, {enum.PurposeSignInComplete, code.Binding{}}, {enum.PurposeSignInComplete, code.Binding{FlowID: "f_0000000000001", UserID: "u_fixture"}}} {
+		if _, err := f.stores[0].IssueChallenge(context.Background(), enum.IdentityPhone, tc.p, target, "test-ip", tc.b); !errors.Is(err, code.ErrInvalid) {
+			t.Fatalf("binding accepted %v", err)
+		}
+	}
+	if len(f.mr.Keys()) != 0 {
+		t.Fatal("invalid binding consumed quota")
+	}
+}
+
+func TestCompletionChallengeRealRedisDeadline(t *testing.T) {
+	url := os.Getenv("ACCOUNTSVC_TEST_REDIS_URL")
+	if url == "" {
+		t.Skip("ACCOUNTSVC_TEST_REDIS_URL is unset")
+	}
+	opts, err := redis.ParseURL(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rdb := redis.NewClient(opts)
+	defer rdb.Close()
+	f := challengeFixture(t, false)
+	prefix := fmt.Sprintf("task2:%d:", time.Now().UnixNano())
+	ctx := context.Background()
+	defer func() {
+		keys, err := rdb.Keys(ctx, prefix+"*").Result()
+		if err == nil && len(keys) > 0 {
+			rdb.Del(ctx, keys...)
+		}
+	}()
+	f.o.Now = time.Now
+	store := code.NewStore(rdb, prefix, f.digesters[0], f.o)
+	deadline := time.Now().Add(1500 * time.Millisecond)
+	issued, err := store.IssueChallengeUntil(ctx, enum.IdentityEmail, enum.PurposeSignInComplete, "task2@example.org", "test-ip", code.Binding{FlowID: "f_0000000000001"}, deadline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if issued.ExpireTime.After(deadline) {
+		t.Fatal("code outlives flow")
+	}
+	expiry, err := store.VerifyChallengeWithExpiry(ctx, code.Credential{Channel: enum.IdentityEmail, Purpose: enum.PurposeSignInComplete, Target: "task2@example.org", CodeID: issued.CodeID, Code: issued.Code, Binding: code.Binding{FlowID: "f_0000000000001"}})
+	if err != nil || expiry.UnixMilli() != issued.ExpireTime.UnixMilli() {
+		t.Fatalf("expiry %v %v", expiry, err)
 	}
 }

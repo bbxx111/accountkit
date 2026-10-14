@@ -154,7 +154,15 @@ func (s *Service) SendSignInCompletionCode(ctx context.Context, token string, ch
 	if row.State == enum.FlowCompleted {
 		return CodeChallenge{}, ErrSignInAlreadyCompleted
 	}
-	return s.sendCodeUntil(ctx, channel, enum.PurposeSignInComplete, target, code.Binding{FlowID: row.ID}, meta, row.ExpireTime)
+	result, err = s.sendCodeUntil(ctx, channel, enum.PurposeSignInComplete, target, code.Binding{FlowID: row.ID}, meta, row.ExpireTime)
+	if errors.Is(err, code.ErrExpired) {
+		// Redis may execute after the ticket deadline. Preserve CODE_EXPIRED
+		// only when the ticket itself is still valid.
+		if _, _, flowErr := s.loadFlow(ctx, token, dev); flowErr != nil {
+			return CodeChallenge{}, flowErr
+		}
+	}
+	return result, err
 }
 
 // CompleteSignIn 先持久化成功证明，再由独立事务完成账号、身份与会话。
@@ -191,7 +199,11 @@ func (s *Service) CompleteSignIn(ctx context.Context, token string, cred CodeCre
 				return SignInResult{}, ErrUnavailable
 			}
 			// A simultaneous identical request may have committed after our initial read.
-			if fresh, fp, e := s.loadFlow(ctx, token, dev); e == nil && slices.Contains(fp.Requests, request) {
+			fresh, fp, e := s.loadFlow(ctx, token, dev)
+			if e != nil {
+				return SignInResult{}, e
+			}
+			if slices.Contains(fp.Requests, request) {
 				return s.finalizeSignIn(ctx, token, fresh, fp, request, dev, meta)
 			}
 			return SignInResult{}, err

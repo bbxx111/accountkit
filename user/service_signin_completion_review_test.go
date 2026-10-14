@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,8 +15,175 @@ import (
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/session/revocation"
 	"github.com/bbxx111/accountkit/user"
+	"github.com/bbxx111/accountkit/user/code"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/redis/go-redis/v9"
 )
+
+type completionCodeHook struct {
+	before func()
+	once   sync.Once
+}
+
+func (h *completionCodeHook) DialHook(next redis.DialHook) redis.DialHook { return next }
+func (h *completionCodeHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return next
+}
+func (h *completionCodeHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		if h.before != nil && (cmd.Name() == "evalsha" || cmd.Name() == "eval") {
+			h.once.Do(h.before)
+		}
+		return next(ctx, cmd)
+	}
+}
+
+func TestSignInCompletionSendCodeRechecksRedisDeadline(t *testing.T) {
+	testCompletionRedisDeadline(t, false)
+}
+
+func TestSignInCompletionVerifyCodeRechecksRedisDeadline(t *testing.T) {
+	testCompletionRedisDeadline(t, true)
+}
+
+func testCompletionRedisDeadline(t *testing.T, verify bool) {
+	t.Helper()
+	for _, flowExpires := range []bool{true, false} {
+		name := "flow expires"
+		if !flowExpires {
+			name = "only code expires"
+		}
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			ctx := context.Background()
+			f.mr.SetTime(*f.clock)
+			rdb := redis.NewClient(&redis.Options{Addr: f.mr.Addr()})
+			t.Cleanup(func() { _ = rdb.Close() })
+			hook := &completionCodeHook{}
+			rdb.AddHook(hook)
+			ttl := time.Minute
+			if flowExpires {
+				ttl = 5 * time.Minute
+			}
+			newServiceWith(t, f, func(d *user.Deps) {
+				d.CodeTTL = ttl
+				d.Codes = code.NewStore(rdb, "t:", f.dig, code.Options{FailureLimitPerTarget: 10, FailureWindow: 15 * time.Minute, TTL: ttl, Cooldown: time.Minute, MaxAttempts: 5, DailyLimitPerTarget: 10, DailyLimitPerIP: 100, Now: func() time.Time { return *f.clock }})
+			})
+			p := pendingFlow(t, f, "redis-code-deadline")
+			var cred user.CodeCredential
+			if verify {
+				cred = completionCredential(t, f, p, enum.IdentityEmail, email1)
+			}
+			hook.before = func() {
+				// Cross the deadline after the service's initial SQL read and the
+				// store's clock read, but before Redis executes the script.
+				f.advance(ttl)
+				f.mr.SetTime(*f.clock)
+			}
+			meta := user.Meta{IP: meta1.IP, RequestID: "redis-deadline-rejection"}
+			var err error
+			if verify {
+				var result user.SignInResult
+				result, err = f.svc.CompleteSignIn(ctx, p.SignInCompletionToken, cred, user.Device{}, meta)
+				if result.Tokens != nil || result.Pending != nil {
+					t.Fatal("expired verification returned success")
+				}
+			} else {
+				_, err = f.svc.SendSignInCompletionCode(ctx, p.SignInCompletionToken, enum.IdentityEmail, email1, user.Device{}, meta)
+				if f.sent.code(email1) != "" || len(f.mr.Keys()) != 0 {
+					t.Fatal("expired issue sent a code or spent quota")
+				}
+			}
+			want, reason := code.ErrExpired, "CODE_EXPIRED"
+			if flowExpires {
+				want, reason = user.ErrSignInCompletionInvalid, "SIGN_IN_COMPLETION_INVALID"
+			}
+			if !errors.Is(err, want) {
+				t.Errorf("Redis crossed deadline: got %v, want %v", err, want)
+			}
+			var rejected bool
+			for _, event := range f.audit.Events() {
+				if event.RequestID == meta.RequestID && event.Type == enum.EventSignInCompletionRejected {
+					rejected = true
+					if event.Reason != reason || event.FlowID == "" {
+						t.Errorf("rejection audit: reason=%s flow=%s, want %s", event.Reason, event.FlowID, reason)
+					}
+				}
+				if event.Type == enum.EventSignInCompletionProofVerified {
+					t.Fatal("expired code persisted a proof")
+				}
+			}
+			if !rejected {
+				t.Fatal("missing rejection audit")
+			}
+			for _, table := range []string{"user_account", "identity", "session"} {
+				var count int
+				if err := f.pool.QueryRow(ctx, "SELECT count(*) FROM "+table).Scan(&count); err != nil || count != 0 {
+					t.Fatalf("%s changed: count=%d err=%v", table, count, err)
+				}
+			}
+			for _, key := range f.mr.Keys() {
+				if strings.Contains(key, "verify_failure:") {
+					t.Fatal("expired verification spent failure budget")
+				}
+			}
+		})
+	}
+}
+
+func TestSignInCompletionCodeFailurePreservesFreshFlowError(t *testing.T) {
+	for _, storageFailure := range []bool{false, true} {
+		name := "flow removed"
+		if storageFailure {
+			name = "flow storage failure"
+		}
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			ctx := context.Background()
+			p := pendingFlow(t, f, "fresh-flow-error")
+			cred := completionCredential(t, f, p, enum.IdentityEmail, email1)
+			rdb := redis.NewClient(&redis.Options{Addr: f.mr.Addr()})
+			t.Cleanup(func() { _ = rdb.Close() })
+			rdb.AddHook(&completionCodeHook{before: func() {
+				if storageFailure {
+					mustExec(t, f, "ALTER TABLE identity_flow RENAME TO unavailable_identity_flow")
+				} else {
+					mustExec(t, f, "DELETE FROM identity_flow")
+				}
+			}})
+			newServiceWith(t, f, func(d *user.Deps) {
+				d.Codes = code.NewStore(rdb, "t:", f.dig, code.Options{FailureLimitPerTarget: 10, FailureWindow: 15 * time.Minute, TTL: 5 * time.Minute, Cooldown: time.Minute, MaxAttempts: 5, DailyLimitPerTarget: 10, DailyLimitPerIP: 100, Now: func() time.Time { return *f.clock }})
+			})
+			wrong := cred
+			wrong.Code = "000000"
+			if wrong.Code == cred.Code {
+				wrong.Code = "999999"
+			}
+			meta := user.Meta{IP: meta1.IP, RequestID: "fresh-flow-error"}
+			_, err := f.svc.CompleteSignIn(ctx, p.SignInCompletionToken, wrong, user.Device{}, meta)
+			reason := "SIGN_IN_COMPLETION_INVALID"
+			if storageFailure {
+				var pgerr *pgconn.PgError
+				if !errors.As(err, &pgerr) || pgerr.Code != "42P01" {
+					t.Errorf("fresh storage error discarded: %v", err)
+				}
+				reason = "INTERNAL"
+				mustExec(t, f, "ALTER TABLE unavailable_identity_flow RENAME TO identity_flow")
+			} else if !errors.Is(err, user.ErrSignInCompletionInvalid) {
+				t.Errorf("removed flow error discarded: %v", err)
+			}
+			events := f.audit.Events()
+			last := events[len(events)-1]
+			if last.RequestID != meta.RequestID || last.Type != enum.EventSignInCompletionRejected || last.Reason != reason {
+				t.Errorf("fresh flow rejection audit: %+v, want %s", last, reason)
+			}
+			var users int
+			if err := f.pool.QueryRow(ctx, "SELECT count(*) FROM user_account").Scan(&users); err != nil || users != 0 {
+				t.Fatalf("unexpected user commit: %d %v", users, err)
+			}
+		})
+	}
+}
 
 type completionRevocationHook struct{ advance func() }
 

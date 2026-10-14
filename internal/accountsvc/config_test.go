@@ -156,6 +156,48 @@ func TestConfigIdentityPolicySMTP(t *testing.T) {
 	})
 }
 
+func TestConfigExplicitIdentityProviderDependencies(t *testing.T) {
+	for _, provider := range []struct{ kind, key, value string }{
+		{"WECHAT", "ACCOUNTKIT_WECHAT_APPS", "test-app:synthetic-provider-secret"},
+		{"APPLE", "ACCOUNTKIT_APPLE_BUNDLE_IDS", "com.example.synthetic-app"},
+	} {
+		for _, configured := range []bool{false, true} {
+			for _, command := range []string{"serve", "migrate"} {
+				t.Run(fmt.Sprintf("%s/%s/configured=%v", provider.kind, command, configured), func(t *testing.T) {
+					serveEnvironment(t)
+					t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", provider.kind)
+					t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
+					if configured {
+						t.Setenv(provider.key, provider.value)
+					}
+					for _, key := range []string{"HOST", "PORT", "FROM", "USERNAME", "PASSWORD", "TLS_MODE", "TIMEOUT"} {
+						t.Setenv("ACCOUNTSVC_SMTP_"+key, "")
+					}
+					_, err := LoadConfig(command)
+					if command == "serve" && !configured {
+						if err == nil || !strings.Contains(err.Error(), provider.key) {
+							t.Fatalf("missing provider dependency must name %s: %v", provider.key, err)
+						}
+						for _, secret := range []string{"synthetic-provider-secret", "synthetic-dsn-password", "synthetic-redis-password"} {
+							if strings.Contains(err.Error(), secret) {
+								t.Fatal("provider configuration error leaked secret")
+							}
+						}
+					} else if err != nil {
+						t.Fatalf("valid provider policy rejected: %v", err)
+					}
+				})
+			}
+		}
+	}
+	t.Run("default policy preserves optional providers", func(t *testing.T) {
+		serveEnvironment(t)
+		if _, err := LoadConfig("serve"); err != nil {
+			t.Fatalf("default policy requires optional provider: %v", err)
+		}
+	})
+}
+
 func TestLoadConfigSchema(t *testing.T) {
 	for _, command := range []string{"serve", "migrate"} {
 		for _, tc := range []struct{ name, value, want string }{

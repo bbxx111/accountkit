@@ -97,8 +97,16 @@ func LoadConfig(command string) (Config, error) {
 	if command == "migrate" {
 		return c, nil
 	}
-	if c.Library.EnabledIdentityKinds != nil && c.identityEnabled(enum.IdentityPhone) {
-		return Config{}, errors.New("accountsvc: PHONE requires SMS provider support; inject an SMS sender in an embedded host")
+	if c.Library.EnabledIdentityKinds != nil {
+		if c.identityEnabled(enum.IdentityPhone) {
+			return Config{}, errors.New("accountsvc: PHONE requires SMS provider support; inject an SMS sender in an embedded host")
+		}
+		if c.identityEnabled(enum.IdentityWeChat) && len(c.Library.WeChatApps) == 0 {
+			return Config{}, invalidConfig("ACCOUNTKIT_WECHAT_APPS")
+		}
+		if c.identityEnabled(enum.IdentityApple) && len(c.Library.AppleBundleIDs) == 0 {
+			return Config{}, invalidConfig("ACCOUNTKIT_APPLE_BUNDLE_IDS")
+		}
 	}
 	c.Mode = defaultEnv("MODE", "production")
 	if c.Mode != "production" && c.Mode != "development" {

@@ -10,7 +10,7 @@
 
 **Tech Stack:** Go 1.26.5、pgx/v5、PostgreSQL 17、Redis、sqlc 1.31.1、Chi。
 
-**Spec:** [proposal](../../../openspec/changes/add-identity-policy-sign-in-completion/proposal.md)、[design](../../../openspec/changes/add-identity-policy-sign-in-completion/design.md)、[tasks](../../../openspec/changes/add-identity-policy-sign-in-completion/tasks.md) 及该 change 的八个 specs；冲突以规格为准。
+**Spec:** [proposal](../../../openspec/changes/archive/2026-10-15-add-identity-policy-sign-in-completion/proposal.md)、[design](../../../openspec/changes/archive/2026-10-15-add-identity-policy-sign-in-completion/design.md)、[tasks](../../../openspec/changes/archive/2026-10-15-add-identity-policy-sign-in-completion/tasks.md) 及该 change 的八个 specs；冲突以规格为准。
 
 ## Global Constraints
 

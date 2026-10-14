@@ -41,18 +41,18 @@
 
 ## 7. HTTP、审计与服务
 
-- [ ] 7.1 恢复 C 端与管理端 users 路由、资源 name 和引用；测试既有 users 路径保留、未发布 accounts 路径 404、两面认证隔离，管理列表 users、user_id/u_/JWT/scope/Go 门面保持。
-- [ ] 7.2 将两个精确补全端点置于 /users:sendSignInCompletionCode 和 /users:completeSignIn；回归登录联合 DTO、专用票据字段、phone/email oneof、第三方成员拒绝、no-store、错误码、缺可选能力 503 和旧字段拒绝。
+- [x] 7.1 恢复 C 端与管理端 users 路由、资源 name 和引用；测试既有 users 路径保留、未发布 accounts 路径 404、两面认证隔离，管理列表 users、user_id/u_/JWT/scope/Go 门面保持。
+- [x] 7.2 将两个精确补全端点置于 /users:sendSignInCompletionCode 和 /users:completeSignIn；回归登录联合 DTO、专用票据字段、phone/email oneof、第三方成员拒绝、no-store、错误码、缺可选能力 503 和旧字段拒绝。
 - [x] 7.3 实现脱敏流程审计与关联字段；验证事务失败无成功事件，异步审计故障不改变结果，完整目标/摘要/票据均不泄露。
 - [x] 7.4 改造 accountsvc 的按策略 SMTP 装配；测试纯 IdP 无 SMTP、显式 PHONE 拒绝、旧默认及生产 TLS 边界。
 - [x] 7.5 分离 migrate 所需装配和认证运行依赖；测试不要求 SMTP/IdP 运行配置，原锁、dirty、密钥核验及回收规则均有效。
-- [ ] 7.6 恢复 users 网关清单和服务夹具；验证两个 users 补全端点分别允许、accounts 不隐式映射、内省/探针不被通配开放，入口限流、设备头与日志保护保持。
+- [x] 7.6 恢复 users 网关清单和服务夹具；验证两个 users 补全端点分别允许、accounts 不隐式映射、内省/探针不被通配开放，入口限流、设备头与日志保护保持。
 
 ## 8. 文档与验收
 
-- [ ] 8.1 同步 README、兼容指南、服务/网关说明、原计划及涉及的模板/独立宿主示例；核对沿用 users、撤回未发布 accounts、Go/HTTP 登录结果升级、专用票据、Required 范围、自动分流和纯第三方恢复限制。
-- [ ] 8.2 将根级和服务集成调用恢复为 users 并同步 required-tests 中涉及的测试名；真实依赖下回归 EMAIL+WECHAT 自动关联、仅 EMAIL、Required=[]、策略收紧及两实例隔离，不用 skip 代替结果。
+- [x] 8.1 同步 README、兼容指南、服务/网关说明、原计划及涉及的模板/独立宿主示例；核对沿用 users、撤回未发布 accounts、Go/HTTP 登录结果升级、专用票据、Required 范围、自动分流和纯第三方恢复限制。
+- [x] 8.2 将根级和服务集成调用恢复为 users 并同步 required-tests 中涉及的测试名；真实依赖下回归 EMAIL+WECHAT 自动关联、仅 EMAIL、Required=[]、策略收紧及两实例隔离，不用 skip 代替结果。
 - [x] 8.3 扩展备份恢复夹具覆盖新表和加密完成记录；用 PostgreSQL 17、独立空库执行 seed/verify/source-unchanged，记录 Redis 证明缺失的拒绝边界。
-- [ ] 8.4 针对本轮 users 命名修订，在 GOWORK=off 下重新执行 build、vet、相关单元/真实并发、生成检查、迁移历史及完整 verify.sh；保留 race、缺依赖失败和必需测试门禁，不复用旧验收替代当前证据。
+- [x] 8.4 针对本轮 users 命名修订，在 GOWORK=off 下重新执行 build、vet、相关单元/真实并发、生成检查、迁移历史及完整 verify.sh；保留 race、缺依赖失败和必需测试门禁，不复用旧验收替代当前证据。
 - [ ] 8.5 联调真实微信/Apple 的既有登录、普通绑定及首次手机/邮箱补全；未具备外部环境的项目明确标为未验证，不增加已撤回流程的验收任务。
-- [ ] 8.6 按 requesting-code-review 审查本轮 users 契约与实现并处理实质问题，执行 openspec validate --all --strict；把本轮实际证据与未验证项写入 verification.md，保留历史上下文，完成后再勾选，不自动归档或发布。
+- [x] 8.6 按 requesting-code-review 审查本轮 users 契约与实现并处理实质问题，执行 openspec validate --all --strict；把本轮实际证据与未验证项写入 verification.md，保留历史上下文，完成后再勾选，不自动归档或发布。

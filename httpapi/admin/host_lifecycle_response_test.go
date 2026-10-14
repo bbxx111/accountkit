@@ -28,7 +28,7 @@ func TestDeletionBlockedSafeResponse(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			h.writeServiceError(rec, httptest.NewRequest("DELETE", "/accounts/u_0000000000001", nil), tc.err)
+			h.writeServiceError(rec, httptest.NewRequest("DELETE", "/users/u_0000000000001", nil), tc.err)
 			var out struct {
 				Error struct {
 					Status  string `json:"status"`

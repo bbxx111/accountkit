@@ -2,9 +2,9 @@
 
 固定兼容基线包含 130 个文件，原始文件清单与 SHA-256 见 `tests/testdata/source-baseline/manifest.json`；该清单用于追溯冻结快照，不表示当前文件名和内容必须与历史快照相同。当前根包名为 `accountkit`，导入路径为 `github.com/bbxx111/accountkit`。
 
-## 身份策略与 accounts 协议升级
+## 身份策略与登录补全协议升级
 
-当前开发分支包含破坏性 Go/HTTP 升级，尚不表示已发布的 v0.2.0 具备这些能力。C 端及管理端全部 `/users` 账号路由改为 `/accounts`，包括自定义动作、me、身份和会话；响应 `name` 同步为 `accounts/{user_id}` 及其子资源。旧路径返回404，不重定向。客户端、网关、管理调用和资源名解析须同步迁移。管理列表顶层 JSON 字段 `users` 保留；`user_id`、u_ ID、JWT claims、scope、Go `user` 包和 `Auth.Users()` 均保留。
+当前开发分支包含身份策略与登录补全的破坏性 Go/HTTP 升级，尚不表示已发布的 v0.2.0 具备这些能力。C 端及管理端沿用 `/users` 账号路由，包括自定义动作、me、身份和会话；响应 `name` 使用 `users/{user_id}` 及其子资源。此前开发中的 `/accounts` 路径尚未发布，本轮撤回，返回 404，不注册别名或重定向；已发布的 users 调用无须迁移资源名。管理列表顶层 JSON 字段 `users`、`user_id`、u_ ID、JWT claims、scope、Go User 类型、`user` 包和 `Auth.Users()` 均保留。客户端仍须适配下述 token/pending 与 Go 返回签名，网关须显式增加两个 users 补全端点。
 
 `SignInWithCode` / `SignInWithIdp` 的返回类型由 `TokenResult` 改为 `SignInResult`，调用方先检查 `Tokens` 或 `Pending`，两者恰一非 nil。自定义 `enduser.Service` 同步改签名；新增补全能力为可选接口，缺能力返回503。成功 HTTP token 字段保持，pending 只有 next_action、`sign_in_completion_token`、期限和策略集合。新增两个端点及配置 nil/[]、自动关联与注册、设备绑定、幂等和失败边界见 [README](../README.md#身份策略与登录补全)。旧 `user:bind` 表示已有账号不完整；pending 尚无账号，不能把补全票据作为 Bearer 或 refresh 使用。
 

@@ -84,13 +84,13 @@ ACTIVE 账号的新登录、新一轮刷新及重新认证 SHALL 按全部有效
 
 ## ADDED Requirements
 
-### Requirement: accounts 资源契约
-系统 SHALL 在 C 端和管理端统一使用 accounts 账号集合，包含登录动作、me、身份、会话及管理账号操作；返回 name 和账号资源引用 SHALL 使用 accounts/{user_id} 及对应子资源形式。宿主挂载前缀与两个身份面 SHALL 保持独立。新版旧 users 路径 SHALL 返回原格式 404，不作为隐式别名或重定向。user_id、u_…、JWT claims、scope、Go user 包及 Auth.Users() 门面、数据库表名 SHALL 不因 HTTP 改名改变。
+### Requirement: users 资源契约
+系统 SHALL 在 C 端和管理端沿用 users 账号集合，包含登录动作、me、身份、会话及管理账号操作；返回 name 和账号资源引用 SHALL 使用 users/{user_id} 及对应子资源形式。宿主挂载前缀与两个身份面 SHALL 保持独立。此前未发布的 accounts 路径 SHALL 返回原格式 404，不注册别名或重定向。管理列表 JSON users、user_id、u_…、JWT claims、scope、Go User 类型、user 包及 Auth.Users() 门面、数据库表名 SHALL 保持。
 
 #### Scenario: 两面使用统一账号资源
 - **WHEN** 宿主分别在 /v1 和 /admin/v1 挂载两个 handler
-- **THEN** 消费者使用 /v1/accounts/me 等路由，管理面使用 /admin/v1/accounts 等路由，继续各自认证和授权；响应资源名使用 accounts 前缀
+- **THEN** 消费者使用 /v1/users/me 等路由，管理面使用 /admin/v1/users 等路由，继续各自认证和授权；响应资源名使用 users 前缀
 
-#### Scenario: 旧路由与令牌迁移边界
-- **WHEN** 调用者请求旧 users 路径或使用升级前仍有效的令牌访问新版 accounts 路由
-- **THEN** 前者返回 404；后者仍按原 JWT 与吊销规则验证，不能因为资源名变化改写 sub、user_id 或 scope
+#### Scenario: 未发布路由与既有令牌边界
+- **WHEN** 调用者请求此前未发布的 accounts 路径或使用升级前仍有效的令牌访问 users 路由
+- **THEN** 前者返回 404；后者仍按原 JWT 与吊销规则验证，sub、user_id 和 scope 保持原契约

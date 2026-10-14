@@ -1,6 +1,6 @@
 ## Context
 
-动机见 [proposal.md](proposal.md)。当前实现使用 users HTTP 资源、固定 PHONE/EMAIL 锚点及登录即注册；自动关联已有账号尚未实现。本次按已确认的简化方案收敛：Required 只包含 PHONE/EMAIL，补全只使用验证码，独立发码、统一 accounts 路径，票据字段命名为 sign_in_completion_token。
+动机见 [proposal.md](proposal.md)。变更前实现使用 users HTTP 资源、固定 PHONE/EMAIL 锚点及登录即注册，尚无自动关联已有账号能力。本次按已确认的简化方案收敛：Required 只包含 PHONE/EMAIL，补全只使用验证码，独立发码，沿用 users 路径，票据字段命名为 sign_in_completion_token。2026-10-15 的命名修订撤回此前未发布的 accounts 决策，身份策略与补全行为保持。
 
 本工件记录已确认的设计及实施中的必要修正。验收以本 change 的八个 delta spec 为准，实际实现、审查及验证状态见 [verification.md](verification.md)。
 
@@ -11,7 +11,7 @@
 - 一份不可变身份策略用于库、领域直接调用、两套 HTTP 面及 accountsvc。
 - 需要补全时不提前创建用户，验证码通过后自动关联已有账号或注册。
 - 两个新增业务端点即完成补全，不引入通用第三方证明框架。
-- 显式迁移 accounts 资源名和登录结果，保持令牌、会话、限流及匿名化安全边界。
+- 沿用 users 资源名，明确登录结果升级，保持令牌、会话、限流及匿名化安全边界。
 
 **Non-Goals:**
 
@@ -41,17 +41,17 @@ Config.Validate 只做静态校验；New 无 I/O 检查显式启用类型的发�
 
 Required 决定账号完整性，不决定每次必须用哪个 Kind 登录，也不是 MFA 策略。普通绑定允许 E；补全界面优先提供 R 中的手机/邮箱。非必需但已启用的手机/邮箱仍可用于识别已有账号，不能因为配置收紧就丢掉识别旧账号的途径。IsChannel 仍只代表 PHONE/EMAIL 验证码渠道，不扩大为第三方。
 
-### 2. accounts 是统一 HTTP 账号资源
+### 2. users 是统一 HTTP 账号资源
 
-C 端及管理端账号路径整体从 /users 改为 /accounts，包括自定义登录动作、me、identities、sessions 和管理端账号操作。响应 name 同步为 accounts/{user_id}、accounts/{user_id}/identities/{identity_id}、accounts/{user_id}/sessions/{session_id}。
+C 端及管理端账号路径沿用 /users，包括自定义登录动作、me、identities、sessions 和管理端账号操作。响应 name 使用 users/{user_id}、users/{user_id}/identities/{identity_id}、users/{user_id}/sessions/{session_id}。
 
-两套 handler 继续独立，相对路由由宿主分别挂载，例如 /v1/accounts 与 /admin/v1/accounts。/token、/revoke、/introspect、探针及非账号资源不因本次改名改变。
+两套 handler 继续独立，相对路由由宿主分别挂载，例如 /v1/users 与 /admin/v1/users。/token、/revoke、/introspect、探针及非账号资源保持。
 
-这是一项明确破坏性 HTTP 升级：新版只提供 accounts 规范路径，旧 users 路径返回原格式 404，不做隐式重定向或两套资源名混用。客户端、网关清单、管理调用和响应解析同步升级。若部署者需要过渡，应在宿主 API 版本边界独立安排，不能在库内写死产品前缀。
+现有 users 路径保留；此前开发中的 accounts 路径尚未发布，本轮撤回，不注册别名或重定向，返回原格式 404。客户端和网关继续使用 users，并显式增加两个补全端点。登录 token/pending 响应与 Go SignInResult 仍是需要调用者适配的协议升级，不能据此宣称整体完全兼容。
 
-该选择只改变 HTTP 资源词汇：user_id、u_…、JWT sub/sid/iss/aud、scope=user/user:bind/user:undelete、Go user 包及 Auth.Users() 门面、数据库 user_account 表均不随之改名。
+HTTP 资源命名与现有领域保持一致：管理列表 JSON users、user_id、u_…、JWT sub/sid/iss/aud、scope=user/user:bind/user:undelete、Go User 类型、user 包及 Auth.Users() 门面、数据库 user_account 表均保持。
 
-备选方案是保留 users 或只改认证动作；本次按用户确定采用 accounts，因此资源路径和 name 一起迁移，避免同一资源两套语义。
+此前备选 accounts 会使 HTTP 与现有 User/user_id 命名分离；按用户确认恢复 users，路径、name 与资源引用统一，不扩大为领域、数据库或模块重命名。
 
 ### 3. 初始登录与自动分流
 
@@ -71,17 +71,17 @@ C 端及管理端账号路径整体从 /users 改为 /accounts，包括自定义
 本次新增业务端点仅为：
 
 ```http
-POST /accounts:sendSignInCompletionCode
-POST /accounts:completeSignIn
+POST /users:sendSignInCompletionCode
+POST /users:completeSignIn
 ```
 
 | 操作 | 参数 | 结果 |
 |---|---|---|
-| POST /accounts:sendSignInCode | channel、target | 普通 SIGN_IN 轮次 |
-| POST /accounts:signInWithCode | phone 或 email 凭证 oneof | token 或 pending |
-| POST /accounts:signInWithIdp | wechat 或 apple 凭证 oneof | token 或 pending |
-| POST /accounts:sendSignInCompletionCode | sign_in_completion_token、channel、target | SIGN_IN_COMPLETE 轮次 |
-| POST /accounts:completeSignIn | sign_in_completion_token，加 phone 或 email 凭证 oneof | token 或继续 pending |
+| POST /users:sendSignInCode | channel、target | 普通 SIGN_IN 轮次 |
+| POST /users:signInWithCode | phone 或 email 凭证 oneof | token 或 pending |
+| POST /users:signInWithIdp | wechat 或 apple 凭证 oneof | token 或 pending |
+| POST /users:sendSignInCompletionCode | sign_in_completion_token、channel、target | SIGN_IN_COMPLETE 轮次 |
+| POST /users:completeSignIn | sign_in_completion_token，加 phone 或 email 凭证 oneof | token 或继续 pending |
 
 PHONE/EMAIL 凭证保持 `{target, code_id, code}`。新增发码 channel 只接受已启用的 PHONE/EMAIL；completeSignIn 恰好接受一个手机或邮箱凭证，拒绝空凭证或第三方成员。普通 sendSignInCode 不接收补全票据或公开 purpose，不能通过可选参数切换成补全发码。用途由端点在服务端固定确定。
 
@@ -155,13 +155,13 @@ PENDING 可以持有已验证身份并等待验证码；VERIFIED 表示证明已
 
 ### 8. 普通绑定、近期认证与恢复保留原能力
 
-普通绑定移至 /accounts/me/identities：未占用可绑定、本人已有幂等、他人占用 409。user 与 user:bind 均可添加 E 中的身份；补齐后通过最新 refresh 的新一轮轮换取得 user。解绑或换绑后仍需至少一个可用身份并满足 R。
+普通绑定沿用 /users/me/identities：未占用可绑定、本人已有幂等、他人占用 409。user 与 user:bind 均可添加 E 中的身份；补齐后通过最新 refresh 的新一轮轮换取得 user。解绑或换绑后仍需至少一个可用身份并满足 R。
 
-现有手机/邮箱重新认证端点随资源前缀迁移，仍验证已绑定身份、当前会话和期限，只更新 auth_time、重签 access，不延长或返回 refresh。
+现有手机/邮箱重新认证端点沿用 users 资源前缀，仍验证已绑定身份、当前会话和期限，只更新 auth_time、重签 access，不延长或返回 refresh。
 
 只有第三方身份的账号需要近期认证时，重新发起正常第三方登录。它会新建会话并按同设备规则替换旧会话、返回新 token pair；不等同于保留当前会话的重新认证。客户端更新会话并确认仍为同一 user_id，不能在账号改变时自动重放原敏感操作。原提供方验证和防重放完整保留，不声称新发 token 等于强制用户重新输入密码或完成 MFA。
 
-现有手机/邮箱冷静期认证、/accounts/me:undelete、管理端恢复及 user:undelete scope 保留；恢复后按当前 R 推导 user 或 user:bind。普通第三方登录仍拒绝冷静期账号；本次不增加第三方自助恢复。Required=[] 的纯第三方账号没有手机/邮箱自助恢复路径，这是部署需要了解的现有限制，不能宣称已经具备该能力。已有合法管理员代办恢复不受本次简化影响。
+现有手机/邮箱冷静期认证、/users/me:undelete、管理端恢复及 user:undelete scope 保留；恢复后按当前 R 推导 user 或 user:bind。普通第三方登录仍拒绝冷静期账号；本次不增加第三方自助恢复。Required=[] 的纯第三方账号没有手机/邮箱自助恢复路径，这是部署需要了解的现有限制，不能宣称已经具备该能力。已有合法管理员代办恢复不受本次简化影响。
 
 ### 9. accountsvc 与升级边界
 
@@ -175,7 +175,7 @@ migrate 只检查静态策略语法/集合及迁移必要依赖，不构造认�
 
 ## Risks / Trade-offs
 
-- accounts 路径和 name 为破坏性升级 → 同步 C 端、管理端、SDK、文档和网关，验证旧路径 404，不能只改登录动作。
+- 登录联合结果为破坏性升级 → 客户端和 Go 调用者适配 token/pending，网关明确允许两个 users 补全端点；验证既有 users 路径保留、未发布 accounts 路径 404。
 - 账号完整性改变会影响存量用户 → 新登录/刷新明确 user:bind，旧 access 沿原有效期/吊销处理，禁用唯一入口前安排迁移。
 - Required=[] 时未知第三方身份直接注册 → 不能自动发现另一个既有账号；用户须先登录原账号再主动绑定，不提供已有账号合并。
 - 重新登录会更换会话 → 客户端替换 token pair、核对账号，不当作原会话无感续认证。
@@ -185,8 +185,8 @@ migrate 只检查静态策略语法/集合及迁移必要依赖，不构造认�
 
 ## Migration Plan
 
-1. 在下一协议升级中明确 accounts 资源迁移、Go SignInResult 及 pending 响应；成功 token 字段、JWT 和设备头保持。新客户端同时支持 token/pending，pending 只使用 sign_in_completion_token。
-2. 新增递增迁移及 sqlc 结果，保持冻结基线与历史 tag 检查；分别更新两面路由、资源 name、客户端及网关清单，旧 users 路径不作为别名保留。
+1. 在下一协议升级中明确 Go SignInResult 及 pending 响应；成功 token 字段、JWT、设备头和 users 资源契约保持。新客户端同时支持 token/pending，pending 只使用 sign_in_completion_token。
+2. 新增递增迁移及 sqlc 结果，保持冻结基线与历史 tag 检查；两面路由、资源 name 和引用沿用 users，客户端及网关清单增加两个补全端点。此前未发布的 accounts 路径返回 404，不提供别名或重定向。
 3. 全部认证副本升级后再启用新 E/R 与补全流量，不混跑旧登录即建号写路径；策略仅重启/重新装配生效，副本保持一致。
 4. 部署收紧要求前核验存量账号的可用身份；保持完整轮换密钥、实例 schema/KeyPrefix。保留旧会话到期、刷新宽限和 Redis 故障契约。
 5. 应用回退先停止新流程并排空最长 TTL/在途操作，保留新表与密钥；旧应用若不能等价执行身份策略，不可作为安全回退。客户端和网关必须同步回退，恢复先在独立空库验证。

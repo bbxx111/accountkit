@@ -46,7 +46,7 @@ type userResource struct {
 
 func newUserResource(u user.AdminUser) userResource {
 	out := userResource{
-		Name: "accounts/" + u.ID, State: u.State.String(), DisplayName: u.DisplayName,
+		Name: "users/" + u.ID, State: u.State.String(), DisplayName: u.DisplayName,
 		CreateTime: fmtTime(u.CreateTime), UpdateTime: fmtTime(u.UpdateTime),
 		DeleteTime: fmtTimePtr(u.DeleteTime), PurgeTime: fmtTimePtr(u.PurgeTime),
 	}
@@ -73,7 +73,7 @@ type userDetailResource struct {
 func newUserDetailResource(d user.AdminUserDetail) userDetailResource {
 	out := userDetailResource{userResource: newUserResource(d.AdminUser), Identities: make([]identityResource, 0, len(d.Identities)), ActiveSessionCount: d.ActiveSessionCount}
 	for _, i := range d.Identities {
-		out.Identities = append(out.Identities, identityResource{Name: "accounts/" + d.ID + "/identities/" + i.ID, Kind: i.Kind.String(), MaskedSubject: i.MaskedSubject, CreateTime: fmtTime(i.CreateTime)})
+		out.Identities = append(out.Identities, identityResource{Name: "users/" + d.ID + "/identities/" + i.ID, Kind: i.Kind.String(), MaskedSubject: i.MaskedSubject, CreateTime: fmtTime(i.CreateTime)})
 	}
 	return out
 }
@@ -127,7 +127,7 @@ type auditEventResource struct {
 
 func newAuditEventResource(userID string, e auditdb.AuditEvent) auditEventResource {
 	out := auditEventResource{
-		Name: "accounts/" + userID + "/auditEvents/" + e.ID, EventType: e.EventType.String(), ActorKind: e.ActorKind.String(), Result: e.Result.String(),
+		Name: "users/" + userID + "/auditEvents/" + e.ID, EventType: e.EventType.String(), ActorKind: e.ActorKind.String(), Result: e.Result.String(),
 		Reason: e.Reason, SessionID: e.SessionID, FlowID: e.FlowID, SubjectHint: e.SubjectHint, DeviceID: e.DeviceID, RequestID: e.RequestID,
 		AdminIssuer: e.AdminIssuer, AdminSubject: e.AdminSubject, AdminUsername: e.AdminUsername, OccurTime: fmtTime(e.OccurTime),
 	}

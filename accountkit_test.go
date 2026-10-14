@@ -192,9 +192,9 @@ func TestEndUserHandlerAndMiddlewareWiring(t *testing.T) {
 	}
 	// 2) 已注册路径经挂载可达（无 bearer → 401 而非 404）
 	rec = httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest("GET", "/v1/accounts/me", nil))
+	r.ServeHTTP(rec, httptest.NewRequest("GET", "/v1/users/me", nil))
 	if rec.Code != 401 || rec.Header().Get("WWW-Authenticate") == "" {
-		t.Fatalf("accounts/me through mount: %d", rec.Code)
+		t.Fatalf("users/me through mount: %d", rec.Code)
 	}
 	// 3) RequireScope 保护宿主路由：缺 bearer 401；伪造 token 401
 	protected := chi.NewRouter()
@@ -270,7 +270,7 @@ func TestHostMountShape(t *testing.T) {
 	}
 
 	rec = httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest("GET", "/v1/accounts/me", nil))
+	r.ServeHTTP(rec, httptest.NewRequest("GET", "/v1/users/me", nil))
 	if rec.Code != 401 {
 		t.Fatalf("enduser handler route through Mount(\"/\"): %d", rec.Code)
 	}
@@ -295,7 +295,7 @@ func TestNewWiresIdPVerifiersOnlyWhenConfigured(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("POST", "/accounts:signInWithIdp", strings.NewReader(`{"wechat":{"app_id":"wx1","code":"c"}}`))
+	req := httptest.NewRequest("POST", "/users:signInWithIdp", strings.NewReader(`{"wechat":{"app_id":"wx1","code":"c"}}`))
 	req.Header.Set("X-Device-Id", "d1")
 	a.EndUserHandler().ServeHTTP(rec, req)
 	if rec.Code != 400 || !strings.Contains(rec.Body.String(), "IDP_APP_NOT_ALLOWED") {
@@ -314,14 +314,14 @@ func TestNewWiresIdPVerifiersOnlyWhenConfigured(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest("POST", "/accounts:signInWithIdp", strings.NewReader(`{"wechat":{"app_id":"wx1","code":"c"}}`))
+	req = httptest.NewRequest("POST", "/users:signInWithIdp", strings.NewReader(`{"wechat":{"app_id":"wx1","code":"c"}}`))
 	req.Header.Set("X-Device-Id", "d1")
 	a2.EndUserHandler().ServeHTTP(rec, req)
 	if rec.Code != 503 || !strings.Contains(rec.Body.String(), "IDP_UNAVAILABLE") || rec.Header().Get("Retry-After") != "1" {
 		t.Fatalf("wechat unreachable: %d %s", rec.Code, rec.Body.String())
 	}
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest("POST", "/accounts:signInWithIdp", strings.NewReader(`{"apple":{"id_token":"x.y.z","nonce":"n"}}`))
+	req = httptest.NewRequest("POST", "/users:signInWithIdp", strings.NewReader(`{"apple":{"id_token":"x.y.z","nonce":"n"}}`))
 	req.Header.Set("X-Device-Id", "d1")
 	a2.EndUserHandler().ServeHTTP(rec, req)
 	// 垃圾 id_token 在拉 JWKS 前就解析失败 → 400；证明 Apple 校验器已装配（而非 IDP_APP_NOT_ALLOWED）
@@ -362,7 +362,7 @@ func TestLifecycleRoutesMounted(t *testing.T) {
 	}
 	r := chi.NewRouter()
 	r.Mount("/v1", a.EndUserHandler())
-	for _, c := range []struct{ method, path string }{{"DELETE", "/v1/accounts/me"}, {"POST", "/v1/accounts/me:undelete"}} {
+	for _, c := range []struct{ method, path string }{{"DELETE", "/v1/users/me"}, {"POST", "/v1/users/me:undelete"}} {
 		rec := httptest.NewRecorder()
 		r.ServeHTTP(rec, httptest.NewRequest(c.method, c.path, nil))
 		if rec.Code != 401 || rec.Header().Get("WWW-Authenticate") == "" {
@@ -446,7 +446,7 @@ func TestAdminHandlerUnconfiguredIs503(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/accounts", nil)
+	req := httptest.NewRequest("GET", "/users", nil)
 	req.Header.Set("X-Request-Id", "rid-unconf")
 	a.AdminHandler().ServeHTTP(rec, req)
 	if rec.Code != 503 || !strings.Contains(rec.Body.String(), `"reason":"ADMIN_NOT_CONFIGURED"`) || rec.Header().Get("X-Request-Id") != "rid-unconf" {
@@ -468,18 +468,18 @@ func TestAdminHandlerMountsBehindHostVerifier(t *testing.T) {
 	})
 	// 无凭证 → 宿主 Middleware 401；operator 调 super-admin 路由 → 403；角色够 → 到达 handler（400 INVALID_ID 证明已进入库内路由）
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest("GET", "/admin/v1/accounts/u_0k3f9c2m1xq7z", nil))
+	r.ServeHTTP(rec, httptest.NewRequest("GET", "/admin/v1/users/u_0k3f9c2m1xq7z", nil))
 	if rec.Code != 401 {
 		t.Fatalf("no credential: %d", rec.Code)
 	}
-	req := httptest.NewRequest("DELETE", "/admin/v1/accounts/u_0k3f9c2m1xq7z", nil)
+	req := httptest.NewRequest("DELETE", "/admin/v1/users/u_0k3f9c2m1xq7z", nil)
 	req.Header.Set("X-Test-Admin", "iss|sub|ops|operator")
 	rec = httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	if rec.Code != 403 {
 		t.Fatalf("operator on super-admin route: %d", rec.Code)
 	}
-	req = httptest.NewRequest("GET", "/admin/v1/accounts/not-an-id", nil)
+	req = httptest.NewRequest("GET", "/admin/v1/users/not-an-id", nil)
 	req.Header.Set("X-Test-Admin", "iss|sub|ops|operator")
 	rec = httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
@@ -496,7 +496,7 @@ func TestRecordAdminForbidden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest("GET", "/admin/v1/accounts", nil)
+	req := httptest.NewRequest("GET", "/admin/v1/users", nil)
 	req.Header.Set("X-Request-Id", "req-forbidden")
 	req.RemoteAddr = "198.51.100.9:1234"
 	a.RecordAdminForbidden(req, accountkit.AdminPrincipal{Issuer: "iss", Subject: "sub", Username: "ops"})

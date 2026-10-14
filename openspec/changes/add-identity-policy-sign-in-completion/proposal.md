@@ -2,14 +2,14 @@
 
 当前身份启停分散在发送器和第三方应用配置中，PHONE/EMAIL 被硬编码为账号锚点。第三方首次登录先创建用户，再绑定已有账号的联系方式会发生冲突；部署者也无法统一选择可用身份和账号完整性条件。
 
-本次用两个配置定义身份策略，在需要补全时延后建号，并按已经验证的手机或邮箱归属自动关联已有账号或注册新账号。账号 HTTP 资源统一采用 accounts，登录补全保持两个独立、用途明确的操作。
+本次用两个配置定义身份策略，在需要补全时延后建号，并按已经验证的手机或邮箱归属自动关联已有账号或注册新账号。账号 HTTP 资源沿用 users，登录补全保持两个独立、用途明确的操作。
 
 ## What Changes
 
 - 增加 `Config.EnabledIdentityKinds` 与 `Config.RequiredIdentityKinds`，环境变量沿宿主前缀读取 `ENABLED_IDENTITY_KINDS` / `REQUIRED_IDENTITY_KINDS`。Enabled 可以包含 PHONE、EMAIL、WECHAT、APPLE；Required 非空时只允许 PHONE、EMAIL，表示至少具备其中一种。显式空 Required 允许任意已启用的有效身份。
-- **BREAKING**：C 端和管理端的账号资源由 `/users` 统一改为 `/accounts`，响应中对应资源 name 及下级 identities/sessions 路径同步改变；两套 HTTP 面继续独立。原 user_id、u_…、JWT claims、scope 和数据库表名不随 HTTP 改名。
+- C 端和管理端的账号资源沿用 `/users`，响应资源 name 使用 `users/{user_id}` 及下级 identities/sessions 形式；两套 HTTP 面继续独立。此前未发布的 `/accounts` 路径不注册别名或重定向，返回 404。管理列表 `users`、user_id、u_…、JWT claims、scope、Go User 类型和数据库表名保持。
 - **BREAKING**：登录响应支持 token 与 pending。未知身份不满足 Required 时只返回 `sign_in_completion_token` 等待补全，不提前创建用户、identity 或 session；已经满足要求时直接注册，不再提供可选延后注册参数。
-- 仅新增 `POST /accounts:sendSignInCompletionCode` 和 `POST /accounts:completeSignIn`。补全发码保持独立，不复用普通 `sendSignInCode`；完成接口只接受本流程的手机或邮箱验证码，不接受第三方补充证明。
+- 仅新增 `POST /users:sendSignInCompletionCode` 和 `POST /users:completeSignIn`。补全发码保持独立，不复用普通 `sendSignInCode`；完成接口只接受本流程的手机或邮箱验证码，不接受第三方补充证明。
 - 补充验证通过后自动分流：已有活动账号 B 则关联并登录 B；身份无归属且满足要求时才原子注册。用户无需选择“创建 / 关联”，接入界面需说明验证并继续的效果。
 - 普通绑定允许 Enabled 中的类型；Required 只决定完整性与解绑保护，不限制每次登录方式。新登录/刷新按配置决定 user 或 user:bind，刷新宽限仍返回原 pair。
 - 现有手机/邮箱重新认证及消费者、管理员注销恢复保留；只有第三方身份时通过重新登录满足既有近期认证规则，本次不新增第三方重新认证或恢复接口。
@@ -25,12 +25,12 @@
 
 ### Modified Capabilities
 
-- `embedded-auth-package`: accounts 资源契约、两类登录结果、配置驱动权限及已有认证/恢复的兼容边界。
+- `embedded-auth-package`: users 资源契约、两类登录结果、配置驱动权限及已有认证/恢复的兼容边界。
 - `verification-challenges`: 登录补全验证码用途、流程绑定和共享失败预算。
 - `verification-delivery`: 按策略拒绝渠道、独立补全发码、新用途文案及按需 SMTP。
-- `accountsvc-runtime`: accounts 路由、身份配置、条件依赖校验与 migrate 边界。
-- `identity-replacement`: accounts 下的换绑路由、启用策略与配置完整性保护。
-- `gateway-integration`: accounts 路由迁移、两个补全端点的显式允许清单与流量预算。
+- `accountsvc-runtime`: users 路由、身份配置、条件依赖校验与 migrate 边界。
+- `identity-replacement`: users 下的换绑路由、启用策略与配置完整性保护。
+- `gateway-integration`: users 路由契约、两个补全端点的显式允许清单与流量预算。
 
 ## Impact
 

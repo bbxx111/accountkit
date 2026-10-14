@@ -25,10 +25,10 @@ func TestGetMe(t *testing.T) {
 	}}, principal)
 	h := newHandler(t, f)
 
-	rec := do(t, h, call{method: "GET", path: "/accounts/me", bearer: "good"})
+	rec := do(t, h, call{method: "GET", path: "/users/me", bearer: "good"})
 	var me map[string]any
 	decode(t, rec, &me)
-	if rec.Code != 200 || me["name"] != "accounts/"+principal.UserID || me["state"] != "ACTIVE" || me["display_name"] != "白博" || me["create_time"] != "2026-09-09T12:00:00Z" || me["delete_time"] != nil || me["purge_time"] != nil {
+	if rec.Code != 200 || me["name"] != "users/"+principal.UserID || me["state"] != "ACTIVE" || me["display_name"] != "白博" || me["create_time"] != "2026-09-09T12:00:00Z" || me["delete_time"] != nil || me["purge_time"] != nil {
 		t.Fatalf("me: %d %v", rec.Code, me)
 	}
 	for k := range me {
@@ -39,11 +39,11 @@ func TestGetMe(t *testing.T) {
 		}
 	}
 	// 401 形态
-	rec = do(t, h, call{method: "GET", path: "/accounts/me"})
+	rec = do(t, h, call{method: "GET", path: "/users/me"})
 	if status, _ := aipError(t, rec); rec.Code != 401 || status != "UNAUTHENTICATED/TOKEN_MISSING" || rec.Header().Get("WWW-Authenticate") != `Bearer realm="user"` {
 		t.Fatalf("no bearer: %d %s %q", rec.Code, status, rec.Header().Get("WWW-Authenticate"))
 	}
-	rec = do(t, h, call{method: "GET", path: "/accounts/me", bearer: "expired"})
+	rec = do(t, h, call{method: "GET", path: "/users/me", bearer: "expired"})
 	if status, _ := aipError(t, rec); rec.Code != 401 || status != "UNAUTHENTICATED/TOKEN_INVALID" || rec.Header().Get("WWW-Authenticate") != `Bearer realm="user", error="invalid_token"` {
 		t.Fatalf("bad bearer: %d %s", rec.Code, status)
 	}
@@ -51,7 +51,7 @@ func TestGetMe(t *testing.T) {
 	bind := principal
 	bind.Scope = "user:bind"
 	h2 := newHandler(t, withAuth(&fakeService{getMe: f.getMe}, bind))
-	if rec = do(t, h2, call{method: "GET", path: "/accounts/me", bearer: "good"}); rec.Code != 200 {
+	if rec = do(t, h2, call{method: "GET", path: "/users/me", bearer: "good"}); rec.Code != 200 {
 		t.Fatalf("user:bind must read me: %d", rec.Code)
 	}
 }
@@ -69,26 +69,26 @@ func TestUpdateMe(t *testing.T) {
 	}}, principal)
 	h := newHandler(t, f)
 
-	rec := do(t, h, call{method: "PATCH", path: "/accounts/me", bearer: "good", body: map[string]string{"display_name": "新名字"}})
+	rec := do(t, h, call{method: "PATCH", path: "/users/me", bearer: "good", body: map[string]string{"display_name": "新名字"}})
 	var me map[string]any
 	decode(t, rec, &me)
 	if rec.Code != 200 || me["display_name"] != "新名字" || gotName != "新名字" {
 		t.Fatalf("patch: %d %v", rec.Code, me)
 	}
 	// 清空
-	rec = do(t, h, call{method: "PATCH", path: "/accounts/me", bearer: "good", body: map[string]string{"display_name": ""}})
+	rec = do(t, h, call{method: "PATCH", path: "/users/me", bearer: "good", body: map[string]string{"display_name": ""}})
 	if rec.Code != 200 || gotName != "" {
 		t.Fatal("empty string clears")
 	}
-	rec = do(t, h, call{method: "PATCH", path: "/accounts/me", bearer: "good", body: map[string]any{}})
+	rec = do(t, h, call{method: "PATCH", path: "/users/me", bearer: "good", body: map[string]any{}})
 	if status, _ := aipError(t, rec); rec.Code != 400 || status != "INVALID_ARGUMENT/NO_FIELDS" {
 		t.Fatalf("no fields: %d %s", rec.Code, status)
 	}
-	rec = do(t, h, call{method: "PATCH", path: "/accounts/me", bearer: "good", body: map[string]any{"state": "FROZEN"}})
+	rec = do(t, h, call{method: "PATCH", path: "/users/me", bearer: "good", body: map[string]any{"state": "FROZEN"}})
 	if status, _ := aipError(t, rec); rec.Code != 400 || status != "INVALID_ARGUMENT/MALFORMED_BODY" {
 		t.Fatalf("read-only field: %d %s", rec.Code, status)
 	}
-	rec = do(t, h, call{method: "PATCH", path: "/accounts/me", bearer: "good", body: map[string]string{"display_name": string(make([]rune, 33))}})
+	rec = do(t, h, call{method: "PATCH", path: "/users/me", bearer: "good", body: map[string]string{"display_name": string(make([]rune, 33))}})
 	if status, _ := aipError(t, rec); rec.Code != 400 || status != "INVALID_ARGUMENT/INVALID_ARGUMENT" {
 		t.Fatalf("too long: %d %s", rec.Code, status)
 	}
@@ -96,7 +96,7 @@ func TestUpdateMe(t *testing.T) {
 	bind := principal
 	bind.Scope = "user:bind"
 	h2 := newHandler(t, withAuth(&fakeService{}, bind))
-	rec = do(t, h2, call{method: "PATCH", path: "/accounts/me", bearer: "good", body: map[string]string{"display_name": "x"}})
+	rec = do(t, h2, call{method: "PATCH", path: "/users/me", bearer: "good", body: map[string]string{"display_name": "x"}})
 	if status, _ := aipError(t, rec); rec.Code != 403 || status != "PERMISSION_DENIED/INSUFFICIENT_SCOPE" {
 		t.Fatalf("scope: %d %s", rec.Code, status)
 	}
@@ -132,21 +132,21 @@ func TestReauthentication(t *testing.T) {
 	}, principal)
 	h := newHandler(t, f)
 
-	rec := do(t, h, call{method: "POST", path: "/accounts/me:sendReauthenticationCode", bearer: "good", body: map[string]string{"channel": "PHONE", "target": "+8613812341234"}})
+	rec := do(t, h, call{method: "POST", path: "/users/me:sendReauthenticationCode", bearer: "good", body: map[string]string{"channel": "PHONE", "target": "+8613812341234"}})
 	if rec.Code != 200 || sent.p.UserID != principal.UserID || sent.p.SessionID != principal.SessionID || sent.ch != enum.IdentityPhone || sent.target != "+8613812341234" {
 		t.Fatalf("send: %d %+v", rec.Code, sent)
 	}
-	rec = do(t, h, call{method: "POST", path: "/accounts/me:sendReauthenticationCode", bearer: "good", body: map[string]string{"channel": "PHONE", "target": "+8613900000009"}})
+	rec = do(t, h, call{method: "POST", path: "/users/me:sendReauthenticationCode", bearer: "good", body: map[string]string{"channel": "PHONE", "target": "+8613900000009"}})
 	if status, _ := aipError(t, rec); rec.Code != 400 || status != "FAILED_PRECONDITION/TARGET_NOT_ANCHOR" {
 		t.Fatalf("not anchor: %d %s", rec.Code, status)
 	}
-	rec = do(t, h, call{method: "POST", path: "/accounts/me:sendReauthenticationCode", body: map[string]string{"channel": "PHONE", "target": "+8613812341234"}})
+	rec = do(t, h, call{method: "POST", path: "/users/me:sendReauthenticationCode", body: map[string]string{"channel": "PHONE", "target": "+8613812341234"}})
 	if rec.Code != 401 {
 		t.Fatalf("needs bearer: %d", rec.Code)
 	}
 
 	body := map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "123456"}}
-	rec = do(t, h, call{method: "POST", path: "/accounts/me:reauthenticate", bearer: "good", body: body})
+	rec = do(t, h, call{method: "POST", path: "/users/me:reauthenticate", bearer: "good", body: body})
 	var tok map[string]any
 	decode(t, rec, &tok)
 	if rec.Code != 200 || tok["access_token"] != "at3" || tok["expires_in"] != float64(900) {
@@ -158,19 +158,19 @@ func TestReauthentication(t *testing.T) {
 	if _, has := tok["refresh_expires_in"]; has {
 		t.Fatal("reauthenticate must not return refresh_expires_in")
 	}
-	rec = do(t, h, call{method: "POST", path: "/accounts/me:reauthenticate", bearer: "good", body: map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "000000"}}})
+	rec = do(t, h, call{method: "POST", path: "/users/me:reauthenticate", bearer: "good", body: map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "000000"}}})
 	if status, _ := aipError(t, rec); rec.Code != 400 || status != "INVALID_ARGUMENT/CODE_INVALID" {
 		t.Fatalf("wrong code: %d %s", rec.Code, status)
 	}
-	rec = do(t, h, call{method: "POST", path: "/accounts/me:reauthenticate", bearer: "good", body: map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "999999"}}})
+	rec = do(t, h, call{method: "POST", path: "/users/me:reauthenticate", bearer: "good", body: map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "999999"}}})
 	if status, _ := aipError(t, rec); rec.Code != 401 || status != "UNAUTHENTICATED/TOKEN_INVALID" || rec.Header().Get("WWW-Authenticate") == "" {
 		t.Fatalf("revoked session: %d %s", rec.Code, status)
 	}
-	rec = do(t, h, call{method: "POST", path: "/accounts/me:reauthenticate", bearer: "good", body: map[string]any{"wechat": map[string]string{"app_id": "wx", "code": "c"}}})
+	rec = do(t, h, call{method: "POST", path: "/users/me:reauthenticate", bearer: "good", body: map[string]any{"wechat": map[string]string{"app_id": "wx", "code": "c"}}})
 	if status, _ := aipError(t, rec); status != "INVALID_ARGUMENT/CREDENTIAL_KIND_NOT_ALLOWED" {
 		t.Fatalf("reauth accepts only phone/email: %s", status)
 	}
-	rec = do(t, h, call{method: "POST", path: "/accounts/me:reauthenticate", bearer: "good", body: map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "888888"}}})
+	rec = do(t, h, call{method: "POST", path: "/users/me:reauthenticate", bearer: "good", body: map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "888888"}}})
 	if rec.Code != 500 || contains(rec.Body.String(), "pg") {
 		t.Fatalf("500: %d %s", rec.Code, rec.Body.String())
 	}
@@ -188,7 +188,7 @@ func TestSendReauthenticationCodeEmptyClientIPIs500(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := hh.Router()
-	rec := do(t, h, call{method: "POST", path: "/accounts/me:sendReauthenticationCode", bearer: "good", body: map[string]string{"channel": "PHONE", "target": "+8613812341234"}})
+	rec := do(t, h, call{method: "POST", path: "/users/me:sendReauthenticationCode", bearer: "good", body: map[string]string{"channel": "PHONE", "target": "+8613812341234"}})
 	if rec.Code != 500 {
 		t.Fatalf("empty client ip must 500: %d %s", rec.Code, rec.Body.String())
 	}
@@ -210,10 +210,10 @@ func TestDeleteMe(t *testing.T) {
 	}}, principal)
 	h := newHandler(t, f)
 
-	rec := do(t, h, call{method: "DELETE", path: "/accounts/me", bearer: "good"})
+	rec := do(t, h, call{method: "DELETE", path: "/users/me", bearer: "good"})
 	var me map[string]any
 	decode(t, rec, &me)
-	if rec.Code != 200 || me["name"] != "accounts/"+principal.UserID || me["state"] != "PENDING_DELETION" || me["delete_time"] != "2026-09-10T12:00:00Z" || me["purge_time"] != "2026-09-25T12:00:00Z" {
+	if rec.Code != 200 || me["name"] != "users/"+principal.UserID || me["state"] != "PENDING_DELETION" || me["delete_time"] != "2026-09-10T12:00:00Z" || me["purge_time"] != "2026-09-25T12:00:00Z" {
 		t.Fatalf("delete: %d %v", rec.Code, me)
 	}
 	if got != principal || gotMeta.IP != "203.0.113.9" || gotMeta.RequestID != "req-test" {
@@ -227,26 +227,26 @@ func TestDeleteMe(t *testing.T) {
 		called = true
 		return pendingMe(ctx, p, meta)
 	}}, stale))
-	rec = do(t, h2, call{method: "DELETE", path: "/accounts/me", bearer: "good"})
+	rec = do(t, h2, call{method: "DELETE", path: "/users/me", bearer: "good"})
 	if status, _ := aipError(t, rec); rec.Code != 400 || status != "FAILED_PRECONDITION/REAUTHENTICATION_REQUIRED" || called {
 		t.Fatalf("stale auth_time: %d %s called=%v", rec.Code, status, called)
 	}
 	// SensitiveOpVerification=false 放行
 	h3 := newHandlerWithDeps(t, withAuth(&fakeService{deleteMe: pendingMe}, stale), func(d *endUserDeps) { d.SensitiveOpVerification = false })
-	if rec = do(t, h3, call{method: "DELETE", path: "/accounts/me", bearer: "good"}); rec.Code != 200 {
+	if rec = do(t, h3, call{method: "DELETE", path: "/users/me", bearer: "good"}); rec.Code != 200 {
 		t.Fatalf("verification off: %d %s", rec.Code, rec.Body.String())
 	}
 	// scope 不足：user:bind / user:undelete → 403
 	for _, scope := range []string{"user:bind", "user:undelete"} {
 		p := principal
 		p.Scope = scope
-		rec = do(t, newHandler(t, withAuth(&fakeService{}, p)), call{method: "DELETE", path: "/accounts/me", bearer: "good"})
+		rec = do(t, newHandler(t, withAuth(&fakeService{}, p)), call{method: "DELETE", path: "/users/me", bearer: "good"})
 		if status, _ := aipError(t, rec); rec.Code != 403 || status != "PERMISSION_DENIED/INSUFFICIENT_SCOPE" {
 			t.Fatalf("scope %s: %d %s", scope, rec.Code, status)
 		}
 	}
 	// 无 bearer → 401
-	rec = do(t, h, call{method: "DELETE", path: "/accounts/me"})
+	rec = do(t, h, call{method: "DELETE", path: "/users/me"})
 	if status, _ := aipError(t, rec); rec.Code != 401 || status != "UNAUTHENTICATED/TOKEN_MISSING" {
 		t.Fatalf("no bearer: %d %s", rec.Code, status)
 	}
@@ -262,7 +262,7 @@ func TestDeleteMe(t *testing.T) {
 	} {
 		e := c.err
 		hh := newHandler(t, withAuth(&fakeService{deleteMe: func(context.Context, user.Principal, user.Meta) (user.Me, error) { return user.Me{}, e }}, principal))
-		rec = do(t, hh, call{method: "DELETE", path: "/accounts/me", bearer: "good"})
+		rec = do(t, hh, call{method: "DELETE", path: "/users/me", bearer: "good"})
 		if status, _ := aipError(t, rec); rec.Code != c.code || status != c.status {
 			t.Fatalf("%v: %d %s", c.err, rec.Code, status)
 		}
@@ -279,14 +279,14 @@ func TestUndelete(t *testing.T) {
 	}}, undel)
 	h := newHandler(t, f)
 
-	rec := do(t, h, call{method: "POST", path: "/accounts/me:undelete", bearer: "good"})
+	rec := do(t, h, call{method: "POST", path: "/users/me:undelete", bearer: "good"})
 	var me map[string]any
 	decode(t, rec, &me)
 	if rec.Code != 200 || me["state"] != "ACTIVE" || me["delete_time"] != nil || me["purge_time"] != nil || got.UserID != principal.UserID || got.Scope != "user:undelete" {
 		t.Fatalf("undelete: %d %v (%+v)", rec.Code, me, got)
 	}
 	// 请求体被忽略（与 sessions:revokeOthers 一致）
-	if rec = do(t, h, call{method: "POST", path: "/accounts/me:undelete", bearer: "good", body: `{"whatever":1}`}); rec.Code != 200 {
+	if rec = do(t, h, call{method: "POST", path: "/users/me:undelete", bearer: "good", body: `{"whatever":1}`}); rec.Code != 200 {
 		t.Fatalf("body must be ignored: %d", rec.Code)
 	}
 	// user scope 不再能到达领域层：:undelete 只放行 user:undelete（§2.4），user 凭证 → 403，不调用领域层
@@ -295,7 +295,7 @@ func TestUndelete(t *testing.T) {
 		called = true
 		return user.Me{}, user.ErrInvalidState
 	}}, principal))
-	rec = do(t, full, call{method: "POST", path: "/accounts/me:undelete", bearer: "good"})
+	rec = do(t, full, call{method: "POST", path: "/users/me:undelete", bearer: "good"})
 	if status, _ := aipError(t, rec); rec.Code != 403 || status != "PERMISSION_DENIED/INSUFFICIENT_SCOPE" || called {
 		t.Fatalf("user scope: %d %s (called=%v)", rec.Code, status, called)
 	}
@@ -303,14 +303,14 @@ func TestUndelete(t *testing.T) {
 	invalidState := newHandler(t, withAuth(&fakeService{undelete: func(context.Context, user.Principal, user.Meta) (user.Me, error) {
 		return user.Me{}, user.ErrInvalidState
 	}}, undel))
-	rec = do(t, invalidState, call{method: "POST", path: "/accounts/me:undelete", bearer: "good"})
+	rec = do(t, invalidState, call{method: "POST", path: "/users/me:undelete", bearer: "good"})
 	if status, body := aipError(t, rec); rec.Code != 400 || status != "FAILED_PRECONDITION/INVALID_ACCOUNT_STATE" || contains(body["message"].(string), "ACTIVE") {
 		t.Fatalf("invalid state: %d %s %v", rec.Code, status, body)
 	}
 	// user:bind → 403
 	bind := principal
 	bind.Scope = "user:bind"
-	rec = do(t, newHandler(t, withAuth(&fakeService{}, bind)), call{method: "POST", path: "/accounts/me:undelete", bearer: "good"})
+	rec = do(t, newHandler(t, withAuth(&fakeService{}, bind)), call{method: "POST", path: "/users/me:undelete", bearer: "good"})
 	if status, _ := aipError(t, rec); rec.Code != 403 || status != "PERMISSION_DENIED/INSUFFICIENT_SCOPE" {
 		t.Fatalf("bind scope: %d %s", rec.Code, status)
 	}
@@ -318,14 +318,14 @@ func TestUndelete(t *testing.T) {
 	frozen := newHandler(t, withAuth(&fakeService{undelete: func(context.Context, user.Principal, user.Meta) (user.Me, error) {
 		return user.Me{}, user.ErrUserFrozen
 	}}, undel))
-	rec = do(t, frozen, call{method: "POST", path: "/accounts/me:undelete", bearer: "good"})
+	rec = do(t, frozen, call{method: "POST", path: "/users/me:undelete", bearer: "good"})
 	if status, _ := aipError(t, rec); rec.Code != 403 || status != "PERMISSION_DENIED/USER_FROZEN" {
 		t.Fatalf("frozen: %d %s", rec.Code, status)
 	}
-	if rec = do(t, h, call{method: "POST", path: "/accounts/me:undelete"}); rec.Code != 401 {
+	if rec = do(t, h, call{method: "POST", path: "/users/me:undelete"}); rec.Code != 401 {
 		t.Fatalf("no bearer: %d", rec.Code)
 	}
-	if rec = do(t, h, call{method: "GET", path: "/accounts/me:undelete", bearer: "good"}); rec.Code != 405 {
+	if rec = do(t, h, call{method: "GET", path: "/users/me:undelete", bearer: "good"}); rec.Code != 405 {
 		t.Fatalf("GET: %d", rec.Code)
 	}
 }

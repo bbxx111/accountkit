@@ -111,8 +111,8 @@ func TestSessionExpiryEndToEndAgainstRealDB(t *testing.T) {
 	login := func(device string) map[string]any {
 		t.Helper()
 		mr.FastForward(2 * time.Second)
-		call("POST", "/v1/accounts:sendSignInCode", "", device, map[string]string{"channel": "EMAIL", "target": target}, 200)
-		return call("POST", "/v1/accounts:signInWithCode", "", device, map[string]any{"email": map[string]string{"code_id": sent.codeID(target), "target": target, "code": sent.code(target)}}, 200)
+		call("POST", "/v1/users:sendSignInCode", "", device, map[string]string{"channel": "EMAIL", "target": target}, 200)
+		return call("POST", "/v1/users:signInWithCode", "", device, map[string]any{"email": map[string]string{"code_id": sent.codeID(target), "target": target, "code": sent.code(target)}}, 200)
 	}
 	expired := login("expired")
 	live := login("live")
@@ -144,8 +144,8 @@ func TestSessionExpiryEndToEndAgainstRealDB(t *testing.T) {
 		path   string
 		fields []string
 	}{
-		{"/v1/accounts/me/sessions", []string{"name", "device_id", "device_name", "create_time", "last_used_time", "is_current"}},
-		{"/admin/v1/accounts/" + principal.UserID + "/sessions", []string{"name", "device_id", "device_name", "create_time", "last_used_time"}},
+		{"/v1/users/me/sessions", []string{"name", "device_id", "device_name", "create_time", "last_used_time", "is_current"}},
+		{"/admin/v1/users/" + principal.UserID + "/sessions", []string{"name", "device_id", "device_name", "create_time", "last_used_time"}},
 	} {
 		out := call("GET", tc.path, access, "", nil, 200)
 		rows, ok := out["sessions"].([]any)
@@ -154,7 +154,7 @@ func TestSessionExpiryEndToEndAgainstRealDB(t *testing.T) {
 			continue
 		}
 		item := rows[0].(map[string]any)
-		if item["name"] != "accounts/"+principal.UserID+"/sessions/"+livePrincipal.SessionID || len(item) != len(tc.fields) {
+		if item["name"] != "users/"+principal.UserID+"/sessions/"+livePrincipal.SessionID || len(item) != len(tc.fields) {
 			t.Error("session DTO or active membership changed")
 		}
 		for _, key := range tc.fields {
@@ -166,7 +166,7 @@ func TestSessionExpiryEndToEndAgainstRealDB(t *testing.T) {
 			t.Error("expired caller was marked current")
 		}
 	}
-	detail := call("GET", "/admin/v1/accounts/"+principal.UserID, "", "", nil, 200)
+	detail := call("GET", "/admin/v1/users/"+principal.UserID, "", "", nil, 200)
 	if detail["active_session_count"] != float64(1) || len(detail) != 10 {
 		t.Error("admin detail must count only live sessions and retain DTO")
 	}
@@ -181,14 +181,14 @@ func TestSessionExpiryEndToEndAgainstRealDB(t *testing.T) {
 	if _, err := pool.Exec(ctx, "UPDATE session SET refresh_expire_time=$2 WHERE id=$1", livePrincipal.SessionID, time.Now().UTC().Add(-time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/v1/accounts/me/sessions", "/admin/v1/accounts/" + principal.UserID + "/sessions"} {
+	for _, path := range []string{"/v1/users/me/sessions", "/admin/v1/users/" + principal.UserID + "/sessions"} {
 		out := call("GET", path, access, "", nil, 200)
 		rows, ok := out["sessions"].([]any)
 		if !ok || len(rows) != 0 || len(out) != 1 {
 			t.Errorf("%s did not preserve empty sessions array DTO", path)
 		}
 	}
-	if out := call("GET", "/admin/v1/accounts/"+principal.UserID, "", "", nil, 200); out["active_session_count"] != float64(0) {
+	if out := call("GET", "/admin/v1/users/"+principal.UserID, "", "", nil, 200); out["active_session_count"] != float64(0) {
 		t.Error("all-expired account count must be zero")
 	}
 	if _, err := pool.Exec(ctx, "UPDATE session SET refresh_expire_time=$2 WHERE id=$1", livePrincipal.SessionID, liveExpiry); err != nil {
@@ -199,8 +199,8 @@ func TestSessionExpiryEndToEndAgainstRealDB(t *testing.T) {
 		t.Error("expiry did not return OAuth invalid_grant")
 	}
 	mr.FastForward(2 * time.Second)
-	call("POST", "/v1/accounts/me:sendReauthenticationCode", access, "", map[string]string{"channel": "EMAIL", "target": target}, 200)
-	reauth := call("POST", "/v1/accounts/me:reauthenticate", access, "", map[string]any{"email": map[string]string{"code_id": sent.codeID(target), "target": target, "code": sent.code(target)}}, 401)
+	call("POST", "/v1/users/me:sendReauthenticationCode", access, "", map[string]string{"channel": "EMAIL", "target": target}, 200)
+	reauth := call("POST", "/v1/users/me:reauthenticate", access, "", map[string]any{"email": map[string]string{"code_id": sent.codeID(target), "target": target, "code": sent.code(target)}}, 401)
 	if reauth["error"].(map[string]any)["reason"] != "TOKEN_INVALID" {
 		t.Error("reauth expiry error changed")
 	}
@@ -215,12 +215,12 @@ func TestSessionExpiryEndToEndAgainstRealDB(t *testing.T) {
 	if _, err := a.Users().Authenticate(ctx, access); err != nil {
 		t.Fatal("natural expiry invalidated JWT:", err)
 	}
-	me := call("GET", "/v1/accounts/me", access, "", nil, 200)
+	me := call("GET", "/v1/users/me", access, "", nil, 200)
 	if me["state"] != "ACTIVE" {
 		t.Error("expiry changed account state")
 	}
-	call("DELETE", "/v1/accounts/me/sessions/"+principal.SessionID, live["access_token"].(string), "", nil, 204)
-	call("GET", "/v1/accounts/me", access, "", nil, 401)
+	call("DELETE", "/v1/users/me/sessions/"+principal.SessionID, live["access_token"].(string), "", nil, 204)
+	call("GET", "/v1/users/me", access, "", nil, 401)
 	if snapshot() == before {
 		t.Fatal("explicit revoke did not change stored session")
 	}

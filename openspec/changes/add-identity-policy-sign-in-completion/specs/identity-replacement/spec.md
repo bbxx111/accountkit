@@ -4,7 +4,7 @@
 
 换绑 SHALL 要求完整 user scope、ACTIVE 账号和属于该账号的有效当前会话。近期认证 SHALL 沿用现有 ReauthMaxAge 和 SensitiveOpVerification 配置，默认5分钟且启用；显式关闭仅跳过新鲜度检查。直接库调用 SHALL 同样执行这些规则。近期认证 SHALL 不被描述为强制向被替换地址再次发码的证明。
 
-HTTP 换绑 SHALL 使用相对路由 POST /accounts/me/identities/{identity}:replace，返回 accounts/{user_id}/identities/{identity_id} 资源名；Go 和数据库身份标识保持原契约。换绑使用的身份 Kind SHALL 属于当前 Enabled，且事务完成后的身份集合 SHALL 继续满足 Required 与至少一个有效身份条件。Required SHALL 不要求本次换绑 Kind 自身属于必需列表；直接 Go 调用与 HTTP SHALL 一致执行。
+HTTP 换绑 SHALL 使用相对路由 POST /users/me/identities/{identity}:replace，返回 users/{user_id}/identities/{identity_id} 资源名；Go 和数据库身份标识保持原契约。换绑使用的身份 Kind SHALL 属于当前 Enabled，且事务完成后的身份集合 SHALL 继续满足 Required 与至少一个有效身份条件。Required SHALL 不要求本次换绑 Kind 自身属于必需列表；直接 Go 调用与 HTTP SHALL 一致执行。
 
 #### Scenario: 近期认证不足
 - **WHEN** 已启用新鲜度检查且 access 的 auth_time 缺失或超过配置窗口

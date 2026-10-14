@@ -2,7 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development 执行；行为变更使用 superpowers:test-driven-development，每个工作包完成后使用 superpowers:requesting-code-review。
 
-**Goal:** 按已确认 OpenSpec 实现部署身份策略、首次登录延后建号、手机号/邮箱自动关联或注册，以及 accounts HTTP 契约。
+**Goal:** 按已确认 OpenSpec 实现部署身份策略、首次登录延后建号、手机号/邮箱自动关联或注册，以及 users HTTP 契约。
+
+2026-10-15 命名修订：撤回此前未发布的 accounts 决策，沿用两面 users 路由及资源 name；accounts 路径不提供别名或重定向。本文相关命名已同步，具体恢复实施与本轮验证按[恢复 users 计划](2026-10-15-restore-users-resource-naming.md)执行；原认证、存储及安全设计保持。
 
 **Architecture:** 领域规则集中在 user.Service；配置解析与不可变策略分离；验证码沿用 Redis 原子轮次，补全状态、加密证明和最终结果由 PostgreSQL identity_flow 持久化；HTTP 只转换协议。
 
@@ -14,7 +16,7 @@
 
 - 当前实施分支为 feat/identity-policy-sign-in-completion，起点 6d8f3ec；提案已按用户要求提交并用 no-ff 合入 develop。实施完成不自动再次合并、推送、归档或发布。
 - Required 仅 PHONE/EMAIL、any-of，nil 为默认 PHONE+EMAIL，显式 [] 不限制类型；Enabled 非空、Required 为其子集。默认装配与 Disabled 兼容，不把瞬时依赖健康状态当作身份策略。
-- 仅新增 accounts:sendSignInCompletionCode、accounts:completeSignIn。独立验证码用途；唯一票据字段 sign_in_completion_token；不添加 prepare、第三方补全、defer_registration 或恢复端点。
+- 仅新增 users:sendSignInCompletionCode、users:completeSignIn。独立验证码用途；唯一票据字段 sign_in_completion_token；不添加 prepare、第三方补全、defer_registration 或恢复端点。
 - SignInResult 为 Tokens/Pending 联合，恰好一个有效成员；未知身份不足时没有 user_id、identity 或 session。已知账号按全部可用身份推导 scope。
 - 冻结 0001 和源基线不可修改；新增递增迁移，无外键。SQL 只写查询源，通过 sqlc generate 更新生成文件。
 - 锁顺序已有 user 排序 → flow 排序 → identity/session，等待后重查身份、期限、策略；不自动合并两个账号。
@@ -25,7 +27,7 @@
 
 ## Review Focus
 
-重点检查未验证归属泄露、证明消费与持久化故障、锁后归属变化、重复建号/会话、刷新后的幂等结果、跨实例密文/票据重放、匿名化后快照回写、旧密钥移除、旧 users 路径与两个 HTTP 面的隔离。配置只做无 I/O 校验，migrate 不依赖认证运行装配。
+重点检查未验证归属泄露、证明消费与持久化故障、锁后归属变化、重复建号/会话、刷新后的幂等结果、跨实例密文/票据重放、匿名化后快照回写、旧密钥移除、未发布 accounts 路径拒绝与两个 HTTP 面的隔离。配置只做无 I/O 校验，migrate 不依赖认证运行装配。
 
 ## Task 1: 身份策略与配置基础
 
@@ -82,13 +84,13 @@
 5. 测第三方同设备重新登录更换会话及近期认证、原手机/邮箱与管理员恢复、IdP冷静期拒绝；运行原会话到期/身份替换/生命周期回归。
 6. 相关单元/真实数据库并发通过后审查。
 
-## Task 5: accounts HTTP 协议
+## Task 5: users HTTP 协议
 
 对应 OpenSpec 7.1–7.2，联动 1.2。
 
 **Files:** httpapi/enduser/*、httpapi/admin/*、httpapi/apierror/* 及 HTTP 测试；根集成测试与服务测试内相关调用者。
 
-1. 先测两面 accounts 成功、users404、token/revoke及身份面授权不变、所有资源 name 引用一致。
+1. 先测两面 users 成功、未发布 accounts 返回 404、token/revoke及身份面授权不变、所有资源 name 引用一致。
 2. 统一路由及资源字符串，不改 user_id、u_、JWT、scope、Auth.Users() 或 Go user 包。
 3. SignIn DTO 保持顶层 RFC6749 token响应；pending 仅有 next_action/票据/期限/策略集合，HTTP200且 no-store。缺失联合成员或双成员拒绝内部错误。
 4. 新增两个精确独立端点，新增可选能力接口；未实现返回503。严格 phone/email oneof，拒绝 IdP、purpose、通用票据别名和普通发码中的补全票据。
@@ -104,7 +106,7 @@
 1. 先测试显式纯 IdP 且无 SMTP可以装配、EMAIL关闭忽略非法SMTP配置、显式PHONE报错、原默认SMTP/TLS不变。
 2. 按 Enabled 选择 SMTP；migrate 使用专用迁移必要装配，不构造发送器/IdP/HTTP handler，不用假发送器绕过。
 3. migrate仍校验静态策略、数据库/search_path/锁/dirty与有效密钥版本，运行相应迁移故障和锁测试。
-4. 网关清单明确列出两个 accounts 补全端点，旧 users不映射；内省、探针、管理不被通配开放。测试可信IP/设备头/限流和秘密日志边界。
+4. 网关清单明确列出两个 users 补全端点，未发布 accounts 不映射；内省、探针、管理不被通配开放。测试可信IP/设备头/限流和秘密日志边界。
 5. 测试与 vet 后审查。
 
 ## Task 7: 集成、恢复、文档
@@ -115,7 +117,7 @@
 
 1. 先写根级真实依赖测试：EMAIL+WECHAT自动关联、仅EMAIL、Required=[]、策略收紧、两实例；维护 required-tests，避免只skip。
 2. 恢复夹具覆盖 identity_flow 的有效加密证明/完成结果、旧密钥、Redis丢失拒绝；seed/verify/source-unchanged使用独立空库及PG17客户端，不使用产品库。
-3. 所有活跃产品文档迁移 accounts；保留历史记录不篡改。写清 Go联合返回迁移、配置nil/[]、自动分流、专用票据、近期认证会话切换及纯第三方恢复限制。
+3. 所有活跃产品文档沿用 users 并说明撤回未发布 accounts；保留历史记录不篡改。写清 Go联合返回迁移、配置nil/[]、自动分流、专用票据、近期认证会话切换及纯第三方恢复限制。
 4. 真实微信/Apple环境只在可用时联调；无实际外部凭据时明确未验证，不拿模拟提供方测试替代真实联调结论。
 5. 独立宿主编译、集成及恢复检查后审查。
 

@@ -17,17 +17,17 @@ func TestRolesGateEveryRoute(t *testing.T) {
 	routes := []struct {
 		method, path, role string
 	}{
-		{"GET", "/accounts", admin.RoleOperator},
-		{"GET", "/accounts/" + uid, admin.RoleOperator},
-		{"POST", "/accounts/" + uid + ":freeze", admin.RoleOperator},
-		{"POST", "/accounts/" + uid + ":unfreeze", admin.RoleOperator},
-		{"GET", "/accounts/" + uid + "/sessions", admin.RoleOperator},
-		{"DELETE", "/accounts/" + uid + "/sessions/" + sid, admin.RoleOperator},
-		{"POST", "/accounts/" + uid + "/sessions:revokeAll", admin.RoleOperator},
-		{"GET", "/accounts/" + uid + "/auditEvents", admin.RoleOperator},
-		{"GET", "/accounts/" + uid + "/identities/" + iid + ":reveal", admin.RoleSuperAdmin},
-		{"DELETE", "/accounts/" + uid, admin.RoleSuperAdmin},
-		{"POST", "/accounts/" + uid + ":undelete", admin.RoleSuperAdmin},
+		{"GET", "/users", admin.RoleOperator},
+		{"GET", "/users/" + uid, admin.RoleOperator},
+		{"POST", "/users/" + uid + ":freeze", admin.RoleOperator},
+		{"POST", "/users/" + uid + ":unfreeze", admin.RoleOperator},
+		{"GET", "/users/" + uid + "/sessions", admin.RoleOperator},
+		{"DELETE", "/users/" + uid + "/sessions/" + sid, admin.RoleOperator},
+		{"POST", "/users/" + uid + "/sessions:revokeAll", admin.RoleOperator},
+		{"GET", "/users/" + uid + "/auditEvents", admin.RoleOperator},
+		{"GET", "/users/" + uid + "/identities/" + iid + ":reveal", admin.RoleSuperAdmin},
+		{"DELETE", "/users/" + uid, admin.RoleSuperAdmin},
+		{"POST", "/users/" + uid + ":undelete", admin.RoleSuperAdmin},
 	}
 	for _, rt := range routes {
 		// 无任何角色 → 403（fake verifier）
@@ -50,14 +50,14 @@ func TestRolesGateEveryRoute(t *testing.T) {
 	if rec.Header().Get("X-Request-Id") != "req-admin" {
 		t.Fatal("every response carries X-Request-Id")
 	}
-	if rec = do(t, h, call{method: "PATCH", path: "/accounts/" + uid, headers: superAdmin}); rec.Code != 405 {
-		t.Fatalf("PATCH /accounts/{user}: %d", rec.Code)
+	if rec = do(t, h, call{method: "PATCH", path: "/users/" + uid, headers: superAdmin}); rec.Code != 405 {
+		t.Fatalf("PATCH /users/{user}: %d", rec.Code)
 	}
 }
 
 func TestMissingPrincipalIs401(t *testing.T) {
 	h := newHandler(t, &fakeService{}, nil)
-	rec := do(t, h, call{method: "POST", path: "/accounts/" + uid + ":freeze", body: map[string]string{"reason": "x"}, headers: map[string]string{"X-Test-Roles": "operator"}})
+	rec := do(t, h, call{method: "POST", path: "/users/" + uid + ":freeze", body: map[string]string{"reason": "x"}, headers: map[string]string{"X-Test-Roles": "operator"}})
 	if status, _ := aipError(t, rec); rec.Code != 401 || status != "UNAUTHENTICATED/TOKEN_MISSING" || rec.Header().Get("WWW-Authenticate") != `Bearer realm="admin"` {
 		t.Fatalf("missing principal: %d %s %q", rec.Code, status, rec.Header().Get("WWW-Authenticate"))
 	}
@@ -75,7 +75,7 @@ func TestListUsersParsesQueryAndEncodesNextPage(t *testing.T) {
 		return user.UserPage{Users: []user.AdminUser{u}, NextCursor: &user.PageCursor{Time: u.CreateTime, ID: u.ID}}, nil
 	}}
 	h := newHandler(t, f, nil)
-	rec := do(t, h, call{method: "GET", path: `/accounts?filter=state%20%3D%20FROZEN%20AND%20identity.phone_suffix%20%3D%201234&show_deleted=true&page_size=5`, headers: operator})
+	rec := do(t, h, call{method: "GET", path: `/users?filter=state%20%3D%20FROZEN%20AND%20identity.phone_suffix%20%3D%201234&show_deleted=true&page_size=5`, headers: operator})
 	var out map[string]any
 	decode(t, rec, &out)
 	if rec.Code != 200 {
@@ -87,7 +87,7 @@ func TestListUsersParsesQueryAndEncodesNextPage(t *testing.T) {
 	users := out["users"].([]any)
 	u := users[0].(map[string]any)
 	assertKeys(t, u, "name", "state", "display_name", "create_time", "update_time", "delete_time", "purge_time", "freeze")
-	if u["name"] != "accounts/"+uid || u["state"] != "ACTIVE" || u["freeze"] != nil || u["delete_time"] != nil {
+	if u["name"] != "users/"+uid || u["state"] != "ACTIVE" || u["freeze"] != nil || u["delete_time"] != nil {
 		t.Fatalf("user resource: %v", u)
 	}
 	token, _ := out["next_page_token"].(string)
@@ -95,28 +95,28 @@ func TestListUsersParsesQueryAndEncodesNextPage(t *testing.T) {
 		t.Fatal("next_page_token must be set when the service reports a cursor")
 	}
 	// 第二页：token 解码后作为 after 传给服务；page_size 缺省 20；超过上限按 100
-	rec = do(t, h, call{method: "GET", path: "/accounts?page_token=" + token, headers: operator})
+	rec = do(t, h, call{method: "GET", path: "/users?page_token=" + token, headers: operator})
 	if rec.Code != 200 || got.after == nil || got.after.ID != uid || !got.after.Time.Equal(adminUserFixture().CreateTime) || got.limit != 20 {
 		t.Fatalf("page 2: %d after=%+v limit=%d", rec.Code, got.after, got.limit)
 	}
-	if rec = do(t, h, call{method: "GET", path: "/accounts?page_size=500", headers: operator}); rec.Code != 200 || got.limit != 100 {
+	if rec = do(t, h, call{method: "GET", path: "/users?page_size=500", headers: operator}); rec.Code != 200 || got.limit != 100 {
 		t.Fatalf("page_size clamp: %d limit=%d", rec.Code, got.limit)
 	}
 	// 无下一页 → 空串
 	f.listUsers = func(context.Context, user.UserFilter, *user.PageCursor, int) (user.UserPage, error) {
 		return user.UserPage{Users: []user.AdminUser{}}, nil
 	}
-	rec = do(t, h, call{method: "GET", path: "/accounts", headers: operator})
+	rec = do(t, h, call{method: "GET", path: "/users", headers: operator})
 	decode(t, rec, &out)
 	if out["next_page_token"] != "" || len(out["users"].([]any)) != 0 {
 		t.Fatalf("empty page: %v", out)
 	}
 	// 参数错误
 	for path, want := range map[string]string{
-		"/accounts?filter=nope%20%3D%201": "INVALID_ARGUMENT/INVALID_FILTER",
-		"/accounts?page_size=-1":          "INVALID_ARGUMENT/INVALID_PAGE_SIZE",
-		"/accounts?page_token=%21%21":     "INVALID_ARGUMENT/INVALID_PAGE_TOKEN",
-		"/accounts?show_deleted=yes":      "INVALID_ARGUMENT/INVALID_SHOW_DELETED",
+		"/users?filter=nope%20%3D%201": "INVALID_ARGUMENT/INVALID_FILTER",
+		"/users?page_size=-1":          "INVALID_ARGUMENT/INVALID_PAGE_SIZE",
+		"/users?page_token=%21%21":     "INVALID_ARGUMENT/INVALID_PAGE_TOKEN",
+		"/users?show_deleted=yes":      "INVALID_ARGUMENT/INVALID_SHOW_DELETED",
 	} {
 		rec = do(t, h, call{method: "GET", path: path, headers: operator})
 		if status, _ := aipError(t, rec); rec.Code != 400 || status != want {
@@ -127,7 +127,7 @@ func TestListUsersParsesQueryAndEncodesNextPage(t *testing.T) {
 	f.listUsers = func(context.Context, user.UserFilter, *user.PageCursor, int) (user.UserPage, error) {
 		return user.UserPage{}, user.ErrInvalidTarget
 	}
-	rec = do(t, h, call{method: "GET", path: "/accounts?filter=identity.phone%20%3D%20abc", headers: operator})
+	rec = do(t, h, call{method: "GET", path: "/users?filter=identity.phone%20%3D%20abc", headers: operator})
 	if status, body := aipError(t, rec); rec.Code != 400 || status != "INVALID_ARGUMENT/INVALID_FILTER" || strings.Contains(body["message"].(string), "abc") {
 		t.Fatalf("invalid target: %d %s %v", rec.Code, status, body)
 	}
@@ -147,7 +147,7 @@ func TestGetUserDetail(t *testing.T) {
 		}}, nil
 	}}
 	h := newHandler(t, f, nil)
-	rec := do(t, h, call{method: "GET", path: "/accounts/" + uid, headers: operator})
+	rec := do(t, h, call{method: "GET", path: "/users/" + uid, headers: operator})
 	var d map[string]any
 	decode(t, rec, &d)
 	if rec.Code != 200 {
@@ -162,18 +162,18 @@ func TestGetUserDetail(t *testing.T) {
 	idents := d["identities"].([]any)
 	first := idents[0].(map[string]any)
 	assertKeys(t, first, "name", "kind", "masked_subject", "create_time")
-	if first["name"] != "accounts/"+uid+"/identities/"+iid || first["masked_subject"] != "+86 138****1234" || idents[1].(map[string]any)["masked_subject"] != "" {
+	if first["name"] != "users/"+uid+"/identities/"+iid || first["masked_subject"] != "+86 138****1234" || idents[1].(map[string]any)["masked_subject"] != "" {
 		t.Fatalf("identities: %v", idents)
 	}
 	// 时间格式：RFC 3339（UTC，纳秒精度按需）
 	if _, err := time.Parse(time.RFC3339Nano, d["create_time"].(string)); err != nil {
 		t.Fatalf("create_time format: %v", d["create_time"])
 	}
-	rec = do(t, h, call{method: "GET", path: "/accounts/u_0000000000000", headers: operator})
+	rec = do(t, h, call{method: "GET", path: "/users/u_0000000000000", headers: operator})
 	if status, _ := aipError(t, rec); rec.Code != 404 || status != "NOT_FOUND/NOT_FOUND" {
 		t.Fatalf("unknown user: %d %s", rec.Code, status)
 	}
-	rec = do(t, h, call{method: "GET", path: "/accounts/not-an-id", headers: operator})
+	rec = do(t, h, call{method: "GET", path: "/users/not-an-id", headers: operator})
 	if status, _ := aipError(t, rec); rec.Code != 400 || status != "INVALID_ARGUMENT/INVALID_ID" {
 		t.Fatalf("malformed id: %d %s", rec.Code, status)
 	}
@@ -217,7 +217,7 @@ func TestFreezeUnfreezeDeleteUndelete(t *testing.T) {
 	}
 	h := newHandler(t, f, nil)
 
-	rec := do(t, h, call{method: "POST", path: "/accounts/" + uid + ":freeze", body: map[string]string{"reason": "abuse"}, headers: operator})
+	rec := do(t, h, call{method: "POST", path: "/users/" + uid + ":freeze", body: map[string]string{"reason": "abuse"}, headers: operator})
 	var u map[string]any
 	decode(t, rec, &u)
 	if rec.Code != 200 || u["state"] != "FROZEN" || u["freeze"].(map[string]any)["reason"] != "abuse" {
@@ -227,28 +227,28 @@ func TestFreezeUnfreezeDeleteUndelete(t *testing.T) {
 		t.Fatalf("freeze call: %+v", last)
 	}
 	// reason 由领域层校验（空 → ErrInvalidArgument → 400）；body 非对象 / 未知字段 → 400 MALFORMED_BODY
-	rec = do(t, h, call{method: "POST", path: "/accounts/" + uid + ":freeze", body: map[string]string{"reason": ""}, headers: operator})
+	rec = do(t, h, call{method: "POST", path: "/users/" + uid + ":freeze", body: map[string]string{"reason": ""}, headers: operator})
 	if status, _ := aipError(t, rec); rec.Code != 400 || status != "INVALID_ARGUMENT/INVALID_ARGUMENT" {
 		t.Fatalf("empty reason: %d %s", rec.Code, status)
 	}
 	for _, body := range []any{`[]`, map[string]string{"why": "x"}, nil} {
-		rec = do(t, h, call{method: "POST", path: "/accounts/" + uid + ":freeze", body: body, headers: operator})
+		rec = do(t, h, call{method: "POST", path: "/users/" + uid + ":freeze", body: body, headers: operator})
 		if status, _ := aipError(t, rec); rec.Code != 400 || status != "INVALID_ARGUMENT/MALFORMED_BODY" {
 			t.Fatalf("malformed body %v: %d %s", body, rec.Code, status)
 		}
 	}
 	// unfreeze：reason 可省（{}）
-	rec = do(t, h, call{method: "POST", path: "/accounts/" + uid + ":unfreeze", body: map[string]any{}, headers: operator})
+	rec = do(t, h, call{method: "POST", path: "/users/" + uid + ":unfreeze", body: map[string]any{}, headers: operator})
 	if rec.Code != 200 || last.reason != "" {
 		t.Fatalf("unfreeze: %d %+v", rec.Code, last)
 	}
 	// delete / undelete（super-admin）；operator → 403（fake verifier）
-	rec = do(t, h, call{method: "DELETE", path: "/accounts/" + uid, headers: superAdmin})
+	rec = do(t, h, call{method: "DELETE", path: "/users/" + uid, headers: superAdmin})
 	decode(t, rec, &u)
 	if rec.Code != 200 || u["state"] != "PENDING_DELETION" || u["delete_time"] == nil || u["purge_time"] == nil || last.a != wantAdmin {
 		t.Fatalf("admin delete: %d %v", rec.Code, u)
 	}
-	rec = do(t, h, call{method: "POST", path: "/accounts/" + uid + ":undelete", headers: superAdmin})
+	rec = do(t, h, call{method: "POST", path: "/users/" + uid + ":undelete", headers: superAdmin})
 	decode(t, rec, &u)
 	if rec.Code != 200 || u["state"] != "ACTIVE" {
 		t.Fatalf("admin undelete: %d %v", rec.Code, u)
@@ -268,13 +268,13 @@ func TestFreezeUnfreezeDeleteUndelete(t *testing.T) {
 		hh := newHandler(t, &fakeService{adminDeleteUser: func(context.Context, user.Admin, string, user.Meta) (user.AdminUser, error) {
 			return user.AdminUser{}, e
 		}}, nil)
-		rec = do(t, hh, call{method: "DELETE", path: "/accounts/" + uid, headers: superAdmin})
+		rec = do(t, hh, call{method: "DELETE", path: "/users/" + uid, headers: superAdmin})
 		if status, body := aipError(t, rec); rec.Code != c.code || status != c.status || (c.code == 500 && body["message"] != "internal error") {
 			t.Fatalf("%v: %d %s %v", c.err, rec.Code, status, body)
 		}
 	}
 	// 非法路径 id
-	rec = do(t, h, call{method: "POST", path: "/accounts/bad:freeze", body: map[string]string{"reason": "x"}, headers: operator})
+	rec = do(t, h, call{method: "POST", path: "/users/bad:freeze", body: map[string]string{"reason": "x"}, headers: operator})
 	if status, _ := aipError(t, rec); rec.Code != 400 || status != "INVALID_ARGUMENT/INVALID_ID" {
 		t.Fatalf("bad id: %d %s", rec.Code, status)
 	}

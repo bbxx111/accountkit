@@ -121,40 +121,40 @@ func (h *Handler) Router() http.Handler {
 	undeleteScope := authn.RequireScope(o, user.ScopeUndelete)
 
 	// 未认证端点（Task 4、5）
-	r.Post("/accounts:sendSignInCode", h.sendSignInCode)
-	r.Post("/accounts:signInWithCode", h.signInWithCode)
-	r.Post("/accounts:signInWithIdp", h.signInWithIdp)
-	r.Post("/accounts:sendSignInCompletionCode", h.sendSignInCompletionCode)
-	r.Post("/accounts:completeSignIn", h.completeSignIn)
+	r.Post("/users:sendSignInCode", h.sendSignInCode)
+	r.Post("/users:signInWithCode", h.signInWithCode)
+	r.Post("/users:signInWithIdp", h.signInWithIdp)
+	r.Post("/users:sendSignInCompletionCode", h.sendSignInCompletionCode)
+	r.Post("/users:completeSignIn", h.completeSignIn)
 	r.Post("/token", h.token)
 	r.Post("/revoke", h.revoke)
 
 	// 认证端点（Task 6、7）
-	r.With(anyScope).Get("/accounts/me", h.getMe)
+	r.With(anyScope).Get("/users/me", h.getMe)
 	r.Group(func(r chi.Router) {
 		r.Use(fullScope)
-		r.Patch("/accounts/me", h.updateMe)
-		r.Post("/accounts/me:sendReauthenticationCode", h.sendReauthenticationCode)
-		r.Post("/accounts/me:reauthenticate", h.reauthenticate)
-		r.Get("/accounts/me/sessions", h.listSessions)
-		r.Delete("/accounts/me/sessions/{session}", h.deleteSession)
-		r.Post("/accounts/me/sessions:revokeOthers", h.revokeOtherSessions)
+		r.Patch("/users/me", h.updateMe)
+		r.Post("/users/me:sendReauthenticationCode", h.sendReauthenticationCode)
+		r.Post("/users/me:reauthenticate", h.reauthenticate)
+		r.Get("/users/me/sessions", h.listSessions)
+		r.Delete("/users/me/sessions/{session}", h.deleteSession)
+		r.Post("/users/me/sessions:revokeOthers", h.revokeOtherSessions)
 	})
 
 	// 账号生命周期（阶段 5a）：软删除是敏感操作（§1.4）；:undelete 只放行冷静期账号的 user:undelete
 	// 凭证，不接受 user 凭证（§2.4）——DeleteMe 会吊销所有会话，但在 Redis fail-open 窗口内一个尚未
 	// 过期的 user access token 仍可能撤销本人的注销，因此收窄到专用 scope，而不是依赖领域层的状态校验。
-	r.With(fullScope, h.RequireRecentAuth()).Delete("/accounts/me", h.deleteMe)
-	r.With(undeleteScope).Post("/accounts/me:undelete", h.undelete)
+	r.With(fullScope, h.RequireRecentAuth()).Delete("/users/me", h.deleteMe)
+	r.With(undeleteScope).Post("/users/me:undelete", h.undelete)
 
 	// 身份绑定端点（Task 5）
 	r.Group(func(r chi.Router) {
 		r.Use(bindScope)
-		r.Post("/accounts/me:sendBindCode", h.sendBindCode)
-		r.Get("/accounts/me/identities", h.listIdentities)
-		r.Post("/accounts/me/identities", h.bindIdentity)
+		r.Post("/users/me:sendBindCode", h.sendBindCode)
+		r.Get("/users/me/identities", h.listIdentities)
+		r.Post("/users/me/identities", h.bindIdentity)
 	})
-	r.With(fullScope, h.RequireRecentAuth()).Delete("/accounts/me/identities/{identity}", h.unbindIdentity)
-	r.With(fullScope, h.RequireRecentAuth()).Post("/accounts/me/identities/{identity}:replace", h.replaceIdentity)
+	r.With(fullScope, h.RequireRecentAuth()).Delete("/users/me/identities/{identity}", h.unbindIdentity)
+	r.With(fullScope, h.RequireRecentAuth()).Post("/users/me/identities/{identity}:replace", h.replaceIdentity)
 	return r
 }

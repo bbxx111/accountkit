@@ -42,7 +42,7 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 
 服务读取 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS` 和 `ACCOUNTKIT_REQUIRED_IDENTITY_KINDS`。省略 E 沿用原装配，省略 R 为 PHONE/EMAIL any-of；非空 R 只能包含 PHONE/EMAIL 且为 E 子集，`[]` 显式不限定类型。仅邮件可设 E=EMAIL、R=EMAIL；纯微信可设 E=WECHAT、R=[] 并配置微信应用，无需 SMTP。显式启用 PHONE 报错，因为服务没有 SMS 服务商。配置在重启后生效，所有同实例副本须一致。
 
-消费者使用 `/v1/accounts`，管理面使用 `/admin/v1/accounts`；资源 name 同步 accounts，旧 users 路径404。未知第三方身份不满足 R 时返回 pending，尚不建号。客户端调用 `/v1/accounts:sendSignInCompletionCode` 和 `/v1/accounts:completeSignIn`，只用 `sign_in_completion_token` 和 PHONE/EMAIL 轮次；验证后关联已有活动账号或注册，详见 [库协议](../README.md#身份策略与登录补全)。
+消费者沿用 `/v1/users`，管理面沿用 `/admin/v1/users`；资源 name 使用 users 及其子资源。此前未发布的 accounts 路径返回 404，不注册别名或重定向。未知第三方身份不满足 R 时返回 pending，尚不建号。客户端调用 `/v1/users:sendSignInCompletionCode` 和 `/v1/users:completeSignIn`，只用 `sign_in_completion_token` 和 PHONE/EMAIL 轮次；验证后关联已有活动账号或注册，详见 [库协议](../README.md#身份策略与登录补全)及[协议升级说明](compatibility.md#身份策略与登录补全协议升级)。
 
 普通第三方绑定从已登录账号设置发起。纯第三方近期认证要重新登录并替换 token pair，核对 user_id 后继续；普通 IdP 仍不能恢复冷静期账号，手机/邮箱和管理员恢复保留。migrate 只检查静态 E/R 与迁移依赖，不构造发送器、IdP 或认证 handler；serve 才校验显式启用类型的真实运行能力。
 
@@ -116,7 +116,7 @@ healthz 只表示进程存活。readyz 要求启动完成、未停机且 Postgre
 
 ## 更换邮箱或手机号
 
-服务复用 [库的换绑端点](../README.md#手机号与邮箱换绑)：先完成必要的重新认证，向新地址请求 BIND 码，再调用 `POST /v1/accounts/me/identities/{identity}:replace`。保留当前会话，撤销其他会话；旧身份 ID 失效，客户端应保存响应中的新资源名。服务默认只启用邮件投递，短信禁用策略不变。
+服务复用 [库的换绑端点](../README.md#手机号与邮箱换绑)：先完成必要的重新认证，向新地址请求 BIND 码，再调用 `POST /v1/users/me/identities/{identity}:replace`。保留当前会话，撤销其他会话；旧身份 ID 失效，客户端应保存响应中的新资源名。服务默认只启用邮件投递，短信禁用策略不变。
 
 数据库明确回滚时旧绑定保持，但已经消费的验证码不能恢复；结果未知时先查询身份列表确认。旧邮箱之后的新登录可能建立另一个账号，不会获得原账号的数据。业务服务继续执行自身 scope/资源归属校验，access 吊销的 Redis fail-open 限制不变。实现的本地检查见[换绑验收记录](../openspec/changes/archive/2026-10-03-add-identity-replacement/verification.md)。
 

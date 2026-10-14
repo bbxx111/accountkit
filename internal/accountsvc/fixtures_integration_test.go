@@ -578,13 +578,13 @@ func (f *integrationFixture) call(method, address, bearer string, body any, want
 }
 func (f *integrationFixture) login(p *serviceProcess, target string) map[string]any {
 	f.t.Helper()
-	f.call("POST", p.baseURL+"/v1/accounts:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": target}, 200)
+	f.call("POST", p.baseURL+"/v1/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": target}, 200)
 	m := f.smtp.mail(f.t)
 	if m.target != target || !strings.Contains(m.body, "登录") {
 		f.t.Fatal("wrong SMTP recipient or purpose")
 	}
 	f.secrets = append(f.secrets, target, m.code)
-	out := f.call("POST", p.baseURL+"/v1/accounts:signInWithCode", "", map[string]any{"email": map[string]string{"code_id": f.codeID(target), "target": target, "code": m.code}}, 200)
+	out := f.call("POST", p.baseURL+"/v1/users:signInWithCode", "", map[string]any{"email": map[string]string{"code_id": f.codeID(target), "target": target, "code": m.code}}, 200)
 	f.secrets = append(f.secrets, out["access_token"].(string), out["refresh_token"].(string))
 	return out
 }

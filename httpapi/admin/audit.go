@@ -7,7 +7,7 @@ import (
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 )
 
-// GET /accounts/{user}/auditEvents?page_size=&page_token=  —— 读取不产生审计事件（§4.3）。
+// GET /users/{user}/auditEvents?page_size=&page_token=  —— 读取不产生审计事件（§4.3）。
 func (h *Handler) listAuditEvents(w http.ResponseWriter, r *http.Request) {
 	uid, ok := userID(w, r)
 	if !ok {

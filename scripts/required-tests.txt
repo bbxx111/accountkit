@@ -383,7 +383,7 @@ github.com/bbxx111/accountkit/user/TestWithActiveUsersValidatesBeforeIO
 github.com/bbxx111/accountkit/TestIdentityPolicySignInCompletionAgainstRealDB
 github.com/bbxx111/accountkit/TestIdentityPolicyOnlyEmailAndUnrestrictedIdp
 github.com/bbxx111/accountkit/TestIdentityPolicyTighteningAndFlowIsolation
-github.com/bbxx111/accountkit/TestAccountsProtocolMigrationAgainstRealDB
+github.com/bbxx111/accountkit/TestUsersResourceProtocolAgainstRealDB
 github.com/bbxx111/accountkit/TestIdentityKindsConfig
 github.com/bbxx111/accountkit/TestIdentityKindsEnv
 github.com/bbxx111/accountkit/TestIdentityPolicyNewCapabilities

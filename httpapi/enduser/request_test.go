@@ -13,7 +13,7 @@ func TestRouterSetsRequestIDAndReturns404ForUnknownRoute(t *testing.T) {
 	if status, _ := aipError(t, rec); status != "NOT_FOUND/ROUTE_NOT_FOUND" {
 		t.Fatalf("404 body must be AIP-193: %s", rec.Body.String())
 	}
-	rec = do(t, h, call{method: "POST", path: "/accounts/me:frobnicate"}) // 真正不存在的自定义方法
+	rec = do(t, h, call{method: "POST", path: "/users/me:frobnicate"}) // 真正不存在的自定义方法
 	if rec.Code != 404 {
 		t.Fatalf("unknown custom method: %d", rec.Code)
 	}

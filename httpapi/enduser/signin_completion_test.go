@@ -57,11 +57,11 @@ func TestSignInCompletionEndpoints(t *testing.T) {
 	}
 	h := completionHandler(t, f)
 	// These public endpoints authenticate through the body; a supplied Bearer must not replace it.
-	r := do(t, h, call{method: "POST", path: "/accounts:sendSignInCompletionCode", body: completionCodeBody, bearer: "bad"})
+	r := do(t, h, call{method: "POST", path: "/users:sendSignInCompletionCode", body: completionCodeBody, bearer: "bad"})
 	if r.Code != 200 || r.Header().Get("Cache-Control") != "no-store" || !strings.Contains(r.Body.String(), `"code_id":"challenge"`) {
 		t.Fatalf("send: %d %s", r.Code, r.Body.String())
 	}
-	r = do(t, h, call{method: "POST", path: "/accounts:completeSignIn", body: completionBody, headers: devHeaders(), bearer: "bad"})
+	r = do(t, h, call{method: "POST", path: "/users:completeSignIn", body: completionBody, headers: devHeaders(), bearer: "bad"})
 	var got map[string]any
 	decode(t, r, &got)
 	if r.Code != 200 || got["access_token"] != "at" || got["user_id"] != "u_1" || got["is_new_user"] != false || got["token_type"] != "Bearer" || r.Header().Get("Cache-Control") != "no-store" {
@@ -73,7 +73,7 @@ func TestSignInCompletionPending(t *testing.T) {
 	f := &completionService{fakeService: &fakeService{}, complete: func(context.Context, string, user.CodeCredential, user.Device, user.Meta) (user.SignInResult, error) {
 		return user.SignInResult{Pending: &user.PendingSignIn{SignInCompletionToken: "pending", ExpireTime: testNow, EnabledIdentityKinds: []enum.IdentityKind{enum.IdentityEmail, enum.IdentityWeChat}}}, nil
 	}}
-	r := do(t, completionHandler(t, f), call{method: "POST", path: "/accounts:completeSignIn", body: completionBody})
+	r := do(t, completionHandler(t, f), call{method: "POST", path: "/users:completeSignIn", body: completionBody})
 	var got map[string]any
 	decode(t, r, &got)
 	want := map[string]any{"next_action": "COMPLETE_IDENTITY", "sign_in_completion_token": "pending", "expire_time": "2026-09-10T12:00:00Z", "enabled_identity_kinds": []any{"EMAIL", "WECHAT"}, "required_identity_kinds": []any{}}
@@ -92,12 +92,12 @@ func TestSignInCompletionRejectsMalformedCredentials(t *testing.T) {
 		strings.Replace(completionBody, `"code":"123456"`, `"code":"123456","unknown":true`, 1),
 		strings.Replace(completionBody, `"code_id":"0123456789abcdef0123456789abcdef",`, ``, 1),
 	} {
-		r := do(t, h, call{method: "POST", path: "/accounts:completeSignIn", body: body})
+		r := do(t, h, call{method: "POST", path: "/users:completeSignIn", body: body})
 		if r.Code != 400 {
 			t.Errorf("body %s: %d %s", body, r.Code, r.Body.String())
 		}
 	}
-	for _, path := range []string{"/accounts:sendSignInCompletionCode", "/accounts:completeSignIn"} {
+	for _, path := range []string{"/users:sendSignInCompletionCode", "/users:completeSignIn"} {
 		base := completionBody
 		if strings.Contains(path, "send") {
 			base = completionCodeBody
@@ -121,7 +121,7 @@ func TestSignInCompletionRejectsMalformedCredentials(t *testing.T) {
 		}
 	}
 	for _, ch := range []string{"WECHAT", "APPLE", "UNSPECIFIED", "email"} {
-		r := do(t, h, call{method: "POST", path: "/accounts:sendSignInCompletionCode", body: strings.Replace(completionCodeBody, "EMAIL", ch, 1)})
+		r := do(t, h, call{method: "POST", path: "/users:sendSignInCompletionCode", body: strings.Replace(completionCodeBody, "EMAIL", ch, 1)})
 		if s, _ := aipError(t, r); r.Code != 400 || s != "INVALID_ARGUMENT/CHANNEL_INVALID" {
 			t.Errorf("channel: %d %s", r.Code, s)
 		}
@@ -130,7 +130,7 @@ func TestSignInCompletionRejectsMalformedCredentials(t *testing.T) {
 
 func TestSignInCompletionOptionalCapability(t *testing.T) {
 	h := newHandler(t, &fakeService{})
-	for path, body := range map[string]string{"/accounts:sendSignInCompletionCode": completionCodeBody, "/accounts:completeSignIn": completionBody} {
+	for path, body := range map[string]string{"/users:sendSignInCompletionCode": completionCodeBody, "/users:completeSignIn": completionBody} {
 		r := do(t, h, call{method: "POST", path: path, body: body})
 		if s, _ := aipError(t, r); r.Code != 503 || s != "UNAVAILABLE/SIGN_IN_COMPLETION_NOT_CONFIGURED" {
 			t.Fatalf("%s: %d %s", path, r.Code, s)
@@ -156,7 +156,7 @@ func TestSignInCompletionErrorMappings(t *testing.T) {
 		}, complete: func(context.Context, string, user.CodeCredential, user.Device, user.Meta) (user.SignInResult, error) {
 			return user.SignInResult{}, tc.err
 		}}
-		for path, body := range map[string]string{"/accounts:sendSignInCompletionCode": completionCodeBody, "/accounts:completeSignIn": completionBody} {
+		for path, body := range map[string]string{"/users:sendSignInCompletionCode": completionCodeBody, "/users:completeSignIn": completionBody} {
 			r := do(t, completionHandler(t, f), call{method: "POST", path: path, body: body})
 			if s, _ := aipError(t, r); r.Code != tc.code || s != tc.status || strings.Contains(r.Body.String(), "private-secret") || r.Header().Get("WWW-Authenticate") != "" {
 				t.Errorf("%s: %d %s", path, r.Code, r.Body.String())
@@ -168,7 +168,7 @@ func TestSignInCompletionErrorMappings(t *testing.T) {
 func TestOrdinarySignInCodeRejectsCompletionFields(t *testing.T) {
 	h := newHandler(t, &fakeService{})
 	for _, extra := range []string{`"purpose":"SIGN_IN_COMPLETE"`, `"sign_in_completion_token":"opaque"`} {
-		r := do(t, h, call{method: "POST", path: "/accounts:sendSignInCode", body: `{"channel":"EMAIL","target":"a@example.test",` + extra + `}`})
+		r := do(t, h, call{method: "POST", path: "/users:sendSignInCode", body: `{"channel":"EMAIL","target":"a@example.test",` + extra + `}`})
 		if s, _ := aipError(t, r); r.Code != 400 || s != "INVALID_ARGUMENT/MALFORMED_BODY" {
 			t.Fatalf("%d %s", r.Code, s)
 		}
@@ -180,7 +180,7 @@ func TestSignInCompletionRejectsInvalidResultUnion(t *testing.T) {
 		f := &completionService{fakeService: &fakeService{}, complete: func(context.Context, string, user.CodeCredential, user.Device, user.Meta) (user.SignInResult, error) {
 			return res, nil
 		}}
-		r := do(t, completionHandler(t, f), call{method: "POST", path: "/accounts:completeSignIn", body: completionBody})
+		r := do(t, completionHandler(t, f), call{method: "POST", path: "/users:completeSignIn", body: completionBody})
 		if s, _ := aipError(t, r); r.Code != 500 || s != "INTERNAL/" || strings.Contains(r.Body.String(), "secret") {
 			t.Fatalf("union: %d %s", r.Code, r.Body.String())
 		}
@@ -202,7 +202,7 @@ func TestInitialSignInResultUnion(t *testing.T) {
 		}, signInWithIdp: func(context.Context, user.IdpCredential, user.Device, user.Meta) (user.SignInResult, error) {
 			return tc.result, nil
 		}}
-		for path, body := range map[string]string{"/accounts:signInWithCode": `{"phone":{"target":"+8613812341234","code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`, "/accounts:signInWithIdp": `{"wechat":{"app_id":"wx","code":"secret"}}`} {
+		for path, body := range map[string]string{"/users:signInWithCode": `{"phone":{"target":"+8613812341234","code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`, "/users:signInWithIdp": `{"wechat":{"app_id":"wx","code":"secret"}}`} {
 			t.Run(tc.name+path, func(t *testing.T) {
 				r := do(t, newHandler(t, f), call{method: "POST", path: path, body: body, headers: devHeaders()})
 				if r.Code != tc.code {
@@ -227,7 +227,7 @@ func TestInitialSignInResultUnion(t *testing.T) {
 
 func TestCompletionOneofDescribesOnlySupportedCredentials(t *testing.T) {
 	h := completionHandler(t, &completionService{fakeService: &fakeService{}})
-	r := do(t, h, call{method: "POST", path: "/accounts:completeSignIn", body: `{"sign_in_completion_token":"opaque"}`})
+	r := do(t, h, call{method: "POST", path: "/users:completeSignIn", body: `{"sign_in_completion_token":"opaque"}`})
 	s, body := aipError(t, r)
 	message, _ := body["message"].(string)
 	if s != "INVALID_ARGUMENT/CREDENTIAL_ONEOF" || strings.Contains(message, "wechat") || strings.Contains(message, "apple") {
@@ -256,7 +256,7 @@ func TestSignInCompletionDeviceHeaders(t *testing.T) {
 			}
 			return user.SignInResult{Tokens: &user.TokenResult{}}, nil
 		}}
-		for path, body := range map[string]string{"/accounts:sendSignInCompletionCode": completionCodeBody, "/accounts:completeSignIn": completionBody} {
+		for path, body := range map[string]string{"/users:sendSignInCompletionCode": completionCodeBody, "/users:completeSignIn": completionBody} {
 			r := do(t, completionHandler(t, f), call{method: "POST", path: path, body: body, headers: tc.headers})
 			if r.Code != 200 {
 				t.Fatalf("device accepted: %d %s", r.Code, r.Body.String())
@@ -265,7 +265,7 @@ func TestSignInCompletionDeviceHeaders(t *testing.T) {
 	}
 	h := completionHandler(t, &completionService{fakeService: &fakeService{}})
 	for _, headers := range []map[string]string{{"X-Device-Id": strings.Repeat("x", 65)}, {"X-Device-Name": strings.Repeat("x", 65)}, {"X-Device-Name": "line\nfeed"}} {
-		for path, body := range map[string]string{"/accounts:sendSignInCompletionCode": completionCodeBody, "/accounts:completeSignIn": completionBody} {
+		for path, body := range map[string]string{"/users:sendSignInCompletionCode": completionCodeBody, "/users:completeSignIn": completionBody} {
 			r := do(t, h, call{method: "POST", path: path, body: body, headers: headers})
 			if r.Code != 400 {
 				t.Fatalf("device invalid: %d %s", r.Code, r.Body.String())
@@ -276,7 +276,7 @@ func TestSignInCompletionDeviceHeaders(t *testing.T) {
 
 func TestSignInCompletionDeviceNamePreservesRawHeader(t *testing.T) {
 	for _, rawName := range []string{"\u00a0", "\u00a0Pixel 9\u00a0", " Pixel 9 "} {
-		for path, body := range map[string]string{"/accounts:sendSignInCompletionCode": completionCodeBody, "/accounts:completeSignIn": completionBody} {
+		for path, body := range map[string]string{"/users:sendSignInCompletionCode": completionCodeBody, "/users:completeSignIn": completionBody} {
 			t.Run(path+rawName, func(t *testing.T) {
 				var gotName string
 				check := func(dev user.Device) error {
@@ -316,7 +316,7 @@ func TestInitialSignInDeviceNameRetainsTrimming(t *testing.T) {
 			return user.SignInResult{Tokens: &user.TokenResult{AccessToken: "at"}}, nil
 		},
 	}
-	r := do(t, newHandler(t, f), call{method: "POST", path: "/accounts:signInWithCode", body: `{"email":{"target":"a@example.test","code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`, headers: map[string]string{"X-Device-Id": "device", "X-Device-Name": "\u00a0Pixel 9\u00a0"}})
+	r := do(t, newHandler(t, f), call{method: "POST", path: "/users:signInWithCode", body: `{"email":{"target":"a@example.test","code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`, headers: map[string]string{"X-Device-Id": "device", "X-Device-Name": "\u00a0Pixel 9\u00a0"}})
 	if r.Code != 200 {
 		t.Fatalf("initial login: %d %s", r.Code, r.Body.String())
 	}

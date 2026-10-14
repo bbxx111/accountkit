@@ -11,7 +11,7 @@ import (
 	"github.com/bbxx111/accountkit/user"
 )
 
-// POST /accounts/me:sendBindCode
+// POST /users/me:sendBindCode
 func (h *Handler) sendBindCode(w http.ResponseWriter, r *http.Request) {
 	p, ok := principal(w, r)
 	if !ok {
@@ -40,7 +40,7 @@ func (h *Handler) sendBindCode(w http.ResponseWriter, r *http.Request) {
 	writeChallenge(w, challenge)
 }
 
-// GET /accounts/me/identities
+// GET /users/me/identities
 func (h *Handler) listIdentities(w http.ResponseWriter, r *http.Request) {
 	p, ok := principal(w, r)
 	if !ok {
@@ -58,7 +58,7 @@ func (h *Handler) listIdentities(w http.ResponseWriter, r *http.Request) {
 	apierror.WriteJSON(w, http.StatusOK, out)
 }
 
-// POST /accounts/me/identities — body 为凭证 oneof；新建 201，幂等命中 200。
+// POST /users/me/identities — body 为凭证 oneof；新建 201，幂等命中 200。
 func (h *Handler) bindIdentity(w http.ResponseWriter, r *http.Request) {
 	p, ok := principal(w, r)
 	if !ok {
@@ -104,7 +104,7 @@ func (h *Handler) bindIdentity(w http.ResponseWriter, r *http.Request) {
 	apierror.WriteJSON(w, status, newIdentityResource(p.UserID, info))
 }
 
-// DELETE /accounts/me/identities/{identity} — 路由已挂 RequireScope(user) + RequireRecentAuth。
+// DELETE /users/me/identities/{identity} — 路由已挂 RequireScope(user) + RequireRecentAuth。
 func (h *Handler) unbindIdentity(w http.ResponseWriter, r *http.Request) {
 	p, ok := principal(w, r)
 	if !ok {

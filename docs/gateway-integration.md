@@ -13,7 +13,7 @@
 
 禁止因内省位于 `/v1` 下就无条件公开 `/v1/*`。公网访问内省和探针应在网关被拒绝，且不进入后端；是否允许管理员入口由单独策略决定。旧 `/internal/v1/introspect` 返回404，不重定向含凭据请求。网络策略、防火墙或工作负载策略还须把后端端口限制为网关与受信任内部调用方，验证未授权来源不能直连绕过。路径名称、回环开发示例和 Basic 认证都不能自动建立生产网络隔离。
 
-账号资源使用 `/v1/accounts` 及其子资源和自定义动作；管理账号资源使用 `/admin/v1/accounts`。公网清单须明确包含 `POST /v1/accounts:sendSignInCompletionCode` 与 `POST /v1/accounts:completeSignIn`，并分别配置匿名请求频率、突发与在途并发。旧 `/users` 路径不映射、不重定向；`/token`、`/revoke` 和内部内省规则保持。升级同时检查客户端响应 name 的 accounts 解析。
+账号资源沿用 `/v1/users` 及其子资源和自定义动作；管理账号资源沿用 `/admin/v1/users`，响应 name 使用 users 前缀。公网清单须明确包含 `POST /v1/users:sendSignInCompletionCode` 与 `POST /v1/users:completeSignIn`，并分别配置匿名请求频率、突发与在途并发。此前未发布的 `/accounts` 路径不映射、不重定向；`/token`、`/revoke` 和内部内省规则保持。客户端须适配[登录联合结果](compatibility.md#身份策略与登录补全协议升级)。
 
 网关认证不替代服务认证，也不把消费者 token 转换成管理员或内省身份。直接嵌入库的宿主依原契约注入管理员验证和可信请求元信息，不应仅因请求经过代理就注入未经验证的 Principal。
 
@@ -59,4 +59,4 @@ HTTPS 调用方必须校验证书；内省客户端默认拒绝 HTTP，只有调
 
 探针同址同协议。healthz 不访问外部依赖；readyz 在启动完成、未停机且 PostgreSQL/Redis 两秒总预算内可用时为200，否则503。SMTP 和运行期 OIDC 故障不单独改变整体 readiness。编排系统同步更新探针端口/协议、网关摘流和连接排空；终止宽限必须大于 `SHUTDOWN_TIMEOUT`，给库收尾留出预算。
 
-部署方按[发布清单](release-checklist.md#可选-accountsvc-发布)提供真实网关/网格、网络隔离、证书、可信 IP、限流、并发、透传、不重试、日志和停机证据。本地 TLS 代理仅核验服务与代理夹具行为，不能代替真实产品策略验收；本次本地结果保存在[传输验收记录](../openspec/changes/archive/2026-10-06-simplify-accountsvc-transport/verification.md)，实际部署项继续待验收。直接嵌入库无需部署 accountsvc，但仍由宿主完成同样的入口保护职责。
+部署方按[发布清单](release-checklist.md#accountsvc-产品上线)提供真实网关/网格、网络隔离、证书、可信 IP、限流、并发、透传、不重试、日志和停机证据。本地 TLS 代理仅核验服务与代理夹具行为，不能代替真实产品策略验收；本次本地结果保存在[传输验收记录](../openspec/changes/archive/2026-10-06-simplify-accountsvc-transport/verification.md)，实际部署项继续待验收。直接嵌入库无需部署 accountsvc，但仍由宿主完成同样的入口保护职责。

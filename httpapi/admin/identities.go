@@ -9,7 +9,7 @@ import (
 	"github.com/bbxx111/accountkit/ids"
 )
 
-// GET /accounts/{user}/identities/{identity}:reveal（super-admin）：解密返回明文，写 IDENTITY_REVEALED。
+// GET /users/{user}/identities/{identity}:reveal（super-admin）：解密返回明文，写 IDENTITY_REVEALED。
 func (h *Handler) revealIdentity(w http.ResponseWriter, r *http.Request) {
 	a, ok := h.principal(w, r)
 	if !ok {
@@ -29,5 +29,5 @@ func (h *Handler) revealIdentity(w http.ResponseWriter, r *http.Request) {
 		h.writeServiceError(w, r, err)
 		return
 	}
-	apierror.WriteJSON(w, http.StatusOK, revealResource{Name: "accounts/" + uid + "/identities/" + rv.ID, Kind: rv.Kind.String(), Subject: rv.Subject})
+	apierror.WriteJSON(w, http.StatusOK, revealResource{Name: "users/" + uid + "/identities/" + rv.ID, Kind: rv.Kind.String(), Subject: rv.Subject})
 }

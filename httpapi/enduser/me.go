@@ -18,7 +18,7 @@ func principal(w http.ResponseWriter, r *http.Request) (user.Principal, bool) {
 	return p, ok
 }
 
-// GET /accounts/me
+// GET /users/me
 func (h *Handler) getMe(w http.ResponseWriter, r *http.Request) {
 	p, ok := principal(w, r)
 	if !ok {
@@ -36,7 +36,7 @@ type updateMeRequest struct {
 	DisplayName *string `json:"display_name"`
 }
 
-// PATCH /accounts/me — 首版只允许 display_name。
+// PATCH /users/me — 首版只允许 display_name。
 func (h *Handler) updateMe(w http.ResponseWriter, r *http.Request) {
 	p, ok := principal(w, r)
 	if !ok {
@@ -59,7 +59,7 @@ func (h *Handler) updateMe(w http.ResponseWriter, r *http.Request) {
 	apierror.WriteJSON(w, http.StatusOK, newMeResource(me))
 }
 
-// POST /accounts/me:sendReauthenticationCode
+// POST /users/me:sendReauthenticationCode
 func (h *Handler) sendReauthenticationCode(w http.ResponseWriter, r *http.Request) {
 	p, ok := principal(w, r)
 	if !ok {
@@ -88,7 +88,7 @@ func (h *Handler) sendReauthenticationCode(w http.ResponseWriter, r *http.Reques
 	writeChallenge(w, challenge)
 }
 
-// POST /accounts/me:reauthenticate — 只接受 phone/email 凭证；响应不含 refresh_token。
+// POST /users/me:reauthenticate — 只接受 phone/email 凭证；响应不含 refresh_token。
 func (h *Handler) reauthenticate(w http.ResponseWriter, r *http.Request) {
 	p, ok := principal(w, r)
 	if !ok {
@@ -112,7 +112,7 @@ func (h *Handler) reauthenticate(w http.ResponseWriter, r *http.Request) {
 	writeToken(w, res)
 }
 
-// DELETE /accounts/me — AIP-164 软删除；返回删除后的账号资源（state = PENDING_DELETION，含 delete_time / purge_time）。
+// DELETE /users/me — AIP-164 软删除；返回删除后的账号资源（state = PENDING_DELETION，含 delete_time / purge_time）。
 // 请求体忽略；近期认证由路由上的 RequireRecentAuth 保证。
 func (h *Handler) deleteMe(w http.ResponseWriter, r *http.Request) {
 	p, ok := principal(w, r)
@@ -127,7 +127,7 @@ func (h *Handler) deleteMe(w http.ResponseWriter, r *http.Request) {
 	apierror.WriteJSON(w, http.StatusOK, newMeResource(me))
 }
 
-// POST /accounts/me:undelete — 取消注销；返回恢复后的账号资源。请求体忽略（与 sessions:revokeOthers 一致）。
+// POST /users/me:undelete — 取消注销；返回恢复后的账号资源。请求体忽略（与 sessions:revokeOthers 一致）。
 func (h *Handler) undelete(w http.ResponseWriter, r *http.Request) {
 	p, ok := principal(w, r)
 	if !ok {

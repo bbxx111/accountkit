@@ -2,30 +2,30 @@ package enduser_test
 
 import "testing"
 
-// Removed users routes must keep the normal route-not-found response rather than
-// invoke authentication, redirect, or act as aliases for accounts routes.
-func TestLegacyUsersRoutesAreNotAliases(t *testing.T) {
+// Unpublished accounts routes must keep the normal route-not-found response rather than
+// invoke authentication, redirect, or act as aliases for users routes.
+func TestUnpublishedAccountsRoutesAreNotAliases(t *testing.T) {
 	h := newHandler(t, &fakeService{})
 	for _, route := range []struct{ method, path string }{
-		{"POST", "/users:sendSignInCode"},
-		{"POST", "/users:signInWithCode"},
-		{"POST", "/users:signInWithIdp"},
-		{"POST", "/users:sendSignInCompletionCode"},
-		{"POST", "/users:completeSignIn"},
-		{"GET", "/users/me"},
-		{"PATCH", "/users/me"},
-		{"POST", "/users/me:sendReauthenticationCode"},
-		{"POST", "/users/me:reauthenticate"},
-		{"GET", "/users/me/sessions"},
-		{"DELETE", "/users/me/sessions/s_0k3f9c2m1xq71"},
-		{"POST", "/users/me/sessions:revokeOthers"},
-		{"DELETE", "/users/me"},
-		{"POST", "/users/me:undelete"},
-		{"POST", "/users/me:sendBindCode"},
-		{"GET", "/users/me/identities"},
-		{"POST", "/users/me/identities"},
-		{"DELETE", "/users/me/identities/i_0k3f9c2m1xq71"},
-		{"POST", "/users/me/identities/i_0k3f9c2m1xq71:replace"},
+		{"POST", "/accounts:sendSignInCode"},
+		{"POST", "/accounts:signInWithCode"},
+		{"POST", "/accounts:signInWithIdp"},
+		{"POST", "/accounts:sendSignInCompletionCode"},
+		{"POST", "/accounts:completeSignIn"},
+		{"GET", "/accounts/me"},
+		{"PATCH", "/accounts/me"},
+		{"POST", "/accounts/me:sendReauthenticationCode"},
+		{"POST", "/accounts/me:reauthenticate"},
+		{"GET", "/accounts/me/sessions"},
+		{"DELETE", "/accounts/me/sessions/s_0k3f9c2m1xq71"},
+		{"POST", "/accounts/me/sessions:revokeOthers"},
+		{"DELETE", "/accounts/me"},
+		{"POST", "/accounts/me:undelete"},
+		{"POST", "/accounts/me:sendBindCode"},
+		{"GET", "/accounts/me/identities"},
+		{"POST", "/accounts/me/identities"},
+		{"DELETE", "/accounts/me/identities/i_0k3f9c2m1xq71"},
+		{"POST", "/accounts/me/identities/i_0k3f9c2m1xq71:replace"},
 	} {
 		t.Run(route.method+route.path, func(t *testing.T) {
 			rec := do(t, h, call{method: route.method, path: route.path})

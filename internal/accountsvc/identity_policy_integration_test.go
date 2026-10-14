@@ -106,20 +106,20 @@ func servicePureWeChat(t *testing.T) {
 	p := f.start(nil)
 	headers := map[string]string{"X-Device-Id": "provider-device", "X-Device-Name": "Provider phone"}
 	f.secrets = append(f.secrets, "private-initial-code", "private-relogin-code")
-	h, pair := transportRequest(t, f.client, "POST", p.baseURL+"/v1/accounts:signInWithIdp", "application/json", providerSignInBody(t, "private-initial-code"), headers, 200)
+	h, pair := transportRequest(t, f.client, "POST", p.baseURL+"/v1/users:signInWithIdp", "application/json", providerSignInBody(t, "private-initial-code"), headers, 200)
 	if pair["scope"] != "user" || pair["is_new_user"] != true || pair["next_action"] != nil || h.Get("Cache-Control") != "no-store" {
 		t.Fatal("pure provider sign-in did not register with a normal private token response")
 	}
 	access, refresh := pair["access_token"].(string), pair["refresh_token"].(string)
 	f.secrets = append(f.secrets, access, refresh)
-	_, relogin := transportRequest(t, f.client, "POST", p.baseURL+"/v1/accounts:signInWithIdp", "application/json", providerSignInBody(t, "private-relogin-code"), headers, 200)
+	_, relogin := transportRequest(t, f.client, "POST", p.baseURL+"/v1/users:signInWithIdp", "application/json", providerSignInBody(t, "private-relogin-code"), headers, 200)
 	if relogin["user_id"] != pair["user_id"] || relogin["is_new_user"] != false || relogin["access_token"] == access {
 		t.Fatal("pure provider re-login did not retain the account and replace the session")
 	}
 	f.secrets = append(f.secrets, relogin["access_token"].(string), relogin["refresh_token"].(string))
 	f.introspect(p, access, false)
 	f.introspect(p, relogin["access_token"].(string), true)
-	f.call("POST", p.baseURL+"/v1/accounts:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": "disabled@example.test"}, 400)
+	f.call("POST", p.baseURL+"/v1/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": "disabled@example.test"}, 400)
 	select {
 	case <-f.smtp.messages:
 		t.Fatal("disabled EMAIL reached SMTP")
@@ -140,7 +140,7 @@ func serviceGatewayCompletion(t *testing.T) {
 	internal := newTestGateway(t, p.baseURL, f.cert, true)
 	headers := map[string]string{"X-Device-Id": "completion-gateway-device", "X-Device-Name": "Completion phone", "X-Request-Id": "completion-initial", "X-Forwarded-For": "198.51.100.27", "Forwarded": "for=198.51.100.27"}
 	f.secrets = append(f.secrets, "private-pending-code")
-	h, pending := transportRequest(t, f.client, "POST", p.baseURL+"/v1/accounts:signInWithIdp", "application/json", providerSignInBody(t, "private-pending-code"), headers, 200)
+	h, pending := transportRequest(t, f.client, "POST", p.baseURL+"/v1/users:signInWithIdp", "application/json", providerSignInBody(t, "private-pending-code"), headers, 200)
 	token, ok := pending["sign_in_completion_token"].(string)
 	if !ok || token == "" || pending["next_action"] != "COMPLETE_IDENTITY" || pending["user_id"] != nil || pending["access_token"] != nil || h.Get("Cache-Control") != "no-store" {
 		t.Fatal("provider sign-in did not return a private pending-only result")
@@ -152,7 +152,7 @@ func serviceGatewayCompletion(t *testing.T) {
 			t.Fatal("pending sign-in created account resources")
 		}
 	}
-	for _, path := range []string{"/v1/users:sendSignInCompletionCode", "/v1/users:completeSignIn", "/v1/introspect", "/healthz", "/readyz", "/admin/v1/accounts", "/admin/v1/accounts:completeSignIn"} {
+	for _, path := range []string{"/v1/accounts:sendSignInCompletionCode", "/v1/accounts:completeSignIn", "/v1/introspect", "/healthz", "/readyz", "/admin/v1/users", "/admin/v1/users:completeSignIn"} {
 		transportRequest(t, f.client, "POST", public.server.URL+path, "application/json", `{}`, headers, 404)
 	}
 	if public.transport.calls.Load() != 0 {
@@ -162,7 +162,7 @@ func serviceGatewayCompletion(t *testing.T) {
 	f.secrets = append(f.secrets, target)
 	send := func(ticket, channel string, want int) (http.Header, map[string]any) {
 		raw, _ := json.Marshal(map[string]string{"sign_in_completion_token": ticket, "channel": channel, "target": target})
-		return transportRequest(t, f.client, "POST", public.server.URL+"/v1/accounts:sendSignInCompletionCode", "application/json", string(raw), headers, want)
+		return transportRequest(t, f.client, "POST", public.server.URL+"/v1/users:sendSignInCompletionCode", "application/json", string(raw), headers, want)
 	}
 	_, invalid := send("private-invalid-completion-token", "EMAIL", 400)
 	if detail, _ := invalid["error"].(map[string]any); detail["reason"] != "SIGN_IN_COMPLETION_INVALID" {
@@ -189,17 +189,17 @@ func serviceGatewayCompletion(t *testing.T) {
 	}
 	raw, _ := json.Marshal(map[string]any{"sign_in_completion_token": token, "email": map[string]string{"code_id": f.codeID(target), "target": target, "code": m.code}})
 	headers["X-Request-Id"] = "completion-final"
-	h, pair := transportRequest(t, f.client, "POST", public.server.URL+"/v1/accounts:completeSignIn", "application/json", string(raw), headers, 200)
+	h, pair := transportRequest(t, f.client, "POST", public.server.URL+"/v1/users:completeSignIn", "application/json", string(raw), headers, 200)
 	if pair["scope"] != "user" || pair["is_new_user"] != true || pair["next_action"] != nil || h.Get("Cache-Control") != "no-store" {
 		t.Fatal("gateway completion did not return normal private tokens")
 	}
 	f.secrets = append(f.secrets, pair["access_token"].(string), pair["refresh_token"].(string))
-	_, replay := transportRequest(t, f.client, "POST", public.server.URL+"/v1/accounts:completeSignIn", "application/json", string(raw), headers, 200)
+	_, replay := transportRequest(t, f.client, "POST", public.server.URL+"/v1/users:completeSignIn", "application/json", string(raw), headers, 200)
 	if replay["access_token"] != pair["access_token"] || replay["refresh_token"] != pair["refresh_token"] || replay["user_id"] != pair["user_id"] {
 		t.Fatal("gateway retried completion did not return the same result")
 	}
 	headers["Authorization"] = "Bearer " + pair["access_token"].(string)
-	_, sessions := transportRequest(t, f.client, "GET", public.server.URL+"/v1/accounts/me/sessions", "", "", headers, 200)
+	_, sessions := transportRequest(t, f.client, "GET", public.server.URL+"/v1/users/me/sessions", "", "", headers, 200)
 	items, _ := sessions["sessions"].([]any)
 	if len(items) != 1 {
 		t.Fatal("completion replay created another session")
@@ -236,7 +236,7 @@ func serviceMigrationFlowKeys(t *testing.T) {
 	oldKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{9}, 32))
 	f.secrets = append(f.secrets, oldKey, "private-old-key-code")
 	p := f.start(map[string]string{"ACCOUNTKIT_SUBJECT_CIPHER_KEYS": "2:" + oldKey, "ACCOUNTKIT_SUBJECT_CIPHER_ACTIVE_KEY": "2"})
-	_, pending := transportRequest(t, f.client, "POST", p.baseURL+"/v1/accounts:signInWithIdp", "application/json", providerSignInBody(t, "private-old-key-code"), map[string]string{"X-Device-Id": "old-key-device"}, 200)
+	_, pending := transportRequest(t, f.client, "POST", p.baseURL+"/v1/users:signInWithIdp", "application/json", providerSignInBody(t, "private-old-key-code"), map[string]string{"X-Device-Id": "old-key-device"}, 200)
 	if token, _ := pending["sign_in_completion_token"].(string); token == "" {
 		t.Fatal("missing old-key pending flow")
 	} else {

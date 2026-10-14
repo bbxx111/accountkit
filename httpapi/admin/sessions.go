@@ -9,7 +9,7 @@ import (
 	"github.com/bbxx111/accountkit/ids"
 )
 
-// GET /accounts/{user}/sessions
+// GET /users/{user}/sessions
 func (h *Handler) listSessions(w http.ResponseWriter, r *http.Request) {
 	uid, ok := userID(w, r)
 	if !ok {
@@ -22,12 +22,12 @@ func (h *Handler) listSessions(w http.ResponseWriter, r *http.Request) {
 	}
 	out := sessionList{Sessions: make([]sessionResource, 0, len(items))}
 	for _, s := range items {
-		out.Sessions = append(out.Sessions, sessionResource{Name: "accounts/" + uid + "/sessions/" + s.ID, DeviceID: s.DeviceID, DeviceName: s.DeviceName, CreateTime: fmtTime(s.CreateTime), LastUsedTime: fmtTime(s.LastUsedTime)})
+		out.Sessions = append(out.Sessions, sessionResource{Name: "users/" + uid + "/sessions/" + s.ID, DeviceID: s.DeviceID, DeviceName: s.DeviceName, CreateTime: fmtTime(s.CreateTime), LastUsedTime: fmtTime(s.LastUsedTime)})
 	}
 	apierror.WriteJSON(w, http.StatusOK, out)
 }
 
-// DELETE /accounts/{user}/sessions/{session} → 204
+// DELETE /users/{user}/sessions/{session} → 204
 func (h *Handler) deleteSession(w http.ResponseWriter, r *http.Request) {
 	a, ok := h.principal(w, r)
 	if !ok {
@@ -49,7 +49,7 @@ func (h *Handler) deleteSession(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// POST /accounts/{user}/sessions:revokeAll → 200 {revoked_count}
+// POST /users/{user}/sessions:revokeAll → 200 {revoked_count}
 func (h *Handler) revokeAllSessions(w http.ResponseWriter, r *http.Request) {
 	a, ok := h.principal(w, r)
 	if !ok {

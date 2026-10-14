@@ -386,11 +386,11 @@ func TestBeforeDeleteHTTPErrorClassification(t *testing.T) {
 				}
 				defer withHost.Close()
 				before := snapshotSource(t, pool)
-				req := httptest.NewRequest("DELETE", "/accounts/me", nil)
+				req := httptest.NewRequest("DELETE", "/users/me", nil)
 				handler := withHost.EndUserHandler()
 				req.Header.Set("Authorization", "Bearer "+access)
 				if admin {
-					req = httptest.NewRequest("DELETE", "/accounts/"+f.UserID, nil)
+					req = httptest.NewRequest("DELETE", "/users/"+f.UserID, nil)
 					req.Header.Set("X-Test-Admin", "fixture|admin|ops|super-admin")
 					handler = stubVerifier{}.Middleware()(withHost.AdminHandler())
 				}

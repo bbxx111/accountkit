@@ -25,7 +25,7 @@ func TestCodeChallengeHTTPContract(t *testing.T) {
 			return challenge, nil
 		},
 	}, principal)
-	for _, path := range []string{"/accounts:sendSignInCode", "/accounts/me:sendBindCode", "/accounts/me:sendReauthenticationCode"} {
+	for _, path := range []string{"/users:sendSignInCode", "/users/me:sendBindCode", "/users/me:sendReauthenticationCode"} {
 		for _, channel := range []string{"PHONE", "EMAIL"} {
 			t.Run(path+channel, func(t *testing.T) {
 				w := do(t, newHandler(t, f), call{method: "POST", path: path, bearer: "good", body: map[string]string{"channel": channel, "target": "person@example.test"}})
@@ -68,7 +68,7 @@ func TestCodeChallengeHTTPContract(t *testing.T) {
 	h := replacementHandler(t, &replacementService{fakeService: f, replace: func(_ context.Context, _ user.Principal, _ string, c user.CodeCredential, _ user.Meta) (user.IdentityInfo, error) {
 		return user.IdentityInfo{}, check(c)
 	}}, nil)
-	for _, path := range []string{"/accounts:signInWithCode", "/accounts/me/identities", "/accounts/me:reauthenticate", replacementPath} {
+	for _, path := range []string{"/users:signInWithCode", "/users/me/identities", "/users/me:reauthenticate", replacementPath} {
 		for _, channel := range []string{"phone", "email"} {
 			for _, badID := range []string{"", "UPPER0123456789abcdef0123456789ab", "abcd"} {
 				w := do(t, h, call{method: "POST", path: path, bearer: "good", headers: devHeaders(), body: map[string]any{channel: map[string]string{"target": "person@example.test", "code": "valid", "code_id": badID}}})

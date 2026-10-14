@@ -32,7 +32,7 @@ func TestHostContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	recorder := httptest.NewRecorder()
-	a.AdminHandler().ServeHTTP(recorder, httptest.NewRequest("GET", "/accounts", nil))
+	a.AdminHandler().ServeHTTP(recorder, httptest.NewRequest("GET", "/users", nil))
 	if recorder.Code != 503 {
 		t.Fatalf("admin without verifier = %d", recorder.Code)
 	}

@@ -20,7 +20,7 @@
 - **THEN** 直接注册并返回 user，不强制另一种身份；不能凭第三方邮箱提示识别别的已有账号
 
 ### Requirement: 独立补全端点与票据字段
-系统 SHALL 仅新增 POST /accounts:sendSignInCompletionCode 和 POST /accounts:completeSignIn 两个登录补全业务端点。两者 SHALL 在请求体使用 sign_in_completion_token。pending 响应 SHALL 使用同名字段及 next_action=COMPLETE_IDENTITY、expire_time、启用和必需身份集合。补全发码 SHALL 与普通 sendSignInCode 保持独立，不能通过普通发码入口的可选票据或公开 purpose 参数切换用途。
+系统 SHALL 仅新增 POST /users:sendSignInCompletionCode 和 POST /users:completeSignIn 两个登录补全业务端点。两者 SHALL 在请求体使用 sign_in_completion_token。pending 响应 SHALL 使用同名字段及 next_action=COMPLETE_IDENTITY、expire_time、启用和必需身份集合。补全发码 SHALL 与普通 sendSignInCode 保持独立，不能通过普通发码入口的可选票据或公开 purpose 参数切换用途。
 
 #### Scenario: 补全发码
 - **WHEN** 客户端向 sendSignInCompletionCode 提交有效 sign_in_completion_token、PHONE/EMAIL channel 和 target

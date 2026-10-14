@@ -48,7 +48,7 @@ func newTokenResponse(t user.TokenResult) tokenResponse {
 	}
 }
 
-// meResource 是 accounts/me 的 C 端 DTO；显式选字段，绝不序列化领域结构体。
+// meResource 是 users/me 的 C 端 DTO；显式选字段，绝不序列化领域结构体。
 type meResource struct {
 	Name        string  `json:"name"`
 	State       string  `json:"state"`
@@ -60,7 +60,7 @@ type meResource struct {
 
 func newMeResource(m user.Me) meResource {
 	return meResource{
-		Name: "accounts/" + m.ID, State: m.State.String(), DisplayName: m.DisplayName,
+		Name: "users/" + m.ID, State: m.State.String(), DisplayName: m.DisplayName,
 		CreateTime: fmtTime(m.CreateTime), DeleteTime: fmtTimePtr(m.DeleteTime), PurgeTime: fmtTimePtr(m.PurgeTime),
 	}
 }
@@ -76,12 +76,12 @@ type sessionResource struct {
 
 func newSessionResource(userID string, s user.SessionInfo) sessionResource {
 	return sessionResource{
-		Name: "accounts/" + userID + "/sessions/" + s.ID, DeviceID: s.DeviceID, DeviceName: s.DeviceName,
+		Name: "users/" + userID + "/sessions/" + s.ID, DeviceID: s.DeviceID, DeviceName: s.DeviceName,
 		CreateTime: fmtTime(s.CreateTime), LastUsedTime: fmtTime(s.LastUsedTime), IsCurrent: s.IsCurrent,
 	}
 }
 
-// identityResource 是 accounts/me/identities 的 C 端 DTO；第三方身份的 masked_subject 为空串。
+// identityResource 是 users/me/identities 的 C 端 DTO；第三方身份的 masked_subject 为空串。
 type identityResource struct {
 	Name          string `json:"name"`
 	Kind          string `json:"kind"`
@@ -90,7 +90,7 @@ type identityResource struct {
 }
 
 func newIdentityResource(userID string, i user.IdentityInfo) identityResource {
-	return identityResource{Name: "accounts/" + userID + "/identities/" + i.ID, Kind: i.Kind.String(), MaskedSubject: i.MaskedSubject, CreateTime: fmtTime(i.CreateTime)}
+	return identityResource{Name: "users/" + userID + "/identities/" + i.ID, Kind: i.Kind.String(), MaskedSubject: i.MaskedSubject, CreateTime: fmtTime(i.CreateTime)}
 }
 
 type identityList struct {

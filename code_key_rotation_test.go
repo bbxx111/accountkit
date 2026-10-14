@@ -166,10 +166,10 @@ func TestCodeKeyRotationIntegration(t *testing.T) {
 			}
 			sendBody := func(target string) any { return map[string]string{"channel": channel, "target": target} }
 			old := f.auth(1, false)
-			f.call(old, "POST", "/accounts:sendSignInCode", "", sendBody(targets[0]), 200, "")
-			original := f.call(old, "POST", "/accounts:signInWithCode", "", proof(targets[0], f.sent.code(targets[0])), 200, "")
+			f.call(old, "POST", "/users:sendSignInCode", "", sendBody(targets[0]), 200, "")
+			original := f.call(old, "POST", "/users:signInWithCode", "", proof(targets[0], f.sent.code(targets[0])), 200, "")
 			time.Sleep(1100 * time.Millisecond)
-			f.call(old, "POST", "/accounts:sendSignInCode", "", sendBody(targets[0]), 200, "")
+			f.call(old, "POST", "/users:sendSignInCode", "", sendBody(targets[0]), 200, "")
 			plain := f.sent.code(targets[0])
 			if len(plain) != 6 {
 				t.Fatal("sign-in code was not delivered")
@@ -180,34 +180,34 @@ func TestCodeKeyRotationIntegration(t *testing.T) {
 			if wrong == plain {
 				wrong = "1" + plain[1:]
 			}
-			f.call(fresh, "POST", "/accounts:signInWithCode", "", proof(targets[0], wrong), 400, "CODE_INVALID")
+			f.call(fresh, "POST", "/users:signInWithCode", "", proof(targets[0], wrong), 400, "CODE_INVALID")
 			isolated := f.auth(2, true)
-			f.call(isolated, "POST", "/accounts:signInWithCode", "", proof(targets[0], plain), 400, "CODE_EXPIRED")
-			pair := f.call(fresh, "POST", "/accounts:signInWithCode", "", proof(targets[0], plain), 200, "")
+			f.call(isolated, "POST", "/users:signInWithCode", "", proof(targets[0], plain), 400, "CODE_EXPIRED")
+			pair := f.call(fresh, "POST", "/users:signInWithCode", "", proof(targets[0], plain), 200, "")
 			if pair["user_id"] != original["user_id"] || pair["is_new_user"] != false {
 				t.Fatal("rotated login did not reuse the original K1 account")
 			}
 			uid, access := pair["user_id"].(string), pair["access_token"].(string)
-			f.call(fresh, "POST", "/accounts:signInWithCode", "", proof(targets[0], plain), 400, "CODE_EXPIRED")
+			f.call(fresh, "POST", "/users:signInWithCode", "", proof(targets[0], plain), 400, "CODE_EXPIRED")
 			p, err := fresh.Users().Authenticate(f.ctx, access)
 			if err != nil || p.UserID != uid {
 				t.Fatal("rotated login access has wrong account")
 			}
 			// Reverse direction: K2 issues BIND, a freshly constructed K1 consumes it.
-			f.call(fresh, "POST", "/accounts/me:sendBindCode", access, sendBody(targets[1]), 200, "")
+			f.call(fresh, "POST", "/users/me:sendBindCode", access, sendBody(targets[1]), 200, "")
 			back := f.auth(1, false)
-			bound := f.call(back, "POST", "/accounts/me/identities", access, proof(targets[1], f.sent.code(targets[1])), 201, "")
-			f.call(back, "POST", "/accounts/me:sendBindCode", access, sendBody(targets[2]), 200, "")
+			bound := f.call(back, "POST", "/users/me/identities", access, proof(targets[1], f.sent.code(targets[1])), 201, "")
+			f.call(back, "POST", "/users/me:sendBindCode", access, sendBody(targets[2]), 200, "")
 			name := bound["name"].(string)
-			if !strings.HasPrefix(name, "accounts/"+uid+"/identities/") || bound["kind"] != channel {
+			if !strings.HasPrefix(name, "users/"+uid+"/identities/") || bound["kind"] != channel {
 				t.Fatal("bound identity belongs to wrong account/channel")
 			}
 			id := name[strings.LastIndex(name, "/")+1:]
-			replaced := f.call(fresh, "POST", "/accounts/me/identities/"+id+":replace", access, proof(targets[2], f.sent.code(targets[2])), 200, "")
+			replaced := f.call(fresh, "POST", "/users/me/identities/"+id+":replace", access, proof(targets[2], f.sent.code(targets[2])), 200, "")
 			if replaced["name"] == name || replaced["kind"] != channel {
 				t.Fatal("replacement did not create correct identity")
 			}
-			list := f.call(fresh, "GET", "/accounts/me/identities", access, nil, 200, "")["identities"].([]any)
+			list := f.call(fresh, "GET", "/users/me/identities", access, nil, 200, "")["identities"].([]any)
 			if len(list) != 2 {
 				t.Fatal("bind/replacement changed identity count")
 			}
@@ -223,8 +223,8 @@ func TestCodeKeyRotationIntegration(t *testing.T) {
 				t.Fatal("replacement identity absent")
 			}
 			time.Sleep(1100 * time.Millisecond) // Real Redis expiry of the original target cooldown.
-			f.call(back, "POST", "/accounts/me:sendReauthenticationCode", access, sendBody(targets[0]), 200, "")
-			reauth := f.call(fresh, "POST", "/accounts/me:reauthenticate", access, proof(targets[0], f.sent.code(targets[0])), 200, "")
+			f.call(back, "POST", "/users/me:sendReauthenticationCode", access, sendBody(targets[0]), 200, "")
+			reauth := f.call(fresh, "POST", "/users/me:reauthenticate", access, proof(targets[0], f.sent.code(targets[0])), 200, "")
 			p2, err := fresh.Users().Authenticate(f.ctx, reauth["access_token"].(string))
 			if err != nil || p2.UserID != uid || p2.SessionID != p.SessionID || !p2.AuthTime.After(p.AuthTime) {
 				t.Fatal("old REAUTH proof did not renew the same account/session")
@@ -232,7 +232,7 @@ func TestCodeKeyRotationIntegration(t *testing.T) {
 			if _, ok := reauth["refresh_token"]; ok {
 				t.Fatal("reauthentication unexpectedly issued refresh credential")
 			}
-			f.call(fresh, "GET", "/accounts/me", reauth["access_token"].(string), nil, 200, "")
+			f.call(fresh, "GET", "/users/me", reauth["access_token"].(string), nil, 200, "")
 			fresh.Close()
 			back.Close()
 			isolated.Close()
@@ -250,11 +250,11 @@ func TestCodeKeyRotationIntegration(t *testing.T) {
 		for _, tc := range []struct{ channel, target string }{{"PHONE", "+8613812345199"}, {"EMAIL", "rotation-failed@example.test"}} {
 			body := map[string]string{"channel": tc.channel, "target": tc.target}
 			f.sent.fail.Store(true)
-			f.call(old, "POST", "/accounts:sendSignInCode", "", body, 503, "DEPENDENCY_UNAVAILABLE")
+			f.call(old, "POST", "/users:sendSignInCode", "", body, 503, "DEPENDENCY_UNAVAILABLE")
 			f.sent.fail.Store(false)
-			f.call(fresh, "POST", "/accounts:sendSignInCode", "", body, 429, "COOLDOWN")
+			f.call(fresh, "POST", "/users:sendSignInCode", "", body, 429, "COOLDOWN")
 			time.Sleep(1100 * time.Millisecond)
-			f.call(fresh, "POST", "/accounts:sendSignInCode", "", body, 429, "TARGET_LIMIT")
+			f.call(fresh, "POST", "/users:sendSignInCode", "", body, 429, "TARGET_LIMIT")
 		}
 		old.Close()
 		fresh.Close()

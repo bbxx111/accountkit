@@ -51,7 +51,7 @@ func TestListAuditEvents(t *testing.T) {
 	}}
 	h := newHandler(t, f, fa)
 
-	rec := do(t, h, call{method: "GET", path: "/accounts/" + uid + "/auditEvents?page_size=2", headers: operator})
+	rec := do(t, h, call{method: "GET", path: "/users/" + uid + "/auditEvents?page_size=2", headers: operator})
 	var out map[string]any
 	decode(t, rec, &out)
 	if rec.Code != 200 || got.uid != uid || got.limit != 3 || got.after != nil {
@@ -66,7 +66,7 @@ func TestListAuditEvents(t *testing.T) {
 	if first["flow_id"] != flow {
 		t.Fatal("missing flow correlation")
 	}
-	if first["name"] != "accounts/"+uid+"/auditEvents/e_0k3f9c2m1xq71" || first["event_type"] != "SIGN_IN" || first["actor_kind"] != "USER" || first["result"] != "SUCCESS" || first["identity_kind"] != "PHONE" || first["ip"] != "203.0.113.5" || first["reason"] != "NEW_USER" {
+	if first["name"] != "users/"+uid+"/auditEvents/e_0k3f9c2m1xq71" || first["event_type"] != "SIGN_IN" || first["actor_kind"] != "USER" || first["result"] != "SUCCESS" || first["identity_kind"] != "PHONE" || first["ip"] != "203.0.113.5" || first["reason"] != "NEW_USER" {
 		t.Fatalf("event 1: %v", first)
 	}
 	second := evs[1].(map[string]any)
@@ -77,7 +77,7 @@ func TestListAuditEvents(t *testing.T) {
 		t.Fatalf("nullable fields must be null: %v", second)
 	}
 	// 第二页：token → after 游标（上一页最后一条的 occur_time, id）
-	rec = do(t, h, call{method: "GET", path: "/accounts/" + uid + "/auditEvents?page_size=2&page_token=" + out["next_page_token"].(string), headers: operator})
+	rec = do(t, h, call{method: "GET", path: "/users/" + uid + "/auditEvents?page_size=2&page_token=" + out["next_page_token"].(string), headers: operator})
 	if rec.Code != 200 || got.after == nil || got.after.ID != "e_0k3f9c2m1xq72" || !got.after.Time.Equal(testNow.Add(time.Second)) {
 		t.Fatalf("page 2 cursor: %d %+v", rec.Code, got.after)
 	}
@@ -86,13 +86,13 @@ func TestListAuditEvents(t *testing.T) {
 		t.Fatalf("last page must have empty token: %v", out)
 	}
 	// 未知用户 404；非法 id 400；坏 token 400
-	if rec = do(t, h, call{method: "GET", path: "/accounts/u_0000000000000/auditEvents", headers: operator}); rec.Code != 404 {
+	if rec = do(t, h, call{method: "GET", path: "/users/u_0000000000000/auditEvents", headers: operator}); rec.Code != 404 {
 		t.Fatalf("unknown user: %d", rec.Code)
 	}
-	if rec = do(t, h, call{method: "GET", path: "/accounts/nope/auditEvents", headers: operator}); rec.Code != 400 {
+	if rec = do(t, h, call{method: "GET", path: "/users/nope/auditEvents", headers: operator}); rec.Code != 400 {
 		t.Fatalf("bad id: %d", rec.Code)
 	}
-	rec = do(t, h, call{method: "GET", path: "/accounts/" + uid + "/auditEvents?page_token=zzz", headers: operator})
+	rec = do(t, h, call{method: "GET", path: "/users/" + uid + "/auditEvents?page_token=zzz", headers: operator})
 	if status, _ := aipError(t, rec); rec.Code != 400 || status != "INVALID_ARGUMENT/INVALID_PAGE_TOKEN" {
 		t.Fatalf("bad token: %d %s", rec.Code, status)
 	}

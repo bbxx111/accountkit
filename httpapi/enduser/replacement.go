@@ -18,7 +18,7 @@ type IdentityReplacer interface {
 	ReplaceIdentity(ctx context.Context, p user.Principal, identityID string, cred user.CodeCredential, meta user.Meta) (user.IdentityInfo, error)
 }
 
-// POST /accounts/me/identities/{identity}:replace
+// POST /users/me/identities/{identity}:replace
 func (h *Handler) replaceIdentity(w http.ResponseWriter, r *http.Request) {
 	p, ok := principal(w, r)
 	if !ok {

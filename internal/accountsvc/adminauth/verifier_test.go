@@ -117,7 +117,7 @@ func request(v *Verifier, token, role string) *httptest.ResponseRecorder {
 		handler = v.RequireRole(role)(handler)
 	}
 	handler = v.Middleware(handler)
-	r := httptest.NewRequest("GET", "https://accountsvc.test/admin/v1/users", nil)
+	r := httptest.NewRequest("GET", "https://accountsvc.test/admin/v1/accounts", nil)
 	if token != "" {
 		r.Header.Set("Authorization", "Bearer "+token)
 	}

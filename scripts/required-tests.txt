@@ -427,3 +427,5 @@ github.com/bbxx111/accountkit/user/code/TestCompletionChallengeFlowAndDeadline
 github.com/bbxx111/accountkit/user/code/TestCompletionChallengeSharedLimits
 github.com/bbxx111/accountkit/user/code/TestCompletionChallengeConcurrentRotation
 github.com/bbxx111/accountkit/user/code/TestCompletionChallengeRealRedisDeadline
+github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationIdentityPolicy
+github.com/bbxx111/accountkit/internal/accountsvc/TestApplicationMigrationChecksSearchPath

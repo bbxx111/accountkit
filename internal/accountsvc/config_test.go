@@ -17,6 +17,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bbxx111/accountkit/user/sender/smtp"
 )
 
 func configEnvironment(t *testing.T) {
@@ -112,6 +114,44 @@ func TestConfigProductionDefaultsAndMigrate(t *testing.T) {
 		t.Setenv("ACCOUNTSVC_SMTP_PASSWORD", "")
 		if _, err := LoadConfig("serve"); err != nil {
 			t.Fatal(err)
+		}
+	})
+}
+
+func TestConfigIdentityPolicySMTP(t *testing.T) {
+	for _, provider := range []string{"WECHAT", "APPLE"} {
+		t.Run(provider+" ignores disabled SMTP", func(t *testing.T) {
+			serveEnvironment(t)
+			t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", provider)
+			t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
+			t.Setenv("ACCOUNTKIT_APPLE_BUNDLE_IDS", "com.example.accountsvc")
+			t.Setenv("ACCOUNTKIT_WECHAT_APPS", "test-app:synthetic-provider-secret")
+			for _, key := range []string{"HOST", "PORT", "FROM", "USERNAME", "PASSWORD", "TLS_MODE", "TIMEOUT"} {
+				t.Setenv("ACCOUNTSVC_SMTP_"+key, "malformed-disabled-smtp")
+			}
+			cfg, err := LoadConfig("serve")
+			if err != nil {
+				t.Fatalf("disabled EMAIL must ignore SMTP: %v", err)
+			}
+			if cfg.SMTP != (smtp.Config{}) {
+				t.Fatal("disabled EMAIL parsed SMTP settings")
+			}
+		})
+	}
+	t.Run("explicit PHONE requires SMS support", func(t *testing.T) {
+		serveEnvironment(t)
+		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "PHONE,EMAIL")
+		_, err := LoadConfig("serve")
+		if err == nil || !strings.Contains(err.Error(), "PHONE") || !strings.Contains(err.Error(), "SMS") {
+			t.Fatalf("expected missing SMS support, got %v", err)
+		}
+	})
+	t.Run("migrate does not require provider capabilities", func(t *testing.T) {
+		configEnvironment(t)
+		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "PHONE,WECHAT")
+		t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "PHONE")
+		if _, err := LoadConfig("migrate"); err != nil {
+			t.Fatalf("migrate must allow static valid policy: %v", err)
 		}
 	})
 }
@@ -261,6 +301,8 @@ func TestConfigRejectsUnsafeValuesWithoutLeaks(t *testing.T) {
 		{"ACCOUNTSVC_ADMIN_ISSUER", "https://synthetic-secret.example.org", "ADMIN_ISSUER"},
 		{"ACCOUNTKIT_ACCESS_TOKEN_TTL", "synthetic-secret", "ACCESS_TOKEN_TTL"},
 		{"ACCOUNTKIT_AUTH_SCHEMA", "synthetic-secret", "AUTH_SCHEMA"},
+		{"ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "[]", "ENABLED_IDENTITY_KINDS"},
+		{"ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "WECHAT", "REQUIRED_IDENTITY_KINDS"},
 		{"ACCOUNTKIT_DEFAULT_REGION", "synthetic-secret", "DEFAULT_REGION"},
 	} {
 		t.Run(tc.key+tc.want, func(t *testing.T) {

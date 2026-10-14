@@ -7,12 +7,17 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/bbxx111/accountkit"
+	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/internal/accountsvc/adminauth"
 	"github.com/bbxx111/accountkit/internal/accountsvc/introspection"
+	"github.com/bbxx111/accountkit/migrations"
+	"github.com/bbxx111/accountkit/pii"
+	"github.com/bbxx111/accountkit/user"
 	"github.com/bbxx111/accountkit/user/sender"
 	"github.com/bbxx111/accountkit/user/sender/smtp"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -114,15 +119,22 @@ func (b *adminBridge) RequireRole(role string) func(http.Handler) http.Handler {
 }
 
 func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*application, error) {
-	var email sender.EmailSender = sender.Disabled{}
-	if cfg.command == "serve" {
+	if cfg.command == "migrate" {
+		return newMigrationApplication(cfg, d)
+	}
+	var sms sender.SMSSender
+	var email sender.EmailSender
+	if cfg.Library.EnabledIdentityKinds == nil {
+		sms = sender.Disabled{}
+	}
+	if cfg.identityEnabled(enum.IdentityEmail) {
 		s, err := smtp.New(cfg.SMTP)
 		if err != nil {
 			return nil, errors.New("accountsvc: SMTP configuration failed")
 		}
 		email = s
 	}
-	deps := accountkit.Deps{Pool: d.pool, Redis: d.redis, SMSSender: sender.Disabled{}, EmailSender: email, Logger: logger, ClientIP: clientIP, RequestID: requestID}
+	deps := accountkit.Deps{Pool: d.pool, Redis: d.redis, SMSSender: sms, EmailSender: email, Logger: logger, ClientIP: clientIP, RequestID: requestID}
 	bridge := &adminBridge{}
 	if cfg.command == "serve" && cfg.AdminEnabled {
 		deps.AdminVerifier = bridge
@@ -153,6 +165,38 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 		return nil
 	}
 	return app, nil
+}
+
+// migrate 只装配存储迁移与密钥核验，不创建认证服务、发送器、IdP 或 HTTP 处理器。
+func newMigrationApplication(cfg Config, d *dependencies) (*application, error) {
+	if err := cfg.Library.Validate(); err != nil {
+		return nil, safeLibraryConfigError(err)
+	}
+	digester, err := pii.NewDigester(cfg.Library.SubjectHMACKeys, cfg.Library.SubjectHMACActiveKey)
+	if err != nil {
+		return nil, invalidConfig("ACCOUNTKIT_SUBJECT_HMAC_KEYS / ACCOUNTKIT_SUBJECT_HMAC_ACTIVE_KEY")
+	}
+	cipher, err := pii.NewCipher(cfg.Library.SubjectCipherKeys, cfg.Library.SubjectCipherActiveKey)
+	if err != nil {
+		return nil, invalidConfig("ACCOUNTKIT_SUBJECT_CIPHER_KEYS / ACCOUNTKIT_SUBJECT_CIPHER_ACTIVE_KEY")
+	}
+	return &application{migrate: func(ctx context.Context) error {
+		var path string
+		if err := d.pool.QueryRow(ctx, "SHOW search_path").Scan(&path); err != nil {
+			return errors.New("accountsvc: inspect database search_path failed")
+		}
+		first := strings.Trim(strings.TrimSpace(strings.Split(path, ",")[0]), `"`)
+		if first != cfg.Library.Schema {
+			return accountkit.ErrSearchPath
+		}
+		if err := d.redis.Ping(ctx).Err(); err != nil {
+			return errors.New("accountsvc: Redis connection failed")
+		}
+		if err := migrations.Up(ctx, d.pool.Config().ConnConfig, cfg.Library.Schema); err != nil {
+			return err
+		}
+		return user.CheckKeyVersions(ctx, user.NewRepo(d.pool), digester, cipher, time.Now())
+	}}, nil
 }
 
 func startupCleanup(cfg Config, d *dependencies, app *application, listeners []net.Listener) error {

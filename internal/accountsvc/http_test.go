@@ -170,7 +170,7 @@ func TestConsumerDecoderRejectsOversizeBeforeCodeIssuance(t *testing.T) {
 	valid := `{"channel":"EMAIL","target":"oversize@example.org"}`
 	for _, body := range []string{valid + strings.Repeat(" ", 65536), `{"channel":"EMAIL","target":"` + strings.Repeat("x", 65536) + `@example.org"}`} {
 		for _, chunked := range []bool{false, true} {
-			req, err := http.NewRequest("POST", server.URL+"/v1/users:sendSignInCode", strings.NewReader(body))
+			req, err := http.NewRequest("POST", server.URL+"/v1/accounts:sendSignInCode", strings.NewReader(body))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -198,7 +198,7 @@ func TestConsumerDecoderRejectsOversizeBeforeCodeIssuance(t *testing.T) {
 		}
 	}
 	// 有效控制请求使用同一真实 decoder/领域存储，证明测试不会因装配不可用而假通过。
-	res, err := server.Client().Post(server.URL+"/v1/users:sendSignInCode", "application/json", strings.NewReader(valid))
+	res, err := server.Client().Post(server.URL+"/v1/accounts:sendSignInCode", "application/json", strings.NewReader(valid))
 	if err != nil {
 		t.Fatal(err)
 	}

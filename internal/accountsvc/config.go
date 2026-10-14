@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit"
+	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/internal/accountsvc/adminauth"
 	"github.com/bbxx111/accountkit/internal/accountsvc/introspection"
 	"github.com/bbxx111/accountkit/user/sender/smtp"
@@ -96,6 +97,9 @@ func LoadConfig(command string) (Config, error) {
 	if command == "migrate" {
 		return c, nil
 	}
+	if c.Library.EnabledIdentityKinds != nil && c.identityEnabled(enum.IdentityPhone) {
+		return Config{}, errors.New("accountsvc: PHONE requires SMS provider support; inject an SMS sender in an embedded host")
+	}
 	c.Mode = defaultEnv("MODE", "production")
 	if c.Mode != "production" && c.Mode != "development" {
 		return Config{}, invalidConfig("ACCOUNTSVC_MODE")
@@ -154,31 +158,33 @@ func LoadConfig(command string) (Config, error) {
 			c.TrustedProxyCIDRs = append(c.TrustedProxyCIDRs, prefix.Masked())
 		}
 	}
-	port, err := strconv.Atoi(env("SMTP_PORT"))
-	if err != nil || port < 1 || port > 65535 {
-		return Config{}, invalidConfig("ACCOUNTSVC_SMTP_PORT")
-	}
-	c.SMTP = smtp.Config{Host: env("SMTP_HOST"), Port: port, From: env("SMTP_FROM"), Username: env("SMTP_USERNAME"), Password: os.Getenv("ACCOUNTSVC_SMTP_PASSWORD"), TLSMode: defaultEnv("SMTP_TLS_MODE", "implicit")}
-	c.SMTP.Timeout, err = durationEnv("SMTP_TIMEOUT", 10*time.Second)
-	if err != nil {
-		return Config{}, err
-	}
-	if c.SMTP.Username == "" && (c.Mode == "production" || c.SMTP.Password != "") {
-		return Config{}, invalidConfig("ACCOUNTSVC_SMTP_USERNAME")
-	}
-	if c.SMTP.Password == "" && (c.Mode == "production" || c.SMTP.Username != "") {
-		return Config{}, invalidConfig("ACCOUNTSVC_SMTP_PASSWORD")
-	}
-	if c.Mode == "production" && c.SMTP.TLSMode == "none" {
-		return Config{}, invalidConfig("ACCOUNTSVC_SMTP_TLS_MODE")
-	}
-	if _, err = smtp.New(c.SMTP); err != nil {
-		for _, field := range []struct{ token, name string }{{"Host", "HOST"}, {"From", "FROM"}, {"TLSMode", "TLS_MODE"}, {"Timeout", "TIMEOUT"}} {
-			if strings.Contains(err.Error(), field.token) {
-				return Config{}, invalidConfig("ACCOUNTSVC_SMTP_" + field.name)
-			}
+	if c.identityEnabled(enum.IdentityEmail) {
+		port, err := strconv.Atoi(env("SMTP_PORT"))
+		if err != nil || port < 1 || port > 65535 {
+			return Config{}, invalidConfig("ACCOUNTSVC_SMTP_PORT")
 		}
-		return Config{}, invalidConfig("ACCOUNTSVC_SMTP configuration")
+		c.SMTP = smtp.Config{Host: env("SMTP_HOST"), Port: port, From: env("SMTP_FROM"), Username: env("SMTP_USERNAME"), Password: os.Getenv("ACCOUNTSVC_SMTP_PASSWORD"), TLSMode: defaultEnv("SMTP_TLS_MODE", "implicit")}
+		c.SMTP.Timeout, err = durationEnv("SMTP_TIMEOUT", 10*time.Second)
+		if err != nil {
+			return Config{}, err
+		}
+		if c.SMTP.Username == "" && (c.Mode == "production" || c.SMTP.Password != "") {
+			return Config{}, invalidConfig("ACCOUNTSVC_SMTP_USERNAME")
+		}
+		if c.SMTP.Password == "" && (c.Mode == "production" || c.SMTP.Username != "") {
+			return Config{}, invalidConfig("ACCOUNTSVC_SMTP_PASSWORD")
+		}
+		if c.Mode == "production" && c.SMTP.TLSMode == "none" {
+			return Config{}, invalidConfig("ACCOUNTSVC_SMTP_TLS_MODE")
+		}
+		if _, err = smtp.New(c.SMTP); err != nil {
+			for _, field := range []struct{ token, name string }{{"Host", "HOST"}, {"From", "FROM"}, {"TLSMode", "TLS_MODE"}, {"Timeout", "TIMEOUT"}} {
+				if strings.Contains(err.Error(), field.token) {
+					return Config{}, invalidConfig("ACCOUNTSVC_SMTP_" + field.name)
+				}
+			}
+			return Config{}, invalidConfig("ACCOUNTSVC_SMTP configuration")
+		}
 	}
 	c.IntrospectionClients, err = introspection.ParseClients(os.Getenv("ACCOUNTSVC_INTROSPECTION_CLIENTS"))
 	if err != nil {
@@ -218,6 +224,19 @@ func LoadConfig(command string) (Config, error) {
 	return c, nil
 }
 
+// 未配置 Enabled 时保持原 SMTP 装配；显式集合决定需要的发送器。
+func (c Config) identityEnabled(kind enum.IdentityKind) bool {
+	if c.Library.EnabledIdentityKinds == nil {
+		return true
+	}
+	for _, enabled := range c.Library.EnabledIdentityKinds {
+		if enabled == kind {
+			return true
+		}
+	}
+	return false
+}
+
 func validListenAddress(addr string) bool {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil || strings.ContainsAny(host, "\r\n\t /\\") {
@@ -228,7 +247,7 @@ func validListenAddress(addr string) bool {
 }
 
 var libraryErrorName = regexp.MustCompile(`^accountkit: (ACCOUNTKIT_[A-Z0-9_]+):`)
-var libraryErrorField = regexp.MustCompile(`^accountkit: ([A-Za-z][A-Za-z0-9]*)`)
+var libraryErrorField = regexp.MustCompile(`^(?:accountkit|user): ([A-Za-z][A-Za-z0-9]*)`)
 
 // 根 ConfigFromEnv 的解析/验证错误可含原始输入；仅取锚定的配置名称，不转出原错误。
 func safeLibraryConfigError(err error) error {
@@ -236,6 +255,8 @@ func safeLibraryConfigError(err error) error {
 		return invalidConfig(matches[1])
 	}
 	names := map[string]string{"Schema": "AUTH_SCHEMA", "KeyPrefix": "AUTH_KEY_PREFIX", "JWTKeys": "JWT_KEYS / ACCOUNTKIT_JWT_ACTIVE_KEY", "JWTIssuer": "JWT_ISSUER / ACCOUNTKIT_JWT_AUDIENCE", "SubjectHMACKeys": "SUBJECT_HMAC_KEYS / ACCOUNTKIT_SUBJECT_HMAC_ACTIVE_KEY", "SubjectCipherKeys": "SUBJECT_CIPHER_KEYS / ACCOUNTKIT_SUBJECT_CIPHER_ACTIVE_KEY", "AccessTokenTTL": "ACCESS_TOKEN_TTL", "RefreshTokenTTL": "REFRESH_TOKEN_TTL", "RefreshGrace": "REFRESH_GRACE", "ReauthMaxAge": "REAUTH_MAX_AGE", "CodeTTL": "CODE_TTL / ACCOUNTKIT_CODE_COOLDOWN", "Code": "CODE_MAX_ATTEMPTS / ACCOUNTKIT_CODE_DAILY_LIMIT_PER_TARGET / ACCOUNTKIT_CODE_DAILY_LIMIT_PER_IP", "MaxIdentitiesPerKind": "MAX_IDENTITIES_PER_KIND", "DeletionCoolingPeriod": "DELETION_COOLING_PERIOD / ACCOUNTKIT_AUDIT_RETENTION_DAYS", "DefaultRegion": "DEFAULT_REGION", "WeChatApps": "WECHAT_APPS", "AppleBundleIDs": "APPLE_BUNDLE_IDS", "AppleNonceTTL": "APPLE_NONCE_TTL", "WeChatAPIBaseURL": "WECHAT_API_BASE_URL", "AppleJWKSURL": "APPLE_JWKS_URL", "MaintenanceInterval": "MAINTENANCE_INTERVAL"}
+	names["EnabledIdentityKinds"] = "ENABLED_IDENTITY_KINDS"
+	names["RequiredIdentityKinds"] = "REQUIRED_IDENTITY_KINDS"
 	if matches := libraryErrorField.FindStringSubmatch(err.Error()); len(matches) == 2 {
 		if name, ok := names[matches[1]]; ok {
 			return invalidConfig("ACCOUNTKIT_" + name)

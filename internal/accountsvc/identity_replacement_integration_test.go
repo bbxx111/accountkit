@@ -43,7 +43,7 @@ func TestServiceIntegrationIdentityReplacement(t *testing.T) {
 	}
 	login := func(target, device string) map[string]any {
 		t.Helper()
-		f.call("POST", p.baseURL+"/v1/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": target}, 200)
+		f.call("POST", p.baseURL+"/v1/accounts:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": target}, 200)
 		code := mail(target, "登录")
 		out := replacementDeviceSignIn(t, f, p, target, code, device)
 		rememberPair(out)
@@ -62,7 +62,7 @@ func TestServiceIntegrationIdentityReplacement(t *testing.T) {
 	f.introspect(p, access, true)
 	f.introspect(p, other["access_token"].(string), true)
 	f.introspect(p, rotatedOther["access_token"].(string), true)
-	list := f.call("GET", p.baseURL+"/v1/users/me/identities", access, nil, 200)
+	list := f.call("GET", p.baseURL+"/v1/accounts/me/identities", access, nil, 200)
 	privateResponse(list)
 	identities := list["identities"].([]any)
 	if len(identities) != 1 {
@@ -70,8 +70,8 @@ func TestServiceIntegrationIdentityReplacement(t *testing.T) {
 	}
 	oldName := identities[0].(map[string]any)["name"].(string)
 	oldID := oldName[strings.LastIndex(oldName, "/")+1:]
-	path := "/v1/users/me/identities/" + oldID + ":replace"
-	f.call("POST", p.baseURL+"/v1/users/me:sendBindCode", access, map[string]string{"channel": "EMAIL", "target": newTarget}, 200)
+	path := "/v1/accounts/me/identities/" + oldID + ":replace"
+	f.call("POST", p.baseURL+"/v1/accounts/me:sendBindCode", access, map[string]string{"channel": "EMAIL", "target": newTarget}, 200)
 	bindCode := mail(newTarget, "绑定")
 	body := map[string]any{"email": map[string]string{"code_id": f.codeID(newTarget), "target": newTarget, "code": bindCode}}
 	time.Sleep(6 * time.Second)
@@ -80,9 +80,9 @@ func TestServiceIntegrationIdentityReplacement(t *testing.T) {
 	if rejected["error"].(map[string]any)["reason"] != "REAUTHENTICATION_REQUIRED" {
 		t.Fatal("expired auth did not require reauthentication")
 	}
-	f.call("POST", p.baseURL+"/v1/users/me:sendReauthenticationCode", access, map[string]string{"channel": "EMAIL", "target": oldTarget}, 200)
+	f.call("POST", p.baseURL+"/v1/accounts/me:sendReauthenticationCode", access, map[string]string{"channel": "EMAIL", "target": oldTarget}, 200)
 	reauthCode := mail(oldTarget, "重新认证")
-	reauth := f.call("POST", p.baseURL+"/v1/users/me:reauthenticate", access, map[string]any{"email": map[string]string{"code_id": f.codeID(oldTarget), "target": oldTarget, "code": reauthCode}}, 200)
+	reauth := f.call("POST", p.baseURL+"/v1/accounts/me:reauthenticate", access, map[string]any{"email": map[string]string{"code_id": f.codeID(oldTarget), "target": oldTarget, "code": reauthCode}}, 200)
 	if _, ok := reauth["refresh_token"]; ok {
 		t.Fatal("reauthentication returned unexpected refresh token")
 	}
@@ -96,19 +96,19 @@ func TestServiceIntegrationIdentityReplacement(t *testing.T) {
 		t.Fatal("replacement response is not the new masked identity resource")
 	}
 	privateResponse(f.call("POST", p.baseURL+path, access, body, 404))
-	list = f.call("GET", p.baseURL+"/v1/users/me/identities", access, nil, 200)
+	list = f.call("GET", p.baseURL+"/v1/accounts/me/identities", access, nil, 200)
 	privateResponse(list)
 	identities = list["identities"].([]any)
 	if len(identities) != 1 || identities[0].(map[string]any)["name"] != newName {
 		t.Fatal("list does not confirm replacement")
 	}
-	me := f.call("GET", p.baseURL+"/v1/users/me", access, nil, 200)
-	if me["name"] != "users/"+uid {
+	me := f.call("GET", p.baseURL+"/v1/accounts/me", access, nil, 200)
+	if me["name"] != "accounts/"+uid {
 		t.Fatal("replacement changed account")
 	}
 	f.introspect(p, access, true)
 	for _, token := range []string{other["access_token"].(string), rotatedOther["access_token"].(string)} {
-		privateResponse(f.call("GET", p.baseURL+"/v1/users/me", token, nil, 401))
+		privateResponse(f.call("GET", p.baseURL+"/v1/accounts/me", token, nil, 401))
 		f.introspect(p, token, false)
 	}
 	for _, token := range []string{previousOther, rotatedOther["refresh_token"].(string)} {
@@ -132,7 +132,7 @@ func TestServiceIntegrationIdentityReplacement(t *testing.T) {
 	p = f.start(nil)
 	f.introspect(p, access, true)
 	f.introspect(p, rotatedOther["access_token"].(string), false)
-	list = f.call("GET", p.baseURL+"/v1/users/me/identities", access, nil, 200)
+	list = f.call("GET", p.baseURL+"/v1/accounts/me/identities", access, nil, 200)
 	privateResponse(list)
 	identities = list["identities"].([]any)
 	if len(identities) != 1 || identities[0].(map[string]any)["name"] != newName {
@@ -153,7 +153,7 @@ func TestServiceIntegrationIdentityReplacement(t *testing.T) {
 	if oldLogin["user_id"] == uid || oldLogin["is_new_user"] != true {
 		t.Fatal("released address entered original account")
 	}
-	sms := f.call("POST", p.baseURL+"/v1/users:sendSignInCode", "", map[string]string{"channel": "PHONE", "target": "+8613812345678"}, 400)
+	sms := f.call("POST", p.baseURL+"/v1/accounts:sendSignInCode", "", map[string]string{"channel": "PHONE", "target": "+8613812345678"}, 400)
 	if sms["error"].(map[string]any)["reason"] != "CHANNEL_NOT_ENABLED" {
 		t.Fatal("service SMS disabled behavior changed")
 	}
@@ -178,7 +178,7 @@ func replacementDeviceSignIn(t *testing.T, f *integrationFixture, p *serviceProc
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := http.NewRequest("POST", p.baseURL+"/v1/users:signInWithCode", bytes.NewReader(raw))
+	r, err := http.NewRequest("POST", p.baseURL+"/v1/accounts:signInWithCode", bytes.NewReader(raw))
 	if err != nil {
 		t.Fatal(err)
 	}

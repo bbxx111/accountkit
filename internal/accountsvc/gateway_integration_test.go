@@ -60,8 +60,9 @@ func newTestGateway(t *testing.T, upstream string, cert tls.Certificate, interna
 		},
 	}
 	public := map[string]bool{
-		"/v1/users:sendSignInCode": true, "/v1/users:signInWithCode": true,
-		"/v1/users/me": true, "/v1/users/me/sessions": true,
+		"/v1/accounts:sendSignInCode": true, "/v1/accounts:signInWithCode": true,
+		"/v1/accounts:sendSignInCompletionCode": true, "/v1/accounts:completeSignIn": true,
+		"/v1/accounts/me": true, "/v1/accounts/me/sessions": true,
 		"/v1/token": true, "/v1/revoke": true,
 	}
 	g.server = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -85,6 +86,55 @@ func newTestGateway(t *testing.T, upstream string, cert tls.Certificate, interna
 	return g
 }
 
+func TestGatewayAccountsCompletionAllowlist(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil || !strings.Contains(string(body), `"sign_in_completion_token":"private-completion-token"`) {
+			t.Error("gateway changed completion proof body")
+		}
+		if r.Header.Get("X-Device-Id") != "completion-device" || r.Header.Get("X-Device-Name") != "Completion phone" {
+			t.Error("gateway changed completion device headers")
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer upstream.Close()
+	cert, _, _ := integrationCertificate(t)
+	g := newTestGateway(t, upstream.URL, cert, false)
+	client := g.server.Client()
+	defer client.CloseIdleConnections()
+	for _, action := range []string{"sendSignInCompletionCode", "completeSignIn"} {
+		r, err := http.NewRequest("POST", g.server.URL+"/v1/accounts:"+action, strings.NewReader(`{"sign_in_completion_token":"private-completion-token"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Header.Set("X-Device-Id", "completion-device")
+		r.Header.Set("X-Device-Name", "Completion phone")
+		resp, err := client.Do(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusAccepted || resp.Header.Get("Cache-Control") != "no-store" {
+			t.Fatalf("completion route not explicitly forwarded: %s returned %d", action, resp.StatusCode)
+		}
+	}
+	before := g.transport.calls.Load()
+	for _, path := range []string{"/v1/users:sendSignInCompletionCode", "/v1/users:completeSignIn", "/v1/users/me", "/v1/accounts:prepareSignIn", "/v1/accounts:anything", "/admin/v1/accounts", "/v1/introspect", "/healthz", "/readyz"} {
+		resp, err := client.Post(g.server.URL+path, "application/json", strings.NewReader(`{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("unlisted route %s returned %d", path, resp.StatusCode)
+		}
+	}
+	if g.transport.calls.Load() != before || strings.Contains(g.logs.String(), "private-completion-token") {
+		t.Fatal("denied request reached upstream or completion secret entered logs")
+	}
+}
+
 func TestServiceIntegrationGatewayBoundary(t *testing.T) {
 	f := newIntegration(t)
 	f.env["ACCOUNTKIT_CODE_COOLDOWN"] = "1m"
@@ -94,7 +144,7 @@ func TestServiceIntegrationGatewayBoundary(t *testing.T) {
 	})
 	public := newTestGateway(t, p.baseURL, f.cert, false)
 	internal := newTestGateway(t, p.baseURL, f.cert, true)
-	for _, path := range []string{"/v1/introspect", "/healthz", "/readyz", "/internal/v1/introspect", "/admin/v1/users", "/v1/not-allowlisted"} {
+	for _, path := range []string{"/v1/introspect", "/healthz", "/readyz", "/internal/v1/introspect", "/admin/v1/accounts", "/v1/not-allowlisted"} {
 		for _, method := range []string{"GET", "POST"} {
 			transportRequest(t, f.client, method, public.server.URL+path, "application/x-www-form-urlencoded", "token=private-blocked-token", nil, 404)
 		}
@@ -109,7 +159,7 @@ func TestServiceIntegrationGatewayBoundary(t *testing.T) {
 	}
 	target := "gateway@example.test"
 	body := `{"channel":"EMAIL","target":"` + target + `"}`
-	h, challenge := transportRequest(t, f.client, "POST", public.server.URL+"/v1/users:sendSignInCode", "application/json", body, headers, 200)
+	h, challenge := transportRequest(t, f.client, "POST", public.server.URL+"/v1/accounts:sendSignInCode", "application/json", body, headers, 200)
 	f.rememberChallenge(map[string]string{"target": target}, challenge)
 	if h.Get("X-Request-Id") != "gateway-send" {
 		t.Fatal("request ID not preserved")
@@ -119,7 +169,7 @@ func TestServiceIntegrationGatewayBoundary(t *testing.T) {
 		t.Fatal("gateway changed mail recipient")
 	}
 	f.secrets = append(f.secrets, target, m.code, "private-blocked-token")
-	h, out := transportRequest(t, f.client, "POST", public.server.URL+"/v1/users:sendSignInCode", "application/json", body, headers, 429)
+	h, out := transportRequest(t, f.client, "POST", public.server.URL+"/v1/accounts:sendSignInCode", "application/json", body, headers, 429)
 	retry, err := strconv.Atoi(h.Get("Retry-After"))
 	errObj, _ := out["error"].(map[string]any)
 	if err != nil || retry < 1 || errObj["reason"] != "COOLDOWN" {
@@ -127,15 +177,15 @@ func TestServiceIntegrationGatewayBoundary(t *testing.T) {
 	}
 	headers["X-Request-Id"] = "gateway-signin"
 	raw, _ := json.Marshal(map[string]any{"email": map[string]string{"code_id": f.codeID(target), "target": target, "code": m.code}})
-	h, pair := transportRequest(t, f.client, "POST", public.server.URL+"/v1/users:signInWithCode", "application/json", string(raw), headers, 200)
+	h, pair := transportRequest(t, f.client, "POST", public.server.URL+"/v1/accounts:signInWithCode", "application/json", string(raw), headers, 200)
 	if h.Get("Cache-Control") != "no-store" || h.Get("X-Request-Id") != "gateway-signin" {
 		t.Fatal("credential response cache or tracing semantics changed")
 	}
 	access, refresh := pair["access_token"].(string), pair["refresh_token"].(string)
 	f.secrets = append(f.secrets, access, refresh)
 	headers["Authorization"] = "Bearer " + access
-	transportRequest(t, f.client, "GET", public.server.URL+"/v1/users/me", "", "", headers, 200)
-	_, sessions := transportRequest(t, f.client, "GET", public.server.URL+"/v1/users/me/sessions", "", "", headers, 200)
+	transportRequest(t, f.client, "GET", public.server.URL+"/v1/accounts/me", "", "", headers, 200)
+	_, sessions := transportRequest(t, f.client, "GET", public.server.URL+"/v1/accounts/me/sessions", "", "", headers, 200)
 	items, _ := sessions["sessions"].([]any)
 	if len(items) != 1 {
 		t.Fatal("gateway login session missing")
@@ -145,7 +195,7 @@ func TestServiceIntegrationGatewayBoundary(t *testing.T) {
 		t.Fatal("gateway changed device metadata")
 	}
 	headers["Authorization"] = "Bearer invalid-consumer-token"
-	h, _ = transportRequest(t, f.client, "GET", public.server.URL+"/v1/users/me", "", "", headers, 401)
+	h, _ = transportRequest(t, f.client, "GET", public.server.URL+"/v1/accounts/me", "", "", headers, 401)
 	if !strings.HasPrefix(h.Get("WWW-Authenticate"), "Bearer ") {
 		t.Fatal("Bearer challenge lost")
 	}
@@ -182,7 +232,7 @@ func TestServiceIntegrationGatewayBoundary(t *testing.T) {
 	// Contrast a configured proxy's independently supplied chain with the
 	// gateway's reconstructed chain and the untrusted direct request below.
 	// The known forwarded IP is synthetic test data, not a spoofed identity.
-	transportRequest(t, f.client, "POST", p.baseURL+"/v1/users:sendSignInCode", "application/json", `{"channel":"EMAIL","target":"trusted-chain@example.test"}`, map[string]string{"X-Request-Id": "trusted-chain", "X-Forwarded-For": "203.0.113.77"}, 200)
+	transportRequest(t, f.client, "POST", p.baseURL+"/v1/accounts:sendSignInCode", "application/json", `{"channel":"EMAIL","target":"trusted-chain@example.test"}`, map[string]string{"X-Request-Id": "trusted-chain", "X-Forwarded-For": "203.0.113.77"}, 200)
 	m = f.smtp.mail(t)
 	f.secrets = append(f.secrets, m.target, m.code)
 	p.stop()
@@ -201,7 +251,7 @@ func TestServiceIntegrationGatewayBoundary(t *testing.T) {
 	p = f.start(map[string]string{"ACCOUNTSVC_TLS_ENABLED": "false", "ACCOUNTSVC_TLS_CERT_FILE": "", "ACCOUNTSVC_TLS_KEY_FILE": ""})
 	headers["X-Request-Id"] = "untrusted-direct"
 	body = `{"channel":"EMAIL","target":"untrusted@example.test"}`
-	transportRequest(t, f.client, "POST", p.baseURL+"/v1/users:sendSignInCode", "application/json", body, headers, 200)
+	transportRequest(t, f.client, "POST", p.baseURL+"/v1/accounts:sendSignInCode", "application/json", body, headers, 200)
 	m = f.smtp.mail(t)
 	f.secrets = append(f.secrets, m.target, m.code)
 	p.stop()
@@ -234,7 +284,7 @@ func gatewayCancellation(t *testing.T, stopProxy bool) {
 	t.Cleanup(client.CloseIdleConnections)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	r, _ := http.NewRequestWithContext(ctx, "GET", g.server.URL+"/v1/users/me", nil)
+	r, _ := http.NewRequestWithContext(ctx, "GET", g.server.URL+"/v1/accounts/me", nil)
 	done := make(chan error, 1)
 	go func() {
 		resp, err := client.Do(r)

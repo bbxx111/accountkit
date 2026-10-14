@@ -11,11 +11,111 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/bbxx111/accountkit"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
+
+func TestApplicationMigrateWithoutAuthenticationDependencies(t *testing.T) {
+	configEnvironment(t)
+	t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "PHONE,WECHAT")
+	t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "PHONE")
+	cfg, err := LoadConfig("migrate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := newApplication(cfg, &dependencies{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("migration construction requires runtime authentication dependencies: %v", err)
+	}
+	if app.migrate == nil || app.start != nil || app.initAdmin != nil || app.endUser != nil || app.admin != nil || app.introspect != nil {
+		t.Fatal("migration constructed authentication runtime")
+	}
+}
+
+func TestApplicationMigrationChecksSearchPath(t *testing.T) {
+	dsn := os.Getenv("SERVER_TEST_DB_DSN")
+	if dsn == "" {
+		t.Skip("SERVER_TEST_DB_DSN not set")
+	}
+	configEnvironment(t)
+	t.Setenv("ACCOUNTSVC_DATABASE_URL", dsn)
+	t.Setenv("ACCOUNTKIT_AUTH_SCHEMA", fmt.Sprintf("acctsvc_path_%d", time.Now().UnixNano()))
+	cfg, err := LoadConfig("migrate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pc, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pc.ConnConfig.RuntimeParams["search_path"] = "public"
+	pool, err := pgxpool.NewWithConfig(t.Context(), pc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if _, err := pool.Exec(ctx, "DROP SCHEMA IF EXISTS "+cfg.Library.Schema+" CASCADE"); err != nil {
+			t.Error("cleanup owned search_path schema failed")
+		}
+	})
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	app, err := newMigrationApplication(cfg, &dependencies{pool: pool, redis: rdb})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.migrate(t.Context()); !errors.Is(err, accountkit.ErrSearchPath) {
+		t.Fatalf("migrate did not enforce its configured search_path: %v", err)
+	}
+	var count int
+	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM pg_namespace WHERE nspname=$1", cfg.Library.Schema).Scan(&count); err != nil || count != 0 {
+		t.Fatal("invalid search_path migration performed DDL")
+	}
+}
+
+func TestApplicationIdPWithoutSMTP(t *testing.T) {
+	serveEnvironment(t)
+	t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "APPLE")
+	t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
+	t.Setenv("ACCOUNTKIT_APPLE_BUNDLE_IDS", "com.example.accountsvc")
+	t.Setenv("ACCOUNTSVC_SMTP_PORT", "invalid-disabled-port")
+	cfg, err := LoadConfig("serve")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pc, err := accountkit.PoolConfig(cfg.DatabaseURL, cfg.Library.Schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool, err := pgxpool.NewWithConfig(t.Context(), pc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+	app, err := newApplication(cfg, &dependencies{pool: pool, redis: rdb}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("pure IdP service requires SMTP: %v", err)
+	}
+	defer app.close()
+	if app.endUser == nil || app.admin == nil || app.introspect == nil {
+		t.Fatal("pure IdP handlers missing")
+	}
+}
 
 func TestRuntimeSingleListener(t *testing.T) {
 	for _, enabled := range []bool{false, true} {

@@ -23,7 +23,7 @@ func TestServiceIntegrationSessionExpiry(t *testing.T) {
 	const target = "service-expiry@example.test"
 	login := func(device string) map[string]any {
 		t.Helper()
-		f.call("POST", p.baseURL+"/v1/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": target}, 200)
+		f.call("POST", p.baseURL+"/v1/accounts:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": target}, 200)
 		m := f.smtp.mail(t)
 		if m.target != target || !strings.Contains(m.body, "登录") {
 			t.Fatal("wrong sign-in delivery")
@@ -57,8 +57,8 @@ func TestServiceIntegrationSessionExpiry(t *testing.T) {
 		path, bearer string
 		fields       int
 	}{
-		{"/v1/users/me/sessions", access, 6},
-		{"/admin/v1/users/" + uid + "/sessions", f.env["FIXTURE_operator"], 5},
+		{"/v1/accounts/me/sessions", access, 6},
+		{"/admin/v1/accounts/" + uid + "/sessions", f.env["FIXTURE_operator"], 5},
 	} {
 		list := f.call("GET", p.baseURL+tc.path, tc.bearer, nil, 200)
 		rows, ok := list["sessions"].([]any)
@@ -67,7 +67,7 @@ func TestServiceIntegrationSessionExpiry(t *testing.T) {
 			continue
 		}
 		row := rows[0].(map[string]any)
-		if len(row) != tc.fields || row["name"] != "users/"+uid+"/sessions/"+liveSID {
+		if len(row) != tc.fields || row["name"] != "accounts/"+uid+"/sessions/"+liveSID {
 			t.Error("active membership or session DTO changed")
 		}
 		for _, field := range []string{"name", "device_id", "device_name", "create_time", "last_used_time"} {
@@ -80,7 +80,7 @@ func TestServiceIntegrationSessionExpiry(t *testing.T) {
 		}
 		f.assertSafe(mustExpiryJSON(t, list))
 	}
-	detail := f.call("GET", p.baseURL+"/admin/v1/users/"+uid, f.env["FIXTURE_operator"], nil, 200)
+	detail := f.call("GET", p.baseURL+"/admin/v1/accounts/"+uid, f.env["FIXTURE_operator"], nil, 200)
 	if detail["active_session_count"] != float64(1) || len(detail) != 10 {
 		t.Error("detail count or DTO changed")
 	}
@@ -93,7 +93,7 @@ func TestServiceIntegrationSessionExpiry(t *testing.T) {
 		t.Error("refresh expiry error changed")
 	}
 	time.Sleep(1100 * time.Millisecond) // Sign-in and REAUTH share the real Redis cooldown.
-	f.call("POST", p.baseURL+"/v1/users/me:sendReauthenticationCode", access, map[string]string{"channel": "EMAIL", "target": target}, 200)
+	f.call("POST", p.baseURL+"/v1/accounts/me:sendReauthenticationCode", access, map[string]string{"channel": "EMAIL", "target": target}, 200)
 	m := f.smtp.mail(t)
 	f.secrets = append(f.secrets, m.target, m.code)
 	if m.target != target || !strings.Contains(m.body, "重新认证") {
@@ -101,7 +101,7 @@ func TestServiceIntegrationSessionExpiry(t *testing.T) {
 	}
 	// Preserve the WWW-Authenticate header in addition to asserting the error body.
 	raw := mustExpiryJSON(t, map[string]any{"email": map[string]string{"code_id": f.codeID(target), "target": target, "code": m.code}})
-	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/v1/users/me:reauthenticate", bytes.NewBufferString(raw))
+	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/v1/accounts/me:reauthenticate", bytes.NewBufferString(raw))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,13 +136,13 @@ func TestServiceIntegrationSessionExpiry(t *testing.T) {
 		t.Fatalf("expiry created revocation key: n=%d err=%v", n, err)
 	}
 	f.introspect(p, access, true)
-	me := f.call("GET", p.baseURL+"/v1/users/me", access, nil, 200)
+	me := f.call("GET", p.baseURL+"/v1/accounts/me", access, nil, 200)
 	if me["state"] != "ACTIVE" {
 		t.Error("expiry changed user state")
 	}
-	f.call("DELETE", p.baseURL+"/admin/v1/users/"+uid+"/sessions/"+sid, f.env["FIXTURE_operator"], nil, 204)
+	f.call("DELETE", p.baseURL+"/admin/v1/accounts/"+uid+"/sessions/"+sid, f.env["FIXTURE_operator"], nil, 204)
 	f.introspect(p, access, false)
-	f.call("GET", p.baseURL+"/v1/users/me", access, nil, 401)
+	f.call("GET", p.baseURL+"/v1/accounts/me", access, nil, 401)
 	p.stop()
 	f.assertAuditPrivate()
 	for _, typ := range []enum.EventType{enum.EventRefreshRejected, enum.EventReauthenticationFailed} {

@@ -6,6 +6,10 @@ import "github.com/redis/go-redis/v9"
 // on a mismatch the merged count moves to the active key with the earliest
 // existing expiry. Rotation never creates another window or counts aliases twice.
 const challengeBudgetLua = `
+local function redisTimeMS()
+  local now = redis.call('TIME')
+  return tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000)
+end
 local function failureBudget(keys)
   local count = 0
   local expiry = nil
@@ -29,7 +33,7 @@ end
 `
 
 // KEYS: {cooldown, target quota, challenge, failure} per unique digest; IP quota last.
-// ARGV: cooldownSec, dailyTarget, dailyIP, HMAC, ttlSec, quotaSec, id, user, session, failureLimit, flow, expireTimeMS.
+// ARGV: cooldownSec, dailyTarget, dailyIP, HMAC, ttlSec, quotaSec, id, user, session, failureLimit, flow, expireTimeMS, hardDeadlineMS (0 preserves ordinary relative TTL).
 var issueChallengeScript = redis.NewScript(challengeBudgetLua + `
 -- Lua tonumber accepts forms (1.0, 1e0, +1, 01) that Redis INCR rejects.
 -- Validate every writable quota before the first write; script errors cannot
@@ -45,6 +49,9 @@ local function quotaCount(raw)
   end
   return tonumber(raw)
 end
+local hardDeadline = tonumber(ARGV[13])
+if not hardDeadline or hardDeadline < 0 then return redis.error_reply('code: invalid hard deadline') end
+if hardDeadline > 0 and redisTimeMS() >= hardDeadline then return {'MISSING', 0} end
 local groups = (#KEYS - 1) / 4
 local failures = {}
 for j = 1, groups do failures[j] = KEYS[(j - 1) * 4 + 4] end
@@ -70,8 +77,9 @@ redis.call('SET', KEYS[1], '1', 'EX', ARGV[1])
 if redis.call('INCR', KEYS[2]) == 1 then redis.call('EXPIRE', KEYS[2], ARGV[6]) end
 if redis.call('INCR', ipKey) == 1 then redis.call('EXPIRE', ipKey, ARGV[6]) end
 for j = 1, groups do redis.call('DEL', KEYS[(j - 1) * 4 + 3]) end
-redis.call('HSET', KEYS[3], 'h', ARGV[4], 'n', '0', 'code_id', ARGV[7], 'user_id', ARGV[8], 'session_id', ARGV[9], 'flow_id', ARGV[11], 'expire_time', ARGV[12])
-redis.call('EXPIRE', KEYS[3], ARGV[5])
+redis.call('HSET', KEYS[3], 'h', ARGV[4], 'n', '0', 'code_id', ARGV[7], 'user_id', ARGV[8], 'session_id', ARGV[9], 'flow_id', ARGV[11], 'expire_time', ARGV[12], 'hard_deadline', ARGV[13])
+if hardDeadline > 0 then redis.call('PEXPIREAT', KEYS[3], ARGV[13])
+else redis.call('EXPIRE', KEYS[3], ARGV[5]) end
 return {'OK', 0}
 `)
 
@@ -101,6 +109,11 @@ if not id or not user or not session or not stored or not attempts or attempts <
   return redis.error_reply('code: invalid challenge')
 end
 if id ~= ARGV[1] or user ~= ARGV[2] or session ~= ARGV[3] or flow ~= ARGV[7] then return {'MISSING', 0} end
+local hardDeadline = tonumber(redis.call('HGET', key, 'hard_deadline') or '0')
+if not hardDeadline or hardDeadline < 0 then return redis.error_reply('code: invalid hard deadline') end
+if hardDeadline > 0 and redisTimeMS() >= hardDeadline then
+  redis.call('DEL', key); return {'MISSING', 0}
+end
 if attempts >= tonumber(ARGV[4]) then redis.call('DEL', key); return {'MISSING', 0} end
 local failed, expiry = failureBudget(failures)
 if failed >= tonumber(ARGV[5]) then return {'TARGET_VERIFY_LIMIT', retrySeconds(expiry)} end

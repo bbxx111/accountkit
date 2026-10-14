@@ -100,11 +100,19 @@ func (s *Store) IssueChallengeUntil(ctx context.Context, channel enum.IdentityKi
 		keys = append(keys, cool, quota, s.prefix+"challenge:"+channel.String()+":"+purpose.Key()+":"+d, s.prefix+"verify_failure:"+channel.String()+":"+d)
 	}
 	keys = append(keys, ipKey)
-	res, err := issueChallengeScript.Run(ctx, s.rdb, keys, int64(s.o.Cooldown.Seconds()), s.o.DailyLimitPerTarget, s.o.DailyLimitPerIP, digest, ttl, quotaTTL(now), issued.CodeID, binding.UserID, binding.SessionID, s.o.FailureLimitPerTarget, binding.FlowID, issued.ExpireTime.UnixMilli()).Slice()
+	hardDeadline := int64(0)
+	if !deadline.IsZero() {
+		hardDeadline = issued.ExpireTime.UnixMilli()
+	}
+	res, err := issueChallengeScript.Run(ctx, s.rdb, keys, int64(s.o.Cooldown.Seconds()), s.o.DailyLimitPerTarget, s.o.DailyLimitPerIP, digest, ttl, quotaTTL(now), issued.CodeID, binding.UserID, binding.SessionID, s.o.FailureLimitPerTarget, binding.FlowID, issued.ExpireTime.UnixMilli(), hardDeadline).Slice()
 	if err != nil {
 		return Issued{}, fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
-	err = challengeResult(res, now, "OK", "COOLDOWN", "TARGET_LIMIT", "IP_LIMIT", "TARGET_VERIFY_LIMIT")
+	allowed := []string{"OK", "COOLDOWN", "TARGET_LIMIT", "IP_LIMIT", "TARGET_VERIFY_LIMIT"}
+	if hardDeadline > 0 {
+		allowed = append(allowed, "MISSING")
+	}
+	err = challengeResult(res, now, allowed...)
 	if err != nil {
 		return Issued{}, err
 	}

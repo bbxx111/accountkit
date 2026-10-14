@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/redis/go-redis/v9"
+	"net"
 	"os"
 	"regexp"
 	"sync"
@@ -446,6 +447,7 @@ func TestChallengeQuotaCorruptionIsReadOnly(t *testing.T) {
 
 func TestCompletionChallengeFlowAndDeadline(t *testing.T) {
 	f := challengeFixture(t, false)
+	f.mr.SetTime(f.now)
 	ctx := context.Background()
 	deadline := f.now.Add(1500 * time.Millisecond)
 	issued, err := f.stores[0].IssueChallengeUntil(ctx, enum.IdentityPhone, enum.PurposeSignInComplete, target, "test-ip", code.Binding{FlowID: "f_0000000000001"}, deadline)
@@ -596,5 +598,137 @@ func TestCompletionChallengeRealRedisDeadline(t *testing.T) {
 	expiry, err := store.VerifyChallengeWithExpiry(ctx, code.Credential{Channel: enum.IdentityEmail, Purpose: enum.PurposeSignInComplete, Target: "task2@example.org", CodeID: issued.CodeID, Code: issued.Code, Binding: code.Binding{FlowID: "f_0000000000001"}})
 	if err != nil || expiry.UnixMilli() != issued.ExpireTime.UnixMilli() {
 		t.Fatalf("expiry %v %v", expiry, err)
+	}
+}
+
+func TestChallengeHardDeadlineExecutionDelay(t *testing.T) {
+	ctx := context.Background()
+	binding := code.Binding{FlowID: "f_0000000000001"}
+	t.Run("issue delayed past deadline", func(t *testing.T) {
+		f := challengeFixture(t, false)
+		f.mr.SetTime(f.now)
+		original := f.now
+		f.o.Now = func() time.Time { f.mr.SetTime(original.Add(2 * time.Second)); return original }
+		store := code.NewStore(f.rdb, "rot:", f.digesters[0], f.o)
+		_, err := store.IssueChallengeUntil(ctx, enum.IdentityPhone, enum.PurposeSignInComplete, target, "test-ip", binding, original.Add(1500*time.Millisecond))
+		if !errors.Is(err, code.ErrExpired) {
+			t.Fatalf("delayed issuance: %v", err)
+		}
+		if len(f.mr.Keys()) != 0 {
+			t.Fatal("expired issuance spent quota")
+		}
+	})
+	for _, wrong := range []bool{false, true} {
+		t.Run(fmt.Sprintf("verify exact expiry wrong=%v", wrong), func(t *testing.T) {
+			f := challengeFixture(t, false)
+			f.mr.SetTime(f.now)
+			issued, err := f.stores[0].IssueChallengeUntil(ctx, enum.IdentityPhone, enum.PurposeSignInComplete, target, "test-ip", binding, f.now.Add(1500*time.Millisecond))
+			if err != nil {
+				t.Fatal(err)
+			}
+			// TIME advances independently of TTLs, representing a queued command. Keep
+			// the record physically present to verify the Lua deadline check itself.
+			f.mr.SetTTL(challengeKey(f, 0, enum.PurposeSignInComplete), time.Minute)
+			f.mr.SetTime(issued.ExpireTime)
+			c := code.Credential{Channel: enum.IdentityPhone, Purpose: enum.PurposeSignInComplete, Target: target, CodeID: issued.CodeID, Code: issued.Code, Binding: binding}
+			if wrong {
+				c = wrongChallenge(c)
+			}
+			if err = f.stores[1].VerifyChallenge(ctx, c); !errors.Is(err, code.ErrExpired) {
+				t.Fatalf("deadline verification: %v", err)
+			}
+			if f.mr.Exists(failureKey(f, 0)) || f.mr.Exists(failureKey(f, 1)) {
+				t.Fatal("expired verification spent failure budget")
+			}
+		})
+	}
+}
+
+type challengeDelayHook struct {
+	delay time.Duration
+	once  sync.Once
+}
+
+func (h *challengeDelayHook) DialHook(next redis.DialHook) redis.DialHook {
+	return func(ctx context.Context, network, addr string) (net.Conn, error) { return next(ctx, network, addr) }
+}
+func (h *challengeDelayHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return next
+}
+func (h *challengeDelayHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		if cmd.Name() == "evalsha" || cmd.Name() == "eval" {
+			h.once.Do(func() { time.Sleep(h.delay) })
+		}
+		return next(ctx, cmd)
+	}
+}
+func TestChallengeHardDeadlineRealRedisQueue(t *testing.T) {
+	url := os.Getenv("ACCOUNTSVC_TEST_REDIS_URL")
+	if url == "" {
+		t.Skip("ACCOUNTSVC_TEST_REDIS_URL is unset")
+	}
+	for _, tc := range []struct {
+		name   string
+		delay  time.Duration
+		verify bool
+	}{{"issue before deadline", 500 * time.Millisecond, false}, {"issue past deadline", 1200 * time.Millisecond, false}, {"verify past deadline", 1200 * time.Millisecond, true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts, err := redis.ParseURL(url)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rdb := redis.NewClient(opts)
+			defer rdb.Close()
+			ctx := context.Background()
+			prefix := fmt.Sprintf("task2fix1:%d:", time.Now().UnixNano())
+			defer func() {
+				keys, err := rdb.Keys(ctx, prefix+"*").Result()
+				if err == nil && len(keys) > 0 {
+					rdb.Del(ctx, keys...)
+				}
+			}()
+			f := challengeFixture(t, false)
+			f.o.Now = time.Now
+			store := code.NewStore(rdb, prefix, f.digesters[0], f.o)
+			binding := code.Binding{FlowID: "f_0000000000001"}
+			if !tc.verify {
+				rdb.AddHook(&challengeDelayHook{delay: tc.delay})
+			}
+			issued, err := store.IssueChallengeUntil(ctx, enum.IdentityEmail, enum.PurposeSignInComplete, "queue@example.org", "test-ip", binding, time.Now().Add(1500*time.Millisecond))
+			if !tc.verify && tc.delay > time.Second {
+				if !errors.Is(err, code.ErrExpired) {
+					t.Fatalf("queued issue %v", err)
+				}
+				keys, _ := rdb.Keys(ctx, prefix+"*").Result()
+				if len(keys) != 0 {
+					t.Fatal("expired issue spent quota")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.verify {
+				rdb.AddHook(&challengeDelayHook{delay: tc.delay})
+				err = store.VerifyChallenge(ctx, code.Credential{Channel: enum.IdentityEmail, Purpose: enum.PurposeSignInComplete, Target: "queue@example.org", CodeID: issued.CodeID, Code: issued.Code, Binding: binding})
+				if !errors.Is(err, code.ErrExpired) {
+					t.Fatalf("queued verify %v", err)
+				}
+				keys, _ := rdb.Keys(ctx, prefix+"verify_failure:*").Result()
+				if len(keys) != 0 {
+					t.Fatal("expired verify spent budget")
+				}
+				return
+			}
+			keys, err := rdb.Keys(ctx, prefix+"challenge:*").Result()
+			if err != nil || len(keys) != 1 {
+				t.Fatalf("records %v %v", keys, err)
+			}
+			expiry, err := rdb.Do(ctx, "PEXPIRETIME", keys[0]).Int64()
+			if err != nil || expiry != issued.ExpireTime.UnixMilli() {
+				t.Fatalf("absolute expiry %d want %d %v", expiry, issued.ExpireTime.UnixMilli(), err)
+			}
+		})
 	}
 }

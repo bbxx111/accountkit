@@ -85,7 +85,11 @@ type Service struct {
 	policy *IdentityPolicy
 }
 
-func (s *Service) IdentityPolicy() *IdentityPolicy { return s.policy }
+// IdentityPolicy 返回策略值的副本，避免调用方整体覆盖服务内的策略。
+func (s *Service) IdentityPolicy() *IdentityPolicy {
+	policy := *s.policy
+	return &policy
+}
 
 // NewService 校验依赖并构造。
 func NewService(d Deps) (*Service, error) {

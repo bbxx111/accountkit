@@ -49,3 +49,19 @@ func TestIdentityPolicyDirectNewService(t *testing.T) {
 		})
 	}
 }
+
+func TestIdentityPolicyAccessorCannotReplaceServicePolicy(t *testing.T) {
+	original, err := NewIdentityPolicy([]enum.IdentityKind{enum.IdentityEmail}, []enum.IdentityKind{enum.IdentityEmail})
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacement, err := NewIdentityPolicy([]enum.IdentityKind{enum.IdentityPhone}, []enum.IdentityKind{enum.IdentityPhone})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := &Service{policy: original}
+	*svc.IdentityPolicy() = *replacement
+	if !svc.IdentityPolicy().Allows(enum.IdentityEmail) || svc.IdentityPolicy().Allows(enum.IdentityPhone) {
+		t.Fatal("accessor allowed replacing service policy")
+	}
+}

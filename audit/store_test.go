@@ -133,6 +133,106 @@ func TestStoreInsertBatchIsAllOrNothing(t *testing.T) {
 	}
 }
 
+func TestStoreInsertBatchFailureConcurrentPoolQueries(t *testing.T) {
+	base := testPool(t)
+	cfg := base.Config()
+	// 单连接池让审计与业务查询不断交接同一条连接，覆盖失败批次关闭后的复用。
+	cfg.MaxConns = 1
+	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if _, err := pool.Exec(ctx, `CREATE FUNCTION fail_audit_batch() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic audit outage'; END $$`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `CREATE TRIGGER fail_audit_batch BEFORE INSERT ON audit_event FOR EACH ROW EXECUTE FUNCTION fail_audit_batch()`); err != nil {
+		t.Fatal(err)
+	}
+	events := make([]audit.Event, 512)
+	for i := range events {
+		events[i] = audit.Event{Type: enum.EventSignIn, Actor: enum.ActorUser, Result: enum.ResultSuccess, OccurTime: time.Now()}
+	}
+	store := audit.NewStore(pool)
+	queryDone := make(chan error, 1)
+	go func() {
+		for i := 0; i < 200; i++ {
+			var count int
+			// 不同语句模拟业务查询不断填充 statement cache。
+			if err := pool.QueryRow(ctx, fmt.Sprintf("SELECT count(*) FROM user_account /* audit reuse %d */", i)).Scan(&count); err != nil {
+				queryDone <- err
+				return
+			}
+			if count != 0 {
+				queryDone <- fmt.Errorf("unexpected users: %d", count)
+				return
+			}
+		}
+		queryDone <- nil
+	}()
+	for i := 0; i < 50; i++ {
+		failed, err := store.InsertBatch(ctx, events)
+		var pgErr *pgconn.PgError
+		if failed != len(events) || !errors.As(err, &pgErr) || pgErr.Code != "P0001" {
+			t.Errorf("batch %d: failed=%d err=%v", i, failed, err)
+			break
+		}
+	}
+	if err := <-queryDone; err != nil {
+		t.Fatal(err)
+	}
+	if acquired := pool.Stat().AcquiredConns(); acquired != 0 {
+		t.Fatalf("batch/query leaked %d connections", acquired)
+	}
+	var count int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM audit_event").Scan(&count); err != nil || count != 0 {
+		t.Fatalf("failed batches must leave no rows: count=%d err=%v", count, err)
+	}
+}
+
+func TestStoreInsertBatchReportsDeferredCommitFailure(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `CREATE FUNCTION fail_audit_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic deferred audit failure'; END $$`); err != nil {
+		t.Fatal(err)
+	}
+	// INSERT 的命令结果成功，隐式事务提交时才触发错误；必须保留最终 Close 错误。
+	if _, err := pool.Exec(ctx, `CREATE CONSTRAINT TRIGGER fail_audit_commit AFTER INSERT ON audit_event DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fail_audit_commit()`); err != nil {
+		t.Fatal(err)
+	}
+	store := audit.NewStore(pool)
+	events := []audit.Event{
+		{Type: enum.EventSignIn, Actor: enum.ActorUser, Result: enum.ResultSuccess, OccurTime: time.Now()},
+		{Type: enum.EventCodeSent, Actor: enum.ActorUser, Result: enum.ResultSuccess, OccurTime: time.Now()},
+	}
+	failed, err := store.InsertBatch(ctx, events)
+	var pgErr *pgconn.PgError
+	if failed != len(events) || !errors.As(err, &pgErr) || pgErr.Code != "P0001" {
+		t.Fatalf("deferred commit failure: failed=%d err=%v", failed, err)
+	}
+	if acquired := pool.Stat().AcquiredConns(); acquired != 0 {
+		t.Fatalf("commit failure leaked %d connections", acquired)
+	}
+	var count int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM audit_event").Scan(&count); err != nil || count != 0 {
+		t.Fatalf("failed commit must roll back all rows: count=%d err=%v", count, err)
+	}
+	if _, err := pool.Exec(ctx, "DROP TRIGGER fail_audit_commit ON audit_event"); err != nil {
+		t.Fatal(err)
+	}
+	if failed, err := store.InsertBatch(ctx, events); err != nil || failed != 0 {
+		t.Fatalf("reuse after failed commit: failed=%d err=%v", failed, err)
+	}
+	if acquired := pool.Stat().AcquiredConns(); acquired != 0 {
+		t.Fatalf("successful batch leaked %d connections", acquired)
+	}
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM audit_event").Scan(&count); err != nil || count != len(events) {
+		t.Fatalf("successful commit: count=%d err=%v", count, err)
+	}
+}
+
 func TestStoreInsertBatchSurvivesSameMillisecondIDCollisions(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()

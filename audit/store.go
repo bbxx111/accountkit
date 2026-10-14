@@ -27,11 +27,12 @@ var newID = ids.New
 
 // Store 是 audit_event 表的写入与清理后端。读侧（管理端分页）在阶段 6。
 type Store struct {
-	q *db.Queries
+	pool *pgxpool.Pool
+	q    *db.Queries
 }
 
 // NewStore 构造 Store；不做 I/O。
-func NewStore(pool *pgxpool.Pool) *Store { return &Store{q: db.New(pool)} }
+func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool, q: db.New(pool)} }
 
 // InsertBatch 用 pgx 批处理写入一批事件（每行一条 INSERT）。pgx 的 SendBatch 在隐式事务内执行：
 // 任一行失败（或连接不可用）整批回滚，因此返回的 failed 要么 0 要么 len(events)，err 为首个错误。
@@ -102,7 +103,14 @@ func isAuditEventPKConflict(err error) bool {
 }
 
 func (s *Store) insert(ctx context.Context, params []db.InsertAuditEventsParams) (int, error) {
-	br := s.q.InsertAuditEvents(ctx, params)
+	conn, err := s.pool.Acquire(ctx)
+	if err != nil {
+		return len(params), fmt.Errorf("audit: insert batch of %d events failed: %w", len(params), err)
+	}
+	defer conn.Release()
+	// sqlc 的 Exec 内部会 Close，但丢弃关闭错误；下面仍须显式 Close 读取提交错误。
+	// pgx 重复 Close 会再次访问连接缓存，故两次关闭完成前必须持有连接租约。
+	br := db.New(conn).InsertAuditEvents(ctx, params)
 	var first error
 	br.Exec(func(_ int, err error) {
 		if err != nil && first == nil {

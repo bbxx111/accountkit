@@ -251,8 +251,11 @@ WHERE user_id = @user_id AND revoke_time IS NULL AND refresh_expire_time > @now:
 
 -- name: ScrubAuditEventsByUser :execrows
 -- purge：去掉可关联到自然人的请求侧字段，保留事件与 user_id（§3.5）。命中 audit_event_user_id_occur_time_idx 前缀。
+-- 初始补全事件尚无 user_id；以之后已归属的 flow_id 关联同流程事件，命中 flow 关联索引。
 UPDATE audit_event SET ip = NULL, device_id = NULL, subject_hint = NULL
-WHERE user_id = @user_id::text AND (ip IS NOT NULL OR device_id IS NOT NULL OR subject_hint IS NOT NULL);
+WHERE (user_id = @user_id::text OR flow_id IN (
+    SELECT flow_id FROM audit_event WHERE user_id = @user_id::text AND flow_id IS NOT NULL
+)) AND (ip IS NOT NULL OR device_id IS NOT NULL OR subject_hint IS NOT NULL);
 
 -- name: ImportUser :exec
 -- 受控离线导入：保存调用者提供的原 ID/时间及匿名墓碑，不执行 upsert。
@@ -316,6 +319,14 @@ WITH locked AS (
     ORDER BY id FOR UPDATE
 )
 DELETE FROM identity_flow WHERE id IN (SELECT id FROM locked);
+
+-- name: ScrubIdentityFlowAuditForUser :execrows
+-- 用户锁内、删除 flow 前清理已落库事件；不依赖异步队列中的最终用户关联事件。
+UPDATE audit_event SET ip = NULL, device_id = NULL, subject_hint = NULL
+WHERE flow_id IN (
+    SELECT id FROM identity_flow
+    WHERE user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text]
+) AND (ip IS NOT NULL OR device_id IS NOT NULL OR subject_hint IS NOT NULL);
 
 -- name: DeleteExpiredIdentityFlows :execrows
 DELETE FROM identity_flow

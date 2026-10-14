@@ -123,7 +123,7 @@ func toParams(id string, e Event) db.InsertAuditEventsParams {
 	p := db.InsertAuditEventsParams{
 		ID: id, EventType: e.Type, ActorKind: e.Actor, Result: e.Result, OccurTime: e.OccurTime,
 		UserID: nullStr(e.UserID), SessionID: nullStr(e.SessionID), SubjectHint: nullStr(e.SubjectHint), Reason: nullStr(e.Reason),
-		DeviceID: nullStr(e.DeviceID), RequestID: nullStr(e.RequestID),
+		DeviceID: nullStr(e.DeviceID), RequestID: nullStr(e.RequestID), FlowID: nullStr(e.FlowID),
 		AdminIssuer: nullStr(e.AdminIssuer), AdminSubject: nullStr(e.AdminSubject), AdminUsername: nullStr(e.AdminUsername),
 	}
 	if e.IdentityKind != enum.IdentityKindUnspecified {

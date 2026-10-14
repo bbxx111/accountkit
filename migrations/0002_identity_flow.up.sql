@@ -22,3 +22,10 @@ CREATE INDEX identity_flow_expire_time_id_idx ON identity_flow(expire_time,id);
 CREATE INDEX identity_flow_proof_user_ids_idx ON identity_flow USING GIN(proof_user_ids);
 CREATE INDEX identity_flow_user_id_idx ON identity_flow(user_id);
 CREATE INDEX identity_flow_session_id_idx ON identity_flow(session_id);
+
+-- Correlate separate completion requests without persisting the secret ticket.
+-- Audit retention is independent of the short-lived flow; intentionally no FK.
+ALTER TABLE audit_event ADD COLUMN flow_id TEXT COLLATE "C"
+ CONSTRAINT audit_event_flow_id_format CHECK (flow_id IS NULL OR flow_id ~ '^f_[0-9a-hjkmnp-tv-z]{13}$');
+CREATE INDEX audit_event_flow_id_occur_time_idx ON audit_event(flow_id,occur_time,id)
+ WHERE flow_id IS NOT NULL;

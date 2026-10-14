@@ -147,6 +147,12 @@ PENDING 可以持有已验证身份并等待验证码；VERIFIED 表示证明已
 
 到期立即不可用，并有界清理密文与结果。有效流程密文加入启动密钥版本检查；轮换保留旧 key 至活跃流程到期或清理。账号删除/匿名化撤销或清理其关联流程，匿名化同库回调继续使用同一事务。数据库备份恢复覆盖新表，同时明确不包含 Redis 证明状态；缺少所需证明不能降级放行。
 
+流程审计使用内部 `f_` 资源 ID 作为 `audit.Event.FlowID`，经 `audit_event.flow_id` 可空列持久化；它不是随机票据或凭证摘要。独立请求通过同一 flow_id 关联，原 RequestID 仍逐请求保留。未识别的无效票据不产生伪造 flow_id。管理审计 DTO 仅新增可选 `flow_id`，不返回票据、证明、完整目标或摘要。
+
+事件枚举在既有值之后追加 SIGN_IN_COMPLETION_STARTED、SIGN_IN_COMPLETION_PROOF_VERIFIED、SIGN_IN_COMPLETION_COMPLETED、SIGN_IN_COMPLETION_REJECTED。前三种成功事件分别在流程创建、证明持久化、最终完成的对应事务提交后发出；最终事务回滚不会产生 COMPLETED、SIGN_IN 或 IDENTITY_BOUND 成功事件，先前已独立提交的 proof 可以准确保留 PROOF_VERIFIED。补全发码、关联身份、会话替换及最终登录也携带同一 flow_id；错误验证码、票据无效、归属冲突及账号拒绝记录固定原因的 REJECTED。沿用有界异步审计，落库失败仅计数/告警，不改变业务提交。审计记录保留期独立于短期流程，因此 flow_id 不设外键，并以 `(flow_id, occur_time, id)` 支持运营关联检索。
+
+删除关联 flow 前依据 identity_flow.user_id/proof_user_ids 清除已落库流程事件的 IP、设备和身份提示，覆盖最终用户关联事件仍在异步队列中的情况；匿名化还按已落库的 user_id→flow_id 关联清理更早无 user_id 的历史事件。晚到异步写入仍遵循既有审计契约，不宣称本次实现跨异步队列的零 PII 留存保证。
+
 ### 8. 普通绑定、近期认证与恢复保留原能力
 
 普通绑定移至 /accounts/me/identities：未占用可绑定、本人已有幂等、他人占用 409。user 与 user:bind 均可添加 E 中的身份；补齐后通过最新 refresh 的新一轮轮换取得 user。解绑或换绑后仍需至少一个可用身份并满足 R。

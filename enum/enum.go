@@ -136,29 +136,33 @@ func (r Result) Valid() bool    { return r == ResultSuccess || r == ResultFailur
 type EventType int16
 
 const (
-	EventTypeUnspecified         EventType = iota
-	EventCodeSent                          // 1
-	EventCodeSendRejected                  // 2
-	EventCodeSendFailed                    // 3
-	EventSignIn                            // 4
-	EventSignInFailed                      // 5
-	EventReauthenticated                   // 6
-	EventReauthenticationFailed            // 7
-	EventTokenRefreshed                    // 8
-	EventRefreshRejected                   // 9
-	EventRefreshReuseDetected              // 10
-	EventSessionRevoked                    // 11
-	EventIdentityBound                     // 12
-	EventIdentityBindRejected              // 13
-	EventIdentityUnbound                   // 14
-	EventIdentityRevealed                  // 15
-	EventUserDeleted                       // 16
-	EventUserUndeleted                     // 17
-	EventUserPurged                        // 18
-	EventUserFrozen                        // 19
-	EventUserUnfrozen                      // 20
-	EventAdminForbidden                    // 21
-	EventIdentityReplaceRejected           // 22
+	EventTypeUnspecified               EventType = iota
+	EventCodeSent                                // 1
+	EventCodeSendRejected                        // 2
+	EventCodeSendFailed                          // 3
+	EventSignIn                                  // 4
+	EventSignInFailed                            // 5
+	EventReauthenticated                         // 6
+	EventReauthenticationFailed                  // 7
+	EventTokenRefreshed                          // 8
+	EventRefreshRejected                         // 9
+	EventRefreshReuseDetected                    // 10
+	EventSessionRevoked                          // 11
+	EventIdentityBound                           // 12
+	EventIdentityBindRejected                    // 13
+	EventIdentityUnbound                         // 14
+	EventIdentityRevealed                        // 15
+	EventUserDeleted                             // 16
+	EventUserUndeleted                           // 17
+	EventUserPurged                              // 18
+	EventUserFrozen                              // 19
+	EventUserUnfrozen                            // 20
+	EventAdminForbidden                          // 21
+	EventIdentityReplaceRejected                 // 22
+	EventSignInCompletionStarted                 // 23
+	EventSignInCompletionProofVerified           // 24
+	EventSignInCompletionCompleted               // 25
+	EventSignInCompletionRejected                // 26
 )
 
 var eventTypeNames = [...]string{
@@ -166,10 +170,11 @@ var eventTypeNames = [...]string{
 	"REAUTHENTICATED", "REAUTHENTICATION_FAILED", "TOKEN_REFRESHED", "REFRESH_REJECTED", "REFRESH_REUSE_DETECTED",
 	"SESSION_REVOKED", "IDENTITY_BOUND", "IDENTITY_BIND_REJECTED", "IDENTITY_UNBOUND", "IDENTITY_REVEALED",
 	"USER_DELETED", "USER_UNDELETED", "USER_PURGED", "USER_FROZEN", "USER_UNFROZEN", "ADMIN_FORBIDDEN", "IDENTITY_REPLACE_REJECTED",
+	"SIGN_IN_COMPLETION_STARTED", "SIGN_IN_COMPLETION_PROOF_VERIFIED", "SIGN_IN_COMPLETION_COMPLETED", "SIGN_IN_COMPLETION_REJECTED",
 }
 
 func (e EventType) String() string { return name(eventTypeNames[:], int(e)) }
-func (e EventType) Valid() bool    { return e >= EventCodeSent && e <= EventIdentityReplaceRejected }
+func (e EventType) Valid() bool    { return e >= EventCodeSent && e <= EventSignInCompletionRejected }
 
 func ParseEventType(v string) (EventType, error) {
 	i, err := parse(eventTypeNames[:], v, "EventType")

@@ -122,8 +122,21 @@ func TestSignInCompletionProofPersistenceAndFinalFailure(t *testing.T) {
 			if _, err := f.svc.CompleteSignIn(ctx, p.SignInCompletionToken, cred, user.Device{}, meta1); err == nil {
 				t.Fatal("injected failure accepted")
 			}
-			if len(f.audit.Events()) != before {
-				t.Fatal("rolled back operation audited success")
+			proofEvents := 0
+			for _, event := range f.audit.Events()[before:] {
+				if event.Type == enum.EventSignInCompletionCompleted || event.Type == enum.EventSignIn || event.Type == enum.EventIdentityBound {
+					t.Fatal("rolled back operation audited completion success")
+				}
+				if event.Type == enum.EventSignInCompletionProofVerified {
+					proofEvents++
+				}
+			}
+			wantProof := 0
+			if stage == "final" {
+				wantProof = 1
+			}
+			if proofEvents != wantProof {
+				t.Fatalf("durable proof audit: got %d want %d", proofEvents, wantProof)
 			}
 			var n int
 			_ = f.pool.QueryRow(ctx, "SELECT count(*) FROM user_account").Scan(&n)
@@ -327,6 +340,12 @@ func TestSignInCompletionRefusesChangedSourceOwnerAndUnavailableTarget(t *testin
 			}
 			if _, err := f.svc.CompleteSignIn(ctx, p.SignInCompletionToken, cred, user.Device{}, meta1); !errors.Is(err, want) {
 				t.Fatalf("%s: got %v want %v", mode, err, want)
+			}
+			events := f.audit.Events()
+			last := events[len(events)-1]
+			reason := map[string]string{"source": "IDENTITY_ALREADY_BOUND", "frozen": "USER_FROZEN", "deleted": "USER_PENDING_DELETION", "limit": "IDENTITY_KIND_LIMIT"}[mode]
+			if last.Type != enum.EventSignInCompletionRejected || last.Reason != reason || last.FlowID == "" {
+				t.Fatalf("missing safe associated rejection: %+v", last)
 			}
 			var n int
 			_ = f.pool.QueryRow(ctx, "SELECT count(*) FROM user_account").Scan(&n)

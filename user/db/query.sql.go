@@ -1402,13 +1402,33 @@ func (q *Queries) RotateSession(ctx context.Context, arg RotateSessionParams) (i
 const scrubAuditEventsByUser = `-- name: ScrubAuditEventsByUser :execrows
 
 UPDATE audit_event SET ip = NULL, device_id = NULL, subject_hint = NULL
-WHERE user_id = $1::text AND (ip IS NOT NULL OR device_id IS NOT NULL OR subject_hint IS NOT NULL)
+WHERE (user_id = $1::text OR flow_id IN (
+    SELECT flow_id FROM audit_event WHERE user_id = $1::text AND flow_id IS NOT NULL
+)) AND (ip IS NOT NULL OR device_id IS NOT NULL OR subject_hint IS NOT NULL)
 `
 
 // audit_event
 // purge：去掉可关联到自然人的请求侧字段，保留事件与 user_id（§3.5）。命中 audit_event_user_id_occur_time_idx 前缀。
+// 初始补全事件尚无 user_id；以之后已归属的 flow_id 关联同流程事件，命中 flow 关联索引。
 func (q *Queries) ScrubAuditEventsByUser(ctx context.Context, userID string) (int64, error) {
 	result, err := q.db.Exec(ctx, scrubAuditEventsByUser, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const scrubIdentityFlowAuditForUser = `-- name: ScrubIdentityFlowAuditForUser :execrows
+UPDATE audit_event SET ip = NULL, device_id = NULL, subject_hint = NULL
+WHERE flow_id IN (
+    SELECT id FROM identity_flow
+    WHERE user_id = $1::text OR proof_user_ids @> ARRAY[$1::text]
+) AND (ip IS NOT NULL OR device_id IS NOT NULL OR subject_hint IS NOT NULL)
+`
+
+// 用户锁内、删除 flow 前清理已落库事件；不依赖异步队列中的最终用户关联事件。
+func (q *Queries) ScrubIdentityFlowAuditForUser(ctx context.Context, userID string) (int64, error) {
+	result, err := q.db.Exec(ctx, scrubIdentityFlowAuditForUser, userID)
 	if err != nil {
 		return 0, err
 	}

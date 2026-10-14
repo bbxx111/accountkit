@@ -113,6 +113,7 @@ type auditEventResource struct {
 	Result        string  `json:"result"`
 	Reason        *string `json:"reason"`
 	SessionID     *string `json:"session_id"`
+	FlowID        *string `json:"flow_id,omitempty"`
 	IdentityKind  *string `json:"identity_kind"`
 	SubjectHint   *string `json:"subject_hint"`
 	IP            *string `json:"ip"`
@@ -127,7 +128,7 @@ type auditEventResource struct {
 func newAuditEventResource(userID string, e auditdb.AuditEvent) auditEventResource {
 	out := auditEventResource{
 		Name: "accounts/" + userID + "/auditEvents/" + e.ID, EventType: e.EventType.String(), ActorKind: e.ActorKind.String(), Result: e.Result.String(),
-		Reason: e.Reason, SessionID: e.SessionID, SubjectHint: e.SubjectHint, DeviceID: e.DeviceID, RequestID: e.RequestID,
+		Reason: e.Reason, SessionID: e.SessionID, FlowID: e.FlowID, SubjectHint: e.SubjectHint, DeviceID: e.DeviceID, RequestID: e.RequestID,
 		AdminIssuer: e.AdminIssuer, AdminSubject: e.AdminSubject, AdminUsername: e.AdminUsername, OccurTime: fmtTime(e.OccurTime),
 	}
 	if e.IdentityKind != nil && *e.IdentityKind != enum.IdentityKindUnspecified {

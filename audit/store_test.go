@@ -54,7 +54,7 @@ func TestStoreInsertBatchMapsFieldsAndNulls(t *testing.T) {
 	now := time.Now().Truncate(time.Microsecond)
 	full := audit.Event{
 		Type: enum.EventSignIn, Actor: enum.ActorUser, Result: enum.ResultSuccess, Reason: "NEW_USER",
-		UserID: "u_0000000000001", SessionID: "s_0000000000001", IdentityKind: enum.IdentityPhone, SubjectHint: "abcdefgh",
+		UserID: "u_0000000000001", SessionID: "s_0000000000001", FlowID: "f_0000000000001", IdentityKind: enum.IdentityPhone, SubjectHint: "abcdefgh",
 		IP: "203.0.113.5", DeviceID: "dev-1", RequestID: "req-1",
 		AdminIssuer: "https://kc/realms/x", AdminSubject: "admin-sub", AdminUsername: "ops",
 		OccurTime: now,
@@ -80,6 +80,10 @@ func TestStoreInsertBatchMapsFieldsAndNulls(t *testing.T) {
 	}
 	if len(id) != 15 || id[:2] != "e_" || reason != "NEW_USER" || userID != full.UserID || sessionID != full.SessionID || kind == nil || *kind != int16(enum.IdentityPhone) || hint != "abcdefgh" || ip == nil || *ip != "203.0.113.5" || deviceID != "dev-1" || requestID != "req-1" || adminSub != "admin-sub" {
 		t.Fatalf("full row mapping: id=%q reason=%q user=%q sess=%q kind=%v hint=%q ip=%v dev=%q req=%q admin=%q", id, reason, userID, sessionID, kind, hint, ip, deviceID, requestID, adminSub)
+	}
+	rows, err := s.ListByUser(ctx, full.UserID, nil, 10)
+	if err != nil || len(rows) != 2 || rows[0].FlowID == nil || *rows[0].FlowID != full.FlowID || rows[1].FlowID != nil {
+		t.Fatalf("flow mapping/nullable read: %+v %v", rows, err)
 	}
 	// 稀疏事件：空串 → NULL，零值 identity_kind → NULL，actor 原样
 	var nulls int

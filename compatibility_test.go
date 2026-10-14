@@ -91,7 +91,7 @@ func snapshotSource(t *testing.T, pool *pgxpool.Pool) string {
  'users',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM user_account t),
  'identities',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM identity t),
  'sessions',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM session t),
- 'audit',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM audit_event t),
+ 'audit',(SELECT jsonb_agg(to_jsonb(t)-'flow_id' ORDER BY id) FROM audit_event t),
  'version',(SELECT jsonb_agg(to_jsonb(t)) FROM schema_migrations t))::text`).Scan(&out)
 	if err != nil {
 		t.Fatal(err)
@@ -121,6 +121,12 @@ func TestSourceDatabaseTakeover(t *testing.T) {
 		if string(oldData[table]) != string(newData[table]) {
 			t.Fatalf("migration changed source %s data", table)
 		}
+	}
+	// 0002 only adds a nullable flow correlation column to historical audit rows;
+	// all original columns are compared above and every new value must remain NULL.
+	var linkedAudit int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM audit_event WHERE flow_id IS NOT NULL").Scan(&linkedAudit); err != nil || linkedAudit != 0 {
+		t.Fatalf("migration rewrote historical audit flow association: %d %v", linkedAudit, err)
 	}
 	var version, flows int
 	var dirty bool

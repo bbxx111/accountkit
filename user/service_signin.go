@@ -38,7 +38,7 @@ func (s *Service) sendCodeUntil(ctx context.Context, channel enum.IdentityKind, 
 		return CodeChallenge{}, err
 	}
 	digest, _ := s.d.Digester.Digest(norm)
-	base := audit.Event{UserID: binding.UserID, IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, RequestID: meta.RequestID}
+	base := audit.Event{UserID: binding.UserID, FlowID: binding.FlowID, IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, RequestID: meta.RequestID}
 
 	// 可选可用性契约保持旧宿主兼容：只实现原投递方法的发送器默认启用。
 	var delivery any = s.d.SMS

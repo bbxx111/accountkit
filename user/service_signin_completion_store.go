@@ -138,33 +138,33 @@ func (s *Service) pendingResult(token string, expiry time.Time) SignInResult {
 	return SignInResult{Pending: &PendingSignIn{SignInCompletionToken: token, ExpireTime: expiry, EnabledIdentityKinds: s.policy.EnabledKinds(), RequiredIdentityKinds: s.policy.RequiredKinds()}}
 }
 
-func (s *Service) createPending(ctx context.Context, q *db.Queries, proof completionProof, expiry time.Time, dev Device) (SignInResult, error) {
+func (s *Service) createPending(ctx context.Context, q *db.Queries, proof completionProof, expiry time.Time, dev Device) (SignInResult, string, error) {
 	now := s.now()
 	deadline := now.Add(signInCompletionTTL)
 	if !expiry.IsZero() && expiry.Before(deadline) {
 		deadline = expiry
 	}
 	if !deadline.After(now) {
-		return SignInResult{}, ErrSignInCompletionInvalid
+		return SignInResult{}, "", ErrSignInCompletionInvalid
 	}
 	token, digest, err := newRefreshToken()
 	if err != nil {
-		return SignInResult{}, err
+		return SignInResult{}, "", err
 	}
 	id, err := ids.New(ids.IdentityFlow)
 	if err != nil {
-		return SignInResult{}, err
+		return SignInResult{}, "", err
 	}
 	p := completionPayload{Device: dev, Proofs: []completionProof{proof}}
 	ct, version, err := s.encodeFlow(id, p)
 	if err != nil {
-		return SignInResult{}, err
+		return SignInResult{}, "", err
 	}
 	_, err = q.CreateIdentityFlow(ctx, db.CreateIdentityFlowParams{ID: id, TokenDigest: hex.EncodeToString(digest), State: enum.FlowPending, PolicyFingerprint: s.flowPolicy, Payload: ct, CipherVersion: version, ProofUserIds: []string{}, CreateTime: now, ExpireTime: deadline})
 	if err != nil {
-		return SignInResult{}, err
+		return SignInResult{}, "", err
 	}
-	return s.pendingResult(token, deadline), nil
+	return s.pendingResult(token, deadline), id, nil
 }
 
 func completionRequest(token string, cred CodeCredential) string {

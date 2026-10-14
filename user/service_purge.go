@@ -88,6 +88,9 @@ func (s *Service) purgeOne(ctx context.Context, userID string) (bool, error) {
 		if u.State != enum.UserPendingDeletion || u.PurgeTime == nil || u.PurgeTime.After(now) {
 			return nil // 取批之后被 undelete，或已被另一副本 purge
 		}
+		if _, err := q.ScrubIdentityFlowAuditForUser(ctx, userID); err != nil {
+			return fmt.Errorf("user: scrub sign-in flow audit for purge: %w", err)
+		}
 		if _, err := q.DeleteIdentityFlowsForUser(ctx, userID); err != nil {
 			return fmt.Errorf("user: purge sign-in flows: %w", err)
 		}

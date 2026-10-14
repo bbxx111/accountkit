@@ -32,7 +32,7 @@ func (q *Queries) DeleteAuditEventsBefore(ctx context.Context, arg DeleteAuditEv
 }
 
 const listAuditEventsByUser = `-- name: ListAuditEventsByUser :many
-SELECT id, event_type, actor_kind, user_id, admin_issuer, admin_subject, admin_username, session_id, identity_kind, subject_hint, result, reason, ip, device_id, request_id, occur_time FROM audit_event
+SELECT id, event_type, actor_kind, user_id, admin_issuer, admin_subject, admin_username, session_id, identity_kind, subject_hint, result, reason, ip, device_id, request_id, occur_time, flow_id FROM audit_event
 WHERE user_id = $1::text
   AND ($2::timestamptz IS NULL
        OR (occur_time, id) > ($2::timestamptz, $3::text))
@@ -79,6 +79,7 @@ func (q *Queries) ListAuditEventsByUser(ctx context.Context, arg ListAuditEvents
 			&i.DeviceID,
 			&i.RequestID,
 			&i.OccurTime,
+			&i.FlowID,
 		); err != nil {
 			return nil, err
 		}

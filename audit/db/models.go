@@ -28,6 +28,7 @@ type AuditEvent struct {
 	DeviceID      *string
 	RequestID     *string
 	OccurTime     time.Time
+	FlowID        *string
 }
 
 type Identity struct {

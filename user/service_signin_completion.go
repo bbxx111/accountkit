@@ -80,7 +80,7 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 			}
 		case errors.Is(err, pgx.ErrNoRows):
 			if !s.policy.Complete([]enum.IdentityKind{proof.Kind}) {
-				result, err = s.createPending(ctx, q, proof, expiry, dev)
+				result, ev.FlowID, err = s.createPending(ctx, q, proof, expiry, dev)
 				return err
 			}
 			uid, e := ids.New(ids.User)
@@ -124,13 +124,22 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 	}
 	if result.Tokens != nil {
 		s.finishSignIn(ctx, ev, *result.Tokens, replaced, dev, meta)
+	} else {
+		ev.Type, ev.Result = enum.EventSignInCompletionStarted, enum.ResultSuccess
+		s.record(ctx, ev)
 	}
 	return result, nil
 }
 
 // SendSignInCompletionCode 仅向本流程发送 PHONE/EMAIL 补全验证码，不预查询目标归属。
 func (s *Service) SendSignInCompletionCode(ctx context.Context, token string, channel enum.IdentityKind, target string, dev Device, meta Meta) (result CodeChallenge, err error) {
-	defer func() { err = flowStorageError(err) }()
+	var flowID string
+	defer func() {
+		err = flowStorageError(err)
+		if err != nil {
+			s.recordCompletionRejected(ctx, token, flowID, channel, dev, meta, err)
+		}
+	}()
 	if !channel.IsChannel() {
 		return CodeChallenge{}, ErrInvalidArgument
 	}
@@ -138,6 +147,7 @@ func (s *Service) SendSignInCompletionCode(ctx context.Context, token string, ch
 		return CodeChallenge{}, err
 	}
 	row, _, err := s.loadFlow(ctx, token, dev)
+	flowID = row.ID
 	if err != nil {
 		return CodeChallenge{}, err
 	}
@@ -149,7 +159,13 @@ func (s *Service) SendSignInCompletionCode(ctx context.Context, token string, ch
 
 // CompleteSignIn 先持久化成功证明，再由独立事务完成账号、身份与会话。
 func (s *Service) CompleteSignIn(ctx context.Context, token string, cred CodeCredential, dev Device, meta Meta) (result SignInResult, err error) {
-	defer func() { err = flowStorageError(err) }()
+	var flowID string
+	defer func() {
+		err = flowStorageError(err)
+		if err != nil {
+			s.recordCompletionRejected(ctx, token, flowID, cred.Channel, dev, meta, err)
+		}
+	}()
 	if err := validateCodeCredential(cred); err != nil {
 		return SignInResult{}, err
 	}
@@ -163,6 +179,7 @@ func (s *Service) CompleteSignIn(ctx context.Context, token string, cred CodeCre
 	cred.Target = norm
 	request := completionRequest(token, cred)
 	row, p, err := s.loadFlow(ctx, token, dev)
+	flowID = row.ID
 	if err != nil {
 		return SignInResult{}, err
 	}
@@ -179,7 +196,7 @@ func (s *Service) CompleteSignIn(ctx context.Context, token string, cred CodeCre
 			}
 			return SignInResult{}, err
 		}
-		row, p, err = s.persistCompletionProof(ctx, row, p, completionProof{Kind: cred.Channel, Target: norm}, request, dev)
+		row, p, err = s.persistCompletionProof(ctx, row, p, completionProof{Kind: cred.Channel, Target: norm}, request, dev, meta)
 		if err != nil {
 			return SignInResult{}, err
 		}
@@ -265,7 +282,7 @@ func sameProof(a, b completionProof) bool {
 	return a.Provider != nil && b.Provider != nil && a.Provider.Subject == b.Provider.Subject
 }
 
-func (s *Service) persistCompletionProof(ctx context.Context, row db.IdentityFlow, p completionPayload, proof completionProof, request string, dev Device) (db.IdentityFlow, completionPayload, error) {
+func (s *Service) persistCompletionProof(ctx context.Context, row db.IdentityFlow, p completionPayload, proof completionProof, request string, dev Device, meta Meta) (db.IdentityFlow, completionPayload, error) {
 	// Only the newly verified target may discover an existing owner here. Earlier
 	// proofs retain their original ownership snapshot throughout the flow.
 	current, err := s.findProof(ctx, s.d.Repo.Q(), proof)
@@ -277,6 +294,7 @@ func (s *Service) persistCompletionProof(ctx context.Context, row db.IdentityFlo
 	}
 	locks := p
 	locks.Proofs = append(slices.Clone(p.Proofs), proof)
+	persisted := false
 	err = s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
 		owners, e := s.lockProofOwners(ctx, q, locks)
 		if e != nil {
@@ -328,8 +346,12 @@ func (s *Service) persistCompletionProof(ctx context.Context, row db.IdentityFlo
 			return e
 		}
 		row, p = fresh, fp
+		persisted = true
 		return nil
 	})
+	if err == nil && persisted {
+		s.record(ctx, audit.Event{Type: enum.EventSignInCompletionProofVerified, Result: enum.ResultSuccess, FlowID: row.ID, UserID: proof.UserID, IdentityKind: proof.Kind, IP: meta.IP, DeviceID: p.Device.ID, RequestID: meta.RequestID})
+	}
 	return row, p, err
 }
 
@@ -365,8 +387,12 @@ func (s *Service) replayCompletion(ctx context.Context, q *db.Queries, row db.Id
 	if revoked {
 		return SignInResult{}, ErrSignInAlreadyCompleted
 	}
-	if !row.ExpireTime.After(s.now()) {
+	now := s.now()
+	if !row.ExpireTime.After(now) {
 		return SignInResult{}, ErrSignInCompletionInvalid
+	}
+	if !p.AccessExpireTime.After(now) || !sessionActiveAt(sess, now) {
+		return SignInResult{}, ErrSignInAlreadyCompleted
 	}
 	return SignInResult{Tokens: p.Result}, nil
 }
@@ -492,7 +518,7 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.Ident
 		}
 		result = SignInResult{Tokens: &pair}
 		replaced = rep
-		event = audit.Event{UserID: u.ID, SessionID: sess.ID, IdentityKind: fp.Proofs[0].Kind, IP: meta.IP, DeviceID: fp.Device.ID, RequestID: meta.RequestID}
+		event = audit.Event{FlowID: fresh.ID, UserID: u.ID, SessionID: sess.ID, IdentityKind: fp.Proofs[0].Kind, IP: meta.IP, DeviceID: fp.Device.ID, RequestID: meta.RequestID}
 		committed = true
 		return nil
 	})
@@ -511,8 +537,10 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.Ident
 	}
 	if committed {
 		for _, kind := range bound {
-			s.record(ctx, audit.Event{Type: enum.EventIdentityBound, Result: enum.ResultSuccess, UserID: event.UserID, IdentityKind: kind, IP: meta.IP, DeviceID: p.Device.ID, RequestID: meta.RequestID})
+			s.record(ctx, audit.Event{Type: enum.EventIdentityBound, Result: enum.ResultSuccess, FlowID: event.FlowID, UserID: event.UserID, IdentityKind: kind, IP: meta.IP, DeviceID: p.Device.ID, RequestID: meta.RequestID})
 		}
+		event.Type, event.Result = enum.EventSignInCompletionCompleted, enum.ResultSuccess
+		s.record(ctx, event)
 		s.finishSignIn(ctx, event, *result.Tokens, replaced, p.Device, meta)
 	}
 	return result, nil

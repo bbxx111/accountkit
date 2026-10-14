@@ -404,7 +404,7 @@ func (s *Service) establishSession(ctx context.Context, q *db.Queries, u db.User
 func (s *Service) finishSignIn(ctx context.Context, ev audit.Event, res TokenResult, replaced []string, dev Device, meta Meta) {
 	for _, sid := range replaced {
 		s.revokeInSet(ctx, sid)
-		s.record(ctx, audit.Event{Type: enum.EventSessionRevoked, Result: enum.ResultSuccess, Reason: enum.RevokeReplacedByRelogin.String(), UserID: ev.UserID, SessionID: sid, IP: meta.IP, DeviceID: dev.ID, RequestID: meta.RequestID})
+		s.record(ctx, audit.Event{Type: enum.EventSessionRevoked, Result: enum.ResultSuccess, Reason: enum.RevokeReplacedByRelogin.String(), FlowID: ev.FlowID, UserID: ev.UserID, SessionID: sid, IP: meta.IP, DeviceID: dev.ID, RequestID: meta.RequestID})
 	}
 	ev.Type, ev.Result = enum.EventSignIn, enum.ResultSuccess
 	if res.IsNewUser {

@@ -15,6 +15,6 @@ var (
 // Disabled 显式禁用短信和邮件渠道，不发送消息，也不伪装成投递成功。
 type Disabled struct{}
 
-func (Disabled) Enabled() bool                                    { return false }
-func (Disabled) SendSMS(context.Context, string, Message) error   { return ErrDisabled }
-func (Disabled) SendEmail(context.Context, string, Message) error { return ErrDisabled }
+func (Disabled) Enabled() bool                                        { return false }
+func (Disabled) SendSMS(context.Context, string, CodeMessage) error   { return ErrDisabled }
+func (Disabled) SendEmail(context.Context, string, CodeMessage) error { return ErrDisabled }

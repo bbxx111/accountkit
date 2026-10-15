@@ -9,19 +9,34 @@ import (
 	"github.com/bbxx111/accountkit/enum"
 )
 
-// Message 是一条验证码消息。模板按 Purpose 区分文案（登录 / 绑定 / 验证身份），防止社工诱导。
-type Message struct {
+// CodeMessage 是一条验证码消息。模板按 Purpose 区分文案（登录 / 绑定 / 验证身份），防止社工诱导。
+type CodeMessage struct {
 	Purpose enum.CodePurpose
 	Code    string
 	TTL     time.Duration
 }
 
-// SMSSender 向 E.164 手机号发送验证码。
-type SMSSender interface {
-	SendSMS(ctx context.Context, e164 string, m Message) error
+// SMSCodeSender 向 E.164 手机号发送验证码。
+type SMSCodeSender interface {
+	SendSMS(ctx context.Context, e164 string, m CodeMessage) error
 }
 
-// EmailSender 向邮箱发送验证码。
-type EmailSender interface {
-	SendEmail(ctx context.Context, address string, m Message) error
+// EmailCodeSender 向邮箱发送验证码。
+type EmailCodeSender interface {
+	SendEmail(ctx context.Context, address string, m CodeMessage) error
 }
+
+// SMSSender 是 SMSCodeSender 的兼容名称。
+//
+// Deprecated: use SMSCodeSender.
+type SMSSender = SMSCodeSender
+
+// EmailSender 是 EmailCodeSender 的兼容名称。
+//
+// Deprecated: use EmailCodeSender.
+type EmailSender = EmailCodeSender
+
+// Message 是 CodeMessage 的兼容名称。
+//
+// Deprecated: use CodeMessage.
+type Message = CodeMessage

@@ -122,8 +122,8 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 	if cfg.command == "migrate" {
 		return newMigrationApplication(cfg, d)
 	}
-	var sms sender.SMSSender
-	var email sender.EmailSender
+	var sms sender.SMSCodeSender
+	var email sender.EmailCodeSender
 	if cfg.Library.EnabledIdentityKinds == nil {
 		sms = sender.Disabled{}
 	}

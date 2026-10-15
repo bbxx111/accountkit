@@ -100,7 +100,7 @@ func validAddress(value string) bool {
 	return err == nil && addr.Address == value && addr.Name == ""
 }
 
-func message(from, to string, m sender.Message) ([]byte, error) {
+func message(from, to string, m sender.CodeMessage) ([]byte, error) {
 	var purpose string
 	switch m.Purpose {
 	case enum.PurposeSignIn:
@@ -135,7 +135,7 @@ func message(from, to string, m sender.Message) ([]byte, error) {
 
 // SendEmail 使用有限总预算完成连接、TLS、AUTH 与 DATA；取消会关闭整个连接。
 // 对外始终返回固定安全错误，避免 SMTP 服务端响应泄漏收件地址或凭据。
-func (s *Sender) SendEmail(ctx context.Context, to string, m sender.Message) error {
+func (s *Sender) SendEmail(ctx context.Context, to string, m sender.CodeMessage) error {
 	data, err := message(s.cfg.From, to, m)
 	if err != nil {
 		return sender.ErrUnavailable
@@ -202,4 +202,4 @@ func (s *Sender) SendEmail(ctx context.Context, to string, m sender.Message) err
 	return nil
 }
 
-var _ sender.EmailSender = (*Sender)(nil)
+var _ sender.EmailCodeSender = (*Sender)(nil)

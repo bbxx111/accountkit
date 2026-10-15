@@ -238,7 +238,7 @@ func TestSMTPTemplatesAndEncryptedAuth(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if err = s.SendEmail(context.Background(), "person@example.org", sender.Message{Purpose: tc.purpose, Code: "123456", TTL: 5 * time.Minute}); err != nil {
+				if err = s.SendEmail(context.Background(), "person@example.org", sender.CodeMessage{Purpose: tc.purpose, Code: "123456", TTL: 5 * time.Minute}); err != nil {
 					t.Fatal(err)
 				}
 				f.mu.Lock()
@@ -272,7 +272,7 @@ func TestSMTPAcceptedDataIgnoresQuitFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = s.SendEmail(context.Background(), "person@example.org", sender.Message{Purpose: enum.PurposeSignIn, Code: "123456", TTL: time.Minute}); err != nil {
+	if err = s.SendEmail(context.Background(), "person@example.org", sender.CodeMessage{Purpose: enum.PurposeSignIn, Code: "123456", TTL: time.Minute}); err != nil {
 		t.Fatal("DATA acceptance must not become retryable QUIT failure")
 	}
 	f.mu.Lock()
@@ -290,7 +290,7 @@ func TestSMTPFailuresAreSafe(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			err = s.SendEmail(context.Background(), "person@example.org", sender.Message{Purpose: enum.PurposeSignIn, Code: "123456", TTL: time.Minute})
+			err = s.SendEmail(context.Background(), "person@example.org", sender.CodeMessage{Purpose: enum.PurposeSignIn, Code: "123456", TTL: time.Minute})
 			if !errors.Is(err, sender.ErrUnavailable) {
 				t.Fatal("SMTP refusal must be unavailable")
 			}
@@ -318,7 +318,7 @@ func TestSMTPNoTLSDowngrade(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err = s.SendEmail(context.Background(), "person@example.org", sender.Message{Purpose: enum.PurposeSignIn, Code: "123456", TTL: time.Minute}); !errors.Is(err, sender.ErrUnavailable) {
+			if err = s.SendEmail(context.Background(), "person@example.org", sender.CodeMessage{Purpose: enum.PurposeSignIn, Code: "123456", TTL: time.Minute}); !errors.Is(err, sender.ErrUnavailable) {
 				t.Fatal("TLS failure must reject")
 			}
 			f.mu.Lock()
@@ -353,7 +353,7 @@ func TestSMTPTimeoutAndCancellation(t *testing.T) {
 					defer timer.Stop()
 				}
 				start := time.Now()
-				err = s.SendEmail(ctx, "person@example.org", sender.Message{Purpose: enum.PurposeSignIn, Code: "123456", TTL: time.Minute})
+				err = s.SendEmail(ctx, "person@example.org", sender.CodeMessage{Purpose: enum.PurposeSignIn, Code: "123456", TTL: time.Minute})
 				if !errors.Is(err, sender.ErrUnavailable) || time.Since(start) > 500*time.Millisecond {
 					t.Fatal("SMTP timeout/cancel was not bounded")
 				}
@@ -378,8 +378,8 @@ func TestSMTPRejectsUnsafeConfigurationAndInjection(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		to      string
-		message sender.Message
-	}{{"person@example.org\r\nBcc: other@example.org", sender.Message{Purpose: enum.PurposeSignIn, Code: "123456", TTL: time.Minute}}, {"person@example.org", sender.Message{Purpose: enum.PurposeSignIn, Code: "123456\r\nBcc: other", TTL: time.Minute}}, {"person@example.org", sender.Message{Purpose: enum.CodePurpose(99), Code: "123456", TTL: time.Minute}}, {"person@example.org", sender.Message{Purpose: enum.PurposeSignIn, Code: "123456", TTL: 0}}} {
+		message sender.CodeMessage
+	}{{"person@example.org\r\nBcc: other@example.org", sender.CodeMessage{Purpose: enum.PurposeSignIn, Code: "123456", TTL: time.Minute}}, {"person@example.org", sender.CodeMessage{Purpose: enum.PurposeSignIn, Code: "123456\r\nBcc: other", TTL: time.Minute}}, {"person@example.org", sender.CodeMessage{Purpose: enum.CodePurpose(99), Code: "123456", TTL: time.Minute}}, {"person@example.org", sender.CodeMessage{Purpose: enum.PurposeSignIn, Code: "123456", TTL: 0}}} {
 		if err := s.SendEmail(context.Background(), tc.to, tc.message); !errors.Is(err, sender.ErrUnavailable) {
 			t.Fatal("invalid message must reject safely")
 		}
@@ -400,7 +400,7 @@ func TestSMTPDevelopmentNoneWithoutAuth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = s.SendEmail(context.Background(), "person@example.org", sender.Message{Purpose: enum.PurposeSignIn, Code: "123456", TTL: time.Minute}); err != nil {
+	if err = s.SendEmail(context.Background(), "person@example.org", sender.CodeMessage{Purpose: enum.PurposeSignIn, Code: "123456", TTL: time.Minute}); err != nil {
 		t.Fatal("explicit development plain SMTP failed")
 	}
 	f.mu.Lock()
@@ -421,7 +421,7 @@ func TestSMTPBoundsTLSHandshake(t *testing.T) {
 				t.Fatal(err)
 			}
 			start := time.Now()
-			if err = s.SendEmail(context.Background(), "person@example.org", sender.Message{Purpose: enum.PurposeSignIn, Code: "123456", TTL: time.Minute}); !errors.Is(err, sender.ErrUnavailable) || time.Since(start) > 500*time.Millisecond {
+			if err = s.SendEmail(context.Background(), "person@example.org", sender.CodeMessage{Purpose: enum.PurposeSignIn, Code: "123456", TTL: time.Minute}); !errors.Is(err, sender.ErrUnavailable) || time.Since(start) > 500*time.Millisecond {
 				t.Fatal("TLS handshake escaped total timeout")
 			}
 		})

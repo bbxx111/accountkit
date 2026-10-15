@@ -32,24 +32,26 @@ import (
 // capture 记录最近发出的验证码，供测试取码登录。
 type capture struct {
 	mu   sync.Mutex
-	last map[string]sender.Message // target → message
+	last map[string]sender.CodeMessage // target → message
 	fail error
 }
 
-func (c *capture) set(target string, m sender.Message) error {
+func (c *capture) set(target string, m sender.CodeMessage) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.fail != nil {
 		return c.fail
 	}
 	if c.last == nil {
-		c.last = map[string]sender.Message{}
+		c.last = map[string]sender.CodeMessage{}
 	}
 	c.last[target] = m
 	return nil
 }
-func (c *capture) SendSMS(_ context.Context, to string, m sender.Message) error { return c.set(to, m) }
-func (c *capture) SendEmail(_ context.Context, to string, m sender.Message) error {
+func (c *capture) SendSMS(_ context.Context, to string, m sender.CodeMessage) error {
+	return c.set(to, m)
+}
+func (c *capture) SendEmail(_ context.Context, to string, m sender.CodeMessage) error {
 	return c.set(to, m)
 }
 func (c *capture) code(target string) string {

@@ -12,12 +12,12 @@ func TestDisabledNeverReportsDelivery(t *testing.T) {
 	if d.Enabled() {
 		t.Fatal("disabled sender reports enabled")
 	}
-	var sms sender.SMSSender = d
-	var email sender.EmailSender = d
-	if !errors.Is(sms.SendSMS(context.Background(), "+8613812341234", sender.Message{}), sender.ErrDisabled) {
+	var sms sender.SMSCodeSender = d
+	var email sender.EmailCodeSender = d
+	if !errors.Is(sms.SendSMS(context.Background(), "+8613812341234", sender.CodeMessage{}), sender.ErrDisabled) {
 		t.Fatal("disabled SMS reported success")
 	}
-	if !errors.Is(email.SendEmail(context.Background(), "person@example.org", sender.Message{}), sender.ErrDisabled) {
+	if !errors.Is(email.SendEmail(context.Background(), "person@example.org", sender.CodeMessage{}), sender.ErrDisabled) {
 		t.Fatal("disabled email reported success")
 	}
 }

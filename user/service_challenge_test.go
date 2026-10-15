@@ -15,13 +15,13 @@ import (
 )
 
 type challengeDelivery struct {
-	send func(context.Context, string, sender.Message) error
+	send func(context.Context, string, sender.CodeMessage) error
 }
 
-func (d challengeDelivery) SendSMS(ctx context.Context, target string, m sender.Message) error {
+func (d challengeDelivery) SendSMS(ctx context.Context, target string, m sender.CodeMessage) error {
 	return d.send(ctx, target, m)
 }
-func (d challengeDelivery) SendEmail(ctx context.Context, target string, m sender.Message) error {
+func (d challengeDelivery) SendEmail(ctx context.Context, target string, m sender.CodeMessage) error {
 	return d.send(ctx, target, m)
 }
 
@@ -58,9 +58,9 @@ func TestCodeChallengeDeliveryCleanup(t *testing.T) {
 		var s *Service
 		var newer code.Issued
 		var oldID string
-		d := challengeDelivery{send: func(_ context.Context, target string, _ sender.Message) error { return nil }}
+		d := challengeDelivery{send: func(_ context.Context, target string, _ sender.CodeMessage) error { return nil }}
 		s, mr, _ := deliveryService(t, d, d)
-		s.d.Email = challengeDelivery{send: func(_ context.Context, target string, _ sender.Message) error {
+		s.d.Email = challengeDelivery{send: func(_ context.Context, target string, _ sender.CodeMessage) error {
 			for _, key := range mr.Keys() {
 				if strings.Contains(key, ":challenge:") {
 					oldID = mr.HGet(key, "code_id")

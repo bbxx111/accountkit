@@ -131,11 +131,11 @@ func TestHTTPIntrospectionBoundary(t *testing.T) {
 
 type countedDelivery struct{ calls atomic.Int32 }
 
-func (d *countedDelivery) SendSMS(context.Context, string, sender.Message) error {
+func (d *countedDelivery) SendSMS(context.Context, string, sender.CodeMessage) error {
 	d.calls.Add(1)
 	return nil
 }
-func (d *countedDelivery) SendEmail(context.Context, string, sender.Message) error {
+func (d *countedDelivery) SendEmail(context.Context, string, sender.CodeMessage) error {
 	d.calls.Add(1)
 	return nil
 }

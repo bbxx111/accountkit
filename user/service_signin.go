@@ -38,7 +38,7 @@ func (s *Service) sendCodeUntil(ctx context.Context, channel enum.IdentityKind, 
 		return CodeChallenge{}, err
 	}
 	digest, _ := s.d.Digester.Digest(norm)
-	base := audit.Event{UserID: binding.UserID, FlowID: binding.FlowID, IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, RequestID: meta.RequestID}
+	base := audit.AuthenticationEvent{UserID: binding.UserID, FlowID: binding.FlowID, IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, RequestID: meta.RequestID}
 
 	// 可选可用性契约保持旧宿主兼容：只实现原投递方法的发送器默认启用。
 	var delivery any = s.d.SMS
@@ -135,7 +135,7 @@ func (s *Service) SignInWithCode(ctx context.Context, cred CodeCredential, dev D
 		return SignInResult{}, err
 	}
 	digest, _ := s.d.Digester.Digest(norm)
-	ev := audit.Event{IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, DeviceID: dev.ID, RequestID: meta.RequestID}
+	ev := audit.AuthenticationEvent{IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, DeviceID: dev.ID, RequestID: meta.RequestID}
 
 	expiry, verifyErr := s.d.Codes.VerifyChallengeWithExpiry(ctx, code.Credential{Channel: channel, Purpose: enum.PurposeSignIn, Target: norm, CodeID: cred.CodeID, Code: cred.Code})
 	if reason, err := codeFailure(verifyErr); err != nil {

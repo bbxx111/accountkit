@@ -6,7 +6,8 @@ import (
 	"strings"
 	"time"
 
-	auditdb "github.com/bbxx111/accountkit/audit/db"
+	"github.com/bbxx111/accountkit/audit"
+	"github.com/bbxx111/accountkit/audit/authentication"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/httpapi/reqid"
@@ -125,21 +126,22 @@ type auditEventResource struct {
 	OccurTime     string  `json:"occur_time"`
 }
 
-func newAuditEventResource(userID string, e auditdb.AuditEvent) auditEventResource {
-	out := auditEventResource{
-		Name: "users/" + userID + "/auditEvents/" + e.ID, EventType: e.EventType.String(), ActorKind: e.ActorKind.String(), Result: e.Result.String(),
-		Reason: e.Reason, SessionID: e.SessionID, FlowID: e.FlowID, SubjectHint: e.SubjectHint, DeviceID: e.DeviceID, RequestID: e.RequestID,
-		AdminIssuer: e.AdminIssuer, AdminSubject: e.AdminSubject, AdminUsername: e.AdminUsername, OccurTime: fmtTime(e.OccurTime),
-	}
-	if e.IdentityKind != nil && *e.IdentityKind != enum.IdentityKindUnspecified {
+func newAuditEventResource(userID string, record audit.RecordView) auditEventResource {
+	e, _ := authentication.Projection(record.Event)
+	out := auditEventResource{Name: "users/" + userID + "/auditEvents/" + e.ID.String(), EventType: e.Type.String(), ActorKind: e.Actor.String(), Result: e.Result.String(),
+		Reason: auditString(e.Reason), SessionID: auditString(e.SessionID), FlowID: auditString(e.FlowID), SubjectHint: auditString(e.SubjectHint), DeviceID: auditString(e.DeviceID), RequestID: auditString(e.RequestID),
+		AdminIssuer: auditString(e.AdminIssuer), AdminSubject: auditString(e.AdminSubject), AdminUsername: auditString(e.AdminUsername), OccurTime: fmtTime(e.OccurTime), IP: auditString(e.IP)}
+	if e.IdentityKind != enum.IdentityKindUnspecified {
 		k := e.IdentityKind.String()
 		out.IdentityKind = &k
 	}
-	if e.Ip != nil {
-		ip := e.Ip.String()
-		out.IP = &ip
-	}
 	return out
+}
+func auditString(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 type auditEventList struct {

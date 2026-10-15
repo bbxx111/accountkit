@@ -15,9 +15,15 @@ import (
 
 	"github.com/bbxx111/accountkit"
 	"github.com/bbxx111/accountkit/enum"
-	"github.com/bbxx111/accountkit/migrations"
+	"github.com/bbxx111/accountkit/internal/auditmigration"
 	"github.com/bbxx111/accountkit/user"
+	"github.com/golang-migrate/migrate/v4"
+	migratepgx "github.com/golang-migrate/migrate/v4/database/pgx/v5"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	"testing/fstest"
 )
 
 type sourceFixture struct {
@@ -40,9 +46,7 @@ func seedFormatFixture(t *testing.T, pool *pgxpool.Pool, cfg accountkit.Config) 
 	if err := json.Unmarshal(raw, &f); err != nil {
 		t.Fatal(err)
 	}
-	if err := migrations.Up(ctx, pool.Config().ConnConfig, cfg.Schema); err != nil {
-		t.Fatal(err)
-	}
+	installIntegratedVersionOne(t, pool, cfg.Schema)
 	exec := func(sql string, args ...any) {
 		t.Helper()
 		if _, err := pool.Exec(ctx, sql, args...); err != nil {
@@ -76,6 +80,7 @@ func seedFormatFixture(t *testing.T, pool *pgxpool.Pool, cfg accountkit.Config) 
 	signed := b64([]byte(`{"alg":"HS256","kid":"1","typ":"JWT"}`)) + "." + b64(claims)
 	mac = hmac.New(sha256.New, cfg.JWTKeys[1])
 	mac.Write([]byte(signed))
+	prepareFormatFixtureUpgrade(t, pool, cfg)
 	return f, signed + "." + b64(mac.Sum(nil))
 }
 
@@ -100,6 +105,7 @@ func TestHistoricalFormatsOnInitialSchema(t *testing.T) {
 	a, pool, sent := integrationInstance(t, minimal(), testRedis(t))
 	f, access := seedFormatFixture(t, pool, a.Config())
 	before := snapshotSource(t, pool)
+	prepareFormatFixtureUpgrade(t, pool, a.Config())
 	ctx := context.Background()
 	for range 2 {
 		if err := a.Migrate(ctx); err != nil {
@@ -113,20 +119,37 @@ func TestHistoricalFormatsOnInitialSchema(t *testing.T) {
 	if err := json.Unmarshal([]byte(snapshotSource(t, pool)), &newData); err != nil {
 		t.Fatal(err)
 	}
-	for _, table := range []string{"users", "identities", "sessions", "audit"} {
+	for _, table := range []string{"users", "identities", "sessions"} {
 		if string(oldData[table]) != string(newData[table]) {
 			t.Fatalf("migration changed source %s data", table)
 		}
 	}
 	// Historical audit fixtures have no flow association; repeat migration must preserve that.
 	var linkedAudit int
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM audit_event WHERE flow_id IS NOT NULL").Scan(&linkedAudit); err != nil || linkedAudit != 0 {
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_event WHERE data#>>'{accountkit,flow_id}' IS NOT NULL`).Scan(&linkedAudit); err != nil || linkedAudit != 0 {
 		t.Fatalf("migration rewrote historical audit flow association: %d %v", linkedAudit, err)
 	}
 	var version, flows int
 	var dirty bool
-	if err := pool.QueryRow(ctx, "SELECT version,dirty,(SELECT count(*) FROM identity_flow) FROM schema_migrations").Scan(&version, &dirty, &flows); err != nil || version != 1 || dirty || flows != 0 {
+	if err := pool.QueryRow(ctx, "SELECT version,dirty,(SELECT count(*) FROM identity_flow) FROM schema_migrations").Scan(&version, &dirty, &flows); err != nil || version != 2 || dirty || flows != 0 {
 		t.Fatalf("initial version=%d dirty=%v flows=%d: %v", version, dirty, flows, err)
+	}
+	var mappedID uuid.UUID
+	var legacy string
+	var action string
+	var count int
+	if err := pool.QueryRow(ctx, `SELECT id,data#>>'{accountkit,legacy_event_id}',action FROM audit_event`).Scan(&mappedID, &legacy, &action); err != nil || mappedID.Version() != 7 || legacy != f.EventID || action != "CODE_SENT" {
+		t.Fatalf("historical mapping: %s %q %s %v", mappedID, legacy, action, err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM audit_event").Scan(&count); err != nil || count != 1 {
+		t.Fatalf("historical rows: %d %v", count, err)
+	}
+	stable := snapshotSource(t, pool)
+	if err := a.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if snapshotSource(t, pool) != stable {
+		t.Fatal("repeat migration changed upgraded snapshot")
 	}
 	principal, err := a.Users().Authenticate(ctx, access)
 	if err != nil || principal.UserID != f.UserID {
@@ -159,5 +182,52 @@ func TestHistoricalFormatsOnInitialSchema(t *testing.T) {
 	}
 	if users != 1 || identities != 1 {
 		t.Fatalf("duplicate source identity: users=%d identities=%d", users, identities)
+	}
+}
+
+// The synthetic legacy fixture uses the real engine at integrated version one.
+func installIntegratedVersionOne(t *testing.T, pool *pgxpool.Pool, schema string) {
+	t.Helper()
+	ctx := context.Background()
+	source := fstest.MapFS{}
+	for _, name := range []string{"0001_init.up.sql", "0001_init.down.sql"} {
+		b, err := os.ReadFile("migrations/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		source[name] = &fstest.MapFile{Data: b}
+	}
+	db := stdlib.OpenDB(*pool.Config().ConnConfig)
+	defer db.Close()
+	if _, err := db.ExecContext(ctx, "CREATE SCHEMA "+schema); err != nil {
+		t.Fatal(err)
+	}
+	driver, err := migratepgx.WithInstance(db, &migratepgx.Config{SchemaName: schema, MigrationsTable: "schema_migrations"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := iofs.New(source, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := migrate.NewWithInstance("iofs", src, "pgx5", driver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	if err := m.Up(); err != nil {
+		t.Fatal(err)
+	}
+}
+func prepareFormatFixtureUpgrade(t *testing.T, pool *pgxpool.Pool, cfg accountkit.Config) {
+	t.Helper()
+	conn, err := pool.Acquire(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = auditmigration.Prepare(context.Background(), conn.Conn(), auditmigration.Options{Schema: cfg.Schema, ConfirmSchema: cfg.Schema, Source: cfg.AuditSource, Namespace: cfg.AuditNamespace})
+	conn.Release()
+	if err != nil {
+		t.Fatal(err)
 	}
 }

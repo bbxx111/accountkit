@@ -16,8 +16,8 @@ import (
 var admin1 = user.Admin{Issuer: "https://kc.example/realms/shifang-admin", Subject: "adm-1", Username: "ops"}
 
 // adminEvents 返回类型匹配且 actor 为 ADMIN 的事件。
-func adminEvents(m *audit.Memory, typ enum.EventType) []audit.Event {
-	var out []audit.Event
+func adminEvents(m *testAuditMemory, typ enum.EventType) []audit.AuthenticationEvent {
+	var out []audit.AuthenticationEvent
 	for _, e := range m.Events() {
 		if e.Type == typ && e.Actor == enum.ActorAdmin {
 			out = append(out, e)
@@ -26,7 +26,7 @@ func adminEvents(m *audit.Memory, typ enum.EventType) []audit.Event {
 	return out
 }
 
-func assertAdminFields(t *testing.T, e audit.Event, userID string) {
+func assertAdminFields(t *testing.T, e audit.AuthenticationEvent, userID string) {
 	t.Helper()
 	if e.AdminIssuer != admin1.Issuer || e.AdminSubject != admin1.Subject || e.AdminUsername != admin1.Username || e.UserID != userID || e.IP != meta1.IP || e.RequestID != meta1.RequestID {
 		t.Fatalf("admin event fields: %+v", e)

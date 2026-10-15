@@ -52,5 +52,5 @@ func (s *Service) recordCompletionRejected(ctx context.Context, token, flowID st
 	if !kind.Valid() {
 		kind = enum.IdentityKindUnspecified
 	}
-	s.record(ctx, audit.Event{Type: enum.EventSignInCompletionRejected, Result: enum.ResultFailure, Reason: reason, FlowID: flowID, IdentityKind: kind, IP: meta.IP, DeviceID: dev.ID, RequestID: meta.RequestID})
+	s.record(ctx, audit.AuthenticationEvent{Type: enum.EventSignInCompletionRejected, Result: enum.ResultFailure, Reason: reason, FlowID: flowID, IdentityKind: kind, IP: meta.IP, DeviceID: dev.ID, RequestID: meta.RequestID})
 }

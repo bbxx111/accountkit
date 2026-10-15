@@ -14,9 +14,9 @@ github.com/bbxx111/accountkit/audit/TestNoopImplementsRecorder
 github.com/bbxx111/accountkit/audit/TestStoreDeleteOlderThanBatches
 github.com/bbxx111/accountkit/audit/TestStoreInsertBatchIsAllOrNothing
 github.com/bbxx111/accountkit/audit/TestStoreInsertBatchMapsFieldsAndNulls
-github.com/bbxx111/accountkit/audit/TestStoreInsertBatchRetriesOncePrimaryKeyConflict
-github.com/bbxx111/accountkit/audit/TestStoreInsertBatchSurvivesSameMillisecondIDCollisions
-github.com/bbxx111/accountkit/audit/TestStoreListByUserPaginatesByOccurTimeAndID
+github.com/bbxx111/accountkit/audit/TestStoreConflict
+github.com/bbxx111/accountkit/audit/TestStoreConcurrentDuplicate
+github.com/bbxx111/accountkit/audit/TestStoreResourcePagination
 github.com/bbxx111/accountkit/email/TestHintsAndMask
 github.com/bbxx111/accountkit/email/TestNormalize
 github.com/bbxx111/accountkit/email/TestNormalizeRejects
@@ -475,3 +475,12 @@ github.com/bbxx111/accountkit/examples/codeemail/TestRendererTTL
 github.com/bbxx111/accountkit/examples/codeemail/TestRendererRejectsInvalidInput
 github.com/bbxx111/accountkit/examples/codeemail/TestRendererCancellation
 github.com/bbxx111/accountkit/user/sender/smtp/TestSMTPRendererFoldsLongSubject
+github.com/bbxx111/accountkit/audit/TestMemoryFreezesInputAndOutput
+github.com/bbxx111/accountkit/audit/TestAsyncFreezesQueueAndAccountsClassifications
+github.com/bbxx111/accountkit/audit/TestStoreScrubbedReplay
+github.com/bbxx111/accountkit/audit/TestStoreFlowClosureDoesNotLeakOtherProofOwners
+github.com/bbxx111/accountkit/TestAuditExternalConfigurationMatrix
+github.com/bbxx111/accountkit/TestMigrateAuditConfigurationSingleConnection
+github.com/bbxx111/accountkit/httpapi/admin/TestAuditReaderNilDisablesOnlyAuditRoute
+github.com/bbxx111/accountkit/httpapi/admin/TestAuditProjectionDoesNotExposeGenericData
+github.com/bbxx111/accountkit/user/TestReplacementUnverifiedPrincipalDoesNotBecomeAuditActor

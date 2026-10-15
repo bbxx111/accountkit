@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/audit"
-	auditdb "github.com/bbxx111/accountkit/audit/db"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/httpapi/admin"
 	"github.com/bbxx111/accountkit/user"
@@ -68,11 +67,12 @@ func (f *fakeService) AdminRevokeAllSessions(ctx context.Context, a user.Admin, 
 }
 
 type fakeAudit struct {
-	listByUser func(ctx context.Context, userID string, after *audit.EventCursor, limit int) ([]auditdb.AuditEvent, error)
+	listByUser func(ctx context.Context, userID string, after *audit.EventCursor, limit int) ([]audit.RecordView, error)
 }
 
-func (f *fakeAudit) ListByUser(ctx context.Context, userID string, after *audit.EventCursor, limit int) ([]auditdb.AuditEvent, error) {
-	return f.listByUser(ctx, userID, after, limit)
+func (f *fakeAudit) ListByResource(ctx context.Context, q audit.Query) (audit.Page, error) {
+	rows, err := f.listByUser(ctx, q.Resource.ID, q.After, q.Limit)
+	return audit.Page{Records: rows}, err
 }
 
 // fakeVerifier：角色来自请求头 X-Test-Roles（逗号分隔）；缺角色 → 403（与 oidc-verifier 同形的 AIP-193 体）。
@@ -129,7 +129,7 @@ func newHandler(t *testing.T, f *fakeService, fa *fakeAudit) http.Handler {
 	if fa == nil {
 		fa = &fakeAudit{}
 	}
-	h, err := admin.New(admin.Deps{
+	h, err := admin.New(admin.Deps{AuditSource: "test/source", AuditNamespace: "test/ns",
 		Users: f, Audit: fa, Verifier: fakeVerifier{}, Principal: principalFromHeader,
 		ClientIP:  func(*http.Request) string { return "198.51.100.7" },
 		RequestID: func(*http.Request) string { return "req-admin" },

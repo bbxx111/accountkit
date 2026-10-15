@@ -100,6 +100,8 @@ type FlowLink struct {
 	Flow     Resource
 	User     Resource
 	Evidence RecordView
+	// Live requires a trusted domain ownership check; Evidence remains empty.
+	Live bool
 }
 
 // Page 将记录和归属证据分开，证据不得作为任意业务数据输出。

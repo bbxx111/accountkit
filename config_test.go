@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit"
+	"github.com/bbxx111/accountkit/audit"
 )
 
 func k(b byte) []byte     { return bytes.Repeat([]byte{b}, 32) }
@@ -74,6 +75,16 @@ func TestAuditConfiguration(t *testing.T) {
 			got, err := accountkit.ConfigFromEnv(prefix)
 			if err != nil {
 				t.Fatal(err)
+			}
+			deps := baseDeps(t)
+			deps.Audit = audit.Noop{}
+			auth, newErr := accountkit.New(got, deps)
+			explicit := tc.source != "" && tc.namespace != ""
+			if (newErr == nil) != explicit {
+				t.Fatalf("external config explicit=%v: %v", explicit, newErr)
+			}
+			if auth != nil {
+				auth.Close()
 			}
 			if got.AuditSource != tc.source || got.AuditNamespace != tc.namespace {
 				t.Fatalf("explicit audit input lost: source=%q namespace=%q", got.AuditSource, got.AuditNamespace)

@@ -20,7 +20,7 @@ import (
 // Refresh 实现 refresh_token grant。
 func (s *Service) Refresh(ctx context.Context, refreshToken string, meta Meta) (TokenResult, error) {
 	hash := hashRefresh(refreshToken)
-	ev := audit.Event{IP: meta.IP, RequestID: meta.RequestID}
+	ev := audit.AuthenticationEvent{IP: meta.IP, RequestID: meta.RequestID}
 
 	sess, err := s.d.Repo.Q().GetSessionByRefreshHash(ctx, hash)
 	switch {
@@ -93,7 +93,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string, meta Meta) (
 }
 
 // ensureRefreshSessionActive 仅分类会话自身的吊销/期限，不产生撤销副作用。
-func (s *Service) ensureRefreshSessionActive(ctx context.Context, sess db.Session, now time.Time, ev audit.Event) error {
+func (s *Service) ensureRefreshSessionActive(ctx context.Context, sess db.Session, now time.Time, ev audit.AuthenticationEvent) error {
 	if sess.RevokeTime != nil {
 		ev.Type, ev.Result, ev.Reason = enum.EventRefreshRejected, enum.ResultFailure, "SESSION_REVOKED"
 		s.record(ctx, ev)
@@ -108,7 +108,7 @@ func (s *Service) ensureRefreshSessionActive(ctx context.Context, sess db.Sessio
 }
 
 // ensureSessionRefreshable 在必要读取后返回最新资格判定时刻；只有账号状态拒绝会吊销。
-func (s *Service) ensureSessionRefreshable(ctx context.Context, sess db.Session, ev audit.Event) (time.Time, error) {
+func (s *Service) ensureSessionRefreshable(ctx context.Context, sess db.Session, ev audit.AuthenticationEvent) (time.Time, error) {
 	now := sessionTime(s.now())
 	if err := s.ensureRefreshSessionActive(ctx, sess, now, ev); err != nil {
 		return now, err
@@ -159,7 +159,7 @@ func (s *Service) revokeSession(ctx context.Context, sid string, reason enum.Rev
 // rotate 在事务内对会话行加锁后 CAS 轮换 refresh，并在提交前把新 pair 写入宽限缓存。
 // 并发刷新者在行锁上排队：胜者提交时缓存已就位，失败者随后走宽限路径必然命中同一 pair。
 // 返回 rotated=false 表示加锁后发现哈希已被他人轮换（CAS 未命中）。
-func (s *Service) rotate(ctx context.Context, sess db.Session, oldHash []byte, ev audit.Event) (TokenResult, bool, error) {
+func (s *Service) rotate(ctx context.Context, sess db.Session, oldHash []byte, ev audit.AuthenticationEvent) (TokenResult, bool, error) {
 	var res TokenResult
 	rotated := false
 	err := s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
@@ -244,7 +244,7 @@ func (s *Service) Revoke(ctx context.Context, refreshToken string, meta Meta) er
 		return fmt.Errorf("user: revoke: %w", err)
 	}
 	s.revokeInSet(ctx, sess.ID)
-	s.record(ctx, audit.Event{Type: enum.EventSessionRevoked, Result: enum.ResultSuccess, Reason: reason.String(),
+	s.record(ctx, audit.AuthenticationEvent{Type: enum.EventSessionRevoked, Result: enum.ResultSuccess, Reason: reason.String(),
 		UserID: sess.UserID, SessionID: sess.ID, DeviceID: sess.DeviceID, IP: meta.IP, RequestID: meta.RequestID})
 	return nil
 }
@@ -316,7 +316,7 @@ func (s *Service) RevokeSession(ctx context.Context, userID, sid string, meta Me
 		return ErrNotFound
 	}
 	s.revokeInSet(ctx, sid)
-	s.record(ctx, audit.Event{Type: enum.EventSessionRevoked, Result: enum.ResultSuccess, Reason: reason.String(), UserID: userID, SessionID: sid, IP: meta.IP, RequestID: meta.RequestID})
+	s.record(ctx, audit.AuthenticationEvent{Type: enum.EventSessionRevoked, Result: enum.ResultSuccess, Reason: reason.String(), UserID: userID, SessionID: sid, IP: meta.IP, RequestID: meta.RequestID})
 	return nil
 }
 
@@ -336,7 +336,7 @@ func (s *Service) RevokeOtherSessions(ctx context.Context, userID, currentSID st
 	if err != nil {
 		return err
 	}
-	s.afterRevokeAll(ctx, revoked, enum.RevokeUserRevokedDevice, audit.Event{Actor: enum.ActorUser, UserID: userID, IP: meta.IP, RequestID: meta.RequestID})
+	s.afterRevokeAll(ctx, revoked, enum.RevokeUserRevokedDevice, audit.AuthenticationEvent{Actor: enum.ActorUser, UserID: userID, IP: meta.IP, RequestID: meta.RequestID})
 	return nil
 }
 

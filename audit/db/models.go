@@ -5,30 +5,23 @@
 package db
 
 import (
-	"net/netip"
 	"time"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/google/uuid"
 )
 
 type AuditEvent struct {
-	ID            string
-	EventType     enum.EventType
-	ActorKind     enum.ActorKind
-	UserID        *string
-	AdminIssuer   *string
-	AdminSubject  *string
-	AdminUsername *string
-	SessionID     *string
-	IdentityKind  *enum.IdentityKind
-	SubjectHint   *string
-	Result        enum.Result
-	Reason        *string
-	Ip            *netip.Addr
-	DeviceID      *string
-	RequestID     *string
-	OccurTime     time.Time
-	FlowID        *string
+	ID         uuid.UUID
+	Source     string
+	Action     string
+	Result     *enum.Result
+	Actor      []byte
+	Targets    []byte
+	Context    []byte
+	Data       []byte
+	OccurTime  time.Time
+	CreateTime time.Time
 }
 
 type Identity struct {

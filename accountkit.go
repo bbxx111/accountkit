@@ -24,6 +24,7 @@ import (
 	"github.com/bbxx111/accountkit/httpapi/admin"
 	"github.com/bbxx111/accountkit/httpapi/authn"
 	"github.com/bbxx111/accountkit/httpapi/enduser"
+	"github.com/bbxx111/accountkit/internal/auditmigration"
 	"github.com/bbxx111/accountkit/maintenance"
 	"github.com/bbxx111/accountkit/migrations"
 	"github.com/bbxx111/accountkit/pii"
@@ -66,6 +67,8 @@ type Deps struct {
 	// Audit 接收审计事件。为空时默认使用 audit.Async（有界队列 + 批量写入 audit_event 表；Start 启动、Close 刷出）；
 	// 宿主可注入自己的 Recorder（例如转发到日志管道）。任何实现都不得让记录失败影响认证动作的结果。
 	Audit audit.Recorder
+	// AuditReader is optional in external writer mode; nil disables only audit queries.
+	AuditReader audit.Reader
 	// HTTPClient 用于调用微信 API 与拉取 Apple JWKS。默认 10 秒超时；宿主可注入带代理/追踪的客户端。
 	HTTPClient *http.Client
 	// Anonymizers 是宿主业务域的匿名化器：purge 到期账号时，在库表匿名化之后按此顺序、同一事务内调用。
@@ -89,6 +92,7 @@ type Auth struct {
 	signer   *tokens.Signer
 	runner   *maintenance.Runner
 
+	authAudit  *audit.AuthenticationRecorder
 	auditStore *audit.Store
 	auditAsync *audit.Async
 
@@ -105,6 +109,13 @@ type Auth struct {
 
 // New 应用默认、校验配置与依赖，构造密码学原语与维护运行器。不做任何 I/O。
 func New(cfg Config, deps Deps) (*Auth, error) {
+	if deps.AuditReader != nil && deps.Audit == nil {
+		return nil, errors.New("accountkit: AuditReader requires an external Audit recorder")
+	}
+	if deps.Audit != nil && (cfg.AuditSource == "" || cfg.AuditNamespace == "") {
+		return nil, errors.New("accountkit: external Audit requires explicit AuditSource and AuditNamespace")
+	}
+
 	cfg.EnabledIdentityKinds = slices.Clone(cfg.EnabledIdentityKinds)
 	cfg.RequiredIdentityKinds = slices.Clone(cfg.RequiredIdentityKinds)
 	cfg.applyDefaults()
@@ -149,13 +160,22 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 	if err != nil {
 		return nil, err
 	}
-	auditStore := audit.NewStore(deps.Pool)
+	auditStore, err := audit.NewStoreWithOptions(deps.Pool, audit.StoreOptions{Source: cfg.AuditSource, Namespace: cfg.AuditNamespace})
+	if err != nil {
+		return nil, err
+	}
+	auditReader := deps.AuditReader
 	var auditAsync *audit.Async
 	if deps.Audit == nil {
 		auditAsync = audit.NewAsync(auditStore, audit.AsyncOptions{Logger: deps.Logger})
 		deps.Audit = auditAsync
+		auditReader = auditStore
 	}
-	a := &Auth{cfg: cfg, deps: deps, cipher: cipher, digester: digester, signer: signer, auditStore: auditStore, auditAsync: auditAsync}
+	authAudit, err := audit.NewAuthenticationRecorder(deps.Audit, audit.AuthenticationOptions{Source: cfg.AuditSource, Namespace: cfg.AuditNamespace}, deps.Logger)
+	if err != nil {
+		return nil, err
+	}
+	a := &Auth{authAudit: authAudit, cfg: cfg, deps: deps, cipher: cipher, digester: digester, signer: signer, auditStore: auditStore, auditAsync: auditAsync}
 	a.codes = code.NewStore(deps.Redis, cfg.KeyPrefix, digester, code.Options{
 		TTL: cfg.CodeTTL, Cooldown: cfg.CodeCooldown, MaxAttempts: cfg.CodeMaxAttempts,
 		DailyLimitPerTarget: cfg.CodeDailyLimitPerTarget, DailyLimitPerIP: cfg.CodeDailyLimitPerIP,
@@ -183,6 +203,7 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 		EnabledIdentityKinds: cfg.EnabledIdentityKinds, RequiredIdentityKinds: cfg.RequiredIdentityKinds,
 		Repo: user.NewRepo(deps.Pool), Codes: a.codes, Revocation: a.revocation, Grace: a.grace,
 		Signer: signer, Cipher: cipher, Digester: digester,
+		AuditSource: cfg.AuditSource, AuditNamespace: cfg.AuditNamespace,
 		SMS: deps.SMSSender, Email: deps.EmailSender, Audit: deps.Audit, Logger: deps.Logger,
 		WeChat: wechat, Apple: apple,
 		AccessTTL: cfg.AccessTokenTTL, RefreshTTL: cfg.RefreshTokenTTL, RefreshGrace: cfg.RefreshGrace, CodeTTL: cfg.CodeTTL,
@@ -208,7 +229,7 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 	a.endUser = h
 	if deps.AdminVerifier != nil {
 		ah, err := admin.New(admin.Deps{
-			Users: users, Audit: auditStore, Verifier: deps.AdminVerifier, Principal: deps.AdminPrincipal,
+			Users: users, Audit: auditReader, AuditSource: cfg.AuditSource, AuditNamespace: cfg.AuditNamespace, FlowOwner: users.AuditFlowBelongsToUser, Verifier: deps.AdminVerifier, Principal: deps.AdminPrincipal,
 			Logger: deps.Logger, ClientIP: deps.ClientIP, RequestID: deps.RequestID,
 		})
 		if err != nil {
@@ -277,7 +298,7 @@ func (a *Auth) AdminHandler() http.Handler { return a.adminHandler }
 // RecordAdminForbidden 记录 ADMIN_FORBIDDEN（有效 token 但角色不足，§5.1）。供宿主接到 verifier 的 OnForbidden 钩子：
 // 拦截本身由 verifier 完成，这里只写审计（actor ADMIN，reason ROLE_REQUIRED，ip 与 request_id 取自请求）。
 func (a *Auth) RecordAdminForbidden(r *http.Request, p AdminPrincipal) {
-	a.deps.Audit.Record(r.Context(), audit.Event{
+	a.authAudit.Record(r.Context(), audit.AuthenticationEvent{
 		Type: enum.EventAdminForbidden, Actor: enum.ActorAdmin, Result: enum.ResultFailure, Reason: "ROLE_REQUIRED",
 		AdminIssuer: p.Issuer, AdminSubject: p.Subject, AdminUsername: p.Username,
 		IP: a.deps.ClientIP(r), RequestID: a.deps.RequestID(r), OccurTime: time.Now(),
@@ -313,6 +334,15 @@ func (a *Auth) Migrate(ctx context.Context) error {
 	}
 	if err := a.deps.Redis.Ping(ctx).Err(); err != nil {
 		return fmt.Errorf("accountkit: redis ping: %w", err)
+	}
+	conn, err := a.deps.Pool.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	err = auditmigration.CheckConfiguration(ctx, conn.Conn(), auditmigration.Options{Schema: a.cfg.Schema, ConfirmSchema: a.cfg.Schema, Source: a.cfg.AuditSource, Namespace: a.cfg.AuditNamespace})
+	conn.Release()
+	if err != nil {
+		return err
 	}
 	if err := migrations.Up(ctx, a.deps.Pool.Config().ConnConfig, a.cfg.Schema); err != nil {
 		return err

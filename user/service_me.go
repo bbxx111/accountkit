@@ -165,7 +165,7 @@ func (s *Service) Reauthenticate(ctx context.Context, p Principal, cred CodeCred
 		return TokenResult{}, err
 	}
 	digest, _ := s.d.Digester.Digest(norm)
-	ev := audit.Event{UserID: p.UserID, SessionID: p.SessionID, IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, RequestID: meta.RequestID}
+	ev := audit.AuthenticationEvent{UserID: p.UserID, SessionID: p.SessionID, IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, RequestID: meta.RequestID}
 
 	if reason, err := s.verifyCode(ctx, channel, enum.PurposeReauth, norm, cred, code.Binding{UserID: p.UserID, SessionID: p.SessionID}); err != nil {
 		if !errors.Is(err, ErrUnavailable) {

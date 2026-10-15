@@ -109,7 +109,7 @@ func TestServiceIntegrationAdminLifecycle(t *testing.T) {
 	p.stop()
 	f.assertAuditPrivate()
 	var denied, reveals int
-	if err := f.pool.QueryRow(context.Background(), "SELECT count(*) FILTER (WHERE event_type=$1), count(*) FILTER (WHERE event_type=$2) FROM audit_event", enum.EventAdminForbidden, enum.EventIdentityRevealed).Scan(&denied, &reveals); err != nil {
+	if err := f.pool.QueryRow(context.Background(), "SELECT count(*) FILTER (WHERE action=$1), count(*) FILTER (WHERE action=$2) FROM audit_event", enum.EventAdminForbidden.String(), enum.EventIdentityRevealed.String()).Scan(&denied, &reveals); err != nil {
 		t.Fatal(err)
 	}
 	if denied != 1 || reveals != 1 {
@@ -191,7 +191,7 @@ func TestServiceIntegrationStartupSafety(t *testing.T) {
 	}
 	var version int
 	var dirty bool
-	if err := f.pool.QueryRow(context.Background(), "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil || version != 1 || dirty {
+	if err := f.pool.QueryRow(context.Background(), "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil || version != 2 || dirty {
 		t.Fatalf("migration state version=%d dirty=%v err=%v", version, dirty, err)
 	}
 	p := f.start(nil)

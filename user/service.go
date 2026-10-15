@@ -16,6 +16,7 @@ import (
 	"github.com/bbxx111/accountkit/email"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
+	"github.com/bbxx111/accountkit/internal/auditconfig"
 	"github.com/bbxx111/accountkit/phone"
 	"github.com/bbxx111/accountkit/pii"
 	"github.com/bbxx111/accountkit/session/grace"
@@ -57,6 +58,8 @@ type Deps struct {
 	SMS                   sender.SMSCodeSender
 	Email                 sender.EmailCodeSender
 	Audit                 audit.Recorder
+	AuditSource           string
+	AuditNamespace        string
 	Logger                *slog.Logger
 
 	// WeChat / Apple 为 nil 表示未启用对应 IdP。
@@ -86,6 +89,7 @@ type Deps struct {
 
 // Service 持有用户域的全部业务规则。
 type Service struct {
+	authAudit   *audit.AuthenticationRecorder
 	d           Deps
 	policy      *IdentityPolicy
 	flowContext string
@@ -182,8 +186,19 @@ func NewService(d Deps) (*Service, error) {
 	if d.Now == nil {
 		d.Now = time.Now
 	}
+	defaults := auditconfig.Local(d.Repo.pool)
+	if d.AuditSource == "" {
+		d.AuditSource = defaults.Source
+	}
+	if d.AuditNamespace == "" {
+		d.AuditNamespace = defaults.Namespace
+	}
+	mapper, err := audit.NewAuthenticationRecorder(d.Audit, audit.AuthenticationOptions{Source: d.AuditSource, Namespace: d.AuditNamespace}, d.Logger)
+	if err != nil {
+		return nil, err
+	}
 	flowContext, flowPolicy := identityFlowConfiguration(d, policy)
-	return &Service{d: d, policy: policy, flowContext: flowContext, flowPolicy: flowPolicy}, nil
+	return &Service{authAudit: mapper, d: d, policy: policy, flowContext: flowContext, flowPolicy: flowPolicy}, nil
 }
 
 // Device 是客户端设备身份（X-Device-Id / X-Device-Name）。
@@ -283,14 +298,14 @@ func validDevice(dev Device) error {
 }
 
 // record 填充审计事件的时间与默认 actor 后交给 Recorder。
-func (s *Service) record(ctx context.Context, e audit.Event) {
+func (s *Service) record(ctx context.Context, e audit.AuthenticationEvent) {
 	if e.Actor == enum.ActorKindUnspecified {
 		e.Actor = enum.ActorUser
 	}
 	if e.OccurTime.IsZero() {
 		e.OccurTime = s.now()
 	}
-	s.d.Audit.Record(ctx, e)
+	s.authAudit.Record(ctx, e)
 }
 
 // revokeInSet 把 sid 写入 Redis 吊销集；失败只记日志（fail-open：吊销退化为最多一个 access TTL）。
@@ -401,10 +416,10 @@ func (s *Service) establishSession(ctx context.Context, q *db.Queries, u db.User
 }
 
 // finishSignIn 在事务提交后处理被替换会话的吊销集与审计，并记录 SIGN_IN。
-func (s *Service) finishSignIn(ctx context.Context, ev audit.Event, res TokenResult, replaced []string, dev Device, meta Meta) {
+func (s *Service) finishSignIn(ctx context.Context, ev audit.AuthenticationEvent, res TokenResult, replaced []string, dev Device, meta Meta) {
 	for _, sid := range replaced {
 		s.revokeInSet(ctx, sid)
-		s.record(ctx, audit.Event{Type: enum.EventSessionRevoked, Result: enum.ResultSuccess, Reason: enum.RevokeReplacedByRelogin.String(), FlowID: ev.FlowID, UserID: ev.UserID, SessionID: sid, IP: meta.IP, DeviceID: dev.ID, RequestID: meta.RequestID})
+		s.record(ctx, audit.AuthenticationEvent{Type: enum.EventSessionRevoked, Result: enum.ResultSuccess, Reason: enum.RevokeReplacedByRelogin.String(), FlowID: ev.FlowID, UserID: ev.UserID, SessionID: sid, IP: meta.IP, DeviceID: dev.ID, RequestID: meta.RequestID})
 	}
 	ev.Type, ev.Result = enum.EventSignIn, enum.ResultSuccess
 	if res.IsNewUser {

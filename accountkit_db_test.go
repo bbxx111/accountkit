@@ -158,14 +158,14 @@ func TestAuditEventsPersistedAndExpiredEndToEnd(t *testing.T) {
 	a.Close() // 刷出队列
 
 	type row struct {
-		typ     int16
+		typ     string
 		userID  *string
 		reqID   *string
 		ip      *string
 		device  *string
 		hintLen *int
 	}
-	rows, err := pool.Query(ctx, `SELECT event_type, user_id, request_id, host(ip), device_id, length(subject_hint) FROM audit_event ORDER BY occur_time, id`)
+	rows, err := pool.Query(ctx, `SELECT action, COALESCE((SELECT r->>'id' FROM jsonb_array_elements(targets || COALESCE(context->'related_resources','[]'::jsonb)) r WHERE r->>'type'='USER' LIMIT 1),actor->>'id'), context->>'request_id', context->>'client_ip', context->>'device_id', length(data#>>'{accountkit,subject_hint}') FROM audit_event ORDER BY occur_time, id`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestAuditEventsPersistedAndExpiredEndToEnd(t *testing.T) {
 		got = append(got, r)
 	}
 	rows.Close()
-	want := map[int16]bool{int16(enum.EventCodeSent): false, int16(enum.EventSignIn): false, int16(enum.EventSignInFailed): false}
+	want := map[string]bool{enum.EventCodeSent.String(): false, enum.EventSignIn.String(): false, enum.EventSignInFailed.String(): false}
 	for _, r := range got {
 		if _, ok := want[r.typ]; ok {
 			want[r.typ] = true
@@ -186,10 +186,10 @@ func TestAuditEventsPersistedAndExpiredEndToEnd(t *testing.T) {
 		if r.reqID == nil || *r.reqID != "e2e-audit-1" || r.ip == nil || *r.ip != "127.0.0.1" {
 			t.Fatalf("every event must carry request_id and ip: %+v", r)
 		}
-		if r.typ == int16(enum.EventSignIn) && (r.userID == nil || *r.userID != tok["user_id"]) {
+		if r.typ == enum.EventSignIn.String() && (r.userID == nil || *r.userID != tok["user_id"]) {
 			t.Fatalf("SIGN_IN must carry user_id: %+v", r)
 		}
-		if r.typ == int16(enum.EventSignIn) || r.typ == int16(enum.EventSignInFailed) {
+		if r.typ == enum.EventSignIn.String() || r.typ == enum.EventSignInFailed.String() {
 			// 错码在找到账号之前就被拒绝，所以 SIGN_IN_FAILED 没有 user_id，但设备与 8 位 hint 都在
 			if r.device == nil || *r.device != "e2e-audit-dev" || r.hintLen == nil || *r.hintLen != 8 {
 				t.Fatalf("sign-in events must carry device_id and an 8-char hint: %+v", r)
@@ -198,7 +198,7 @@ func TestAuditEventsPersistedAndExpiredEndToEnd(t *testing.T) {
 	}
 	for typ, seen := range want {
 		if !seen {
-			t.Fatalf("event type %d not persisted; got %+v", typ, got)
+			t.Fatalf("event type %s not persisted; got %+v", typ, got)
 		}
 	}
 	// 保留期：把所有事件拨到 200 天前，跑一轮维护（AuditRetentionDays 默认 180）→ 全部删除

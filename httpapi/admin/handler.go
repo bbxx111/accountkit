@@ -14,7 +14,6 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/bbxx111/accountkit/audit"
-	auditdb "github.com/bbxx111/accountkit/audit/db"
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/httpapi/jsonbody"
 	"github.com/bbxx111/accountkit/httpapi/reqid"
@@ -56,19 +55,20 @@ type Service interface {
 }
 
 // AuditReader 是审计读侧；*audit.Store 满足它。
-type AuditReader interface {
-	ListByUser(ctx context.Context, userID string, after *audit.EventCursor, limit int) ([]auditdb.AuditEvent, error)
-}
+type AuditReader = audit.Reader
 
 // Deps 是 handler 的依赖。
 type Deps struct {
-	Users     Service
-	Audit     AuditReader
-	Verifier  Verifier
-	Principal func(ctx context.Context) (Principal, bool)
-	Logger    *slog.Logger
-	ClientIP  func(*http.Request) string
-	RequestID func(*http.Request) string
+	Users          Service
+	Audit          AuditReader
+	AuditSource    string
+	AuditNamespace string
+	FlowOwner      func(context.Context, string, string) (bool, error)
+	Verifier       Verifier
+	Principal      func(ctx context.Context) (Principal, bool)
+	Logger         *slog.Logger
+	ClientIP       func(*http.Request) string
+	RequestID      func(*http.Request) string
 	// MaxBodyBytes 默认 64 KiB。
 	MaxBodyBytes int64
 }
@@ -81,12 +81,15 @@ type Handler struct {
 // New 校验依赖并返回 Handler（不做 I/O）。
 func New(d Deps) (*Handler, error) {
 	switch {
-	case d.Users == nil, d.Audit == nil:
-		return nil, errors.New("admin: Deps.Users and Deps.Audit are required")
+	case d.Users == nil:
+		return nil, errors.New("admin: Deps.Users is required")
 	case d.Verifier == nil, d.Principal == nil:
 		return nil, errors.New("admin: Deps.Verifier and Deps.Principal are required")
 	case d.ClientIP == nil, d.RequestID == nil:
 		return nil, errors.New("admin: Deps.ClientIP and Deps.RequestID are required")
+	}
+	if err := (audit.AuthenticationOptions{Source: d.AuditSource, Namespace: d.AuditNamespace}).Validate(); err != nil {
+		return nil, err
 	}
 	if d.Logger == nil {
 		d.Logger = slog.Default()

@@ -44,6 +44,22 @@ func (q *Queries) AnonymizeIdentity(ctx context.Context, arg AnonymizeIdentityPa
 	return result.RowsAffected(), nil
 }
 
+const auditFlowBelongsToUser = `-- name: AuditFlowBelongsToUser :one
+SELECT EXISTS (SELECT 1 FROM identity_flow WHERE id = $1::text AND (user_id = $2::text OR proof_user_ids @> ARRAY[$2::text]))
+`
+
+type AuditFlowBelongsToUserParams struct {
+	FlowID string
+	UserID string
+}
+
+func (q *Queries) AuditFlowBelongsToUser(ctx context.Context, arg AuditFlowBelongsToUserParams) (bool, error) {
+	row := q.db.QueryRow(ctx, auditFlowBelongsToUser, arg.FlowID, arg.UserID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const batchPublicProfiles = `-- name: BatchPublicProfiles :many
 SELECT id, display_name, state FROM user_account WHERE id = ANY($1::text[])
 `
@@ -1401,17 +1417,37 @@ func (q *Queries) RotateSession(ctx context.Context, arg RotateSessionParams) (i
 
 const scrubAuditEventsByUser = `-- name: ScrubAuditEventsByUser :execrows
 
-UPDATE audit_event SET ip = NULL, device_id = NULL, subject_hint = NULL
-WHERE (user_id = $1::text OR flow_id IN (
-    SELECT flow_id FROM audit_event WHERE user_id = $1::text AND flow_id IS NOT NULL
-)) AND (ip IS NOT NULL OR device_id IS NOT NULL OR subject_hint IS NOT NULL)
+UPDATE audit_event e SET
+ actor = e.actor - 'name',
+ targets = (SELECT COALESCE(jsonb_agg(r - 'name'),'[]'::jsonb) FROM jsonb_array_elements(e.targets) r),
+ context = jsonb_set(e.context - 'client_ip' - 'device_id' - 'user_agent', '{related_resources}',
+  (SELECT COALESCE(jsonb_agg(r - 'name'),'[]'::jsonb) FROM jsonb_array_elements(COALESCE(e.context->'related_resources','[]'::jsonb)) r)),
+ data = e.data #- '{accountkit,subject_hint}'
+WHERE e.source = $1::text AND (
+(e.actor->>'namespace' = $2::text AND e.actor->>'type' = 'USER' AND e.actor->>'id' = $3::text)
+ OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) r
+ WHERE r->>'namespace' = $2::text AND r->>'type' = 'USER' AND r->>'id' = $3::text) OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) f
+ WHERE f->>'namespace' = $2::text AND f->>'type' = 'IDENTITY_FLOW' AND EXISTS (
+ SELECT 1 FROM audit_event linked WHERE linked.source = $1::text
+ AND (linked.actor @> jsonb_build_object('type','USER','namespace',$2::text,'id',$3::text)
+ OR EXISTS (SELECT 1 FROM jsonb_array_elements(linked.targets || COALESCE(linked.context->'related_resources','[]'::jsonb)) u
+ WHERE u->>'namespace' = $2::text AND u->>'type' = 'USER' AND u->>'id' = $3::text))
+ AND EXISTS (SELECT 1 FROM jsonb_array_elements(linked.targets || COALESCE(linked.context->'related_resources','[]'::jsonb)) lf
+ WHERE lf->>'namespace' = $2::text AND lf->>'type' = 'IDENTITY_FLOW' AND lf->>'id' = f->>'id')))
+) AND (e.actor ? 'name' OR e.context ? 'client_ip' OR e.context ? 'device_id' OR e.context ? 'user_agent'
+ OR e.data->'accountkit' ? 'subject_hint'
+ OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) p WHERE p ? 'name'))
 `
 
+type ScrubAuditEventsByUserParams struct {
+	Source    string
+	Namespace string
+	UserID    string
+}
+
 // audit_event
-// purge：去掉可关联到自然人的请求侧字段，保留事件与 user_id（§3.5）。命中 audit_event_user_id_occur_time_idx 前缀。
-// 初始补全事件尚无 user_id；以之后已归属的 flow_id 关联同流程事件，命中 flow 关联索引。
-func (q *Queries) ScrubAuditEventsByUser(ctx context.Context, userID string) (int64, error) {
-	result, err := q.db.Exec(ctx, scrubAuditEventsByUser, userID)
+func (q *Queries) ScrubAuditEventsByUser(ctx context.Context, arg ScrubAuditEventsByUserParams) (int64, error) {
+	result, err := q.db.Exec(ctx, scrubAuditEventsByUser, arg.Source, arg.Namespace, arg.UserID)
 	if err != nil {
 		return 0, err
 	}
@@ -1419,16 +1455,29 @@ func (q *Queries) ScrubAuditEventsByUser(ctx context.Context, userID string) (in
 }
 
 const scrubIdentityFlowAuditForUser = `-- name: ScrubIdentityFlowAuditForUser :execrows
-UPDATE audit_event SET ip = NULL, device_id = NULL, subject_hint = NULL
-WHERE flow_id IN (
-    SELECT id FROM identity_flow
-    WHERE user_id = $1::text OR proof_user_ids @> ARRAY[$1::text]
-) AND (ip IS NOT NULL OR device_id IS NOT NULL OR subject_hint IS NOT NULL)
+UPDATE audit_event e SET
+ actor = e.actor - 'name',
+ targets = (SELECT COALESCE(jsonb_agg(r - 'name'),'[]'::jsonb) FROM jsonb_array_elements(e.targets) r),
+ context = jsonb_set(e.context - 'client_ip' - 'device_id' - 'user_agent', '{related_resources}',
+  (SELECT COALESCE(jsonb_agg(r - 'name'),'[]'::jsonb) FROM jsonb_array_elements(COALESCE(e.context->'related_resources','[]'::jsonb)) r)),
+ data = e.data #- '{accountkit,subject_hint}'
+WHERE e.source = $1::text AND (
+EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) f
+ WHERE f->>'namespace' = $2::text AND f->>'type' = 'IDENTITY_FLOW' AND f->>'id' IN (
+ SELECT id FROM identity_flow WHERE user_id = $3::text OR proof_user_ids @> ARRAY[$3::text]))
+) AND (e.actor ? 'name' OR e.context ? 'client_ip' OR e.context ? 'device_id' OR e.context ? 'user_agent'
+ OR e.data->'accountkit' ? 'subject_hint'
+ OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) p WHERE p ? 'name'))
 `
 
-// 用户锁内、删除 flow 前清理已落库事件；不依赖异步队列中的最终用户关联事件。
-func (q *Queries) ScrubIdentityFlowAuditForUser(ctx context.Context, userID string) (int64, error) {
-	result, err := q.db.Exec(ctx, scrubIdentityFlowAuditForUser, userID)
+type ScrubIdentityFlowAuditForUserParams struct {
+	Source    string
+	Namespace string
+	UserID    string
+}
+
+func (q *Queries) ScrubIdentityFlowAuditForUser(ctx context.Context, arg ScrubIdentityFlowAuditForUserParams) (int64, error) {
+	result, err := q.db.Exec(ctx, scrubIdentityFlowAuditForUser, arg.Source, arg.Namespace, arg.UserID)
 	if err != nil {
 		return 0, err
 	}

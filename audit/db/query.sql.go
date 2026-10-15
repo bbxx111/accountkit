@@ -8,49 +8,128 @@ package db
 import (
 	"context"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const deleteAuditEventsBefore = `-- name: DeleteAuditEventsBefore :execrows
-DELETE FROM audit_event
-WHERE id IN (
-    SELECT id FROM audit_event WHERE occur_time < $1::timestamptz ORDER BY occur_time LIMIT $2::int
+DELETE FROM audit_event WHERE id IN (
+ SELECT id FROM audit_event WHERE source = $1::text AND occur_time < $2::timestamptz
+ ORDER BY occur_time, id LIMIT $3::int
 )
 `
 
 type DeleteAuditEventsBeforeParams struct {
+	Source    string
 	Before    time.Time
 	BatchSize int32
 }
 
-// 维护任务 audit_retention：按 occur_time 分批删除超过保留期的行；命中 audit_event_occur_time_idx。
 func (q *Queries) DeleteAuditEventsBefore(ctx context.Context, arg DeleteAuditEventsBeforeParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteAuditEventsBefore, arg.Before, arg.BatchSize)
+	result, err := q.db.Exec(ctx, deleteAuditEventsBefore, arg.Source, arg.Before, arg.BatchSize)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
 }
 
-const listAuditEventsByUser = `-- name: ListAuditEventsByUser :many
-SELECT id, event_type, actor_kind, user_id, admin_issuer, admin_subject, admin_username, session_id, identity_kind, subject_hint, result, reason, ip, device_id, request_id, occur_time, flow_id FROM audit_event
-WHERE user_id = $1::text
-  AND ($2::timestamptz IS NULL
-       OR (occur_time, id) > ($2::timestamptz, $3::text))
-ORDER BY occur_time, id
-LIMIT $4::int
+const getAuditEvent = `-- name: GetAuditEvent :one
+SELECT id, source, action, result, actor, targets, context, data, occur_time, create_time FROM audit_event WHERE id = $1
 `
 
-type ListAuditEventsByUserParams struct {
-	UserID    string
-	AfterTime *time.Time
-	AfterID   *string
-	PageLimit int32
+func (q *Queries) GetAuditEvent(ctx context.Context, id uuid.UUID) (AuditEvent, error) {
+	row := q.db.QueryRow(ctx, getAuditEvent, id)
+	var i AuditEvent
+	err := row.Scan(
+		&i.ID,
+		&i.Source,
+		&i.Action,
+		&i.Result,
+		&i.Actor,
+		&i.Targets,
+		&i.Context,
+		&i.Data,
+		&i.OccurTime,
+		&i.CreateTime,
+	)
+	return i, err
 }
 
-// 管理端 GET /users/{user}/auditEvents：keyset 分页 ORDER BY occur_time, id；命中 audit_event_user_id_occur_time_idx。
-func (q *Queries) ListAuditEventsByUser(ctx context.Context, arg ListAuditEventsByUserParams) ([]AuditEvent, error) {
-	rows, err := q.db.Query(ctx, listAuditEventsByUser,
-		arg.UserID,
+const insertAuditEvent = `-- name: InsertAuditEvent :execrows
+INSERT INTO audit_event (id, source, action, result, actor, targets, context, data, occur_time)
+VALUES ($1, $2, $3, $4::smallint, $5, $6, $7, $8, $9::timestamptz)
+ON CONFLICT (id) DO NOTHING
+`
+
+type InsertAuditEventParams struct {
+	ID        uuid.UUID
+	Source    string
+	Action    string
+	Result    *int16
+	Actor     []byte
+	Targets   []byte
+	Context   []byte
+	Data      []byte
+	OccurTime time.Time
+}
+
+func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertAuditEvent,
+		arg.ID,
+		arg.Source,
+		arg.Action,
+		arg.Result,
+		arg.Actor,
+		arg.Targets,
+		arg.Context,
+		arg.Data,
+		arg.OccurTime,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const listAuditEventsByResource = `-- name: ListAuditEventsByResource :many
+SELECT id, source, action, result, actor, targets, context, data, occur_time, create_time FROM audit_event e
+WHERE e.source = $1::text
+ AND (
+  ( $2::text = 'USER' AND e.actor @> $3::jsonb)
+  OR e.targets @> $4::jsonb OR e.context->'related_resources' @> $4::jsonb
+  OR (
+   $2::text = 'USER'
+   AND NOT (e.actor->>'type' = 'USER' AND e.actor->>'namespace' = $5::text)
+   AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) r
+                   WHERE r->>'type' = 'USER' AND r->>'namespace' = $5::text)
+   AND EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) r
+               WHERE r->>'type' = 'IDENTITY_FLOW' AND r->>'namespace' = $5::text AND r->>'id' = ANY($6::text[]))
+  )
+ )
+ AND ($7::timestamptz IS NULL OR (e.occur_time,e.id) > ($7::timestamptz,$8::uuid))
+ORDER BY occur_time,id LIMIT $9::int
+`
+
+type ListAuditEventsByResourceParams struct {
+	Source       string
+	ResourceType string
+	Actor        []byte
+	Resource     []byte
+	Namespace    string
+	FlowIds      []string
+	AfterTime    *time.Time
+	AfterID      *uuid.UUID
+	PageLimit    int32
+}
+
+func (q *Queries) ListAuditEventsByResource(ctx context.Context, arg ListAuditEventsByResourceParams) ([]AuditEvent, error) {
+	rows, err := q.db.Query(ctx, listAuditEventsByResource,
+		arg.Source,
+		arg.ResourceType,
+		arg.Actor,
+		arg.Resource,
+		arg.Namespace,
+		arg.FlowIds,
 		arg.AfterTime,
 		arg.AfterID,
 		arg.PageLimit,
@@ -64,26 +143,88 @@ func (q *Queries) ListAuditEventsByUser(ctx context.Context, arg ListAuditEvents
 		var i AuditEvent
 		if err := rows.Scan(
 			&i.ID,
-			&i.EventType,
-			&i.ActorKind,
-			&i.UserID,
-			&i.AdminIssuer,
-			&i.AdminSubject,
-			&i.AdminUsername,
-			&i.SessionID,
-			&i.IdentityKind,
-			&i.SubjectHint,
+			&i.Source,
+			&i.Action,
 			&i.Result,
-			&i.Reason,
-			&i.Ip,
-			&i.DeviceID,
-			&i.RequestID,
+			&i.Actor,
+			&i.Targets,
+			&i.Context,
+			&i.Data,
 			&i.OccurTime,
-			&i.FlowID,
+			&i.CreateTime,
 		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAuditFlowEvidence = `-- name: ListAuditFlowEvidence :many
+SELECT id, source, action, result, actor, targets, context, data, occur_time, create_time FROM audit_event e
+WHERE e.source = $1::text AND e.result = 1
+ AND e.action IN ('SIGN_IN_COMPLETION_PROOF_VERIFIED','SIGN_IN_COMPLETION_COMPLETED')
+ AND (e.actor @> $2::jsonb OR e.targets @> $3::jsonb OR e.context->'related_resources' @> $3::jsonb)
+ORDER BY occur_time, id
+`
+
+type ListAuditFlowEvidenceParams struct {
+	Source   string
+	Actor    []byte
+	Resource []byte
+}
+
+func (q *Queries) ListAuditFlowEvidence(ctx context.Context, arg ListAuditFlowEvidenceParams) ([]AuditEvent, error) {
+	rows, err := q.db.Query(ctx, listAuditFlowEvidence, arg.Source, arg.Actor, arg.Resource)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AuditEvent
+	for rows.Next() {
+		var i AuditEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.Source,
+			&i.Action,
+			&i.Result,
+			&i.Actor,
+			&i.Targets,
+			&i.Context,
+			&i.Data,
+			&i.OccurTime,
+			&i.CreateTime,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLiveAuditFlows = `-- name: ListLiveAuditFlows :many
+SELECT id FROM identity_flow WHERE user_id = $1::text OR proof_user_ids @> ARRAY[$1::text]
+`
+
+func (q *Queries) ListLiveAuditFlows(ctx context.Context, userID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, listLiveAuditFlows, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

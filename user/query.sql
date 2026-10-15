@@ -250,12 +250,26 @@ WHERE user_id = @user_id AND revoke_time IS NULL AND refresh_expire_time > @now:
 -- audit_event
 
 -- name: ScrubAuditEventsByUser :execrows
--- purge：去掉可关联到自然人的请求侧字段，保留事件与 user_id（§3.5）。命中 audit_event_user_id_occur_time_idx 前缀。
--- 初始补全事件尚无 user_id；以之后已归属的 flow_id 关联同流程事件，命中 flow 关联索引。
-UPDATE audit_event SET ip = NULL, device_id = NULL, subject_hint = NULL
-WHERE (user_id = @user_id::text OR flow_id IN (
-    SELECT flow_id FROM audit_event WHERE user_id = @user_id::text AND flow_id IS NOT NULL
-)) AND (ip IS NOT NULL OR device_id IS NOT NULL OR subject_hint IS NOT NULL);
+UPDATE audit_event e SET
+ actor = e.actor - 'name',
+ targets = (SELECT COALESCE(jsonb_agg(r - 'name'),'[]'::jsonb) FROM jsonb_array_elements(e.targets) r),
+ context = jsonb_set(e.context - 'client_ip' - 'device_id' - 'user_agent', '{related_resources}',
+  (SELECT COALESCE(jsonb_agg(r - 'name'),'[]'::jsonb) FROM jsonb_array_elements(COALESCE(e.context->'related_resources','[]'::jsonb)) r)),
+ data = e.data #- '{accountkit,subject_hint}'
+WHERE e.source = @source::text AND (
+(e.actor->>'namespace' = @namespace::text AND e.actor->>'type' = 'USER' AND e.actor->>'id' = @user_id::text)
+ OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) r
+ WHERE r->>'namespace' = @namespace::text AND r->>'type' = 'USER' AND r->>'id' = @user_id::text) OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) f
+ WHERE f->>'namespace' = @namespace::text AND f->>'type' = 'IDENTITY_FLOW' AND EXISTS (
+ SELECT 1 FROM audit_event linked WHERE linked.source = @source::text
+ AND (linked.actor @> jsonb_build_object('type','USER','namespace',@namespace::text,'id',@user_id::text)
+ OR EXISTS (SELECT 1 FROM jsonb_array_elements(linked.targets || COALESCE(linked.context->'related_resources','[]'::jsonb)) u
+ WHERE u->>'namespace' = @namespace::text AND u->>'type' = 'USER' AND u->>'id' = @user_id::text))
+ AND EXISTS (SELECT 1 FROM jsonb_array_elements(linked.targets || COALESCE(linked.context->'related_resources','[]'::jsonb)) lf
+ WHERE lf->>'namespace' = @namespace::text AND lf->>'type' = 'IDENTITY_FLOW' AND lf->>'id' = f->>'id')))
+) AND (e.actor ? 'name' OR e.context ? 'client_ip' OR e.context ? 'device_id' OR e.context ? 'user_agent'
+ OR e.data->'accountkit' ? 'subject_hint'
+ OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) p WHERE p ? 'name'));
 
 -- name: ImportUser :exec
 -- 受控离线导入：保存调用者提供的原 ID/时间及匿名墓碑，不执行 upsert。
@@ -321,12 +335,19 @@ WITH locked AS (
 DELETE FROM identity_flow WHERE id IN (SELECT id FROM locked);
 
 -- name: ScrubIdentityFlowAuditForUser :execrows
--- 用户锁内、删除 flow 前清理已落库事件；不依赖异步队列中的最终用户关联事件。
-UPDATE audit_event SET ip = NULL, device_id = NULL, subject_hint = NULL
-WHERE flow_id IN (
-    SELECT id FROM identity_flow
-    WHERE user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text]
-) AND (ip IS NOT NULL OR device_id IS NOT NULL OR subject_hint IS NOT NULL);
+UPDATE audit_event e SET
+ actor = e.actor - 'name',
+ targets = (SELECT COALESCE(jsonb_agg(r - 'name'),'[]'::jsonb) FROM jsonb_array_elements(e.targets) r),
+ context = jsonb_set(e.context - 'client_ip' - 'device_id' - 'user_agent', '{related_resources}',
+  (SELECT COALESCE(jsonb_agg(r - 'name'),'[]'::jsonb) FROM jsonb_array_elements(COALESCE(e.context->'related_resources','[]'::jsonb)) r)),
+ data = e.data #- '{accountkit,subject_hint}'
+WHERE e.source = @source::text AND (
+EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) f
+ WHERE f->>'namespace' = @namespace::text AND f->>'type' = 'IDENTITY_FLOW' AND f->>'id' IN (
+ SELECT id FROM identity_flow WHERE user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text]))
+) AND (e.actor ? 'name' OR e.context ? 'client_ip' OR e.context ? 'device_id' OR e.context ? 'user_agent'
+ OR e.data->'accountkit' ? 'subject_hint'
+ OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) p WHERE p ? 'name'));
 
 -- name: DeleteExpiredIdentityFlows :execrows
 DELETE FROM identity_flow
@@ -338,3 +359,6 @@ WHERE id IN (
 -- name: RequiredIdentityFlowCipherVersions :many
 SELECT DISTINCT cipher_version FROM identity_flow
 WHERE expire_time > @now::timestamptz ORDER BY cipher_version;
+
+-- name: AuditFlowBelongsToUser :one
+SELECT EXISTS (SELECT 1 FROM identity_flow WHERE id = @flow_id::text AND (user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text]));

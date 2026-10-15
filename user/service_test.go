@@ -15,7 +15,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/email"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/phone"
@@ -67,7 +66,7 @@ type fixture struct {
 	pool       *pgxpool.Pool
 	mr         *miniredis.Miniredis
 	sent       *capture
-	audit      *audit.Memory
+	audit      *testAuditMemory
 	dig        *pii.Digester
 	ciph       *pii.Cipher
 	clock      *time.Time // 可推进的时钟
@@ -88,7 +87,7 @@ func newFixture(t *testing.T) *fixture {
 	now := time.Now().Truncate(time.Second)
 	clock := &now
 	sent := &capture{}
-	mem := &audit.Memory{}
+	mem := &testAuditMemory{}
 	repo := user.NewRepo(pool)
 	wechat := &fakeWeChat{}
 	apple := &fakeApple{}
@@ -161,7 +160,7 @@ func normalizedTarget(channel enum.IdentityKind, target string) string {
 	return target
 }
 
-func hasEvent(m *audit.Memory, typ enum.EventType, result enum.Result) bool {
+func hasEvent(m *testAuditMemory, typ enum.EventType, result enum.Result) bool {
 	for _, e := range m.Events() {
 		if e.Type == typ && e.Result == result {
 			return true
@@ -171,7 +170,7 @@ func hasEvent(m *audit.Memory, typ enum.EventType, result enum.Result) bool {
 }
 
 // hasEventReason 同 hasEvent，额外要求 Reason 匹配。
-func hasEventReason(m *audit.Memory, typ enum.EventType, result enum.Result, reason string) bool {
+func hasEventReason(m *testAuditMemory, typ enum.EventType, result enum.Result, reason string) bool {
 	for _, e := range m.Events() {
 		if e.Type == typ && e.Result == result && e.Reason == reason {
 			return true
@@ -371,8 +370,8 @@ func TestSendSignInCodeRequiresIP(t *testing.T) {
 }
 
 // resetAudit 用新的 Memory 记录器重建 Service（Deps 不可变），返回新记录器。
-func resetAudit(f *fixture) *audit.Memory {
-	mem := &audit.Memory{}
+func resetAudit(f *fixture) *testAuditMemory {
+	mem := &testAuditMemory{}
 	d := f.deps
 	d.Audit = mem
 	svc, err := user.NewService(d)

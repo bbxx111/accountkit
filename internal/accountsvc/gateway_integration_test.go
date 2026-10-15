@@ -238,10 +238,10 @@ func TestServiceIntegrationGatewayBoundary(t *testing.T) {
 	p.stop()
 	f.assertAuditPrivate()
 	var ip, device string
-	if err := f.pool.QueryRow(t.Context(), "SELECT host(ip), device_id FROM audit_event WHERE request_id='gateway-signin' AND event_type=$1", enum.EventSignIn).Scan(&ip, &device); err != nil || ip != "127.0.0.1" || device != "gateway-device" {
+	if err := f.pool.QueryRow(t.Context(), "SELECT context->>'client_ip', context->>'device_id' FROM audit_event WHERE context->>'request_id'='gateway-signin' AND action=$1", enum.EventSignIn.String()).Scan(&ip, &device); err != nil || ip != "127.0.0.1" || device != "gateway-device" {
 		t.Fatal("forged forwarding header affected audit IP or device metadata")
 	}
-	if err := f.pool.QueryRow(t.Context(), "SELECT host(ip) FROM audit_event WHERE request_id='trusted-chain' AND event_type=$1", enum.EventCodeSent).Scan(&ip); err != nil || ip != "203.0.113.77" {
+	if err := f.pool.QueryRow(t.Context(), "SELECT context->>'client_ip' FROM audit_event WHERE context->>'request_id'='trusted-chain' AND action=$1", enum.EventCodeSent.String()).Scan(&ip); err != nil || ip != "203.0.113.77" {
 		t.Fatal("service ignored a configured trusted proxy chain")
 	}
 	f.assertSafe(public.logs.String())
@@ -255,7 +255,7 @@ func TestServiceIntegrationGatewayBoundary(t *testing.T) {
 	m = f.smtp.mail(t)
 	f.secrets = append(f.secrets, m.target, m.code)
 	p.stop()
-	if err := f.pool.QueryRow(t.Context(), "SELECT host(ip) FROM audit_event WHERE request_id='untrusted-direct' AND event_type=$1", enum.EventCodeSent).Scan(&ip); err != nil || ip != "127.0.0.1" {
+	if err := f.pool.QueryRow(t.Context(), "SELECT context->>'client_ip' FROM audit_event WHERE context->>'request_id'='untrusted-direct' AND action=$1", enum.EventCodeSent.String()).Scan(&ip); err != nil || ip != "127.0.0.1" {
 		t.Fatal("service trusted an unconfigured forwarding peer")
 	}
 	f.assertAuditPrivate()

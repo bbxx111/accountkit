@@ -15,6 +15,7 @@ import (
 func integrationInstance(t *testing.T, cfg accountkit.Config, rdb redis.UniversalClient) (*accountkit.Auth, *pgxpool.Pool, *captureSender) {
 	t.Helper()
 	cfg.Schema = fmt.Sprintf("aktest_%08x", rand.Uint32())
+	cfg = externalAuditConfig(cfg)
 	pc, err := accountkit.PoolConfig(dbDSN(t), cfg.Schema)
 	if err != nil {
 		t.Fatal(err)
@@ -36,4 +37,14 @@ func integrationInstance(t *testing.T, cfg accountkit.Config, rdb redis.Universa
 	}
 	t.Cleanup(a.Close)
 	return a, pool, sent
+}
+
+func externalAuditConfig(cfg accountkit.Config) accountkit.Config {
+	schema := cfg.Schema
+	if schema == "" {
+		schema = "account"
+	}
+	cfg.AuditSource = "accountkit/" + schema
+	cfg.AuditNamespace = cfg.AuditSource + "/resources"
+	return cfg
 }

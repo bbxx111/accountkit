@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/bbxx111/accountkit/audit"
-	auditdb "github.com/bbxx111/accountkit/audit/db"
 	"github.com/bbxx111/accountkit/enum"
 )
 
@@ -18,14 +17,14 @@ func TestIdentityReplacementAuditResponse(t *testing.T) {
 	}
 	replaced, unchanged, request := "IDENTITY_REPLACED", "IDENTITY_UNCHANGED", "req-replacement"
 	kind := enum.IdentityEmail
-	rows := []auditdb.AuditEvent{
-		{ID: "e_0k3f9c2m1xq71", EventType: enum.EventIdentityUnbound, ActorKind: enum.ActorUser, UserID: &uid, SessionID: &sid, IdentityKind: &kind, Result: enum.ResultSuccess, Reason: &replaced, RequestID: &request, OccurTime: testNow},
-		{ID: "e_0k3f9c2m1xq72", EventType: enum.EventIdentityBound, ActorKind: enum.ActorUser, UserID: &uid, SessionID: &sid, IdentityKind: &kind, Result: enum.ResultSuccess, Reason: &replaced, RequestID: &request, OccurTime: testNow},
-		{ID: "e_0k3f9c2m1xq73", EventType: enum.EventSessionRevoked, ActorKind: enum.ActorUser, UserID: &uid, SessionID: &sid, Result: enum.ResultSuccess, Reason: &replaced, RequestID: &request, OccurTime: testNow},
-		{ID: "e_0k3f9c2m1xq74", EventType: eventType, ActorKind: enum.ActorUser, UserID: &uid, SessionID: &sid, IdentityKind: &kind, Result: enum.ResultFailure, Reason: &unchanged, RequestID: &request, OccurTime: testNow},
+	rows := []audit.RecordView{
+		testAuditRecord(t, audit.AuthenticationEvent{Type: enum.EventIdentityUnbound, Actor: enum.ActorUser, UserID: uid, SessionID: sid, IdentityKind: kind, Result: enum.ResultSuccess, Reason: replaced, RequestID: request, OccurTime: testNow}),
+		testAuditRecord(t, audit.AuthenticationEvent{Type: enum.EventIdentityBound, Actor: enum.ActorUser, UserID: uid, SessionID: sid, IdentityKind: kind, Result: enum.ResultSuccess, Reason: replaced, RequestID: request, OccurTime: testNow}),
+		testAuditRecord(t, audit.AuthenticationEvent{Type: enum.EventSessionRevoked, Actor: enum.ActorUser, UserID: uid, SessionID: sid, Result: enum.ResultSuccess, Reason: replaced, RequestID: request, OccurTime: testNow}),
+		testAuditRecord(t, audit.AuthenticationEvent{Type: eventType, Actor: enum.ActorUser, UserID: uid, SessionID: sid, IdentityKind: kind, Result: enum.ResultFailure, Reason: unchanged, RequestID: request, OccurTime: testNow}),
 	}
 	f := &fakeService{userExists: func(context.Context, string) error { return nil }}
-	fa := &fakeAudit{listByUser: func(context.Context, string, *audit.EventCursor, int) ([]auditdb.AuditEvent, error) { return rows, nil }}
+	fa := &fakeAudit{listByUser: func(context.Context, string, *audit.EventCursor, int) ([]audit.RecordView, error) { return rows, nil }}
 	rec := do(t, newHandler(t, f, fa), call{method: "GET", path: "/users/" + uid + "/auditEvents", headers: operator})
 	var out struct {
 		AuditEvents []map[string]any `json:"audit_events"`

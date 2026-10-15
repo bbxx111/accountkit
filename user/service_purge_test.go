@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/bbxx111/accountkit/anonymize"
+	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/user"
 	"github.com/bbxx111/accountkit/user/db"
@@ -91,7 +92,7 @@ func TestPurgeAnonymizesAccountIdentitiesSessionsAuditAndHostTables(t *testing.T
 		t.Fatal(err)
 	}
 	mustExec(t, f, `INSERT INTO host_note (user_id, body) VALUES ($1, 'secret')`, p.UserID)
-	mustExec(t, f, `INSERT INTO audit_event (id, event_type, actor_kind, user_id, result, ip, device_id, subject_hint) VALUES ('e_0000000000001', 4, 1, $1, 1, '203.0.113.5', 'dev-x', 'abcdefgh')`, p.UserID)
+	seed := seedAuditInput(t, f.pool, audit.AuthenticationEvent{Type: enum.EventSignIn, UserID: p.UserID, IP: "203.0.113.5", DeviceID: "dev-x", SubjectHint: "abcdefgh"})
 	before, err := f.repo.Q().ListIdentitiesByUserIncludingDeleted(ctx, p.UserID)
 	if err != nil || len(before) != 3 {
 		t.Fatalf("identities before: %d %v", len(before), err)
@@ -164,7 +165,7 @@ func TestPurgeAnonymizesAccountIdentitiesSessionsAuditAndHostTables(t *testing.T
 	}
 	// 审计行被清洗但保留
 	var ipNull, devNull, hintNull bool
-	if err := f.pool.QueryRow(ctx, `SELECT ip IS NULL, device_id IS NULL, subject_hint IS NULL FROM audit_event WHERE id = 'e_0000000000001' AND user_id = $1`, p.UserID).Scan(&ipNull, &devNull, &hintNull); err != nil || !ipNull || !devNull || !hintNull {
+	if err := f.pool.QueryRow(ctx, `SELECT context->>'client_ip' IS NULL, context->>'device_id' IS NULL, data#>>'{accountkit,subject_hint}' IS NULL FROM audit_event WHERE id = $1 AND actor->>'id' = $2`, seed.ID, p.UserID).Scan(&ipNull, &devNull, &hintNull); err != nil || !ipNull || !devNull || !hintNull {
 		t.Fatalf("audit scrub: ip=%v dev=%v hint=%v err=%v", ipNull, devNull, hintNull, err)
 	}
 	// 宿主表在同一事务内被匿名化
@@ -308,6 +309,14 @@ func TestPurgeCoversEveryTableWithUserID(t *testing.T) {
 		t.Fatalf("tables with user_id but no purge handling/exemption: %v", uncovered)
 	}
 	existing := map[string]bool{}
+	var auditTable bool
+	if err := f.pool.QueryRow(context.Background(), "SELECT to_regclass('audit_event') IS NOT NULL").Scan(&auditTable); err != nil || !auditTable {
+		t.Fatal("generic audit relation missing")
+	}
+	if user.PurgeCoveredTables["audit_event"] == "" {
+		t.Fatal("generic JSON audit references lack purge registration")
+	}
+	existing["audit_event"] = true
 	for _, tbl := range all {
 		existing[tbl] = true
 	}

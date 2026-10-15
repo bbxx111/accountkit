@@ -1,23 +1,49 @@
 package audit_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"math/rand/v2"
-	"os"
-	"sync/atomic"
-	"testing"
-	"time"
-
+	"github.com/bbxx111/accountkit/audit"
+	"github.com/bbxx111/accountkit/audit/authentication"
+	"github.com/bbxx111/accountkit/audit/event"
+	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/migrations"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/bbxx111/accountkit/audit"
-	"github.com/bbxx111/accountkit/enum"
-	"github.com/bbxx111/accountkit/ids"
-	"github.com/bbxx111/accountkit/migrations"
+	"math/rand/v2"
+	"os"
+	"sync"
+	"testing"
+	"time"
 )
+
+func testStore(t *testing.T, pool *pgxpool.Pool) *audit.Store {
+	t.Helper()
+	s, err := audit.NewStoreWithOptions(pool, audit.StoreOptions{Source: "test/source", Namespace: "test/ns"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+func mapped(t *testing.T, in audit.AuthenticationEvent) audit.Event {
+	t.Helper()
+	e, err := authentication.Map(in, audit.AuthenticationOptions{Source: "test/source", Namespace: "test/ns"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e
+}
+func records(t *testing.T, s *audit.Store) []audit.RecordView {
+	t.Helper()
+	p, err := s.ListByResource(context.Background(), audit.Query{Source: "test/source", Resource: audit.Resource{Type: "USER", Namespace: "test/ns", ID: "u_0000000000001"}, Limit: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p.Records
+}
 
 // testPool 返回连接到随机 schema、已迁移的池；无 DSN 则跳过（与 user/repo_test.go 同形）。
 func testPool(t *testing.T) *pgxpool.Pool {
@@ -47,92 +73,6 @@ func testPool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-func TestStoreInsertBatchMapsFieldsAndNulls(t *testing.T) {
-	pool := testPool(t)
-	ctx := context.Background()
-	s := audit.NewStore(pool)
-	now := time.Now().Truncate(time.Microsecond)
-	full := audit.Event{
-		Type: enum.EventSignIn, Actor: enum.ActorUser, Result: enum.ResultSuccess, Reason: "NEW_USER",
-		UserID: "u_0000000000001", SessionID: "s_0000000000001", FlowID: "f_0000000000001", IdentityKind: enum.IdentityPhone, SubjectHint: "abcdefgh",
-		IP: "203.0.113.5", DeviceID: "dev-1", RequestID: "req-1",
-		AdminIssuer: "https://kc/realms/x", AdminSubject: "admin-sub", AdminUsername: "ops",
-		OccurTime: now,
-	}
-	sparse := audit.Event{Type: enum.EventUserPurged, Actor: enum.ActorSystem, Result: enum.ResultSuccess, UserID: "u_0000000000001", OccurTime: now.Add(time.Second)}
-	badIP := audit.Event{Type: enum.EventCodeSent, Actor: enum.ActorUser, Result: enum.ResultSuccess, IP: "not-an-ip", OccurTime: now.Add(2 * time.Second)}
-	failed, err := s.InsertBatch(ctx, []audit.Event{full, sparse, badIP})
-	if err != nil || failed != 0 {
-		t.Fatalf("insert: failed=%d err=%v", failed, err)
-	}
-	var (
-		count                                                              int
-		id, reason, userID, sessionID, hint, deviceID, requestID, adminSub string
-		kind                                                               *int16
-		ip                                                                 *string
-	)
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_event`).Scan(&count); err != nil || count != 3 {
-		t.Fatalf("rows: %d %v", count, err)
-	}
-	if err := pool.QueryRow(ctx, `SELECT id, reason, user_id, session_id, identity_kind, subject_hint, host(ip), device_id, request_id, admin_subject FROM audit_event WHERE event_type = $1`, int16(enum.EventSignIn)).
-		Scan(&id, &reason, &userID, &sessionID, &kind, &hint, &ip, &deviceID, &requestID, &adminSub); err != nil {
-		t.Fatal(err)
-	}
-	if len(id) != 15 || id[:2] != "e_" || reason != "NEW_USER" || userID != full.UserID || sessionID != full.SessionID || kind == nil || *kind != int16(enum.IdentityPhone) || hint != "abcdefgh" || ip == nil || *ip != "203.0.113.5" || deviceID != "dev-1" || requestID != "req-1" || adminSub != "admin-sub" {
-		t.Fatalf("full row mapping: id=%q reason=%q user=%q sess=%q kind=%v hint=%q ip=%v dev=%q req=%q admin=%q", id, reason, userID, sessionID, kind, hint, ip, deviceID, requestID, adminSub)
-	}
-	rows, err := s.ListByUser(ctx, full.UserID, nil, 10)
-	if err != nil || len(rows) != 2 || rows[0].FlowID == nil || *rows[0].FlowID != full.FlowID || rows[1].FlowID != nil {
-		t.Fatalf("flow mapping/nullable read: %+v %v", rows, err)
-	}
-	// 稀疏事件：空串 → NULL，零值 identity_kind → NULL，actor 原样
-	var nulls int
-	var actor int16
-	if err := pool.QueryRow(ctx, `SELECT (session_id IS NULL)::int + (identity_kind IS NULL)::int + (subject_hint IS NULL)::int + (reason IS NULL)::int + (ip IS NULL)::int + (device_id IS NULL)::int + (request_id IS NULL)::int + (admin_issuer IS NULL)::int, actor_kind FROM audit_event WHERE event_type = $1`, int16(enum.EventUserPurged)).Scan(&nulls, &actor); err != nil || nulls != 8 || actor != int16(enum.ActorSystem) {
-		t.Fatalf("sparse row: nulls=%d actor=%d err=%v", nulls, actor, err)
-	}
-	// 非法 IP → NULL，而不是整批失败
-	var ipNull bool
-	if err := pool.QueryRow(ctx, `SELECT ip IS NULL FROM audit_event WHERE event_type = $1`, int16(enum.EventCodeSent)).Scan(&ipNull); err != nil || !ipNull {
-		t.Fatalf("bad ip must be stored as NULL: %v %v", ipNull, err)
-	}
-	// 空批：no-op
-	if failed, err := s.InsertBatch(ctx, nil); err != nil || failed != 0 {
-		t.Fatalf("empty batch: %d %v", failed, err)
-	}
-}
-
-func TestStoreInsertBatchIsAllOrNothing(t *testing.T) {
-	pool := testPool(t)
-	ctx := context.Background()
-	s := audit.NewStore(pool)
-	now := time.Now()
-	// 最稳定的失败来源是主键冲突：先插一行，再经 InsertBatchWithIDs 注入同一个 id。
-	if _, err := pool.Exec(ctx, `INSERT INTO audit_event (id, event_type, actor_kind, result, occur_time) VALUES ('e_0000000000dvp', 1, 1, 1, now())`); err != nil {
-		t.Fatal(err)
-	}
-	failed, err := audit.InsertBatchWithIDs(ctx, s, []string{"e_0000000000dvp", "e_0000000000pk0"}, []audit.Event{
-		{Type: enum.EventCodeSent, Actor: enum.ActorUser, Result: enum.ResultSuccess, OccurTime: now},
-		{Type: enum.EventCodeSent, Actor: enum.ActorUser, Result: enum.ResultSuccess, OccurTime: now},
-	})
-	if err == nil || failed != 2 {
-		t.Fatalf("a duplicate id fails the whole batch (implicit transaction): failed=%d err=%v", failed, err)
-	}
-	var count int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_event`).Scan(&count); err != nil || count != 1 {
-		t.Fatalf("batch must be all-or-nothing; only the pre-inserted row may exist: count=%d err=%v", count, err)
-	}
-	// 连接关闭后整批失败：failed == len
-	pool.Close()
-	failed, err = s.InsertBatch(ctx, []audit.Event{{Type: enum.EventCodeSent, Actor: enum.ActorUser, Result: enum.ResultSuccess, OccurTime: now}, {Type: enum.EventCodeSent, Actor: enum.ActorUser, Result: enum.ResultSuccess, OccurTime: now}})
-	if err == nil || failed != 2 {
-		t.Fatalf("closed pool: failed=%d err=%v", failed, err)
-	}
-	if errors.Is(err, context.Canceled) {
-		t.Fatal("error must be the pool error, not a ctx error")
-	}
-}
-
 func TestStoreInsertBatchFailureConcurrentPoolQueries(t *testing.T) {
 	base := testPool(t)
 	cfg := base.Config()
@@ -153,9 +93,9 @@ func TestStoreInsertBatchFailureConcurrentPoolQueries(t *testing.T) {
 	}
 	events := make([]audit.Event, 512)
 	for i := range events {
-		events[i] = audit.Event{Type: enum.EventSignIn, Actor: enum.ActorUser, Result: enum.ResultSuccess, OccurTime: time.Now()}
+		events[i] = ev(i)
 	}
-	store := audit.NewStore(pool)
+	store := testStore(t, pool)
 	queryDone := make(chan error, 1)
 	go func() {
 		for i := 0; i < 200; i++ {
@@ -175,8 +115,8 @@ func TestStoreInsertBatchFailureConcurrentPoolQueries(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		failed, err := store.InsertBatch(ctx, events)
 		var pgErr *pgconn.PgError
-		if failed != len(events) || !errors.As(err, &pgErr) || pgErr.Code != "P0001" {
-			t.Errorf("batch %d: failed=%d err=%v", i, failed, err)
+		if failed.Failed != len(events) || !errors.As(err, &pgErr) || pgErr.Code != "P0001" {
+			t.Errorf("batch %d: result=%+v err=%v", i, failed, err)
 			break
 		}
 	}
@@ -202,15 +142,15 @@ func TestStoreInsertBatchReportsDeferredCommitFailure(t *testing.T) {
 	if _, err := pool.Exec(ctx, `CREATE CONSTRAINT TRIGGER fail_audit_commit AFTER INSERT ON audit_event DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fail_audit_commit()`); err != nil {
 		t.Fatal(err)
 	}
-	store := audit.NewStore(pool)
+	store := testStore(t, pool)
 	events := []audit.Event{
-		{Type: enum.EventSignIn, Actor: enum.ActorUser, Result: enum.ResultSuccess, OccurTime: time.Now()},
-		{Type: enum.EventCodeSent, Actor: enum.ActorUser, Result: enum.ResultSuccess, OccurTime: time.Now()},
+		ev(1),
+		ev(2),
 	}
 	failed, err := store.InsertBatch(ctx, events)
 	var pgErr *pgconn.PgError
-	if failed != len(events) || !errors.As(err, &pgErr) || pgErr.Code != "P0001" {
-		t.Fatalf("deferred commit failure: failed=%d err=%v", failed, err)
+	if failed.Failed != len(events) || !errors.As(err, &pgErr) || pgErr.Code != "P0001" {
+		t.Fatalf("deferred commit failure: result=%+v err=%v", failed, err)
 	}
 	if acquired := pool.Stat().AcquiredConns(); acquired != 0 {
 		t.Fatalf("commit failure leaked %d connections", acquired)
@@ -222,8 +162,8 @@ func TestStoreInsertBatchReportsDeferredCommitFailure(t *testing.T) {
 	if _, err := pool.Exec(ctx, "DROP TRIGGER fail_audit_commit ON audit_event"); err != nil {
 		t.Fatal(err)
 	}
-	if failed, err := store.InsertBatch(ctx, events); err != nil || failed != 0 {
-		t.Fatalf("reuse after failed commit: failed=%d err=%v", failed, err)
+	if failed, err := store.InsertBatch(ctx, events); err != nil || failed.Failed != 0 {
+		t.Fatalf("reuse after failed commit: result=%+v err=%v", failed, err)
 	}
 	if acquired := pool.Stat().AcquiredConns(); acquired != 0 {
 		t.Fatalf("successful batch leaked %d connections", acquired)
@@ -233,180 +173,298 @@ func TestStoreInsertBatchReportsDeferredCommitFailure(t *testing.T) {
 	}
 }
 
-func TestStoreInsertBatchSurvivesSameMillisecondIDCollisions(t *testing.T) {
+func TestStoreInsertBatchMapsFieldsAndNulls(t *testing.T) {
 	pool := testPool(t)
+	s := testStore(t, pool)
 	ctx := context.Background()
-	s := audit.NewStore(pool)
-	now := time.Now()
-	batchOf := func(n int) []audit.Event {
-		es := make([]audit.Event, 0, n)
-		for i := 0; i < n; i++ {
-			es = append(es, audit.Event{Type: enum.EventCodeSent, Actor: enum.ActorUser, Result: enum.ResultSuccess, OccurTime: now})
-		}
-		return es
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	full := mapped(t, audit.AuthenticationEvent{Type: enum.EventSignIn, Actor: enum.ActorUser, Result: enum.ResultSuccess, Reason: "NEW_USER", UserID: "u_0000000000001", SessionID: "s_0000000000001", FlowID: "f_0000000000001", IdentityKind: enum.IdentityPhone, SubjectHint: "abcdefgh", IP: "203.0.113.5", DeviceID: "dev-1", RequestID: "req-1", OccurTime: now})
+	sparse := mapped(t, audit.AuthenticationEvent{Type: enum.EventUserPurged, Actor: enum.ActorSystem, UserID: "u_0000000000001", OccurTime: now.Add(time.Second)})
+	badIP := mapped(t, audit.AuthenticationEvent{Type: enum.EventCodeSent, IP: "not-an-ip", OccurTime: now.Add(2 * time.Second)})
+	result, err := s.InsertBatch(ctx, []audit.Event{full, sparse, badIP})
+	if err != nil || result.Written != 3 {
+		t.Fatalf("insert: %+v %v", result, err)
 	}
-	// 两次独立调用，制造批内碰撞（同一调用生成的 3000 个 id 挤在同一毫秒）与跨批碰撞
-	// （两次调用各自生成的 id 撞见同一个值）两种场景；两者都必须被吸收，不能丢批。
-	if failed, err := s.InsertBatch(ctx, batchOf(3000)); err != nil || failed != 0 {
-		t.Fatalf("first batch of 3000: failed=%d err=%v", failed, err)
+	got := records(t, s)
+	if len(got) != 2 || !event.Equivalent(got[0].Event, full) || !event.Equivalent(got[1].Event, sparse) || got[0].CreateTime.IsZero() {
+		t.Fatalf("mapping round trip: %+v", got)
 	}
-	if failed, err := s.InsertBatch(ctx, batchOf(3000)); err != nil || failed != 0 {
-		t.Fatalf("second batch of 3000: failed=%d err=%v", failed, err)
+	if got[0].ID != full.ID || got[0].ID.Version() != 7 || got[1].Result != nil {
+		t.Fatal("UUID or NULL result changed")
 	}
-	var count int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_event`).Scan(&count); err != nil || count != 6000 {
-		t.Fatalf("count: %d %v", count, err)
+	var ipNull bool
+	if err := pool.QueryRow(ctx, `SELECT context->>'client_ip' IS NULL FROM audit_event WHERE id=$1`, badIP.ID).Scan(&ipNull); err != nil || !ipNull {
+		t.Fatalf("bad ip: %v %v", ipNull, err)
+	}
+	if result, err := s.InsertBatch(ctx, nil); err != nil || result != (audit.BatchResult{}) {
+		t.Fatalf("empty batch: %+v %v", result, err)
+	}
+}
+func TestStoreInsertBatchIsAllOrNothing(t *testing.T) {
+	pool := testPool(t)
+	s := testStore(t, pool)
+	ctx := context.Background()
+	first := genericEvent()
+	if _, err := s.InsertBatch(ctx, []audit.Event{first}); err != nil {
+		t.Fatal(err)
+	}
+	conflict := first
+	conflict.Action = "CHANGED"
+	fresh := genericEvent()
+	result, err := s.InsertBatch(ctx, []audit.Event{fresh, conflict})
+	if !errors.Is(err, audit.ErrConflict) || result.Conflicts != 1 || result.Failed != 1 || result.Written != 0 {
+		t.Fatalf("conflict result: %+v %v", result, err)
+	}
+	var n int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM audit_event").Scan(&n); err != nil || n != 1 {
+		t.Fatalf("partial commit: %d %v", n, err)
+	}
+	pool.Close()
+	result, err = s.InsertBatch(ctx, []audit.Event{fresh, genericEvent()})
+	if err == nil || result.Failed != 2 || errors.Is(err, context.Canceled) {
+		t.Fatalf("closed pool: %+v %v", result, err)
 	}
 }
 
-// TestStoreInsertBatchRetriesOncePrimaryKeyConflict 用一个可控的 id 生成器（audit.SetNewIDForTest）
-// 确定性地制造跨批 id 碰撞，验证 InsertBatch 的重试语义：碰撞可恢复时重试一次即成功；
-// 碰撞持续存在时只重试一次就放弃，返回的错误必须能 errors.As 出 *pgconn.PgError(23505)。
-func TestStoreInsertBatchRetriesOncePrimaryKeyConflict(t *testing.T) {
+// Replaces obsolete TSID same-millisecond random retry tests: UUIDs are producer identities.
+func TestStoreConcurrentDuplicate(t *testing.T) {
 	pool := testPool(t)
+	s := testStore(t, pool)
 	ctx := context.Background()
-	s := audit.NewStore(pool)
-	const preID = "e_0000000000pk1" // 合法 id：Crockford 字母表剔除 i/l/o/u，p/k/1 都在字母表内
-	if _, err := pool.Exec(ctx, `INSERT INTO audit_event (id, event_type, actor_kind, result, occur_time) VALUES ($1, 1, 1, 1, now())`, preID); err != nil {
-		t.Fatal(err)
+	e := genericEvent()
+	var wg sync.WaitGroup
+	results := make(chan audit.BatchResult, 16)
+	errs := make(chan error, 16)
+	for range 16 {
+		wg.Add(1)
+		go func() { defer wg.Done(); r, err := s.InsertBatch(ctx, []audit.Event{e}); results <- r; errs <- err }()
 	}
-	newEvents := func() []audit.Event {
-		now := time.Now()
-		return []audit.Event{
-			{Type: enum.EventCodeSent, Actor: enum.ActorUser, Result: enum.ResultSuccess, OccurTime: now},
-			{Type: enum.EventCodeSent, Actor: enum.ActorUser, Result: enum.ResultSuccess, OccurTime: now},
-			{Type: enum.EventCodeSent, Actor: enum.ActorUser, Result: enum.ResultSuccess, OccurTime: now},
-		}
+	wg.Wait()
+	close(results)
+	close(errs)
+	written, duplicate := 0, 0
+	for r := range results {
+		written += r.Written
+		duplicate += r.Duplicate
 	}
-
-	t.Run("gives up after exactly one retry", func(t *testing.T) {
-		// 生成器在两次尝试（初次 + 1 次重试，每次 3 个事件）里都让批内第一个 id 撞上
-		// 已存在的 preID（批内其余 id 各不相同，避免先触发 uniqueID 自身的批内去重），
-		// 模拟两次 InsertBatch 调用之间持续撞见同一个 id 的最坏情况。
-		var calls atomic.Int32
-		restore := audit.SetNewIDForTest(func(k ids.Kind) (string, error) {
-			n := calls.Add(1)
-			if n == 1 || n == 4 {
-				return preID, nil
-			}
-			return ids.New(k)
-		})
-		t.Cleanup(restore)
-		failed, err := s.InsertBatch(ctx, newEvents())
-		var pgErr *pgconn.PgError
-		if failed != 3 || err == nil || !errors.As(err, &pgErr) || pgErr.Code != "23505" {
-			t.Fatalf("persistent id collision must retry exactly once then give up with a pg error: failed=%d err=%v", failed, err)
-		}
-		var count int
-		if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_event`).Scan(&count); err != nil || count != 1 {
-			t.Fatalf("a failed batch must not partially commit: count=%d err=%v", count, err)
-		}
-	})
-
-	t.Run("succeeds after one retry", func(t *testing.T) {
-		// 生成器只在全局第一次调用时撞见 preID，之后（含本次重试）都委托给真正的
-		// ids.New：一次重试即可摆脱冲突，批次整体成功。
-		var calls atomic.Int32
-		restore := audit.SetNewIDForTest(func(k ids.Kind) (string, error) {
-			if calls.Add(1) == 1 {
-				return preID, nil
-			}
-			return ids.New(k)
-		})
-		t.Cleanup(restore)
-		failed, err := s.InsertBatch(ctx, newEvents())
-		if failed != 0 || err != nil {
-			t.Fatalf("one retry must be enough to escape a single collision: failed=%d err=%v", failed, err)
-		}
-		var count int
-		if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_event`).Scan(&count); err != nil || count != 4 {
-			t.Fatalf("count=%d err=%v", count, err)
-		}
-	})
-}
-
-func TestStoreDeleteOlderThanBatches(t *testing.T) {
-	pool := testPool(t)
-	ctx := context.Background()
-	s := audit.NewStore(pool)
-	now := time.Now()
-	old := make([]audit.Event, 0, audit.RetentionBatchSize+5)
-	for i := 0; i < audit.RetentionBatchSize+5; i++ {
-		old = append(old, audit.Event{Type: enum.EventCodeSent, Actor: enum.ActorUser, Result: enum.ResultSuccess, OccurTime: now.Add(-200 * 24 * time.Hour)})
-	}
-	fresh := []audit.Event{{Type: enum.EventCodeSent, Actor: enum.ActorUser, Result: enum.ResultSuccess, OccurTime: now}}
-	if failed, err := s.InsertBatch(ctx, append(old, fresh...)); err != nil || failed != 0 {
-		t.Fatal(err)
-	}
-	n, err := s.DeleteOlderThan(ctx, now.Add(-180*24*time.Hour))
-	if err != nil || n != int64(audit.RetentionBatchSize+5) {
-		t.Fatalf("delete: n=%d err=%v", n, err)
-	}
-	var left int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_event`).Scan(&left); err != nil || left != 1 {
-		t.Fatalf("fresh row must survive: %d %v", left, err)
-	}
-	if n, err := s.DeleteOlderThan(ctx, now.Add(-180*24*time.Hour)); err != nil || n != 0 {
-		t.Fatalf("second run: %d %v", n, err)
-	}
-}
-
-func TestStoreListByUserPaginatesByOccurTimeAndID(t *testing.T) {
-	pool := testPool(t)
-	ctx := context.Background()
-	s := audit.NewStore(pool)
-	base := time.Date(2026, 9, 14, 8, 0, 0, 0, time.UTC)
-	var events []audit.Event
-	for i := 0; i < 5; i++ {
-		// 两条同一时刻的事件（i=1,2）用 id 作 tiebreaker
-		ts := base.Add(time.Duration(i) * time.Second)
-		if i == 2 {
-			ts = base.Add(time.Second)
-		}
-		events = append(events, audit.Event{Type: enum.EventSignIn, Actor: enum.ActorUser, Result: enum.ResultSuccess, UserID: "u_0000000000001", Reason: fmt.Sprintf("r%d", i), OccurTime: ts})
-	}
-	events = append(events, audit.Event{Type: enum.EventSignIn, Actor: enum.ActorUser, Result: enum.ResultSuccess, UserID: "u_0000000000002", OccurTime: base})
-	if failed, err := s.InsertBatch(ctx, events); err != nil || failed != 0 {
-		t.Fatal(err)
-	}
-	var all []string
-	var cursor *audit.EventCursor
-	pages := 0
-	for {
-		rows, err := s.ListByUser(ctx, "u_0000000000001", cursor, 2)
+	for err := range errs {
 		if err != nil {
 			t.Fatal(err)
 		}
-		pages++
-		for _, r := range rows {
-			all = append(all, *r.Reason)
+	}
+	if written != 1 || duplicate != 15 {
+		t.Fatalf("written=%d duplicate=%d", written, duplicate)
+	}
+	before := records(t, s)[0]
+	r, err := s.InsertBatch(ctx, []audit.Event{e, e})
+	if err != nil || r.Duplicate != 2 {
+		t.Fatalf("replay: %+v %v", r, err)
+	}
+	after := records(t, s)[0]
+	if before.ID != after.ID || !before.CreateTime.Equal(after.CreateTime) {
+		t.Fatal("duplicate changed identity or create_time")
+	}
+}
+func TestStoreConflict(t *testing.T) {
+	pool := testPool(t)
+	s := testStore(t, pool)
+	ctx := context.Background()
+	e := genericEvent()
+	if _, err := s.InsertBatch(ctx, []audit.Event{e}); err != nil {
+		t.Fatal(err)
+	}
+	for _, mutate := range []func(*audit.Event){func(e *audit.Event) { e.Action = "OTHER" }, func(e *audit.Event) { e.OccurTime = e.OccurTime.Add(time.Second) }, func(e *audit.Event) { e.Targets = []audit.Resource{{Type: "USER", Namespace: "test/ns", ID: "other"}} }, func(e *audit.Event) { e.Data = []byte(`{"other":true}`) }} {
+		changed, _ := event.Freeze(e)
+		mutate(&changed)
+		r, err := s.InsertBatch(ctx, []audit.Event{changed})
+		if !errors.Is(err, audit.ErrConflict) || r.Conflicts != 1 {
+			t.Fatalf("expected conflict: %+v %v", r, err)
 		}
-		if len(rows) < 2 {
+	}
+	other, err := audit.NewStoreWithOptions(pool, audit.StoreOptions{Source: "other/source", Namespace: "test/ns"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.Source = "other/source"
+	r, err := other.InsertBatch(ctx, []audit.Event{e})
+	if !errors.Is(err, audit.ErrConflict) || r.Conflicts != 1 {
+		t.Fatalf("source conflict: %+v %v", r, err)
+	}
+}
+func TestStoreScrubbedReplay(t *testing.T) {
+	pool := testPool(t)
+	s := testStore(t, pool)
+	ctx := context.Background()
+	e := mapped(t, audit.AuthenticationEvent{Type: enum.EventSignIn, UserID: "u_0000000000001", IP: "203.0.113.5", DeviceID: "private-device", SubjectHint: "abcdefgh", OccurTime: time.Now()})
+	scrubbed := authentication.Scrub(e)
+	if _, err := s.InsertBatch(ctx, []audit.Event{scrubbed}); err != nil {
+		t.Fatal(err)
+	}
+	before := records(t, s)[0]
+	r, err := s.InsertBatch(ctx, []audit.Event{e})
+	if err != nil || r.Duplicate != 1 {
+		t.Fatalf("scrubbed replay: %+v %v", r, err)
+	}
+	after := records(t, s)[0]
+	if !event.Equivalent(after.Event, scrubbed) || !before.CreateTime.Equal(after.CreateTime) {
+		t.Fatal("replay restored privacy")
+	}
+}
+func TestStoreResourcePagination(t *testing.T) {
+	pool := testPool(t)
+	s := testStore(t, pool)
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Microsecond)
+	es := make([]audit.Event, 5)
+	resource := audit.Resource{Type: "USER", Namespace: "test/ns", ID: "u_0000000000001"}
+	for i := range es {
+		e := genericEvent()
+		e.OccurTime = now
+		e.Targets = nil
+		if i%3 == 0 {
+			e.Actor = audit.Actor{Type: audit.ActorUser, Namespace: resource.Namespace, ID: resource.ID}
+		} else if i%3 == 1 {
+			e.Targets = []audit.Resource{resource}
+		} else {
+			e.Context.RelatedResources = []audit.Resource{resource}
+		}
+		es[i] = e
+	}
+	if _, err := s.InsertBatch(ctx, es); err != nil {
+		t.Fatal(err)
+	}
+	otherUser := genericEvent()
+	otherUser.Targets[0].ID = "u_0000000000002"
+	otherNamespace := genericEvent()
+	otherNamespace.Targets[0].Namespace = "foreign/namespace"
+	if _, err := s.InsertBatch(ctx, []audit.Event{otherUser, otherNamespace}); err != nil {
+		t.Fatal(err)
+	}
+	q := audit.Query{Source: "test/source", Resource: resource, Limit: 2}
+	var all []audit.RecordView
+	for {
+		p, err := s.ListByResource(ctx, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		all = append(all, p.Records...)
+		if len(p.Records) < 2 {
 			break
 		}
-		last := rows[len(rows)-1]
-		cursor = &audit.EventCursor{Time: last.OccurTime, ID: last.ID}
+		last := p.Records[len(p.Records)-1]
+		q.After = &audit.EventCursor{Time: last.OccurTime, ID: last.ID}
 	}
-	if pages != 3 || len(all) != 5 {
-		t.Fatalf("pages=%d rows=%v", pages, all)
+	if len(all) != 5 {
+		t.Fatalf("count %d", len(all))
 	}
-	// 时间升序，同一时刻按 id（写入顺序不保证 id 顺序，所以只断言时间不回退且总集合正确）
-	seen := map[string]bool{}
-	for _, r := range all {
-		seen[r] = true
-	}
-	for i := 0; i < 5; i++ {
-		if !seen[fmt.Sprintf("r%d", i)] {
-			t.Fatalf("missing r%d in %v", i, all)
+	for i := 1; i < len(all); i++ {
+		if bytes.Compare(all[i-1].ID[:], all[i].ID[:]) >= 0 {
+			t.Fatal("unstable equal-time order")
 		}
 	}
-	rows, _ := s.ListByUser(ctx, "u_0000000000001", nil, 100)
-	for i := 1; i < len(rows); i++ {
-		if rows[i].OccurTime.Before(rows[i-1].OccurTime) || (rows[i].OccurTime.Equal(rows[i-1].OccurTime) && rows[i].ID <= rows[i-1].ID) {
-			t.Fatalf("order must be (occur_time, id) ascending: %v", rows)
+	q.After = nil
+	q.Resource.ID = "u_0000000000003"
+	if page, err := s.ListByResource(ctx, q); err != nil || len(page.Records) != 0 {
+		t.Fatalf("unknown user returned records: %+v %v", page, err)
+	}
+	q.Source = "other"
+	if _, err := s.ListByResource(ctx, q); err == nil {
+		t.Fatal("foreign source accepted")
+	}
+	q.Source = "test/source"
+	q.Resource.Namespace = "other"
+	if _, err := s.ListByResource(ctx, q); err == nil {
+		t.Fatal("foreign namespace accepted")
+	}
+}
+func TestStoreDeleteOlderThanBatches(t *testing.T) {
+	pool := testPool(t)
+	s := testStore(t, pool)
+	ctx := context.Background()
+	cutoff := time.Now().UTC().Truncate(time.Microsecond)
+	var es []audit.Event
+	for i := 0; i < audit.RetentionBatchSize+5; i++ {
+		e := ev(i)
+		e.OccurTime = cutoff.Add(-time.Hour)
+		if i%2 == 0 {
+			e.Actor = audit.Actor{Type: audit.ActorUser, Namespace: "https://external-admin", ID: "operator"}
+		}
+		es = append(es, e)
+	}
+	fresh := ev(99)
+	fresh.OccurTime = cutoff
+	es = append(es, fresh)
+	if _, err := s.InsertBatch(ctx, es); err != nil {
+		t.Fatal(err)
+	}
+	other, _ := audit.NewStoreWithOptions(pool, audit.StoreOptions{Source: "foreign", Namespace: "test/ns"})
+	foreign := ev(0)
+	foreign.Source = "foreign"
+	foreign.OccurTime = cutoff.Add(-time.Hour)
+	if _, err := other.InsertBatch(ctx, []audit.Event{foreign}); err != nil {
+		t.Fatal(err)
+	}
+	n, err := s.DeleteOlderThan(ctx, cutoff)
+	if err != nil || n != audit.RetentionBatchSize+5 {
+		t.Fatalf("retention: %d %v", n, err)
+	}
+	var left int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM audit_event").Scan(&left); err != nil || left != 2 {
+		t.Fatalf("fresh/foreign lost: %d %v", left, err)
+	}
+	if n, err := s.DeleteOlderThan(ctx, cutoff); err != nil || n != 0 {
+		t.Fatalf("repeat: %d %v", n, err)
+	}
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := s.DeleteOlderThan(canceled, cutoff); !errors.Is(err, context.Canceled) {
+		t.Fatal("cancel not honored")
+	}
+}
+
+var _ = uuid.Nil
+
+func TestStoreFlowClosureDoesNotLeakOtherProofOwners(t *testing.T) {
+	pool := testPool(t)
+	s := testStore(t, pool)
+	ctx := context.Background()
+	const a = "u_0000000000001"
+	const b = "u_0000000000002"
+	const flow = "f_0000000000001"
+	early := mapped(t, audit.AuthenticationEvent{Type: enum.EventSignInCompletionStarted, FlowID: flow, Result: enum.ResultSuccess})
+	if _, err := s.InsertBatch(ctx, []audit.Event{early}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO identity_flow(id,token_digest,state,policy_fingerprint,payload,cipher_version,proof_user_ids,create_time,update_time,expire_time) VALUES($1,'synthetic-flow',1,'policy','\x1234',1,ARRAY[$2::text],now(),now(),now()+interval '5 minutes')`, flow, a); err != nil {
+		t.Fatal(err)
+	}
+	query := audit.Query{Source: "test/source", Resource: audit.Resource{Type: "USER", Namespace: "test/ns", ID: a}, Limit: 20}
+	page, err := s.ListByResource(ctx, query)
+	if err != nil || len(page.Records) != 1 || page.Records[0].ID != early.ID || len(page.FlowLinks) != 1 || !page.FlowLinks[0].Live || page.FlowLinks[0].Evidence.ID != uuid.Nil {
+		t.Fatalf("live ownership: %+v %v", page, err)
+	}
+	proofA := mapped(t, audit.AuthenticationEvent{Type: enum.EventSignInCompletionProofVerified, FlowID: flow, UserID: a, VerifiedSubject: true, Result: enum.ResultSuccess})
+	proofB := mapped(t, audit.AuthenticationEvent{Type: enum.EventSignInCompletionProofVerified, FlowID: flow, UserID: b, VerifiedSubject: true, Result: enum.ResultSuccess})
+	sessionB := mapped(t, audit.AuthenticationEvent{Type: enum.EventSignIn, FlowID: flow, UserID: b, SessionID: "s_0000000000002", Result: enum.ResultSuccess})
+	if _, err := s.InsertBatch(ctx, []audit.Event{proofA, proofB, sessionB}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, "DELETE FROM identity_flow WHERE id=$1", flow); err != nil {
+		t.Fatal(err)
+	}
+	page, err = s.ListByResource(ctx, query)
+	if err != nil || len(page.Records) != 2 {
+		t.Fatalf("historical closure: %+v %v", page, err)
+	}
+	for _, record := range page.Records {
+		if record.ID != early.ID && record.ID != proofA.ID {
+			t.Fatal("other consumer event leaked through flow")
 		}
 	}
-	if rows, _ := s.ListByUser(ctx, "u_0000000000003", nil, 10); len(rows) != 0 {
-		t.Fatal("unknown user must yield no rows")
+	if len(page.FlowLinks) != 1 || page.FlowLinks[0].Live || page.FlowLinks[0].Evidence.ID != proofA.ID {
+		t.Fatal("historical evidence is not real persisted proof")
+	}
+	if !event.Equivalent(page.Records[0].Event, early) {
+		t.Fatal("closure mutated early event")
 	}
 }

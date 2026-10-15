@@ -297,17 +297,17 @@ func TestSignInCompletionAuditLifecycleExists(t *testing.T) {
 		}
 	}
 	store := audit.NewStore(f.pool)
-	if n, err := store.InsertBatch(ctx, f.audit.Events()); err != nil || n != 0 {
-		t.Fatalf("store audit %d %v", n, err)
+	if n, err := store.InsertBatch(ctx, f.audit.RawEvents()); err != nil || n.Failed != 0 {
+		t.Fatalf("store audit %+v %v", n, err)
 	}
 	var stored, requests int
-	if err = f.pool.QueryRow(ctx, "SELECT count(*),count(DISTINCT request_id) FROM audit_event WHERE flow_id=$1", flowID).Scan(&stored, &requests); err != nil {
+	if err = f.pool.QueryRow(ctx, "SELECT count(*),count(DISTINCT context->>'request_id') FROM audit_event WHERE data#>>'{accountkit,flow_id}'=$1", flowID).Scan(&stored, &requests); err != nil {
 		t.Fatal(err)
 	}
 	if stored != linked || requests != 5 {
 		t.Fatalf("persisted correlation: events=%d requests=%d", stored, requests)
 	}
-	raw, _ := json.Marshal(f.audit.Events())
+	raw, _ := json.Marshal(f.audit.RawEvents())
 	digest, _ := f.dig.Digest(email1)
 	for _, secret := range []string{p.SignInCompletionToken, cred.CodeID, email1, "union:audit-life@openid", digest, "\"" + cred.Code + "\""} {
 		if bytes.Contains(raw, []byte(secret)) {
@@ -358,7 +358,7 @@ func TestSignInCompletionPurgeScrubsEarlierFlowAudit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n, err := audit.NewStore(f.pool).InsertBatch(ctx, f.audit.Events()); err != nil || n != 0 {
+	if n, err := audit.NewStore(f.pool).InsertBatch(ctx, f.audit.RawEvents()); err != nil || n.Failed != 0 {
 		t.Fatal(err)
 	}
 	if _, err = f.svc.DeleteMe(ctx, principalOf(t, f, requireSignInTokens(t, r)), meta1); err != nil {
@@ -369,7 +369,7 @@ func TestSignInCompletionPurgeScrubsEarlierFlowAudit(t *testing.T) {
 		t.Fatalf("purge: %d %v", n, err)
 	}
 	var piiRows int
-	if err = f.pool.QueryRow(ctx, "SELECT count(*) FROM audit_event WHERE flow_id IS NOT NULL AND (ip IS NOT NULL OR device_id IS NOT NULL OR subject_hint IS NOT NULL)").Scan(&piiRows); err != nil {
+	if err = f.pool.QueryRow(ctx, "SELECT count(*) FROM audit_event WHERE data#>>'{accountkit,flow_id}' IS NOT NULL AND (context->>'client_ip' IS NOT NULL OR context->>'device_id' IS NOT NULL OR data#>>'{accountkit,subject_hint}' IS NOT NULL)").Scan(&piiRows); err != nil {
 		t.Fatal(err)
 	}
 	if piiRows != 0 {
@@ -387,16 +387,16 @@ func TestSignInCompletionPurgeScrubsFlowBeforeFinalAuditIsStored(t *testing.T) {
 		t.Fatal(err)
 	}
 	var early []audit.Event
-	for _, event := range f.audit.Events() {
+	for i, event := range f.audit.Events() {
 		if event.UserID == "" {
-			early = append(early, event)
+			early = append(early, f.audit.RawEvents()[i])
 		}
 	}
-	if n, err := audit.NewStore(f.pool).InsertBatch(ctx, early); err != nil || n != 0 {
+	if n, err := audit.NewStore(f.pool).InsertBatch(ctx, early); err != nil || n.Failed != 0 {
 		t.Fatal(err)
 	}
 	var known int
-	_ = f.pool.QueryRow(ctx, "SELECT count(*) FROM audit_event WHERE user_id IS NOT NULL").Scan(&known)
+	_ = f.pool.QueryRow(ctx, "SELECT count(*) FROM audit_event WHERE COALESCE((SELECT r->>'id' FROM jsonb_array_elements(targets || COALESCE(context->'related_resources','[]'::jsonb)) r WHERE r->>'type'='USER' LIMIT 1),actor->>'id') IS NOT NULL").Scan(&known)
 	if known != 0 {
 		t.Fatal("final audit must still be queued")
 	}
@@ -408,7 +408,7 @@ func TestSignInCompletionPurgeScrubsFlowBeforeFinalAuditIsStored(t *testing.T) {
 		t.Fatalf("purge %d %v", n, err)
 	}
 	var piiRows int
-	_ = f.pool.QueryRow(ctx, "SELECT count(*) FROM audit_event WHERE flow_id IS NOT NULL AND (ip IS NOT NULL OR device_id IS NOT NULL OR subject_hint IS NOT NULL)").Scan(&piiRows)
+	_ = f.pool.QueryRow(ctx, "SELECT count(*) FROM audit_event WHERE data#>>'{accountkit,flow_id}' IS NOT NULL AND (context->>'client_ip' IS NOT NULL OR context->>'device_id' IS NOT NULL OR data#>>'{accountkit,subject_hint}' IS NOT NULL)").Scan(&piiRows)
 	if piiRows != 0 {
 		t.Fatalf("early flow PII remained without final audit: %d", piiRows)
 	}

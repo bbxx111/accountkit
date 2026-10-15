@@ -1,76 +1,82 @@
-// Package audit 定义认证审计事件与记录器接口。
-//
-// 本阶段只提供接口、Noop 与测试用 Memory；写入 audit_event 表的实现（异步、失败不影响
-// 业务结果、按保留期清理）在阶段 5。凭证（验证码、refresh token、IdP code/id_token/nonce）
-// 永不进入 Event；身份只以 kind + digest 前 8 位出现。
+// Package audit 提供通用审计契约、认证映射入口和本地记录器。
 package audit
 
 import (
 	"context"
+	"log/slog"
 	"sync"
-	"time"
 
-	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/audit/authentication"
+	"github.com/bbxx111/accountkit/audit/event"
 )
 
-// Event 是一条审计事件。
-type Event struct {
-	Type      enum.EventType
-	Actor     enum.ActorKind
-	Result    enum.Result
-	Reason    string
-	UserID    string
-	SessionID string
-	// FlowID 是内部 f_ 流程资源 ID，不是 sign_in_completion_token 或凭证摘要。
-	FlowID       string
-	IdentityKind enum.IdentityKind
-	SubjectHint  string
-	IP           string
-	DeviceID     string
-	RequestID    string
+type Event = event.Event
+type Actor = event.Actor
+type ActorType = event.ActorType
+type Resource = event.Resource
+type EventContext = event.EventContext
+type RecordView = event.RecordView
+type Recorder = event.Recorder
+type Inserter = event.Inserter
+type BatchResult = event.BatchResult
+type EventCursor = event.EventCursor
+type Query = event.Query
+type Page = event.Page
+type FlowLink = event.FlowLink
+type Reader = event.Reader
+type AuthenticationEvent = authentication.Input
+type AuthenticationOptions = authentication.Options
+type AuthenticationRecorder = authentication.Recorder
 
-	AdminIssuer   string
-	AdminSubject  string
-	AdminUsername string
+const (
+	ActorUser      = event.ActorUser
+	ActorService   = event.ActorService
+	ActorSystem    = event.ActorSystem
+	ActorAnonymous = event.ActorAnonymous
+	ActorUnknown   = event.ActorUnknown
+)
 
-	OccurTime time.Time
-}
-
-// Recorder 记录审计事件。实现不得让记录失败改变调用方的业务结果。
-type Recorder interface {
-	Record(ctx context.Context, e Event)
+// NewAuthenticationRecorder 构造认证输入到通用事件的映射器，不做 I/O。
+func NewAuthenticationRecorder(r Recorder, o AuthenticationOptions, logger *slog.Logger) (*AuthenticationRecorder, error) {
+	return authentication.NewRecorder(r, o, logger)
 }
 
 // Noop 丢弃所有事件。
 type Noop struct{}
 
-// Record 实现 Recorder。
 func (Noop) Record(context.Context, Event) {}
 
-// Hint 取 digest 或 provider_subject 的前 8 个字符作为脱敏提示。
+// Hint 返回已脱敏摘要的前八字节。
 func Hint(s string) string {
-	if len(s) <= 8 {
-		return s
+	if len(s) > 8 {
+		return s[:8]
 	}
-	return s[:8]
+	return s
 }
 
-// Memory 是测试用记录器。
+// Memory 保存通过校验的独立事件副本，适用于测试。
 type Memory struct {
 	mu     sync.Mutex
 	events []Event
 }
 
-// Record 实现 Recorder。
 func (m *Memory) Record(_ context.Context, e Event) {
+	frozen, err := event.Freeze(e)
+	if err != nil {
+		return
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.events = append(m.events, e)
+	m.events = append(m.events, frozen)
 }
 
-// Events 返回已记录事件的拷贝。
+// Events 返回深拷贝；修改返回内容不会改变已记录事件。
 func (m *Memory) Events() []Event {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return append([]Event(nil), m.events...)
+	out := make([]Event, len(m.events))
+	for i, e := range m.events {
+		out[i], _ = event.Freeze(e)
+	}
+	return out
 }

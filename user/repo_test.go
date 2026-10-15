@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
 	"github.com/bbxx111/accountkit/migrations"
@@ -439,26 +440,24 @@ func TestRepoScrubAuditEventsAndDeleteStaleSessions(t *testing.T) {
 		}
 	}
 	// 审计：本人两行（一行已无可清字段）、他人一行
-	for _, row := range []struct{ id, user, ip string }{{"e_0000000000001", uid, "203.0.113.5"}, {"e_0000000000002", uid, ""}, {"e_0000000000003", other, "203.0.113.6"}} {
-		var err error
-		if row.ip == "" {
-			_, err = pool.Exec(ctx, `INSERT INTO audit_event (id, event_type, actor_kind, user_id, result) VALUES ($1, 4, 1, $2, 1)`, row.id, row.user)
-		} else {
-			_, err = pool.Exec(ctx, `INSERT INTO audit_event (id, event_type, actor_kind, user_id, result, ip, device_id, subject_hint) VALUES ($1, 4, 1, $2, 1, $3::inet, 'dev', 'abcdefgh')`, row.id, row.user, row.ip)
+	for _, row := range []struct{ user, ip string }{{uid, "203.0.113.5"}, {uid, ""}, {other, "203.0.113.6"}} {
+		in := audit.AuthenticationEvent{Type: enum.EventSignIn, UserID: row.user, IP: row.ip}
+		if row.ip != "" {
+			in.DeviceID = "dev"
+			in.SubjectHint = "abcdefgh"
 		}
-		if err != nil {
-			t.Fatal(err)
-		}
+		seedAuditInput(t, pool, in)
 	}
-	n, err := q.ScrubAuditEventsByUser(ctx, uid)
+
+	n, err := q.ScrubAuditEventsByUser(ctx, db.ScrubAuditEventsByUserParams{UserID: uid, Source: localAuditOptions(pool).Source, Namespace: localAuditOptions(pool).Namespace})
 	if err != nil || n != 1 {
 		t.Fatalf("scrub: %d %v", n, err)
 	}
 	var scrubbed, intact int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_event WHERE user_id = $1 AND ip IS NULL AND device_id IS NULL AND subject_hint IS NULL`, uid).Scan(&scrubbed); err != nil || scrubbed != 2 {
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_event WHERE actor->>'id' = $1 AND context->>'client_ip' IS NULL AND context->>'device_id' IS NULL AND data#>>'{accountkit,subject_hint}' IS NULL`, uid).Scan(&scrubbed); err != nil || scrubbed != 2 {
 		t.Fatalf("scrubbed rows: %d %v", scrubbed, err)
 	}
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_event WHERE user_id = $1 AND ip IS NOT NULL`, other).Scan(&intact); err != nil || intact != 1 {
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_event WHERE actor->>'id' = $1 AND context->>'client_ip' IS NOT NULL`, other).Scan(&intact); err != nil || intact != 1 {
 		t.Fatalf("other user's rows must be untouched: %d %v", intact, err)
 	}
 

@@ -220,7 +220,7 @@ func serviceGatewayCompletion(t *testing.T) {
 	}
 	p.stop()
 	var ip, device string
-	if err := f.pool.QueryRow(t.Context(), "SELECT host(ip), device_id FROM audit_event WHERE request_id='completion-final' AND event_type=$1", enum.EventSignIn).Scan(&ip, &device); err != nil || ip != "127.0.0.1" || device != "completion-gateway-device" {
+	if err := f.pool.QueryRow(t.Context(), "SELECT context->>'client_ip', context->>'device_id' FROM audit_event WHERE context->>'request_id'='completion-final' AND action=$1", enum.EventSignIn.String()).Scan(&ip, &device); err != nil || ip != "127.0.0.1" || device != "completion-gateway-device" {
 		t.Fatal("completion trusted a forged proxy chain or changed its device")
 	}
 	f.assertAuditPrivate()
@@ -315,7 +315,7 @@ func serviceMigrationLock(t *testing.T, kind string) {
 	}
 	var version int
 	var dirty bool
-	if err := f.pool.QueryRow(ctx, "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil || version != 1 || dirty {
+	if err := f.pool.QueryRow(ctx, "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil || version != 2 || dirty {
 		t.Fatal("migration retry did not finish cleanly")
 	}
 }

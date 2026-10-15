@@ -370,3 +370,47 @@ func TestAuthenticationLegacyRejectsIncompatibleOptionalFields(t *testing.T) {
 		t.Fatal("history silently discarded incompatible request_id")
 	}
 }
+
+func TestAuthenticationLegacyAdminForbiddenPreservesResources(t *testing.T) {
+	for _, tc := range []struct {
+		name, userID, sessionID, flowID string
+		related                         []string
+	}{
+		{"user", "u_test", "", "", []string{"USER:u_test"}},
+		{"session", "", "s_test", "", []string{"SESSION:s_test"}},
+		{"flow", "", "", "f_test", []string{"IDENTITY_FLOW:f_test"}},
+		{"all", "u_test", "s_test", "f_test", []string{"IDENTITY_FLOW:f_test", "SESSION:s_test", "USER:u_test"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := fixture(enum.EventAdminForbidden)
+			in.Actor = enum.ActorAdmin
+			in.AdminIssuer = "issuer"
+			in.AdminSubject = "subject"
+			in.UserID = tc.userID
+			in.SessionID = tc.sessionID
+			in.FlowID = tc.flowID
+			in.IdentityID = ""
+			e, err := MapLegacy(in, options, "e_legacy")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(e.Targets) != 0 || !reflect.DeepEqual(refs(e.Context.RelatedResources), tc.related) {
+				t.Fatalf("saved historical resources lost: targets=%v related=%v", refs(e.Targets), refs(e.Context.RelatedResources))
+			}
+			p, err := Projection(e)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if p.UserID != tc.userID || p.SessionID != tc.sessionID || p.FlowID != tc.flowID {
+				t.Fatalf("historical fields lost: %+v", p)
+			}
+			online, err := Map(in, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(online.Targets) != 0 || len(online.Context.RelatedResources) != 0 {
+				t.Fatal("online ADMIN_FORBIDDEN inferred request targets")
+			}
+		})
+	}
+}

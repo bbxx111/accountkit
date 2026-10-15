@@ -189,7 +189,8 @@ func mapEvent(in Input, o Options, newID func() (uuid.UUID, error), legacyID str
 	case enum.EventSignInCompletionStarted, enum.EventSignInCompletionProofVerified, enum.EventSignInCompletionCompleted, enum.EventSignInCompletionRejected:
 		add("IDENTITY_FLOW", in.FlowID, true)
 	}
-	if in.Type != enum.EventAdminForbidden {
+	// 在线 ADMIN_FORBIDDEN 不猜请求目标；历史入口保留旧行已保存的关联。
+	if in.Type != enum.EventAdminForbidden || legacyID != "" {
 		add("USER", in.UserID, false)
 		add("SESSION", in.SessionID, false)
 		add("IDENTITY_FLOW", in.FlowID, false)

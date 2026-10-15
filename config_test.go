@@ -51,21 +51,43 @@ func TestAuditConfiguration(t *testing.T) {
 	t.Setenv(prefix+"AUTH_SCHEMA", "custom")
 	t.Setenv(prefix+"AUDIT_SOURCE", "")
 	t.Setenv(prefix+"AUDIT_NAMESPACE", "")
-	got, err := accountkit.ConfigFromEnv(prefix)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.AuditSource != "accountkit/custom" || got.AuditNamespace != "accountkit/custom/resources" {
-		t.Fatal("audit defaults not scoped to schema")
-	}
-	t.Setenv(prefix+"AUDIT_SOURCE", "test/auth")
-	t.Setenv(prefix+"AUDIT_NAMESPACE", "urn:test:users")
-	got, err = accountkit.ConfigFromEnv(prefix)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.AuditSource != "test/auth" || got.AuditNamespace != "urn:test:users" {
-		t.Fatal("prefixed audit settings not loaded")
+	for _, tc := range []struct{ name, source, namespace string }{
+		{"missing_both", "", ""},
+		{"source_only", "test/auth", ""},
+		{"namespace_only", "", "urn:test:users"},
+		{"explicit_local_defaults", "accountkit/custom", "accountkit/custom/resources"},
+		{"explicit_custom", "test/auth", "urn:test:users"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(prefix+"AUDIT_SOURCE", tc.source)
+			t.Setenv(prefix+"AUDIT_NAMESPACE", tc.namespace)
+			if tc.source == "" {
+				if err := os.Unsetenv(prefix + "AUDIT_SOURCE"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.namespace == "" {
+				if err := os.Unsetenv(prefix + "AUDIT_NAMESPACE"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := accountkit.ConfigFromEnv(prefix)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.AuditSource != tc.source || got.AuditNamespace != tc.namespace {
+				t.Fatalf("explicit audit input lost: source=%q namespace=%q", got.AuditSource, got.AuditNamespace)
+			}
+			if got.Schema != "custom" || got.KeyPrefix != "auth:" || got.AccessTokenTTL != 15*time.Minute {
+				t.Fatal("existing configuration defaults changed")
+			}
+			if err := got.Validate(); err != nil {
+				t.Fatal(err)
+			}
+			if got.AuditSource != tc.source || got.AuditNamespace != tc.namespace {
+				t.Fatal("Validate filled audit defaults back into caller configuration")
+			}
+		})
 	}
 }
 

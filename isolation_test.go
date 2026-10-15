@@ -23,8 +23,8 @@ func TestIndependentInstances(t *testing.T) {
 	cb.JWTKeys = map[uint16][]byte{1: k(9)}
 	a, pa, sa := integrationInstance(t, ca, rdb)
 	b, pb, sb := integrationInstance(t, cb, rdb)
-	fa, accessA := seedSourceFixture(t, pa, a.Config())
-	fb, accessB := seedSourceFixture(t, pb, b.Config())
+	fa, accessA := seedFormatFixture(t, pa, a.Config())
+	fb, accessB := seedFormatFixture(t, pb, b.Config())
 	if err := a.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}

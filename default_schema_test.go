@@ -88,8 +88,8 @@ func TestDefaultSchemaMigrateAgainstRealDB(t *testing.T) {
 	}
 	var version int64
 	var dirty bool
-	if err := pool.QueryRow(ctx, `SELECT version, dirty FROM account.schema_migrations`).Scan(&version, &dirty); err != nil || version != 2 || dirty {
-		t.Fatalf("migration version=%d dirty=%t, want version=2 dirty=false: %v", version, dirty, err)
+	if err := pool.QueryRow(ctx, `SELECT version, dirty FROM account.schema_migrations`).Scan(&version, &dirty); err != nil || version != 1 || dirty {
+		t.Fatalf("migration version=%d dirty=%t, want version=1 dirty=false: %v", version, dirty, err)
 	}
 	if authExists := schemaExists("auth"); authExists != authExisted {
 		t.Fatalf("auth existence changed: before=%t after=%t", authExisted, authExists)

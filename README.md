@@ -286,4 +286,6 @@ Go module：github.com/bbxx111/accountkit。`v0.2.0` 已发布，使用 `go get 
 
 库版本发布与各产品生产上线分别验收。产品实际环境接入、真实服务商与预发布升级/恢复仍待完成；产品各自配置 schema、Redis 前缀、issuer/audience 和密钥，并承担自己的匿名化与网关接入责任。当前未附开源 LICENSE，本次版本供自有产品接入，尚未向外部使用方定义复用许可。
 
-迁移兼容性变化：原 migrations.Down 保留签名但默认拒绝执行；一次性测试清库改用显式 UnsafeReset。升级、故障处理与恢复步骤见 [迁移手册](docs/migrations.md)。
+当前开发代码在尚无产品接入前整合了初始数据库定义：`migrations/0001_init.up.sql` 直接创建全部认证表、identity_flow 和审计关联结构，初始化 version=1，后续变更从 0002 开始。旧版本的开发库不直接接管，基线不兼容时明确拒绝；经人工核验后重建一次性开发库，不自动改版本或清库。已发布标签和固定源快照保持。
+
+原 migrations.Down 保留签名但默认拒绝执行；新基线的一次性测试清库使用显式 UnsafeReset。升级、故障处理与恢复步骤见 [迁移手册](docs/migrations.md)，本次边界见[兼容说明](docs/compatibility.md#初始数据库基线整合)。

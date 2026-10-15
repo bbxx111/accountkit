@@ -83,7 +83,7 @@ func concurrentUp(t *testing.T, existing bool) {
 				t.Errorf("concurrent Up: %v", err)
 			}
 		}
-		assertVersion(t, cfg, schema, 2, false)
+		assertVersion(t, cfg, schema, 1, false)
 	}
 }
 func TestConcurrentFreshSchema(t *testing.T)    { concurrentUp(t, false) }

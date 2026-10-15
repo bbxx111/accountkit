@@ -36,7 +36,7 @@ func hostLifecycleFixture(t *testing.T, hook func(context.Context, pgx.Tx, strin
 	t.Helper()
 	rdb := testRedis(t)
 	a, pool, sent := integrationInstance(t, minimal(), rdb)
-	f, _ := seedSourceFixture(t, pool, a.Config())
+	f, _ := seedFormatFixture(t, pool, a.Config())
 	if err := a.Migrate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +364,7 @@ func TestBeforeDeleteHTTPErrorClassification(t *testing.T) {
 				ctx := context.Background()
 				rdb := testRedis(t)
 				a, pool, sent := integrationInstance(t, minimal(), rdb)
-				f, access := seedSourceFixture(t, pool, a.Config())
+				f, access := seedFormatFixture(t, pool, a.Config())
 				if err := a.Migrate(ctx); err != nil {
 					t.Fatal(err)
 				}

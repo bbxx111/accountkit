@@ -1,8 +1,8 @@
--- auth-server 初始 schema。所有对象位于连接 search_path 首位的 schema（由 migrations.Up 设置），
+-- accountkit 初始 schema。所有对象位于连接 search_path 首位的 schema（由 migrations.Up 设置），
 -- 因此表名不带前缀。规则见设计文档 §3.1–3.2：TSID 文本主键带类型前缀，_time 时间戳，
 -- SMALLINT 枚举无 CHECK（值由 Go 定义），全部表不设外键（一致性由 service 层与测试保证）。
 --
--- 尚未部署任何环境前允许原地修改本文件；一旦部署，后续变更从 0002 起新增文件。
+-- This initial schema was explicitly consolidated once; future changes must use version 0002 or higher.
 
 -- 用户（表名 user_account：user 是 PG 关键字）
 CREATE TABLE user_account (
@@ -106,10 +106,42 @@ CREATE TABLE audit_event (
     ip              INET,
     device_id       TEXT,
     request_id      TEXT,
-    occur_time      TIMESTAMPTZ NOT NULL DEFAULT now()
+    occur_time      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    flow_id         TEXT COLLATE "C"
+                    CONSTRAINT audit_event_flow_id_format CHECK (flow_id IS NULL OR flow_id ~ '^f_[0-9a-hjkmnp-tv-z]{13}$')
 );
 -- 管理端 users/{user}/auditEvents 分页：ORDER BY occur_time, id（§3.4 勘误：本表没有 create_time；
 -- 同一事务/同一毫秒可能多条事件，id 作 tiebreaker 才能做稳定游标）
 CREATE INDEX audit_event_user_id_occur_time_idx ON audit_event (user_id, occur_time, id);
 -- 保留期清理
 CREATE INDEX audit_event_occur_time_idx ON audit_event (occur_time);
+
+-- Short-lived sign-in completion; only token digests and context-bound encrypted payloads are stored.
+CREATE TABLE identity_flow (
+ id TEXT COLLATE "C" PRIMARY KEY CONSTRAINT identity_flow_id_format CHECK (id ~ '^f_[0-9a-hjkmnp-tv-z]{13}$'),
+ token_digest TEXT COLLATE "C" NOT NULL,
+ state SMALLINT NOT NULL,
+ policy_fingerprint TEXT COLLATE "C" NOT NULL,
+ payload BYTEA NOT NULL,
+ cipher_version SMALLINT NOT NULL,
+ revision BIGINT NOT NULL DEFAULT 1,
+ proof_user_ids TEXT[] NOT NULL DEFAULT '{}',
+ user_id TEXT COLLATE "C",
+ session_id TEXT COLLATE "C",
+ create_time TIMESTAMPTZ NOT NULL,
+ update_time TIMESTAMPTZ NOT NULL,
+ expire_time TIMESTAMPTZ NOT NULL
+);
+-- Token lookup uses a unique random-secret digest, separate from the internal resource ID.
+CREATE UNIQUE INDEX identity_flow_token_digest_uidx ON identity_flow(token_digest);
+-- Bounded expiry cleanup scans in deterministic order.
+CREATE INDEX identity_flow_expire_time_id_idx ON identity_flow(expire_time,id);
+-- Account deletion/anonymization removes every proof owner and completed result reference.
+CREATE INDEX identity_flow_proof_user_ids_idx ON identity_flow USING GIN(proof_user_ids);
+CREATE INDEX identity_flow_user_id_idx ON identity_flow(user_id);
+CREATE INDEX identity_flow_session_id_idx ON identity_flow(session_id);
+
+-- Correlate separate completion requests without persisting the secret ticket.
+-- Audit retention is independent of the short-lived flow; intentionally no FK.
+CREATE INDEX audit_event_flow_id_occur_time_idx ON audit_event(flow_id,occur_time,id)
+ WHERE flow_id IS NOT NULL;

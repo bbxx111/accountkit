@@ -2,6 +2,14 @@
 
 固定兼容基线包含 130 个文件，原始文件清单与 SHA-256 见 `tests/testdata/source-baseline/manifest.json`；该清单用于追溯冻结快照，不表示当前文件名和内容必须与历史快照相同。当前根包名为 `accountkit`，导入路径为 `github.com/bbxx111/accountkit`。
 
+## 初始数据库基线整合
+
+在尚无实际产品接入的前提下，当前开发代码执行一次初始结构整合：`0001_init.up.sql` 直接定义 user_account、identity、session、audit_event、identity_flow 及全部现有字段、索引与约束；生产目录不再携带独立的 `0002_identity_flow`，初始化版本为 1。下一次真实增量从 0002 开始，配套 down 覆盖五个表，公开 Down 仍拒绝执行。
+
+这是迁移基线的破坏性调整。旧 version=1 缺少流程结构、整合前 version=2 等不兼容开发库均明确拒绝，不重放初始 SQL、不改 schema_migrations、不自动 Force 或清库。仅在确认可丢弃且准确核验目标后人工重建一次性开发数据库/schema；包含需保留数据的库应先备份并单独制定迁移方案，不能用修改版本标记替代数据迁移。
+
+历史 v0.1.0/v0.2.0 标签及 source-baseline 原始字节保持。历史检查固定两个旧发布的精确提交和原始 SQL，所有新发布遵循整合后的独立初始校验值及递增迁移规则。历史合成数据在完整新结构上验证 ID、摘要、密文和有效 access/refresh 格式兼容，不再把该用例描述为旧 schema 的原地接管。操作与恢复边界见[迁移手册](migrations.md)。
+
 ## 身份策略与登录补全协议升级
 
 当前开发分支包含身份策略与登录补全的破坏性 Go/HTTP 升级，尚不表示已发布的 v0.2.0 具备这些能力。C 端及管理端沿用 `/users` 账号路由，包括自定义动作、me、身份和会话；响应 `name` 使用 `users/{user_id}` 及其子资源。此前开发中的 `/accounts` 路径尚未发布，本轮撤回，返回 404，不注册别名或重定向；已发布的 users 调用无须迁移资源名。管理列表顶层 JSON 字段 `users`、`user_id`、u_ ID、JWT claims、scope、Go User 类型、`user` 包和 `Auth.Users()` 均保留。客户端仍须适配下述 token/pending 与 Go 返回签名，网关须显式增加两个 users 补全端点。
@@ -10,7 +18,7 @@
 
 E/R 环境键沿宿主前缀，R 仅 PHONE/EMAIL any-of；省略 R 默认二选一，`[]` 允许纯第三方。服务显式禁用 EMAIL 时无需 SMTP，显式启用 PHONE 因未装配 SMS 服务商而报错。纯第三方账号需要近期认证时重走普通 IdP 登录，会按同设备规则替换会话；客户端保存新 pair、核对仍为原 user_id 后再继续敏感操作。此操作不保证提供方强制输入密码或 MFA。手机/邮箱及管理员恢复保留，普通 IdP 仍拒绝冷静期账号；纯第三方没有手机/邮箱自助恢复路径。
 
-迁移新增 `0002_identity_flow`，冻结0001与历史业务数据保持。全部认证副本及调用者一起升级后再启用新策略，避免同实例混跑旧登录即建号流程。收紧策略前核验存量可用身份；新登录和新一轮 refresh 可能取得 user:bind，已有 access 沿原期限与吊销规则处理。保留 schema、Redis 前缀、issuer/audience 和完整旧密钥。回退先停新流程并排空最长 TTL 与在途请求，保留新表和密钥；旧程序无法等价执行策略时不能作为安全回退。恢复先落独立空库，数据库备份不包含 Redis 或密钥系统，不能通过清 Redis 恢复证明。
+identity_flow 和审计 flow_id 现已包含在上文整合后的初始 SQL 中，不再通过独立 0002 安装。全部认证副本及调用者采用同一新基线和协议后再启用策略，避免同实例混跑旧登录即建号流程。收紧策略前核验存量可用身份；新登录和新一轮 refresh 可能取得 user:bind，已有 access 沿原期限与吊销规则处理。保留 schema、Redis 前缀、issuer/audience 和完整旧密钥。回退先停新流程并排空最长 TTL 与在途请求，保留流程表和密钥；旧程序无法等价执行策略或兼容当前基线时不能作为安全回退。恢复先落独立空库，数据库备份不包含 Redis 或密钥系统，不能通过清 Redis 恢复证明。
 
 以下旧变更的说明与提取索引记录各自升级边界；当前调用应优先遵循本节。
 
@@ -161,8 +169,8 @@ HTTP 调用方继续使用原 URL（包括 `/users`）、DTO、设备头、JWT �
 | 加密、旧密钥、维护 | pii、maintenance、service_rekey.go | pii_test.go、runner_test.go、service_rekey_test.go、TestKeyRotationBackfillEndToEnd |
 | 业务同事务匿名化 | anonymize、service_purge.go | service_purge_test.go、TestHostContracts（宿主先写入再失败） |
 | 产品隔离 | Config.Schema/KeyPrefix、JWTIssuer/JWTAudience | TestIndependentInstances（故意复用 ID、refresh、目标与 HMAC 密钥暴露缺少命名空间） |
-| 包内 schema/版本/重复迁移 | migrations、Auth.Migrate | migrations_test.go、TestSourceDatabaseTakeover |
-| 旧存储及凭证接管 | 原样 0001、合成旧格式数据 | TestSourceDatabaseTakeover：四类表和版本快照不变、旧 JWT/refresh 可用、旧身份可解密 |
+| 包内 schema/版本/重复迁移 | migrations、Auth.Migrate | migrations_test.go、TestHistoricalFormatsOnInitialSchema；完整初始版本为 1，旧基线明确拒绝 |
+| 历史数据及凭证格式 | 新初始结构、固定历史合成数据 | TestHistoricalFormatsOnInitialSchema：重复迁移保留数据、旧 JWT/refresh 可用、旧身份可解密；不承诺旧 schema 原地接管 |
 
 HTTP 请求响应、状态码、错误码和环境配置约定见 README；下列三个索引保留提取阶段的入口、实现与测试事实，其中 `httpapi/consumer`、`ConsumerHandler`、私有字段及源码行号均为历史记录，不是当前路径或可执行示例。当前入口见[终端用户入口迁移](#终端用户-http-入口迁移)及上方功能对照，当前必需测试选择器以 `scripts/required-tests.txt` 为准；后续服务与换绑验证分别见对应验收记录。Redis 吊销检查 fail-open、审计失败不阻断、刷新宽限故障拒绝请求等原语义不变。第三方真实发送和设备联调由宿主负责。
 

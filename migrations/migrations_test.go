@@ -73,14 +73,14 @@ func TestUpCreatesTablesInsideSchemaOnly(t *testing.T) {
 	defer pool.Close()
 	var n int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM pg_tables WHERE schemaname = $1
-		AND tablename IN ('user_account','identity','session','audit_event','schema_migrations')`, schema).Scan(&n); err != nil {
+		AND tablename IN ('user_account','identity','session','audit_event','identity_flow','schema_migrations')`, schema).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
-	if n != 5 {
-		t.Fatalf("tables in %s = %d, want 5 (4 tables + schema_migrations)", schema, n)
+	if n != 6 {
+		t.Fatalf("tables in %s = %d, want 6 (5 tables + schema_migrations)", schema, n)
 	}
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM pg_tables WHERE schemaname = 'public'
-		AND tablename IN ('user_account','identity','session','audit_event')`).Scan(&n); err != nil {
+		AND tablename IN ('user_account','identity','session','audit_event','identity_flow')`).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
 	if n != 0 {

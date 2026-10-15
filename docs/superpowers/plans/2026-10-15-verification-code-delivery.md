@@ -96,7 +96,7 @@
 
 ## Controller Verification and Completion
 
-- [ ] 按任务依赖顺序执行，每步审查通过后更新 OpenSpec tasks；保持原未完成项不虚勾。
-- [ ] 在一次性 PG/Redis 环境运行 GOWORK=off build/vet/test 和 Linux race，执行真实服务邮件流程；条件允许执行仓库完整 verify.sh/verify-accountsvc.sh 和生成结果检查，保存原始输出于 .test-output。
-- [ ] 运行全分支独立审查，处理实质问题并定向复验。
-- [ ] 在本变更 verification.md 记录全部当前证据和未验证项；openspec validate --all --strict、git diff --check 通过后交付。本轮用户明确要求的合并是提案合并，实现完成后保留实现分支供审阅，不推送、不归档。
+- [x] 按任务依赖顺序执行，每步审查通过后更新 OpenSpec tasks；保持原未完成项不虚勾。
+- [x] 在一次性 PG/Redis 环境运行 GOWORK=off build/vet/test 和 Linux race，执行真实服务邮件流程；条件允许执行仓库完整 verify.sh/verify-accountsvc.sh 和生成结果检查，保存原始输出于 .test-output。
+- [x] 运行全分支独立审查，处理实质问题并定向复验。
+- [x] 在本变更 verification.md 记录全部当前证据和未验证项；openspec validate --all --strict、git diff --check 通过后交付。本轮用户明确要求的合并是提案合并，实现完成后保留实现分支供审阅，不推送、不归档。

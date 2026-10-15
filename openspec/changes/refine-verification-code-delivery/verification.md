@@ -1,30 +1,75 @@
 # 验证记录：refine-verification-code-delivery
 
-日期：2026-10-15。阶段：提案与规划，尚未实施。
+日期：2026-10-15。状态：实施完成，15/15 任务完成；尚未归档。
 
-## 范围与工件
+## 交付与提交
 
-本次仅创建 [proposal.md](proposal.md)、[design.md](design.md)、[增量规格](specs/verification-delivery/spec.md)、[tasks.md](tasks.md) 和本记录；变更骨架由已安装的 OpenSpec CLI 创建。分支为 docs/verification-code-delivery-proposal，起点为干净的 develop。
+- 提案提交：8e7e5b4；以独立 merge commit 78182f5 合入 develop。
+- 实现分支：feat/verification-code-delivery；隔离工作树由 Codex 原生工具创建。
+- 类型兼容迁移：321a439；可注入 SMTP 渲染：3da40aa；宿主装配、本地化示例和文档：e68f288。
+- 长标题编码与折行：c6f9801；编码标题物理行标准校准：1e19c72。
+- 最后测试夹具修复：aa38b17，仅修改 user/service_challenge_test.go；生产代码与 1e19c72 相同。
+- 实施计划见 [详细计划](../../../docs/superpowers/plans/2026-10-15-verification-code-delivery.md)，需求见 [增量规格](specs/verification-delivery/spec.md)。
 
-## 已执行检查
+## 实现范围
 
-- openspec status --change refine-verification-code-delivery --json：proposal、specs、design、tasks 均为 done，isPlanningComplete 为 true。这是规划工件状态，不表示实现完成。
-- openspec validate --all --strict：退出码 0，18 项通过、0 项失败，包含本次变更及现有主规格。
-- git status --short --branch：仅本变更目录为新增文件，没有实现代码或主规格修改。
-- 新增文件空白检查：对 6 个文件执行 git -c core.safecrlf=false diff --no-index --check -- NUL <file>，无空白错误；no-index 的正常差异退出码与检查错误分别处理，未修改 Git 配置。
-- 本地引用与占位检查：5 份 Markdown 工件、7 个相对链接均有效，无 TODO/TBD、模板占位或未闭合代码围栏。
-- 任务格式复核：15 项实施任务均为未勾选，每项包含可验证的结果或检查方式。
-- 增量规格保留检查：两项 MODIFIED Requirement 均存在于主规格；原“真实 SMTP 邮件投递”的 3 个场景及“投递失败保留额度契约”的 2 个场景全部保留。
+SMSCodeSender、EmailCodeSender、CodeMessage 成为正式类型，旧名称为 Deprecated 别名；原方法、消息字段和 Deps 字段保持兼容。SMTP 新增 NewWithRenderer、Renderer、EmailContent，独立 LegacyChineseRenderer 保留旧 New 的四用途中文语义。accountsvc 显式装配兼容渲染器；examples/codeemail 展示宿主固定语言和请求级中英文选择、默认回退及安全模板。
 
-## 设计复核结论
+渲染失败、无效内容与取消均沿用固定安全错误和原轮次、额度、审计语义。没有新增语言配置、通知/审计事件框架、依赖、SQL 或存储格式。
 
-- 改名通过类型别名保持旧发送方法、消息字段和 Deps 字段的源码兼容；不将两个接口改成相同方法集。
-- SMTP 新入口显式注入 Renderer，原 New 和 Config 保留；兼容中文文案与传输代码分离，accountsvc 明确装配兼容渲染器。
-- 规格覆盖四种用途、宿主本地化、并发语言隔离、纯文本/HTML 编码、头部注入防护及固定安全错误。
-- 渲染失败沿用既有额度、轮次清理和审计边界，未扩大成安全通知、审计存储或通用事件框架。
-- 超时采用合作式 context 取消，未承诺能强制终止不响应取消的宿主回调。
-- 本次为当前代理的工件一致性复核，不代表实施代码审查已完成。
+## 当前验证证据
 
-## 未执行及后续验证
+Linux 验证使用 Go 1.26.5、CGO/race、PostgreSQL 17.5、Redis 7 和 PostgreSQL 17.11 客户端，均连接本任务独立合成测试资源。测试套件使用 GOWORK=off。
 
-未编写或修改 Go/SQL 实现，未执行 Go 构建、vet、单元测试、race、真实 SMTP/Redis/PostgreSQL 集成或恢复演练。这些结果不能从规划校验推导；实施阶段按 tasks.md 完成并追加实际证据。本次未提交、推送或归档。
+| 检查 | 对应代码与结果 |
+|---|---|
+| bash scripts/verify.sh | aa38b17：退出 0；包含迁移历史检查、go build ./...、go vet ./...、go test -race -json -count=1 ./...、全部必需测试检查及真实恢复演练 |
+| 全库 race 事件 | 31 个测试包通过、1449 条测试通过事件（含子测试）、0 失败；唯一测试级 skip 是 TestRecoveryFixture；另有 4 个无测试文件的包级 skip |
+| 恢复演练 | 独立空源库和目标库；seed、verify、source-unchanged 均通过；pg_dump/pg_restore 成功，认证与 identity-flow 数据、解密、令牌及源库未改动检查通过 |
+| bash scripts/verify-accountsvc.sh | 1e19c72：退出 0；5 个测试包通过、393 条测试通过事件、0 失败、0 测试级 skip；保留脚本原 5 分钟时限，真实服务子进程同样启用 race |
+| 服务验证适用性 | 1e19c72 到 aa38b17 仅 user/service_challenge_test.go 变化，服务及依赖生产代码、服务测试和门禁脚本完全相同，故不重复已通过的服务套件 |
+| Windows 分步验证 | 各步相关测试、全套快速测试、build/vet 通过；其数据库及平台 skip 仅作快速反馈，完整验收以上述 Linux 真实依赖证据为准 |
+| bash scripts/check-generated.sh | sqlc 1.31.1，退出 0；生成文件无差异，本变更无 SQL/schema/sqlc 配置修改 |
+| OpenSpec | openspec validate --all --strict 通过，18 项、0 失败；最终任务状态再随交付检查核验 |
+| Git 差异 | git diff --check 78182f5 HEAD 通过；migrations、tests/testdata/source-baseline、user/db、audit/db、go.mod、go.sum 无差异 |
+
+当前原始证据在本工作树的忽略目录：
+
+- [完整库日志](../../../.test-output/linux-final/library-verification.log) 与 [测试事件](../../../.test-output/linux-final/tests.jsonl)。
+- [服务日志](../../../.test-output/linux-final/service-verification.log) 与 [服务测试事件](../../../.test-output/linux-final/accountsvc-tests.jsonl)。
+- [最终恢复材料](../../../.test-output/linux-final/recovery.yG8WC5/)。
+- [分步与审查协作材料](../../../.test-output/delivery-review/)。
+- [控制器汇总状态](../../../.test-output/linux-final/final-status.json)。该文件区分库与服务检查的提交；先前驱动脚本状态保留为历史文件，不代替本次汇总。
+- 上述本地原始材料不提交 Git，其他检出环境只会获得此验收记录。
+
+## 审查与修复
+
+三个实施步骤分别完成独立规格符合性及代码质量审查，均通过；最终整分支审查和后续定向复核均由独立审查者执行。
+
+1. 最终审查发现新自定义长 Subject 未折行：真实 SMTP 复现 Unicode 1103 字节、ASCII 1309 字节等过长物理行，并发现 ASCII 尾部空白丢失。修复以完整 UTF-8 字符分段、标准 Base64 编码词和安全续行保存原文。
+2. 复核 [RFC 2047 §2](https://www.rfc-editor.org/rfc/rfc2047#section-2) 后，将分段收紧为最多 39 字节：编码词最多 64 字符、Subject 首行最多 73、续行最多 65。回归同时验证编码词合法、Subject 各物理行不超过 76 字符、完整解码及空白保真，原注入拒绝和短标题行为通过。
+3. 最后全库并发验证暴露原 Redis 故障夹具的端口重用问题，见下节；测试修复独立审查确认未弱化错误、空轮次和零发送断言。
+
+最终结论：所有审查发现已解决，无未处理 Critical/Important/Minor 或搁置事项。实现阶段的新 API 和边界行为均记录了 RED/GREEN 证据；既有行为回归未冒充新功能 RED。
+
+## 验证过程中出现的问题
+
+### Windows 挂载目录下服务套件超时
+
+e68f288 的完整库门禁已通过，但服务专用门禁在 Windows bind mount 的 /src 路径达到原 300 秒上限。堆栈位于 fixtures_integration_test.go:296 等待 go build -race，超时时新用例才执行约 3 秒，前面的邮件闭环、身份策略、启动安全及 SIGTERM 等已通过。
+
+在同一容器、同一代码和同一依赖下，只把检出目录换到 Linux 原生 /work：预热后的构建从 3.466 秒降为 1.159 秒，最长身份策略用例从约 108.68 秒降至约 31.217 秒包耗时。原始服务门禁随后在 c6f9801、1e19c72 均通过，未调整超时、关闭 race 或删减门禁。最初日志保存在 .test-output/linux-verify/.test-output/，原生中间通过证据保存在 .test-output/linux-native-c6f9801/。
+
+### Redis 故障测试释放端口导致非确定性
+
+1e19c72 的服务门禁通过，但全库 race 曾在 TestCodeChallengeDeliveryCleanup/redis_unavailable_returns_dependency_error 失败：关闭模拟 Redis 后反而收到成功轮次。该用例的 Redis 客户端为惰性连接，关闭服务释放端口，使另一并行夹具可能接管该地址。
+
+保存原地址、关闭原服务并用健康 miniredis 监听同端口，可连续 3 次稳定复现原断言失败。aa38b17 把该子用例改为 mr.SetError 保持端口并拒绝所有命令；原 ErrUnavailable、空 CodeID、零发送断言均保留。它现在明确模拟 Redis 命令拒绝服务，不专门模拟 TCP 连接拒绝。定向 100 次、user 包和 vet 通过，最终 aa38b17 完整 Linux race 与恢复门禁再次通过。
+
+失败原始证据保存在 .test-output/linux-native-1e19c72-failed/；定向复现证据在 .test-output/task-2-redis-outage/。未删除失败记录，也未把先前通过结果替代最后验证。
+
+## 资源与未验证边界
+
+本次只创建并使用独立测试网络、数据库/Redis/验证容器和合成数据；已清理这些容器及网络，原始日志、合成备份和实现工作树保留。既有 postgres、redis 容器未操作。
+
+SMTP 验证使用隔离 TCP/TLS fixture，未验证外部商业短信/邮件服务商的实机送达或生产部署。宿主渲染器仍负责语义正确、本地化策略、HTML 转义和合作式取消。未推送、发布或归档；用户要求的本地提案合并已完成，实现保存在独立功能分支。

@@ -2,6 +2,9 @@ package migrations
 
 import (
 	"context"
+	"fmt"
+	"strconv"
+	"strings"
 
 	"os"
 	"testing"
@@ -15,7 +18,15 @@ import (
 func safetySource(t *testing.T, failure bool) fstest.MapFS {
 	t.Helper()
 	out := fstest.MapFS{}
-	for _, name := range []string{"0001_init.up.sql", "0001_init.down.sql"} {
+	entries, err := fs.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".sql") {
+			continue
+		}
 		b, err := fs.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)
@@ -30,10 +41,10 @@ func safetySource(t *testing.T, failure bool) fstest.MapFS {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out["0002_probe.up.sql"] = &fstest.MapFile{Data: b}
-	out["0002_probe.down.sql"] = &fstest.MapFile{Data: []byte("DROP TABLE upgrade_probe")}
+	out[fmt.Sprintf("%04d_probe.up.sql", latestVersion(t)+1)] = &fstest.MapFile{Data: b}
+	out[fmt.Sprintf("%04d_probe.down.sql", latestVersion(t)+1)] = &fstest.MapFile{Data: []byte("DROP TABLE upgrade_probe")}
 	if failure {
-		out["0003_after.up.sql"] = &fstest.MapFile{Data: []byte("CREATE TABLE after_failure (id integer)")}
+		out[fmt.Sprintf("%04d_after.up.sql", latestVersion(t)+2)] = &fstest.MapFile{Data: []byte("CREATE TABLE after_failure (id integer)")}
 	}
 	return out
 }
@@ -59,7 +70,7 @@ func TestUpgradePreservesDataAndIsRepeatable(t *testing.T) {
 		"INSERT INTO user_account(id,state) VALUES('u_0000000000001',1)",
 		"INSERT INTO identity(id,user_id,kind,provider_subject) VALUES('i_0000000000001','u_0000000000001',3,'source-subject')",
 		"INSERT INTO session(id,user_id,device_id,auth_time,refresh_token_hash,refresh_expire_time) VALUES('s_0000000000001','u_0000000000001','device',now(),decode('1234','hex'),now()+interval '1 day')",
-		"INSERT INTO audit_event(id,event_type,actor_kind,result,flow_id) VALUES('e_0000000000001',1,1,1,'f_0000000000001')",
+		`INSERT INTO audit_event(id,source,action,result,actor,targets,occur_time) VALUES('019a0000-0000-7000-8000-000000000001','test/auth','CODE_SENT',1,'{"type":"ANONYMOUS"}','[{"type":"IDENTITY_FLOW","namespace":"urn:test:accounts","id":"f_0000000000001"}]',now())`,
 		"INSERT INTO identity_flow(id,token_digest,state,policy_fingerprint,payload,cipher_version,proof_user_ids,user_id,session_id,create_time,update_time,expire_time) VALUES('f_0000000000001','upgrade-token-digest',1,'policy',decode('1234','hex'),1,ARRAY['u_0000000000001'],'u_0000000000001','s_0000000000001',now(),now(),now()+interval '5 minutes')",
 	} {
 		if _, err := c.Exec(ctx, q); err != nil {
@@ -80,7 +91,7 @@ func TestUpgradePreservesDataAndIsRepeatable(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	assertVersion(t, cfg, schema, 2, false)
+	assertVersion(t, cfg, schema, latestVersion(t)+1, false)
 	if snapshot() != before {
 		t.Fatal("upgrade changed existing data")
 	}
@@ -127,4 +138,26 @@ func TestMigrationLockWaitCancellation(t *testing.T) {
 	if count != 0 {
 		t.Fatal("cancelled waiter executed DDL")
 	}
+}
+
+// latestVersion enumerates embedded production sources; test probes always follow them.
+func latestVersion(t *testing.T) int {
+	t.Helper()
+	entries, err := fs.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	latest := 0
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), ".up.sql") {
+			v, err := strconv.Atoi(strings.SplitN(entry.Name(), "_", 2)[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if v > latest {
+				latest = v
+			}
+		}
+	}
+	return latest
 }

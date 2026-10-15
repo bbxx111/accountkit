@@ -5,7 +5,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
-	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// A fresh install must include the complete schema at version one.
+// The frozen initial pair remains present; a fresh install reaches the latest version.
 func TestConsolidatedInitialSchema(t *testing.T) {
 	entries, err := fs.ReadDir(".")
 	if err != nil {
@@ -26,14 +26,14 @@ func TestConsolidatedInitialSchema(t *testing.T) {
 			names = append(names, entry.Name())
 		}
 	}
-	if !reflect.DeepEqual(names, []string{"0001_init.down.sql", "0001_init.up.sql"}) {
-		t.Errorf("production migration files = %v, want only the initial pair", names)
+	if !slices.Contains(names, "0001_init.down.sql") || !slices.Contains(names, "0001_init.up.sql") {
+		t.Errorf("frozen initial pair missing: %v", names)
 	}
 	cfg, schema := safetyDB(t)
 	if err := Up(context.Background(), cfg, schema); err != nil {
 		t.Fatal(err)
 	}
-	assertVersion(t, cfg, schema, 1, false)
+	assertVersion(t, cfg, schema, latestVersion(t), false)
 	c := migrationTestConn(t, cfg, schema)
 	var tables int
 	if err := c.QueryRow(context.Background(), "SELECT count(*) FROM pg_tables WHERE schemaname=$1 AND tablename IN ('user_account','identity','session','audit_event','identity_flow')", schema).Scan(&tables); err != nil {
@@ -164,9 +164,7 @@ func TestInitialSchemaMatchesPreviousFinalCatalog(t *testing.T) {
 	if _, err := old.Exec(ctx, historicalFlowSQL(t)); err != nil {
 		t.Fatal(err)
 	}
-	if err := Up(ctx, cfg, newSchema); err != nil {
-		t.Fatal(err)
-	}
+	initialUp(t, cfg, newSchema)
 	current := migrationTestConn(t, cfg, newSchema)
 	if before, after := migrationCatalog(t, old, oldSchema), migrationCatalog(t, current, newSchema); before != after {
 		t.Fatalf("catalog mismatch\nprevious: %s\ninitial: %s", before, after)

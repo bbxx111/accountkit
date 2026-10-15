@@ -106,7 +106,9 @@ func TestCodeChallengeDeliveryCleanup(t *testing.T) {
 	t.Run("redis unavailable returns dependency error", func(t *testing.T) {
 		d := &legacyDelivery{}
 		s, mr, _ := deliveryService(t, d, d)
-		mr.Close()
+		// 保留监听端口并拒绝所有命令。Close 释放的端口可能被并行夹具复用，
+		// 使尚未建连的客户端误连到另一台健康 Redis。
+		mr.SetError("ERR simulated Redis outage")
 		c, err := s.SendSignInCode(context.Background(), enum.IdentityEmail, "person@example.org", Meta{IP: "203.0.113.4"})
 		if !errors.Is(err, ErrUnavailable) || c.CodeID != "" || len(d.messages) != 0 {
 			t.Fatal(c, err)

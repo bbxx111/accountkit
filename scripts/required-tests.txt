@@ -474,3 +474,4 @@ github.com/bbxx111/accountkit/examples/codeemail/TestRendererConcurrentLanguages
 github.com/bbxx111/accountkit/examples/codeemail/TestRendererTTL
 github.com/bbxx111/accountkit/examples/codeemail/TestRendererRejectsInvalidInput
 github.com/bbxx111/accountkit/examples/codeemail/TestRendererCancellation
+github.com/bbxx111/accountkit/user/sender/smtp/TestSMTPRendererFoldsLongSubject

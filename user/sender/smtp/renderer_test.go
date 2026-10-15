@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/user/sender"
@@ -362,5 +363,63 @@ func TestLegacyChineseRendererShortTTL(t *testing.T) {
 	}
 	if _, err = (delivery.LegacyChineseRenderer{}).Render(context.Background(), sender.CodeMessage{}); err != sender.ErrUnavailable {
 		t.Fatal("legacy renderer accepted invalid code message")
+	}
+}
+
+func TestSMTPRendererFoldsLongSubject(t *testing.T) {
+	for _, tc := range []struct{ name, subject string }{
+		{"unicode", strings.Repeat("验", 100)},
+		{"four-byte Unicode", strings.Repeat("界🦊", 100)},
+		{"ASCII words", strings.Repeat("verification ", 100)},
+		{"ASCII long token", strings.Repeat("x", 1200)},
+		{"exact whitespace", " \t" + strings.Repeat("Acme  验证\t  confirmation ", 60) + " \t "},
+		{"ASCII whitespace", " \t" + strings.Repeat("Acme  \t ", 180) + " \t"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newSMTPFixture(t, "implicit", nil)
+			s, err := delivery.NewWithRenderer(f.config(), renderFunc(func(context.Context, sender.CodeMessage) (delivery.EmailContent, error) {
+				return delivery.EmailContent{Subject: tc.subject, Text: "Use 123456"}, nil
+			}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = s.SendEmail(context.Background(), "person@example.org", validCodeMessage()); err != nil {
+				t.Fatal(err)
+			}
+			f.mu.Lock()
+			raw := string(f.data)
+			accepted := f.accepted
+			f.mu.Unlock()
+			if accepted != 1 {
+				t.Fatal("long subject was not submitted exactly once")
+			}
+			headers, _, ok := strings.Cut(strings.ReplaceAll(raw, "\r\n", "\n"), "\n\n")
+			if !ok {
+				t.Fatal("missing header/body separator")
+			}
+			for _, line := range strings.Split(headers, "\n") {
+				if len(line) > 998 {
+					t.Errorf("physical header line has %d octets, exceeds 998", len(line))
+				}
+			}
+			msg, err := mail.ReadMessage(strings.NewReader(raw))
+			if err != nil {
+				t.Fatal(err)
+			}
+			subject := msg.Header.Get("Subject")
+			for _, word := range strings.Fields(subject) {
+				if !strings.HasPrefix(word, "=?") {
+					continue
+				}
+				decoded, err := new(mime.WordDecoder).Decode(word)
+				if len(word) > 75 || err != nil || !utf8.ValidString(decoded) {
+					t.Error("invalid encoded-word or split UTF-8 character")
+				}
+			}
+			decoded, err := new(mime.WordDecoder).DecodeHeader(subject)
+			if err != nil || decoded != tc.subject {
+				t.Error("folding changed subject text or whitespace", err)
+			}
+		})
 	}
 }

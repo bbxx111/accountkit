@@ -1,6 +1,6 @@
 # 验证码发送器与 SMTP 渲染 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 保留两个验证码渠道接口，以精确命名和可注入 SMTP Renderer 支持宿主文案及本地化。
 
@@ -46,11 +46,11 @@
 - Produces: SMSSender = SMSCodeSender、EmailSender = EmailCodeSender、Message = CodeMessage，带 Deprecated 注释；Deps 字段名不变。
 - Consumes: 现有相同签名和渠道可用性检查，不更改其语义。
 
-- [ ] 写 TestCodeSenderCompatibility：旧 Message 签名的实现满足新旧接口；新旧消息赋值保持 Purpose/Code/TTL；实际调用分别收到原目标和消息；只实现 SMS 的对象不满足 EmailCodeSender；Deps 原字段可注入。
-- [ ] GOWORK=off go test -count=1 . -run '^TestCodeSenderCompatibility$'，记录新增正式名称缺失的 RED。
-- [ ] 定义正式类型及别名，迁移上述当前引用（仅名称），保留历史材料和兼容用例原名称；gofmt。
-- [ ] 运行上述测试及 go test -count=1 ./user/sender/... ./user ./internal/accountsvc；全套 go test -count=1 ./... 在提交前运行一次，明确数据库 skip。
-- [ ] 自查差异，提交 refactor(sender): clarify verification code sender types；报告 RED/GREEN 与文件列表到任务报告。控制器随后独立审查。
+- [x] 写 TestCodeSenderCompatibility：旧 Message 签名的实现满足新旧接口；新旧消息赋值保持 Purpose/Code/TTL；实际调用分别收到原目标和消息；只实现 SMS 的对象不满足 EmailCodeSender；Deps 原字段可注入。
+- [x] GOWORK=off go test -count=1 . -run '^TestCodeSenderCompatibility$'，记录新增正式名称缺失的 RED。
+- [x] 定义正式类型及别名，迁移上述当前引用（仅名称），保留历史材料和兼容用例原名称；gofmt。
+- [x] 运行上述测试及 go test -count=1 ./user/sender/... ./user ./internal/accountsvc；全套 go test -count=1 ./... 在提交前运行一次，明确数据库 skip。
+- [x] 自查差异，提交 refactor(sender): clarify verification code sender types；报告 RED/GREEN 与文件列表到任务报告。控制器随后独立审查。
 
 ### Task 2: 可注入 SMTP 渲染、MIME 和失败语义
 
@@ -65,14 +65,14 @@
 - Produces: smtp.EmailContent{Subject,Text,HTML string}、Renderer.Render(context.Context,sender.CodeMessage)(EmailContent,error)。
 - Produces: smtp.NewWithRenderer(Config,Renderer)(*Sender,error)、LegacyChineseRenderer.Render 同签名；旧 New 内部选用兼容渲染器，Config 无新字段。
 
-- [ ] 先给旧 New 补四用途解码内容/TTL 向上取整断言，再给新构造与 Renderer 写测试，运行 go test -count=1 ./user/sender/smtp 验证新增 API 缺失的 RED。
-- [ ] renderer_test.go 覆盖构造无渲染/无连接、nil 接口/指针/函数拒绝、自定义文案与不附加中文、非法地址/Purpose/Code/TTL 不调用 Renderer。
-- [ ] 提取 LegacyChineseRenderer，保持四用途中文原文；Sender 存储 Renderer，NewWithRenderer 共享原连接配置校验。
-- [ ] 增加 MIME 用例：Unicode 标题；纯文本；Text+HTML 的 multipart/alternative、纯文本先于 HTML；标题 CR/LF 与空白 Subject/Text 被拒绝且零连接。在 message.go 使用标准库编码。
-- [ ] 增加 context/错误用例：请求值透传、并发语言不串扰、预取消/合作式渲染超时/渲染返回时取消均零连接；总预算从 Render 前开始；原敏感错误被转换为固定 ErrUnavailable，不包装、不记录、不回退、不重试。
-- [ ] 在 user/service_renderer_test.go 使用真正 smtp.NewWithRenderer 和失败 Renderer，验证失败轮次、冷却、目标/IP 额度及脱敏审计。覆盖四用途（补全绑定有效 flow 与截止时间）及失败清理与新轮次竞争。HTTP 503 使用现有错误映射回归并补能连接实际渲染失败的适当用例。
-- [ ] 运行 SMTP 全包（包含原 TLS/STARTTLS/AUTH/取消/DATA 后 QUIT 行为）、user/httpapi 相关测试与 vet；全套单元测试在提交前运行一次。真实依赖和 race 由控制器统一执行，报告不能把 skip 当通过。
-- [ ] 自查、提交 feat(sender): support host-rendered verification emails，记录 RED/GREEN、测试结果、所需集成命令到任务报告；控制器独立审查后进入 Task 3。
+- [x] 先给旧 New 补四用途解码内容/TTL 向上取整断言，再给新构造与 Renderer 写测试，运行 go test -count=1 ./user/sender/smtp 验证新增 API 缺失的 RED。
+- [x] renderer_test.go 覆盖构造无渲染/无连接、nil 接口/指针/函数拒绝、自定义文案与不附加中文、非法地址/Purpose/Code/TTL 不调用 Renderer。
+- [x] 提取 LegacyChineseRenderer，保持四用途中文原文；Sender 存储 Renderer，NewWithRenderer 共享原连接配置校验。
+- [x] 增加 MIME 用例：Unicode 标题；纯文本；Text+HTML 的 multipart/alternative、纯文本先于 HTML；标题 CR/LF 与空白 Subject/Text 被拒绝且零连接。在 message.go 使用标准库编码。
+- [x] 增加 context/错误用例：请求值透传、并发语言不串扰、预取消/合作式渲染超时/渲染返回时取消均零连接；总预算从 Render 前开始；原敏感错误被转换为固定 ErrUnavailable，不包装、不记录、不回退、不重试。
+- [x] 在 user/service_renderer_test.go 使用真正 smtp.NewWithRenderer 和失败 Renderer，验证失败轮次、冷却、目标/IP 额度及脱敏审计。覆盖四用途（补全绑定有效 flow 与截止时间）及失败清理与新轮次竞争。HTTP 503 使用现有错误映射回归并补能连接实际渲染失败的适当用例。
+- [x] 运行 SMTP 全包（包含原 TLS/STARTTLS/AUTH/取消/DATA 后 QUIT 行为）、user/httpapi 相关测试与 vet；全套单元测试在提交前运行一次。真实依赖和 race 由控制器统一执行，报告不能把 skip 当通过。
+- [x] 自查、提交 feat(sender): support host-rendered verification emails，记录 RED/GREEN、测试结果、所需集成命令到任务报告；控制器独立审查后进入 Task 3。
 
 ### Task 3: 宿主装配、本地化示例和接入文档
 
@@ -87,7 +87,7 @@
 - Produces: 示例 codeemail.New(defaultLanguage string) *Renderer、WithLanguage(context.Context,string) context.Context、(*Renderer).Render(context.Context,sender.CodeMessage)(smtp.EmailContent,error)。
 - 示例私有类型化 context 键；New 不支持的默认语言选择 zh-CN；请求提示支持 zh-CN/en，其余回退到实例默认。配置不可变，标准库 text/template/html/template 分别渲染 Text/HTML。
 
-- [ ] 先写四用途中文/英文、固定配置、缺省/未知语言回退、并发 context 隔离、HTML 动态品牌或用途文本正确转义（选择有实际动态数据的断言）、非法输入固定安全错误的示例测试；首次运行记录 RED。
+- [ ] 先写四用途中文/英文、固定配置、缺省/未知语言回退、并发 context 隔离、HTML 与 Text 的验证码、用途和有效期一致且非数字 Code 被拒绝、非法输入固定安全错误的示例测试；首次运行记录 RED。
 - [ ] 实现纯本地 Renderer 与示例装配，不打印验证码、不发送网络请求、不读取真实环境凭据；示例不增加核心语言 helper。
 - [ ] 将 accountsvc EMAIL 启用路径改为 NewWithRenderer(cfg.SMTP, smtp.LegacyChineseRenderer{})；用现有服务装配/集成测试证明原中文、EMAIL 关闭、migrate 无新依赖。
 - [ ] 文档给出新旧名称映射、旧 New 保持原中文、新入口、宿主语言选择/并发/取消责任、服务商托管模板直接适配方式，链接示例；无新环境变量。

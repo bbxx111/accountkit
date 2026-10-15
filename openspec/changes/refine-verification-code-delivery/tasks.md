@@ -6,11 +6,11 @@
 
 ## 2. SMTP 渲染与兼容入口
 
-- [ ] 2.1 先固定旧 smtp.New 的四用途邮件解码内容与 TTL 向上取整行为，再提取 LegacyChineseRenderer；运行旧 SMTP 内容测试，验证 Config 和 New 的函数签名保持兼容。
-- [ ] 2.2 增加 EmailContent、Renderer 和 NewWithRenderer；先测试缺失/包装 nil 渲染器及构造无 I/O，再实现依赖校验与渲染调用，验证自定义文案替换且构造不会调用 Renderer。
-- [ ] 2.3 分离原输入校验与渲染后内容校验，实现纯文本和可选 HTML 的 MIME 编码；以 MIME 解析测试验证 Unicode、正文完整性和 alternative 顺序，并验证头注入、空内容、非法 Code/Purpose/TTL 在网络连接前被拒绝。
-- [ ] 2.4 将渲染纳入一次总投递预算，传递宿主 context 值，固定映射渲染错误并禁止模板回退；通过遵守 context 的取消/超时测试及含合成敏感内容错误测试，验证无多余 SMTP 连接、无原错误泄露和无重复发送。
-- [ ] 2.5 复核渲染改造后的 SMTP 传输边界；运行现有证书、STARTTLS、AUTH、连接取消、TLS 超时及 DATA 接受后 QUIT 失败测试，确认改造未改变这些行为。
+- [x] 2.1 先固定旧 smtp.New 的四用途邮件解码内容与 TTL 向上取整行为，再提取 LegacyChineseRenderer；运行旧 SMTP 内容测试，验证 Config 和 New 的函数签名保持兼容。
+- [x] 2.2 增加 EmailContent、Renderer 和 NewWithRenderer；先测试缺失/包装 nil 渲染器及构造无 I/O，再实现依赖校验与渲染调用，验证自定义文案替换且构造不会调用 Renderer。
+- [x] 2.3 分离原输入校验与渲染后内容校验，实现纯文本和可选 HTML 的 MIME 编码；以 MIME 解析测试验证 Unicode、正文完整性和 alternative 顺序，并验证头注入、空内容、非法 Code/Purpose/TTL 在网络连接前被拒绝。
+- [x] 2.4 将渲染纳入一次总投递预算，传递宿主 context 值，固定映射渲染错误并禁止模板回退；通过遵守 context 的取消/超时测试及含合成敏感内容错误测试，验证无多余 SMTP 连接、无原错误泄露和无重复发送。
+- [x] 2.5 复核渲染改造后的 SMTP 传输边界；运行现有证书、STARTTLS、AUTH、连接取消、TLS 超时及 DATA 接受后 QUIT 失败测试，确认改造未改变这些行为。
 
 ## 3. 宿主装配与本地化示例
 
@@ -20,7 +20,7 @@
 
 ## 4. 集成回归与交付
 
-- [ ] 4.1 将实际 SMTP 渲染失败接入验证码服务回归，验证 503 安全错误、无成功轮次、额度和冷却保留、失败审计脱敏及并发新轮次不被清理；运行相关 user/httpapi 测试并使用一次性真实依赖完成涉及认证失败与并发的集成检查，记录实际通过与未验证项。
+- [x] 4.1 将实际 SMTP 渲染失败接入验证码服务回归，验证 503 安全错误、无成功轮次、额度和冷却保留、失败审计脱敏及并发新轮次不被清理；运行相关 user/httpapi 测试并使用一次性真实依赖完成涉及认证失败与并发的集成检查，记录实际通过与未验证项。
 - [ ] 4.2 在 GOWORK=off 下运行 go build ./...、go vet ./...、go test -count=1 ./...，对 SMTP、本地化示例及相关并发路径执行 race；Windows 缺 CGO 时使用仓库规定的 Linux 验证环境，不将数据库 skip 或禁用 race 报为完整验证。
 - [ ] 4.3 按实现各步复核规格、兼容性和隐私，处理实质问题；新增必需顶层测试时同步 required-tests，发布前执行完整验证入口，所有实际结果及未验证项写入本变更 verification.md。
 - [ ] 4.4 运行 openspec validate --all --strict 并检查最终差异与引用，确认仅完成且验证的任务被勾选；交付实现及验证记录，归档作为另一个明确步骤。

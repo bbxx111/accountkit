@@ -60,3 +60,21 @@
 | git log -3 --oneline | 确认 8793e8a、612056b 及前置提交 | 只完成本地 Git 动作 |
 
 未运行新实现的 build/vet/race/sqlc/迁移与备份恢复；原始盘点工作文件位于被忽略的 .test-output/generalize-audit-events/。
+
+## 2026-10-16 分阶段实施进展
+
+用户确认继续后按已评审计划实施；当前完成通用模型、认证映射和迁移 3A 的独立审查，运行时统一切换及后续锁序/HTTP/完整验收仍未完成。当前分支处于明确的过渡状态，不可发布。
+
+| 阶段 | 提交 | 实际验证/审查 |
+|---|---|---|
+| 通用模型 | 44a4745、f71b19f | 模型及旧 audit 相关测试/vet 通过；初次全仓快速测试通过；修复累计数字展开预算、精确 JSON 字段绑定和微秒零时间，独立复审通过 |
+| 认证映射/config | db83ada、db76d11 | 26 动作映射、UUID/失败观测/历史快照/可选上下文测试、相关 vet 通过；初次全仓快速测试通过；修复 ConfigFromEnv 显式输入和历史 ADMIN_FORBIDDEN 关联，复审通过 |
+| 历史迁移 3A | 4a9a228、58e3a91 | 专用真实 PG17 上迁移、准备工具、CLI、模型与映射五包回归通过；构建、vet、历史检查和独立 sqlc 探针通过；SQL 枚举/容量/时间修复独立复审通过 |
+
+真实数据库基线在本任务 PostgreSQL 上运行 `GOWORK=off go test -count=1 ./...` 退出 0，日志 `.test-output/generalize-audit-events/baseline-with-postgres.log`。3A 新 schema 激活后全库 PG+Redis 测试退出 1，所有旧运行时/SQL/夹具过渡失败保留在 `.test-output/generalize-audit-events/task3/full-postgres-failures.txt`，必须由 3B 修复，不据此声称完整通过。
+
+3A 最终真实数据库检查为 `go test -count=1 ./migrations ./internal/auditmigration ./cmd/accountaudit-migrate ./audit/event ./audit/authentication`，退出 0，日志 `task3/green-review-regression.log`。`check-migrations.sh` 通过，日志 `task3/review-history.log`；原报告所列 build/vet 日志缺失后，由主代理在 58e3a91 代码重新执行并保存 `task3/review-build.log`、`task3/review-vet.log`，均记录退出码 0。
+
+执行台账与逐步报告在被忽略的 `.superpowers/sdd/2026-10-16-generalize-audit-events/`。迁移锁原实现提取到内部共享包，公开 Down 仍禁用；新版本开发清理补丁经具体源码边界复核后获自动审查通过。生产生成检查在 3A 范围被阻止，未执行或绕过，留到 3B 查询切换后完成。固定 0001/源快照及 tags 不变。
+
+本阶段仅勾选已验证的准备工具和版本化 baseline 任务，整体进度 4/26。尚未完成根包/领域/Store/Async/管理查询激活、完整生成检查、迟到隐私并发证明、Linux race、pg_dump/pg_restore 和最终发布验收。

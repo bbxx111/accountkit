@@ -96,11 +96,13 @@
 
 **OpenSpec tasks:** 3.1～3.5，4.1 的读侧基础。
 
+执行拆分：3A 先实施历史工具、0002、baseline 和迁移测试；3B 在新上下文统一激活根包/领域/Store/Async/HTTP 编译边界、SQL 生成与历史/恢复夹具。两步分别审查，原 Task3 验收在两步都完成后进行。3A 的中间 schema 与旧运行时不兼容必须明示并保留旧运行时失败证据，不以跳过/删除旧测试掩盖；3A 不单独作为可发布版本。
+
 **Files:** internal/auditmigration/prepare.go、prepare_test.go；cmd/accountaudit-migrate/main.go；migrations/0002_generalize_audit_events.up.sql/.down.sql、baseline.go、迁移测试/testdata；audit/store.go、query.sql、sqlc.yaml、数据库测试。
 
 **Interfaces:**
 - audit.Reader.ListByResource(context.Context,Query) (Page,error)，Query{Source string, Resource Resource, After *EventCursor, Limit int}，EventCursor{Time time.Time, ID uuid.UUID}；Page{Records []RecordView, FlowLinks []FlowLink}，FlowLink{Flow Resource, User Resource, Evidence RecordView, Live bool}。Live 与 Evidence 互斥；Live 归属必须在管理面通过领域回调独立核对本地流程，不能只信 reader；FlowLinks 仅供查询范围复核，不修改 Event 或增加主表字段。
-- Store 保留 NewStore(*pgxpool.Pool)，消费任务一 BatchResult；DeleteOlderThan(context.Context,time.Time)(int64,error)。事务内查询 SQL 全部放 query.sql 并生成。
+- Store 保留 NewStore(*pgxpool.Pool) 兼容默认，并新增 NewStoreWithOptions(*pgxpool.Pool,StoreOptions{Source,Namespace})(*Store,error)；默认从连接池配置 schema 得到本地命名空间，不做 I/O，根门面显式传配置以限定本实例读/维护范围。消费任务一 BatchResult；DeleteOlderThan(context.Context,time.Time)(int64,error)。事务内查询 SQL 全部放 query.sql 并生成。
 - internal/auditmigration.Prepare(context.Context,*pgx.Conn,Options) (Report,error)，Options{Schema,ConfirmSchema,Source,Namespace string}；Report 仅安全计数。CLI 从指定环境变量读取 DSN，不在参数/日志输出秘密，必须精确确认 schema。
 - staging 持有 legacy_id、UUID、新事件、原行 JSON 快照和配置，prepare 不改 schema_migrations 或原审计表；有完整覆盖且原行未变才正式转换。
 

@@ -59,6 +59,10 @@ targets SHALL 记录直接操作资源；context.related_resources SHALL 记录�
 - **WHEN** 被记录的资源后来被删除
 - **THEN** 历史审计引用仍保留，不要求资源当前存在才能解释事件
 
+#### Scenario: 多证明账号共享流程
+- **WHEN** 账号 A 和 B 的证明涉及同一 flow，管理员查询 A 的审计
+- **THEN** 可返回直接关联 A 及尚无明确账号归属的早期流程事件，不仅凭共享 flow 返回仅关联 B 的专属事件
+
 ### Requirement: 扩展数据与输入边界
 context SHALL 允许受控请求/追踪/客户端信息；data SHALL 承载业务自定义对象，认证专属字段进入 data.accountkit。主体及资源 namespace/id 各最多 512 字节、可选 name 最多 256 Unicode 字符，资源 type 最多 128 ASCII 字符；完整 UTF-8 JSON 事件最多 64 KiB，targets/related_resources 各最多 32 项。写入 SHALL 校验结构并冻结可变内容，拒绝重复 JSON 键。既有更严格输入约束保持；新限制若影响旧合法请求 SHALL 在实施前明确兼容处理，不静默截断。
 

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、PostgreSQL 17、Redis、sqlc 1.31.1、golang-migrate。
 
-**Spec:** [proposal](../../../openspec/changes/consolidate-initial-schema/proposal.md)、[design](../../../openspec/changes/consolidate-initial-schema/design.md)、两项 delta specs 与 tasks。
+**Spec:** [proposal](../../../openspec/changes/archive/2026-10-15-consolidate-initial-schema/proposal.md)、[design](../../../openspec/changes/archive/2026-10-15-consolidate-initial-schema/design.md)、两项 delta specs 与 tasks。
 
 ## Global Constraints
 

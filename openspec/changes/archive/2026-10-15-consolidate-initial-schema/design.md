@@ -1,6 +1,8 @@
 ## Context
 
-见 [proposal.md](proposal.md)。当前 HEAD 为 511ac6e，初始迁移后追加了未发布的 0002_identity_flow。用户明确说明无实际产品接入并要求整合，这构成对“当前 0001 永不改写”的一次限定例外，不允许据此改写历史标签或源快照，也不开放日常 squash。
+后续执行状态：用户在实施验收完成后明确授权“提交，存档，合并”。实现提交为 017c0f9，主规格同步并归档；本次授权覆盖下文原实施阶段暂不提交/集成的边界，具体结果见 [verification.md](verification.md)。
+
+见 [proposal.md](proposal.md)。实施起点为 511ac6e，当时初始迁移后追加了未发布的 0002_identity_flow。用户明确说明无实际产品接入并要求整合，这构成对“当前 0001 永不改写”的一次限定例外，不允许据此改写历史标签或源快照，也不开放日常 squash。
 
 ## Goals / Non-Goals
 

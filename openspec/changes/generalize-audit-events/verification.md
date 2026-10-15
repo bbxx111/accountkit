@@ -40,3 +40,23 @@
 - 核对现有 proposal、specs 和 tasks：案例解释现有身份契约，无需调整需求范围或实施任务，26 项任务仍未勾选。
 - 实际检查：`openspec validate --all --strict` 退出码 0，19 项通过、0 项失败；`git diff --check` 退出码 0；三个 JSON 示例均成功解析并包含 USER、namespace、id。
 - 本轮仅修改设计说明及本核验记录；未修改实现代码，未运行 Go 或数据库测试，未提交或改变原有暂存内容。
+
+## 2026-10-16 提交、合并与 apply 准备
+
+- 按用户指令提交提案：612056b，docs(audit): propose generic audit events。
+- 本地 develop 使用 --no-ff 合并提案：8793e8a，docs(audit): merge generic audit proposal；随后创建 feat/generalize-audit-events。未推送远端，未合并实施代码。
+- 已按 openspec-apply-change 读取全部 contextFiles；初始进度 0/26，完成实施计划与只读事件盘点后为 2/26（仅 1.1、1.2）。尚未写产品代码或新增行为测试。
+- [实施计划](../../../docs/superpowers/plans/2026-10-16-generalize-audit-events.md)覆盖全部规格及 26 项任务，默认执行方法为项目规定的子代理实施/审查；[盘点](../../../docs/superpowers/plans/2026-10-16-generalize-audit-events-inventory.md)覆盖 26 种动作、具体代码引用、输入边界及锁序。
+- 计划待用户评审；需明确超长已验证主体字段的审计拒绝策略，以及不可变早期 flow 事件的查询关联证据。计划中的锁环是代码推演，未声称已复现或修复。
+
+### 当前实际证据
+
+| 命令/检查 | 结果 | 限制 |
+|---|---|---|
+| git diff --cached --check（提案提交前） | 退出码 0 | 只检查已暂存提案 |
+| openspec validate --all --strict | 退出码 0，19 通过、0 失败 | 规划结构检查 |
+| GOWORK=off go test -count=1 ./... | 退出码 0，各包快速测试通过 | 三个数据库连接串均未配置，数据库集成/恢复未验证；不能宣称完整验证 |
+| 工具检查 | Go 1.26.5、sqlc 1.31.1、Docker Server 29.8.2 可用 | 未创建数据库或验证容器 |
+| git log -3 --oneline | 确认 8793e8a、612056b 及前置提交 | 只完成本地 Git 动作 |
+
+未运行新实现的 build/vet/race/sqlc/迁移与备份恢复；原始盘点工作文件位于被忽略的 .test-output/generalize-audit-events/。

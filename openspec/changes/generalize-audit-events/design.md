@@ -111,6 +111,8 @@ data 采用 JSON 对象，可选 reason、changes；changes.<field>.before/after
 
 accountkit 使用强类型事件构建器完成映射和脱敏，不能把任意请求体/claims/err.Error() 整体装入 data。通用 API 允许宿主自定义已校验 JSON 对象，避免公共结构硬编码全部业务字段。入队前验证并深拷贝可变对象，禁止调用方后续修改已排队事件。解码时拒绝重复 JSON 键和非法数值；默认完整事件不超过 64 KiB UTF-8 JSON，targets/related_resources 各最多 32 项。既有设备/管理员字段兼容边界须通过真实调用测试确定，不能静默截断或收紧 HTTP 输入。
 
+2026-10-16 计划评审后明确兼容处理：认证映射器可省略无效 IP、超长不可信设备字段、超长自定义 request_id 和超长可选 name，并单独安全计数/告警；主体 namespace/id 不截断或哈希替换。已验证 issuer/sub 超过 512 字节时拒绝该审计事件并提供安全失败观测，认证结果不变。这是新审计输入边界的明确兼容变化，须写入调用迁移说明；历史准备遇到不兼容字段停止且保留原表。默认 request_id 的 64 字符规则不表示宿主自定义 resolver 过去已有相同上限。
+
 不设置独立版本列：同一 action 只增加可选字段；类型、单位或语义变化使用新字段，动作含义变化使用新 action；确需格式版本的业务在自己的 data 命名空间内声明。消费者忽略不认识的可选字段，保留历史缺失语义。
 
 ### 4. 写入、去重与并发隐私处理
@@ -147,6 +149,8 @@ accountkit 使用强类型事件构建器完成映射和脱敏，不能把任意
 审计专用游标包含格式版本、查询范围和 (occur_time, UUID)，旧 e_ 游标返回原 400 INVALID_PAGE_TOKEN，提示重新开始分页；游标不是授权凭证。按 (occur_time,id) 稳定排序，不承诺并发迟到事件下的快照导出完整性。
 
 基础索引为 id 主键、(occur_time,id)、(source,occur_time,id)。actor namespace/id 表达式、targets/related_resources GIN、request_id 和 data.accountkit.flow_id 表达式按必需查询增设；默认账号审计查询和 scrub 的计划须以真实 PostgreSQL 验证，不能以 GIN 支持过滤推断排序高效。索引不是增加业务专属列的理由。
+
+2026-10-16 计划评审后明确 flow 关联：早期事件不追加后来发现的账号到原始资源引用；查询利用 live flow 或已保存的证明/完成归属事件构造账号关联闭包。公开读侧 Page 将 Records 与 FlowLinks 分开，FlowLink 携带 flow/user 引用及归属事件 Evidence；管理适配层检查同源、认可的归属动作及完整引用后才接受间接匹配事件，不把这些查询证据输出到 HTTP DTO。所有归属证据均丢失时不承诺重建历史。
 
 ### 7. 外部数据治理边界
 

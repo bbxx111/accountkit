@@ -3,6 +3,7 @@ package event
 import (
 	"bytes"
 	"encoding/json"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -336,5 +337,98 @@ func TestRecordViewMaximumEventRoundTrip(t *testing.T) {
 	}
 	if !Equivalent(r.Event, restored.Event) || !r.CreateTime.Equal(restored.CreateTime) {
 		t.Fatal("maximum event round-trip changed record")
+	}
+}
+
+func TestEventCumulativeExpansionBudget(t *testing.T) {
+	e := validEvent()
+	e.Data = json.RawMessage(`{"items":[` + strings.TrimSuffix(strings.Repeat("1e65000,", 64), ",") + `]}`)
+	// A small, fixed input must be rejected before materializing all 64 expanded values.
+	// Two MiB leaves ample parser overhead and catches the prior ~34 MiB allocation.
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	_, err := Freeze(e)
+	runtime.ReadMemStats(&after)
+	if err == nil {
+		t.Fatal("accepted cumulatively oversized data")
+	}
+	if allocated := after.TotalAlloc - before.TotalAlloc; allocated > 2*1024*1024 {
+		t.Fatalf("did not reject expansion early: allocated %d bytes for %d input bytes", allocated, len(e.Data))
+	} else {
+		t.Logf("rejected %d input bytes after allocating %d bytes", len(e.Data), allocated)
+	}
+}
+
+func TestJSONNormalizationSharedBudget(t *testing.T) {
+	for _, tt := range []struct {
+		wire string
+		size int
+	}{
+		{`{"a":[1e10,"<<<<"]}`, 46},
+		{`{"a":[1e10,true,false,null]}`, 35},
+	} {
+		if _, err := parseJSONLimit([]byte(tt.wire), tt.size); err != nil {
+			t.Fatalf("exact budget %d: %v", tt.size, err)
+		}
+		if _, err := parseJSONLimit([]byte(tt.wire), tt.size-1); err == nil {
+			t.Fatalf("shared budget omitted string/key/container/literal bytes: %s", tt.wire)
+		}
+	}
+}
+
+func TestDecodeEventExactFieldNames(t *testing.T) {
+	e := validEvent()
+	r := resource()
+	e.Targets = []Resource{r}
+	e.Context = EventContext{DeviceID: "original", RelatedResources: []Resource{r}}
+	wire, err := json.Marshal(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct{ name, old, replacement string }{
+		{"top targets", `"targets":[`, `"TARGETS":null,"targets":[`},
+		{"top targets last", `"context":`, `"TARGETS":null,"context":`},
+		{"top Unicode targets fold", `"context":`, `"targetſ":null,"context":`},
+		{"top source", `"action":`, `"SOURCE":"forged","action":`},
+		{"top Unicode source fold", `"action":`, `"ſource":"forged","action":`},
+		{"top actor", `"targets":`, `"ACTOR":{"type":"USER","namespace":"forged","id":"forged"},"targets":`},
+		{"top context", `,"data":`, `,"CONTEXT":{"device_id":"forged"},"data":`},
+		{"actor id", `"id":"user-1"`, `"id":"user-1","ID":"forged"`},
+		{"actor Unicode namespace fold", `"id":"user-1"`, `"id":"user-1","nameſpace":"forged"`},
+		{"resource id", `"id":"order-1"`, `"id":"order-1","ID":"forged"`},
+		{"context device", `"device_id":"original"`, `"device_id":"original","DEVICE_ID":"forged"`},
+		{"context related", `"related_resources":[`, `"RELATED_RESOURCES":null,"related_resources":[`},
+		{"context related last", `}]},"data":`, `}],"RELATED_RESOURCES":null},"data":`},
+		{"related resource id", `"related_resources":[{"type":"ORDER","namespace":"shop","id":"order-1"}]`, `"related_resources":[{"type":"ORDER","namespace":"shop","id":"order-1","ID":"forged"}]`},
+		{"true unknown", `"context":`, `"new_optional":{"nested":true},"context":`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			input := strings.Replace(string(wire), tt.old, tt.replacement, 1)
+			decoded, err := DecodeEvent([]byte(input))
+			// Unknown keys, including casing aliases, must never bind to known fields.
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !Equivalent(e, decoded) {
+				t.Fatalf("unknown key changed known event fields: %s", input)
+			}
+		})
+	}
+}
+
+func TestEventMicrosecondZeroBoundary(t *testing.T) {
+	e := validEvent()
+	e.OccurTime = time.Time{}.Add(time.Nanosecond)
+	if _, err := Freeze(e); err == nil {
+		t.Fatal("accepted time that normalizes to zero")
+	}
+	e.OccurTime = time.Time{}.Add(time.Microsecond)
+	frozen, err := Freeze(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !Equivalent(frozen, frozen) {
+		t.Fatal("earliest nonzero microsecond must remain valid after freezing")
 	}
 }

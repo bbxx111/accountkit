@@ -50,10 +50,10 @@ func Freeze(e Event) (Event, error) {
 	if err := validateActor(e.Actor); err != nil {
 		return Event{}, err
 	}
+	e.OccurTime = e.OccurTime.UTC().Truncate(time.Microsecond)
 	if e.OccurTime.IsZero() || e.OccurTime.Year() < 1 || e.OccurTime.Year() > 9999 {
 		return Event{}, invalid("occur_time")
 	}
-	e.OccurTime = e.OccurTime.UTC().Truncate(time.Microsecond)
 	var err error
 	e.Targets, err = freezeResources(e.Targets)
 	if err != nil {
@@ -114,7 +114,7 @@ func DecodeEvent(wire []byte) (Event, error) {
 		}
 	}
 	var e Event
-	if err := unmarshalEvent(wire, &e); err != nil {
+	if err := unmarshalEvent(obj, &e); err != nil {
 		return Event{}, invalid("event")
 	}
 	return Freeze(e)
@@ -251,7 +251,8 @@ func parseJSONLimit(wire []byte, limit int) (any, error) {
 	}
 	d := json.NewDecoder(bytes.NewReader(wire))
 	d.UseNumber()
-	v, err := jsonValue(d)
+	budget := jsonBudget{remaining: int64(limit)}
+	v, err := jsonValue(d, &budget)
 	if err != nil {
 		return nil, err
 	}
@@ -306,17 +307,58 @@ func validateSurrogates(wire []byte) error {
 	return nil
 }
 
-func jsonValue(d *json.Decoder) (any, error) {
+// jsonBudget 是整棵规范化 JSON 树共享的序列化字节预算。
+// 容器、键、字符串和数值均先扣减，再保存或展开；最终事件仍另做完整检查。
+type jsonBudget struct{ remaining int64 }
+
+func (b *jsonBudget) consume(n int64) error {
+	if n > b.remaining {
+		return errors.New("normalized JSON exceeds size budget")
+	}
+	b.remaining -= n
+	return nil
+}
+
+// jsonStringBytes 与 encoding/json 的默认 HTML escaping 和控制字符编码一致，
+// 计算长度而不为长度检查分配另一份已转义字符串。
+func jsonStringBytes(s string) int64 {
+	n := int64(2)
+	for _, r := range s {
+		switch r {
+		case '"', '\\', '\b', '\f', '\n', '\r', '\t':
+			n += 2
+		case '<', '>', '&', '\u2028', '\u2029':
+			n += 6
+		default:
+			if r < 0x20 {
+				n += 6
+			} else {
+				n += int64(utf8.RuneLen(r))
+			}
+		}
+	}
+	return n
+}
+
+func jsonValue(d *json.Decoder, budget *jsonBudget) (any, error) {
 	token, err := d.Token()
 	if err != nil {
 		return nil, err
 	}
 	switch v := token.(type) {
 	case json.Delim:
+		if err := budget.consume(2); err != nil {
+			return nil, err
+		}
 		switch v {
 		case '{':
 			obj := make(map[string]any)
 			for d.More() {
+				if len(obj) != 0 {
+					if err := budget.consume(1); err != nil {
+						return nil, err
+					}
+				}
 				key, err := d.Token()
 				if err != nil {
 					return nil, err
@@ -328,7 +370,10 @@ func jsonValue(d *json.Decoder) (any, error) {
 				if _, exists := obj[s]; exists {
 					return nil, errors.New("duplicate key")
 				}
-				value, err := jsonValue(d)
+				if err := budget.consume(jsonStringBytes(s) + 1); err != nil {
+					return nil, err
+				}
+				value, err := jsonValue(d, budget)
 				if err != nil {
 					return nil, err
 				}
@@ -342,7 +387,12 @@ func jsonValue(d *json.Decoder) (any, error) {
 		case '[':
 			array := make([]any, 0)
 			for d.More() {
-				value, err := jsonValue(d)
+				if len(array) != 0 {
+					if err := budget.consume(1); err != nil {
+						return nil, err
+					}
+				}
+				value, err := jsonValue(d, budget)
 				if err != nil {
 					return nil, err
 				}
@@ -360,20 +410,38 @@ func jsonValue(d *json.Decoder) (any, error) {
 		if !validText(v, MaxEventBytes) {
 			return nil, errors.New("invalid string")
 		}
+		if err := budget.consume(jsonStringBytes(v)); err != nil {
+			return nil, err
+		}
 	case json.Number:
-		return decimalNumber(v)
+		return decimalNumber(v, budget)
+	case bool:
+		n := int64(5)
+		if v {
+			n = 4
+		}
+		if err := budget.consume(n); err != nil {
+			return nil, err
+		}
+	case nil:
+		if err := budget.consume(4); err != nil {
+			return nil, err
+		}
 	}
 	return token, nil
 }
 
 // decimalNumber 与 JSONB 的普通十进制表示对齐；先计算长度再展开指数，
 // 防止很短的指数输入在存储或回读时扩大到超过完整事件限额。
-func decimalNumber(n json.Number) (json.Number, error) {
+func decimalNumber(n json.Number, budget *jsonBudget) (json.Number, error) {
 	normal, err := normalizedNumber(n)
 	if err != nil {
 		return "", err
 	}
 	if normal == "0" {
+		if err := budget.consume(1); err != nil {
+			return "", err
+		}
 		return json.Number("0"), nil
 	}
 	i := strings.LastIndexByte(normal, 'e')
@@ -396,8 +464,8 @@ func decimalNumber(n json.Number) (json.Number, error) {
 	} else {
 		length += 2 - point
 	}
-	if length > MaxEventBytes {
-		return "", errors.New("numeric expansion exceeds event size")
+	if err := budget.consume(length); err != nil {
+		return "", err
 	}
 	if exponent >= 0 {
 		return json.Number(sign + digits + strings.Repeat("0", int(exponent))), nil

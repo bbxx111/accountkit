@@ -48,7 +48,27 @@ func (e *Event) UnmarshalJSON(wire []byte) error {
 	return nil
 }
 
-func unmarshalEvent(wire []byte, e *Event) error {
+func unmarshalEvent(obj map[string]any, e *Event) error {
+	// encoding/json 的 struct 绑定会接受大小写及 Unicode case-fold 别名。
+	// 只把精确匹配的受控键交给它，避免未知可选字段覆盖已验证事实。
+	exact := selectFields(obj, "id", "source", "action", "result", "actor", "targets", "context", "data", "occur_time")
+	if actor, ok := exact["actor"].(map[string]any); ok {
+		exact["actor"] = selectFields(actor, "type", "namespace", "id", "name")
+	}
+	if targets, ok := exact["targets"].([]any); ok {
+		exact["targets"] = exactResources(targets)
+	}
+	if ctx, ok := exact["context"].(map[string]any); ok {
+		ctx = selectFields(ctx, "request_id", "trace_id", "span_id", "client_ip", "user_agent", "device_id", "related_resources")
+		if related, ok := ctx["related_resources"].([]any); ok {
+			ctx["related_resources"] = exactResources(related)
+		}
+		exact["context"] = ctx
+	}
+	wire, err := json.Marshal(exact)
+	if err != nil {
+		return invalid("event")
+	}
 	var fields eventFields
 	v := struct {
 		*eventFields
@@ -75,6 +95,27 @@ func unmarshalEvent(wire []byte, e *Event) error {
 	}
 	*e = Event(fields)
 	return nil
+}
+
+func selectFields(obj map[string]any, names ...string) map[string]any {
+	out := make(map[string]any, len(names))
+	for _, name := range names {
+		if value, exists := obj[name]; exists {
+			out[name] = value
+		}
+	}
+	return out
+}
+
+func exactResources(resources []any) []any {
+	out := make([]any, len(resources))
+	for i, value := range resources {
+		if obj, ok := value.(map[string]any); ok {
+			value = selectFields(obj, "type", "namespace", "id", "name")
+		}
+		out[i] = value
+	}
+	return out
 }
 
 // MarshalJSON 保留存储生成的 CreateTime，不依赖嵌入 Event 的方法提升。

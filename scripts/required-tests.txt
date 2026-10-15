@@ -468,3 +468,9 @@ github.com/bbxx111/accountkit/user/sender/smtp/TestSMTPTimeoutAndCancellation
 github.com/bbxx111/accountkit/user/sender/smtp/TestSMTPRejectsUnsafeConfigurationAndInjection
 github.com/bbxx111/accountkit/user/sender/smtp/TestSMTPDevelopmentNoneWithoutAuth
 github.com/bbxx111/accountkit/user/sender/smtp/TestSMTPBoundsTLSHandshake
+github.com/bbxx111/accountkit/examples/codeemail/TestRendererPurposes
+github.com/bbxx111/accountkit/examples/codeemail/TestRendererLanguageFallback
+github.com/bbxx111/accountkit/examples/codeemail/TestRendererConcurrentLanguages
+github.com/bbxx111/accountkit/examples/codeemail/TestRendererTTL
+github.com/bbxx111/accountkit/examples/codeemail/TestRendererRejectsInvalidInput
+github.com/bbxx111/accountkit/examples/codeemail/TestRendererCancellation

@@ -91,7 +91,27 @@ HTTP 新增 `POST /users:sendSignInCompletionCode`（`{sign_in_completion_token,
 
 ### 发送器
 
-省略 Enabled 时 `Deps.SMSSender` / `Deps.EmailSender` 必填；显式策略只要求已启用渠道的发送器。开发环境用 `sender.NewLog(logger)`（把验证码打进日志，**禁止用于生产**）；服务商实现由宿主通过接口注入。
+省略 Enabled 时 `Deps.SMSSender` / `Deps.EmailSender` 必填；显式策略只要求已启用渠道的发送器。正式接口为 `sender.SMSCodeSender`、`sender.EmailCodeSender`，输入为 `sender.CodeMessage{Purpose, Code, TTL}`；Deps 字段名不变。原 `SMSSender`、`EmailSender`、`Message` 保留为兼容别名，名称映射见[兼容指南](docs/compatibility.md#验证码发送器命名与渲染接入)。开发环境可用 `sender.NewLog(logger)`（把验证码打进日志，**禁止用于生产**）。
+
+使用可选 SMTP 传输时，宿主通过 `smtp.NewWithRenderer(cfg, renderer)` 注入 `smtp.Renderer`。例如导入 `github.com/bbxx111/accountkit/examples/codeemail` 与 `github.com/bbxx111/accountkit/user/sender/smtp` 后：
+
+```go
+renderer := codeemail.New("en") // 固定默认语言；也可选择 zh-CN。
+email, err := smtp.NewWithRenderer(smtpConfig, renderer)
+if err != nil {
+    return err
+}
+deps := accountkit.Deps{EmailSender: email /* 其余依赖由宿主装配 */}
+_ = deps
+```
+
+[可编译本地化示例](examples/codeemail/example_test.go)与[渲染实现](examples/codeemail/renderer.go)覆盖四种用途、中文/英文、Text/HTML 和请求语言回退。`Render(context.Context, sender.CodeMessage) (smtp.EmailContent, error)` 返回 Subject、必需 Text 和可选 HTML；模板必须正确表达用途、实际验证码与有效期，动态 HTML 值由宿主使用 `html/template` 等方式转义。SMTP 负责 MIME 编码，不能验证任意语言的文案语义。原 `smtp.New(cfg)` 继续使用 `smtp.LegacyChineseRenderer{}`，保留原四用途中文纯文本和有效期分钟数向上取整行为。
+
+宿主在自己的中间件或 Go 入口选择语言，再用示例的 `codeemail.WithLanguage(ctx, "zh-CN")` 派生 context 并传入本次服务调用；核心不解析 Accept-Language，不读取业务偏好，不增加消息字段。示例只支持 `zh-CN`/`en`：缺失或未知请求提示回退到实例默认，未知默认语言回退到 `zh-CN`。同一渲染器可并发复用，配置和模板构造后不再修改；不要通过共享字段设置“当前语言”。
+
+渲染与 SMTP 共用一次总超时预算，派生 context 保留宿主值。宿主回调必须及时响应取消，避免无界 I/O；库不会通过遗留 goroutine 强制中断不合作的回调。渲染失败、非法内容或取消返回固定 `sender.ErrUnavailable`，沿用 503 和额度/冷却保留契约，不回退默认模板、不自动重试。宿主不得在日志中输出验证码、完整地址、正文或原始渲染错误。示例只做本地渲染与构造，不发送网络请求、不读取真实凭据，输出仅为非敏感标题或装配结果。
+
+使用服务商托管模板时，直接实现 `EmailCodeSender.SendEmail(ctx, target, message)` 或 `SMSCodeSender.SendSMS(ctx, target, message)` 并注入原 Deps 字段。宿主把 `message.Purpose` 映射到服务商模板 ID，把 `message.Code`、`message.TTL` 转换为模板参数，并自行选择语言、处理取消及安全错误；这种适配无需 SMTP Renderer，也无需先生成正文。不要将模板 ID 或服务商参数加入核心 CodeMessage。
 
 ### 枚举
 

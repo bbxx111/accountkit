@@ -108,6 +108,24 @@ HTTP 调用方继续使用原 URL（包括 `/users`）、DTO、设备头、JWT �
 
 消费者内省沿用当前吊销查询 fail-open；管理员适配位于服务内部，不给消费者增加管理员身份。无数据库迁移、默认库配置变化或令牌格式变化。独立服务不执行宿主业务匿名化回调，不能与依赖此回调的宿主混跑同一实例的维护任务。
 
+## 验证码发送器命名与渲染接入
+
+验证码投递的正式名称更精确，旧名称继续作为带 Deprecated 注释的 Go 类型别名保留：
+
+| 旧名称 | 正式名称 |
+|---|---|
+| `sender.SMSSender` | `sender.SMSCodeSender` |
+| `sender.EmailSender` | `sender.EmailCodeSender` |
+| `sender.Message` | `sender.CodeMessage` |
+
+`SendSMS` / `SendEmail` 的签名及 Purpose、Code、TTL 字段保持，旧实现无需增加方法或显式转换；`accountkit.Deps.SMSSender` / `EmailSender`、`user.Deps.SMS` / `Email` 字段名不变。可逐步替换引用，不要求同步升级所有宿主。
+
+原 `smtp.New(Config)` 与 Config 结构保持，仍由独立 `LegacyChineseRenderer` 生成原四用途中文纯文本，正 TTL 向上取整到分钟。自定义内容改用 `smtp.NewWithRenderer(cfg, renderer)`，实现 `Render(context.Context, sender.CodeMessage) (smtp.EmailContent, error)`；Subject 与 Text 必需，HTML 可选。新入口要求非 nil 渲染器，构造时不渲染、不连接网络；渲染失败不自动回退旧文案。accountsvc 显式注入中文兼容渲染器，部署配置、EMAIL 禁用和 migrate 依赖边界保持，不增加环境变量。
+
+[本地化示例](../examples/codeemail/renderer.go)演示固定默认语言、私有类型化 context 键与请求级回退；[装配示例](../examples/codeemail/example_test.go)不发送网络请求、不输出验证码。宿主负责语言选择、并发安全、Text/HTML 的用途/验证码/有效期一致性、HTML 动态值转义与合作式取消；详见 [README 发送器契约](../README.md#发送器)。使用服务商托管模板的宿主继续直接实现两个发送器接口，把用途映射到模板与参数，无需先生成 SMTP 正文。
+
+本变更无配置默认值、数据、令牌或限流迁移。回退旧版本时，使用新名称或 NewWithRenderer 的源码需同步回退并重新编译；只使用原接口的宿主保留原构建方式。自定义本地化内容不会自动保留到旧二进制，部署回退前需确认文案差异；不执行 Down、UnsafeReset 或清空 Redis。
+
 ## 服务单监听与传输迁移
 
 本次 accountsvc 部署接口为破坏性直接迁移：消费者、管理员、内省与探针使用一个监听地址，独立认证链保持。根库 Config/Deps、嵌入式生命周期、SQL、数据库结构、令牌和业务额度契约不变，无数据迁移或重新登录要求。服务通用入口限流和网络隔离由部署方配置，规则见[网关接入手册](gateway-integration.md)。

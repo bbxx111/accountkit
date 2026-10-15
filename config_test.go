@@ -23,6 +23,52 @@ func minimal() accountkit.Config {
 	}
 }
 
+func TestAuditConfiguration(t *testing.T) {
+	c := minimal()
+	for _, tc := range []struct {
+		source, namespace string
+		valid             bool
+	}{
+		{"accountkit/test", "urn:身份:消费者", true}, {strings.Repeat("a", 128), strings.Repeat("n", 512), true},
+		{"bad source", "namespace", false}, {strings.Repeat("a", 129), "namespace", false},
+		{"source", strings.Repeat("n", 513), false}, {"source", "bad\x00namespace", false}, {"source", string([]byte{0xff}), false},
+	} {
+		c.AuditSource = tc.source
+		c.AuditNamespace = tc.namespace
+		if err := c.Validate(); (err == nil) != tc.valid {
+			t.Fatalf("audit configuration validity=%v, error=%v", tc.valid, err)
+		}
+	}
+	const prefix = "AUDIT_TEST_"
+	t.Setenv(prefix+"JWT_KEYS", "1:"+b64(k(1)))
+	t.Setenv(prefix+"JWT_ACTIVE_KEY", "1")
+	t.Setenv(prefix+"JWT_ISSUER", "issuer")
+	t.Setenv(prefix+"JWT_AUDIENCE", "app")
+	t.Setenv(prefix+"SUBJECT_HMAC_KEYS", "1:"+b64(k(2)))
+	t.Setenv(prefix+"SUBJECT_HMAC_ACTIVE_KEY", "1")
+	t.Setenv(prefix+"SUBJECT_CIPHER_KEYS", "1:"+b64(k(3)))
+	t.Setenv(prefix+"SUBJECT_CIPHER_ACTIVE_KEY", "1")
+	t.Setenv(prefix+"AUTH_SCHEMA", "custom")
+	t.Setenv(prefix+"AUDIT_SOURCE", "")
+	t.Setenv(prefix+"AUDIT_NAMESPACE", "")
+	got, err := accountkit.ConfigFromEnv(prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.AuditSource != "accountkit/custom" || got.AuditNamespace != "accountkit/custom/resources" {
+		t.Fatal("audit defaults not scoped to schema")
+	}
+	t.Setenv(prefix+"AUDIT_SOURCE", "test/auth")
+	t.Setenv(prefix+"AUDIT_NAMESPACE", "urn:test:users")
+	got, err = accountkit.ConfigFromEnv(prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.AuditSource != "test/auth" || got.AuditNamespace != "urn:test:users" {
+		t.Fatal("prefixed audit settings not loaded")
+	}
+}
+
 func TestValidateAppliesDefaults(t *testing.T) {
 	for _, entry := range os.Environ() {
 		name, _, _ := strings.Cut(entry, "=")

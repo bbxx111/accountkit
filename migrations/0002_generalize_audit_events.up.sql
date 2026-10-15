@@ -91,20 +91,27 @@ BEGIN
  RETURN true;
 EXCEPTION WHEN invalid_text_representation THEN RETURN false;
 END $$;
--- Compact JSON byte count avoids rejecting valid events due to jsonb::text's
--- extra separator spaces. It includes all nine producer fields, not create_time.
+-- Count the public Go encoding/json representation, without jsonb separator
+-- spaces. JSON strings escape HTML and U+2028/U+2029; numeric values use the
+-- same exact expanded decimal normalization as event.Freeze (never float64).
 CREATE FUNCTION audit_json_bytes(j jsonb) RETURNS bigint LANGUAGE plpgsql IMMUTABLE SET search_path FROM CURRENT AS $$
-DECLARE total bigint; n bigint; k text; v jsonb;
+DECLARE total bigint; n bigint; k text; v jsonb; s text;
 BEGIN
  CASE jsonb_typeof(j)
  WHEN 'object' THEN
   total:=2; n:=0;
-  FOR k,v IN SELECT * FROM jsonb_each(j) LOOP total:=total+octet_length(to_jsonb(k)::text)+1+audit_json_bytes(v); n:=n+1; END LOOP;
+  FOR k,v IN SELECT * FROM jsonb_each(j) LOOP total:=total+audit_json_bytes(to_jsonb(k))+1+audit_json_bytes(v); n:=n+1; END LOOP;
   RETURN total+greatest(n-1,0);
  WHEN 'array' THEN
   total:=2; n:=0;
   FOR v IN SELECT * FROM jsonb_array_elements(j) LOOP total:=total+audit_json_bytes(v); n:=n+1; END LOOP;
   RETURN total+greatest(n-1,0);
+ WHEN 'string' THEN
+  s:=j#>>'{}';
+  RETURN octet_length(j::text)
+   + 5*(char_length(s)-char_length(replace(replace(replace(s,'<',''),'>',''),'&','')))
+   + 3*(char_length(s)-char_length(replace(replace(s,chr(8232),''),chr(8233),'')));
+ WHEN 'number' THEN RETURN octet_length(trim_scale((j#>>'{}')::numeric)::text);
  ELSE RETURN octet_length(j::text);
  END CASE;
 END $$;
@@ -116,14 +123,22 @@ CREATE TABLE audit_event (
   CONSTRAINT audit_event_id_v7 CHECK (get_byte(uuid_send(id),6)>>4=7 AND get_byte(uuid_send(id),8)&192=128),
  source varchar(128) COLLATE "C" NOT NULL CONSTRAINT audit_event_source_format CHECK(source ~ '^[A-Za-z0-9][A-Za-z0-9._/-]*$'),
  action varchar(128) COLLATE "C" NOT NULL CONSTRAINT audit_event_action_format CHECK(action ~ '^[A-Z][A-Z0-9_]*$'),
- result smallint CONSTRAINT audit_event_result_valid CHECK(result IN (1,2)),
+ -- Enum membership is checked by the public model, not frozen in a SQL CHECK.
+ result smallint,
  actor jsonb NOT NULL CONSTRAINT audit_event_actor_valid CHECK(audit_actor_valid(actor)),
  targets jsonb NOT NULL DEFAULT '[]' CONSTRAINT audit_event_targets_valid CHECK(audit_resources_valid(targets)),
  context jsonb NOT NULL DEFAULT '{}' CONSTRAINT audit_event_context_valid CHECK(audit_context_valid(context)),
  data jsonb NOT NULL DEFAULT '{}' CONSTRAINT audit_event_data_object CHECK(jsonb_typeof(data)='object'),
- occur_time timestamptz(6) NOT NULL,
+ occur_time timestamptz(6) NOT NULL CONSTRAINT audit_event_occur_time_valid CHECK(
+  isfinite(occur_time) AND occur_time>'0001-01-01 00:00:00+00'::timestamptz
+  AND occur_time<'10000-01-01 00:00:00+00'::timestamptz),
  create_time timestamptz(6) NOT NULL DEFAULT clock_timestamp(),
- CONSTRAINT audit_event_size CHECK(audit_json_bytes(jsonb_build_object('id',id,'source',source,'action',action,'result',result,'actor',actor,'targets',targets,'context',context,'data',data,'occur_time',occur_time))<=65536)
+ CONSTRAINT audit_event_size CHECK(audit_json_bytes(jsonb_build_object(
+  'id',id,'source',source,'action',action,
+  'result',CASE result WHEN 1 THEN to_jsonb('SUCCESS'::text) WHEN 2 THEN to_jsonb('FAILURE'::text) ELSE to_jsonb(result) END,
+  'actor',actor,'targets',targets,'context',context,'data',data,
+  'occur_time',to_char(occur_time AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS')
+   ||coalesce('.'||nullif(rtrim(to_char(occur_time AT TIME ZONE 'UTC','US'),'0'),''),'')||'Z'))<=65536)
 );
 INSERT INTO audit_event(id,source,action,result,actor,targets,context,data,occur_time)
  SELECT id,event->>'source',event->>'action',CASE event->>'result' WHEN 'SUCCESS' THEN 1 WHEN 'FAILURE' THEN 2 END,event->'actor',event->'targets',event->'context',event->'data',(event->>'occur_time')::timestamptz

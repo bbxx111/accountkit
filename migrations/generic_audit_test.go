@@ -230,7 +230,7 @@ func TestGenericAuditDatabaseConstraints(t *testing.T) {
 	if _, err := c.Exec(context.Background(), valid); err != nil {
 		t.Fatal(err)
 	}
-	for _, assignment := range []string{`id='019a0000-0000-4000-8000-000000000001'`, `id='019a0000-0000-7000-c000-000000000001'`, `source=''`, `action='bad-action'`, `result=0`, `result=3`, `actor='[]'`, `actor='{"type":"USER","namespace":"n"}'`, `actor='{"type":"ANONYMOUS","id":"x"}'`, `targets='{}'`, `targets='[{"type":"USER","namespace":"n","id":""}]'`, `context='[]'`, `context='{"span_id":"0123456789abcdef"}'`, `context='{"client_ip":"not-ip"}'`, `data='[]'`, `data=jsonb_build_object('oversize',repeat('x',65536))`} {
+	for _, assignment := range []string{`id='019a0000-0000-4000-8000-000000000001'`, `id='019a0000-0000-7000-c000-000000000001'`, `source=''`, `action='bad-action'`, `actor='[]'`, `actor='{"type":"USER","namespace":"n"}'`, `actor='{"type":"ANONYMOUS","id":"x"}'`, `targets='{}'`, `targets='[{"type":"USER","namespace":"n","id":""}]'`, `context='[]'`, `context='{"span_id":"0123456789abcdef"}'`, `context='{"client_ip":"not-ip"}'`, `data='[]'`, `data=jsonb_build_object('oversize',repeat('x',65536))`} {
 		t.Run(assignment, func(t *testing.T) {
 			if _, err := c.Exec(context.Background(), fmt.Sprintf("UPDATE audit_event SET %s", assignment)); err == nil {
 				t.Fatal("invalid SQL event accepted")

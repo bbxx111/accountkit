@@ -113,6 +113,8 @@ data 采用 JSON 对象，可选 reason、changes；changes.<field>.before/after
 
 历史管理员信息不完整时，专用历史映射入口以 UNKNOWN 主体加 actor_kind 快照表示，不伪造 namespace/id；已存在的单边 admin_issuer/admin_subject 可在 data.accountkit 的同名受控快照中保留，仍执行字段上限检查。旧投影仅在明确 legacy_event_id 路径恢复这些值。若保留 admin_username 展示快照，认证隐私清理必须同步删除；正常完整管理员事件从 actor 恢复信息，不重复存储这些快照。
 
+直接调用领域服务时，调用者提供的 Principal 即使 user/session ID 格式合法，也不构成已验证主体证据。ReplaceIdentity 只有在 replacementPreflight 成功核验真实账号、活跃会话和身份归属后才设置 VerifiedSubject；更早的策略、近期认证或身份未变化拒绝事件保守使用 UNKNOWN，认证结果保持不变。本次不新增 Principal 可信来源机制。
+
 accountkit 使用强类型事件构建器完成映射和脱敏，不能把任意请求体/claims/err.Error() 整体装入 data。通用 API 允许宿主自定义已校验 JSON 对象，避免公共结构硬编码全部业务字段。入队前验证并深拷贝可变对象，禁止调用方后续修改已排队事件。解码时拒绝重复 JSON 键和非法数值；默认完整事件不超过 64 KiB UTF-8 JSON，targets/related_resources 各最多 32 项。既有设备/管理员字段兼容边界须通过真实调用测试确定，不能静默截断或收紧 HTTP 输入。
 
 2026-10-16 计划评审后明确兼容处理：认证映射器可省略无效 IP、超长不可信设备字段、超长自定义 request_id 和超长可选 name，并单独安全计数/告警；主体 namespace/id 不截断或哈希替换。已验证 issuer/sub 超过 512 字节时拒绝该审计事件并提供安全失败观测，认证结果不变。这是新审计输入边界的明确兼容变化，须写入调用迁移说明；历史准备遇到不兼容字段停止且保留原表。默认 request_id 的 64 字符规则不表示宿主自定义 resolver 过去已有相同上限。
@@ -165,6 +167,8 @@ accountkit 使用强类型事件构建器完成映射和脱敏，不能把任意
 外部存储的 retention 和清理由宿主管理，不在同步认证/匿名化事务中调用远端网络。文档提供账号/flow 资源关联与清理字段契约；同库宿主可以沿用传入的 pgx.Tx 做业务清理，跨库宿主自行提供持久化清理请求、重试和完成核验。仅收到异步 USER_PURGED 事件不等于外部数据已清理，也不能依赖可丢弃审计流作为唯一清理通知。
 
 默认本地仍按 occur_time 和 AuditRetentionDays 清理；切换外部模式不自动迁移历史副本、不自动删除本地表，原保留与本地匿名化继续覆盖历史数据。脱敏后重复投递不得恢复隐私，删除后超过接收窗口的旧投递必须由宿主接收策略拒绝，不能宣称去重记录过期后仍永久幂等。
+
+保留期按配置 source 限定生产实例，不要求事件包含消费者 namespace：匿名发码没有主体命名空间，ADMIN_FORBIDDEN 只有外部管理员命名空间，也应遵循该生产来源的保留策略。多个独立生产实例必须选择不同 source；同一 source 内的不同身份命名空间共享保留期。账号查询与定向匿名化仍按 source 和完整资源 namespace/id 过滤；身份命名空间不作为额外租户保留策略。
 
 ## Migration Plan
 

@@ -78,3 +78,19 @@
 执行台账与逐步报告在被忽略的 `.superpowers/sdd/2026-10-16-generalize-audit-events/`。迁移锁原实现提取到内部共享包，公开 Down 仍禁用；新版本开发清理补丁经具体源码边界复核后获自动审查通过。生产生成检查在 3A 范围被阻止，未执行或绕过，留到 3B 查询切换后完成。固定 0001/源快照及 tags 不变。
 
 本阶段仅勾选已验证的准备工具和版本化 baseline 任务，整体进度 4/26。尚未完成根包/领域/Store/Async/管理查询激活、完整生成检查、迟到隐私并发证明、Linux race、pg_dump/pg_restore 和最终发布验收。
+
+## 运行时激活 3B：代码审查通过，流程确认待答复
+
+提交 `4e92a28` 激活通用事件、UUID Store、冻结队列、认证映射、资源读侧和根装配，并适配历史/恢复夹具。此前 3A 的过渡失败已经逐项修复，保留原有非审计、事务回滚和认证断言；不能因此宣称整个变更完成。
+
+- 当前提交的 `GOWORK=off go test -json -count=1 ./...` 使用本任务真实 PG17/Redis，退出 0，35 个包、1694 个测试/子测试通过、0 fail；原始记录为 `.test-output/generalize-audit-events/task3b/full-current.jsonl`、`full-current.exit`，skip 清单为 `full-current-summary.json`。Windows 不运行 Linux 专属服务集成；普通 `TestRecoveryFixture` 仍按原契约 skip。
+- 当前代码 build、vet、生成一致性和历史迁移检查均退出 0，对应 `task3b/build-current.log`、`vet-current.log`、`check-generated-current.log`、`check-migrations-current.log`。
+- Linux accountsvc 完整真实集成退出 0，耗时 71.540s，记录为 `task3b/linux-accountsvc-final.log`。该运行发生在最后一次 Principal 归因修复之前；不是当前整个分支的 Linux/race 验收。
+- 新增 Principal 用例实际 RED：格式合法但不存在的会话被误标为 USER。最小修复把 `VerifiedSubject` 移到成功归属预检之后；定向 GREEN 及修复后上述全库测试通过，分别记录在 `red-unverified-principal.log`、`green-unverified-principal.log`。
+- OpenSpec 严格结构检查当前退出 0，19 passed、0 failed；不代表并发、恢复或代码审查完成。
+
+过程限制：本轮部分新增 Store 幂等/脱敏重放、source/namespace/flow、外部装配和迁移预检行为先实现后补测，未满足逐项先失败要求，不能以旧集成失败冒充。按 TDD 技能删除这些新增实现后重写的操作被自动审查拒绝：字符串切片删除不够明确；改为静态补丁后仍被拒绝，理由是会临时移除幂等、查询、装配和迁移保护，缺少明确用户授权。两次删除均未执行，未更换工具绕过。当前保留通过测试的代码，已启动独立审查，并向用户请求是否接受本轮流程偏差；后续新增行为仍要求先测试后实现。
+
+独立审查确认代码范围 Approved，0 Critical、0 Important；1 项 Minor 为直接 NewService 的本地默认策略缺少公开注释，纳入后续接入说明任务。审查实际读取当前全库测试退出码、统计、skip 和日志，并分别核对受控脱敏重放、来源隔离、共享流程边界、单连接预检以及历史数据/令牌兼容。审查没有把已记录的 TDD 顺序偏差视为接受，也没有替代后续验收。
+
+迟到入库锁序、完整生命周期、严格外部读侧/游标校验、接入文档、执行计划、全库 Linux race 和空库恢复演练仍待完成；本轮流程确认等待用户答复。本条记录不改变任务勾选，不归档、推送或合并实施分支。

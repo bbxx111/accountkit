@@ -397,9 +397,16 @@ func TestSMTPRendererFoldsLongSubject(t *testing.T) {
 			if !ok {
 				t.Fatal("missing header/body separator")
 			}
+			subjectLine := false
 			for _, line := range strings.Split(headers, "\n") {
+				if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
+					subjectLine = strings.HasPrefix(line, "Subject:")
+				}
 				if len(line) > 998 {
 					t.Errorf("physical header line has %d octets, exceeds 998", len(line))
+				}
+				if subjectLine && len(line) > 76 {
+					t.Errorf("encoded-word Subject line has %d characters, exceeds 76", len(line))
 				}
 			}
 			msg, err := mail.ReadMessage(strings.NewReader(raw))

@@ -57,15 +57,16 @@ func writeBody(destination io.Writer, text string) error {
 }
 
 // encodeSubject 仅在完整 RFC 2047 encoded-word 之间折行。ASCII 同样编码，
-// 避免折行改变原始空白，并允许拆分无空格的长标题。每段最多 42 个 UTF-8
-// 字节，编码后最多 68 字节；加上首行的 "Subject: " 仍不超过 78 字节。
+// 避免折行改变原始空白，并允许拆分无空格的长标题。每段最多 39 个 UTF-8
+// 字节，编码后最多 64 字节；首行最多 73、续行最多 65 个字符，满足
+// RFC 2047 对含 encoded-word 的物理头行不超过 76 个字符的要求。
 func encodeSubject(subject string) string {
 	var header strings.Builder
 	for subject != "" {
 		end := 0
 		for end < len(subject) {
 			_, size := utf8.DecodeRuneInString(subject[end:])
-			if end+size > 42 {
+			if end+size > 39 {
 				break
 			}
 			end += size

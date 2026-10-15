@@ -1,6 +1,6 @@
 # 验证码发送器与 SMTP 渲染 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 保留两个验证码渠道接口，以精确命名和可注入 SMTP Renderer 支持宿主文案及本地化。
 
@@ -87,12 +87,12 @@
 - Produces: 示例 codeemail.New(defaultLanguage string) *Renderer、WithLanguage(context.Context,string) context.Context、(*Renderer).Render(context.Context,sender.CodeMessage)(smtp.EmailContent,error)。
 - 示例私有类型化 context 键；New 不支持的默认语言选择 zh-CN；请求提示支持 zh-CN/en，其余回退到实例默认。配置不可变，标准库 text/template/html/template 分别渲染 Text/HTML。
 
-- [ ] 先写四用途中文/英文、固定配置、缺省/未知语言回退、并发 context 隔离、HTML 与 Text 的验证码、用途和有效期一致且非数字 Code 被拒绝、非法输入固定安全错误的示例测试；首次运行记录 RED。
-- [ ] 实现纯本地 Renderer 与示例装配，不打印验证码、不发送网络请求、不读取真实环境凭据；示例不增加核心语言 helper。
-- [ ] 将 accountsvc EMAIL 启用路径改为 NewWithRenderer(cfg.SMTP, smtp.LegacyChineseRenderer{})；用现有服务装配/集成测试证明原中文、EMAIL 关闭、migrate 无新依赖。
-- [ ] 文档给出新旧名称映射、旧 New 保持原中文、新入口、宿主语言选择/并发/取消责任、服务商托管模板直接适配方式，链接示例；无新环境变量。
-- [ ] 运行 go test -count=1 ./examples/codeemail ./internal/accountsvc、go vet 对应包和全套单元测试一次；自查所有链接及输出不泄露合成验证码。
-- [ ] 提交 feat(sender): document localized verification delivery integration；报告测试与 RED/GREEN，控制器独立审查。
+- [x] 先写四用途中文/英文、固定配置、缺省/未知语言回退、并发 context 隔离、HTML 与 Text 的验证码、用途和有效期一致且非数字 Code 被拒绝、非法输入固定安全错误的示例测试；首次运行记录 RED。
+- [x] 实现纯本地 Renderer 与示例装配，不打印验证码、不发送网络请求、不读取真实环境凭据；示例不增加核心语言 helper。
+- [x] 将 accountsvc EMAIL 启用路径改为 NewWithRenderer(cfg.SMTP, smtp.LegacyChineseRenderer{})；用现有服务装配/集成测试证明原中文、EMAIL 关闭、migrate 无新依赖。
+- [x] 文档给出新旧名称映射、旧 New 保持原中文、新入口、宿主语言选择/并发/取消责任、服务商托管模板直接适配方式，链接示例；无新环境变量。
+- [x] 运行 go test -count=1 ./examples/codeemail ./internal/accountsvc、go vet 对应包和全套单元测试一次；自查所有链接及输出不泄露合成验证码。
+- [x] 提交 feat(sender): document localized verification delivery integration；报告测试与 RED/GREEN，控制器独立审查。
 
 ## Controller Verification and Completion
 

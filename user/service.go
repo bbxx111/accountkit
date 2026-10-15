@@ -54,8 +54,8 @@ type Deps struct {
 	Signer                *tokens.Signer
 	Cipher                *pii.Cipher
 	Digester              *pii.Digester
-	SMS                   sender.SMSSender
-	Email                 sender.EmailSender
+	SMS                   sender.SMSCodeSender
+	Email                 sender.EmailCodeSender
 	Audit                 audit.Recorder
 	Logger                *slog.Logger
 

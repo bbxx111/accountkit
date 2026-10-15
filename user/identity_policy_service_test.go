@@ -20,7 +20,7 @@ func TestIdentityPolicyDirectNewService(t *testing.T) {
 	for _, tc := range []struct {
 		name            string
 		kinds, required []enum.IdentityKind
-		email           sender.EmailSender
+		email           sender.EmailCodeSender
 		bad             bool
 	}{
 		{"default subset", []enum.IdentityKind{enum.IdentityEmail}, nil, sender.NewLog(nil), true},

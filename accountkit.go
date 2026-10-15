@@ -61,8 +61,8 @@ type Deps struct {
 	// RequestID 从请求取关联 id。默认读 X-Request-Id（须匹配 ^[A-Za-z0-9._-]{1,64}$），缺失或非法则生成。
 	RequestID func(*http.Request) string
 	// SMSSender / EmailSender 投递验证码。必填；开发环境可用 sender.NewLog(logger)，生产必须换成服务商实现。
-	SMSSender   sender.SMSSender
-	EmailSender sender.EmailSender
+	SMSSender   sender.SMSCodeSender
+	EmailSender sender.EmailCodeSender
 	// Audit 接收审计事件。为空时默认使用 audit.Async（有界队列 + 批量写入 audit_event 表；Start 启动、Close 刷出）；
 	// 宿主可注入自己的 Recorder（例如转发到日志管道）。任何实现都不得让记录失败影响认证动作的结果。
 	Audit audit.Recorder

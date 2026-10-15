@@ -65,7 +65,7 @@ func (s *Service) sendCodeUntil(ctx context.Context, channel enum.IdentityKind, 
 			return CodeChallenge{}, err
 		}
 	}
-	msg := sender.Message{Purpose: purpose, Code: issued.Code, TTL: s.d.CodeTTL}
+	msg := sender.CodeMessage{Purpose: purpose, Code: issued.Code, TTL: s.d.CodeTTL}
 	if !deadline.IsZero() {
 		msg.TTL = issued.ExpireTime.Sub(s.now())
 	}

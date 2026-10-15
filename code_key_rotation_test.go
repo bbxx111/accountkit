@@ -25,14 +25,14 @@ type rotationSender struct {
 	fail atomic.Bool
 }
 
-func (s *rotationSender) SendSMS(ctx context.Context, target string, msg sender.Message) error {
+func (s *rotationSender) SendSMS(ctx context.Context, target string, msg sender.CodeMessage) error {
 	if s.fail.Load() {
 		return sender.ErrUnavailable
 	}
 	return s.captureSender.SendSMS(ctx, target, msg)
 }
 
-func (s *rotationSender) SendEmail(ctx context.Context, target string, msg sender.Message) error {
+func (s *rotationSender) SendEmail(ctx context.Context, target string, msg sender.CodeMessage) error {
 	return s.SendSMS(ctx, target, msg)
 }
 

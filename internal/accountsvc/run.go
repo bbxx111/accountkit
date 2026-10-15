@@ -122,13 +122,13 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 	if cfg.command == "migrate" {
 		return newMigrationApplication(cfg, d)
 	}
-	var sms sender.SMSSender
-	var email sender.EmailSender
+	var sms sender.SMSCodeSender
+	var email sender.EmailCodeSender
 	if cfg.Library.EnabledIdentityKinds == nil {
 		sms = sender.Disabled{}
 	}
 	if cfg.identityEnabled(enum.IdentityEmail) {
-		s, err := smtp.New(cfg.SMTP)
+		s, err := smtp.NewWithRenderer(cfg.SMTP, smtp.LegacyChineseRenderer{})
 		if err != nil {
 			return nil, errors.New("accountsvc: SMTP configuration failed")
 		}

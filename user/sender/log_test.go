@@ -15,7 +15,7 @@ import (
 func TestLogSenderWritesMaskedTargetAndCode(t *testing.T) {
 	var buf bytes.Buffer
 	l := sender.NewLog(slog.New(slog.NewTextHandler(&buf, nil)))
-	msg := sender.Message{Purpose: enum.PurposeSignIn, Code: "123456", TTL: 5 * time.Minute}
+	msg := sender.CodeMessage{Purpose: enum.PurposeSignIn, Code: "123456", TTL: 5 * time.Minute}
 	if err := l.SendSMS(context.Background(), "+8613812341234", msg); err != nil {
 		t.Fatal(err)
 	}
@@ -35,5 +35,5 @@ func TestLogSenderWritesMaskedTargetAndCode(t *testing.T) {
 	}
 }
 
-var _ sender.SMSSender = (*sender.Log)(nil)
-var _ sender.EmailSender = (*sender.Log)(nil)
+var _ sender.SMSCodeSender = (*sender.Log)(nil)
+var _ sender.EmailCodeSender = (*sender.Log)(nil)

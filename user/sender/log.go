@@ -20,14 +20,14 @@ func NewLog(logger *slog.Logger) *Log {
 	return &Log{Logger: logger, MaskTarget: maskDefault}
 }
 
-// SendSMS 实现 SMSSender。
-func (l *Log) SendSMS(_ context.Context, e164 string, m Message) error {
+// SendSMS 实现 SMSCodeSender。
+func (l *Log) SendSMS(_ context.Context, e164 string, m CodeMessage) error {
 	l.Logger.Info("DEV-ONLY sms code", "to", l.MaskTarget(e164), "purpose", m.Purpose.String(), "code", m.Code, "ttl", m.TTL)
 	return nil
 }
 
-// SendEmail 实现 EmailSender。
-func (l *Log) SendEmail(_ context.Context, address string, m Message) error {
+// SendEmail 实现 EmailCodeSender。
+func (l *Log) SendEmail(_ context.Context, address string, m CodeMessage) error {
 	l.Logger.Info("DEV-ONLY email code", "to", l.MaskTarget(address), "purpose", m.Purpose.String(), "code", m.Code, "ttl", m.TTL)
 	return nil
 }

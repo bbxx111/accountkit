@@ -221,7 +221,7 @@ type captureSender struct {
 	codes   map[string]string
 }
 
-func (c *captureSender) SendSMS(_ context.Context, to string, m sender.Message) error {
+func (c *captureSender) SendSMS(_ context.Context, to string, m sender.CodeMessage) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.codes == nil {
@@ -230,7 +230,7 @@ func (c *captureSender) SendSMS(_ context.Context, to string, m sender.Message) 
 	c.codes[to] = m.Code
 	return nil
 }
-func (c *captureSender) SendEmail(ctx context.Context, to string, m sender.Message) error {
+func (c *captureSender) SendEmail(ctx context.Context, to string, m sender.CodeMessage) error {
 	return c.SendSMS(ctx, to, m)
 }
 func (c *captureSender) code(to string) string { c.mu.Lock(); defer c.mu.Unlock(); return c.codes[to] }

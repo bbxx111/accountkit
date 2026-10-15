@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS identity_flow;
 DROP TABLE IF EXISTS audit_event;
 DROP TABLE IF EXISTS session;
 DROP TABLE IF EXISTS identity;

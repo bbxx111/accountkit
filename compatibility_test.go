@@ -15,6 +15,7 @@ import (
 
 	"github.com/bbxx111/accountkit"
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/migrations"
 	"github.com/bbxx111/accountkit/user"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -28,7 +29,7 @@ type sourceFixture struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-func seedSourceFixture(t *testing.T, pool *pgxpool.Pool, cfg accountkit.Config) (sourceFixture, string) {
+func seedFormatFixture(t *testing.T, pool *pgxpool.Pool, cfg accountkit.Config) (sourceFixture, string) {
 	t.Helper()
 	ctx := context.Background()
 	raw, err := os.ReadFile("tests/testdata/source-baseline/fixture.json")
@@ -39,8 +40,7 @@ func seedSourceFixture(t *testing.T, pool *pgxpool.Pool, cfg accountkit.Config) 
 	if err := json.Unmarshal(raw, &f); err != nil {
 		t.Fatal(err)
 	}
-	ddl, err := os.ReadFile("tests/testdata/source-baseline/0001_init.up.sql")
-	if err != nil {
+	if err := migrations.Up(ctx, pool.Config().ConnConfig, cfg.Schema); err != nil {
 		t.Fatal(err)
 	}
 	exec := func(sql string, args ...any) {
@@ -49,11 +49,7 @@ func seedSourceFixture(t *testing.T, pool *pgxpool.Pool, cfg accountkit.Config) 
 			t.Fatal(err)
 		}
 	}
-	exec("CREATE SCHEMA " + cfg.Schema)
-	// Separate source schema installation from accountkit's migrator.
-	exec(string(ddl))
-	exec("CREATE TABLE schema_migrations(version bigint NOT NULL PRIMARY KEY, dirty boolean NOT NULL)")
-	exec("INSERT INTO schema_migrations VALUES(1,false)")
+	// Load historical formats onto the current complete initial schema.
 	now := time.Now().UTC().Truncate(time.Second)
 	exec("INSERT INTO user_account(id,state,display_name) VALUES($1,1,'Source user')", f.UserID)
 	mac := hmac.New(sha256.New, cfg.SubjectHMACKeys[1])
@@ -91,7 +87,7 @@ func snapshotSource(t *testing.T, pool *pgxpool.Pool) string {
  'users',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM user_account t),
  'identities',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM identity t),
  'sessions',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM session t),
- 'audit',(SELECT jsonb_agg(to_jsonb(t)-'flow_id' ORDER BY id) FROM audit_event t),
+ 'audit',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM audit_event t),
  'version',(SELECT jsonb_agg(to_jsonb(t)) FROM schema_migrations t))::text`).Scan(&out)
 	if err != nil {
 		t.Fatal(err)
@@ -99,10 +95,10 @@ func snapshotSource(t *testing.T, pool *pgxpool.Pool) string {
 	return out
 }
 
-// Catches renamed tables/columns, migration resets, changed encryption or token wire formats.
-func TestSourceDatabaseTakeover(t *testing.T) {
+// Catches format regressions and repeat-migration data loss on the current initial schema.
+func TestHistoricalFormatsOnInitialSchema(t *testing.T) {
 	a, pool, sent := integrationInstance(t, minimal(), testRedis(t))
-	f, access := seedSourceFixture(t, pool, a.Config())
+	f, access := seedFormatFixture(t, pool, a.Config())
 	before := snapshotSource(t, pool)
 	ctx := context.Background()
 	for range 2 {
@@ -122,16 +118,15 @@ func TestSourceDatabaseTakeover(t *testing.T) {
 			t.Fatalf("migration changed source %s data", table)
 		}
 	}
-	// 0002 only adds a nullable flow correlation column to historical audit rows;
-	// all original columns are compared above and every new value must remain NULL.
+	// Historical audit fixtures have no flow association; repeat migration must preserve that.
 	var linkedAudit int
 	if err := pool.QueryRow(ctx, "SELECT count(*) FROM audit_event WHERE flow_id IS NOT NULL").Scan(&linkedAudit); err != nil || linkedAudit != 0 {
 		t.Fatalf("migration rewrote historical audit flow association: %d %v", linkedAudit, err)
 	}
 	var version, flows int
 	var dirty bool
-	if err := pool.QueryRow(ctx, "SELECT version,dirty,(SELECT count(*) FROM identity_flow) FROM schema_migrations").Scan(&version, &dirty, &flows); err != nil || version != 2 || dirty || flows != 0 {
-		t.Fatalf("upgrade version=%d dirty=%v flows=%d: %v", version, dirty, flows, err)
+	if err := pool.QueryRow(ctx, "SELECT version,dirty,(SELECT count(*) FROM identity_flow) FROM schema_migrations").Scan(&version, &dirty, &flows); err != nil || version != 1 || dirty || flows != 0 {
+		t.Fatalf("initial version=%d dirty=%v flows=%d: %v", version, dirty, flows, err)
 	}
 	principal, err := a.Users().Authenticate(ctx, access)
 	if err != nil || principal.UserID != f.UserID {

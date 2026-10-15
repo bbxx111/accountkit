@@ -66,7 +66,7 @@ func TestRecoveryFixture(t *testing.T) {
 	}
 	defer a.Close()
 	if mode == "seed" {
-		f, access := seedSourceFixture(t, pool, a.Config())
+		f, access := seedFormatFixture(t, pool, a.Config())
 		if err := a.Migrate(ctx); err != nil {
 			t.Fatal(err)
 		}

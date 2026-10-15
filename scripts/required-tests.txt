@@ -163,7 +163,7 @@ github.com/bbxx111/accountkit/TestNewWiresIdPVerifiersOnlyWhenConfigured
 github.com/bbxx111/accountkit/TestParseWeChatApps
 github.com/bbxx111/accountkit/TestPoolConfigSetsSearchPath
 github.com/bbxx111/accountkit/TestRecordAdminForbidden
-github.com/bbxx111/accountkit/TestSourceDatabaseTakeover
+github.com/bbxx111/accountkit/TestHistoricalFormatsOnInitialSchema
 github.com/bbxx111/accountkit/TestValidateAppliesDefaults
 github.com/bbxx111/accountkit/TestValidateRejects
 github.com/bbxx111/accountkit/TestWeChatSignInEndToEndAgainstRealDB
@@ -439,3 +439,12 @@ github.com/bbxx111/accountkit/user/TestSignInCompletionCodeFailurePreservesFresh
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigExplicitIdentityProviderDependencies
 github.com/bbxx111/accountkit/audit/TestStoreInsertBatchFailureConcurrentPoolQueries
 github.com/bbxx111/accountkit/audit/TestStoreInsertBatchReportsDeferredCommitFailure
+github.com/bbxx111/accountkit/migrations/TestConsolidatedInitialSchema
+github.com/bbxx111/accountkit/migrations/TestOldMigrationBaselineRejected
+github.com/bbxx111/accountkit/migrations/TestInitialSchemaMatchesPreviousFinalCatalog
+github.com/bbxx111/accountkit/internal/migrationcheck/TestPinnedLegacyReleaseCannotMove
+github.com/bbxx111/accountkit/internal/migrationcheck/TestLegacyReleaseSQLIsVerified
+github.com/bbxx111/accountkit/internal/migrationcheck/TestNewReleaseCannotUseLegacyInitialSQL
+github.com/bbxx111/accountkit/internal/migrationcheck/TestPublishedIncrementCannotDisappearInLaterRelease
+github.com/bbxx111/accountkit/internal/migrationcheck/TestShallowHistoryIsRejected
+github.com/bbxx111/accountkit/internal/migrationcheck/TestReleaseVersionsMustIncrease

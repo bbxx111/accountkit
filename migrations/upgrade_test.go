@@ -15,25 +15,25 @@ import (
 func safetySource(t *testing.T, failure bool) fstest.MapFS {
 	t.Helper()
 	out := fstest.MapFS{}
-	for _, name := range []string{"0001_init.up.sql", "0001_init.down.sql", "0002_identity_flow.up.sql", "0002_identity_flow.down.sql"} {
+	for _, name := range []string{"0001_init.up.sql", "0001_init.down.sql"} {
 		b, err := fs.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)
 		}
 		out[name] = &fstest.MapFile{Data: b}
 	}
-	name := "testdata/0003_success.up.sql"
+	name := "testdata/0002_success.up.sql"
 	if failure {
-		name = "testdata/0003_failure.up.sql"
+		name = "testdata/0002_failure.up.sql"
 	}
 	b, err := os.ReadFile(name)
 	if err != nil {
 		t.Fatal(err)
 	}
-	out["0003_probe.up.sql"] = &fstest.MapFile{Data: b}
-	out["0003_probe.down.sql"] = &fstest.MapFile{Data: []byte("DROP TABLE upgrade_probe")}
+	out["0002_probe.up.sql"] = &fstest.MapFile{Data: b}
+	out["0002_probe.down.sql"] = &fstest.MapFile{Data: []byte("DROP TABLE upgrade_probe")}
 	if failure {
-		out["0004_after.up.sql"] = &fstest.MapFile{Data: []byte("CREATE TABLE after_failure (id integer)")}
+		out["0003_after.up.sql"] = &fstest.MapFile{Data: []byte("CREATE TABLE after_failure (id integer)")}
 	}
 	return out
 }
@@ -59,7 +59,8 @@ func TestUpgradePreservesDataAndIsRepeatable(t *testing.T) {
 		"INSERT INTO user_account(id,state) VALUES('u_0000000000001',1)",
 		"INSERT INTO identity(id,user_id,kind,provider_subject) VALUES('i_0000000000001','u_0000000000001',3,'source-subject')",
 		"INSERT INTO session(id,user_id,device_id,auth_time,refresh_token_hash,refresh_expire_time) VALUES('s_0000000000001','u_0000000000001','device',now(),decode('1234','hex'),now()+interval '1 day')",
-		"INSERT INTO audit_event(id,event_type,actor_kind,result) VALUES('e_0000000000001',1,1,1)",
+		"INSERT INTO audit_event(id,event_type,actor_kind,result,flow_id) VALUES('e_0000000000001',1,1,1,'f_0000000000001')",
+		"INSERT INTO identity_flow(id,token_digest,state,policy_fingerprint,payload,cipher_version,proof_user_ids,user_id,session_id,create_time,update_time,expire_time) VALUES('f_0000000000001','upgrade-token-digest',1,'policy',decode('1234','hex'),1,ARRAY['u_0000000000001'],'u_0000000000001','s_0000000000001',now(),now(),now()+interval '5 minutes')",
 	} {
 		if _, err := c.Exec(ctx, q); err != nil {
 			t.Fatal(err)
@@ -68,7 +69,7 @@ func TestUpgradePreservesDataAndIsRepeatable(t *testing.T) {
 	snapshot := func() string {
 		t.Helper()
 		var s string
-		if err := c.QueryRow(ctx, `SELECT jsonb_build_array((SELECT jsonb_agg(t) FROM user_account t),(SELECT jsonb_agg(t) FROM identity t),(SELECT jsonb_agg(t) FROM session t),(SELECT jsonb_agg(t) FROM audit_event t))::text`).Scan(&s); err != nil {
+		if err := c.QueryRow(ctx, `SELECT jsonb_build_array((SELECT jsonb_agg(t) FROM user_account t),(SELECT jsonb_agg(t) FROM identity t),(SELECT jsonb_agg(t) FROM session t),(SELECT jsonb_agg(t) FROM audit_event t),(SELECT jsonb_agg(t) FROM identity_flow t))::text`).Scan(&s); err != nil {
 			t.Fatal(err)
 		}
 		return s
@@ -79,7 +80,7 @@ func TestUpgradePreservesDataAndIsRepeatable(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	assertVersion(t, cfg, schema, 3, false)
+	assertVersion(t, cfg, schema, 2, false)
 	if snapshot() != before {
 		t.Fatal("upgrade changed existing data")
 	}

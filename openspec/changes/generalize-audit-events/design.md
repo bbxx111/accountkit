@@ -56,6 +56,8 @@ targets 每项为 type、namespace、id、可选 name，资源身份为 namespac
 
 source 与身份/资源 namespace 各有含义。新增 Config.AuditSource、Config.AuditNamespace；环境读取按宿主 prefix 提供 AUDIT_SOURCE、AUDIT_NAMESPACE。本地未配置时分别采用 accountkit/<schema>、accountkit/<schema>/resources，仅承诺当前数据库实例内一致；多个数据库向同一中心汇集时必须显式指定全局可区分的稳定值。自定义 Recorder 模式要求显式提供二者，New 只做验证且不联网。已持久化的 namespace 不随部署名改变，变更需独立数据迁移。
 
+为保留外部模式的显式配置判定，ConfigFromEnv 对这两个新字段保留原始空/非空输入，本地默认值在 New 内应用；Config.Validate 使用有效默认值检查而不改变原字段。其他既有配置字段继续原有默认化行为。宿主明确配置与本地默认字符串相同的值仍是显式配置，不能通过与默认字符串比较来猜测来源。
+
 #### To C 案例一：单个 App 使用自建账号体系
 
 一个记账 App 使用 accountkit 管理消费者账号，宿主将 Config.AuditNamespace 配置为稳定的 `urn:identity:moneybook:prod`。所有生产用户共用该 namespace，通过各自的 id 区分，无需为每个用户创建 namespace。以下 ID 和域名均为合成示例。
@@ -109,6 +111,8 @@ namespace 和 id 来自验证通过的 iss/sub，不直接采信客户端声明�
 
 data 采用 JSON 对象，可选 reason、changes；changes.<field>.before/after 是 JSON 值，省略与显式 null 区分。认证专属字段集中于 data.accountkit，包括 flow_id、identity_kind、subject_hint、仅作背景的 session_id、受控 actor_kind 和迁移时的 legacy_event_id。新增业务不需要改公共表或 enum.EventType。
 
+历史管理员信息不完整时，专用历史映射入口以 UNKNOWN 主体加 actor_kind 快照表示，不伪造 namespace/id；已存在的单边 admin_issuer/admin_subject 可在 data.accountkit 的同名受控快照中保留，仍执行字段上限检查。旧投影仅在明确 legacy_event_id 路径恢复这些值。若保留 admin_username 展示快照，认证隐私清理必须同步删除；正常完整管理员事件从 actor 恢复信息，不重复存储这些快照。
+
 accountkit 使用强类型事件构建器完成映射和脱敏，不能把任意请求体/claims/err.Error() 整体装入 data。通用 API 允许宿主自定义已校验 JSON 对象，避免公共结构硬编码全部业务字段。入队前验证并深拷贝可变对象，禁止调用方后续修改已排队事件。解码时拒绝重复 JSON 键和非法数值；默认完整事件不超过 64 KiB UTF-8 JSON，targets/related_resources 各最多 32 项。既有设备/管理员字段兼容边界须通过真实调用测试确定，不能静默截断或收紧 HTTP 输入。
 
 2026-10-16 计划评审后明确兼容处理：认证映射器可省略无效 IP、超长不可信设备字段、超长自定义 request_id 和超长可选 name，并单独安全计数/告警；主体 namespace/id 不截断或哈希替换。已验证 issuer/sub 超过 512 字节时拒绝该审计事件并提供安全失败观测，认证结果不变。这是新审计输入边界的明确兼容变化，须写入调用迁移说明；历史准备遇到不兼容字段停止且保留原表。默认 request_id 的 64 字符规则不表示宿主自定义 resolver 过去已有相同上限。
@@ -151,6 +155,8 @@ accountkit 使用强类型事件构建器完成映射和脱敏，不能把任意
 基础索引为 id 主键、(occur_time,id)、(source,occur_time,id)。actor namespace/id 表达式、targets/related_resources GIN、request_id 和 data.accountkit.flow_id 表达式按必需查询增设；默认账号审计查询和 scrub 的计划须以真实 PostgreSQL 验证，不能以 GIN 支持过滤推断排序高效。索引不是增加业务专属列的理由。
 
 2026-10-16 计划评审后明确 flow 关联：早期事件不追加后来发现的账号到原始资源引用；查询利用 live flow 或已保存的证明/完成归属事件构造账号关联闭包。公开读侧 Page 将 Records 与 FlowLinks 分开，FlowLink 携带 flow/user 引用及归属事件 Evidence；管理适配层检查同源、认可的归属动作及完整引用后才接受间接匹配事件，不把这些查询证据输出到 HTTP DTO。所有归属证据均丢失时不承诺重建历史。
+
+实施接口补充：仍存在的本地流程可使用 FlowLink.Live 标记，不伪造 Evidence 审计事件。管理面对此必须通过库持有的领域查询回调，独立核对本地 identity_flow.user_id/proof_user_ids 归属；外部读侧的 Live 声明本身不构成授权。已删除流程必须使用真实保存的 Evidence；Live 与 Evidence 不混用，缺少回调或无法核对时按查询依赖故障拒绝。这样保留“归属事件尚未入库但 live flow 已有归属”的查询能力，同时不改原事件或新增主表字段。
 
 ### 7. 外部数据治理边界
 

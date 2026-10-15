@@ -99,7 +99,7 @@
 **Files:** internal/auditmigration/prepare.go、prepare_test.go；cmd/accountaudit-migrate/main.go；migrations/0002_generalize_audit_events.up.sql/.down.sql、baseline.go、迁移测试/testdata；audit/store.go、query.sql、sqlc.yaml、数据库测试。
 
 **Interfaces:**
-- audit.Reader.ListByResource(context.Context,Query) (Page,error)，Query{Source string, Resource Resource, After *EventCursor, Limit int}，EventCursor{Time time.Time, ID uuid.UUID}；Page{Records []RecordView, FlowLinks []FlowLink}，FlowLink{Flow Resource, User Resource, Evidence RecordView}。FlowLinks 仅供查询范围复核，不修改 Event 或增加主表字段。
+- audit.Reader.ListByResource(context.Context,Query) (Page,error)，Query{Source string, Resource Resource, After *EventCursor, Limit int}，EventCursor{Time time.Time, ID uuid.UUID}；Page{Records []RecordView, FlowLinks []FlowLink}，FlowLink{Flow Resource, User Resource, Evidence RecordView, Live bool}。Live 与 Evidence 互斥；Live 归属必须在管理面通过领域回调独立核对本地流程，不能只信 reader；FlowLinks 仅供查询范围复核，不修改 Event 或增加主表字段。
 - Store 保留 NewStore(*pgxpool.Pool)，消费任务一 BatchResult；DeleteOlderThan(context.Context,time.Time)(int64,error)。事务内查询 SQL 全部放 query.sql 并生成。
 - internal/auditmigration.Prepare(context.Context,*pgx.Conn,Options) (Report,error)，Options{Schema,ConfirmSchema,Source,Namespace string}；Report 仅安全计数。CLI 从指定环境变量读取 DSN，不在参数/日志输出秘密，必须精确确认 schema。
 - staging 持有 legacy_id、UUID、新事件、原行 JSON 快照和配置，prepare 不改 schema_migrations 或原审计表；有完整覆盖且原行未变才正式转换。
@@ -148,6 +148,8 @@
 **Files:** httpapi/admin/audit.go、audit_cursor.go、response.go、handler.go、audit_test.go、fake_test.go；保留 page.go 的用户列表游标。
 
 **Interfaces:** encodeAuditCursor(Query,EventCursor) string；decodeAuditCursor(string,Query)(*EventCursor,*apierror.Error)；JSON 游标版本与 source/namespace/user 范围绑定；newAuditEventResource 接受 RecordView 和明确认证投影。
+
+live flow 归属接口采用 user.Service.AuditFlowBelongsToUser(context.Context,userID,flowID string)(bool,error)，验证资源格式并通过领域 SQL 核对 user_id/proof_user_ids。根门面将其作为 admin.Deps.FlowOwner 回调注入；直接使用管理适配器但未提供回调时，不接受 Live 证明。
 
 - [ ] Step 1：写 TestAuditLegacyCursorRejected、TestAuditCursorScope、TestAuditExternalReaderBounds、TestAuditQueryUnavailable；断言旧 e_ 游标 400、跨账号拒绝、仅写侧 503 AUDIT_QUERY_NOT_CONFIGURED、依赖错误安全 503。
 - [ ] Step 2：实现独立游标与范围查询，先保留管理员角色及账号存在性检查，验证 Reader 返回的每项 source/直接关联或 FlowLink 证据/动作、数量和顺序后再序列化；越界、证据缺失或无序结果按依赖故障处理，不静默丢项生成错误游标。

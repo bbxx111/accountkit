@@ -98,24 +98,26 @@ func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventPara
 const listAuditEventsByResource = `-- name: ListAuditEventsByResource :many
 SELECT id, source, action, result, actor, targets, context, data, occur_time, create_time FROM audit_event e
 WHERE e.source = $1::text
+ AND (COALESCE(cardinality($2::text[]),0) = 0 OR e.action = ANY($2::text[]))
  AND (
-  ( $2::text = 'USER' AND e.actor @> $3::jsonb)
-  OR e.targets @> $4::jsonb OR e.context->'related_resources' @> $4::jsonb
+  ( $3::text = 'USER' AND e.actor @> $4::jsonb)
+  OR e.targets @> $5::jsonb OR e.context->'related_resources' @> $5::jsonb
   OR (
-   $2::text = 'USER'
-   AND NOT (e.actor->>'type' = 'USER' AND e.actor->>'namespace' = $5::text)
+   $3::text = 'USER'
+   AND NOT (e.actor->>'type' = 'USER' AND e.actor->>'namespace' = $6::text)
    AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) r
-                   WHERE r->>'type' = 'USER' AND r->>'namespace' = $5::text)
+                   WHERE r->>'type' = 'USER' AND r->>'namespace' = $6::text)
    AND EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) r
-               WHERE r->>'type' = 'IDENTITY_FLOW' AND r->>'namespace' = $5::text AND r->>'id' = ANY($6::text[]))
+               WHERE r->>'type' = 'IDENTITY_FLOW' AND r->>'namespace' = $6::text AND r->>'id' = ANY($7::text[]))
   )
  )
- AND ($7::timestamptz IS NULL OR (e.occur_time,e.id) > ($7::timestamptz,$8::uuid))
-ORDER BY occur_time,id LIMIT $9::int
+ AND ($8::timestamptz IS NULL OR (e.occur_time,e.id) > ($8::timestamptz,$9::uuid))
+ORDER BY occur_time,id LIMIT $10::int
 `
 
 type ListAuditEventsByResourceParams struct {
 	Source       string
+	Actions      []string
 	ResourceType string
 	Actor        []byte
 	Resource     []byte
@@ -129,6 +131,7 @@ type ListAuditEventsByResourceParams struct {
 func (q *Queries) ListAuditEventsByResource(ctx context.Context, arg ListAuditEventsByResourceParams) ([]AuditEvent, error) {
 	rows, err := q.db.Query(ctx, listAuditEventsByResource,
 		arg.Source,
+		arg.Actions,
 		arg.ResourceType,
 		arg.Actor,
 		arg.Resource,

@@ -91,8 +91,11 @@ type EventCursor struct {
 type Query struct {
 	Source   string
 	Resource Resource
-	After    *EventCursor
-	Limit    int
+	// Actions is optional: empty means all actions, including business events.
+	// Nonempty sets are validated, sorted and deduplicated before ORDER/LIMIT.
+	Actions []string
+	After   *EventCursor
+	Limit   int
 }
 
 // FlowLink 是范围复核用的归属证据，不修改原始事件资源引用。
@@ -111,6 +114,7 @@ type Page struct {
 }
 
 // Reader 返回按 occur_time、id 排序且匹配查询范围的记录。
+// Actions 必须在分页 Limit 前过滤；FlowLinks 的归属证据独立于记录动作筛选。
 type Reader interface {
 	ListByResource(context.Context, Query) (Page, error)
 }

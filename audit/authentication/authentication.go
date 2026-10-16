@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/netip"
 	"regexp"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -45,6 +46,17 @@ type Input struct {
 
 // Options 由可信装配配置指定，映射器不猜测来源或命名空间。
 type Options struct{ Source, Namespace string }
+
+// Actions returns an independent canonical set from the authentication enum.
+// It is the common registry for authentication queries and privacy projection.
+func Actions() []string {
+	var actions []string
+	for typ := enum.EventCodeSent; typ.Valid(); typ++ {
+		actions = append(actions, typ.String())
+	}
+	slices.Sort(actions)
+	return actions
+}
 
 var sourcePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]*$`)
 var errIDGeneration = errors.New("audit/authentication: id_generation")

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/audit"
+	"github.com/bbxx111/accountkit/audit/authentication"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/httpapi/admin"
 	"github.com/bbxx111/accountkit/user"
@@ -46,7 +47,7 @@ func auditPageReader(page audit.Page) *fakeAudit {
 
 func auditToken(t *testing.T, source, namespace, userID string, row audit.RecordView) string {
 	t.Helper()
-	b, err := json.Marshal(map[string]any{"v": 1, "source": source, "resource": audit.Resource{Type: "USER", Namespace: namespace, ID: userID}, "t": row.OccurTime, "id": row.ID})
+	b, err := json.Marshal(map[string]any{"v": 2, "source": source, "resource": audit.Resource{Type: "USER", Namespace: namespace, ID: userID}, "actions": authentication.Actions(), "t": row.OccurTime, "id": row.ID})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"reflect"
+	"slices"
 
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/audit/authentication"
@@ -63,7 +64,7 @@ func directAuditResource(e audit.Event, r audit.Resource) bool {
 	return false
 }
 func (h *Handler) auditInScope(ctx context.Context, e audit.Event, q audit.Query, links []audit.FlowLink) bool {
-	if e.Source != q.Source {
+	if e.Source != q.Source || (len(q.Actions) > 0 && !slices.Contains(q.Actions, e.Action)) {
 		return false
 	}
 	if directAuditResource(e, q.Resource) {
@@ -121,7 +122,7 @@ func (h *Handler) listAuditEvents(w http.ResponseWriter, r *http.Request) {
 		apierror.Write(w, e)
 		return
 	}
-	query := audit.Query{Source: h.d.AuditSource, Resource: audit.Resource{Type: "USER", Namespace: h.d.AuditNamespace, ID: uid}, Limit: size + 1}
+	query := audit.Query{Source: h.d.AuditSource, Resource: audit.Resource{Type: "USER", Namespace: h.d.AuditNamespace, ID: uid}, Actions: authentication.Actions(), Limit: size + 1}
 	after, e := decodeAuditCursor(r.URL.Query().Get("page_token"), query)
 	if e != nil {
 		apierror.Write(w, e)
@@ -136,7 +137,15 @@ func (h *Handler) listAuditEvents(w http.ResponseWriter, r *http.Request) {
 		apierror.Write(w, apierror.New(apierror.StatusUnavailable, "AUDIT_QUERY_NOT_CONFIGURED", "audit queries are not configured"))
 		return
 	}
-	page, err := h.d.Audit.ListByResource(r.Context(), query)
+	// Reader code belongs to the host; preserve trusted bounds for validation
+	// and cursor encoding even if it changes its argument's mutable fields.
+	readerQuery := query
+	readerQuery.Actions = slices.Clone(query.Actions)
+	if query.After != nil {
+		afterCopy := *query.After
+		readerQuery.After = &afterCopy
+	}
+	page, err := h.d.Audit.ListByResource(r.Context(), readerQuery)
 	unavailable := func(reason string) {
 		h.d.Logger.WarnContext(r.Context(), "audit query unavailable", "reason", reason, "record_count", len(page.Records), "request_id", reqid.From(r.Context()))
 		apierror.Write(w, apierror.New(apierror.StatusUnavailable, "AUDIT_QUERY_UNAVAILABLE", "audit query unavailable"))

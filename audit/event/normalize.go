@@ -25,6 +25,19 @@ var sourcePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]*$`)
 var actionPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
 var hexPattern = regexp.MustCompile(`^[0-9a-f]+$`)
 
+// NormalizedActions returns an independent sorted, unique action set. Empty
+// means no action filter. Invalid identifiers are rejected, never rewritten.
+func (q Query) NormalizedActions() ([]string, error) {
+	actions := slices.Clone(q.Actions)
+	for _, action := range actions {
+		if len(action) > 128 || !actionPattern.MatchString(action) {
+			return nil, invalid("actions")
+		}
+	}
+	slices.Sort(actions)
+	return slices.Compact(actions), nil
+}
+
 // Validate 拒绝非法或超限内容；错误仅包含字段位置，不包含输入值。
 func Validate(e Event) error { _, err := Freeze(e); return err }
 

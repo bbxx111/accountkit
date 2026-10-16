@@ -200,6 +200,10 @@ func (s *Store) ListByResource(ctx context.Context, query Query) (Page, error) {
 	if query.Source != s.options.Source || query.Resource.Namespace != s.options.Namespace || query.Resource.ID == "" || query.Resource.Type == "" || query.Limit < 1 || query.Limit > 1001 {
 		return Page{}, ErrInvalid
 	}
+	actions, err := query.NormalizedActions()
+	if err != nil {
+		return Page{}, ErrInvalid
+	}
 	r := query.Resource
 	r.Name = ""
 	resource, _ := json.Marshal([]Resource{r})
@@ -232,7 +236,7 @@ func (s *Store) ListByResource(ctx context.Context, query Query) (Page, error) {
 			}
 		}
 	}
-	p := db.ListAuditEventsByResourceParams{Source: query.Source, ResourceType: r.Type, Actor: actor, Resource: resource, Namespace: r.Namespace, FlowIds: flows, PageLimit: int32(query.Limit)}
+	p := db.ListAuditEventsByResourceParams{Source: query.Source, Actions: actions, ResourceType: r.Type, Actor: actor, Resource: resource, Namespace: r.Namespace, FlowIds: flows, PageLimit: int32(query.Limit)}
 	if query.After != nil {
 		p.AfterTime = &query.After.Time
 		p.AfterID = &query.After.ID

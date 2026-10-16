@@ -231,6 +231,8 @@ r.Route("/v1", func(r chi.Router) {
 
 只注入 Reader 在 `New` 时被拒绝。未配置管理员验证时仍优先返回 `503 ADMIN_NOT_CONFIGURED`；已配置读侧故障或返回不合规数据时返回安全的 `503 AUDIT_QUERY_UNAVAILABLE`，不会伪装成空列表。
 
+`audit.Query.Actions` 是可选动作集合，空集合保留通用全部动作查询。宿主 Reader 须校验、排序去重并在分页 Limit 前执行过滤，可复用 `Query.NormalizedActions()`。管理时间线固定传入 `authentication.Actions()` 导出的认证动作集合，同表业务事件不占用认证页；外部结果仍逐条复核，含 lookahead。流程归属证据独立于此动作过滤。审计 v2 游标绑定 source、完整资源及规范动作集合，旧 v1 UUID/旧 `e_` 游标或动作范围改变均返回 400，客户端清空 token 重新开始；用户列表游标不变。
+
 `Config.AuditSource`、`Config.AuditNamespace` 的本地默认分别是 `accountkit/<schema>`、`accountkit/<schema>/resources`，只承诺当前数据库实例内一致；外部写侧必须显式设置二者，并让生产方、存储和查询适配器复用相同配置。source 标识事件来源，namespace 标识稳定身份体系，不是角色、展示名称或租户授权；同一消费者的不同登录方式沿用本地用户映射。跨数据库汇聚时须可区分独立账号体系，持久化后更改 namespace/source 要单独迁移历史关联。三个 To C 案例见[设计说明](openspec/changes/generalize-audit-events/design.md#to-c-案例一单个-app-使用自建账号体系)。
 
 [examples/embedded](examples/embedded/main.go) 演示默认模式；[examples/audit](examples/audit/main.go) 演示全部三种装配。后者使用同库 Store 演示宿主组件所有权；配置与 embedded 相同，`ACCOUNTKIT_AUDIT_MODE` 可设 `local`（默认）、`host` 或 `write-only`，后两种另需显式的 `ACCOUNTKIT_AUDIT_SOURCE` 和 `ACCOUNTKIT_AUDIT_NAMESPACE`。两个示例都只使用本地开发日志发送器，要求 `ACCOUNTKIT_DEMO=1`，实际管理查询还需装配管理员验证。宿主组件由宿主 Start/Close；先排空业务请求，再 `auth.Close()` 停止库维护，最后关闭宿主审计组件及连接。真实远端接入需宿主实现 Recorder/Reader；Record 不得阻塞业务，示例不提供可靠网络投递或跨库原子性。

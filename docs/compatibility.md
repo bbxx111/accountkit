@@ -32,7 +32,9 @@ source/action 最长 128 ASCII 字符，source 匹配 `[A-Za-z0-9][A-Za-z0-9._/-
 
 `audit.NewStore(pool)` 同样只推导本地默认；自定义配置使用 `audit.NewStoreWithOptions(pool, audit.StoreOptions{Source: source, Namespace: namespace})`，与事件生产方保持一致。namespace 表示稳定身份体系，可以是受控 URN 或完整 issuer URL，无需可访问；source 区分事件来源，role 和显示名不构成稳定身份。实际共享同一主体体系时才复用 namespace，独立数据库汇聚时须明确隔离，已有 namespace/source 变化须独立迁移。三个消费者应用案例见[设计说明](../openspec/changes/generalize-audit-events/design.md#to-c-案例一单个-app-使用自建账号体系)。
 
-`Deps.AuditReader` 和管理适配器的读侧改用 `audit.Reader.ListByResource(ctx, audit.Query) (audit.Page, error)`，不再接收生成数据库行。`Query` 指定 Source、完整 Resource、After 和 Limit；适配器按 `(occur_time, UUID)` 严格升序返回不超过 Limit 的 RecordView，所有记录严格大于 After，CreateTime 必须非零且为可序列化的有效时间。不得重复 UUID，包括同 UUID 不同发生时间；全页及用于判断下一页的额外记录都会被复核。
+`Deps.AuditReader` 和管理适配器的读侧改用 `audit.Reader.ListByResource(ctx, audit.Query) (audit.Page, error)`，不再接收生成数据库行。`Query` 指定 Source、完整 Resource、可选 Actions、After 和 Limit；适配器按 `(occur_time, UUID)` 严格升序返回不超过 Limit 的 RecordView，所有记录严格大于 After，CreateTime 必须非零且为可序列化的有效时间。不得重复 UUID，包括同 UUID 不同发生时间；全页及用于判断下一页的额外记录都会被复核。
+
+`Actions` 为空表示该资源的全部动作，通用 Reader 仍能查询业务事件；非空集合必须在排序和 Limit 前过滤。`Query.NormalizedActions()` 校验动作标识、返回排序去重的独立副本，不修改调用方输入，不将小写或空白改写为合法值。管理路由固定使用 `authentication.Actions()` 从认证枚举导出的完整集合，不增加业务审计 HTTP 接口或客户端动作筛选参数。宿主 Reader 必须执行这一条件；HTTP 对忽略条件的返回值仍整页拒绝为 503，不能先取页再静默跳过业务事件。`FlowLinks` 的归属证据独立查询，即使其动作不在记录筛选集合中，也须保留必要证据。
 
 默认无注入时库管理本地写读；注入 Audit + AuditReader 时管理查询走宿主读侧；仅注入 Audit 时已授权审计查询返回 `503 AUDIT_QUERY_NOT_CONFIGURED`；只注入 Reader 在 New 被拒绝。读侧故障、越界记录、顺序或记录结构不合规返回安全的 `503 AUDIT_QUERY_UNAVAILABLE`。`ADMIN_NOT_CONFIGURED`、角色检查、目标账号存在性检查和独立管理员身份系统保持。
 
@@ -44,7 +46,7 @@ source/action 最长 128 ASCII 字符，source 匹配 `[A-Za-z0-9][A-Za-z0-9._/-
 
 审计资源 name 的末段从 `e_…` 改为标准小写带连字符 UUIDv7，例如 `users/u_0000000000001/auditEvents/0199ed00-0000-7000-8000-000000000001`。不增加 `e_` 前缀。旧认证 DTO 的 event_type、actor_kind、用户/会话关联及受控管理员快照语义保持，result 为 `SUCCESS`、`FAILURE` 或 JSON `null`，其他可空字段仍输出 null；任意业务 JSON 不原样暴露。
 
-审计使用独立绑定 source/resource 范围的版本化游标，客户端继续将其视为不透明字符串。旧 `e_` 审计游标、跨账号或跨来源游标返回 `400 INVALID_PAGE_TOKEN`，客户端须清空 page_token 从第一页重新开始。用户列表等其他游标协议保持，不能通用解码或把游标当作授权凭据。
+审计使用独立的 v2 游标，绑定 source/resource、规范化的认证动作集合和 `(occur_time, UUID)`，客户端继续将其视为不透明字符串。旧 v1 UUID 游标、旧 `e_` 审计游标、跨账号/来源/动作集合的游标返回 `400 INVALID_PAGE_TOKEN`，响应提示从第一页重新开始，客户端须清空 page_token。认证枚举扩展导致动作范围变化时也须重新开始分页。用户列表等其他游标协议保持，不能通用解码或把游标当作授权凭据。
 
 ### 外部隐私与模式切换
 

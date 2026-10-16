@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/bbxx111/accountkit/audit"
+	"github.com/bbxx111/accountkit/audit/authentication"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/user/db"
 )
@@ -20,11 +21,7 @@ const PurgeBatchSize = 100
 // Use the existing authentication enum as the single action registry. Business
 // events keep all data, even when their JSON contains an accountkit-shaped key.
 func authenticationAuditActions() []string {
-	var actions []string
-	for action := enum.EventCodeSent; action.Valid(); action++ {
-		actions = append(actions, action.String())
-	}
-	return actions
+	return authentication.Actions()
 }
 
 // PurgeCoveredTables 登记含 user_id 列或通用审计 JSON 账号引用的表在 purge 中的处理方式或豁免理由。

@@ -29,6 +29,7 @@ ORDER BY occur_time, id;
 -- name: ListAuditEventsByResource :many
 SELECT * FROM audit_event e
 WHERE e.source = @source::text
+ AND (COALESCE(cardinality(@actions::text[]),0) = 0 OR e.action = ANY(@actions::text[]))
  AND (
   ( @resource_type::text = 'USER' AND e.actor @> @actor::jsonb)
   OR e.targets @> @resource::jsonb OR e.context->'related_resources' @> @resource::jsonb

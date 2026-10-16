@@ -47,6 +47,7 @@ type Async struct {
 	closeOnce sync.Once
 	started   atomic.Bool
 	closed    atomic.Bool
+	admission sync.Mutex // serializes final enqueue with closing admission; never held during I/O
 
 	duplicate   atomic.Uint64
 	invalid     atomic.Uint64
@@ -89,11 +90,25 @@ func (a *Async) Record(_ context.Context, e Event) {
 		a.invalid.Add(1)
 		return
 	}
-	select {
-	case a.ch <- frozen:
-	default:
-		a.drop()
+	a.admission.Lock()
+	accepted := false
+	if !a.closed.Load() {
+		select {
+		case a.ch <- frozen:
+			accepted = true
+		default:
+		}
 	}
+	a.admission.Unlock()
+	if !accepted {
+		a.drop() // Host logging must remain outside the admission boundary.
+	}
+}
+
+func (a *Async) closeAdmission() {
+	a.admission.Lock()
+	a.closed.Store(true)
+	a.admission.Unlock()
 }
 
 func (a *Async) drop() {
@@ -134,7 +149,7 @@ func (a *Async) run(ctx context.Context) {
 				batch = batch[:0]
 			}
 		case <-ctx.Done():
-			a.closed.Store(true) // 之后的 Record 直接丢弃，drain 才能收敛
+			a.closeAdmission() // Serialize with final sends before draining.
 			a.flush(batch)
 			a.drain()
 			return
@@ -199,7 +214,7 @@ func (a *Async) flush(batch []Event) {
 // （例如只用 Migrate 的一次性作业）。
 func (a *Async) Close() {
 	a.closeOnce.Do(func() {
-		a.closed.Store(true)
+		a.closeAdmission()
 		close(a.stop)
 		if !a.started.Load() {
 			a.drain()

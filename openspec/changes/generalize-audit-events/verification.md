@@ -102,3 +102,15 @@
 数据库方案按明确新指令调整：0001 直接定义通用审计，生产初始化版本为 1；移除本分支新增 0002、staging 准备工具及根预检，更新当前固定初始校验。固定历史源快照、manifest、正式标签及其 SQL 不变；旧同号 v1 审计结构、旧 v2 库均拒绝，不 Force、不自动重放或清库。兼容/恢复测试改为直接装载当前初始结构中的合成历史格式，不声称旧库原地升级。
 
 已同步 proposal、design、tasks、存储/兼容 delta 和实施计划；新增 migration-safety delta 明示本次用户授权的限定初始定义例外，避免与主规格的已发布不可变要求矛盾。原 3.1/3.3 完成标记按新验收条件重新打开；先前 staging/0002 的验证记录仅保留其历史时间语义。当前新方案尚未实施或验证，旧 GREEN 不替代新初始定义验收。
+
+## 原始定义调整 3C 验收
+
+提交 `53aaa53` 按新方案完成初始定义调整：生产仅保留 0001 up/down，空库直接建立十列审计、初始化版本 1；新增 0002、Prepare/CLI 和根 staging 预检均已撤回。完整旧十七列 v1（空/非空）及旧 v2 均拒绝，拒绝前后目录、数据、version/dirty 不变。双锁、dirty 优先、Down 无 I/O、精确确认 UnsafeReset 保持。
+
+真实 PG RED 先观察到旧方案 fresh version=2、单独旧 0001 为 17 列/text，以及旧同号库被接纳/留下 dirty；修改后定向 GREEN，非空重复、并发直装、根单连接、容量/时间域及限定 search_path 写入通过。原始记录位于 `.test-output/generalize-audit-events/task-3c-{red,red-initial,red-root,green,full-test}.log`。全库 Windows PG/Redis 测试退出 0、build/vet 成功及 sqlc generate 无生成差异由原工具终态记录；早期没有现场保存独立 `.exit`，未事后补造。后续 focused、generated、最终 migration history、strict、diff 检查现场记录退出 0；生成检查成功静默，仅有 `task-3c-generated.exit`，没有 `.log` 文件。
+
+当前固定初始 SHA-256：up 为 `ba8c8b363504bd85ea53b538c300e3ed8ae8e160827c0cfa3c95e9e731f02286`，down 为 `270052406120c755f13148ca3f07ebb032d1bee8f5a1c5b1d3ce29f9736cebb7`。固定源快照及精确发布提交不变，历史门禁未放宽。测试专用 legacy_integrated_v1 仅用于拒旧库断言，不嵌入生产迁移；历史/恢复合成数据直接装入当前定义，保留旧非审计密文、摘要与有效凭证，审计明确合成映射，不伪称旧库原地升级。
+
+独立审查 Approved：0 Critical、0 Important、1 Minor。Minor 为历史格式测试使用空管理员揭示身份，使该夹具的正常审计被校验拒绝并产生安全 WARN；已具体归因，交给后续生命周期/观测任务补投递断言和完整合成管理员，不放宽生产主体校验。审查核对原 RED/GREEN、全库日志、最新 focused/history/strict 即时退出码；未重跑套件。早期工具终态无法从本地文件独立重读，保留为原运行记录限制，最终完整 Linux 验收另行提供新证据。
+
+依据模型、映射、运行时及 3C 的累计实际验证和独立审查，任务现为 11/26 完成。UUID 并发生成补充、隐私锁、生命周期观测、严格 HTTP、示例文档、Linux race、required gate、执行计划和恢复仍未完成；此记录不是发布验收。

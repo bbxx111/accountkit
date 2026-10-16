@@ -159,3 +159,51 @@ Windows 全库 JSON 记录 `task5/windows-all.json.log`、`.exit=0`：636 顶层
 真实行为 RED/GREEN 和现场退出码位于 `.test-output/generalize-audit-events/task6/`：`red-behavior.exit=1`、`green-focused.exit=0`。原来正确的旧游标/授权优先级等明确记为已有 GREEN 回归，未删保护造 RED。最终 `full-windows.exit=0`，651 顶层 PASS、33 测试包 PASS、0 FAIL；真实 PG 及 Redis challenge/key-rotation 专项通过。17 测试级 skip：普通 RecoveryFixture 预期 skip，另 16 为 Windows 不支持的 Linux 服务 TLS/SIGTERM 项。相关 vet、严格 OpenSpec、差异/格式检查退出 0。默认 sandbox cache/CLI PATH 失败属于环境失败，不算行为 RED 或通过。
 
 独立审查 Approved：0 Critical/Important、1 Minor（测试默认 logger 的预期 WARN 噪声，交最终测试卫生收尾）。Root 核对提交差异统计、实际 full-windows/vet 退出码和成功日志。Linux race、真实服务进程/TLS/SIGTERM、恢复三阶段及最终 sqlc/历史/required gate 明确留最终步骤，未据 Windows 推断通过。累计 20/26，未推送、实施合并或归档。
+
+## 实施裁决及代价（顺序记录）
+
+以下对应实施 ledger 中全部 Ruling；包含被用户后续指令替代的历史阶段，不代表仍保留 staging/0002。最终收尾如新增裁决继续追加。
+
+1. 先实现叶子模型/认证映射，再统一切换存储与领域。 保持阶段可编译；代价为少量别名及集中整合工作。
+
+2. 通用 Scrub 仅清理 name 和客户端上下文，认证 subject_hint 由认证层组合。 避免认证侵入通用模型；代价为存储必须选择正确清理投影。
+
+3. 历史管理员缺 issuer/sub 时以 UNKNOWN 表达，并保留受控历史快照。 避免伪造已知身份；代价为历史投影多一条受控分支。
+
+4. FlowLink 增加 Live，由领域回调独立核对；历史流程依赖真实 Evidence。 补齐接口表达；代价为额外归属查询，直接适配器须提供回调。
+
+5. 新审计环境配置保留原始空值，New 才补默认，Validate 不回写。 保留显式配置来源；代价为 ConfigFromEnv 新字段可为空。
+
+6. 原 Task3 拆为结构准备和运行时激活，两次独立审查。 控制任务体积；代价为历史中间阶段不可发布，此阶段已被当前初始定义方案替代。
+
+7. Store 增加 NewStoreWithOptions，并保留本地默认构造。 支持 source/namespace 隔离；代价为多一个构造入口和配置责任。
+
+8. 曾提取共用迁移锁供 staging Prepare 复用。 避免复制锁算法；代价为关键锁路径重定位及并发复验。Prepare/staging 后按用户指令移除，锁复用边界仍核验。
+
+9. flow 查询只补无明确账号归属的早期事件，B-only 不借共享 flow 返回 A。 保证账号隔离；代价为每个账号分别查询其专属事件。
+
+10. retention 按 source 和 occur_time，不附加消费者 namespace。 匿名/管理员事件也应到期；代价为同 source 共享保留策略，独立实例须用不同 source。
+
+11. ReplaceIdentity 只在 preflight 证明真实资源归属后记录 VerifiedSubject。 格式合法的 Principal 不是认证证据；代价为部分早期拒绝保守记录 UNKNOWN。
+
+12. 按最新用户指令直接修改当前 0001/hash，撤回本分支 0002/staging，历史快照和正式标签不变。 用户明确覆盖原冻结约束；代价为没有旧库自动升级，需新资源或独立人工数据规划。
+
+13. 本地完整 USER 引用但账号缺失时保守脱敏。 缺失行不能加锁；代价为尚未入库的合法账号引用可能丢失可选名称/客户端信息。
+
+14. 受控 subject_hint 仅对认可认证 action 的 accountkit 对象清理，业务 Data 保留。 统一 Go/SQL 通用契约；代价为自定义 action 的业务隐私由宿主管理。
+
+15. 隐私清理和迟到写入均使用同源完整 USER/FLOW 历史闭包，迟到关联扩大范围时同事务清理旧行。 仅 live owner 不足以覆盖通用引用；代价为历史查询和额外行锁，须实际性能验收。
+
+16. Store 写事务显式 READ COMMITTED。 锁后必须看见新提交关联；代价为不继承宿主更强默认隔离级别。
+
+17. 仅库内 softDelete/purge 清理事务也显式 READ COMMITTED，公开 WithTxRaw 和其他事务不变。 真实 RR 回归证明 Store-only 不足；代价为这两条清理回调同 Tx 的隔离级别由库决定。
+
+18. Store 在用户锁后、流程行前获取按实际键排序的事务 advisory 锁，绑定实际表 OID/source/namespace/flow。 不存在流程后续首次创建也需串行；代价为额外查询、锁容量和 hash 碰撞导致的过度串行。
+
+19. Task5 纳入实际发现的 accountsvc 自建 listener 关闭竞争，做最小修复。 已有生命周期契约和真实失败要求处理；代价为触及可选服务，需要最终 Linux SIGTERM/排空验证。
+
+## 接入文档与示例 7 验收
+
+提交 `a27aa8a` 提供 `examples/audit` 的 local/host/write-only 三模式，复用稳定 scope，宿主控制自建 Async；完善 README、兼容/迁移/accountsvc 文档、AGENTS 和公开 NewService 注释。外部审计须持久化清理、重试和完成核验，USER_PURGED 不是完成证据，旧本地副本责任继续。公开类型、UUIDv7、nullable result、旧游标和范围证据、旧库拒绝、固定历史边界均与当前实现定向核对一致。Task3B 注释 Minor 已关闭。
+
+两个示例独立 GOWORK=off build、相关 vet、真实 PG Windows 普通套件工具终态成功，日志在 `task7/`；没有独立 .exit sidecar，未补造。Root 读取实际 commit/stat、普通套件成功日志；实际服务启动、Linux/race/Redis/恢复不由该轮证明。构建/vet 空日志无法单独重建终态，最终 Linux 全库构建会提供现场新证据。独立审查 Approved，0 Critical/Important、1 Minor：示例 Shutdown 超时后的依赖关闭边界，交最终收尾处理；其余 CannotVerify 与最终验证逐项对应。累计 22/26，最终四项尚未完成。

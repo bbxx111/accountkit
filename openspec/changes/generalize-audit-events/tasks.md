@@ -37,7 +37,7 @@
 ## 6. 兼容文档与整体验收
 
 - [x] 6.1 更新 README、docs/compatibility.md、docs/migrations.md 及必要的 accountsvc/宿主说明和 AGENTS 审计 ID/初始定义例外；核对 UUID、公开 Go 类型、配置、旧游标失效、旧结构不自动升级、外部清理责任和恢复步骤均有说明。
-- [ ] 6.2 将新必需顶层测试纳入 required-tests，并在 GOWORK=off 下运行相关测试、build、vet、sqlc 检查及迁移历史检查；记录实际命令、退出码和 skip，不将单元测试当成集成验收。
-- [ ] 6.3 使用一次性 PostgreSQL/Redis 与可用 CGO/race 环境执行认证、迁移、匿名化并发和完整 verify 入口，完成独立空库备份恢复演练；记录当前初始结构、记录数、历史映射及非审计 ID/令牌可用性和恢复限制。
-- [ ] 6.4 使用实际数据分布检查账号审计查询、flow 清理及 retention 的执行计划，证明所选索引满足查询路径；仅在证据需要时调整查询或增设表达式/GIN 索引并记录取舍。
-- [ ] 6.5 完成最终规格/代码审查、openspec validate --all --strict 和 verification-before-completion 核验，将证据及未验证项汇总至本 change 的 verification.md；仅对实际完成且验证的任务勾选，归档留待单独明确请求。
+- [x] 6.2 将新必需顶层测试纳入 required-tests，并在 GOWORK=off 下运行相关测试、build、vet、sqlc 检查及迁移历史检查；记录实际命令、退出码和 skip，不将单元测试当成集成验收。
+- [x] 6.3 使用一次性 PostgreSQL/Redis 与可用 CGO/race 环境执行认证、迁移、匿名化并发和完整 verify 入口，完成独立空库备份恢复演练；记录当前初始结构、记录数、历史映射及非审计 ID/令牌可用性和恢复限制。
+- [x] 6.4 使用实际数据分布检查账号审计查询、flow 清理及 retention 的执行计划，证明所选索引满足查询路径；仅在证据需要时调整查询或增设表达式/GIN 索引并记录取舍。
+- [x] 6.5 完成最终规格/代码审查、openspec validate --all --strict 和 verification-before-completion 核验，将证据及未验证项汇总至本 change 的 verification.md；仅对实际完成且验证的任务勾选，归档留待单独明确请求。

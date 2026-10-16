@@ -259,3 +259,17 @@ Windows 全库 JSON 记录 `task5/windows-all.json.log`、`.exit=0`：636 顶层
 27. 接受非目标5：不额外重构导入/helper或历史“四份/五份”措辞。代价为少量风格和历史口径保留，当前五份规格验收仍明确。
 
 审查CannotVerify逐项处置：修复后的证据由单次fixwave补齐；真实生产分布/SLA、实际外部设施清理、任意旧产品转换及独立动态时钟回拨未验证，分别属于测量边界、宿主实施、明确不自动升级和锁定UUID依赖的静态分支核对，不冒称通过；最终资源清理待复审后执行。
+
+## 最终修复、复审与交付
+
+提交 `427d073` 关闭最终I1/I2。Query.Actions可选规范副本，在SQL LIMIT前筛选，认证集合从现有枚举唯一导出，通用无筛选仍可读业务；外部Reader接收动作条件并受到整页复核，Actions/After副本保护可信范围。审计v2游标绑定规范动作集合，旧v1 UUID与e_均400从头分页，用户列表游标不变。Async最终发送与Close/worker取消使用短准入同步，Freeze/日志/后端I/O在锁外，关闭交错不再留下漏计事件。
+
+真实RED分别复现业务混合/纯业务503、未过滤结果、旧v1被接受，以及未Start/startedClose/workerCancel三模式Freeze后Stats全零且queued=1。修复后真实PG针对性回归与相关全包race均通过；新11项顶层回归全部加入门禁，没有删旧条目。规范化副本、动作范围/归属证据、Reader参数改写、相同时间UUID分页及并发计数均有覆盖。最终原始材料位于 `.test-output/generalize-audit-events/final-fix/`。
+
+最终同字节完整Linux `scripts/verify.sh`、外层Docker、generated、严格OpenSpec19/0及diff检查均现场退出0。Root和独立复审核对退出/日志，Root独立解析674顶层PASS、33测试包PASS、0FAIL，585必需条目无缺项；普通仅RecoveryFixture测试级skip，7无测试文件包级skip另计。Linux真实PG/Redis、TLS/SIGTERM和子服务race通过。新独立空恢复库 `accountkit_finalfix_recovery_source/target` 实际核验后使用，原非空库未清空复用；`.test-output/recovery.3wc7XA/` 三阶段Test及包均PASS、0FAIL/0SKIP。
+
+唯一最终scoped复审对 `a614f94..427d073` 确认I1/I2 ADDRESSED，0新Critical/Important/Minor，无新增范围外观察。与此前全分支审查合并，全部阻断项已关闭；原先阶段GREEN与历史偏差仍如实保留。根再次核对生产仅0001 up/down，当前完整hash与3C记录一致，固定source-baseline差异为空。
+
+26/26任务完成，变更实施完成但未归档；实施分支保留，未推送/合并/tag/发布。仍不宣称生产SLA、跨实例锁池上限或无碰撞保证、任意宿主外部清理已完成、任意旧产品数据转换、动态时钟回拨演练或未Start关闭统一硬截止。上述明确边界不因测试通过消失。
+
+收尾实际清理：核验容器挂载和网络成员后，仅删除本任务PG/Redis两个容器及其匿名数据卷、专用network和两个cache volume，三条清理命令现场退出0（`cleanup-*.log/.exit`）。四个恢复库和规模测试schema随本任务PG容器销毁，合成dump/日志继续保留于被忽略的.test-output；既有验证镜像及其他容器/网络/卷未操作。实施流程报告、审查差异和全部27项裁决保留于 `.test-output/generalize-audit-events/workflow-final/`；永久摘要及代价在本记录中。

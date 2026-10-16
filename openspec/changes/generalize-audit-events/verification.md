@@ -211,3 +211,31 @@ Windows 全库 JSON 记录 `task5/windows-all.json.log`、`.exit=0`：636 顶层
 ## 性能验收补充裁决
 
 20. 最终验收允许按实际性能证据最小改写历史闭包/清理 SQL，并重新生成 sqlc；不提高 timeout 或强制索引来宣称解决。10 万条数据的清理锁查询超过 30 秒，单改索引未必解决嵌套重复扫描。代价为最终阶段涉及查询实现，必须保留完整 source/namespace/逐事件关联集合和锁顺序，并补真实回归、并发及最终 Linux 验证。
+
+## 最终运行验收 8（独立全分支审查进行中）
+
+实现提交 `a614f94`，性能方案说明提交 `f6a1b3f`。新增 77 个实际必需顶层测试，旧门禁未删，共 574 条均在最终 JSONL 有通过记录。测试补齐连续四次 live/history 归属扩张的实际不同事务、整批回滚/无新增行/锁释放及后续成功；原有正确预算测试首次 GREEN，单列临时副本变异 RED 仅证明敏感性，不冒称原实现 TDD 缺失。三项 deferred Minor 已处理：listener 观察有界等待、测试默认 logger 丢弃预期日志、示例就近明确 Shutdown 超时不保证排空的限制。
+
+真实 20k 数据旧 lock/scrub 查询各在5秒取消，构成性能 RED；改写后同回归得到精确六条 actor/target/related 用户及早期 flow 闭包，分别16.8/17.7ms。sqlc generate 和全部 audit/user race 通过。MATERIALIZED 单次历史集合及完整 JSONB 候选保留原清理范围/锁序，include_user=false 只 live；无新索引/0001/hash/迁移改动，Reader授权及retention保持。
+
+100k 合成数据（80k同source、10k用户、20kflow、约110.7MB含索引）ANALYZE后，数据库 EXPLAIN ANALYZE BUFFERS 实测：
+
+| 路径 | 改写前 | 最终数据库 Execution Time |
+|---|---:|---:|
+| 历史 USER/FLOW | 218.791ms | 5.437ms |
+| 清理候选 UUID | 148.263ms | 0.895ms |
+| 清理前整体锁定 | 超30s取消 | 26.108ms |
+| live flow scrub | 552.667ms | 12.341ms |
+| 用户/历史 scrub | 超30s取消 | 5.572ms |
+| retention | 3.801ms | 4.206ms |
+| Reader 时间线（未改） | 91.934ms | 168.650ms |
+
+自然选用现有actor表达式/targets及related GIN、flow索引及UUID主键；未强制索引或提高超时。单次合成测量与部分回归并行，缓存/JIT/调度会影响结果，Reader仍扫描较多同源候选，以上不是SLA或吞吐保证。完整原计划、后计划/行数/buffers/参数及装载脚本在 `task8/measure.go`、`<QueryName>.log`、`after-<QueryName>.log`。
+
+实际事务 advisory 锁样本1/32/100/1000/6400/8192个均获授予，回滚后零锁；8192逐键串行调用约697.616ms。6400为默认100条批次×每条最多64资源的保守样本，不代表全局容量或无碰撞证明，锁池与其他事务共享。混合旧/新UUID的真实Store测量在100k历史上处理2新+5旧、22查询调用约48.979ms，七条隐私全部清理；单条真实受控UPDATE走主键5.522ms。
+
+最终 `scripts/verify.sh` 在Go1.26.5/Linux、gcc14.2、PG客户端17.11、CGO=1、GOWORK=off、ACCOUNTSVC_TEST_RACE=1运行，真实本任务PG/Redis：`task8/full-verify.exit=0`。历史检查/build/vet/全库race/574必需门禁/pg_dump及pg_restore均成功；663顶层PASS、33测试包PASS、0FAIL，普通套件仅按规定跳过RecoveryFixture。真实SIGTERM、TLS及HTTP服务用例实际通过，子服务构建也启用race。单独生成检查和严格OpenSpec均现场退出0。Root直接读取退出文件/日志并独立解析 `.test-output/tests.jsonl`，结果一致。
+
+恢复前实际集群+库身份不同且均user_objects=0；`.test-output/recovery.Bz7M2l/` 保存dump/state及seed、verify、source-unchanged三阶段JSONL。Root独立核对三阶段实际Test及包均PASS、0FAIL、0SKIP。覆盖当前初始version1、认证记录/identity-flow快照、解密、有效access/refresh、源库保持；完整套件历史格式直接载入/明确旧审计映射亦通过，不表示旧库原地升级。恢复库现非空，重做必须新独立空资源。
+
+早期本机Go cache失败、首个性能夹具非法SYSTEM主体、OpenSpec初次PATH启动失败均明确不算产品RED或成功检查；实际重试结果有现场.exit，无旧结果补造。当前独立全分支审查进行中，最终四任务未勾选，尚未宣称最终批准。原始日志保留在忽略的 `.test-output/generalize-audit-events/task8/`，无推送/合并/归档。

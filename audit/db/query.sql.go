@@ -212,6 +212,126 @@ func (q *Queries) ListAuditFlowEvidence(ctx context.Context, arg ListAuditFlowEv
 	return items, nil
 }
 
+const listAuditFlowLockKeys = `-- name: ListAuditFlowLockKeys :many
+SELECT DISTINCT hashtextextended(jsonb_build_array(
+ 'accountkit.audit.privacy.flow', 'identity_flow'::regclass::oid,
+ $1::text, $2::text, f.flow_id)::text, 0)::bigint AS lock_key
+FROM unnest($3::text[]) AS f(flow_id)
+ORDER BY lock_key
+`
+
+type ListAuditFlowLockKeysParams struct {
+	Source    string
+	Namespace string
+	FlowIds   []string
+}
+
+// Bind locks to the resolved local relation, not the first search_path schema.
+// Hash collisions only serialize more work; callers lock actual keys in order.
+func (q *Queries) ListAuditFlowLockKeys(ctx context.Context, arg ListAuditFlowLockKeysParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listAuditFlowLockKeys, arg.Source, arg.Namespace, arg.FlowIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var lock_key int64
+		if err := rows.Scan(&lock_key); err != nil {
+			return nil, err
+		}
+		items = append(items, lock_key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAuditPrivacyCleanupIDs = `-- name: ListAuditPrivacyCleanupIDs :many
+SELECT e.id FROM audit_event e
+WHERE e.source = $1::text
+ AND EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) f
+ WHERE f->>'type' = 'IDENTITY_FLOW' AND f->>'namespace' = $2::text AND f->>'id' = ANY($3::text[]))
+ORDER BY e.id
+`
+
+type ListAuditPrivacyCleanupIDsParams struct {
+	Source    string
+	Namespace string
+	FlowIds   []string
+}
+
+func (q *Queries) ListAuditPrivacyCleanupIDs(ctx context.Context, arg ListAuditPrivacyCleanupIDsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listAuditPrivacyCleanupIDs, arg.Source, arg.Namespace, arg.FlowIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAuditPrivacyFlowUsers = `-- name: ListAuditPrivacyFlowUsers :many
+SELECT DISTINCT (f->>'id')::text AS flow_id, u.user_id::text AS user_id
+FROM audit_event e
+CROSS JOIN LATERAL jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) f
+CROSS JOIN LATERAL (
+ SELECT e.actor->>'id' AS user_id
+ WHERE e.actor->>'type' = 'USER' AND e.actor->>'namespace' = $1::text
+ UNION
+ SELECT r->>'id' AS user_id
+ FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) r
+ WHERE r->>'type' = 'USER' AND r->>'namespace' = $1::text
+) u
+WHERE e.source = $2::text AND f->>'type' = 'IDENTITY_FLOW'
+ AND f->>'namespace' = $1::text AND f->>'id' = ANY($3::text[])
+ORDER BY flow_id, user_id
+`
+
+type ListAuditPrivacyFlowUsersParams struct {
+	Namespace string
+	Source    string
+	FlowIds   []string
+}
+
+type ListAuditPrivacyFlowUsersRow struct {
+	FlowID string
+	UserID string
+}
+
+// Privacy follows every complete same-source USER/FLOW co-occurrence, unlike
+// Reader authorization, which accepts only approved ownership evidence.
+func (q *Queries) ListAuditPrivacyFlowUsers(ctx context.Context, arg ListAuditPrivacyFlowUsersParams) ([]ListAuditPrivacyFlowUsersRow, error) {
+	rows, err := q.db.Query(ctx, listAuditPrivacyFlowUsers, arg.Namespace, arg.Source, arg.FlowIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAuditPrivacyFlowUsersRow
+	for rows.Next() {
+		var i ListAuditPrivacyFlowUsersRow
+		if err := rows.Scan(&i.FlowID, &i.UserID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLiveAuditFlows = `-- name: ListLiveAuditFlows :many
 SELECT id FROM identity_flow WHERE user_id = $1::text OR proof_user_ids @> ARRAY[$1::text]
 `
@@ -234,6 +354,37 @@ func (q *Queries) ListLiveAuditFlows(ctx context.Context, userID string) ([]stri
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockAuditEvent = `-- name: LockAuditEvent :one
+SELECT id, source, action, result, actor, targets, context, data, occur_time, create_time FROM audit_event WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) LockAuditEvent(ctx context.Context, id uuid.UUID) (AuditEvent, error) {
+	row := q.db.QueryRow(ctx, lockAuditEvent, id)
+	var i AuditEvent
+	err := row.Scan(
+		&i.ID,
+		&i.Source,
+		&i.Action,
+		&i.Result,
+		&i.Actor,
+		&i.Targets,
+		&i.Context,
+		&i.Data,
+		&i.OccurTime,
+		&i.CreateTime,
+	)
+	return i, err
+}
+
+const lockAuditFlowScope = `-- name: LockAuditFlowScope :exec
+SELECT pg_advisory_xact_lock($1::bigint)
+`
+
+func (q *Queries) LockAuditFlowScope(ctx context.Context, lockKey int64) error {
+	_, err := q.db.Exec(ctx, lockAuditFlowScope, lockKey)
+	return err
 }
 
 const lockAuditFlows = `-- name: LockAuditFlows :many
@@ -301,6 +452,32 @@ func (q *Queries) LockAuditUsers(ctx context.Context, userIds []string) ([]LockA
 		return nil, err
 	}
 	return items, nil
+}
+
+const scrubAuditEventPrivacy = `-- name: ScrubAuditEventPrivacy :exec
+UPDATE audit_event SET actor = $1, targets = $2, context = $3, data = $4
+WHERE id = $5
+`
+
+type ScrubAuditEventPrivacyParams struct {
+	Actor   []byte
+	Targets []byte
+	Context []byte
+	Data    []byte
+	ID      uuid.UUID
+}
+
+// The caller holds this row lock and derives only the controlled privacy
+// projection from that row. Event facts, identity and storage time stay intact.
+func (q *Queries) ScrubAuditEventPrivacy(ctx context.Context, arg ScrubAuditEventPrivacyParams) error {
+	_, err := q.db.Exec(ctx, scrubAuditEventPrivacy,
+		arg.Actor,
+		arg.Targets,
+		arg.Context,
+		arg.Data,
+		arg.ID,
+	)
+	return err
 }
 
 const snapshotAuditFlows = `-- name: SnapshotAuditFlows :many

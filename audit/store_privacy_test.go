@@ -201,9 +201,17 @@ func TestAuditPrivacyUsesOnlyCompleteLocalReferences(t *testing.T) {
 
 // A single-connection worker pool pins its backend PID; the base pool observes
 // pg_blocking_pids, so observing cannot starve behind the blocked transaction.
-func privacyWorker(t *testing.T, p *pgxpool.Pool) (*audit.Store, uint32) {
+func privacyWorker(t *testing.T, p *pgxpool.Pool, isolation ...string) (*audit.Store, uint32) {
 	t.Helper()
 	cfg := p.Config()
+	if len(isolation) > 0 {
+		cfg.ConnConfig.RuntimeParams["default_transaction_isolation"] = isolation[0]
+	}
+	return privacyWorkerConfig(t, cfg)
+}
+
+func privacyWorkerConfig(t *testing.T, cfg *pgxpool.Config) (*audit.Store, uint32) {
+	t.Helper()
 	cfg.MaxConns = 1
 	w, err := pgxpool.NewWithConfig(context.Background(), cfg)
 	if err != nil {

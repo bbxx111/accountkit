@@ -54,3 +54,49 @@ WHERE id = ANY(@user_ids::text[]) ORDER BY id FOR UPDATE;
 -- name: LockAuditFlows :many
 SELECT id, user_id, proof_user_ids, expire_time FROM identity_flow
 WHERE id = ANY(@flow_ids::text[]) ORDER BY id FOR UPDATE;
+
+-- name: ListAuditPrivacyFlowUsers :many
+-- Privacy follows every complete same-source USER/FLOW co-occurrence, unlike
+-- Reader authorization, which accepts only approved ownership evidence.
+SELECT DISTINCT (f->>'id')::text AS flow_id, u.user_id::text AS user_id
+FROM audit_event e
+CROSS JOIN LATERAL jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) f
+CROSS JOIN LATERAL (
+ SELECT e.actor->>'id' AS user_id
+ WHERE e.actor->>'type' = 'USER' AND e.actor->>'namespace' = @namespace::text
+ UNION
+ SELECT r->>'id' AS user_id
+ FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) r
+ WHERE r->>'type' = 'USER' AND r->>'namespace' = @namespace::text
+) u
+WHERE e.source = @source::text AND f->>'type' = 'IDENTITY_FLOW'
+ AND f->>'namespace' = @namespace::text AND f->>'id' = ANY(@flow_ids::text[])
+ORDER BY flow_id, user_id;
+
+-- name: ListAuditPrivacyCleanupIDs :many
+SELECT e.id FROM audit_event e
+WHERE e.source = @source::text
+ AND EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) f
+ WHERE f->>'type' = 'IDENTITY_FLOW' AND f->>'namespace' = @namespace::text AND f->>'id' = ANY(@flow_ids::text[]))
+ORDER BY e.id;
+
+-- name: LockAuditEvent :one
+SELECT * FROM audit_event WHERE id = @id FOR UPDATE;
+
+-- name: ScrubAuditEventPrivacy :exec
+-- The caller holds this row lock and derives only the controlled privacy
+-- projection from that row. Event facts, identity and storage time stay intact.
+UPDATE audit_event SET actor = @actor, targets = @targets, context = @context, data = @data
+WHERE id = @id;
+
+-- name: ListAuditFlowLockKeys :many
+-- Bind locks to the resolved local relation, not the first search_path schema.
+-- Hash collisions only serialize more work; callers lock actual keys in order.
+SELECT DISTINCT hashtextextended(jsonb_build_array(
+ 'accountkit.audit.privacy.flow', 'identity_flow'::regclass::oid,
+ @source::text, @namespace::text, f.flow_id)::text, 0)::bigint AS lock_key
+FROM unnest(@flow_ids::text[]) AS f(flow_id)
+ORDER BY lock_key;
+
+-- name: LockAuditFlowScope :exec
+SELECT pg_advisory_xact_lock(@lock_key::bigint);

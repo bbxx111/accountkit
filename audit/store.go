@@ -9,6 +9,8 @@ import (
 	"github.com/bbxx111/accountkit/audit/db"
 	"github.com/bbxx111/accountkit/audit/event"
 	"github.com/bbxx111/accountkit/internal/auditconfig"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"slices"
 	"time"
@@ -70,56 +72,107 @@ func (s *Store) InsertBatch(ctx context.Context, events []Event) (BatchResult, e
 }
 
 func (s *Store) insertAttempt(ctx context.Context, events []Event) (BatchResult, error) {
-	tx, err := s.pool.Begin(ctx)
+	// Rechecking links after row locks needs a fresh statement snapshot even
+	// when the host configures a repeatable-read default on its connection pool.
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return BatchResult{Failed: len(events)}, err
 	}
 	defer tx.Rollback(context.Background())
 	q := db.New(tx)
-	clean, err := s.lockPrivacy(ctx, q, events)
+	plan, err := s.lockPrivacy(ctx, q, events)
 	if err != nil {
 		return BatchResult{Failed: len(events)}, err
 	}
 	result := BatchResult{}
-	for i, e := range events {
-		incoming := e
-		if clean[i] {
-			incoming = scrubStoredEvent(e)
+	// Merge old-row cleanup and new writes into one UUID lock order. Locking
+	// all cleanup rows first could take a high UUID before inserting a low one.
+	for i, j := 0, 0; i < len(events) || j < len(plan.cleanup); {
+		var id uuid.UUID
+		if i < len(events) && (j == len(plan.cleanup) || bytes.Compare(events[i].ID[:], plan.cleanup[j][:]) <= 0) {
+			id = events[i].ID
+		} else {
+			id = plan.cleanup[j]
 		}
-		p := toParams(incoming)
-		n, err := q.InsertAuditEvent(ctx, p)
-		if err != nil {
-			return BatchResult{Failed: len(events)}, err
-		}
-		if n > 0 {
-			result.Written++
-			continue
-		}
-		row, err := q.GetAuditEvent(ctx, e.ID)
-		if err != nil {
-			return BatchResult{Failed: len(events)}, err
-		}
-		old, err := recordView(row)
-		if err != nil {
-			return BatchResult{Failed: len(events)}, err
-		}
-		same := event.Equivalent(old.Event, e)
-		// An already scrubbed record permits only the controlled privacy projection.
-		// Generic business data is compared intact; only authentication owns its hint.
-		if !same && old.Source == s.options.Source {
-			if event.Equivalent(old.Event, scrubStoredEvent(old.Event)) {
-				same = event.Equivalent(old.Event, scrubStoredEvent(e))
+		for i < len(events) && events[i].ID == id {
+			written, err := s.insertEvent(ctx, q, events[i], plan.clean[i])
+			if errors.Is(err, ErrConflict) {
+				return BatchResult{Conflicts: 1, Failed: len(events) - 1}, err
 			}
+			if err != nil {
+				return BatchResult{Failed: len(events)}, err
+			}
+			if written {
+				result.Written++
+			} else {
+				result.Duplicate++
+			}
+			i++
 		}
-		if !same {
-			return BatchResult{Conflicts: 1, Failed: len(events) - 1}, ErrConflict
+		if j < len(plan.cleanup) && plan.cleanup[j] == id {
+			if err := scrubExistingAuditEvent(ctx, q, id); err != nil {
+				return BatchResult{Failed: len(events)}, err
+			}
+			j++
 		}
-		result.Duplicate++
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return BatchResult{Failed: len(events)}, err
 	}
 	return result, nil
+}
+
+func (s *Store) insertEvent(ctx context.Context, q *db.Queries, e Event, clean bool) (bool, error) {
+	incoming := e
+	if clean {
+		incoming = scrubStoredEvent(e)
+	}
+	n, err := q.InsertAuditEvent(ctx, toParams(incoming))
+	if err != nil {
+		return false, err
+	}
+	if n > 0 {
+		return true, nil
+	}
+	row, err := q.GetAuditEvent(ctx, e.ID)
+	if err != nil {
+		return false, err
+	}
+	old, err := recordView(row)
+	if err != nil {
+		return false, err
+	}
+	same := event.Equivalent(old.Event, e)
+	// Existing rows still win; only the controlled privacy projection can differ.
+	if !same && old.Source == s.options.Source {
+		if event.Equivalent(old.Event, scrubStoredEvent(old.Event)) {
+			same = event.Equivalent(old.Event, scrubStoredEvent(e))
+		}
+	}
+	if !same {
+		return false, ErrConflict
+	}
+	return false, nil
+}
+
+func scrubExistingAuditEvent(ctx context.Context, q *db.Queries, id uuid.UUID) error {
+	row, err := q.LockAuditEvent(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil // retention can remove a candidate
+	}
+	if err != nil {
+		return err
+	}
+	old, err := recordView(row)
+	if err != nil {
+		return err
+	}
+	clean := scrubStoredEvent(old.Event)
+	if event.Equivalent(old.Event, clean) {
+		return nil
+	}
+	p := toParams(clean)
+	return q.ScrubAuditEventPrivacy(ctx, db.ScrubAuditEventPrivacyParams{ID: id, Actor: p.Actor, Targets: p.Targets, Context: p.Context, Data: p.Data})
 }
 func toParams(e Event) db.InsertAuditEventParams {
 	actor, _ := json.Marshal(e.Actor)

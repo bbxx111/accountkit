@@ -50,7 +50,7 @@ func (s *Service) softDelete(ctx context.Context, userID string, missing error, 
 		row     db.UserAccount
 		revoked []string
 	)
-	err := s.d.Repo.WithTxRaw(ctx, func(tx pgx.Tx, q *db.Queries) error {
+	err := s.d.Repo.withTxRawOptions(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx, q *db.Queries) error {
 		u, err := lockUserAs(ctx, q, userID, missing)
 		if err != nil {
 			return err

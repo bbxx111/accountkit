@@ -449,7 +449,7 @@ func TestRepoScrubAuditEventsAndDeleteStaleSessions(t *testing.T) {
 		seedAuditInput(t, pool, in)
 	}
 
-	n, err := q.ScrubAuditEventsByUser(ctx, db.ScrubAuditEventsByUserParams{UserID: uid, Source: localAuditOptions(pool).Source, Namespace: localAuditOptions(pool).Namespace})
+	n, err := q.ScrubAuditEventsByUser(ctx, db.ScrubAuditEventsByUserParams{UserID: uid, Source: localAuditOptions(pool).Source, Namespace: localAuditOptions(pool).Namespace, AuthenticationActions: []string{enum.EventSignIn.String()}})
 	if err != nil || n != 1 {
 		t.Fatalf("scrub: %d %v", n, err)
 	}

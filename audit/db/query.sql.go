@@ -13,10 +13,14 @@ import (
 )
 
 const deleteAuditEventsBefore = `-- name: DeleteAuditEventsBefore :execrows
-DELETE FROM audit_event WHERE id IN (
+WITH candidates AS MATERIALIZED (
  SELECT id FROM audit_event WHERE source = $1::text AND occur_time < $2::timestamptz
  ORDER BY occur_time, id LIMIT $3::int
+), locked AS MATERIALIZED (
+ SELECT e.id FROM audit_event e JOIN candidates c ON e.id = c.id
+ ORDER BY e.id FOR UPDATE OF e
 )
+DELETE FROM audit_event WHERE id IN (SELECT id FROM locked)
 `
 
 type DeleteAuditEventsBeforeParams struct {
@@ -225,6 +229,104 @@ func (q *Queries) ListLiveAuditFlows(ctx context.Context, userID string) ([]stri
 			return nil, err
 		}
 		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockAuditFlows = `-- name: LockAuditFlows :many
+SELECT id, user_id, proof_user_ids, expire_time FROM identity_flow
+WHERE id = ANY($1::text[]) ORDER BY id FOR UPDATE
+`
+
+type LockAuditFlowsRow struct {
+	ID           string
+	UserID       *string
+	ProofUserIds []string
+	ExpireTime   time.Time
+}
+
+func (q *Queries) LockAuditFlows(ctx context.Context, flowIds []string) ([]LockAuditFlowsRow, error) {
+	rows, err := q.db.Query(ctx, lockAuditFlows, flowIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LockAuditFlowsRow
+	for rows.Next() {
+		var i LockAuditFlowsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ProofUserIds,
+			&i.ExpireTime,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockAuditUsers = `-- name: LockAuditUsers :many
+SELECT id, state FROM user_account
+WHERE id = ANY($1::text[]) ORDER BY id FOR UPDATE
+`
+
+type LockAuditUsersRow struct {
+	ID    string
+	State int16
+}
+
+func (q *Queries) LockAuditUsers(ctx context.Context, userIds []string) ([]LockAuditUsersRow, error) {
+	rows, err := q.db.Query(ctx, lockAuditUsers, userIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LockAuditUsersRow
+	for rows.Next() {
+		var i LockAuditUsersRow
+		if err := rows.Scan(&i.ID, &i.State); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const snapshotAuditFlows = `-- name: SnapshotAuditFlows :many
+SELECT id, user_id, proof_user_ids FROM identity_flow
+WHERE id = ANY($1::text[]) ORDER BY id
+`
+
+type SnapshotAuditFlowsRow struct {
+	ID           string
+	UserID       *string
+	ProofUserIds []string
+}
+
+func (q *Queries) SnapshotAuditFlows(ctx context.Context, flowIds []string) ([]SnapshotAuditFlowsRow, error) {
+	rows, err := q.db.Query(ctx, snapshotAuditFlows, flowIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SnapshotAuditFlowsRow
+	for rows.Next() {
+		var i SnapshotAuditFlowsRow
+		if err := rows.Scan(&i.ID, &i.UserID, &i.ProofUserIds); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

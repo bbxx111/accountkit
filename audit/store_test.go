@@ -175,6 +175,8 @@ func TestStoreInsertBatchReportsDeferredCommitFailure(t *testing.T) {
 
 func TestStoreInsertBatchMapsFieldsAndNulls(t *testing.T) {
 	pool := testPool(t)
+	privacyUsers(t, pool)
+	privacyFlowRow(t, pool, []string{privacyA})
 	s := testStore(t, pool)
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Microsecond)

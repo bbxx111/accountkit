@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"github.com/bbxx111/accountkit/audit/event"
 	"github.com/bbxx111/accountkit/internal/auditconfig"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"slices"
 	"time"
 )
 
@@ -53,15 +55,38 @@ func (s *Store) InsertBatch(ctx context.Context, events []Event) (BatchResult, e
 	if invalid > 0 {
 		return BatchResult{Invalid: invalid, Failed: len(events) - invalid}, ErrInvalid
 	}
+	// Overlapping batches must reach unique audit keys in the same order too.
+	slices.SortStableFunc(frozen, func(a, b Event) int { return bytes.Compare(a.ID[:], b.ID[:]) })
+	for range 4 {
+		result, err := s.insertAttempt(ctx, frozen)
+		if !errors.Is(err, errAuditOwnersChanged) {
+			return result, err
+		}
+		if err := ctx.Err(); err != nil {
+			return BatchResult{Failed: len(events)}, err
+		}
+	}
+	return BatchResult{Failed: len(events)}, errAuditOwnersChanged
+}
+
+func (s *Store) insertAttempt(ctx context.Context, events []Event) (BatchResult, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return BatchResult{Failed: len(events)}, err
 	}
 	defer tx.Rollback(context.Background())
 	q := db.New(tx)
+	clean, err := s.lockPrivacy(ctx, q, events)
+	if err != nil {
+		return BatchResult{Failed: len(events)}, err
+	}
 	result := BatchResult{}
-	for _, e := range frozen {
-		p := toParams(e)
+	for i, e := range events {
+		incoming := e
+		if clean[i] {
+			incoming = scrubStoredEvent(e)
+		}
+		p := toParams(incoming)
 		n, err := q.InsertAuditEvent(ctx, p)
 		if err != nil {
 			return BatchResult{Failed: len(events)}, err
@@ -79,12 +104,11 @@ func (s *Store) InsertBatch(ctx context.Context, events []Event) (BatchResult, e
 			return BatchResult{Failed: len(events)}, err
 		}
 		same := event.Equivalent(old.Event, e)
-		// Only an already scrubbed authentication record permits a privacy-safe replay.
+		// An already scrubbed record permits only the controlled privacy projection.
+		// Generic business data is compared intact; only authentication owns its hint.
 		if !same && old.Source == s.options.Source {
-			_, authErr := authentication.Projection(old.Event)
-			_, newErr := authentication.Projection(e)
-			if authErr == nil && newErr == nil && event.Equivalent(old.Event, authentication.Scrub(old.Event)) {
-				same = event.Equivalent(old.Event, authentication.Scrub(e))
+			if event.Equivalent(old.Event, scrubStoredEvent(old.Event)) {
+				same = event.Equivalent(old.Event, scrubStoredEvent(e))
 			}
 		}
 		if !same {

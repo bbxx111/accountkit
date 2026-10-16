@@ -7,10 +7,14 @@ ON CONFLICT (id) DO NOTHING;
 SELECT * FROM audit_event WHERE id = @id;
 
 -- name: DeleteAuditEventsBefore :execrows
-DELETE FROM audit_event WHERE id IN (
+WITH candidates AS MATERIALIZED (
  SELECT id FROM audit_event WHERE source = @source::text AND occur_time < @before::timestamptz
  ORDER BY occur_time, id LIMIT @batch_size::int
-);
+), locked AS MATERIALIZED (
+ SELECT e.id FROM audit_event e JOIN candidates c ON e.id = c.id
+ ORDER BY e.id FOR UPDATE OF e
+)
+DELETE FROM audit_event WHERE id IN (SELECT id FROM locked);
 
 -- name: ListLiveAuditFlows :many
 SELECT id FROM identity_flow WHERE user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text];
@@ -39,3 +43,14 @@ WHERE e.source = @source::text
  )
  AND (sqlc.narg('after_time')::timestamptz IS NULL OR (e.occur_time,e.id) > (sqlc.narg('after_time')::timestamptz,sqlc.narg('after_id')::uuid))
 ORDER BY occur_time,id LIMIT @page_limit::int;
+-- name: SnapshotAuditFlows :many
+SELECT id, user_id, proof_user_ids FROM identity_flow
+WHERE id = ANY(@flow_ids::text[]) ORDER BY id;
+
+-- name: LockAuditUsers :many
+SELECT id, state FROM user_account
+WHERE id = ANY(@user_ids::text[]) ORDER BY id FOR UPDATE;
+
+-- name: LockAuditFlows :many
+SELECT id, user_id, proof_user_ids, expire_time FROM identity_flow
+WHERE id = ANY(@flow_ids::text[]) ORDER BY id FOR UPDATE;

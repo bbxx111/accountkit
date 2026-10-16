@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/google/uuid"
 )
 
 const anonymizeIdentity = `-- name: AnonymizeIdentity :execrows
@@ -1192,6 +1193,64 @@ func (q *Queries) ListUsersDueForPurge(ctx context.Context, arg ListUsersDueForP
 	return items, nil
 }
 
+const lockAuditEventsForUserCleanup = `-- name: LockAuditEventsForUserCleanup :many
+SELECT e.id FROM audit_event e
+WHERE e.source = $1::text AND (
+ EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) f
+ WHERE f->>'namespace' = $2::text AND f->>'type' = 'IDENTITY_FLOW' AND f->>'id' IN (
+ SELECT id FROM identity_flow WHERE user_id = $3::text OR proof_user_ids @> ARRAY[$3::text]))
+ OR ($4::boolean AND (
+  (e.actor->>'namespace' = $2::text AND e.actor->>'type' = 'USER' AND e.actor->>'id' = $3::text)
+  OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) r
+   WHERE r->>'namespace' = $2::text AND r->>'type' = 'USER' AND r->>'id' = $3::text)
+  OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) f
+   WHERE f->>'namespace' = $2::text AND f->>'type' = 'IDENTITY_FLOW' AND EXISTS (
+    SELECT 1 FROM audit_event linked WHERE linked.source = $1::text
+    AND (linked.actor @> jsonb_build_object('type','USER','namespace',$2::text,'id',$3::text)
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(linked.targets || COALESCE(linked.context->'related_resources','[]'::jsonb)) u
+      WHERE u->>'namespace' = $2::text AND u->>'type' = 'USER' AND u->>'id' = $3::text))
+    AND EXISTS (SELECT 1 FROM jsonb_array_elements(linked.targets || COALESCE(linked.context->'related_resources','[]'::jsonb)) lf
+     WHERE lf->>'namespace' = $2::text AND lf->>'type' = 'IDENTITY_FLOW' AND lf->>'id' = f->>'id')))
+ ))
+)
+ORDER BY e.id FOR UPDATE OF e
+`
+
+type LockAuditEventsForUserCleanupParams struct {
+	Source      string
+	Namespace   string
+	UserID      string
+	IncludeUser bool
+}
+
+// Lock both cleanup phases together. Sorting each UPDATE separately would still
+// permit a live-flow event in phase one to precede a smaller ordinary event.
+// Soft deletion locks only live-flow events; purge includes the historical closure.
+func (q *Queries) LockAuditEventsForUserCleanup(ctx context.Context, arg LockAuditEventsForUserCleanupParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, lockAuditEventsForUserCleanup,
+		arg.Source,
+		arg.Namespace,
+		arg.UserID,
+		arg.IncludeUser,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockIdentityFlow = `-- name: LockIdentityFlow :one
 SELECT id, token_digest, state, policy_fingerprint, payload, cipher_version, revision, proof_user_ids, user_id, session_id, create_time, update_time, expire_time FROM identity_flow WHERE id = $1 FOR UPDATE
 `
@@ -1215,6 +1274,32 @@ func (q *Queries) LockIdentityFlow(ctx context.Context, id string) (IdentityFlow
 		&i.ExpireTime,
 	)
 	return i, err
+}
+
+const lockIdentityFlowsForUser = `-- name: LockIdentityFlowsForUser :many
+SELECT id FROM identity_flow
+WHERE user_id = $1::text OR proof_user_ids @> ARRAY[$1::text]
+ORDER BY id FOR UPDATE
+`
+
+func (q *Queries) LockIdentityFlowsForUser(ctx context.Context, userID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, lockIdentityFlowsForUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockSessionByID = `-- name: LockSessionByID :one
@@ -1422,32 +1507,39 @@ UPDATE audit_event e SET
  targets = (SELECT COALESCE(jsonb_agg(r - 'name'),'[]'::jsonb) FROM jsonb_array_elements(e.targets) r),
  context = jsonb_set(e.context - 'client_ip' - 'device_id' - 'user_agent', '{related_resources}',
   (SELECT COALESCE(jsonb_agg(r - 'name'),'[]'::jsonb) FROM jsonb_array_elements(COALESCE(e.context->'related_resources','[]'::jsonb)) r)),
- data = e.data #- '{accountkit,subject_hint}'
-WHERE e.source = $1::text AND (
-(e.actor->>'namespace' = $2::text AND e.actor->>'type' = 'USER' AND e.actor->>'id' = $3::text)
+ data = CASE WHEN e.action = ANY($1::text[]) AND jsonb_typeof(e.data->'accountkit') = 'object'
+  THEN e.data #- '{accountkit,subject_hint}' ELSE e.data END
+WHERE e.source = $2::text AND (
+(e.actor->>'namespace' = $3::text AND e.actor->>'type' = 'USER' AND e.actor->>'id' = $4::text)
  OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) r
- WHERE r->>'namespace' = $2::text AND r->>'type' = 'USER' AND r->>'id' = $3::text) OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) f
- WHERE f->>'namespace' = $2::text AND f->>'type' = 'IDENTITY_FLOW' AND EXISTS (
- SELECT 1 FROM audit_event linked WHERE linked.source = $1::text
- AND (linked.actor @> jsonb_build_object('type','USER','namespace',$2::text,'id',$3::text)
+ WHERE r->>'namespace' = $3::text AND r->>'type' = 'USER' AND r->>'id' = $4::text) OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) f
+ WHERE f->>'namespace' = $3::text AND f->>'type' = 'IDENTITY_FLOW' AND EXISTS (
+ SELECT 1 FROM audit_event linked WHERE linked.source = $2::text
+ AND (linked.actor @> jsonb_build_object('type','USER','namespace',$3::text,'id',$4::text)
  OR EXISTS (SELECT 1 FROM jsonb_array_elements(linked.targets || COALESCE(linked.context->'related_resources','[]'::jsonb)) u
- WHERE u->>'namespace' = $2::text AND u->>'type' = 'USER' AND u->>'id' = $3::text))
+ WHERE u->>'namespace' = $3::text AND u->>'type' = 'USER' AND u->>'id' = $4::text))
  AND EXISTS (SELECT 1 FROM jsonb_array_elements(linked.targets || COALESCE(linked.context->'related_resources','[]'::jsonb)) lf
- WHERE lf->>'namespace' = $2::text AND lf->>'type' = 'IDENTITY_FLOW' AND lf->>'id' = f->>'id')))
+ WHERE lf->>'namespace' = $3::text AND lf->>'type' = 'IDENTITY_FLOW' AND lf->>'id' = f->>'id')))
 ) AND (e.actor ? 'name' OR e.context ? 'client_ip' OR e.context ? 'device_id' OR e.context ? 'user_agent'
- OR e.data->'accountkit' ? 'subject_hint'
+ OR (e.action = ANY($1::text[]) AND jsonb_typeof(e.data->'accountkit') = 'object' AND e.data->'accountkit' ? 'subject_hint')
  OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) p WHERE p ? 'name'))
 `
 
 type ScrubAuditEventsByUserParams struct {
-	Source    string
-	Namespace string
-	UserID    string
+	AuthenticationActions []string
+	Source                string
+	Namespace             string
+	UserID                string
 }
 
 // audit_event
 func (q *Queries) ScrubAuditEventsByUser(ctx context.Context, arg ScrubAuditEventsByUserParams) (int64, error) {
-	result, err := q.db.Exec(ctx, scrubAuditEventsByUser, arg.Source, arg.Namespace, arg.UserID)
+	result, err := q.db.Exec(ctx, scrubAuditEventsByUser,
+		arg.AuthenticationActions,
+		arg.Source,
+		arg.Namespace,
+		arg.UserID,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -1460,24 +1552,31 @@ UPDATE audit_event e SET
  targets = (SELECT COALESCE(jsonb_agg(r - 'name'),'[]'::jsonb) FROM jsonb_array_elements(e.targets) r),
  context = jsonb_set(e.context - 'client_ip' - 'device_id' - 'user_agent', '{related_resources}',
   (SELECT COALESCE(jsonb_agg(r - 'name'),'[]'::jsonb) FROM jsonb_array_elements(COALESCE(e.context->'related_resources','[]'::jsonb)) r)),
- data = e.data #- '{accountkit,subject_hint}'
-WHERE e.source = $1::text AND (
+ data = CASE WHEN e.action = ANY($1::text[]) AND jsonb_typeof(e.data->'accountkit') = 'object'
+  THEN e.data #- '{accountkit,subject_hint}' ELSE e.data END
+WHERE e.source = $2::text AND (
 EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) f
- WHERE f->>'namespace' = $2::text AND f->>'type' = 'IDENTITY_FLOW' AND f->>'id' IN (
- SELECT id FROM identity_flow WHERE user_id = $3::text OR proof_user_ids @> ARRAY[$3::text]))
+ WHERE f->>'namespace' = $3::text AND f->>'type' = 'IDENTITY_FLOW' AND f->>'id' IN (
+ SELECT id FROM identity_flow WHERE user_id = $4::text OR proof_user_ids @> ARRAY[$4::text]))
 ) AND (e.actor ? 'name' OR e.context ? 'client_ip' OR e.context ? 'device_id' OR e.context ? 'user_agent'
- OR e.data->'accountkit' ? 'subject_hint'
+ OR (e.action = ANY($1::text[]) AND jsonb_typeof(e.data->'accountkit') = 'object' AND e.data->'accountkit' ? 'subject_hint')
  OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) p WHERE p ? 'name'))
 `
 
 type ScrubIdentityFlowAuditForUserParams struct {
-	Source    string
-	Namespace string
-	UserID    string
+	AuthenticationActions []string
+	Source                string
+	Namespace             string
+	UserID                string
 }
 
 func (q *Queries) ScrubIdentityFlowAuditForUser(ctx context.Context, arg ScrubIdentityFlowAuditForUserParams) (int64, error) {
-	result, err := q.db.Exec(ctx, scrubIdentityFlowAuditForUser, arg.Source, arg.Namespace, arg.UserID)
+	result, err := q.db.Exec(ctx, scrubIdentityFlowAuditForUser,
+		arg.AuthenticationActions,
+		arg.Source,
+		arg.Namespace,
+		arg.UserID,
+	)
 	if err != nil {
 		return 0, err
 	}

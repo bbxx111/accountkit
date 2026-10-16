@@ -17,6 +17,16 @@ import (
 // PurgeBatchSize 是 purge 任务每次取批的账号数；批内每个账号独立事务。
 const PurgeBatchSize = 100
 
+// Use the existing authentication enum as the single action registry. Business
+// events keep all data, even when their JSON contains an accountkit-shaped key.
+func authenticationAuditActions() []string {
+	var actions []string
+	for action := enum.EventCodeSent; action.Valid(); action++ {
+		actions = append(actions, action.String())
+	}
+	return actions
+}
+
 // PurgeCoveredTables 登记含 user_id 列或通用审计 JSON 账号引用的表在 purge 中的处理方式或豁免理由。
 // 新增含 user_id 的表必须在此登记并在 purgeOne 中处理（或写明豁免理由），否则 TestPurgeCoversEveryTableWithUserID
 // 会失败。宿主业务表由宿主的 Anonymizer.Tables 与宿主自己的覆盖性测试负责。
@@ -88,7 +98,13 @@ func (s *Service) purgeOne(ctx context.Context, userID string) (bool, error) {
 		if u.State != enum.UserPendingDeletion || u.PurgeTime == nil || u.PurgeTime.After(now) {
 			return nil // 取批之后被 undelete，或已被另一副本 purge
 		}
-		if _, err := q.ScrubIdentityFlowAuditForUser(ctx, db.ScrubIdentityFlowAuditForUserParams{UserID: userID, Source: s.d.AuditSource, Namespace: s.d.AuditNamespace}); err != nil {
+		if _, err := q.LockIdentityFlowsForUser(ctx, userID); err != nil {
+			return fmt.Errorf("user: lock sign-in flows for purge: %w", err)
+		}
+		if _, err := q.LockAuditEventsForUserCleanup(ctx, db.LockAuditEventsForUserCleanupParams{UserID: userID, Source: s.d.AuditSource, Namespace: s.d.AuditNamespace, IncludeUser: true}); err != nil {
+			return fmt.Errorf("user: lock audit for purge: %w", err)
+		}
+		if _, err := q.ScrubIdentityFlowAuditForUser(ctx, db.ScrubIdentityFlowAuditForUserParams{UserID: userID, Source: s.d.AuditSource, Namespace: s.d.AuditNamespace, AuthenticationActions: authenticationAuditActions()}); err != nil {
 			return fmt.Errorf("user: scrub sign-in flow audit for purge: %w", err)
 		}
 		if _, err := q.DeleteIdentityFlowsForUser(ctx, userID); err != nil {
@@ -117,7 +133,7 @@ func (s *Service) purgeOne(ctx context.Context, userID string) (bool, error) {
 		if revoked, err = s.revokeAllForUser(ctx, q, userID, nil, enum.RevokeUserDeleted, now); err != nil {
 			return err
 		}
-		if _, err := q.ScrubAuditEventsByUser(ctx, db.ScrubAuditEventsByUserParams{UserID: userID, Source: s.d.AuditSource, Namespace: s.d.AuditNamespace}); err != nil {
+		if _, err := q.ScrubAuditEventsByUser(ctx, db.ScrubAuditEventsByUserParams{UserID: userID, Source: s.d.AuditSource, Namespace: s.d.AuditNamespace, AuthenticationActions: authenticationAuditActions()}); err != nil {
 			return fmt.Errorf("user: scrub audit events: %w", err)
 		}
 		for _, a := range s.d.Anonymizers {

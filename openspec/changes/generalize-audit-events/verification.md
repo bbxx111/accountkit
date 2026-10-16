@@ -151,3 +151,11 @@ Windows 全库 JSON 记录 `task5/windows-all.json.log`、`.exit=0`：636 顶层
 独立整体审查 Approved，0 Critical/Important、2 Minor：listener 测试末尾 channel 接收可加 deadline；统一测试正则产生已披露的无命中 warning，不视为验证通过。前者交最终测试收尾，后者在后续命令按实际包范围运行。原 3B 的 raw env/defaults/reader-only 跨任务证据由其已完成的独立审查保留，本轮矩阵回归也通过。
 
 现累计 17/26 完成。严格 HTTP、接入示例/兼容文档、最终 required gate、Linux 真实服务/Redis、执行计划/锁容量和独立空库恢复仍未完成。原始日志统一在 `.test-output/generalize-audit-events/task5/`；无推送、实施合并或归档。
+
+## 管理查询及严格外部边界 6 验收
+
+提交 `200f885` 完成整页（含 lookahead）严格 ASC occur_time/UUID、唯一 UUID、After 范围、RecordView.CreateTime、source/完整资源 namespace 和认证投影校验。Live 要求整个 Evidence 零值并独立核对领域归属；历史证据需完整合法存储记录、认可成功动作及 USER/FLOW 引用。合法资源 Name 不影响身份，背景 session 和删除后历史引用可读；业务 Data 不输出。审计游标独立，旧 e_ 和跨 scope 拒绝，用户列表游标未改；Result nil 输出 null，已知结果字符串保持。非法领域 ID 在任何 I/O 前拒绝；依赖故障仅固定消息与受控原因日志。
+
+真实行为 RED/GREEN 和现场退出码位于 `.test-output/generalize-audit-events/task6/`：`red-behavior.exit=1`、`green-focused.exit=0`。原来正确的旧游标/授权优先级等明确记为已有 GREEN 回归，未删保护造 RED。最终 `full-windows.exit=0`，651 顶层 PASS、33 测试包 PASS、0 FAIL；真实 PG 及 Redis challenge/key-rotation 专项通过。17 测试级 skip：普通 RecoveryFixture 预期 skip，另 16 为 Windows 不支持的 Linux 服务 TLS/SIGTERM 项。相关 vet、严格 OpenSpec、差异/格式检查退出 0。默认 sandbox cache/CLI PATH 失败属于环境失败，不算行为 RED 或通过。
+
+独立审查 Approved：0 Critical/Important、1 Minor（测试默认 logger 的预期 WARN 噪声，交最终测试卫生收尾）。Root 核对提交差异统计、实际 full-windows/vet 退出码和成功日志。Linux race、真实服务进程/TLS/SIGTERM、恢复三阶段及最终 sqlc/历史/required gate 明确留最终步骤，未据 Windows 推断通过。累计 20/26，未推送、实施合并或归档。

@@ -127,18 +127,18 @@
 - [ ] Step 2：在用户路径引入 scrub 前 flow 锁定并改 JSON 清理 SQL；覆盖 actor/target/related name、client_ip/device_id/subject_hint 和历史 flow 关联，保留稳定 ID 及事件事实。
 - [ ] Step 3：Store 实现快照/排序锁/复核/重试或保守脱敏；上下文取消和重试耗尽明确失败，不改变认证结果；禁止用无锁状态查询冒充并发保证。
 - [ ] Step 4：运行 sqlc、真实数据库领域/审计并发测试及 race，验证过期/清理 flow、softDelete 和 purge 不产生锁环。
-- [ ] Step 5：验证 retention 仍按 occur_time，外部接管后本地旧副本继续清理且不删除外部记录；Reviewer 专项检查锁图与脱敏重放。
+- [ ] Step 5：验证 retention 仍按 occur_time、批次/取消和全局审计锁序；Reviewer 专项检查锁图与脱敏重放。外部接管后的旧本地副本清理及外部组件不被删除的根装配测试由任务五接续，OpenSpec 5.3 在该测试实际通过前不勾选。
 
 ## Task 5: 宿主写读装配和生命周期
 
-**OpenSpec tasks:** 1.3 的错配测试、4.2、5.4。
+**OpenSpec tasks:** 1.3 的错配测试、2.1 的 UUID 并发补充、4.2、5.3、5.4。
 
 **Files:** accountkit.go、config.go、相关测试；audit/async.go、async_test.go；httpapi/admin/handler.go。
 
 **Interfaces:** Deps.Audit audit.Recorder、Deps.AuditReader audit.Reader；admin.Deps 增加 AuditSource/AuditNamespace，并允许 Audit 为 nil 表示明确未配置查询。
 
-- [ ] Step 1：新增 TestAuditAssemblyModes，断言默认本地、外部读写、只外部写和非法只外部读；TestInjectedAuditLifecycleOwnedByHost 断言 Auth.Close 不关闭宿主记录器。先观察预期失败。
-- [ ] Step 2：实现装配矩阵并将 Reader 接到管理端，配置仅写侧时认证正常；保留本地历史 maintenance、默认 worker 生命周期和 New 无 I/O。
+- [ ] Step 1：补全 TestAuditAssemblyModes，断言默认本地、外部读写、只外部写和非法只外部读；TestInjectedAuditLifecycleOwnedByHost 断言 Auth.Close 不关闭宿主记录器。3B 已实现且已获用户接受的行为只记录实际回归结果，不删除保护制造 RED；新增或未满足行为先观察真实失败。
+- [ ] Step 2：完成装配矩阵和根模式切换测试，配置仅写侧时认证正常；稳定 source/namespace 下旧本地副本继续 retention/匿名化且不调用宿主组件删除，覆盖取消、边界及默认 worker 生命周期、New 无 I/O。
 - [ ] Step 3：让默认观测区分 Written/Duplicate/Dropped/Failed/Invalid/Conflicts，测试队列满、关闭、写入超时及含秘密宿主错误日志；按 TDD 核实不改变认证动作结果。
 - [ ] Step 4：运行根包/audit/maintenance/internal/accountsvc 相关测试和 vet；Reviewer 复核配置前缀、失败语义和连接所有权。
 

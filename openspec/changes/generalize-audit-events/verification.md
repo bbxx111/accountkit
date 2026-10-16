@@ -114,3 +114,26 @@
 独立审查 Approved：0 Critical、0 Important、1 Minor。Minor 为历史格式测试使用空管理员揭示身份，使该夹具的正常审计被校验拒绝并产生安全 WARN；已具体归因，交给后续生命周期/观测任务补投递断言和完整合成管理员，不放宽生产主体校验。审查核对原 RED/GREEN、全库日志、最新 focused/history/strict 即时退出码；未重跑套件。早期工具终态无法从本地文件独立重读，保留为原运行记录限制，最终完整 Linux 验收另行提供新证据。
 
 依据模型、映射、运行时及 3C 的累计实际验证和独立审查，任务现为 11/26 完成。UUID 并发生成补充、隐私锁、生命周期观测、严格 HTTP、示例文档、Linux race、required gate、执行计划和恢复仍未完成；此记录不是发布验收。
+
+## 并发隐私 4 及历史关联修复验收
+
+提交 `c51e56c` 建立整批账号/流程/审计顺序、逐事件脱敏、清理前锁定完整集合及 retention 候选 UUID 锁序。首次独立审查发现 1 项 Important：合法通用 USER/FLOW 历史关联可能不在 live owner 中，关联本身迟到也可能扩大已删除账号的清理范围。原实现者以真实 PG RED 复现两条路径及并发顺序，提交 `fa90e62` 修复；独立 scoped 复审确认 I1 ADDRESSED，0 新 Critical/Important/Minor。
+
+最终写入按完整资源关系合并 live、历史和批内账号，排序锁用户、实际流程范围 advisory 键、流程行，再按合并的 UUID 次序处理旧行隐私和新事件。历史集合变化完整回滚后重试；关联迟到会同事务处理旧相关行。受控更新保留原 ID、create_time、稳定引用、事件事实和业务 Data。现存但过期/未知流程、缺失/已删除账号保守脱敏，匿名无相关引用及外部 namespace 不被连带处理；Reader 授权未扩大。
+
+额外真实 RED 证明了未知流程随后首次创建的竞争和 Repeatable Read 旧快照问题。内部 advisory 锁绑定实际 identity_flow OID 与 source/namespace/flow，实际键排序、事务结束释放；Store 与仅 softDelete/purge 的私有事务显式 RC，其他 Repo/宿主事务默认不变，回调继续同 Tx。相同实际表的不同 search_path、取消/连接复用和公开 Repo 仍继承 RR 的回归通过。无 schema、迁移、固定 hash 或公开 API 改动。
+
+修复后日志及现场退出码位于 `.test-output/generalize-audit-events/task4/fix1/`：
+
+| 当前修复检查 | 实际结果 |
+|---|---|
+| native audit 全包 | exit 0，audit 15.878s |
+| native user 清理/Repo/完成流程覆盖 | exit 0，16.930s |
+| Linux audit 全包 race | exit 0，16.288s |
+| Linux user 同范围 race | exit 0，12.477s；runner exit 0 |
+| 六组对应真实 RED 与四组 focused GREEN | RED 均 1、GREEN 均 0，含两个历史序列、双顺序、整体事务重开、混合 UUID、未知流程首建及 RR 边界 |
+| vet、sqlc、check-generated | 均现场 exit 0；独立复审读取日志和退出码 |
+
+初次修复前阶段的 Windows 全库、Linux audit/user 和最终 retention 后 audit/maintenance race 均通过，报告明确其时间边界；它们不代替修复后完整发布验收。**此前记录中的 Windows“PG/Redis”只表示使用真实 PG 并配置了 Redis URL；accountsvc 真实进程用例在 Windows skip，user 使用 miniredis，不能据此宣称当前代码真实 Redis 装配已验证。** 3B 曾有真实 Linux accountsvc 结果，但不是当前最终代码；Task 8 必须重新运行完整 Linux 服务/Redis、required gate 和恢复演练。
+
+OpenSpec 5.1、5.2 完成，累计 13/26；5.3 的本地 retention 核心已验，外部模式切换、旧本地副本继续清理与宿主组件不被删除的根装配测试接任务五，在实际通过前保持未勾选。连续四次重试耗尽、大数据量历史查询/清理/advisory 容量仍是未动态验证项，纳入最终验收边界；不以静态循环或排序冒充相应动态证明。

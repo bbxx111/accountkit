@@ -15,15 +15,10 @@ import (
 
 	"github.com/bbxx111/accountkit"
 	"github.com/bbxx111/accountkit/enum"
-	"github.com/bbxx111/accountkit/internal/auditmigration"
+	"github.com/bbxx111/accountkit/migrations"
 	"github.com/bbxx111/accountkit/user"
-	"github.com/golang-migrate/migrate/v4"
-	migratepgx "github.com/golang-migrate/migrate/v4/database/pgx/v5"
-	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/jackc/pgx/v5/stdlib"
-	"testing/fstest"
 )
 
 type sourceFixture struct {
@@ -46,7 +41,9 @@ func seedFormatFixture(t *testing.T, pool *pgxpool.Pool, cfg accountkit.Config) 
 	if err := json.Unmarshal(raw, &f); err != nil {
 		t.Fatal(err)
 	}
-	installIntegratedVersionOne(t, pool, cfg.Schema)
+	if err := migrations.Up(ctx, pool.Config().ConnConfig, cfg.Schema); err != nil {
+		t.Fatal(err)
+	}
 	exec := func(sql string, args ...any) {
 		t.Helper()
 		if _, err := pool.Exec(ctx, sql, args...); err != nil {
@@ -71,7 +68,12 @@ func seedFormatFixture(t *testing.T, pool *pgxpool.Pool, cfg accountkit.Config) 
 	exec("INSERT INTO identity(id,user_id,kind,subject_digest,digest_key_version,subject_ciphertext,cipher_key_version,hint_prefix,hint_suffix) VALUES($1,$2,1,$3,1,$4,1,'+86138','1234')", f.IdentityID, f.UserID, hex.EncodeToString(mac.Sum(nil)), ct)
 	hash := sha256.Sum256([]byte(f.RefreshToken))
 	exec("INSERT INTO session(id,user_id,device_id,auth_time,refresh_token_hash,refresh_expire_time) VALUES($1,$2,'source-device',$3,$4,$5)", f.SessionID, f.UserID, now, hash[:], now.Add(24*time.Hour))
-	exec("INSERT INTO audit_event(id,event_type,actor_kind,user_id,result) VALUES($1,1,1,$2,1)", f.EventID, f.UserID)
+	// Explicit synthetic projection only; this is not a legacy database upgrade.
+	exec(`INSERT INTO audit_event(id,source,action,result,actor,targets,data,occur_time)
+ VALUES('019a0000-0000-7000-8000-000000000001',$1,'CODE_SENT',1,
+ jsonb_build_object('type','USER','namespace',$2::text,'id',$3::text),
+ jsonb_build_array(jsonb_build_object('type','USER','namespace',$2::text,'id',$3::text)),
+ jsonb_build_object('accountkit',jsonb_build_object('legacy_event_id',$4::text)),$5)`, cfg.AuditSource, cfg.AuditNamespace, f.UserID, f.EventID, now)
 	claims, err := json.Marshal(map[string]any{"sub": f.UserID, "sid": f.SessionID, "scope": "user", "auth_time": now.Unix(), "iat": now.Unix(), "exp": now.Add(15 * time.Minute).Unix(), "iss": cfg.JWTIssuer, "aud": []string{cfg.JWTAudience}, "jti": "00112233445566778899aabbccddeeff"})
 	if err != nil {
 		t.Fatal(err)
@@ -80,7 +82,6 @@ func seedFormatFixture(t *testing.T, pool *pgxpool.Pool, cfg accountkit.Config) 
 	signed := b64([]byte(`{"alg":"HS256","kid":"1","typ":"JWT"}`)) + "." + b64(claims)
 	mac = hmac.New(sha256.New, cfg.JWTKeys[1])
 	mac.Write([]byte(signed))
-	prepareFormatFixtureUpgrade(t, pool, cfg)
 	return f, signed + "." + b64(mac.Sum(nil))
 }
 
@@ -93,6 +94,7 @@ func snapshotSource(t *testing.T, pool *pgxpool.Pool) string {
  'identities',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM identity t),
  'sessions',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM session t),
  'audit',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM audit_event t),
+ 'flows',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM identity_flow t),
  'version',(SELECT jsonb_agg(to_jsonb(t)) FROM schema_migrations t))::text`).Scan(&out)
 	if err != nil {
 		t.Fatal(err)
@@ -105,7 +107,6 @@ func TestHistoricalFormatsOnInitialSchema(t *testing.T) {
 	a, pool, sent := integrationInstance(t, minimal(), testRedis(t))
 	f, access := seedFormatFixture(t, pool, a.Config())
 	before := snapshotSource(t, pool)
-	prepareFormatFixtureUpgrade(t, pool, a.Config())
 	ctx := context.Background()
 	for range 2 {
 		if err := a.Migrate(ctx); err != nil {
@@ -119,7 +120,7 @@ func TestHistoricalFormatsOnInitialSchema(t *testing.T) {
 	if err := json.Unmarshal([]byte(snapshotSource(t, pool)), &newData); err != nil {
 		t.Fatal(err)
 	}
-	for _, table := range []string{"users", "identities", "sessions"} {
+	for _, table := range []string{"users", "identities", "sessions", "flows", "audit", "version"} {
 		if string(oldData[table]) != string(newData[table]) {
 			t.Fatalf("migration changed source %s data", table)
 		}
@@ -131,7 +132,7 @@ func TestHistoricalFormatsOnInitialSchema(t *testing.T) {
 	}
 	var version, flows int
 	var dirty bool
-	if err := pool.QueryRow(ctx, "SELECT version,dirty,(SELECT count(*) FROM identity_flow) FROM schema_migrations").Scan(&version, &dirty, &flows); err != nil || version != 2 || dirty || flows != 0 {
+	if err := pool.QueryRow(ctx, "SELECT version,dirty,(SELECT count(*) FROM identity_flow) FROM schema_migrations").Scan(&version, &dirty, &flows); err != nil || version != 1 || dirty || flows != 0 {
 		t.Fatalf("initial version=%d dirty=%v flows=%d: %v", version, dirty, flows, err)
 	}
 	var mappedID uuid.UUID
@@ -149,7 +150,7 @@ func TestHistoricalFormatsOnInitialSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	if snapshotSource(t, pool) != stable {
-		t.Fatal("repeat migration changed upgraded snapshot")
+		t.Fatal("repeat migration changed current initial snapshot")
 	}
 	principal, err := a.Users().Authenticate(ctx, access)
 	if err != nil || principal.UserID != f.UserID {
@@ -182,52 +183,5 @@ func TestHistoricalFormatsOnInitialSchema(t *testing.T) {
 	}
 	if users != 1 || identities != 1 {
 		t.Fatalf("duplicate source identity: users=%d identities=%d", users, identities)
-	}
-}
-
-// The synthetic legacy fixture uses the real engine at integrated version one.
-func installIntegratedVersionOne(t *testing.T, pool *pgxpool.Pool, schema string) {
-	t.Helper()
-	ctx := context.Background()
-	source := fstest.MapFS{}
-	for _, name := range []string{"0001_init.up.sql", "0001_init.down.sql"} {
-		b, err := os.ReadFile("migrations/" + name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		source[name] = &fstest.MapFile{Data: b}
-	}
-	db := stdlib.OpenDB(*pool.Config().ConnConfig)
-	defer db.Close()
-	if _, err := db.ExecContext(ctx, "CREATE SCHEMA "+schema); err != nil {
-		t.Fatal(err)
-	}
-	driver, err := migratepgx.WithInstance(db, &migratepgx.Config{SchemaName: schema, MigrationsTable: "schema_migrations"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	src, err := iofs.New(source, ".")
-	if err != nil {
-		t.Fatal(err)
-	}
-	m, err := migrate.NewWithInstance("iofs", src, "pgx5", driver)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer m.Close()
-	if err := m.Up(); err != nil {
-		t.Fatal(err)
-	}
-}
-func prepareFormatFixtureUpgrade(t *testing.T, pool *pgxpool.Pool, cfg accountkit.Config) {
-	t.Helper()
-	conn, err := pool.Acquire(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = auditmigration.Prepare(context.Background(), conn.Conn(), auditmigration.Options{Schema: cfg.Schema, ConfirmSchema: cfg.Schema, Source: cfg.AuditSource, Namespace: cfg.AuditNamespace})
-	conn.Release()
-	if err != nil {
-		t.Fatal(err)
 	}
 }

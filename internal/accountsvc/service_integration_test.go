@@ -191,7 +191,7 @@ func TestServiceIntegrationStartupSafety(t *testing.T) {
 	}
 	var version int
 	var dirty bool
-	if err := f.pool.QueryRow(context.Background(), "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil || version != 2 || dirty {
+	if err := f.pool.QueryRow(context.Background(), "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil || version != 1 || dirty {
 		t.Fatalf("migration state version=%d dirty=%v err=%v", version, dirty, err)
 	}
 	p := f.start(nil)

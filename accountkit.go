@@ -24,7 +24,6 @@ import (
 	"github.com/bbxx111/accountkit/httpapi/admin"
 	"github.com/bbxx111/accountkit/httpapi/authn"
 	"github.com/bbxx111/accountkit/httpapi/enduser"
-	"github.com/bbxx111/accountkit/internal/auditmigration"
 	"github.com/bbxx111/accountkit/maintenance"
 	"github.com/bbxx111/accountkit/migrations"
 	"github.com/bbxx111/accountkit/pii"
@@ -334,15 +333,6 @@ func (a *Auth) Migrate(ctx context.Context) error {
 	}
 	if err := a.deps.Redis.Ping(ctx).Err(); err != nil {
 		return fmt.Errorf("accountkit: redis ping: %w", err)
-	}
-	conn, err := a.deps.Pool.Acquire(ctx)
-	if err != nil {
-		return err
-	}
-	err = auditmigration.CheckConfiguration(ctx, conn.Conn(), auditmigration.Options{Schema: a.cfg.Schema, ConfirmSchema: a.cfg.Schema, Source: a.cfg.AuditSource, Namespace: a.cfg.AuditNamespace})
-	conn.Release()
-	if err != nil {
-		return err
 	}
 	if err := migrations.Up(ctx, a.deps.Pool.Config().ConnConfig, a.cfg.Schema); err != nil {
 		return err

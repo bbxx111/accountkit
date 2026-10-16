@@ -75,7 +75,7 @@
 - 包拥有 `user_account`、`identity`、`session`、`audit_event`、`identity_flow` 和 `schema_migrations`，位于 `Config.Schema` 指定的 schema，默认 `account`。使用无业务前缀的单数 snake_case 表名；隔离靠 schema，不添加产品专用表前缀。
 - 同一数据库可有多个独立实例。宿主使用 `PoolConfig` 设置 search_path，并独立配置 schema、Redis `KeyPrefix`（以 `:` 结尾）、JWT issuer/audience 和密钥。新增 Redis 键必须包含实例前缀。
 - PostgreSQL 同库可以跨 schema 查询、join、事务及定义外键；本包不使用外键是领域设计选择，不是数据库不支持跨 schema。不要改变既有无外键契约；引用一致性由领域写路径和测试保证。
-- 主键使用 `ids` 的类型前缀 TSID：`u_`、`i_`、`s_`、`e_` 加 13 位小写 Crockford base32；TEXT/COLLATE C 和格式 CHECK 保持一致。ID 只承诺相等查找；分页排序必须有时间字段和唯一的次级排序键。
+- 账号、身份、会话与流程主键使用 `ids` 的类型前缀 TSID：`u_`、`i_`、`s_`、`f_` 加 13 位小写 Crockford base32；TEXT/COLLATE C 和格式 CHECK 保持一致。通用审计采用原生 UUIDv7，保留 variant/version CHECK；旧 e_ 仅用于历史格式追溯。ID 只承诺相等查找；分页排序必须有时间字段和唯一的次级排序键。
 - 凭证不是资源 ID。验证码、refresh token 等沿用专用随机生成与校验逻辑，不能使用 TSID 代替随机秘密。
 - 枚举存 SMALLINT，Go 类型集中在叶子包 `enum`，sqlc 使用类型 override。值只追加，禁止重编号和 `state >= 2` 这类序数判断；不新增枚举值 CHECK。
 - 数据库与 API 统一 `_time` 命名，`update_time` 由应用更新；索引/约束名称包含表名，非显然的索引写明服务于哪个查询或约束。
@@ -86,7 +86,7 @@
 
 操作步骤以 [docs/migrations.md](docs/migrations.md) 为准。以下规则不能因为独立包尚未发布而放宽：
 
-- 用户确认尚无实际产品接入后，`consolidate-initial-schema` 执行一次明确的初始结构整合：当前 `0001_init` 直接定义全部认证及登录补全结构，初始化版本为 1，后续增量从 0002 开始。当前初始 SQL 按独立固定哈希保护，不提供日常改写、squash 或跳过历史检查的开关。
+- 用户确认尚无实际产品接入后，`consolidate-initial-schema` 执行一次明确的初始结构整合：当前 `0001_init` 直接定义全部认证及登录补全结构，初始化版本为 1，后续增量从 0002 开始。本次 `generalize-audit-events` 经用户明确授权，直接将十列 UUIDv7 审计定义纳入当前未发布的 0001、更新其固定校验，并撤回本分支新增的 0002/staging 工具。旧完整十七列审计 v1 和任何旧 v2 均拒绝且保留数据与版本；固定源快照和已发布历史不变。当前初始 SQL 按独立固定哈希保护，不提供日常改写、squash 或跳过历史检查的开关。
 - `tests/testdata/source-baseline/` 的原始 SQL 与 manifest 仍冻结；已发布 v0.1.0/v0.2.0 的精确标签提交和历史 SQL 保持。历史检查分别核验两代基线，不能改写源快照或移动旧 tag 来让检查通过。旧开发数据库不自动接管，使用新基线须经人工核验后重建一次性资源；不得 Force、修改版本或自动清库。
 - 新业务结构使用递增 `NNNN_name.up.sql` / `.down.sql`，已发布版本不可修改、删除、重编号或 squash。测试专用下一版本放 `migrations/testdata/`，不混入生产嵌入目录。
 - `schema_migrations` 记录当前 version/dirty，不是完整历史账本。重复 Up 只忽略无新迁移；dirty 必须阻断后续升级，禁止自动 Force、清除 dirty 或把失败标记为成功。

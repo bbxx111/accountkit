@@ -6,9 +6,9 @@ Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史�
 
 ## 当前初始基线
 
-尚无实际产品接入时，用户明确要求将数据库定义整合为一个初始 SQL。当前 `0001_init.up.sql` 直接定义五个业务表及全部索引/约束，包括 identity_flow 和 audit_event.flow_id；配套 down 覆盖五个表，初始化 version=1、dirty=false。生产目录只有这一对 SQL，测试专用下一版本位于 testdata，未来真实变更从 0002 递增。
+尚无实际产品接入时，用户明确要求将数据库定义整合为一个初始 SQL。本次通用审计按用户明确要求直接调整当前未发布的原始定义并同步更新固定校验，不新增生产迁移或提供 staging/Prepare 转换工具。当前 `0001_init.up.sql` 直接定义五个业务表及全部索引/约束，包括 identity_flow 和十列 UUIDv7 audit_event，审计流程关联存于 data.accountkit.flow_id；配套 down 覆盖五个表及五个审计校验函数，初始化 version=1、dirty=false。生产目录只有这一对 SQL，测试专用下一版本位于 testdata，未来真实变更从 0002 递增。
 
-这是一次限定的迁移基线调整。旧 version=1 缺少必要流程结构，或当前单版本源对应不上旧 version=2 时，迁移返回可由 errors.Is 识别的 `migrations.ErrIncompatibleBaseline`，保留原数据和版本；dirty 仍按原规则阻断。不要修改版本号、Force 或清 dirty 来伪装完整结构。旧开发库只有在人工核验可丢弃且目标准确后才能手工重建；UnsafeReset 沿用相同预检，也不接受旧基线。本包不自动清理旧库，也不承诺此次旧结构的原地升级。
+这是限定的迁移基线调整。旧 version=1 缺少必要流程结构或仍为旧十七列审计（即使包含完整 identity_flow 且审计表为空），以及当前单版本源对应不上任何旧 version=2 时，迁移返回可由 errors.Is 识别的 `migrations.ErrIncompatibleBaseline`，保留原数据和版本；dirty 仍按原规则优先阻断。不要修改版本号、Force 或清 dirty 来伪装完整结构。旧开发库只有在人工核验可丢弃且目标准确后才能手工重建；UnsafeReset 沿用相同预检，也不接受旧基线。本包不自动清理旧库，也不承诺此次旧结构的原地升级。
 
 固定 source-baseline 和 v0.1.0/v0.2.0 历史标签保持。源快照用于历史追溯和格式验证，不再作为当前初始化 SQL 的字节模板；当前初始 SQL 有独立固定校验值，后续迁移仍不可改写。旧发布说明和归档中的 0002 记录描述当时版本，当前操作以本节为准。
 

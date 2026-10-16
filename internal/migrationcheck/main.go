@@ -20,11 +20,11 @@ var frozen = map[string]string{
 	"0001_init.down.sql": "06671861850f1c317eadaf73dc004684be0ea467332e94ae54b978358308bdcd",
 }
 
-// This one-time consolidation has its own immutable baseline. The source
+// The user-authorized current initial definition has its own immutable baseline. The source
 // snapshot remains independently pinned for the two exact historical releases.
 var initialFrozen = map[string]string{
-	"0001_init.up.sql":   "7d173c342d7162dbaa4fa0248bd70a1d05fbf1a305b9608763e59228e09b8e8d",
-	"0001_init.down.sql": "4ba073412c0303175b312eadf76453cc01f87a3d41ff993272c25c805ade2c18",
+	"0001_init.up.sql":   "ba8c8b363504bd85ea53b538c300e3ed8ae8e160827c0cfa3c95e9e731f02286",
+	"0001_init.down.sql": "270052406120c755f13148ca3f07ebb032d1bee8f5a1c5b1d3ce29f9736cebb7",
 }
 
 var legacyReleases = map[string]string{

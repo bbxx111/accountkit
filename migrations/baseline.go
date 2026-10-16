@@ -52,12 +52,7 @@ func checkBaseline(ctx context.Context, db *sql.DB, schema string, src source.Dr
  AND (SELECT count(*)=13 AND bool_and(udt_name=CASE column_name WHEN 'state' THEN 'int2' WHEN 'cipher_version' THEN 'int2' WHEN 'revision' THEN 'int8' WHEN 'payload' THEN 'bytea' WHEN 'proof_user_ids' THEN '_text' WHEN 'create_time' THEN 'timestamptz' WHEN 'update_time' THEN 'timestamptz' WHEN 'expire_time' THEN 'timestamptz' ELSE 'text' END
   AND is_nullable=CASE WHEN column_name IN ('user_id','session_id') THEN 'YES' ELSE 'NO' END)
  FROM information_schema.columns WHERE table_schema=$1 AND table_name='identity_flow' AND column_name IN ('id','token_digest','state','policy_fingerprint','payload','cipher_version','revision','proof_user_ids','user_id','session_id','create_time','update_time','expire_time'))
- AND CASE WHEN $2=1 THEN
-  (SELECT count(*)=17 AND bool_and(udt_name=CASE column_name WHEN 'event_type' THEN 'int2' WHEN 'actor_kind' THEN 'int2' WHEN 'result' THEN 'int2' WHEN 'identity_kind' THEN 'int2' WHEN 'ip' THEN 'inet' WHEN 'occur_time' THEN 'timestamptz'
-   WHEN 'id' THEN 'text' WHEN 'user_id' THEN 'text' WHEN 'admin_issuer' THEN 'text' WHEN 'admin_subject' THEN 'text' WHEN 'admin_username' THEN 'text' WHEN 'session_id' THEN 'text' WHEN 'subject_hint' THEN 'text' WHEN 'reason' THEN 'text' WHEN 'device_id' THEN 'text' WHEN 'request_id' THEN 'text' WHEN 'flow_id' THEN 'text' ELSE 'INVALID' END)
-   FROM information_schema.columns WHERE table_schema=$1 AND table_name='audit_event')
-  AND EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=$1 AND table_name='audit_event' AND column_name='flow_id')
- ELSE
+ AND
   (SELECT count(*)=10 AND bool_and(CASE column_name
    WHEN 'id' THEN udt_name='uuid' AND is_nullable='NO'
    WHEN 'source' THEN udt_name='varchar' AND character_maximum_length=128 AND collation_name='C' AND is_nullable='NO'
@@ -71,7 +66,7 @@ func checkBaseline(ctx context.Context, db *sql.DB, schema string, src source.Dr
    WHEN 'create_time' THEN udt_name='timestamptz' AND datetime_precision=6 AND is_nullable='NO'
    ELSE false END)
   FROM information_schema.columns WHERE table_schema=$1 AND table_name='audit_event')
- END`, schema, version).Scan(&complete); err != nil {
+`, schema).Scan(&complete); err != nil {
 		return fmt.Errorf("migrations: inspect baseline structure: %w", err)
 	}
 	if !complete {

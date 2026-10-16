@@ -2,14 +2,14 @@
 
 动机见 [proposal.md](proposal.md)。当前 audit.Event 是认证专用结构；audit.Store 在写入时生成 e_ TSID，Async 为有界尽力投递队列。accountkit.New 在自定义 Deps.Audit 存在时仍把本地 Store 接到管理查询和保留期任务。httpapi/admin 的读侧暴露 sqlc 行，审计与账号列表共用字符串游标。user/query.sql 的两条 scrub 查询依赖 user_id、flow_id；migrations/baseline.go 对所有版本都要求 audit_event.flow_id 存在。这些边界都需要同步调整。
 
-本变更独立于未归档的 refine-verification-code-delivery，不修改其工件或验证码投递语义。迁移 0001、固定源快照、既有标签均保持。
+本变更独立于未归档的 refine-verification-code-delivery，不修改其工件或验证码投递语义。用户最新明确要求不新增数据库迁移、直接修改原始数据库定义；据此将十列审计结构直接写入 0001 并更新当前固定校验。固定历史源快照和既有发布标签仍保持原字节。
 
 ## Goals / Non-Goals
 
 **Goals:**
 - 提供宿主能直接映射的通用审计契约，默认实现仍只管理本实例数据。
 - 写侧事件、存储记录、HTTP 投影分离，保留认证审计语义与脱敏覆盖。
-- 明确 UUIDv7、字段上限、事件重试、查询模式和历史升级验收。
+- 明确 UUIDv7、字段上限、事件重试、查询模式、初始定义和历史格式验收。
 
 **Non-Goals:**
 - 不让 accountkit 成为宿主业务审计 SaaS，不增加任意事件写入 HTTP 路由或跨业务管理查询路由。
@@ -109,7 +109,7 @@ namespace 和 id 来自验证通过的 iss/sub，不直接采信客户端声明�
 
 ### 3. 业务数据与结构演进
 
-data 采用 JSON 对象，可选 reason、changes；changes.<field>.before/after 是 JSON 值，省略与显式 null 区分。认证专属字段集中于 data.accountkit，包括 flow_id、identity_kind、subject_hint、仅作背景的 session_id、受控 actor_kind 和迁移时的 legacy_event_id。新增业务不需要改公共表或 enum.EventType。
+data 采用 JSON 对象，可选 reason、changes；changes.<field>.before/after 是 JSON 值，省略与显式 null 区分。认证专属字段集中于 data.accountkit，包括 flow_id、identity_kind、subject_hint、仅作背景的 session_id、受控 actor_kind；legacy_event_id 仅供明确的历史事件映射使用，不代表提供自动数据库升级。新增业务不需要改公共表或 enum.EventType。
 
 历史管理员信息不完整时，专用历史映射入口以 UNKNOWN 主体加 actor_kind 快照表示，不伪造 namespace/id；已存在的单边 admin_issuer/admin_subject 可在 data.accountkit 的同名受控快照中保留，仍执行字段上限检查。旧投影仅在明确 legacy_event_id 路径恢复这些值。若保留 admin_username 展示快照，认证隐私清理必须同步删除；正常完整管理员事件从 actor 恢复信息，不重复存储这些快照。
 
@@ -117,7 +117,7 @@ data 采用 JSON 对象，可选 reason、changes；changes.<field>.before/after
 
 accountkit 使用强类型事件构建器完成映射和脱敏，不能把任意请求体/claims/err.Error() 整体装入 data。通用 API 允许宿主自定义已校验 JSON 对象，避免公共结构硬编码全部业务字段。入队前验证并深拷贝可变对象，禁止调用方后续修改已排队事件。解码时拒绝重复 JSON 键和非法数值；默认完整事件不超过 64 KiB UTF-8 JSON，targets/related_resources 各最多 32 项。既有设备/管理员字段兼容边界须通过真实调用测试确定，不能静默截断或收紧 HTTP 输入。
 
-2026-10-16 计划评审后明确兼容处理：认证映射器可省略无效 IP、超长不可信设备字段、超长自定义 request_id 和超长可选 name，并单独安全计数/告警；主体 namespace/id 不截断或哈希替换。已验证 issuer/sub 超过 512 字节时拒绝该审计事件并提供安全失败观测，认证结果不变。这是新审计输入边界的明确兼容变化，须写入调用迁移说明；历史准备遇到不兼容字段停止且保留原表。默认 request_id 的 64 字符规则不表示宿主自定义 resolver 过去已有相同上限。
+2026-10-16 计划评审后明确兼容处理：认证映射器可省略无效 IP、超长不可信设备字段、超长自定义 request_id 和超长可选 name，并单独安全计数/告警；主体 namespace/id 不截断或哈希替换。已验证 issuer/sub 超过 512 字节时拒绝该审计事件并提供安全失败观测，认证结果不变。这是新审计输入边界的明确兼容变化，须写入调用迁移说明；显式历史映射遇到不兼容字段拒绝，不静默删减。默认 request_id 的 64 字符规则不表示宿主自定义 resolver 过去已有相同上限。
 
 不设置独立版本列：同一 action 只增加可选字段；类型、单位或语义变化使用新字段，动作含义变化使用新 action；确需格式版本的业务在自己的 data 命名空间内声明。消费者忽略不认识的可选字段，保留历史缺失语义。
 
@@ -172,21 +172,21 @@ accountkit 使用强类型事件构建器完成映射和脱敏，不能把任意
 
 ## Migration Plan
 
-1. 在本变更评审后实施；先补行为测试和迁移预演。默认以 0002 作为下一版本，若实施时已有生产增量则使用下一未占用序号；测试专用迁移编号同步改为相对当前最新版本，不改历史快照。
-2. 非空旧审计表采用受控预备转换：提供一次性内部 Go 工具，停止旧版本写入和维护后，在明确 schema 与最终 AuditSource/AuditNamespace 配置下准备转换 staging。为每个旧事件生成并持久化一个 UUIDv7 映射及新结构记录；存下原行快照供 SQL 验证，旧 ID 保留在 data.accountkit.legacy_event_id，旧缺失信息不推测。预备工具只准备 staging，不更改迁移版本或原审计行；重复准备复用映射，配置或原数据变化须拒绝并报告。
-3. 新递增 SQL 在迁移锁内验证 staging 与全部旧行一一对应、原行未变、UUID/字段有效，事务性复制并切换表、建立约束/索引、清理 staging。新 create_time 表示迁移入新存储时间，occur_time 保留；未知未来枚举不能被静默丢弃。空旧表直接升级无需 staging；非空缺少完整准备时失败，禁止自动丢弃数据或改版本绕过。
-4. 升级失败按现有 dirty 规则人工处置，不自动 Force。staging 的寿命、敏感数据权限与清理纳入操作说明；只有成功迁移才删除，不写真实审计快照到 Git 或普通日志。UUID 映射在成功切换前后均可核对，重跑不二次分配。
-5. baseline 检查按 version 分别验证冻结旧结构和新结构，不再对高版本无条件要求 flow_id 列；旧撤回基线仍拒绝。空库顺序应用 0001 和新增量到最新版本，固定初始 SQL/hash 不变。
-6. 新应用与新表共同部署，更新 Recorder、Reader、配置、审计资源名和游标消费；旧应用不能直接运行新表。恢复方式为独立空库还原升级前备份并核验后切换，或前向修复；不提供破坏性 Down 或零损失回退承诺。
-7. 交付更新 README、docs/compatibility.md、docs/migrations.md、必要的 AGENTS 审计例外、sqlc 生成结果、必需测试清单及 verification.md。普通账号/身份/会话/流程 ID、密文、令牌和认证行为保持。
+1. 用户明确授权本次直接修改原始数据库定义。将已验证的十列审计表、约束和索引合入 0001_init，初始化版本保持 1；移除本分支新增的 0002、staging 预备工具及根门面预检接线，不提供旧审计数据库自动转换。
+2. 更新当前初始定义的固定校验值及对应测试；历史 v0.1.0/v0.2.0 精确提交、SQL、源快照和 manifest 保持。历史检查继续覆盖所有可达正式标签，不增加忽略历史或跳过校验的开关。
+3. baseline 检查要求当前 version=1 包含十列通用审计和完整认证/流程结构。旧同号 v1 审计表及旧 v2 开发库均明确拒绝，保留数据与版本；不 Force、不自动清库，不假装重复 Up 能重建旧表。
+4. 对新空 schema 真实验证 0001 直装、非空重复 Up、双进程首次安装、dirty 阻断和锁等待取消；后续升级测试仅使用 migrations/testdata 中的相对下一版本，不为测试新增生产迁移。
+5. 历史合成格式验证直接装入当前结构：非审计账号/身份/会话/流程、密文、摘要及有效令牌保持；历史审计通过明确映射装载并保留 legacy_event_id。该测试不是旧库原地升级，不改固定旧快照。
+6. 已有旧开发库不被本次代码自动处理；需要新定义时由操作者独立核验、备份并准备新的空资源，库不替用户执行破坏性重建。恢复仍在独立空库演练，不提供破坏性 Down 或零损失回退承诺。
+7. 同步更新 README、兼容/迁移说明、AGENTS 中本次限定例外、sqlc 结果、必需测试及 verification.md。先前增量/staging 的验证记录保留为已撤销方案的历史证据，不代表最终方案验收。
 
 ## Risks / Trade-offs
 
 - [JSONB 过滤与时间排序成本] → 按真实账号规模检查 EXPLAIN 和并发清理，必要时采用可重建关联索引；不预先扩展为复杂多表审计平台。
-- [新写入模型和 UUID 的破坏性变化] → 明确发布迁移说明、旧 ID 映射、独立审计游标和非审计协议回归。
-- [非空升级需要准备窗口] → 选择可核对的 staging 转换，避免 PG17 自定义随机 SQL 与身份来源猜测；预演中记录窗口和容量。
+- [新写入模型和 UUID 的破坏性变化] → 明确调用迁移说明、独立审计游标和非审计协议回归；不宣称已有旧表可自动升级。
+- [同号旧数据库不能直接使用新定义] → baseline 明确拒绝且保留旧数据；仅由操作者核验后准备新空资源，本次不自动重建。
 - [匿名化后迟到/重放] → 同库锁序与投影去重验证；外部宿主承担持久化清理和接收窗口，禁止假称跨库原子。
-- [source/namespace 默认值跨库冲突] → 外部模式要求显式稳定配置，迁移配置一致性校验；namespace 不等同于租户授权。
+- [source/namespace 默认值跨库冲突] → 外部模式要求显式稳定配置；namespace 不等同于租户授权。
 - [泛型 metadata 泄露] → 强类型认证映射器、限制与脱敏测试，HTTP 只输出明确投影，宿主错误不原样记录。
 
 ## References

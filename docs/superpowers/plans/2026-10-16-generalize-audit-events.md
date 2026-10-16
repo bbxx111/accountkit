@@ -4,7 +4,7 @@
 
 **Goal:** 将 accountkit 的审计升级为十字段 UUIDv7 通用事件，保留认证语义并支持宿主统一存储、查询与数据治理。
 
-**Architecture:** 通用生产事件与持久化记录分离；认证输入经专用映射器转换，在首次投递前生成 UUIDv7。默认本地 Store/Async 处理去重、授权关联查询和迟到脱敏，宿主可替换写读；历史事件经停写 staging 准备后增量迁移。
+**Architecture:** 通用生产事件与持久化记录分离；认证输入经专用映射器转换，在首次投递前生成 UUIDv7。默认本地 Store/Async 处理去重、授权关联查询和迟到脱敏，宿主可替换写读；按最新用户指令直接在 0001 定义十列审计，不新增生产迁移或旧表转换工具。
 
 **Tech Stack:** Go 1.26.5、PostgreSQL 17、pgx/v5、sqlc 1.31.1、Chi、miniredis、golang-migrate；计划采用 github.com/google/uuid v1.6.0 的 UUID/NewV7，并在任务一核验依赖及 pgx/sqlc 互操作。
 
@@ -16,8 +16,9 @@
 
 以下具体处理方案已于 2026-10-16 经用户“继续”确认，同步到 change 设计及受影响规格后实施：
 
-1. 认证映射器对不可信或可选上下文采用安全省略规则：无效 IP、超长补全设备字段、超长自定义 request_id、超长可选 name 可省略，并单独观测；稳定主体 namespace/id 不截断、不哈希替换。已验证 issuer/sub 超过 512 字节时按明确的新审计输入边界拒绝该事件、记录安全计数/告警，认证结果不变。历史预备转换遇到不兼容字段则停止并报告安全行标识，不损坏原表。该上限影响此前合法宿主输入，必须在迁移说明中作为明确的兼容变化声明。
+1. 认证映射器对不可信或可选上下文采用安全省略规则：无效 IP、超长补全设备字段、超长自定义 request_id、超长可选 name 可省略，并单独观测；稳定主体 namespace/id 不截断、不哈希替换。已验证 issuer/sub 超过 512 字节时按明确的新审计输入边界拒绝该事件、记录安全计数/告警，认证结果不变。显式历史映射遇到不兼容字段拒绝。该上限影响此前合法宿主输入，必须在迁移说明中作为明确的兼容变化声明。
 2. 早期 flow 事件保持原始主体和资源引用不可变；账号关联由 live flow 及已保存的归属事件形成查询闭包。外部读侧分页结果对仅通过 flow 匹配的事件同时提供具有该账号/flow 引用的归属事件证据，由管理适配层核对来源、动作和关联，避免把直接不含账号的合法事件误拒绝。该机制保留当前可用关联，不承诺在所有归属证据均丢失后重建历史。
+3. 用户最新回复“继续，但不需要新增数据库迁移，直接修改原始数据库定义即可”：接受保留已审查的运行时代码及已披露流程偏差；将先前 3A 的增量/staging 方案替换为 Task3C 原始定义调整，不重做已通过的模型和运行时任务。后续功能仍先建立真实失败测试。
 
 ## Global Constraints
 
@@ -26,7 +27,7 @@
 - actor 身份 namespace + id；资源身份 namespace + type + id；已知主体 namespace/id 各最多 512 字节，name 最多 256 Unicode 字符。
 - 完整事件最多 64 KiB，targets/related_resources 各最多 32 项；拒绝非法/超限值，不截断身份。
 - 不设置公共 schema_version；认证字段 data.accountkit；不引入可靠消息、任意业务 HTTP 审计 API 或跨库事务承诺。
-- 0001、固定源 SQL/manifest、已发布 tags 原字节不变；新增递增迁移，不 Force，不自动清库；sqlc 生成目录不手改。
+- 本次明确授权修改当前 0001 审计定义及固定校验，不新增生产迁移；固定源 SQL/manifest、已发布 tags 原字节不变；不 Force、不自动清库，旧同号结构拒绝；sqlc 生成目录不手改。
 - 写失败、生成失败、队列满不改变认证结果；默认有界异步及组件所有权保持。
 - 管理认证和消费者分离；旧 HTTP 投影保持字段语义，审计 UUID/游标显式升级，其他 ID/令牌不变。
 - 按任务先写并实际运行失败行为测试，再实现，通过相关测试后派独立 reviewer；任务有实质问题时先修复再执行依赖步骤。
@@ -38,7 +39,7 @@
 - 已脱敏事件原副本重放不得恢复隐私，真正标识冲突不可被脱敏比较吞掉：任务三验证白名单差异与不变字段。
 - 同一 flow 关联多个用户，purge/完成/writer 不得倒置 user → flow 锁序：任务四以确定性并发屏障验证。
 - 外部 reader 返回越界/无序/超量记录不得泄露或错误生成游标：任务六验证完整结果后才写响应。
-- 非空 staging 期间原行/配置变化不得漏迁或重新分配 ID，旧 version=2 不得被误接管：任务二/三验证完整性与 baseline。
+- 原始 0001 直接安装通用审计；旧同号 v1 和旧 v2 不得被误接管，历史标签检查不可放宽：任务三验证 baseline 和历史格式。
 
 ## File Structure
 
@@ -47,8 +48,7 @@
 | 通用模型 | audit/event/、audit/audit.go、async.go | UUID 值、结构校验/副本、Record/RecordView、批量统计；先叶子包构建再切换门面 |
 | 认证映射 | audit/authentication/ | 旧强类型认证输入转通用事件、认证数据投影；根包提供正式别名 |
 | 存储 | audit/store.go、query.sql、store_test.go、sqlc.yaml | 规范化去重、锁、关联查询、生成映射 |
-| 历史准备 | internal/auditmigration/、cmd/accountaudit-migrate/ | 停写 staging、原行快照核对、UUID 稳定映射 |
-| 增量迁移 | migrations/0002_generalize_audit_events.*.sql、baseline.go、testdata/ | 原子转换、版本化结构检查、相对最新测试版本 |
+| 原始定义调整 | migrations/0001_init.*.sql、baseline.go、internal/migrationcheck/、testdata/ | 十列直装、固定校验、拒绝旧结构；移除本分支 0002/准备工具 |
 | 领域 | user/service*.go、query.sql、对应测试 | 认证输入、明确关联、purge 锁序及 scrub |
 | 门面 | config.go、accountkit.go、对应测试 | 来源配置、写读装配矩阵、生命周期 |
 | HTTP | httpapi/admin/audit.go、audit_cursor.go、response.go、handler.go、测试 | 授权范围、DTO、审计专用游标、安全错误 |
@@ -92,26 +92,25 @@
 - [ ] Step 4：检查 maxDeviceField=64 与管理员名称输入实际接受范围；任何与 512 字节/256 字符限制冲突记录为明确兼容裁决，不能截断或静默丢弃原可用审计。
 - [ ] Step 5：运行 `go test -count=1 ./audit ./user ./httpapi/enduser ./...` 和相关 vet；Reviewer 复核事件映射矩阵及消费者/管理员隔离后再进入存储。
 
-## Task 3: 历史准备、增量迁移与通用存储
+## Task 3: 原始数据库定义与通用存储
 
 **OpenSpec tasks:** 3.1～3.5，4.1 的读侧基础。
 
-执行拆分：3A 先实施历史工具、0002、baseline 和迁移测试；3B 在新上下文统一激活根包/领域/Store/Async/HTTP 编译边界、SQL 生成与历史/恢复夹具。两步分别审查，原 Task3 验收在两步都完成后进行。3A 的中间 schema 与旧运行时不兼容必须明示并保留旧运行时失败证据，不以跳过/删除旧测试掩盖；3A 不单独作为可发布版本。
+已完成历史记录：3A 曾实施增量/staging，3B 激活根包/领域/Store/Async/HTTP 和生成/夹具，两步代码已审查。最新用户明确改变数据库策略，新增 3C 将 3A 方案替换为原始定义；保留先前提交及验证历史，但最终任务验收以 3C 和后续实际结果为准。
 
-**Files:** internal/auditmigration/prepare.go、prepare_test.go；cmd/accountaudit-migrate/main.go；migrations/0002_generalize_audit_events.up.sql/.down.sql、baseline.go、迁移测试/testdata；audit/store.go、query.sql、sqlc.yaml、数据库测试。
+**Files:** migrations/0001_init.up.sql/.down.sql、baseline.go、迁移测试/testdata、internal/migrationcheck；移除 internal/auditmigration、cmd/accountaudit-migrate、0002 及 accountkit.Migrate 预检；调整兼容/恢复/服务版本断言、AGENTS 和迁移操作说明；audit/store/query/sqlc 已激活逻辑保持。
 
 **Interfaces:**
 - audit.Reader.ListByResource(context.Context,Query) (Page,error)，Query{Source string, Resource Resource, After *EventCursor, Limit int}，EventCursor{Time time.Time, ID uuid.UUID}；Page{Records []RecordView, FlowLinks []FlowLink}，FlowLink{Flow Resource, User Resource, Evidence RecordView, Live bool}。Live 与 Evidence 互斥；Live 归属必须在管理面通过领域回调独立核对本地流程，不能只信 reader；FlowLinks 仅供查询范围复核，不修改 Event 或增加主表字段。
 - Store 保留 NewStore(*pgxpool.Pool) 兼容默认，并新增 NewStoreWithOptions(*pgxpool.Pool,StoreOptions{Source,Namespace})(*Store,error)；默认从连接池配置 schema 得到本地命名空间，不做 I/O，根门面显式传配置以限定本实例读/维护范围。消费任务一 BatchResult；DeleteOlderThan(context.Context,time.Time)(int64,error)。事务内查询 SQL 全部放 query.sql 并生成。
-- internal/auditmigration.Prepare(context.Context,*pgx.Conn,Options) (Report,error)，Options{Schema,ConfirmSchema,Source,Namespace string}；Report 仅安全计数。CLI 从指定环境变量读取 DSN，不在参数/日志输出秘密，必须精确确认 schema。
-- staging 持有 legacy_id、UUID、新事件、原行 JSON 快照和配置，prepare 不改 schema_migrations 或原审计表；有完整覆盖且原行未变才正式转换。
+- 不再提供 Prepare、staging 或自动旧表升级；保留通用 Store、读侧和非阻塞认证映射接口。
 
-- [ ] Step 1：写 TestAuditMigrationPrepareStableMapping、TestAuditMigrationRejectsChangedSourceRows、TestAuditMigrationRejectsRetiredVersionTwo、TestGenericAuditEmptyInstall 与 TestGenericAuditNonemptyUpgrade；真实 PG17 运行，证明旧结构/行为导致预期失败。
-- [ ] Step 2：实现预备转换与 0002 原子切换，旧 ID 写入 data.accountkit.legacy_event_id；未知历史枚举明确拒绝；非空缺 staging 失败，空表直接升级，固定 0001/hash 不变。
-- [ ] Step 3：更新按版本 baseline 检查及测试用下一版本；测试同号旧撤回库拒绝、dirty 阻断、锁等待取消、双进程升级、重复 Up 稳定映射和停写窗口完整性。
-- [ ] Step 4：修改 audit/query.sql/sqlc UUID/result overrides 并 `sqlc generate`；统一启用根包 audit.Event 等正式别名、AuthenticationRecorder、领域构造和 Async/Memory，完成相应先失败行为测试；同步适配旧管理读取/投影的编译边界，独立授权/游标验收仍由任务六负责。实现原生 UUID、JSON round-trip、ListByResource 的 actor/target/related/历史 flow 范围查询。
-- [ ] Step 5：新增 TestStoreConcurrentDuplicate、TestStoreConflict、TestStoreScrubbedReplay、TestStoreResourcePagination，先失败后实现 ON CONFLICT DO NOTHING + 受控投影比较；同 ID 不同 source/action/时间/资源拒绝，不刷新 create_time。
-- [ ] Step 6：真实 PG17 运行 audit/migrations 相关测试，执行 check-generated/check-migrations；Reviewer 审查 staging 完整性、规范化、跨实例过滤与非审计数据保持。
+- [ ] Step 1：先写真实 PG 测试，断言仅 0001 直装 version=1 且十列 UUID，旧同号 v1 结构被拒绝且数据/版本不变；观察当前 0001 旧结构/当前 baseline 接纳旧结构造成的真实 RED。
+- [ ] Step 2：将已审查十列定义、约束和索引合入 0001，更新当前固定校验，删除本分支 0002/准备工具及根预检。保留双锁、dirty、Down 禁用和显式测试清库边界，不操作已有产品库。
+- [ ] Step 3：相对下一版本测试迁移、旧同号 v1/v2 拒绝、取消/并发/非空重复 Up、固定历史校验均通过；将旧“全目录完全相同”断言改为非审计目录保持加十列主动变化断言，不删除有效门禁。
+- [ ] Step 4：历史/恢复夹具直接装入新定义；保留旧非审计 ID、密文/摘要、有效令牌与明确合成审计映射，不修改源快照、不再经过 Prepare 或假称旧库升级。同步服务 version=1 断言。
+- [ ] Step 5：运行 sqlc、真实 PG/Redis 全库测试、build/vet、check-generated/check-migrations；独立 reviewer 核对初始定义授权边界、历史门禁、旧结构拒绝及非审计兼容。
+- [ ] Step 6：对已有 3B Store/读取证据作接口衔接核验，保留规范化、幂等/冲突/受控重放、flow 隔离和整批回滚行为，后续隐私锁/严格 HTTP 继续由任务四/六验收。
 
 ## Task 4: 匿名化、流程锁序与迟到写入
 
@@ -165,9 +164,9 @@ live flow 归属接口采用 user.Service.AuditFlowBelongsToUser(context.Context
 **Files:** examples/audit/main.go、examples/embedded/main.go、internal/accountsvc 装配、README、docs/compatibility.md、docs/migrations.md、docs/accountsvc.md、AGENTS.md。
 
 - [ ] Step 1：给出默认本地、宿主写读、仅写入三个可编译装配示例；复用明确 source/namespace，宿主控制 Close，避免示例暗示网络调用可靠或跨库原子。
-- [ ] Step 2：补充公开 Event/Reader 迁移、UUID 标准输出、旧游标重启、历史 staging 停写/准备/升级/备份恢复、namespace 稳定性与 To C 案例链接。
+- [ ] Step 2：补充公开 Event/Reader 迁移、UUID 标准输出、旧游标重启、原始定义直装和旧库拒绝/独立备份恢复边界、namespace 稳定性与 To C 案例链接。
 - [ ] Step 3：明确外部匿名化必须有独立持久化清理流程及完成核验，切换后旧本地副本仍保留责任；只收到 USER_PURGED 不能当清理完成证据。
-- [ ] Step 4：更新 AGENTS 仅审计 ID 例外，保留其他迁移/ID 规则；运行示例独立 build、检查路径和内容差异，Reviewer 复核说明与实际 API 一致。
+- [ ] Step 4：更新 AGENTS 的审计 ID 与本次明确授权初始定义例外，保留其他迁移/ID 规则；运行示例独立 build、检查路径和内容差异，Reviewer 复核说明与实际 API 一致。
 
 ## Task 8: 必需测试门禁、恢复与交付
 
@@ -177,7 +176,7 @@ live flow 归属接口采用 user.Service.AuditFlowBelongsToUser(context.Context
 
 - [ ] Step 1：把实际新增必需顶层测试加入清单，不删除旧门禁；执行 GOWORK=off build/vet/test、sqlc 和迁移历史检查，保存原始输出至本任务 .test-output 目录。
 - [ ] Step 2：创建可识别的本任务 PostgreSQL 17 一次性资源及独立空恢复源/目标库，在 Linux CGO 验证环境执行 scripts/verify.sh；不复用未经核验的产品/现有测试库，不以禁用 race 代替验证。
-- [ ] Step 3：用合成数据核对旧 ID 到 UUID 一一映射、记录数、账号/身份/会话/flow ID、解密与有效 access/refresh，执行恢复 seed/verify/source-unchanged；TestRecoveryFixture 按既有特殊 skip 规则处理。
+- [ ] Step 3：用直接装载当前定义的历史合成数据核对明确旧 ID 映射、记录数、账号/身份/会话/flow ID、解密与有效 access/refresh，执行恢复 seed/verify/source-unchanged；TestRecoveryFixture 按既有特殊 skip 规则处理，不假称原地升级。
 - [ ] Step 4：真实数据库 EXPLAIN 账号关联查询、flow scrub、retention，记录所选索引及数据规模，不给出无测量的性能承诺。
 - [ ] Step 5：完成全分支独立代码审查及修复，运行 openspec validate --all --strict 和 verification-before-completion；更新任务与证据，清理仅本任务创建的资源。实施分支的提交、合并、推送、归档按用户后续授权分别处理。
 
@@ -191,10 +190,10 @@ live flow 归属接口采用 user.Service.AuditFlowBelongsToUser(context.Context
 | 匿名化、迟到与多用户 flow 锁序 | 4 |
 | 默认/外部装配、生命周期、外部数据责任 | 5、7 |
 | Go/HTTP 兼容边界 | 2、6、7 |
-| 冻结基线、非空升级、同号旧库拒绝 | 3、8 |
+| 原始定义、历史冻结、非空重复/测试升级、同号旧库拒绝 | 3、8 |
 | 独立构建、race、备份恢复与发布证据 | 8 |
 
-任务 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 顺序执行；仅只读盘点或无共享写入的验证可并行。每个任务由新 implementer 执行，独立 reviewer 复核后再进入依赖任务。任务内部提交需按用户后续确认的提交授权执行，不能把提案提交授权自动扩大为推送或最终合并。
+任务 1 → 2 → 3A/3B（已完成历史实施）→ 3C（最新原始定义调整）→ 4 → 5 → 6 → 7 → 8 顺序执行；仅只读盘点或无共享写入的验证可并行。每个任务由新 implementer 执行，独立 reviewer 复核后再进入依赖任务。继续实施授权包含任务内部提交，不扩展为推送、最终合并或归档。
 
 ## Plan Self-Review
 

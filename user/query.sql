@@ -250,6 +250,27 @@ WHERE user_id = @user_id AND revoke_time IS NULL AND refresh_expire_time > @now:
 -- audit_event
 
 -- name: ScrubAuditEventsByUser :execrows
+-- Materialize the user's historical flow closure once. JSONB containment uses
+-- the existing resource GIN indexes without correlating a history scan per row.
+WITH user_events AS MATERIALIZED (
+ SELECT id, targets, context FROM audit_event
+ WHERE source = @source::text AND (
+  (actor->>'type' = 'USER' AND actor->>'namespace' = @namespace::text AND actor->>'id' = @user_id::text)
+  OR targets @> jsonb_build_array(jsonb_build_object('type','USER','namespace',@namespace::text,'id',@user_id::text))
+  OR context->'related_resources' @> jsonb_build_array(jsonb_build_object('type','USER','namespace',@namespace::text,'id',@user_id::text)))
+), flow_resources AS MATERIALIZED (
+ SELECT DISTINCT jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',@namespace::text,'id',f->>'id')) AS resource
+ FROM user_events linked
+ CROSS JOIN LATERAL jsonb_array_elements(linked.targets || COALESCE(linked.context->'related_resources','[]'::jsonb)) f
+ WHERE f->>'type' = 'IDENTITY_FLOW' AND f->>'namespace' = @namespace::text
+), cleanup_ids AS MATERIALIZED (
+ SELECT id FROM user_events
+ UNION
+ SELECT id FROM audit_event
+ WHERE source = @source::text
+ AND (targets @> ANY(ARRAY(SELECT resource FROM flow_resources))
+      OR context->'related_resources' @> ANY(ARRAY(SELECT resource FROM flow_resources)))
+)
 UPDATE audit_event e SET
  actor = e.actor - 'name',
  targets = (SELECT COALESCE(jsonb_agg(r - 'name'),'[]'::jsonb) FROM jsonb_array_elements(e.targets) r),
@@ -257,18 +278,8 @@ UPDATE audit_event e SET
   (SELECT COALESCE(jsonb_agg(r - 'name'),'[]'::jsonb) FROM jsonb_array_elements(COALESCE(e.context->'related_resources','[]'::jsonb)) r)),
  data = CASE WHEN e.action = ANY(@authentication_actions::text[]) AND jsonb_typeof(e.data->'accountkit') = 'object'
   THEN e.data #- '{accountkit,subject_hint}' ELSE e.data END
-WHERE e.source = @source::text AND (
-(e.actor->>'namespace' = @namespace::text AND e.actor->>'type' = 'USER' AND e.actor->>'id' = @user_id::text)
- OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) r
- WHERE r->>'namespace' = @namespace::text AND r->>'type' = 'USER' AND r->>'id' = @user_id::text) OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) f
- WHERE f->>'namespace' = @namespace::text AND f->>'type' = 'IDENTITY_FLOW' AND EXISTS (
- SELECT 1 FROM audit_event linked WHERE linked.source = @source::text
- AND (linked.actor @> jsonb_build_object('type','USER','namespace',@namespace::text,'id',@user_id::text)
- OR EXISTS (SELECT 1 FROM jsonb_array_elements(linked.targets || COALESCE(linked.context->'related_resources','[]'::jsonb)) u
- WHERE u->>'namespace' = @namespace::text AND u->>'type' = 'USER' AND u->>'id' = @user_id::text))
- AND EXISTS (SELECT 1 FROM jsonb_array_elements(linked.targets || COALESCE(linked.context->'related_resources','[]'::jsonb)) lf
- WHERE lf->>'namespace' = @namespace::text AND lf->>'type' = 'IDENTITY_FLOW' AND lf->>'id' = f->>'id')))
-) AND (e.actor ? 'name' OR e.context ? 'client_ip' OR e.context ? 'device_id' OR e.context ? 'user_agent'
+WHERE e.id IN (SELECT id FROM cleanup_ids)
+ AND (e.actor ? 'name' OR e.context ? 'client_ip' OR e.context ? 'device_id' OR e.context ? 'user_agent'
  OR (e.action = ANY(@authentication_actions::text[]) AND jsonb_typeof(e.data->'accountkit') = 'object' AND e.data->'accountkit' ? 'subject_hint')
  OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) p WHERE p ? 'name'));
 
@@ -336,6 +347,10 @@ WITH locked AS (
 DELETE FROM identity_flow WHERE id IN (SELECT id FROM locked);
 
 -- name: ScrubIdentityFlowAuditForUser :execrows
+WITH flow_resources AS MATERIALIZED (
+ SELECT jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',@namespace::text,'id',id)) AS resource
+ FROM identity_flow WHERE user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text]
+)
 UPDATE audit_event e SET
  actor = e.actor - 'name',
  targets = (SELECT COALESCE(jsonb_agg(r - 'name'),'[]'::jsonb) FROM jsonb_array_elements(e.targets) r),
@@ -344,9 +359,8 @@ UPDATE audit_event e SET
  data = CASE WHEN e.action = ANY(@authentication_actions::text[]) AND jsonb_typeof(e.data->'accountkit') = 'object'
   THEN e.data #- '{accountkit,subject_hint}' ELSE e.data END
 WHERE e.source = @source::text AND (
-EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) f
- WHERE f->>'namespace' = @namespace::text AND f->>'type' = 'IDENTITY_FLOW' AND f->>'id' IN (
- SELECT id FROM identity_flow WHERE user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text]))
+ e.targets @> ANY(ARRAY(SELECT resource FROM flow_resources))
+ OR e.context->'related_resources' @> ANY(ARRAY(SELECT resource FROM flow_resources))
 ) AND (e.actor ? 'name' OR e.context ? 'client_ip' OR e.context ? 'device_id' OR e.context ? 'user_agent'
  OR (e.action = ANY(@authentication_actions::text[]) AND jsonb_typeof(e.data->'accountkit') = 'object' AND e.data->'accountkit' ? 'subject_hint')
  OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) p WHERE p ? 'name'));
@@ -373,23 +387,27 @@ ORDER BY id FOR UPDATE;
 -- Lock both cleanup phases together. Sorting each UPDATE separately would still
 -- permit a live-flow event in phase one to precede a smaller ordinary event.
 -- Soft deletion locks only live-flow events; purge includes the historical closure.
-SELECT e.id FROM audit_event e
-WHERE e.source = @source::text AND (
- EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) f
- WHERE f->>'namespace' = @namespace::text AND f->>'type' = 'IDENTITY_FLOW' AND f->>'id' IN (
- SELECT id FROM identity_flow WHERE user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text]))
- OR (@include_user::boolean AND (
-  (e.actor->>'namespace' = @namespace::text AND e.actor->>'type' = 'USER' AND e.actor->>'id' = @user_id::text)
-  OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) r
-   WHERE r->>'namespace' = @namespace::text AND r->>'type' = 'USER' AND r->>'id' = @user_id::text)
-  OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) f
-   WHERE f->>'namespace' = @namespace::text AND f->>'type' = 'IDENTITY_FLOW' AND EXISTS (
-    SELECT 1 FROM audit_event linked WHERE linked.source = @source::text
-    AND (linked.actor @> jsonb_build_object('type','USER','namespace',@namespace::text,'id',@user_id::text)
-     OR EXISTS (SELECT 1 FROM jsonb_array_elements(linked.targets || COALESCE(linked.context->'related_resources','[]'::jsonb)) u
-      WHERE u->>'namespace' = @namespace::text AND u->>'type' = 'USER' AND u->>'id' = @user_id::text))
-    AND EXISTS (SELECT 1 FROM jsonb_array_elements(linked.targets || COALESCE(linked.context->'related_resources','[]'::jsonb)) lf
-     WHERE lf->>'namespace' = @namespace::text AND lf->>'type' = 'IDENTITY_FLOW' AND lf->>'id' = f->>'id')))
- ))
+WITH user_events AS MATERIALIZED (
+ SELECT id, targets, context FROM audit_event
+ WHERE @include_user::boolean AND source = @source::text AND (
+  (actor->>'type' = 'USER' AND actor->>'namespace' = @namespace::text AND actor->>'id' = @user_id::text)
+  OR targets @> jsonb_build_array(jsonb_build_object('type','USER','namespace',@namespace::text,'id',@user_id::text))
+  OR context->'related_resources' @> jsonb_build_array(jsonb_build_object('type','USER','namespace',@namespace::text,'id',@user_id::text)))
+), flow_resources AS MATERIALIZED (
+ SELECT jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',@namespace::text,'id',id)) AS resource
+ FROM identity_flow WHERE user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text]
+ UNION
+ SELECT jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',@namespace::text,'id',f->>'id')) AS resource
+ FROM user_events linked
+ CROSS JOIN LATERAL jsonb_array_elements(linked.targets || COALESCE(linked.context->'related_resources','[]'::jsonb)) f
+ WHERE f->>'type' = 'IDENTITY_FLOW' AND f->>'namespace' = @namespace::text
+), cleanup_ids AS MATERIALIZED (
+ SELECT id FROM user_events
+ UNION
+ SELECT id FROM audit_event
+ WHERE source = @source::text
+ AND (targets @> ANY(ARRAY(SELECT resource FROM flow_resources))
+      OR context->'related_resources' @> ANY(ARRAY(SELECT resource FROM flow_resources)))
 )
+SELECT e.id FROM audit_event e JOIN cleanup_ids c ON c.id = e.id
 ORDER BY e.id FOR UPDATE OF e;

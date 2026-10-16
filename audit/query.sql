@@ -58,6 +58,10 @@ WHERE id = ANY(@flow_ids::text[]) ORDER BY id FOR UPDATE;
 -- name: ListAuditPrivacyFlowUsers :many
 -- Privacy follows every complete same-source USER/FLOW co-occurrence, unlike
 -- Reader authorization, which accepts only approved ownership evidence.
+WITH flow_resources AS MATERIALIZED (
+ SELECT jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',@namespace::text,'id',f)) AS resource
+ FROM unnest(@flow_ids::text[]) f
+)
 SELECT DISTINCT (f->>'id')::text AS flow_id, u.user_id::text AS user_id
 FROM audit_event e
 CROSS JOIN LATERAL jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) f
@@ -69,15 +73,22 @@ CROSS JOIN LATERAL (
  FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) r
  WHERE r->>'type' = 'USER' AND r->>'namespace' = @namespace::text
 ) u
-WHERE e.source = @source::text AND f->>'type' = 'IDENTITY_FLOW'
+WHERE e.source = @source::text
+ AND (e.targets @> ANY(ARRAY(SELECT resource FROM flow_resources))
+      OR e.context->'related_resources' @> ANY(ARRAY(SELECT resource FROM flow_resources)))
+ AND f->>'type' = 'IDENTITY_FLOW'
  AND f->>'namespace' = @namespace::text AND f->>'id' = ANY(@flow_ids::text[])
 ORDER BY flow_id, user_id;
 
 -- name: ListAuditPrivacyCleanupIDs :many
+WITH flow_resources AS MATERIALIZED (
+ SELECT jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',@namespace::text,'id',f)) AS resource
+ FROM unnest(@flow_ids::text[]) f
+)
 SELECT e.id FROM audit_event e
 WHERE e.source = @source::text
- AND EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) f
- WHERE f->>'type' = 'IDENTITY_FLOW' AND f->>'namespace' = @namespace::text AND f->>'id' = ANY(@flow_ids::text[]))
+ AND (e.targets @> ANY(ARRAY(SELECT resource FROM flow_resources))
+      OR e.context->'related_resources' @> ANY(ARRAY(SELECT resource FROM flow_resources)))
 ORDER BY e.id;
 
 -- name: LockAuditEvent :one

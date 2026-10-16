@@ -117,8 +117,13 @@ func TestRuntimeClosesUntrackedListenerBeforeDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("signal shutdown failed: %v", err)
 	}
-	if !<-librarySawClosed {
-		t.Fatal("library closed before the owned listener finished closing")
+	select {
+	case closed := <-librarySawClosed:
+		if !closed {
+			t.Fatal("library closed before the owned listener finished closing")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("library close was not observed")
 	}
 	if got := trace.snapshot(); !reflect.DeepEqual(got, []string{"library", "redis", "pool"}) {
 		t.Fatalf("dependency close order changed: %v", got)

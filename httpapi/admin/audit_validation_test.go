@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -28,6 +29,7 @@ func auditRecordAt(t *testing.T, n int, at time.Time) audit.RecordView {
 func auditHandler(t *testing.T, reader audit.Reader, change func(*admin.Deps)) http.Handler {
 	t.Helper()
 	d := admin.Deps{Users: &fakeService{userExists: func(context.Context, string) error { return nil }}, Audit: reader, AuditSource: "test/source", AuditNamespace: "test/ns", Verifier: fakeVerifier{}, Principal: principalFromHeader, ClientIP: func(*http.Request) string { return "198.51.100.7" }, RequestID: func(*http.Request) string { return "req-audit-validation" }}
+	d.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	if change != nil {
 		change(&d)
 	}

@@ -115,6 +115,9 @@ func run() error {
 	case <-ctx.Done():
 		shutdown, stop := context.WithTimeout(context.Background(), 5*time.Second)
 		defer stop()
+		// 此简化开发示例的 Shutdown 超时后不保证仍在执行的 handler 已结束；
+		// 返回时 defer 会关闭认证、审计和连接池。生产宿主须先完成请求排空，
+		// 或在总关闭预算耗尽时终止进程，不能把这里的超时当作安全排空完成。
 		return server.Shutdown(shutdown)
 	}
 }

@@ -249,10 +249,14 @@ func (q *Queries) ListAuditFlowLockKeys(ctx context.Context, arg ListAuditFlowLo
 }
 
 const listAuditPrivacyCleanupIDs = `-- name: ListAuditPrivacyCleanupIDs :many
+WITH flow_resources AS MATERIALIZED (
+ SELECT jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',$2::text,'id',f)) AS resource
+ FROM unnest($3::text[]) f
+)
 SELECT e.id FROM audit_event e
 WHERE e.source = $1::text
- AND EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) f
- WHERE f->>'type' = 'IDENTITY_FLOW' AND f->>'namespace' = $2::text AND f->>'id' = ANY($3::text[]))
+ AND (e.targets @> ANY(ARRAY(SELECT resource FROM flow_resources))
+      OR e.context->'related_resources' @> ANY(ARRAY(SELECT resource FROM flow_resources)))
 ORDER BY e.id
 `
 
@@ -283,6 +287,10 @@ func (q *Queries) ListAuditPrivacyCleanupIDs(ctx context.Context, arg ListAuditP
 }
 
 const listAuditPrivacyFlowUsers = `-- name: ListAuditPrivacyFlowUsers :many
+WITH flow_resources AS MATERIALIZED (
+ SELECT jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',$1::text,'id',f)) AS resource
+ FROM unnest($3::text[]) f
+)
 SELECT DISTINCT (f->>'id')::text AS flow_id, u.user_id::text AS user_id
 FROM audit_event e
 CROSS JOIN LATERAL jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) f
@@ -294,7 +302,10 @@ CROSS JOIN LATERAL (
  FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) r
  WHERE r->>'type' = 'USER' AND r->>'namespace' = $1::text
 ) u
-WHERE e.source = $2::text AND f->>'type' = 'IDENTITY_FLOW'
+WHERE e.source = $2::text
+ AND (e.targets @> ANY(ARRAY(SELECT resource FROM flow_resources))
+      OR e.context->'related_resources' @> ANY(ARRAY(SELECT resource FROM flow_resources)))
+ AND f->>'type' = 'IDENTITY_FLOW'
  AND f->>'namespace' = $1::text AND f->>'id' = ANY($3::text[])
 ORDER BY flow_id, user_id
 `

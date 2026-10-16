@@ -1,6 +1,7 @@
 package accountkit_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
@@ -9,11 +10,14 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"log/slog"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/bbxx111/accountkit"
+	"github.com/bbxx111/accountkit/audit"
+	"github.com/bbxx111/accountkit/audit/authentication"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/migrations"
 	"github.com/bbxx111/accountkit/user"
@@ -73,7 +77,7 @@ func seedFormatFixture(t *testing.T, pool *pgxpool.Pool, cfg accountkit.Config) 
  VALUES('019a0000-0000-7000-8000-000000000001',$1,'CODE_SENT',1,
  jsonb_build_object('type','USER','namespace',$2::text,'id',$3::text),
  jsonb_build_array(jsonb_build_object('type','USER','namespace',$2::text,'id',$3::text)),
- jsonb_build_object('accountkit',jsonb_build_object('legacy_event_id',$4::text)),$5)`, cfg.AuditSource, cfg.AuditNamespace, f.UserID, f.EventID, now)
+ jsonb_build_object('accountkit',jsonb_build_object('legacy_event_id',$4::text,'actor_kind','USER')),$5)`, cfg.AuditSource, cfg.AuditNamespace, f.UserID, f.EventID, now)
 	claims, err := json.Marshal(map[string]any{"sub": f.UserID, "sid": f.SessionID, "scope": "user", "auth_time": now.Unix(), "iat": now.Unix(), "exp": now.Add(15 * time.Minute).Unix(), "iss": cfg.JWTIssuer, "aud": []string{cfg.JWTAudience}, "jti": "00112233445566778899aabbccddeeff"})
 	if err != nil {
 		t.Fatal(err)
@@ -105,6 +109,17 @@ func snapshotSource(t *testing.T, pool *pgxpool.Pool) string {
 // Catches format regressions and repeat-migration data loss on the current initial schema.
 func TestHistoricalFormatsOnInitialSchema(t *testing.T) {
 	a, pool, sent := integrationInstance(t, minimal(), testRedis(t))
+	mem := &audit.Memory{}
+	var logs bytes.Buffer
+	d := a.DepsForTest()
+	d.Audit = mem
+	d.Logger = slog.New(slog.NewTextHandler(&logs, nil))
+	var err error
+	a, err = accountkit.New(a.Config(), d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(a.Close)
 	f, access := seedFormatFixture(t, pool, a.Config())
 	before := snapshotSource(t, pool)
 	ctx := context.Background()
@@ -142,6 +157,18 @@ func TestHistoricalFormatsOnInitialSchema(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT id,data#>>'{accountkit,legacy_event_id}',action FROM audit_event`).Scan(&mappedID, &legacy, &action); err != nil || mappedID.Version() != 7 || legacy != f.EventID || action != "CODE_SENT" {
 		t.Fatalf("historical mapping: %s %q %s %v", mappedID, legacy, action, err)
 	}
+	store, err := audit.NewStoreWithOptions(pool, audit.StoreOptions{Source: a.Config().AuditSource, Namespace: a.Config().AuditNamespace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := store.ListByResource(ctx, audit.Query{Source: a.Config().AuditSource, Resource: audit.Resource{Type: "USER", Namespace: a.Config().AuditNamespace, ID: f.UserID}, Limit: 10})
+	if err != nil || len(page.Records) != 1 {
+		t.Fatalf("historical read: %+v %v", page, err)
+	}
+	projected, err := authentication.Projection(page.Records[0].Event)
+	if err != nil || projected.Type != enum.EventCodeSent || projected.Actor != enum.ActorUser || projected.UserID != f.UserID || projected.Result != enum.ResultSuccess {
+		t.Fatalf("explicit historical projection is unreadable: %+v %v", projected, err)
+	}
 	if err := pool.QueryRow(ctx, "SELECT count(*) FROM audit_event").Scan(&count); err != nil || count != 1 {
 		t.Fatalf("historical rows: %d %v", count, err)
 	}
@@ -160,9 +187,16 @@ func TestHistoricalFormatsOnInitialSchema(t *testing.T) {
 	if err != nil || me.ID != f.UserID {
 		t.Fatalf("source user: %v", err)
 	}
-	revealed, err := a.Users().RevealIdentity(ctx, user.Admin{}, f.UserID, f.IdentityID, user.Meta{IP: "127.0.0.1"})
+	revealed, err := a.Users().RevealIdentity(ctx, user.Admin{Issuer: "https://historical.example.test/admin", Subject: "historical-operator"}, f.UserID, f.IdentityID, user.Meta{IP: "127.0.0.1"})
 	if err != nil || revealed.Subject != f.Phone {
 		t.Fatalf("source ciphertext: %v", err)
+	}
+	events := mem.Events()
+	if len(events) != 1 || events[0].Action != "IDENTITY_REVEALED" || events[0].Actor.Type != audit.ActorUser || events[0].Actor.Namespace != "https://historical.example.test/admin" || events[0].Actor.ID != "historical-operator" {
+		t.Fatalf("historical reveal must deliver complete administrator audit: %+v", events)
+	}
+	if logs.Len() != 0 {
+		t.Fatalf("historical reveal emitted unexpected logs: %s", logs.String())
 	}
 	tok, err := a.Users().Refresh(ctx, f.RefreshToken, user.Meta{IP: "127.0.0.1"})
 	if err != nil || tok.UserID != f.UserID || tok.Scope != "user" || tok.RefreshToken == f.RefreshToken {

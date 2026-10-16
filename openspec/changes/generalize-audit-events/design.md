@@ -204,3 +204,9 @@ accountkit 使用强类型事件构建器完成映射和脱敏，不能把任意
 - [PostgreSQL 17 JSONB](https://www.postgresql.org/docs/17/datatype-json.html)：结构校验与索引能力。
 - [WorkOS Audit Logs](https://workos.com/docs/audit-logs)：actor/action/targets 事件建模参考，非其内部 SQL 表结构声明。
 - [OpenID Connect 主体稳定性](https://openid.net/specs/openid-connect-core-1_0.html#ClaimStability)：issuer 与 subject 的身份边界。
+
+## 最终性能验收：历史闭包查询
+
+100k 合成审计记录（80k 同 source、10k 账号、20k flow）实测发现，清理前锁查询的相关历史子查询逐行重复扫描，超过30秒 statement_timeout。最终实现允许最小查询改写：用 MATERIALIZED CTE 一次计算指定 USER 的完整同源/namespace历史flow集合，外层清理及锁查询匹配该集合；通用历史引用仍按同一事件共现，不引入跨事件笛卡尔关联。Store 历史关系/清理候选可用完整namespace/type/id JSONB包含谓词先过滤，继续保留逐事件关系。
+
+软删除 include_user=false 仍只覆盖 live flow；purge保留直接USER、live及历史flow联合集合，并先按UUID锁整个集合。不得通过缩小隐私范围、提高timeout或强制索引宣称解决；必要改写先记录真实回归再重新sqlc，覆盖全部相关并发/清理测试和最终Linux验证。暂不增加索引或修改0001/hash，是否需要以相同数据实际计划为准。具体规模、前后计划/耗时和测量限制统一记录verification。

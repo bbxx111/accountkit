@@ -203,3 +203,7 @@ live flow 归属接口采用 user.Service.AuditFlowBelongsToUser(context.Context
 - 锁序需先完成任务二事件归属盘点，再由任务四实现并发保护，不能仅按当前 UserID 锁一行。
 - Ruling: 通用模型和认证映射先作为叶子包实施，任务三统一切换根包/领域/存储/旧管理编译边界，避免以中间编译失败作为任务验收。额外包结构增加少量别名维护成本，公共入口仍为 audit。
 - 用户已评审计划；实施仍按逐任务 TDD 与独立审查推进。
+
+## 最终性能验收补充（Task8）
+
+真实 100k 数据中清理前锁查询超过30s statement_timeout。Task8 可按证据最小改写历史闭包/清理 SQL，保留逐事件同源完整namespace的USER/FLOW关系、账号→流程→UUID锁序及事务语义，重新sqlc并执行回归/最终完整Linux验证。不得提高超时或缩小隐私集合代替修复，不新增生产迁移；必要索引仍仅改当前0001及固定校验。具体计划和改写形态按测量结果记录于design/verification。

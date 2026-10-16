@@ -207,3 +207,7 @@ Windows 全库 JSON 记录 `task5/windows-all.json.log`、`.exit=0`：636 顶层
 提交 `a27aa8a` 提供 `examples/audit` 的 local/host/write-only 三模式，复用稳定 scope，宿主控制自建 Async；完善 README、兼容/迁移/accountsvc 文档、AGENTS 和公开 NewService 注释。外部审计须持久化清理、重试和完成核验，USER_PURGED 不是完成证据，旧本地副本责任继续。公开类型、UUIDv7、nullable result、旧游标和范围证据、旧库拒绝、固定历史边界均与当前实现定向核对一致。Task3B 注释 Minor 已关闭。
 
 两个示例独立 GOWORK=off build、相关 vet、真实 PG Windows 普通套件工具终态成功，日志在 `task7/`；没有独立 .exit sidecar，未补造。Root 读取实际 commit/stat、普通套件成功日志；实际服务启动、Linux/race/Redis/恢复不由该轮证明。构建/vet 空日志无法单独重建终态，最终 Linux 全库构建会提供现场新证据。独立审查 Approved，0 Critical/Important、1 Minor：示例 Shutdown 超时后的依赖关闭边界，交最终收尾处理；其余 CannotVerify 与最终验证逐项对应。累计 22/26，最终四项尚未完成。
+
+## 性能验收补充裁决
+
+20. 最终验收允许按实际性能证据最小改写历史闭包/清理 SQL，并重新生成 sqlc；不提高 timeout 或强制索引来宣称解决。10 万条数据的清理锁查询超过 30 秒，单改索引未必解决嵌套重复扫描。代价为最终阶段涉及查询实现，必须保留完整 source/namespace/逐事件关联集合和锁顺序，并补真实回归、并发及最终 Linux 验证。

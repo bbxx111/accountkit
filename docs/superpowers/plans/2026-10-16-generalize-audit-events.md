@@ -133,7 +133,7 @@
 
 **OpenSpec tasks:** 1.3 的错配测试、2.1 的 UUID 并发补充、4.2、5.3、5.4。
 
-**Files:** accountkit.go、config.go、相关测试；audit/async.go、async_test.go；httpapi/admin/handler.go。
+**Files:** accountkit.go、config.go、相关测试；audit/async.go、async_test.go；httpapi/admin/handler.go；生命周期验证发现的 internal/accountsvc/run.go 自建监听器关闭兜底及对应测试。
 
 **Interfaces:** Deps.Audit audit.Recorder、Deps.AuditReader audit.Reader；admin.Deps 增加 AuditSource/AuditNamespace，并允许 Audit 为 nil 表示明确未配置查询。
 
@@ -141,6 +141,7 @@
 - [ ] Step 2：完成装配矩阵和根模式切换测试，配置仅写侧时认证正常；稳定 source/namespace 下旧本地副本继续 retention/匿名化且不调用宿主组件删除，覆盖取消、边界及默认 worker 生命周期、New 无 I/O。
 - [ ] Step 3：让默认观测区分 Written/Duplicate/Dropped/Failed/Invalid/Conflicts，测试队列满、关闭、写入超时及含秘密宿主错误日志；按 TDD 核实不改变认证动作结果。
 - [ ] Step 4：运行根包/audit/maintenance/internal/accountsvc 相关测试和 vet；Reviewer 复核配置前缀、失败语义和连接所有权。
+- [ ] Step 5：对已观察到的早期停机监听器关闭时序，使用现有 runtimeFactory 和测试 listener/logger 构造确定性 RED，最小保证自建监听器在关闭库/连接及成功返回前完成关闭，保持既有 accountsvc-runtime 的排空顺序、总预算和异常退出契约；不新增公共接口或服务架构。
 
 ## Task 6: 管理查询、DTO 与审计专用游标
 

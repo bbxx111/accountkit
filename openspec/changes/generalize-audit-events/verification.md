@@ -137,3 +137,17 @@
 初次修复前阶段的 Windows 全库、Linux audit/user 和最终 retention 后 audit/maintenance race 均通过，报告明确其时间边界；它们不代替修复后完整发布验收。**此前记录中的 Windows“PG/Redis”只表示使用真实 PG 并配置了 Redis URL；accountsvc 真实进程用例在 Windows skip，user 使用 miniredis，不能据此宣称当前代码真实 Redis 装配已验证。** 3B 曾有真实 Linux accountsvc 结果，但不是当前最终代码；Task 8 必须重新运行完整 Linux 服务/Redis、required gate 和恢复演练。
 
 OpenSpec 5.1、5.2 完成，累计 13/26；5.3 的本地 retention 核心已验，外部模式切换、旧本地副本继续清理与宿主组件不被删除的根装配测试接任务五，在实际通过前保持未勾选。连续四次重试耗尽、大数据量历史查询/清理/advisory 容量仍是未动态验证项，纳入最终验收边界；不以静态循环或排序冒充相应动态证明。
+
+## 宿主装配、生命周期及并发 UUID 5 验收
+
+提交 `2783717` 验证真实注册/认证/Reveal/管理查询的装配矩阵、New 无 I/O、宿主组件与连接所有权、稳定 scope 模式切换后的本地旧副本 retention/匿名化及外部副本不被库删除。队列满、关闭、后端错误/超时均不改变认证动作结果，秘密错误文本未进入日志；非法后端分类按整批 Failed 处理。16 个并发生产者生成 1024 个实际认证事件，UUIDv7 版本/variant/唯一性及重投递 ID 保持通过；2001/2099 occur_time 与 UUID 生成时间独立，不宣称严格全局顺序。
+
+历史夹具两项缺口均先真实 RED 后 GREEN：空管理员导致合法 Reveal 事件丢失，改为完整合成 Issuer/Subject 并断言实际投递；合成旧记录漏 actor_kind 导致 Projection 不可读，仅在合成 seed 添加与既有 USER actor 一致的受控值，断言旧 Type/Actor/UserID/Result。未改固定源输入、生产主体校验或凭证构造。Task 3C 的该 Minor 已关闭。
+
+Windows 全库 JSON 记录 `task5/windows-all.json.log`、`.exit=0`：636 顶层 PASS、0 FAIL、33 个有测试的包 PASS；实际 47 个测试级 skip 和 6 个无测试包已列 `windows-skips.txt`，真实 Redis 专项、Linux 服务进程及普通恢复 fixture 未执行。聚焦回归、vet、新并发 scope Linux race 均有现场退出 0。上述全库发生于后续监听器修复之前，不能代替最终验收。
+
+补跑 accountsvc 的原 `TestRuntimeStartupOrderAndFailureCleanup/#00` 失败保留为 `task5/maintenance-accountsvc.exit=1`，20 次成功重跑没有被用作修复证明。受控 listener/logger 屏障随后取得真实 RED：net/http 已取消监听器登记但 Close 尚未完成时，库已关闭或 runConfig 已返回。提交 `39c9f44` 仅在既有有界 closeLibrary 回调内先关闭服务自建 listener 再调用 app.close，保留 nil、排空顺序、总预算和异常退出语义。新 RED/GREEN、Runtime/Shutdown 覆盖、vet、Linux 同范围 race 均现场退出 0（`listener-*.log/.exit`）；无新公共接口或生产测试 hook。
+
+独立整体审查 Approved，0 Critical/Important、2 Minor：listener 测试末尾 channel 接收可加 deadline；统一测试正则产生已披露的无命中 warning，不视为验证通过。前者交最终测试收尾，后者在后续命令按实际包范围运行。原 3B 的 raw env/defaults/reader-only 跨任务证据由其已完成的独立审查保留，本轮矩阵回归也通过。
+
+现累计 17/26 完成。严格 HTTP、接入示例/兼容文档、最终 required gate、Linux 真实服务/Redis、执行计划/锁容量和独立空库恢复仍未完成。原始日志统一在 `.test-output/generalize-audit-events/task5/`；无推送、实施合并或归档。

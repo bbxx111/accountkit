@@ -67,10 +67,14 @@ func (f *fakeService) AdminRevokeAllSessions(ctx context.Context, a user.Admin, 
 }
 
 type fakeAudit struct {
-	listByUser func(ctx context.Context, userID string, after *audit.EventCursor, limit int) ([]audit.RecordView, error)
+	listByResource func(context.Context, audit.Query) (audit.Page, error)
+	listByUser     func(ctx context.Context, userID string, after *audit.EventCursor, limit int) ([]audit.RecordView, error)
 }
 
 func (f *fakeAudit) ListByResource(ctx context.Context, q audit.Query) (audit.Page, error) {
+	if f.listByResource != nil {
+		return f.listByResource(ctx, q)
+	}
 	rows, err := f.listByUser(ctx, q.Resource.ID, q.After, q.Limit)
 	return audit.Page{Records: rows}, err
 }

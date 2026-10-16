@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/audit/authentication"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/httpapi/apierror"
@@ -111,7 +110,7 @@ type auditEventResource struct {
 	Name          string  `json:"name"`
 	EventType     string  `json:"event_type"`
 	ActorKind     string  `json:"actor_kind"`
-	Result        string  `json:"result"`
+	Result        *string `json:"result"`
 	Reason        *string `json:"reason"`
 	SessionID     *string `json:"session_id"`
 	FlowID        *string `json:"flow_id,omitempty"`
@@ -126,11 +125,13 @@ type auditEventResource struct {
 	OccurTime     string  `json:"occur_time"`
 }
 
-func newAuditEventResource(userID string, record audit.RecordView) auditEventResource {
-	e, _ := authentication.Projection(record.Event)
-	out := auditEventResource{Name: "users/" + userID + "/auditEvents/" + e.ID.String(), EventType: e.Type.String(), ActorKind: e.Actor.String(), Result: e.Result.String(),
+func newAuditEventResource(userID string, e authentication.Input) auditEventResource {
+	out := auditEventResource{Name: "users/" + userID + "/auditEvents/" + e.ID.String(), EventType: e.Type.String(), ActorKind: e.Actor.String(),
 		Reason: auditString(e.Reason), SessionID: auditString(e.SessionID), FlowID: auditString(e.FlowID), SubjectHint: auditString(e.SubjectHint), DeviceID: auditString(e.DeviceID), RequestID: auditString(e.RequestID),
 		AdminIssuer: auditString(e.AdminIssuer), AdminSubject: auditString(e.AdminSubject), AdminUsername: auditString(e.AdminUsername), OccurTime: fmtTime(e.OccurTime), IP: auditString(e.IP)}
+	if e.Result.Valid() {
+		out.Result = auditString(e.Result.String())
+	}
 	if e.IdentityKind != enum.IdentityKindUnspecified {
 		k := e.IdentityKind.String()
 		out.IdentityKind = &k

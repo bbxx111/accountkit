@@ -1,46 +1,56 @@
 package admin
 
 import (
+	"bytes"
 	"context"
-	"encoding/base64"
-	"encoding/json"
+	"net/http"
+	"reflect"
+
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/audit/authentication"
 	"github.com/bbxx111/accountkit/audit/event"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/httpapi/apierror"
+	"github.com/bbxx111/accountkit/httpapi/reqid"
 	"github.com/google/uuid"
-	"net/http"
-	"time"
 )
 
-type auditCursor struct {
-	Version  int            `json:"v"`
-	Source   string         `json:"source"`
-	Resource audit.Resource `json:"resource"`
-	Time     time.Time      `json:"t"`
-	ID       uuid.UUID      `json:"id"`
+func sameAuditResource(a, b audit.Resource) bool {
+	return a.Namespace == b.Namespace && a.Type == b.Type && a.ID == b.ID
 }
 
-func encodeAuditCursor(q audit.Query, last audit.RecordView) string {
-	b, _ := json.Marshal(auditCursor{Version: 1, Source: q.Source, Resource: q.Resource, Time: last.OccurTime, ID: last.ID})
-	return base64.RawURLEncoding.EncodeToString(b)
+// Validate the stored view as well as the producer event; external Go readers
+// need not have passed through RecordView.UnmarshalJSON.
+func validatedAuditRecord(record audit.RecordView) (audit.Event, bool) {
+	if record.CreateTime.IsZero() || record.CreateTime.UTC().Year() < 1 || record.CreateTime.UTC().Year() > 9999 {
+		return audit.Event{}, false
+	}
+	if _, err := record.CreateTime.MarshalJSON(); err != nil {
+		return audit.Event{}, false
+	}
+	frozen, err := event.Freeze(record.Event)
+	return frozen, err == nil
 }
-func decodeAuditCursor(raw string, q audit.Query) (*audit.EventCursor, *apierror.Error) {
-	if raw == "" {
-		return nil, nil
+
+// Authentication snapshots name local resources. A same-ID reference from a
+// different namespace cannot support that projection. Background sessions may
+// be related resources; neither sessions nor flows need to exist currently.
+func auditProjectionInNamespace(e audit.Event, projection authentication.Input, namespace string) bool {
+	for _, ref := range []audit.Resource{
+		{Type: "SESSION", Namespace: namespace, ID: projection.SessionID},
+		{Type: "IDENTITY_FLOW", Namespace: namespace, ID: projection.FlowID},
+	} {
+		if ref.ID != "" && !directAuditResource(e, ref) {
+			return false
+		}
 	}
-	bad := apierror.New(apierror.StatusInvalidArgument, "INVALID_PAGE_TOKEN", "page_token is invalid or expired; restart from the first page")
-	b, err := base64.RawURLEncoding.DecodeString(raw)
-	if err != nil {
-		return nil, bad
-	}
-	var c auditCursor
-	if json.Unmarshal(b, &c) != nil || c.Version != 1 || c.Source != q.Source || c.Resource != q.Resource || c.Time.IsZero() || c.ID.Version() != 7 || c.ID.Variant() != uuid.RFC4122 {
-		return nil, bad
-	}
-	return &audit.EventCursor{Time: c.Time, ID: c.ID}, nil
+	return true
 }
+
+func auditAfter(e audit.Event, after audit.EventCursor) bool {
+	return e.OccurTime.After(after.Time) || (e.OccurTime.Equal(after.Time) && bytes.Compare(e.ID[:], after.ID[:]) > 0)
+}
+
 func directAuditResource(e audit.Event, r audit.Resource) bool {
 	if r.Type == "USER" && e.Actor.Type == audit.ActorUser && e.Actor.Namespace == r.Namespace && e.Actor.ID == r.ID {
 		return true
@@ -53,7 +63,7 @@ func directAuditResource(e audit.Event, r audit.Resource) bool {
 	return false
 }
 func (h *Handler) auditInScope(ctx context.Context, e audit.Event, q audit.Query, links []audit.FlowLink) bool {
-	if e.Source != q.Source || event.Validate(e) != nil {
+	if e.Source != q.Source {
 		return false
 	}
 	if directAuditResource(e, q.Resource) {
@@ -74,11 +84,11 @@ func (h *Handler) auditInScope(ctx context.Context, e audit.Event, q audit.Query
 			continue
 		}
 		for _, link := range links {
-			if link.Flow.Namespace != r.Namespace || link.Flow.Type != r.Type || link.Flow.ID != r.ID || link.User != q.Resource {
+			if link.Flow.Namespace != r.Namespace || link.Flow.Type != r.Type || link.Flow.ID != r.ID || !sameAuditResource(link.User, q.Resource) {
 				continue
 			}
 			if link.Live {
-				if link.Evidence.ID != uuid.Nil || h.d.FlowOwner == nil {
+				if !reflect.ValueOf(link.Evidence).IsZero() || h.d.FlowOwner == nil {
 					continue
 				}
 				ok, err := h.d.FlowOwner(ctx, q.Resource.ID, r.ID)
@@ -87,14 +97,14 @@ func (h *Handler) auditInScope(ctx context.Context, e audit.Event, q audit.Query
 				}
 				continue
 			}
-			ev := link.Evidence.Event
-			if ev.Source != q.Source || ev.Result == nil || *ev.Result != enum.ResultSuccess || event.Validate(ev) != nil {
+			ev, valid := validatedAuditRecord(link.Evidence)
+			if !valid || ev.Source != q.Source || ev.Result == nil || *ev.Result != enum.ResultSuccess {
 				continue
 			}
 			if ev.Action != "SIGN_IN_COMPLETION_PROOF_VERIFIED" && ev.Action != "SIGN_IN_COMPLETION_COMPLETED" {
 				continue
 			}
-			if _, err := authentication.Projection(ev); err == nil && directAuditResource(ev, q.Resource) && directAuditResource(ev, r) {
+			if projection, err := authentication.Projection(ev); err == nil && auditProjectionInNamespace(ev, projection, q.Resource.Namespace) && directAuditResource(ev, q.Resource) && directAuditResource(ev, r) {
 				return true
 			}
 		}
@@ -127,30 +137,52 @@ func (h *Handler) listAuditEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page, err := h.d.Audit.ListByResource(r.Context(), query)
-	unavailable := func() {
+	unavailable := func(reason string) {
+		h.d.Logger.WarnContext(r.Context(), "audit query unavailable", "reason", reason, "record_count", len(page.Records), "request_id", reqid.From(r.Context()))
 		apierror.Write(w, apierror.New(apierror.StatusUnavailable, "AUDIT_QUERY_UNAVAILABLE", "audit query unavailable"))
 	}
-	if err != nil || len(page.Records) > size+1 {
-		unavailable()
+	if err != nil {
+		unavailable("reader_error")
 		return
 	}
+	if len(page.Records) > query.Limit {
+		unavailable("page_limit")
+		return
+	}
+	projections := make([]authentication.Input, 0, len(page.Records))
+	seen := make(map[uuid.UUID]bool, len(page.Records))
+	previous := query.After
 	for _, record := range page.Records {
-		if !h.auditInScope(r.Context(), record.Event, query, page.FlowLinks) {
-			unavailable()
+		frozen, valid := validatedAuditRecord(record)
+		if !valid {
+			unavailable("invalid_record")
 			return
 		}
-		if _, err := authentication.Projection(record.Event); err != nil {
-			unavailable()
+		if seen[frozen.ID] || (previous != nil && !auditAfter(frozen, *previous)) {
+			unavailable("page_order")
 			return
 		}
+		seen[frozen.ID] = true
+		previous = &audit.EventCursor{Time: frozen.OccurTime, ID: frozen.ID}
+		if !h.auditInScope(r.Context(), frozen, query, page.FlowLinks) {
+			unavailable("record_scope")
+			return
+		}
+		projection, err := authentication.Projection(frozen)
+		if err != nil || !auditProjectionInNamespace(frozen, projection, query.Resource.Namespace) {
+			unavailable("authentication_projection")
+			return
+		}
+		projections = append(projections, projection)
 	}
 	out := auditEventList{AuditEvents: make([]auditEventResource, 0, min(len(page.Records), size))}
-	for i, record := range page.Records {
+	for i, projection := range projections {
 		if i == size {
-			out.NextPageToken = encodeAuditCursor(query, page.Records[size-1])
+			last := projections[size-1]
+			out.NextPageToken = encodeAuditCursor(query, audit.EventCursor{Time: last.OccurTime, ID: last.ID})
 			break
 		}
-		out.AuditEvents = append(out.AuditEvents, newAuditEventResource(uid, record))
+		out.AuditEvents = append(out.AuditEvents, newAuditEventResource(uid, projection))
 	}
 	apierror.WriteJSON(w, http.StatusOK, out)
 }

@@ -102,7 +102,10 @@ func (s *Service) IdentityPolicy() *IdentityPolicy {
 	return &policy
 }
 
-// NewService 校验依赖并构造。
+// NewService 校验依赖并构造，不做 I/O。AuditSource 和 AuditNamespace 各自缺省时，
+// 使用 Repo 连接池配置中 search_path 的首个 schema，分别生成 accountkit/<schema>
+// 和 accountkit/<schema>/resources；池为空或首项为空时回退到 account。
+// 这些默认值只承诺当前数据库内一致，跨数据库汇聚审计时须显式提供稳定且可区分的二者。
 func NewService(d Deps) (*Service, error) {
 	var providers []enum.IdentityKind
 	if d.WeChat != nil {

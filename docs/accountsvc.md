@@ -11,6 +11,10 @@ accountsvc 是 accountkit 的可选官方宿主。同一个 Go module 同时支�
 
 服务提供可选 SMTP 邮件验证码；显式身份策略启用 EMAIL 时要求 SMTP，禁用 EMAIL 时不解析或要求 SMTP。未设置新策略保留原 SMTP 装配，短信显式禁用；禁用渠道请求返回 400 `CHANNEL_NOT_ENABLED`，不生成验证码、不扣发送额度。库宿主原有短信/邮件发送器继续可用。
 
+服务默认使用库管理的本地有界异步审计及本地管理查询，`Auth.Start/Close` 管理 worker，服务管理连接。`ACCOUNTKIT_AUDIT_SOURCE` / `ACCOUNTKIT_AUDIT_NAMESPACE` 可显式设置，默认分别为 `accountkit/<schema>` / `accountkit/<schema>/resources`；同库共享审计时保持实例范围稳定。服务未内置远端审计适配器或任意业务审计 HTTP 写入接口。嵌入宿主的读写接管与仅写入模式见 [examples/audit](../examples/audit/main.go) 和[库装配说明](../README.md#宿主审计装配与清理责任)。
+
+当前审计使用 UUIDv7 标准字符串，管理 HTTP 仍返回认证投影；result 未知时为 null。旧审计 page_token 返回 400，客户端清除后重新翻页。旧十七列审计的 version=1 及旧 version=2 库均拒绝自动接管，需按[迁移手册](migrations.md)处理。外部清理须有持久化流程和完成核验，`USER_PURGED` 不能独立证明清理完成；切换后旧本地副本仍受保留和匿名化责任约束，详见[审计迁移说明](compatibility.md#通用审计公开接口与协议迁移)。
+
 ## 构建与运行
 
 在仓库根目录运行：

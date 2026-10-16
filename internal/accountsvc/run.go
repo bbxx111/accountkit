@@ -134,6 +134,8 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 		}
 		email = s
 	}
+	// 服务使用默认本地审计读写；Auth 拥有审计 worker，服务拥有 Pool/Redis。
+	// 外部审计装配属于嵌入宿主扩展，见 examples/audit，不在此创建远端适配器。
 	deps := accountkit.Deps{Pool: d.pool, Redis: d.redis, SMSSender: sms, EmailSender: email, Logger: logger, ClientIP: clientIP, RequestID: requestID}
 	bridge := &adminBridge{}
 	if cfg.command == "serve" && cfg.AdminEnabled {

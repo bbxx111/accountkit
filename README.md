@@ -208,18 +208,34 @@ r.Route("/v1", func(r chi.Router) {
 
 - **软删除**：`state → PENDING_DELETION`，`purge_time = now + DeletionCoolingPeriod`（默认 15 天）；该账号**全部**会话（含当前）立即吊销，客户端随后收到 401。冻结中的账号不能注销（403 `USER_FROZEN`，需先解冻）。
 - **冷静期**：用手机/邮箱验证码登录得到 `user:undelete`（只能读 `users/me`、调用 `:undelete`、`/token`、`/revoke`）；用微信/Apple 登录 → 403 `USER_PENDING_DELETION`；冷静期内会话不可刷新（`invalid_grant` 并吊销）。`:undelete` 不吊销当前会话，客户端新一轮刷新按当前 R 取得 `user` 或 `user:bind`。`:undelete` 只接受 `user:undelete` 凭证；`user` 凭证 → 403 `INSUFFICIENT_SCOPE`。
-- **purge**（维护任务 `purge_users`）：`purge_time` 到期后单事务匿名化：身份行（含已解绑的）软删并把 subject 摘要/第三方 subject 换成随机值，清空密文、hint、`provider_meta` 与密钥版本；账号行清空 `display_name` 与冻结快照、`state = DELETED`、`purge_time` 改为实际执行时刻；兜底吊销会话；审计事件的 `ip` / `device_id` / `subject_hint` 置 NULL（事件与 `user_id` 保留）；最后按注册顺序调用宿主 `anonymize.Anonymizer`。任一步失败整事务回滚，账号留在 `PENDING_DELETION`，下一轮重试。purge 后原手机号/微信可重新注册为新账号；已 purge 的账号不可 undelete。
+- **purge**（维护任务 `purge_users`）：`purge_time` 到期后单事务匿名化：身份行（含已解绑的）软删并把 subject 摘要/第三方 subject 换成随机值，清空密文、hint、`provider_meta` 与密钥版本；账号行清空 `display_name` 与冻结快照、`state = DELETED`、`purge_time` 改为实际执行时刻；兜底吊销会话；清理本来源、本 namespace 下账号及关联流程审计的 actor/resource `name`、`context.client_ip/user_agent/device_id` 和 `data.accountkit.subject_hint`，保留事件事实、稳定标识和追踪关联；最后按注册顺序调用宿主 `anonymize.Anonymizer`。任一步失败整事务回滚，账号留在 `PENDING_DELETION`，下一轮重试。purge 后原手机号/微信可重新注册为新账号；已 purge 的账号不可 undelete。远端审计副本由宿主持久化清理流程处理，见下节。
 - **宿主匿名化器**：实现 `anonymize.Anonymizer{Name() string; Tables() []string; Anonymize(ctx, tx pgx.Tx, userID string) error}` 并通过 `Deps.Anonymizers` 注册（`Name` 唯一；业务表须与库表同库）。宿主应仿照库内 `TestPurgeCoversEveryTableWithUserID` 写覆盖性测试：每张含 `user_id` 的业务表要么被某个 `Anonymizer.Tables()` 覆盖，要么逐表写明豁免理由。
 - **维护任务**（`auth.Start` 的 ticker，多副本用 advisory lock 互斥；`auth.RunMaintenanceOnce(ctx)` 供一次性作业/测试手动跑一轮）：`purge_users`（每批 100 个账号，逐账号独立事务，批内失败记日志继续、下一轮重试）→ `cleanup_sessions`（物理删除吊销或 refresh 过期 30 天以上的会话行，每批 1000）。完整任务列表见下节。
 
 ## 审计落库与密钥回填（阶段 5b）
 
-- **审计落库**：`Deps.Audit` 为空时默认 `audit.Async(audit.Store)`：事件先进有界队列（1024），单 worker 每 100 条或每 1 秒批量写入 `audit_event`；`auth.Start` 启动 worker，`auth.Close` 刷出残留（上限 5 秒）。写失败、队列满、`Close` 后到达的事件**只丢弃并计数**（`Async.Stats()`；队列满/已关闭的 `Warn` 丢弃日志与写失败的 `Error` 日志各自独立节流，每种最多每 10 秒 1 行，且只带计数与错误），永不影响认证动作的结果。宿主可注入自己的 `audit.Recorder`（例如转发到日志管道），此时库不落库，但 `audit_retention` 仍会清理本表。凭证永不入审计；身份只以 `identity_kind` + `subject_hint`（摘要 / 第三方 subject 前 8 位）出现。
-- **保留期**：任务 `audit_retention` 删除 `occur_time` 早于 `now − AuditRetentionDays`（默认 180 天）的事件，每批 1000。
-- **分页排序**：管理端 `auditEvents`（阶段 6）按 `occur_time, id`，索引 `(user_id, occur_time, id)`。
+- **默认本地审计**：不注入 `Deps.Audit/AuditReader` 时，库创建 `audit.Async(audit.Store)` 并配置本地管理查询。队列容量 1024，单 worker 每 100 条或每 1 秒批量写入 `audit_event`；`auth.Start` 启动 worker，`auth.Close` 刷出残留（默认关闭等待上限 5 秒）。写失败、生成失败、队列满及关闭后到达都不改变认证结果，允许丢失事件。`Async.Stats()` 区分 Written、Duplicate、Invalid、Conflicts、Dropped、Failed；丢弃和写失败日志分别节流，只输出安全计数，不输出宿主原始错误或事件正文。
+- **事件模型**：`audit.Event` 是生产事件，ID 为生产方首次投递前生成的 UUIDv7；`audit.RecordView` 增加存储首次生成的 `CreateTime`。`Actor` 用 namespace + id 表示主体，`Resource` 用 namespace + type + id 表示资源；认证字段位于 `data.accountkit`。凭证、完整手机号/邮箱、完整摘要和原始请求不进入审计。公开 Go 类型和读侧的破坏性迁移见[兼容说明](docs/compatibility.md#通用审计公开接口与协议迁移)。
+- **保留期与排序**：`audit_retention` 按配置 source 删除 `occur_time` 早于 `now − AuditRetentionDays`（默认 180 天）的本地事件，每批 1000，包含没有消费者资源的匿名/管理员事件。管理时间线按 `occur_time, UUID` 升序查询，索引覆盖 source、主体及 JSONB 资源关联。
 - **密钥回填**：任务 `rekey_digests` / `reencrypt_subjects` 逐批（100）把仍用非 active 版本的活跃手机/邮箱身份重算摘要 / 重加密（CAS 更新，与并发登录/绑定不冲突；查找始终覆盖全部已配置版本，回填期间登录不受影响）。单行失败只记日志（`identity_id`）、计数，下一轮重试；第三方身份与已解绑/已 purge 的行不参与。
 - **启动期校验**：`auth.Migrate` 在迁移后检查 `identity` 活跃行使用的密钥版本都在配置内，否则返回 `user.ErrUnknownKeyVersion`——在回填完成前移除旧密钥会在启动时失败，而不是在第一次登录时。
-- **维护任务全集**（`auth.Start` 的 ticker；`auth.RunMaintenanceOnce(ctx)` 手动跑一轮）：`purge_users` → `cleanup_sessions` → `cleanup_identity_flows`（每批最多1000条到期流程，清除密文与结果）→ `audit_retention` → `rekey_digests` → `reencrypt_subjects`，顺序执行、失败互不影响。
+- **维护任务全集**（`auth.Start` 的 ticker；`auth.RunMaintenanceOnce(ctx)` 手动跑一轮）：`cleanup_identity_flows`（每批最多1000条到期流程，清除密文与结果）→ `purge_users` → `cleanup_sessions` → `audit_retention` → `rekey_digests` → `reencrypt_subjects`，顺序执行、失败互不影响。
+
+### 宿主审计装配与清理责任
+
+| 模式 | `Deps.Audit` | `Deps.AuditReader` | 管理审计查询 |
+|---|---|---|---|
+| 默认本地 | nil | nil | 库自建本地读侧 |
+| 宿主读写 | 宿主 Recorder | 宿主 Reader | 使用宿主读侧并复核范围 |
+| 仅写入 | 宿主 Recorder | nil | 已授权查询返回 503 `AUDIT_QUERY_NOT_CONFIGURED` |
+
+只注入 Reader 在 `New` 时被拒绝。未配置管理员验证时仍优先返回 `503 ADMIN_NOT_CONFIGURED`；已配置读侧故障或返回不合规数据时返回安全的 `503 AUDIT_QUERY_UNAVAILABLE`，不会伪装成空列表。
+
+`Config.AuditSource`、`Config.AuditNamespace` 的本地默认分别是 `accountkit/<schema>`、`accountkit/<schema>/resources`，只承诺当前数据库实例内一致；外部写侧必须显式设置二者，并让生产方、存储和查询适配器复用相同配置。source 标识事件来源，namespace 标识稳定身份体系，不是角色、展示名称或租户授权；同一消费者的不同登录方式沿用本地用户映射。跨数据库汇聚时须可区分独立账号体系，持久化后更改 namespace/source 要单独迁移历史关联。三个 To C 案例见[设计说明](openspec/changes/generalize-audit-events/design.md#to-c-案例一单个-app-使用自建账号体系)。
+
+[examples/embedded](examples/embedded/main.go) 演示默认模式；[examples/audit](examples/audit/main.go) 演示全部三种装配。后者使用同库 Store 演示宿主组件所有权；配置与 embedded 相同，`ACCOUNTKIT_AUDIT_MODE` 可设 `local`（默认）、`host` 或 `write-only`，后两种另需显式的 `ACCOUNTKIT_AUDIT_SOURCE` 和 `ACCOUNTKIT_AUDIT_NAMESPACE`。两个示例都只使用本地开发日志发送器，要求 `ACCOUNTKIT_DEMO=1`，实际管理查询还需装配管理员验证。宿主组件由宿主 Start/Close；先排空业务请求，再 `auth.Close()` 停止库维护，最后关闭宿主审计组件及连接。真实远端接入需宿主实现 Recorder/Reader；Record 不得阻塞业务，示例不提供可靠网络投递或跨库原子性。
+
+外部保留期、账号及流程关联脱敏由宿主负责。宿主须有独立于可丢弃审计通知的持久化清理流程，记录待清理资源、重试状态和完成核验；同库匿名化回调可在传入事务中写入宿主自己的清理任务，不能等待远端调用或另开连接提交。仅收到 `USER_PURGED` 不能作为外部清理完成证据。外部应按完整 namespace/type/id 关联账号及流程，删除规定的展示、请求隐私和身份提示字段，并核验迟到/重放不会恢复已清理值。切换到外部模式不会自动迁移或删除旧本地副本，本地保留和匿名化任务继续承担旧副本责任；外部历史回填另作受控操作。
 
 ## 管理面（阶段 6）
 
@@ -237,18 +253,18 @@ r.Route("/v1", func(r chi.Router) {
 | `GET /users/{user}/sessions` | operator | 200 `{sessions:[{name, device_id, device_name, create_time, last_used_time}]}` | 404 |
 | `DELETE /users/{user}/sessions/{session}` | operator | 204 | 400 `INVALID_ID`；404 |
 | `POST /users/{user}/sessions:revokeAll` | operator | 200 `{revoked_count}` | 404 |
-| `GET /users/{user}/auditEvents?page_size=&page_token=` | operator | 200 `{audit_events:[…], next_page_token}` | 400 `INVALID_PAGE_*`；404 |
+| `GET /users/{user}/auditEvents?page_size=&page_token=` | operator | 200 `{audit_events:[…], next_page_token}` | 400 `INVALID_PAGE_*`；404；503 `AUDIT_QUERY_NOT_CONFIGURED` / `AUDIT_QUERY_UNAVAILABLE` |
 
 - **`filter`（AIP-160 子集）**：`term (AND term)*`，`term := field op value`，值为 `"…"` 或无空白裸词；时间戳值必须加双引号（含 `:`）。字段：`state = ACTIVE|FROZEN|PENDING_DELETION|DELETED`；`create_time >= <RFC3339>`、`create_time < <RFC3339>`；`identity.phone = <手机号>`、`identity.email = <邮箱>`（服务端归一化后按摘要等值查找）；`identity.phone_prefix`（如 `"+86138"`）、`identity.phone_suffix`（后 4 位）、`identity.email_prefix`、`identity.email_domain`。身份条件须同属一种 kind 且落在同一条活跃身份上；不支持 `OR` / `NOT` / 括号。`show_deleted=true` 才包含 `PENDING_DELETION` / `DELETED`（AIP-164）。
 - **分页**：`page_size` 默认 20、上限 100；`page_token` 不透明 keyset 游标（用户按 `create_time, id`，审计按 `occur_time, id`）；`next_page_token` 为空表示最后一页。
-- **DTO**：与 C 端分开定义；时间戳 RFC 3339（UTC）；身份默认掩码，明文只在 `:reveal` 响应中出现；审计事件的可空字段输出 `null`。
+- **DTO**：与 C 端分开定义；时间戳 RFC 3339（UTC）；身份默认掩码，明文只在 `:reveal` 响应中出现；审计事件的可空字段输出 `null`，result 未知/不适用为 `null`，已知结果仍为 `SUCCESS` / `FAILURE`。审计资源 name 使用 `users/{user}/auditEvents/{标准小写 UUID}`；旧审计游标返回 400，客户端清除 page_token 后重新翻页，用户列表游标保持。
 - **审计**：每个写操作一条 `actor_kind=ADMIN` 事件（`admin_issuer/subject/username`、`request_id`、`ip`）：`USER_FROZEN` / `USER_UNFROZEN`（reason 为管理员填写值）、`SESSION_REVOKED`（reason `ADMIN`，冻结时为 `USER_FROZEN`）、`USER_DELETED` / `USER_UNDELETED`、`IDENTITY_REVEALED`（只记 kind + hint）。读取端点不产生事件。`ADMIN_FORBIDDEN` 由宿主经 `auth.RecordAdminForbidden` 在 verifier 的 `OnForbidden` 钩子里写入。
 - **状态码语义**：管理面上 403 只表示管理员角色不足（来自 verifier）；目标账号的状态问题一律 400 `FAILED_PRECONDITION`（`INVALID_ACCOUNT_STATE` / `USER_FROZEN`）；用户/身份/会话不存在或不属于该用户 → 404。
 
 ## 数据库与 Redis 隔离
 
 - 所有表位于 `Config.Schema`（默认 `account`），迁移记录表也在其中；同一库可并存多个实例（不同 schema）。
-- 表：`user_account`、`identity`、`session`、`audit_event`、`identity_flow`，无外键；对外 id 带类型前缀（`u_`、`i_`、`s_`、`e_`）+ 13 字符 TSID。
+- 表：`user_account`、`identity`、`session`、`audit_event`、`identity_flow`，无外键；账号/身份/会话/流程 id 使用 `u_`、`i_`、`s_`、`f_` + 13 字符 TSID，审计使用原生 UUIDv7，对外为标准小写带连字符 UUID。
 - 所有 Redis 键以 `Config.KeyPrefix`（默认 `auth:`）开头。
 - `Deps.Pool` 的连接 `search_path` 首位必须是 `Config.Schema`；`Migrate` 会校验并返回 `ErrSearchPath`。宿主业务表建议通过明确的 schema 限定名访问，避免 search_path 名称冲突。
 
@@ -271,6 +287,7 @@ r.Route("/v1", func(r chi.Router) {
 | `CODE_DAILY_LIMIT_PER_TARGET` / `CODE_DAILY_LIMIT_PER_IP` | `10` / `100` | |
 | `MAX_IDENTITIES_PER_KIND` | `1` | 每账号每 kind 身份上限 |
 | `DELETION_COOLING_PERIOD` / `AUDIT_RETENTION_DAYS` | `360h` / `180` | |
+| `AUDIT_SOURCE` / `AUDIT_NAMESPACE` | `accountkit/<schema>` / `accountkit/<schema>/resources` | 本地默认在 New 应用；外部写侧必须显式配置稳定值，不能从请求采信 |
 | `DEFAULT_REGION` | `CN` | 无 `+` 前缀手机号的解析区域 |
 | `MAINTENANCE_INTERVAL` | `5m` | 维护 ticker 周期 |
 | `WECHAT_APPS` | 空（未启用） | `appid:secret,appid:secret`（微信登录） |

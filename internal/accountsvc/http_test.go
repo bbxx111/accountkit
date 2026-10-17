@@ -159,6 +159,8 @@ func TestConsumerDecoderRejectsOversizeBeforeCodeIssuance(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	defer rdb.Close()
 	delivery := &countedDelivery{}
+	cfg.Library.AuditSource = "test/source"
+	cfg.Library.AuditNamespace = "test/ns"
 	auth, err := accountkit.New(cfg.Library, accountkit.Deps{Pool: pool, Redis: rdb, SMSSender: delivery, EmailSender: delivery, Audit: audit.Noop{}, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), ClientIP: clientIP, RequestID: requestID})
 	if err != nil {
 		t.Fatal(err)

@@ -12,13 +12,13 @@ import (
 )
 
 // userEvent 构造 C 端写操作的审计事件模板（Actor=USER，带当前会话与请求元数据）。
-func userEvent(p Principal, meta Meta) audit.Event {
-	return audit.Event{Actor: enum.ActorUser, UserID: p.UserID, SessionID: p.SessionID, IP: meta.IP, RequestID: meta.RequestID}
+func userEvent(p Principal, meta Meta) audit.AuthenticationEvent {
+	return audit.AuthenticationEvent{Actor: enum.ActorUser, UserID: p.UserID, SessionID: p.SessionID, IP: meta.IP, RequestID: meta.RequestID}
 }
 
 // adminEvent 构造管理端写操作的审计事件模板（Actor=ADMIN，带管理员快照、目标用户与请求元数据；无 SessionID）。
-func adminEvent(a Admin, userID string, meta Meta) audit.Event {
-	return audit.Event{Actor: enum.ActorAdmin, UserID: userID, AdminIssuer: a.Issuer, AdminSubject: a.Subject, AdminUsername: a.Username, IP: meta.IP, RequestID: meta.RequestID}
+func adminEvent(a Admin, userID string, meta Meta) audit.AuthenticationEvent {
+	return audit.AuthenticationEvent{Actor: enum.ActorAdmin, UserID: userID, AdminIssuer: a.Issuer, AdminSubject: a.Subject, AdminUsername: a.Username, IP: meta.IP, RequestID: meta.RequestID}
 }
 
 // DeleteMe 软删除（AIP-164，§1.1/§2.4）：ACTIVE → PENDING_DELETION，delete_time = now，
@@ -44,13 +44,13 @@ func (s *Service) AdminDeleteUser(ctx context.Context, a Admin, userID string, m
 
 // softDelete 是 DeleteMe / AdminDeleteUser 的共用体。missing 是"用户不存在"映射的哨兵；tmpl 是预填了
 // Actor / Admin* / SessionID / IP / RequestID 的事件模板（USER_DELETED 与 SESSION_REVOKED 都由它派生）。
-func (s *Service) softDelete(ctx context.Context, userID string, missing error, tmpl audit.Event) (db.UserAccount, error) {
+func (s *Service) softDelete(ctx context.Context, userID string, missing error, tmpl audit.AuthenticationEvent) (db.UserAccount, error) {
 	now := s.now()
 	var (
 		row     db.UserAccount
 		revoked []string
 	)
-	err := s.d.Repo.WithTxRaw(ctx, func(tx pgx.Tx, q *db.Queries) error {
+	err := s.d.Repo.withTxRawOptions(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx, q *db.Queries) error {
 		u, err := lockUserAs(ctx, q, userID, missing)
 		if err != nil {
 			return err
@@ -73,7 +73,13 @@ func (s *Service) softDelete(ctx context.Context, userID string, missing error, 
 		if err != nil {
 			return fmt.Errorf("user: soft delete user: %w", err)
 		}
-		if _, err = q.ScrubIdentityFlowAuditForUser(ctx, userID); err != nil {
+		if _, err = q.LockIdentityFlowsForUser(ctx, userID); err != nil {
+			return fmt.Errorf("user: lock sign-in flows: %w", err)
+		}
+		if _, err = q.LockAuditEventsForUserCleanup(ctx, db.LockAuditEventsForUserCleanupParams{UserID: userID, Source: s.d.AuditSource, Namespace: s.d.AuditNamespace}); err != nil {
+			return fmt.Errorf("user: lock flow audit: %w", err)
+		}
+		if _, err = q.ScrubIdentityFlowAuditForUser(ctx, db.ScrubIdentityFlowAuditForUserParams{UserID: userID, Source: s.d.AuditSource, Namespace: s.d.AuditNamespace, AuthenticationActions: authenticationAuditActions()}); err != nil {
 			return fmt.Errorf("user: scrub sign-in flow audit: %w", err)
 		}
 		if _, err = q.DeleteIdentityFlowsForUser(ctx, userID); err != nil {
@@ -111,7 +117,7 @@ func (s *Service) AdminUndeleteUser(ctx context.Context, a Admin, userID string,
 	return adminUserFrom(row), nil
 }
 
-func (s *Service) undelete(ctx context.Context, userID string, missing error, tmpl audit.Event) (db.UserAccount, error) {
+func (s *Service) undelete(ctx context.Context, userID string, missing error, tmpl audit.AuthenticationEvent) (db.UserAccount, error) {
 	now := s.now()
 	var row db.UserAccount
 	err := s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
@@ -139,7 +145,7 @@ func (s *Service) undelete(ctx context.Context, userID string, missing error, tm
 
 // afterRevokeAll 是 revokeAllForUser 的提交后半段：把每个 sid 写入吊销集并按模板记 SESSION_REVOKED。
 // 与事务分开是因为吊销集与审计都不能回滚，必须在提交成功之后才做。
-func (s *Service) afterRevokeAll(ctx context.Context, sids []string, reason enum.RevokeReason, tmpl audit.Event) {
+func (s *Service) afterRevokeAll(ctx context.Context, sids []string, reason enum.RevokeReason, tmpl audit.AuthenticationEvent) {
 	for _, sid := range sids {
 		s.revokeInSet(ctx, sid)
 		ev := tmpl

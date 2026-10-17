@@ -134,6 +134,8 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 		}
 		email = s
 	}
+	// 服务使用默认本地审计读写；Auth 拥有审计 worker，服务拥有 Pool/Redis。
+	// 外部审计装配属于嵌入宿主扩展，见 examples/audit，不在此创建远端适配器。
 	deps := accountkit.Deps{Pool: d.pool, Redis: d.redis, SMSSender: sms, EmailSender: email, Logger: logger, ClientIP: clientIP, RequestID: requestID}
 	bridge := &adminBridge{}
 	if cfg.command == "serve" && cfg.AdminEnabled {
@@ -288,7 +290,15 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 	}
 	shutdown, cancelShutdown := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancelShutdown()
-	if err = shutdownRuntime(shutdown, cfg.ShutdownTimeout-15*time.Second, []*http.Server{server}, state, tracker, cancelRequests, app.close, d.closeRedis, d.closePool); err != nil {
+	closeLibrary := func() {
+		// Serve 可能尚未登记 listener，或因 Accept 失败先移除登记后才关闭。
+		// 排空后在原关闭预算内兜底关闭自建 listener，再停止库与连接。
+		_ = ln.Close()
+		if app.close != nil {
+			app.close()
+		}
+	}
+	if err = shutdownRuntime(shutdown, cfg.ShutdownTimeout-15*time.Second, []*http.Server{server}, state, tracker, cancelRequests, closeLibrary, d.closeRedis, d.closePool); err != nil {
 		return err
 	}
 	return serveError

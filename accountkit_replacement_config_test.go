@@ -32,7 +32,7 @@ func TestNewWiresIdentityReplacementConfiguration(t *testing.T) {
 			cfg.SensitiveOpVerification = tc.enabled
 			deps := baseDeps(t)
 			deps.Audit = audit.Noop{}
-			a, err := accountkit.New(cfg, deps)
+			a, err := accountkit.New(externalAuditConfig(cfg), deps)
 			if err != nil {
 				t.Fatal(err)
 			}

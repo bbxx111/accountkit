@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/bbxx111/accountkit/audit"
+	"github.com/bbxx111/accountkit/audit/authentication"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/user/db"
 )
@@ -17,14 +18,20 @@ import (
 // PurgeBatchSize 是 purge 任务每次取批的账号数；批内每个账号独立事务。
 const PurgeBatchSize = 100
 
-// PurgeCoveredTables 登记库内每张含 user_id 列的表在 purge 中的处理方式或豁免理由（§3.5 覆盖性测试的依据）。
+// Use the existing authentication enum as the single action registry. Business
+// events keep all data, even when their JSON contains an accountkit-shaped key.
+func authenticationAuditActions() []string {
+	return authentication.Actions()
+}
+
+// PurgeCoveredTables 登记含 user_id 列或通用审计 JSON 账号引用的表在 purge 中的处理方式或豁免理由。
 // 新增含 user_id 的表必须在此登记并在 purgeOne 中处理（或写明豁免理由），否则 TestPurgeCoversEveryTableWithUserID
 // 会失败。宿主业务表由宿主的 Anonymizer.Tables 与宿主自己的覆盖性测试负责。
 var PurgeCoveredTables = map[string]string{
 	"identity_flow": "按 user_id 与 proof_user_ids 在账号锁之后删除关联流程，清除加密证明及完成结果",
 	"identity":      "全部行（含已解绑的软删行）软删；subject_digest / provider_subject 替换为随机值；密文、provider_meta、hint、密钥版本置 NULL（AnonymizeIdentity）",
 	"session":       "豁免 user_id 置空：全部会话在 purge 事务内吊销并写吊销集；账号行与身份已匿名化，user_id 不再指向可识别的自然人；行由 CleanupSessions 在 SessionRetention 后物理删除",
-	"audit_event":   "保留事件与 user_id（注销后仍需可追溯，§3.5）；ip / device_id / subject_hint 置 NULL（ScrubAuditEventsByUser）",
+	"audit_event":   "按配置 source 与资源 namespace 定向清理名称、客户端隐私及 subject_hint；保留稳定账号/流程引用与事件事实（ScrubAuditEventsByUser）",
 }
 
 // PurgeDueUsers 匿名化所有 purge_time 已到的 PENDING_DELETION 账号（§3.5），返回成功 purge 的账号数。
@@ -77,7 +84,7 @@ func (s *Service) purgeOne(ctx context.Context, userID string) (bool, error) {
 	now := s.now()
 	var revoked []string
 	purged := false
-	err := s.d.Repo.WithTxRaw(ctx, func(tx pgx.Tx, q *db.Queries) error {
+	err := s.d.Repo.withTxRawOptions(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx, q *db.Queries) error {
 		u, err := q.LockUserByID(ctx, userID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil // 库内没有硬删路径；防御性跳过
@@ -88,7 +95,13 @@ func (s *Service) purgeOne(ctx context.Context, userID string) (bool, error) {
 		if u.State != enum.UserPendingDeletion || u.PurgeTime == nil || u.PurgeTime.After(now) {
 			return nil // 取批之后被 undelete，或已被另一副本 purge
 		}
-		if _, err := q.ScrubIdentityFlowAuditForUser(ctx, userID); err != nil {
+		if _, err := q.LockIdentityFlowsForUser(ctx, userID); err != nil {
+			return fmt.Errorf("user: lock sign-in flows for purge: %w", err)
+		}
+		if _, err := q.LockAuditEventsForUserCleanup(ctx, db.LockAuditEventsForUserCleanupParams{UserID: userID, Source: s.d.AuditSource, Namespace: s.d.AuditNamespace, IncludeUser: true}); err != nil {
+			return fmt.Errorf("user: lock audit for purge: %w", err)
+		}
+		if _, err := q.ScrubIdentityFlowAuditForUser(ctx, db.ScrubIdentityFlowAuditForUserParams{UserID: userID, Source: s.d.AuditSource, Namespace: s.d.AuditNamespace, AuthenticationActions: authenticationAuditActions()}); err != nil {
 			return fmt.Errorf("user: scrub sign-in flow audit for purge: %w", err)
 		}
 		if _, err := q.DeleteIdentityFlowsForUser(ctx, userID); err != nil {
@@ -117,7 +130,7 @@ func (s *Service) purgeOne(ctx context.Context, userID string) (bool, error) {
 		if revoked, err = s.revokeAllForUser(ctx, q, userID, nil, enum.RevokeUserDeleted, now); err != nil {
 			return err
 		}
-		if _, err := q.ScrubAuditEventsByUser(ctx, userID); err != nil {
+		if _, err := q.ScrubAuditEventsByUser(ctx, db.ScrubAuditEventsByUserParams{UserID: userID, Source: s.d.AuditSource, Namespace: s.d.AuditNamespace, AuthenticationActions: authenticationAuditActions()}); err != nil {
 			return fmt.Errorf("user: scrub audit events: %w", err)
 		}
 		for _, a := range s.d.Anonymizers {
@@ -131,8 +144,8 @@ func (s *Service) purgeOne(ctx context.Context, userID string) (bool, error) {
 	if err != nil || !purged {
 		return false, err
 	}
-	s.afterRevokeAll(ctx, revoked, enum.RevokeUserDeleted, audit.Event{Actor: enum.ActorSystem, UserID: userID})
-	s.record(ctx, audit.Event{Type: enum.EventUserPurged, Actor: enum.ActorSystem, Result: enum.ResultSuccess, UserID: userID})
+	s.afterRevokeAll(ctx, revoked, enum.RevokeUserDeleted, audit.AuthenticationEvent{Actor: enum.ActorSystem, UserID: userID})
+	s.record(ctx, audit.AuthenticationEvent{Type: enum.EventUserPurged, Actor: enum.ActorSystem, Result: enum.ResultSuccess, UserID: userID})
 	return true, nil
 }
 

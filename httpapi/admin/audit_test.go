@@ -2,12 +2,10 @@ package admin_test
 
 import (
 	"context"
-	"net/netip"
 	"testing"
 	"time"
 
 	"github.com/bbxx111/accountkit/audit"
-	auditdb "github.com/bbxx111/accountkit/audit/db"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/user"
 )
@@ -18,16 +16,16 @@ func TestListAuditEvents(t *testing.T) {
 		after *audit.EventCursor
 		limit int
 	}
-	ip := netip.MustParseAddr("203.0.113.5")
+	ip := "203.0.113.5"
 	reason, session, hint, dev, req := "NEW_USER", sid, "abcdefgh", "dev-1", "req-1"
 	flow := "f_0000000000001"
 	kind := enum.IdentityPhone
-	rows := []auditdb.AuditEvent{
-		{ID: "e_0k3f9c2m1xq71", EventType: enum.EventSignIn, ActorKind: enum.ActorUser, UserID: &uid, SessionID: &session, FlowID: &flow, IdentityKind: &kind, SubjectHint: &hint, Result: enum.ResultSuccess, Reason: &reason, Ip: &ip, DeviceID: &dev, RequestID: &req, OccurTime: testNow},
-		{ID: "e_0k3f9c2m1xq72", EventType: enum.EventUserFrozen, ActorKind: enum.ActorAdmin, UserID: &uid, Result: enum.ResultSuccess, OccurTime: testNow.Add(time.Second)},
-		{ID: "e_0k3f9c2m1xq73", EventType: enum.EventUserUnfrozen, ActorKind: enum.ActorAdmin, UserID: &uid, Result: enum.ResultSuccess, OccurTime: testNow.Add(2 * time.Second)},
+	rows := []audit.RecordView{
+		testAuditRecord(t, audit.AuthenticationEvent{Type: enum.EventSignIn, Actor: enum.ActorUser, UserID: uid, SessionID: session, FlowID: flow, IdentityKind: kind, SubjectHint: hint, Result: enum.ResultSuccess, Reason: reason, IP: ip, DeviceID: dev, RequestID: req, OccurTime: testNow}),
+		testAuditRecord(t, audit.AuthenticationEvent{Type: enum.EventUserFrozen, Actor: enum.ActorAdmin, AdminIssuer: wantAdmin.Issuer, AdminSubject: wantAdmin.Subject, UserID: uid, Result: enum.ResultSuccess, OccurTime: testNow.Add(time.Second)}),
+		testAuditRecord(t, audit.AuthenticationEvent{Type: enum.EventUserUnfrozen, Actor: enum.ActorAdmin, AdminIssuer: wantAdmin.Issuer, AdminSubject: wantAdmin.Subject, UserID: uid, Result: enum.ResultSuccess, OccurTime: testNow.Add(2 * time.Second)}),
 	}
-	fa := &fakeAudit{listByUser: func(_ context.Context, id string, after *audit.EventCursor, limit int) ([]auditdb.AuditEvent, error) {
+	fa := &fakeAudit{listByUser: func(_ context.Context, id string, after *audit.EventCursor, limit int) ([]audit.RecordView, error) {
 		got.uid, got.after, got.limit = id, after, limit
 		remaining := rows
 		if after != nil {
@@ -66,7 +64,7 @@ func TestListAuditEvents(t *testing.T) {
 	if first["flow_id"] != flow {
 		t.Fatal("missing flow correlation")
 	}
-	if first["name"] != "users/"+uid+"/auditEvents/e_0k3f9c2m1xq71" || first["event_type"] != "SIGN_IN" || first["actor_kind"] != "USER" || first["result"] != "SUCCESS" || first["identity_kind"] != "PHONE" || first["ip"] != "203.0.113.5" || first["reason"] != "NEW_USER" {
+	if first["name"] != "users/"+uid+"/auditEvents/"+rows[0].ID.String() || first["event_type"] != "SIGN_IN" || first["actor_kind"] != "USER" || first["result"] != "SUCCESS" || first["identity_kind"] != "PHONE" || first["ip"] != "203.0.113.5" || first["reason"] != "NEW_USER" {
 		t.Fatalf("event 1: %v", first)
 	}
 	second := evs[1].(map[string]any)
@@ -78,7 +76,7 @@ func TestListAuditEvents(t *testing.T) {
 	}
 	// 第二页：token → after 游标（上一页最后一条的 occur_time, id）
 	rec = do(t, h, call{method: "GET", path: "/users/" + uid + "/auditEvents?page_size=2&page_token=" + out["next_page_token"].(string), headers: operator})
-	if rec.Code != 200 || got.after == nil || got.after.ID != "e_0k3f9c2m1xq72" || !got.after.Time.Equal(testNow.Add(time.Second)) {
+	if rec.Code != 200 || got.after == nil || got.after.ID != rows[1].ID || !got.after.Time.Equal(testNow.Add(time.Second)) {
 		t.Fatalf("page 2 cursor: %d %+v", rec.Code, got.after)
 	}
 	decode(t, rec, &out)

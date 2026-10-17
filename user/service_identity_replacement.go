@@ -63,6 +63,9 @@ func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID s
 	if err != nil {
 		return IdentityInfo{}, err
 	}
+	// Only successful account/session/identity preflight establishes audit attribution.
+	ev.VerifiedSubject = true
+	ev.IdentityID = old.ID
 	if reason, verifyErr := s.verifyCode(ctx, channel, enum.PurposeBind, norm, cred, code.Binding{UserID: p.UserID}); verifyErr != nil {
 		if !errors.Is(verifyErr, ErrUnavailable) && reason != "INTERNAL" {
 			rejectReason = reason
@@ -140,6 +143,7 @@ func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID s
 		ev.SubjectHint = audit.Hint(*old.SubjectDigest)
 	}
 	s.record(ctx, ev)
+	ev.IdentityID = info.ID
 	ev.Type, ev.SubjectHint = enum.EventIdentityBound, audit.Hint(digest)
 	s.record(ctx, ev)
 	return info, nil

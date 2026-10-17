@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit"
+	"github.com/bbxx111/accountkit/audit"
 )
 
 func k(b byte) []byte     { return bytes.Repeat([]byte{b}, 32) }
@@ -20,6 +21,84 @@ func minimal() accountkit.Config {
 		JWTKeys: map[uint16][]byte{1: k(1)}, JWTActiveKey: 1, JWTIssuer: "shifang", JWTAudience: "app",
 		SubjectHMACKeys: map[uint16][]byte{1: k(2)}, SubjectHMACActiveKey: 1,
 		SubjectCipherKeys: map[uint16][]byte{1: k(3)}, SubjectCipherActiveKey: 1,
+	}
+}
+
+func TestAuditConfiguration(t *testing.T) {
+	c := minimal()
+	for _, tc := range []struct {
+		source, namespace string
+		valid             bool
+	}{
+		{"accountkit/test", "urn:身份:消费者", true}, {strings.Repeat("a", 128), strings.Repeat("n", 512), true},
+		{"bad source", "namespace", false}, {strings.Repeat("a", 129), "namespace", false},
+		{"source", strings.Repeat("n", 513), false}, {"source", "bad\x00namespace", false}, {"source", string([]byte{0xff}), false},
+	} {
+		c.AuditSource = tc.source
+		c.AuditNamespace = tc.namespace
+		if err := c.Validate(); (err == nil) != tc.valid {
+			t.Fatalf("audit configuration validity=%v, error=%v", tc.valid, err)
+		}
+	}
+	const prefix = "AUDIT_TEST_"
+	t.Setenv(prefix+"JWT_KEYS", "1:"+b64(k(1)))
+	t.Setenv(prefix+"JWT_ACTIVE_KEY", "1")
+	t.Setenv(prefix+"JWT_ISSUER", "issuer")
+	t.Setenv(prefix+"JWT_AUDIENCE", "app")
+	t.Setenv(prefix+"SUBJECT_HMAC_KEYS", "1:"+b64(k(2)))
+	t.Setenv(prefix+"SUBJECT_HMAC_ACTIVE_KEY", "1")
+	t.Setenv(prefix+"SUBJECT_CIPHER_KEYS", "1:"+b64(k(3)))
+	t.Setenv(prefix+"SUBJECT_CIPHER_ACTIVE_KEY", "1")
+	t.Setenv(prefix+"AUTH_SCHEMA", "custom")
+	t.Setenv(prefix+"AUDIT_SOURCE", "")
+	t.Setenv(prefix+"AUDIT_NAMESPACE", "")
+	for _, tc := range []struct{ name, source, namespace string }{
+		{"missing_both", "", ""},
+		{"source_only", "test/auth", ""},
+		{"namespace_only", "", "urn:test:users"},
+		{"explicit_local_defaults", "accountkit/custom", "accountkit/custom/resources"},
+		{"explicit_custom", "test/auth", "urn:test:users"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(prefix+"AUDIT_SOURCE", tc.source)
+			t.Setenv(prefix+"AUDIT_NAMESPACE", tc.namespace)
+			if tc.source == "" {
+				if err := os.Unsetenv(prefix + "AUDIT_SOURCE"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.namespace == "" {
+				if err := os.Unsetenv(prefix + "AUDIT_NAMESPACE"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := accountkit.ConfigFromEnv(prefix)
+			if err != nil {
+				t.Fatal(err)
+			}
+			deps := baseDeps(t)
+			deps.Audit = audit.Noop{}
+			auth, newErr := accountkit.New(got, deps)
+			explicit := tc.source != "" && tc.namespace != ""
+			if (newErr == nil) != explicit {
+				t.Fatalf("external config explicit=%v: %v", explicit, newErr)
+			}
+			if auth != nil {
+				auth.Close()
+			}
+			if got.AuditSource != tc.source || got.AuditNamespace != tc.namespace {
+				t.Fatalf("explicit audit input lost: source=%q namespace=%q", got.AuditSource, got.AuditNamespace)
+			}
+			if got.Schema != "custom" || got.KeyPrefix != "auth:" || got.AccessTokenTTL != 15*time.Minute {
+				t.Fatal("existing configuration defaults changed")
+			}
+			if err := got.Validate(); err != nil {
+				t.Fatal(err)
+			}
+			if got.AuditSource != tc.source || got.AuditNamespace != tc.namespace {
+				t.Fatal("Validate filled audit defaults back into caller configuration")
+			}
+		})
 	}
 }
 

@@ -276,6 +276,7 @@ func (s *Service) RevealIdentity(ctx context.Context, a Admin, userID, identityI
 		out.Subject, hint = *row.ProviderSubject, audit.Hint(*row.ProviderSubject)
 	}
 	ev := adminEvent(a, userID, meta)
+	ev.IdentityID = row.ID
 	ev.Type, ev.Result, ev.IdentityKind, ev.SubjectHint = enum.EventIdentityRevealed, enum.ResultSuccess, row.Kind, hint
 	s.record(ctx, ev)
 	return out, nil

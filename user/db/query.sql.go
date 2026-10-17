@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/google/uuid"
 )
 
 const anonymizeIdentity = `-- name: AnonymizeIdentity :execrows
@@ -42,6 +43,22 @@ func (q *Queries) AnonymizeIdentity(ctx context.Context, arg AnonymizeIdentityPa
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const auditFlowBelongsToUser = `-- name: AuditFlowBelongsToUser :one
+SELECT EXISTS (SELECT 1 FROM identity_flow WHERE id = $1::text AND (user_id = $2::text OR proof_user_ids @> ARRAY[$2::text]))
+`
+
+type AuditFlowBelongsToUserParams struct {
+	FlowID string
+	UserID string
+}
+
+func (q *Queries) AuditFlowBelongsToUser(ctx context.Context, arg AuditFlowBelongsToUserParams) (bool, error) {
+	row := q.db.QueryRow(ctx, auditFlowBelongsToUser, arg.FlowID, arg.UserID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const batchPublicProfiles = `-- name: BatchPublicProfiles :many
@@ -137,7 +154,7 @@ type CountActiveSessionsByUserParams struct {
 	Now    time.Time
 }
 
-// 管理端用户详情：活跃会话数；命中 session_user_id_idx。
+// 管理端用户详情：活跃会话数；命中 idx_session_user_id。
 func (q *Queries) CountActiveSessionsByUser(ctx context.Context, arg CountActiveSessionsByUserParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countActiveSessionsByUser, arg.UserID, arg.Now)
 	var count int64
@@ -394,7 +411,7 @@ type DeleteStaleSessionsParams struct {
 }
 
 // 维护任务 cleanup_sessions：物理删除吊销/过期超过保留期的会话；子查询限批，避免单事务锁太多行。
-// 两个 OR 分支分别命中 session_revoke_time_idx / session_refresh_expire_time_idx。
+// 两个 OR 分支分别命中 idx_session_revoke_time / idx_session_refresh_expire_time。
 func (q *Queries) DeleteStaleSessions(ctx context.Context, arg DeleteStaleSessionsParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteStaleSessions, arg.Before, arg.BatchSize)
 	if err != nil {
@@ -415,7 +432,7 @@ type FindActiveIdentityByDigestsParams struct {
 }
 
 // 多版本查找：@digests 是 pii.Digester.AllDigests 的结果（active 在前）。漏掉任一活跃版本
-// 会让该版本下写入的行查不到，同一手机号就会被再次注册。命中 identity_kind_subject_digest_uidx。
+// 会让该版本下写入的行查不到，同一手机号就会被再次注册。命中 uk_identity_kind_subject_digest。
 func (q *Queries) FindActiveIdentityByDigests(ctx context.Context, arg FindActiveIdentityByDigestsParams) (Identity, error) {
 	row := q.db.QueryRow(ctx, findActiveIdentityByDigests, arg.Kind, arg.Digests)
 	var i Identity
@@ -932,7 +949,7 @@ type ListIdentitiesByCipherKeyVersionParams struct {
 	BatchSize int32
 }
 
-// 维护任务 reencrypt_subjects：仍用旧加密版本的活跃锚点身份；命中 identity_cipher_key_version_idx。
+// 维护任务 reencrypt_subjects：仍用旧加密版本的活跃锚点身份；命中 idx_identity_cipher_key_version。
 func (q *Queries) ListIdentitiesByCipherKeyVersion(ctx context.Context, arg ListIdentitiesByCipherKeyVersionParams) ([]Identity, error) {
 	rows, err := q.db.Query(ctx, listIdentitiesByCipherKeyVersion, arg.Version, arg.BatchSize)
 	if err != nil {
@@ -980,7 +997,7 @@ type ListIdentitiesByDigestKeyVersionParams struct {
 	BatchSize int32
 }
 
-// 维护任务 rekey_digests：仍用旧 HMAC 版本的活跃锚点身份；命中 identity_digest_key_version_idx。
+// 维护任务 rekey_digests：仍用旧 HMAC 版本的活跃锚点身份；命中 idx_identity_digest_key_version。
 func (q *Queries) ListIdentitiesByDigestKeyVersion(ctx context.Context, arg ListIdentitiesByDigestKeyVersionParams) ([]Identity, error) {
 	rows, err := q.db.Query(ctx, listIdentitiesByDigestKeyVersion, arg.Version, arg.BatchSize)
 	if err != nil {
@@ -1020,7 +1037,7 @@ const listIdentitiesByUserIncludingDeleted = `-- name: ListIdentitiesByUserInclu
 SELECT id, user_id, kind, subject_digest, digest_key_version, provider_subject, subject_ciphertext, cipher_key_version, hint_prefix, hint_suffix, provider_meta, create_time, update_time, delete_time FROM identity WHERE user_id = $1 ORDER BY create_time, id
 `
 
-// purge 专用：含已解绑（软删）的行——它们仍带原 subject 的摘要/密文/hint，必须一并匿名化。命中 identity_user_id_idx。
+// purge 专用：含已解绑（软删）的行——它们仍带原 subject 的摘要/密文/hint，必须一并匿名化。命中 idx_identity_user_id。
 func (q *Queries) ListIdentitiesByUserIncludingDeleted(ctx context.Context, userID string) ([]Identity, error) {
 	rows, err := q.db.Query(ctx, listIdentitiesByUserIncludingDeleted, userID)
 	if err != nil {
@@ -1091,7 +1108,7 @@ type ListUsersAdminParams struct {
 }
 
 // 管理端 GET /users：可空参数实现可选过滤（sqlc.narg），keyset 分页 ORDER BY create_time, id（§3.4），
-// 由 user_account_create_time_id_idx 提供索引序，避免每页全表排序。
+// 由 idx_user_account_create_time_id 提供索引序，避免每页全表排序。
 // state NOT IN (3, 4) 写死数值（PENDING_DELETION / DELETED，与 enum 钉死），与 purge 索引谓词同理。
 // 身份条件落在同一条活跃身份行（单个 EXISTS）；identity.phone/email 的 digests 是 AllDigests 的结果。
 // 注意：EXISTS 子查询里的 ($n IS NULL OR col = $n) 形式在 PostgreSQL 通用计划（generic plan）下可能不走
@@ -1154,7 +1171,7 @@ type ListUsersDueForPurgeParams struct {
 	BatchSize int32
 }
 
-// purge 任务取批。谓词写死 state = 3（PENDING_DELETION）而非绑定参数：它必须与 user_account_purge_time_idx
+// purge 任务取批。谓词写死 state = 3（PENDING_DELETION）而非绑定参数：它必须与 idx_user_account_purge_time
 // 的部分索引谓词逐字一致——通用计划下绑定参数无法证明蕴含部分索引谓词，会退化为全表扫描。
 func (q *Queries) ListUsersDueForPurge(ctx context.Context, arg ListUsersDueForPurgeParams) ([]string, error) {
 	rows, err := q.db.Query(ctx, listUsersDueForPurge, arg.Now, arg.BatchSize)
@@ -1165,6 +1182,68 @@ func (q *Queries) ListUsersDueForPurge(ctx context.Context, arg ListUsersDueForP
 	var items []string
 	for rows.Next() {
 		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockAuditEventsForUserCleanup = `-- name: LockAuditEventsForUserCleanup :many
+WITH user_events AS MATERIALIZED (
+ SELECT id, targets, context FROM audit_event
+ WHERE $1::boolean AND source = $2::text AND (
+  (actor->>'type' = 'USER' AND actor->>'namespace' = $3::text AND actor->>'id' = $4::text)
+  OR targets @> jsonb_build_array(jsonb_build_object('type','USER','namespace',$3::text,'id',$4::text))
+  OR context->'related_resources' @> jsonb_build_array(jsonb_build_object('type','USER','namespace',$3::text,'id',$4::text)))
+), flow_resources AS MATERIALIZED (
+ SELECT jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',$3::text,'id',id)) AS resource
+ FROM identity_flow WHERE user_id = $4::text OR proof_user_ids @> ARRAY[$4::text]
+ UNION
+ SELECT jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',$3::text,'id',f->>'id')) AS resource
+ FROM user_events linked
+ CROSS JOIN LATERAL jsonb_array_elements(linked.targets || COALESCE(linked.context->'related_resources','[]'::jsonb)) f
+ WHERE f->>'type' = 'IDENTITY_FLOW' AND f->>'namespace' = $3::text
+), cleanup_ids AS MATERIALIZED (
+ SELECT id FROM user_events
+ UNION
+ SELECT id FROM audit_event
+ WHERE source = $2::text
+ AND (targets @> ANY(ARRAY(SELECT resource FROM flow_resources))
+      OR context->'related_resources' @> ANY(ARRAY(SELECT resource FROM flow_resources)))
+)
+SELECT e.id FROM audit_event e JOIN cleanup_ids c ON c.id = e.id
+ORDER BY e.id FOR UPDATE OF e
+`
+
+type LockAuditEventsForUserCleanupParams struct {
+	IncludeUser bool
+	Source      string
+	Namespace   string
+	UserID      string
+}
+
+// Lock both cleanup phases together. Sorting each UPDATE separately would still
+// permit a live-flow event in phase one to precede a smaller ordinary event.
+// Soft deletion locks only live-flow events; purge includes the historical closure.
+func (q *Queries) LockAuditEventsForUserCleanup(ctx context.Context, arg LockAuditEventsForUserCleanupParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, lockAuditEventsForUserCleanup,
+		arg.IncludeUser,
+		arg.Source,
+		arg.Namespace,
+		arg.UserID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
@@ -1199,6 +1278,32 @@ func (q *Queries) LockIdentityFlow(ctx context.Context, id string) (IdentityFlow
 		&i.ExpireTime,
 	)
 	return i, err
+}
+
+const lockIdentityFlowsForUser = `-- name: LockIdentityFlowsForUser :many
+SELECT id FROM identity_flow
+WHERE user_id = $1::text OR proof_user_ids @> ARRAY[$1::text]
+ORDER BY id FOR UPDATE
+`
+
+func (q *Queries) LockIdentityFlowsForUser(ctx context.Context, userID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, lockIdentityFlowsForUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockSessionByID = `-- name: LockSessionByID :one
@@ -1401,17 +1506,55 @@ func (q *Queries) RotateSession(ctx context.Context, arg RotateSessionParams) (i
 
 const scrubAuditEventsByUser = `-- name: ScrubAuditEventsByUser :execrows
 
-UPDATE audit_event SET ip = NULL, device_id = NULL, subject_hint = NULL
-WHERE (user_id = $1::text OR flow_id IN (
-    SELECT flow_id FROM audit_event WHERE user_id = $1::text AND flow_id IS NOT NULL
-)) AND (ip IS NOT NULL OR device_id IS NOT NULL OR subject_hint IS NOT NULL)
+WITH user_events AS MATERIALIZED (
+ SELECT id, targets, context FROM audit_event
+ WHERE source = $2::text AND (
+  (actor->>'type' = 'USER' AND actor->>'namespace' = $3::text AND actor->>'id' = $4::text)
+  OR targets @> jsonb_build_array(jsonb_build_object('type','USER','namespace',$3::text,'id',$4::text))
+  OR context->'related_resources' @> jsonb_build_array(jsonb_build_object('type','USER','namespace',$3::text,'id',$4::text)))
+), flow_resources AS MATERIALIZED (
+ SELECT DISTINCT jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',$3::text,'id',f->>'id')) AS resource
+ FROM user_events linked
+ CROSS JOIN LATERAL jsonb_array_elements(linked.targets || COALESCE(linked.context->'related_resources','[]'::jsonb)) f
+ WHERE f->>'type' = 'IDENTITY_FLOW' AND f->>'namespace' = $3::text
+), cleanup_ids AS MATERIALIZED (
+ SELECT id FROM user_events
+ UNION
+ SELECT id FROM audit_event
+ WHERE source = $2::text
+ AND (targets @> ANY(ARRAY(SELECT resource FROM flow_resources))
+      OR context->'related_resources' @> ANY(ARRAY(SELECT resource FROM flow_resources)))
+)
+UPDATE audit_event e SET
+ actor = e.actor - 'name',
+ targets = (SELECT COALESCE(jsonb_agg(r - 'name'),'[]'::jsonb) FROM jsonb_array_elements(e.targets) r),
+ context = jsonb_set(e.context - 'client_ip' - 'device_id' - 'user_agent', '{related_resources}',
+  (SELECT COALESCE(jsonb_agg(r - 'name'),'[]'::jsonb) FROM jsonb_array_elements(COALESCE(e.context->'related_resources','[]'::jsonb)) r)),
+ data = CASE WHEN e.action = ANY($1::text[]) AND jsonb_typeof(e.data->'accountkit') = 'object'
+  THEN e.data #- '{accountkit,subject_hint}' ELSE e.data END
+WHERE e.id IN (SELECT id FROM cleanup_ids)
+ AND (e.actor ? 'name' OR e.context ? 'client_ip' OR e.context ? 'device_id' OR e.context ? 'user_agent'
+ OR (e.action = ANY($1::text[]) AND jsonb_typeof(e.data->'accountkit') = 'object' AND e.data->'accountkit' ? 'subject_hint')
+ OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) p WHERE p ? 'name'))
 `
 
+type ScrubAuditEventsByUserParams struct {
+	AuthenticationActions []string
+	Source                string
+	Namespace             string
+	UserID                string
+}
+
 // audit_event
-// purge：去掉可关联到自然人的请求侧字段，保留事件与 user_id（§3.5）。命中 audit_event_user_id_occur_time_idx 前缀。
-// 初始补全事件尚无 user_id；以之后已归属的 flow_id 关联同流程事件，命中 flow 关联索引。
-func (q *Queries) ScrubAuditEventsByUser(ctx context.Context, userID string) (int64, error) {
-	result, err := q.db.Exec(ctx, scrubAuditEventsByUser, userID)
+// Materialize the user's historical flow closure once. JSONB containment uses
+// the existing resource GIN indexes without correlating a history scan per row.
+func (q *Queries) ScrubAuditEventsByUser(ctx context.Context, arg ScrubAuditEventsByUserParams) (int64, error) {
+	result, err := q.db.Exec(ctx, scrubAuditEventsByUser,
+		arg.AuthenticationActions,
+		arg.Source,
+		arg.Namespace,
+		arg.UserID,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -1419,16 +1562,39 @@ func (q *Queries) ScrubAuditEventsByUser(ctx context.Context, userID string) (in
 }
 
 const scrubIdentityFlowAuditForUser = `-- name: ScrubIdentityFlowAuditForUser :execrows
-UPDATE audit_event SET ip = NULL, device_id = NULL, subject_hint = NULL
-WHERE flow_id IN (
-    SELECT id FROM identity_flow
-    WHERE user_id = $1::text OR proof_user_ids @> ARRAY[$1::text]
-) AND (ip IS NOT NULL OR device_id IS NOT NULL OR subject_hint IS NOT NULL)
+WITH flow_resources AS MATERIALIZED (
+ SELECT jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',$3::text,'id',id)) AS resource
+ FROM identity_flow WHERE user_id = $4::text OR proof_user_ids @> ARRAY[$4::text]
+)
+UPDATE audit_event e SET
+ actor = e.actor - 'name',
+ targets = (SELECT COALESCE(jsonb_agg(r - 'name'),'[]'::jsonb) FROM jsonb_array_elements(e.targets) r),
+ context = jsonb_set(e.context - 'client_ip' - 'device_id' - 'user_agent', '{related_resources}',
+  (SELECT COALESCE(jsonb_agg(r - 'name'),'[]'::jsonb) FROM jsonb_array_elements(COALESCE(e.context->'related_resources','[]'::jsonb)) r)),
+ data = CASE WHEN e.action = ANY($1::text[]) AND jsonb_typeof(e.data->'accountkit') = 'object'
+  THEN e.data #- '{accountkit,subject_hint}' ELSE e.data END
+WHERE e.source = $2::text AND (
+ e.targets @> ANY(ARRAY(SELECT resource FROM flow_resources))
+ OR e.context->'related_resources' @> ANY(ARRAY(SELECT resource FROM flow_resources))
+) AND (e.actor ? 'name' OR e.context ? 'client_ip' OR e.context ? 'device_id' OR e.context ? 'user_agent'
+ OR (e.action = ANY($1::text[]) AND jsonb_typeof(e.data->'accountkit') = 'object' AND e.data->'accountkit' ? 'subject_hint')
+ OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) p WHERE p ? 'name'))
 `
 
-// 用户锁内、删除 flow 前清理已落库事件；不依赖异步队列中的最终用户关联事件。
-func (q *Queries) ScrubIdentityFlowAuditForUser(ctx context.Context, userID string) (int64, error) {
-	result, err := q.db.Exec(ctx, scrubIdentityFlowAuditForUser, userID)
+type ScrubIdentityFlowAuditForUserParams struct {
+	AuthenticationActions []string
+	Source                string
+	Namespace             string
+	UserID                string
+}
+
+func (q *Queries) ScrubIdentityFlowAuditForUser(ctx context.Context, arg ScrubIdentityFlowAuditForUserParams) (int64, error) {
+	result, err := q.db.Exec(ctx, scrubIdentityFlowAuditForUser,
+		arg.AuthenticationActions,
+		arg.Source,
+		arg.Namespace,
+		arg.UserID,
+	)
 	if err != nil {
 		return 0, err
 	}

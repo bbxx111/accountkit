@@ -1,6 +1,7 @@
 package accountkit_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
@@ -9,14 +10,18 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"log/slog"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/bbxx111/accountkit"
+	"github.com/bbxx111/accountkit/audit"
+	"github.com/bbxx111/accountkit/audit/authentication"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/migrations"
 	"github.com/bbxx111/accountkit/user"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -67,7 +72,12 @@ func seedFormatFixture(t *testing.T, pool *pgxpool.Pool, cfg accountkit.Config) 
 	exec("INSERT INTO identity(id,user_id,kind,subject_digest,digest_key_version,subject_ciphertext,cipher_key_version,hint_prefix,hint_suffix) VALUES($1,$2,1,$3,1,$4,1,'+86138','1234')", f.IdentityID, f.UserID, hex.EncodeToString(mac.Sum(nil)), ct)
 	hash := sha256.Sum256([]byte(f.RefreshToken))
 	exec("INSERT INTO session(id,user_id,device_id,auth_time,refresh_token_hash,refresh_expire_time) VALUES($1,$2,'source-device',$3,$4,$5)", f.SessionID, f.UserID, now, hash[:], now.Add(24*time.Hour))
-	exec("INSERT INTO audit_event(id,event_type,actor_kind,user_id,result) VALUES($1,1,1,$2,1)", f.EventID, f.UserID)
+	// Explicit synthetic projection only; this is not a legacy database upgrade.
+	exec(`INSERT INTO audit_event(id,source,action,result,actor,targets,data,occur_time)
+ VALUES('019a0000-0000-7000-8000-000000000001',$1,'CODE_SENT',1,
+ jsonb_build_object('type','USER','namespace',$2::text,'id',$3::text),
+ jsonb_build_array(jsonb_build_object('type','USER','namespace',$2::text,'id',$3::text)),
+ jsonb_build_object('accountkit',jsonb_build_object('legacy_event_id',$4::text,'actor_kind','USER')),$5)`, cfg.AuditSource, cfg.AuditNamespace, f.UserID, f.EventID, now)
 	claims, err := json.Marshal(map[string]any{"sub": f.UserID, "sid": f.SessionID, "scope": "user", "auth_time": now.Unix(), "iat": now.Unix(), "exp": now.Add(15 * time.Minute).Unix(), "iss": cfg.JWTIssuer, "aud": []string{cfg.JWTAudience}, "jti": "00112233445566778899aabbccddeeff"})
 	if err != nil {
 		t.Fatal(err)
@@ -88,6 +98,7 @@ func snapshotSource(t *testing.T, pool *pgxpool.Pool) string {
  'identities',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM identity t),
  'sessions',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM session t),
  'audit',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM audit_event t),
+ 'flows',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM identity_flow t),
  'version',(SELECT jsonb_agg(to_jsonb(t)) FROM schema_migrations t))::text`).Scan(&out)
 	if err != nil {
 		t.Fatal(err)
@@ -98,6 +109,17 @@ func snapshotSource(t *testing.T, pool *pgxpool.Pool) string {
 // Catches format regressions and repeat-migration data loss on the current initial schema.
 func TestHistoricalFormatsOnInitialSchema(t *testing.T) {
 	a, pool, sent := integrationInstance(t, minimal(), testRedis(t))
+	mem := &audit.Memory{}
+	var logs bytes.Buffer
+	d := a.DepsForTest()
+	d.Audit = mem
+	d.Logger = slog.New(slog.NewTextHandler(&logs, nil))
+	var err error
+	a, err = accountkit.New(a.Config(), d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(a.Close)
 	f, access := seedFormatFixture(t, pool, a.Config())
 	before := snapshotSource(t, pool)
 	ctx := context.Background()
@@ -113,20 +135,49 @@ func TestHistoricalFormatsOnInitialSchema(t *testing.T) {
 	if err := json.Unmarshal([]byte(snapshotSource(t, pool)), &newData); err != nil {
 		t.Fatal(err)
 	}
-	for _, table := range []string{"users", "identities", "sessions", "audit"} {
+	for _, table := range []string{"users", "identities", "sessions", "flows", "audit", "version"} {
 		if string(oldData[table]) != string(newData[table]) {
 			t.Fatalf("migration changed source %s data", table)
 		}
 	}
 	// Historical audit fixtures have no flow association; repeat migration must preserve that.
 	var linkedAudit int
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM audit_event WHERE flow_id IS NOT NULL").Scan(&linkedAudit); err != nil || linkedAudit != 0 {
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_event WHERE data#>>'{accountkit,flow_id}' IS NOT NULL`).Scan(&linkedAudit); err != nil || linkedAudit != 0 {
 		t.Fatalf("migration rewrote historical audit flow association: %d %v", linkedAudit, err)
 	}
 	var version, flows int
 	var dirty bool
 	if err := pool.QueryRow(ctx, "SELECT version,dirty,(SELECT count(*) FROM identity_flow) FROM schema_migrations").Scan(&version, &dirty, &flows); err != nil || version != 1 || dirty || flows != 0 {
 		t.Fatalf("initial version=%d dirty=%v flows=%d: %v", version, dirty, flows, err)
+	}
+	var mappedID uuid.UUID
+	var legacy string
+	var action string
+	var count int
+	if err := pool.QueryRow(ctx, `SELECT id,data#>>'{accountkit,legacy_event_id}',action FROM audit_event`).Scan(&mappedID, &legacy, &action); err != nil || mappedID.Version() != 7 || legacy != f.EventID || action != "CODE_SENT" {
+		t.Fatalf("historical mapping: %s %q %s %v", mappedID, legacy, action, err)
+	}
+	store, err := audit.NewStoreWithOptions(pool, audit.StoreOptions{Source: a.Config().AuditSource, Namespace: a.Config().AuditNamespace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := store.ListByResource(ctx, audit.Query{Source: a.Config().AuditSource, Resource: audit.Resource{Type: "USER", Namespace: a.Config().AuditNamespace, ID: f.UserID}, Limit: 10})
+	if err != nil || len(page.Records) != 1 {
+		t.Fatalf("historical read: %+v %v", page, err)
+	}
+	projected, err := authentication.Projection(page.Records[0].Event)
+	if err != nil || projected.Type != enum.EventCodeSent || projected.Actor != enum.ActorUser || projected.UserID != f.UserID || projected.Result != enum.ResultSuccess {
+		t.Fatalf("explicit historical projection is unreadable: %+v %v", projected, err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM audit_event").Scan(&count); err != nil || count != 1 {
+		t.Fatalf("historical rows: %d %v", count, err)
+	}
+	stable := snapshotSource(t, pool)
+	if err := a.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if snapshotSource(t, pool) != stable {
+		t.Fatal("repeat migration changed current initial snapshot")
 	}
 	principal, err := a.Users().Authenticate(ctx, access)
 	if err != nil || principal.UserID != f.UserID {
@@ -136,9 +187,16 @@ func TestHistoricalFormatsOnInitialSchema(t *testing.T) {
 	if err != nil || me.ID != f.UserID {
 		t.Fatalf("source user: %v", err)
 	}
-	revealed, err := a.Users().RevealIdentity(ctx, user.Admin{}, f.UserID, f.IdentityID, user.Meta{IP: "127.0.0.1"})
+	revealed, err := a.Users().RevealIdentity(ctx, user.Admin{Issuer: "https://historical.example.test/admin", Subject: "historical-operator"}, f.UserID, f.IdentityID, user.Meta{IP: "127.0.0.1"})
 	if err != nil || revealed.Subject != f.Phone {
 		t.Fatalf("source ciphertext: %v", err)
+	}
+	events := mem.Events()
+	if len(events) != 1 || events[0].Action != "IDENTITY_REVEALED" || events[0].Actor.Type != audit.ActorUser || events[0].Actor.Namespace != "https://historical.example.test/admin" || events[0].Actor.ID != "historical-operator" {
+		t.Fatalf("historical reveal must deliver complete administrator audit: %+v", events)
+	}
+	if logs.Len() != 0 {
+		t.Fatalf("historical reveal emitted unexpected logs: %s", logs.String())
 	}
 	tok, err := a.Users().Refresh(ctx, f.RefreshToken, user.Meta{IP: "127.0.0.1"})
 	if err != nil || tok.UserID != f.UserID || tok.Scope != "user" || tok.RefreshToken == f.RefreshToken {

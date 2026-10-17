@@ -147,7 +147,7 @@ func TestServiceIntegrationSessionExpiry(t *testing.T) {
 	f.assertAuditPrivate()
 	for _, typ := range []enum.EventType{enum.EventRefreshRejected, enum.EventReauthenticationFailed} {
 		var count int
-		if err := f.pool.QueryRow(ctx, "SELECT count(*) FROM audit_event WHERE session_id=$1 AND event_type=$2 AND reason='SESSION_EXPIRED'", sid, typ).Scan(&count); err != nil {
+		if err := f.pool.QueryRow(ctx, "SELECT count(*) FROM audit_event WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(targets || COALESCE(context->'related_resources','[]'::jsonb)) r WHERE r->>'type'='SESSION' AND r->>'id'=$1) AND action=$2 AND data->>'reason'='SESSION_EXPIRED'", sid, typ.String()).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		if count != 1 {
@@ -155,7 +155,7 @@ func TestServiceIntegrationSessionExpiry(t *testing.T) {
 		}
 	}
 	var revoked int
-	if err := f.pool.QueryRow(ctx, "SELECT count(*) FROM audit_event WHERE session_id=$1 AND event_type=$2", sid, enum.EventSessionRevoked).Scan(&revoked); err != nil {
+	if err := f.pool.QueryRow(ctx, "SELECT count(*) FROM audit_event WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(targets || COALESCE(context->'related_resources','[]'::jsonb)) r WHERE r->>'type'='SESSION' AND r->>'id'=$1) AND action=$2", sid, enum.EventSessionRevoked.String()).Scan(&revoked); err != nil {
 		t.Fatal(err)
 	}
 	if revoked != 1 {

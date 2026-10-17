@@ -238,7 +238,7 @@ func TestCodeKeyRotationIntegration(t *testing.T) {
 			isolated.Close()
 			for reason, typ := range map[string]enum.EventType{"CODE_INVALID": enum.EventSignInFailed, "CODE_EXPIRED": enum.EventSignInFailed, "IDENTITY_REPLACED": enum.EventIdentityBound} {
 				var n int
-				if err := f.pool.QueryRow(f.ctx, "SELECT count(*) FROM audit_event WHERE request_id='rotation-library' AND reason=$1 AND event_type=$2", reason, typ).Scan(&n); err != nil || n == 0 {
+				if err := f.pool.QueryRow(f.ctx, "SELECT count(*) FROM audit_event WHERE context->>'request_id'='rotation-library' AND data->>'reason'=$1 AND action=$2", reason, enum.EventType(typ).String()).Scan(&n); err != nil || n == 0 {
 					t.Fatalf("missing compatible audit reason %s", reason)
 				}
 			}
@@ -260,7 +260,7 @@ func TestCodeKeyRotationIntegration(t *testing.T) {
 		fresh.Close()
 		for _, reason := range []string{"SEND_FAILED", "COOLDOWN", "TARGET_LIMIT"} {
 			var n int
-			if err := f.pool.QueryRow(f.ctx, "SELECT count(*) FROM audit_event WHERE request_id='rotation-library' AND reason=$1", reason).Scan(&n); err != nil || n != 2 {
+			if err := f.pool.QueryRow(f.ctx, "SELECT count(*) FROM audit_event WHERE context->>'request_id'='rotation-library' AND data->>'reason'=$1", reason).Scan(&n); err != nil || n != 2 {
 				t.Fatalf("missing delivery/limit audit %s", reason)
 			}
 		}

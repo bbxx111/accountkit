@@ -5,7 +5,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
-	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// A fresh install must include the complete schema at version one.
+// A fresh installation contains only the current initial pair and reaches version one.
 func TestConsolidatedInitialSchema(t *testing.T) {
 	entries, err := fs.ReadDir(".")
 	if err != nil {
@@ -26,8 +26,8 @@ func TestConsolidatedInitialSchema(t *testing.T) {
 			names = append(names, entry.Name())
 		}
 	}
-	if !reflect.DeepEqual(names, []string{"0001_init.down.sql", "0001_init.up.sql"}) {
-		t.Errorf("production migration files = %v, want only the initial pair", names)
+	if !slices.Equal(names, []string{"0001_init.down.sql", "0001_init.up.sql"}) {
+		t.Errorf("unexpected production migrations: %v", names)
 	}
 	cfg, schema := safetyDB(t)
 	if err := Up(context.Background(), cfg, schema); err != nil {
@@ -36,7 +36,7 @@ func TestConsolidatedInitialSchema(t *testing.T) {
 	assertVersion(t, cfg, schema, 1, false)
 	c := migrationTestConn(t, cfg, schema)
 	var tables int
-	if err := c.QueryRow(context.Background(), "SELECT count(*) FROM pg_tables WHERE schemaname=$1 AND tablename IN ('user_account','identity','session','audit_event','identity_flow')", schema).Scan(&tables); err != nil {
+	if err := c.QueryRow(context.Background(), "SELECT count(*) FROM pg_tables WHERE schemaname=$1 AND tablename <> 'schema_migrations'", schema).Scan(&tables); err != nil {
 		t.Fatal(err)
 	}
 	if tables != 5 {
@@ -65,7 +65,7 @@ func TestOldMigrationBaselineRejected(t *testing.T) {
 		version int
 		partial string
 	}{
-		{"old_initial", 1, ""}, {"old_incremental", 2, ""}, {"flow_table_only", 1, "table"}, {"audit_column_only", 1, "column"},
+		{"complete_v1_empty", 1, "complete_empty"}, {"complete_v1_nonempty", 1, "complete_nonempty"}, {"complete_v2", 2, "complete_empty"}, {"old_initial", 1, ""}, {"old_incremental", 2, ""}, {"flow_table_only", 1, "table"}, {"audit_column_only", 1, "column"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			version := tc.version
@@ -75,7 +75,11 @@ func TestOldMigrationBaselineRejected(t *testing.T) {
 			if _, err := c.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
 				t.Fatal(err)
 			}
-			initial, err := os.ReadFile("../tests/testdata/source-baseline/0001_init.up.sql")
+			initialPath := "../tests/testdata/source-baseline/0001_init.up.sql"
+			if strings.HasPrefix(tc.partial, "complete_") {
+				initialPath = "testdata/legacy_integrated_v1.sql"
+			}
+			initial, err := os.ReadFile(initialPath)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -92,7 +96,7 @@ func TestOldMigrationBaselineRejected(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if version == 2 {
+			if version == 2 && !strings.HasPrefix(tc.partial, "complete_") {
 				if _, err := c.Exec(ctx, historicalFlowSQL(t)); err != nil {
 					t.Fatal(err)
 				}
@@ -103,9 +107,14 @@ func TestOldMigrationBaselineRejected(t *testing.T) {
 			if _, err := c.Exec(ctx, "INSERT INTO user_account(id,state,display_name) VALUES('u_0000000000001',1,'keep')"); err != nil {
 				t.Fatal(err)
 			}
+			if tc.partial == "complete_nonempty" {
+				if _, err := c.Exec(ctx, "INSERT INTO audit_event(id,event_type,actor_kind,user_id,result) VALUES('e_0000000000001',1,1,'u_0000000000001',1)"); err != nil {
+					t.Fatal(err)
+				}
+			}
 			before := migrationCatalog(t, c, schema)
 			var dataBefore string
-			if err := c.QueryRow(ctx, "SELECT jsonb_agg(t)::text FROM user_account t").Scan(&dataBefore); err != nil {
+			if err := c.QueryRow(ctx, "SELECT jsonb_build_array((SELECT jsonb_agg(t) FROM user_account t),(SELECT jsonb_agg(t) FROM audit_event t))::text").Scan(&dataBefore); err != nil {
 				t.Fatal(err)
 			}
 			err = Up(ctx, cfg, schema)
@@ -117,7 +126,7 @@ func TestOldMigrationBaselineRejected(t *testing.T) {
 			}
 			assertVersion(t, cfg, schema, version, false)
 			var dataAfter string
-			if err := c.QueryRow(ctx, "SELECT jsonb_agg(t)::text FROM user_account t").Scan(&dataAfter); err != nil {
+			if err := c.QueryRow(ctx, "SELECT jsonb_build_array((SELECT jsonb_agg(t) FROM user_account t),(SELECT jsonb_agg(t) FROM audit_event t))::text").Scan(&dataAfter); err != nil {
 				t.Fatal(err)
 			}
 			if dataAfter != dataBefore {
@@ -146,7 +155,7 @@ func TestOldMigrationBaselineRejected(t *testing.T) {
 }
 
 // PostgreSQL, not SQL text, defines equivalence, including column order.
-func TestInitialSchemaMatchesPreviousFinalCatalog(t *testing.T) {
+func TestInitialSchemaPreservesNonAuditCatalog(t *testing.T) {
 	cfg, oldSchema := safetyDB(t)
 	_, newSchema := safetyDB(t)
 	old := migrationTestConn(t, cfg, oldSchema)
@@ -164,11 +173,24 @@ func TestInitialSchemaMatchesPreviousFinalCatalog(t *testing.T) {
 	if _, err := old.Exec(ctx, historicalFlowSQL(t)); err != nil {
 		t.Fatal(err)
 	}
-	if err := Up(ctx, cfg, newSchema); err != nil {
+	// Apply only the authorized index naming change to the historical test
+	// database. Keep the frozen SQL and the full catalog comparison unchanged.
+	if _, err := old.Exec(ctx, `DO $$
+DECLARE old_index text;
+BEGIN
+ FOR old_index IN SELECT indexname FROM pg_indexes
+  WHERE schemaname=current_schema() AND tablename<>'audit_event' AND indexname ~ '_(uidx|idx)$'
+ LOOP
+  EXECUTE format('ALTER INDEX %I RENAME TO %I', old_index,
+   CASE WHEN old_index ~ '_uidx$' THEN 'uk_' ELSE 'idx_' END
+   || regexp_replace(old_index, '_(uidx|idx)$', ''));
+ END LOOP;
+END $$`); err != nil {
 		t.Fatal(err)
 	}
+	initialUp(t, cfg, newSchema)
 	current := migrationTestConn(t, cfg, newSchema)
-	if before, after := migrationCatalog(t, old, oldSchema), migrationCatalog(t, current, newSchema); before != after {
+	if before, after := migrationCatalogForTables(t, old, oldSchema, true), migrationCatalogForTables(t, current, newSchema, true); before != after {
 		t.Fatalf("catalog mismatch\nprevious: %s\ninitial: %s", before, after)
 	}
 }
@@ -194,20 +216,23 @@ func migrationTestConn(t *testing.T, cfg *pgx.ConnConfig, schema string) *pgx.Co
 	return c
 }
 func migrationCatalog(t *testing.T, c *pgx.Conn, schema string) string {
+	return migrationCatalogForTables(t, c, schema, false)
+}
+func migrationCatalogForTables(t *testing.T, c *pgx.Conn, schema string, nonAudit bool) string {
 	t.Helper()
 	var result string
 	err := c.QueryRow(context.Background(), `
  SELECT jsonb_build_object(
  'columns',(SELECT jsonb_agg(to_jsonb(x) ORDER BY x.table_name,x.ordinal_position) FROM (
  SELECT table_name,ordinal_position,column_name,data_type,udt_name,is_nullable,column_default,collation_name
- FROM information_schema.columns WHERE table_schema=$1 AND table_name <> 'schema_migrations') x),
+ FROM information_schema.columns WHERE table_schema=$1 AND table_name <> 'schema_migrations' AND (NOT $2 OR table_name <> 'audit_event')) x),
  'constraints',(SELECT jsonb_agg(to_jsonb(x) ORDER BY x.table_name,x.name) FROM (
  SELECT r.relname AS table_name,c.conname AS name,c.contype,pg_get_constraintdef(c.oid) AS definition
  FROM pg_constraint c JOIN pg_class r ON r.oid=c.conrelid JOIN pg_namespace n ON n.oid=r.relnamespace
- WHERE n.nspname=$1 AND r.relname <> 'schema_migrations') x),
+ WHERE n.nspname=$1 AND r.relname <> 'schema_migrations' AND (NOT $2 OR r.relname <> 'audit_event')) x),
  'indexes',(SELECT jsonb_agg(to_jsonb(x) ORDER BY x.tablename,x.indexname) FROM (
  SELECT tablename,indexname,replace(indexdef,quote_ident($1)||'.','') AS definition FROM pg_indexes
- WHERE schemaname=$1 AND tablename <> 'schema_migrations') x))::text`, schema).Scan(&result)
+ WHERE schemaname=$1 AND tablename <> 'schema_migrations' AND (NOT $2 OR tablename <> 'audit_event')) x))::text`, schema, nonAudit).Scan(&result)
 	if err != nil {
 		t.Fatal(err)
 	}

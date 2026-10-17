@@ -60,7 +60,7 @@ func TestRecoveryFixture(t *testing.T) {
 	}
 	defer pool.Close()
 	captured := &captureSender{}
-	a, err := accountkit.New(cfg, accountkit.Deps{Pool: pool, Redis: testRedis(t), SMSSender: captured, EmailSender: captured, Audit: audit.Noop{}})
+	a, err := accountkit.New(externalAuditConfig(cfg), accountkit.Deps{Pool: pool, Redis: testRedis(t), SMSSender: captured, EmailSender: captured, Audit: audit.Noop{}})
 	if err != nil {
 		t.Fatal(err)
 	}

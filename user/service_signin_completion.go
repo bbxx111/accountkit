@@ -42,7 +42,7 @@ func (s *Service) createProofIdentity(ctx context.Context, q *db.Queries, uid st
 func (s *Service) signInVerified(ctx context.Context, proof completionProof, expiry time.Time, dev Device, meta Meta) (SignInResult, error) {
 	var result SignInResult
 	var replaced []string
-	ev := audit.Event{IdentityKind: proof.Kind, IP: meta.IP, DeviceID: dev.ID, RequestID: meta.RequestID}
+	ev := audit.AuthenticationEvent{IdentityKind: proof.Kind, IP: meta.IP, DeviceID: dev.ID, RequestID: meta.RequestID}
 	if proof.Kind.IsChannel() {
 		digest, _ := s.d.Digester.Digest(proof.Target)
 		ev.SubjectHint = audit.Hint(digest)
@@ -70,6 +70,8 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 				}
 				return idp.ErrInvalidCredential
 			}
+			ev.VerifiedSubject = true
+			ev.IdentityID = current.ID
 			if !proof.Kind.IsChannel() {
 				if u.State == enum.UserPendingDeletion {
 					return ErrUserPendingDeletion
@@ -362,7 +364,7 @@ func (s *Service) persistCompletionProof(ctx context.Context, row db.IdentityFlo
 		return nil
 	})
 	if err == nil && persisted {
-		s.record(ctx, audit.Event{Type: enum.EventSignInCompletionProofVerified, Result: enum.ResultSuccess, FlowID: row.ID, UserID: proof.UserID, IdentityKind: proof.Kind, IP: meta.IP, DeviceID: p.Device.ID, RequestID: meta.RequestID})
+		s.record(ctx, audit.AuthenticationEvent{Type: enum.EventSignInCompletionProofVerified, Result: enum.ResultSuccess, FlowID: row.ID, UserID: proof.UserID, VerifiedSubject: proof.UserID != "", IdentityID: proof.IdentityID, IdentityKind: proof.Kind, IP: meta.IP, DeviceID: p.Device.ID, RequestID: meta.RequestID})
 	}
 	return row, p, err
 }
@@ -412,8 +414,8 @@ func (s *Service) replayCompletion(ctx context.Context, q *db.Queries, row db.Id
 func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.IdentityFlow, p completionPayload, request string, dev Device, meta Meta) (SignInResult, error) {
 	var result SignInResult
 	var replaced []string
-	var bound []enum.IdentityKind
-	var event audit.Event
+	var bound []db.Identity
+	var event audit.AuthenticationEvent
 	committed := false
 	err := s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
 		owners, err := s.lockProofOwners(ctx, q, p)
@@ -503,7 +505,7 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.Ident
 				return e
 			}
 			idents = append(idents, created)
-			bound = append(bound, proof.Kind)
+			bound = append(bound, created)
 		}
 		now := s.now()
 		sess, pair, rep, err := s.establishSession(ctx, q, u, s.identitiesComplete(idents), fp.Device, now)
@@ -530,7 +532,7 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.Ident
 		}
 		result = SignInResult{Tokens: &pair}
 		replaced = rep
-		event = audit.Event{FlowID: fresh.ID, UserID: u.ID, SessionID: sess.ID, IdentityKind: fp.Proofs[0].Kind, IP: meta.IP, DeviceID: fp.Device.ID, RequestID: meta.RequestID}
+		event = audit.AuthenticationEvent{FlowID: fresh.ID, UserID: u.ID, SessionID: sess.ID, IdentityKind: fp.Proofs[0].Kind, IP: meta.IP, DeviceID: fp.Device.ID, RequestID: meta.RequestID}
 		committed = true
 		return nil
 	})
@@ -548,8 +550,8 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.Ident
 		return SignInResult{}, err
 	}
 	if committed {
-		for _, kind := range bound {
-			s.record(ctx, audit.Event{Type: enum.EventIdentityBound, Result: enum.ResultSuccess, FlowID: event.FlowID, UserID: event.UserID, IdentityKind: kind, IP: meta.IP, DeviceID: p.Device.ID, RequestID: meta.RequestID})
+		for _, identity := range bound {
+			s.record(ctx, audit.AuthenticationEvent{Type: enum.EventIdentityBound, Result: enum.ResultSuccess, FlowID: event.FlowID, UserID: event.UserID, IdentityID: identity.ID, IdentityKind: identity.Kind, IP: meta.IP, DeviceID: p.Device.ID, RequestID: meta.RequestID})
 		}
 		event.Type, event.Result = enum.EventSignInCompletionCompleted, enum.ResultSuccess
 		s.record(ctx, event)

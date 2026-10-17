@@ -27,7 +27,7 @@ func (s *Service) SignInWithIdp(ctx context.Context, cred IdpCredential, dev Dev
 	if err := validDevice(dev); err != nil {
 		return SignInResult{}, err
 	}
-	ev := audit.Event{IdentityKind: cred.Kind, IP: meta.IP, DeviceID: dev.ID, RequestID: meta.RequestID}
+	ev := audit.AuthenticationEvent{IdentityKind: cred.Kind, IP: meta.IP, DeviceID: dev.ID, RequestID: meta.RequestID}
 	ident, err := s.verifyIdp(ctx, cred)
 	if err != nil {
 		if reason := idpFailureReason(err); reason != "" {

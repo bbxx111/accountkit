@@ -190,7 +190,7 @@ func TestSchemaPinsInvariants(t *testing.T) {
 
 	// purge 索引谓词钉住 PENDING_DELETION = 3
 	var idxdef string
-	_ = pool.QueryRow(ctx, `SELECT indexdef FROM pg_indexes WHERE schemaname = $1 AND indexname = 'user_account_purge_time_idx'`, schema).Scan(&idxdef)
+	_ = pool.QueryRow(ctx, `SELECT indexdef FROM pg_indexes WHERE schemaname = $1 AND indexname = 'idx_user_account_purge_time'`, schema).Scan(&idxdef)
 	if !contains(idxdef, "state = 3") {
 		t.Fatalf("purge index predicate must be state = 3 (PENDING_DELETION): %s", idxdef)
 	}

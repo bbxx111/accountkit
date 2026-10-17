@@ -15,7 +15,6 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/bbxx111/accountkit"
-	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -46,10 +45,10 @@ func TestSessionExpiryEndToEndAgainstRealDB(t *testing.T) {
 		rdb.Close()
 		pool.Close()
 	})
-	sent, events := &captureSender{}, &audit.Memory{}
+	sent, events := &captureSender{}, &testAuditMemory{}
 	cfg := minimal()
 	cfg.Schema, cfg.KeyPrefix, cfg.CodeCooldown = schema, schema+":", time.Second
-	a, err := accountkit.New(cfg, accountkit.Deps{Pool: pool, Redis: rdb, SMSSender: sent, EmailSender: sent, Audit: events, AdminVerifier: stubVerifier{}, AdminPrincipal: stubPrincipalFrom})
+	a, err := accountkit.New(externalAuditConfig(cfg), accountkit.Deps{Pool: pool, Redis: rdb, SMSSender: sent, EmailSender: sent, Audit: events, AdminVerifier: stubVerifier{}, AdminPrincipal: stubPrincipalFrom})
 	if err != nil {
 		t.Fatal(err)
 	}

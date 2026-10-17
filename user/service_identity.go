@@ -144,7 +144,7 @@ func (s *Service) BindWithCode(ctx context.Context, p Principal, cred CodeCreden
 		return IdentityInfo{}, false, err
 	}
 	digest, _ := s.d.Digester.Digest(norm)
-	ev := audit.Event{UserID: p.UserID, SessionID: p.SessionID, IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, RequestID: meta.RequestID}
+	ev := audit.AuthenticationEvent{UserID: p.UserID, SessionID: p.SessionID, IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, RequestID: meta.RequestID}
 	if reason, err := s.verifyCode(ctx, channel, enum.PurposeBind, norm, cred, code.Binding{UserID: p.UserID}); err != nil {
 		if !errors.Is(err, ErrUnavailable) {
 			ev.Type, ev.Result, ev.Reason = enum.EventIdentityBindRejected, enum.ResultFailure, reason
@@ -189,6 +189,7 @@ func (s *Service) BindWithCode(ctx context.Context, p Principal, cred CodeCreden
 		}
 		return IdentityInfo{}, false, err
 	}
+	ev.IdentityID = info.ID
 	ev.Type, ev.Result = enum.EventIdentityBound, enum.ResultSuccess
 	if !created {
 		ev.Reason = "ALREADY_BOUND"
@@ -229,7 +230,7 @@ func (s *Service) BindWithIdp(ctx context.Context, p Principal, cred IdpCredenti
 	if cred.Kind != enum.IdentityWeChat && cred.Kind != enum.IdentityApple {
 		return IdentityInfo{}, false, ErrInvalidArgument
 	}
-	ev := audit.Event{UserID: p.UserID, SessionID: p.SessionID, IdentityKind: cred.Kind, IP: meta.IP, RequestID: meta.RequestID}
+	ev := audit.AuthenticationEvent{UserID: p.UserID, SessionID: p.SessionID, IdentityKind: cred.Kind, IP: meta.IP, RequestID: meta.RequestID}
 	if err := s.requireIdentityEnabled(cred.Kind); err != nil {
 		if reason := idpFailureReason(err); reason != "" {
 			ev.Type, ev.Result, ev.Reason = enum.EventIdentityBindRejected, enum.ResultFailure, reason
@@ -288,6 +289,7 @@ func (s *Service) BindWithIdp(ctx context.Context, p Principal, cred IdpCredenti
 		}
 		return IdentityInfo{}, false, err
 	}
+	ev.IdentityID = info.ID
 	ev.Type, ev.Result = enum.EventIdentityBound, enum.ResultSuccess
 	if !created {
 		ev.Reason = "ALREADY_BOUND"
@@ -351,6 +353,6 @@ func (s *Service) UnbindIdentity(ctx context.Context, p Principal, identityID st
 	case target.ProviderSubject != nil:
 		hint = audit.Hint(*target.ProviderSubject)
 	}
-	s.record(ctx, audit.Event{Type: enum.EventIdentityUnbound, Result: enum.ResultSuccess, UserID: p.UserID, SessionID: p.SessionID, IdentityKind: target.Kind, SubjectHint: hint, IP: meta.IP, RequestID: meta.RequestID})
+	s.record(ctx, audit.AuthenticationEvent{Type: enum.EventIdentityUnbound, Result: enum.ResultSuccess, UserID: p.UserID, SessionID: p.SessionID, IdentityID: target.ID, IdentityKind: target.Kind, SubjectHint: hint, IP: meta.IP, RequestID: meta.RequestID})
 	return nil
 }

@@ -4,11 +4,57 @@
 
 ## 初始数据库基线整合
 
-在尚无实际产品接入的前提下，当前开发代码执行一次初始结构整合：`0001_init.up.sql` 直接定义 user_account、identity、session、audit_event、identity_flow 及全部现有字段、索引与约束；生产目录不再携带独立的 `0002_identity_flow`，初始化版本为 1。下一次真实增量从 0002 开始，配套 down 覆盖五个表，公开 Down 仍拒绝执行。
+在尚无实际产品接入的前提下，当前开发代码执行初始结构整合：`0001_init.up.sql` 直接定义 user_account、identity、session、audit_event、identity_flow 及全部现有字段、索引与约束。本次用户明确授权十列 UUIDv7 通用审计直接纳入原始定义并更新固定校验；生产目录不再携带独立的 `0002_identity_flow` 或已撤回的通用审计 0002，也不提供 staging/Prepare 转换工具，初始化版本为 1。下一次真实增量从 0002 开始，配套 down 覆盖五个表和五个审计校验函数，公开 Down 仍拒绝执行。
 
-这是迁移基线的破坏性调整。旧 version=1 缺少流程结构、整合前 version=2 等不兼容开发库均明确拒绝，不重放初始 SQL、不改 schema_migrations、不自动 Force 或清库。仅在确认可丢弃且准确核验目标后人工重建一次性开发数据库/schema；包含需保留数据的库应先备份并单独制定迁移方案，不能用修改版本标记替代数据迁移。
+这是迁移基线的破坏性调整。旧 version=1 缺少流程结构或保留旧十七列审计（包含完整 identity_flow、空审计表也不例外），以及任何旧 version=2 开发库均明确拒绝，不重放初始 SQL、不改 schema_migrations、不自动 Force 或清库。仅在确认可丢弃且准确核验目标后人工重建一次性开发数据库/schema；包含需保留数据的库应先备份并单独制定迁移方案，不能用修改版本标记替代数据迁移。
 
-历史 v0.1.0/v0.2.0 标签及 source-baseline 原始字节保持。历史检查固定两个旧发布的精确提交和原始 SQL，所有新发布遵循整合后的独立初始校验值及递增迁移规则。历史合成数据在完整新结构上验证 ID、摘要、密文和有效 access/refresh 格式兼容，不再把该用例描述为旧 schema 的原地接管。操作与恢复边界见[迁移手册](migrations.md)。
+历史 v0.1.0/v0.2.0 标签及 source-baseline 原始字节保持。历史检查固定两个旧发布的精确提交和原始 SQL，所有新发布遵循整合后的独立初始校验值及递增迁移规则。历史合成数据直接装入完整新结构，验证非审计 ID、摘要、密文和有效 access/refresh 格式兼容；审计合成记录明确映射为固定合法 UUIDv7 并保留 legacy_event_id，不再把该用例描述为旧 schema 的原地接管。操作与恢复边界见[迁移手册](migrations.md)。
+
+## 通用审计公开接口与协议迁移
+
+本次审计 Go API 和审计资源标识是明确的破坏性升级，认证动作结果、其他 `u_/i_/s_/f_` ID、JWT/refresh/验证码格式保持。初始结构、旧库拒绝和历史格式演练边界见上节及[迁移手册](migrations.md)。客户端、宿主适配器和当前数据库基线应一并升级，旧二进制须验证结构兼容后才能回退。
+
+### 事件生产与写侧
+
+`audit.Event` 不再是认证字段集合，也不再由 Store 生成 `e_` ID。它与叶子包 `audit/event.Event` 是同一类型，包含 `ID uuid.UUID`、`Source`、`Action string`、`Result *enum.Result`、`Actor`、`Targets`、`Context`、`Data json.RawMessage`、`OccurTime`；`audit.RecordView` 在事件外增加存储方首次生成的 `CreateTime`。SQL 固定为十列，认证专属快照位于 `data.accountkit`，不再提供 `user_id/session_id/flow_id/identity_kind` 专属列或公共 schema_version。
+
+认证专用调用迁移到 `audit.AuthenticationEvent`（`audit/authentication.Input`）和 `audit.NewAuthenticationRecorder`。直接操作通用事件的宿主先用 `uuid.NewV7()` 生成 ID，设置实际发生时间及可信 source，调用 `audit/event.Freeze` 校验、规范化并冻结可变值，再交给 `Recorder.Record(ctx, event)`。已有 UUIDv7 的认证输入由映射器保留，缺失时映射器首次生成；重投递保持 ID、OccurTime 和逻辑内容。生成或校验失败不得改变认证动作结果。
+
+`Inserter.InsertBatch` 返回 `(audit.BatchResult, error)`，分别统计 Written、Duplicate、Failed、Invalid、Conflicts。同一 ID 同一事实不新增记录、不更新 CreateTime；真正冲突返回可识别的 `audit.ErrConflict`，不能重新生成 ID 或 upsert 覆盖。合法清理后的重放不能恢复已删除隐私。宿主记录器必须自行冻结输入、避免业务路径阻塞并提供安全失败观测；默认 `audit.Async` 已完成入队前冻结及有界批处理，但不提供持久化队列或可靠投递。
+
+source/action 最长 128 ASCII 字符，source 匹配 `[A-Za-z0-9][A-Za-z0-9._/-]*`，action 匹配 `[A-Z][A-Z0-9_]*`；非 nil Result 只能是 SUCCESS/FAILURE。已知主体为 namespace + id，资源为 namespace + type + id；namespace/id 各最多 512 字节，name 最多 256 Unicode 字符。完整事件不超过 64 KiB，targets/related_resources 各最多 32 项，超限和重复 JSON 键拒绝，不截断稳定标识。
+
+认证映射可省略无效 IP、超长设备字段、自定义 request_id 或可选 name，并单独安全计数/告警；新边界不收紧原认证 HTTP 输入。已验证管理员 issuer/sub 超过 512 字节则拒绝该审计事件并安全观测，认证结果保持。显式历史映射 `authentication.MapLegacy` 对不兼容可选字段拒绝转换，不能据此推断包提供旧库自动升级。
+
+### 配置、所有权与读侧
+
+本地默认 source/namespace 分别为 `accountkit/<schema>`、`accountkit/<schema>/resources`。`ConfigFromEnv(prefix)` 对 `AUDIT_SOURCE/AUDIT_NAMESPACE` 保留原始空值，`New` 才应用本地默认；`Config.Validate` 检查有效默认而不修改调用方字段。注入 `Deps.Audit` 时必须显式提供 `Config.AuditSource/AuditNamespace`，允许明确填写与默认字符串相同的值。直接构造 `user.NewService` 时，每个缺失值分别从 Repo 池配置的首个 search_path schema 推导，池为空或首项为空回退 account；直接服务不强制判断外部接管，跨库中心审计仍须显式配置二者。
+
+`audit.NewStore(pool)` 同样只推导本地默认；自定义配置使用 `audit.NewStoreWithOptions(pool, audit.StoreOptions{Source: source, Namespace: namespace})`，与事件生产方保持一致。namespace 表示稳定身份体系，可以是受控 URN 或完整 issuer URL，无需可访问；source 区分事件来源，role 和显示名不构成稳定身份。实际共享同一主体体系时才复用 namespace，独立数据库汇聚时须明确隔离，已有 namespace/source 变化须独立迁移。三个消费者应用案例见[设计说明](../openspec/changes/archive/2026-10-17-generalize-audit-events/design.md#to-c-案例一单个-app-使用自建账号体系)。
+
+`Deps.AuditReader` 和管理适配器的读侧改用 `audit.Reader.ListByResource(ctx, audit.Query) (audit.Page, error)`，不再接收生成数据库行。`Query` 指定 Source、完整 Resource、可选 Actions、After 和 Limit；适配器按 `(occur_time, UUID)` 严格升序返回不超过 Limit 的 RecordView，所有记录严格大于 After，CreateTime 必须非零且为可序列化的有效时间。不得重复 UUID，包括同 UUID 不同发生时间；全页及用于判断下一页的额外记录都会被复核。
+
+`Actions` 为空表示该资源的全部动作，通用 Reader 仍能查询业务事件；非空集合必须在排序和 Limit 前过滤。`Query.NormalizedActions()` 校验动作标识、返回排序去重的独立副本，不修改调用方输入，不将小写或空白改写为合法值。管理路由固定使用 `authentication.Actions()` 从认证枚举导出的完整集合，不增加业务审计 HTTP 接口或客户端动作筛选参数。宿主 Reader 必须执行这一条件；HTTP 对忽略条件的返回值仍整页拒绝为 503，不能先取页再静默跳过业务事件。`FlowLinks` 的归属证据独立查询，即使其动作不在记录筛选集合中，也须保留必要证据。
+
+默认无注入时库管理本地写读；注入 Audit + AuditReader 时管理查询走宿主读侧；仅注入 Audit 时已授权审计查询返回 `503 AUDIT_QUERY_NOT_CONFIGURED`；只注入 Reader 在 New 被拒绝。读侧故障、越界记录、顺序或记录结构不合规返回安全的 `503 AUDIT_QUERY_UNAVAILABLE`。`ADMIN_NOT_CONFIGURED`、角色检查、目标账号存在性检查和独立管理员身份系统保持。
+
+查询范围是本来源、本 namespace 下账号作为主体、直接目标或关联资源的认证事件。早期仅有 flow 的记录用 `Page.FlowLinks` 提供归属证据：历史 Evidence 须为同源、成功的 `SIGN_IN_COMPLETION_PROOF_VERIFIED` 或 `SIGN_IN_COMPLETION_COMPLETED`，并有可复核的 USER/FLOW 资源引用；`Live=true` 时 Evidence 必须为空，由管理面独立调用领域 FlowOwner 核验。已有明确其他账号归属的事件不能通过共享 flow 混入结果。历史资源后来被删除不使有效历史证据失效；证据不直接序列化，任意业务 data 不进入认证 HTTP DTO。
+
+库只管理自建 worker，不会启动、刷新或关闭宿主组件；宿主先排空业务、关闭 Auth，再关闭自建审计组件与连接。三种可编译装配见 [examples/audit](../examples/audit/main.go)，默认嵌入宿主见 [examples/embedded](../examples/embedded/main.go)。示例中的宿主 Store 仍与认证同库，远端 Recorder/Reader 由宿主实现；不能把阻塞网络调用直接放入 Record 并声称不影响认证。
+
+### HTTP 资源与游标
+
+审计资源 name 的末段从 `e_…` 改为标准小写带连字符 UUIDv7，例如 `users/u_0000000000001/auditEvents/0199ed00-0000-7000-8000-000000000001`。不增加 `e_` 前缀。旧认证 DTO 的 event_type、actor_kind、用户/会话关联及受控管理员快照语义保持，result 为 `SUCCESS`、`FAILURE` 或 JSON `null`，其他可空字段仍输出 null；任意业务 JSON 不原样暴露。
+
+审计使用独立的 v2 游标，绑定 source/resource、规范化的认证动作集合和 `(occur_time, UUID)`，客户端继续将其视为不透明字符串。旧 v1 UUID 游标、旧 `e_` 审计游标、跨账号/来源/动作集合的游标返回 `400 INVALID_PAGE_TOKEN`，响应提示从第一页重新开始，客户端须清空 page_token。认证枚举扩展导致动作范围变化时也须重新开始分页。用户列表等其他游标协议保持，不能通用解码或把游标当作授权凭据。
+
+### 外部隐私与模式切换
+
+本地匿名化保留事件事实及稳定资源引用，清理 actor/targets/related_resources 的 name、context 中 client_ip/user_agent/device_id 和 `data.accountkit.subject_hint`，保留 request/trace/span 关联；覆盖账号和流程历史，迟到及重放不能恢复隐私字段。外部设施须实现对应的资源关联、保留期和清理完成核验。
+
+宿主必须建立独立于尽力审计的持久化清理流程，保存待清理资源、失败重试和完成状态。同库匿名化回调可用传入 pgx.Tx 写入宿主自己的清理任务，不可等待远端服务或另开连接提交同批数据。只收到 `USER_PURGED` 不构成完成证据；清理未完成时不得声称外部副本已匿名化，也不能回滚已提交本地事务或丢弃清理责任。此变更不内置可靠消息/outbox，也不承诺跨库原子提交。
+
+切换外部写读不会自动迁移或删除本地旧副本，本地保留和匿名化继续覆盖配置范围内旧记录；外部历史回填须独立受控执行。改变 source/namespace 前须安排旧范围的持续清理，不能用新配置下查不到记录证明旧副本已删除。外部备份、副本及回填数据也须纳入宿主治理。
 
 ## 身份策略与登录补全协议升级
 
@@ -18,7 +64,7 @@
 
 E/R 环境键沿宿主前缀，R 仅 PHONE/EMAIL any-of；省略 R 默认二选一，`[]` 允许纯第三方。服务显式禁用 EMAIL 时无需 SMTP，显式启用 PHONE 因未装配 SMS 服务商而报错。纯第三方账号需要近期认证时重走普通 IdP 登录，会按同设备规则替换会话；客户端保存新 pair、核对仍为原 user_id 后再继续敏感操作。此操作不保证提供方强制输入密码或 MFA。手机/邮箱及管理员恢复保留，普通 IdP 仍拒绝冷静期账号；纯第三方没有手机/邮箱自助恢复路径。
 
-identity_flow 和审计 flow_id 现已包含在上文整合后的初始 SQL 中，不再通过独立 0002 安装。全部认证副本及调用者采用同一新基线和协议后再启用策略，避免同实例混跑旧登录即建号流程。收紧策略前核验存量可用身份；新登录和新一轮 refresh 可能取得 user:bind，已有 access 沿原期限与吊销规则处理。保留 schema、Redis 前缀、issuer/audience 和完整旧密钥。回退先停新流程并排空最长 TTL 与在途请求，保留流程表和密钥；旧程序无法等价执行策略或兼容当前基线时不能作为安全回退。恢复先落独立空库，数据库备份不包含 Redis 或密钥系统，不能通过清 Redis 恢复证明。
+identity_flow 和通过 data.accountkit.flow_id 保存的审计流程关联现已包含在上文初始 SQL 中，不再通过独立 0002 安装。全部认证副本及调用者采用同一新基线和协议后再启用策略，避免同实例混跑旧登录即建号流程。收紧策略前核验存量可用身份；新登录和新一轮 refresh 可能取得 user:bind，已有 access 沿原期限与吊销规则处理。保留 schema、Redis 前缀、issuer/audience 和完整旧密钥。回退先停新流程并排空最长 TTL 与在途请求，保留流程表和密钥；旧程序无法等价执行策略或兼容当前基线时不能作为安全回退。恢复先落独立空库，数据库备份不包含 Redis 或密钥系统，不能通过清 Redis 恢复证明。
 
 以下旧变更的说明与提取索引记录各自升级边界；当前调用应优先遵循本节。
 

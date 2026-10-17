@@ -1,23 +1,114 @@
--- audit_event：审计事件的写入与保留期清理（读侧的管理端分页在阶段 6）。
--- 排序约定（§3.4 勘误）：ORDER BY occur_time, id；索引 audit_event_user_id_occur_time_idx (user_id, occur_time, id)。
+-- name: InsertAuditEvent :execrows
+INSERT INTO audit_event (id, source, action, result, actor, targets, context, data, occur_time)
+VALUES (@id, @source, @action, sqlc.narg('result')::smallint, @actor, @targets, @context, @data, @occur_time::timestamptz)
+ON CONFLICT (id) DO NOTHING;
 
--- name: InsertAuditEvents :batchexec
-INSERT INTO audit_event (id, event_type, actor_kind, user_id, admin_issuer, admin_subject, admin_username,
-                         session_id, identity_kind, subject_hint, result, reason, ip, device_id, request_id, occur_time, flow_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17);
+-- name: GetAuditEvent :one
+SELECT * FROM audit_event WHERE id = @id;
 
 -- name: DeleteAuditEventsBefore :execrows
--- 维护任务 audit_retention：按 occur_time 分批删除超过保留期的行；命中 audit_event_occur_time_idx。
-DELETE FROM audit_event
-WHERE id IN (
-    SELECT id FROM audit_event WHERE occur_time < @before::timestamptz ORDER BY occur_time LIMIT @batch_size::int
-);
+WITH candidates AS MATERIALIZED (
+ SELECT id FROM audit_event WHERE source = @source::text AND occur_time < @before::timestamptz
+ ORDER BY occur_time, id LIMIT @batch_size::int
+), locked AS MATERIALIZED (
+ SELECT e.id FROM audit_event e JOIN candidates c ON e.id = c.id
+ ORDER BY e.id FOR UPDATE OF e
+)
+DELETE FROM audit_event WHERE id IN (SELECT id FROM locked);
 
--- name: ListAuditEventsByUser :many
--- 管理端 GET /users/{user}/auditEvents：keyset 分页 ORDER BY occur_time, id；命中 audit_event_user_id_occur_time_idx。
-SELECT * FROM audit_event
-WHERE user_id = @user_id::text
-  AND (sqlc.narg('after_time')::timestamptz IS NULL
-       OR (occur_time, id) > (sqlc.narg('after_time')::timestamptz, sqlc.narg('after_id')::text))
-ORDER BY occur_time, id
-LIMIT @page_limit::int;
+-- name: ListLiveAuditFlows :many
+SELECT id FROM identity_flow WHERE user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text];
+
+-- name: ListAuditFlowEvidence :many
+SELECT * FROM audit_event e
+WHERE e.source = @source::text AND e.result = 1
+ AND e.action IN ('SIGN_IN_COMPLETION_PROOF_VERIFIED','SIGN_IN_COMPLETION_COMPLETED')
+ AND (e.actor @> @actor::jsonb OR e.targets @> @resource::jsonb OR e.context->'related_resources' @> @resource::jsonb)
+ORDER BY occur_time, id;
+
+-- name: ListAuditEventsByResource :many
+SELECT * FROM audit_event e
+WHERE e.source = @source::text
+ AND (COALESCE(cardinality(@actions::text[]),0) = 0 OR e.action = ANY(@actions::text[]))
+ AND (
+  ( @resource_type::text = 'USER' AND e.actor @> @actor::jsonb)
+  OR e.targets @> @resource::jsonb OR e.context->'related_resources' @> @resource::jsonb
+  OR (
+   @resource_type::text = 'USER'
+   AND NOT (e.actor->>'type' = 'USER' AND e.actor->>'namespace' = @namespace::text)
+   AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) r
+                   WHERE r->>'type' = 'USER' AND r->>'namespace' = @namespace::text)
+   AND EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) r
+               WHERE r->>'type' = 'IDENTITY_FLOW' AND r->>'namespace' = @namespace::text AND r->>'id' = ANY(@flow_ids::text[]))
+  )
+ )
+ AND (sqlc.narg('after_time')::timestamptz IS NULL OR (e.occur_time,e.id) > (sqlc.narg('after_time')::timestamptz,sqlc.narg('after_id')::uuid))
+ORDER BY occur_time,id LIMIT @page_limit::int;
+-- name: SnapshotAuditFlows :many
+SELECT id, user_id, proof_user_ids FROM identity_flow
+WHERE id = ANY(@flow_ids::text[]) ORDER BY id;
+
+-- name: LockAuditUsers :many
+SELECT id, state FROM user_account
+WHERE id = ANY(@user_ids::text[]) ORDER BY id FOR UPDATE;
+
+-- name: LockAuditFlows :many
+SELECT id, user_id, proof_user_ids, expire_time FROM identity_flow
+WHERE id = ANY(@flow_ids::text[]) ORDER BY id FOR UPDATE;
+
+-- name: ListAuditPrivacyFlowUsers :many
+-- Privacy follows every complete same-source USER/FLOW co-occurrence, unlike
+-- Reader authorization, which accepts only approved ownership evidence.
+WITH flow_resources AS MATERIALIZED (
+ SELECT jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',@namespace::text,'id',f)) AS resource
+ FROM unnest(@flow_ids::text[]) f
+)
+SELECT DISTINCT (f->>'id')::text AS flow_id, u.user_id::text AS user_id
+FROM audit_event e
+CROSS JOIN LATERAL jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) f
+CROSS JOIN LATERAL (
+ SELECT e.actor->>'id' AS user_id
+ WHERE e.actor->>'type' = 'USER' AND e.actor->>'namespace' = @namespace::text
+ UNION
+ SELECT r->>'id' AS user_id
+ FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) r
+ WHERE r->>'type' = 'USER' AND r->>'namespace' = @namespace::text
+) u
+WHERE e.source = @source::text
+ AND (e.targets @> ANY(ARRAY(SELECT resource FROM flow_resources))
+      OR e.context->'related_resources' @> ANY(ARRAY(SELECT resource FROM flow_resources)))
+ AND f->>'type' = 'IDENTITY_FLOW'
+ AND f->>'namespace' = @namespace::text AND f->>'id' = ANY(@flow_ids::text[])
+ORDER BY flow_id, user_id;
+
+-- name: ListAuditPrivacyCleanupIDs :many
+WITH flow_resources AS MATERIALIZED (
+ SELECT jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',@namespace::text,'id',f)) AS resource
+ FROM unnest(@flow_ids::text[]) f
+)
+SELECT e.id FROM audit_event e
+WHERE e.source = @source::text
+ AND (e.targets @> ANY(ARRAY(SELECT resource FROM flow_resources))
+      OR e.context->'related_resources' @> ANY(ARRAY(SELECT resource FROM flow_resources)))
+ORDER BY e.id;
+
+-- name: LockAuditEvent :one
+SELECT * FROM audit_event WHERE id = @id FOR UPDATE;
+
+-- name: ScrubAuditEventPrivacy :exec
+-- The caller holds this row lock and derives only the controlled privacy
+-- projection from that row. Event facts, identity and storage time stay intact.
+UPDATE audit_event SET actor = @actor, targets = @targets, context = @context, data = @data
+WHERE id = @id;
+
+-- name: ListAuditFlowLockKeys :many
+-- Bind locks to the resolved local relation, not the first search_path schema.
+-- Hash collisions only serialize more work; callers lock actual keys in order.
+SELECT DISTINCT hashtextextended(jsonb_build_array(
+ 'accountkit.audit.privacy.flow', 'identity_flow'::regclass::oid,
+ @source::text, @namespace::text, f.flow_id)::text, 0)::bigint AS lock_key
+FROM unnest(@flow_ids::text[]) AS f(flow_id)
+ORDER BY lock_key;
+
+-- name: LockAuditFlowScope :exec
+SELECT pg_advisory_xact_lock(@lock_key::bigint);

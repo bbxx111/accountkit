@@ -220,7 +220,7 @@ func serviceGatewayCompletion(t *testing.T) {
 	}
 	p.stop()
 	var ip, device string
-	if err := f.pool.QueryRow(t.Context(), "SELECT host(ip), device_id FROM audit_event WHERE request_id='completion-final' AND event_type=$1", enum.EventSignIn).Scan(&ip, &device); err != nil || ip != "127.0.0.1" || device != "completion-gateway-device" {
+	if err := f.pool.QueryRow(t.Context(), "SELECT context->>'client_ip', context->>'device_id' FROM audit_event WHERE context->>'request_id'='completion-final' AND action=$1", enum.EventSignIn.String()).Scan(&ip, &device); err != nil || ip != "127.0.0.1" || device != "completion-gateway-device" {
 		t.Fatal("completion trusted a forged proxy chain or changed its device")
 	}
 	f.assertAuditPrivate()

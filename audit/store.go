@@ -125,7 +125,11 @@ func (s *Store) insertAttempt(ctx context.Context, events []Event) (BatchResult,
 func (s *Store) insertEvent(ctx context.Context, q *db.Queries, e Event, clean bool) (bool, error) {
 	incoming := e
 	if clean {
-		incoming = scrubStoredEvent(e)
+		var err error
+		incoming, err = event.Freeze(scrubStoredEvent(e))
+		if err != nil {
+			return false, ErrInvalid
+		}
 	}
 	n, err := q.InsertAuditEvent(ctx, toParams(incoming))
 	if err != nil {
@@ -167,7 +171,10 @@ func scrubExistingAuditEvent(ctx context.Context, q *db.Queries, id uuid.UUID) e
 	if err != nil {
 		return err
 	}
-	clean := scrubStoredEvent(old.Event)
+	clean, err := event.Freeze(scrubStoredEvent(old.Event))
+	if err != nil {
+		return ErrInvalid
+	}
 	if event.Equivalent(old.Event, clean) {
 		return nil
 	}

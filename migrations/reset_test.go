@@ -56,7 +56,7 @@ func TestUnsafeResetOnlyTargetSchema(t *testing.T) {
 	if err := c.QueryRow(ctx, "SELECT count(*) FROM "+b+".user_account").Scan(&users); err != nil {
 		t.Fatal(err)
 	}
-	if objects != 0 || functions != 0 || otherFunctions != 5 || schemas != 1 || users != 1 {
+	if objects != 0 || functions != 0 || otherFunctions != 0 || schemas != 1 || users != 1 {
 		t.Fatalf("reset isolation: tables=%d functions=%d other-functions=%d schema=%d other-users=%d", objects, functions, otherFunctions, schemas, users)
 	}
 }

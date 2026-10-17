@@ -216,6 +216,7 @@ r.Route("/v1", func(r chi.Router) {
 
 - **默认本地审计**：不注入 `Deps.Audit/AuditReader` 时，库创建 `audit.Async(audit.Store)` 并配置本地管理查询。队列容量 1024，单 worker 每 100 条或每 1 秒批量写入 `audit_event`；`auth.Start` 启动 worker，`auth.Close` 刷出残留（默认关闭等待上限 5 秒）。写失败、生成失败、队列满及关闭后到达都不改变认证结果，允许丢失事件。`Async.Stats()` 区分 Written、Duplicate、Invalid、Conflicts、Dropped、Failed；丢弃和写失败日志分别节流，只输出安全计数，不输出宿主原始错误或事件正文。
 - **事件模型**：`audit.Event` 是生产事件，ID 为生产方首次投递前生成的 UUIDv7；`audit.RecordView` 增加存储首次生成的 `CreateTime`。`Actor` 用 namespace + id 表示主体，`Resource` 用 namespace + type + id 表示资源；认证字段位于 `data.accountkit`。凭证、完整手机号/邮箱、完整摘要和原始请求不进入审计。公开 Go 类型和读侧的破坏性迁移见[兼容说明](docs/compatibility.md#通用审计公开接口与协议迁移)。
+- **校验职责**：审计业务内容由 Go 的 `audit/event.Freeze` 统一校验，包括字段格式、资源数量和完整事件 64 KiB 上限；默认异步入队与本地 Store 直接写入分别调用。数据库保留 UUIDv7、JSON 基本形状、非空和唯一性等基础结构，不再提供自定义审计校验函数。导入和修数必须复用 Go 校验，直接 SQL 不获得完整业务校验；其他表 CHECK 保持现状。已有同号库不会因重复 Up 自动移除旧函数，见[迁移手册](docs/migrations.md#当前初始基线)。
 - **保留期与排序**：`audit_retention` 按配置 source 删除 `occur_time` 早于 `now − AuditRetentionDays`（默认 180 天）的本地事件，每批 1000，包含没有消费者资源的匿名/管理员事件。管理时间线按 `occur_time, UUID` 升序查询，索引覆盖 source、主体及 JSONB 资源关联。
 - **密钥回填**：任务 `rekey_digests` / `reencrypt_subjects` 逐批（100）把仍用非 active 版本的活跃手机/邮箱身份重算摘要 / 重加密（CAS 更新，与并发登录/绑定不冲突；查找始终覆盖全部已配置版本，回填期间登录不受影响）。单行失败只记日志（`identity_id`）、计数，下一轮重试；第三方身份与已解绑/已 purge 的行不参与。
 - **启动期校验**：`auth.Migrate` 在迁移后检查 `identity` 活跃行使用的密钥版本都在配置内，否则返回 `user.ErrUnknownKeyVersion`——在回填完成前移除旧密钥会在启动时失败，而不是在第一次登录时。

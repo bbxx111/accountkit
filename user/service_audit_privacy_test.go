@@ -432,7 +432,20 @@ func TestAuditCleanupPreservesBusinessData(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			// The real reader freezes every stored event, so this also proves
+			// bulk SQL cleanup preserves the full Go event contract.
+			rows, err := audit.NewStore(f.pool).ListByUser(ctx, uid, nil, 100)
+			if err != nil {
+				t.Fatalf("read cleaned events: %v", err)
+			}
+			readable := make(map[uuid.UUID]bool, len(rows))
+			for _, row := range rows {
+				readable[row.ID] = true
+			}
 			for i, e := range events {
+				if !readable[e.ID] {
+					t.Errorf("cleaned event %d missing from reader", i)
+				}
 				want := e.Data
 				if i == len(events)-1 {
 					want = json.RawMessage(`{"accountkit":{"kept":7}}`)

@@ -1,10 +1,5 @@
 DROP TABLE IF EXISTS identity_flow;
 DROP TABLE IF EXISTS audit_event;
-DROP FUNCTION IF EXISTS audit_context_valid(jsonb);
-DROP FUNCTION IF EXISTS audit_actor_valid(jsonb);
-DROP FUNCTION IF EXISTS audit_resources_valid(jsonb);
-DROP FUNCTION IF EXISTS audit_resource_valid(jsonb);
-DROP FUNCTION IF EXISTS audit_json_bytes(jsonb);
 DROP TABLE IF EXISTS session;
 DROP TABLE IF EXISTS identity;
 DROP TABLE IF EXISTS user_account;

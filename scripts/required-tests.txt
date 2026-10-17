@@ -13,6 +13,8 @@ github.com/bbxx111/accountkit/audit/TestMemoryRecordsInOrderAndIsConcurrencySafe
 github.com/bbxx111/accountkit/audit/TestNoopImplementsRecorder
 github.com/bbxx111/accountkit/audit/TestStoreDeleteOlderThanBatches
 github.com/bbxx111/accountkit/audit/TestStoreInsertBatchIsAllOrNothing
+github.com/bbxx111/accountkit/audit/TestStoreRejectsInvalidBatch
+github.com/bbxx111/accountkit/audit/TestStoreEventSizeBoundary
 github.com/bbxx111/accountkit/audit/TestStoreInsertBatchMapsFieldsAndNulls
 github.com/bbxx111/accountkit/audit/TestStoreConflict
 github.com/bbxx111/accountkit/audit/TestStoreConcurrentDuplicate
@@ -487,6 +489,7 @@ github.com/bbxx111/accountkit/user/TestReplacementUnverifiedPrincipalDoesNotBeco
 
 github.com/bbxx111/accountkit/migrations/TestGenericAuditInitialDefinition
 github.com/bbxx111/accountkit/migrations/TestGenericAuditNonemptyRepeatInstall
+github.com/bbxx111/accountkit/migrations/TestGenericAuditLegacySameVersionRepeatInstall
 github.com/bbxx111/accountkit/migrations/TestGenericAuditConcurrentInitialInstall
 github.com/bbxx111/accountkit/migrations/TestGenericAuditBaselineRejectsPartialLatest
 github.com/bbxx111/accountkit/migrations/TestGenericAuditDatabaseConstraints

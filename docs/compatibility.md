@@ -4,7 +4,7 @@
 
 ## 初始数据库基线整合
 
-在尚无实际产品接入的前提下，当前开发代码执行初始结构整合：`0001_init.up.sql` 直接定义 user_account、identity、session、audit_event、identity_flow 及全部现有字段、索引与约束。本次用户明确授权十列 UUIDv7 通用审计直接纳入原始定义并更新固定校验；生产目录不再携带独立的 `0002_identity_flow` 或已撤回的通用审计 0002，也不提供 staging/Prepare 转换工具，初始化版本为 1。下一次真实增量从 0002 开始，配套 down 覆盖五个表和五个审计校验函数，公开 Down 仍拒绝执行。
+在尚无实际产品接入的前提下，当前开发代码执行初始结构整合：`0001_init.up.sql` 直接定义 user_account、identity、session、audit_event、identity_flow 及全部现有字段、索引与约束。本次用户明确授权十列 UUIDv7 通用审计直接纳入原始定义并更新固定校验；生产目录不再携带独立的 `0002_identity_flow` 或已撤回的通用审计 0002，也不提供 staging/Prepare 转换工具，初始化版本为 1。下一次真实增量从 0002 开始，配套 down 覆盖五个表，公开 Down 仍拒绝执行。后续审计校验职责调整经用户另行授权直接修改当前未发布 0001，移除五个审计校验函数并同步固定校验，其他表 CHECK 保持现状。
 
 这是迁移基线的破坏性调整。旧 version=1 缺少流程结构或保留旧十七列审计（包含完整 identity_flow、空审计表也不例外），以及任何旧 version=2 开发库均明确拒绝，不重放初始 SQL、不改 schema_migrations、不自动 Force 或清库。仅在确认可丢弃且准确核验目标后人工重建一次性开发数据库/schema；包含需保留数据的库应先备份并单独制定迁移方案，不能用修改版本标记替代数据迁移。
 
@@ -23,6 +23,10 @@
 `Inserter.InsertBatch` 返回 `(audit.BatchResult, error)`，分别统计 Written、Duplicate、Failed、Invalid、Conflicts。同一 ID 同一事实不新增记录、不更新 CreateTime；真正冲突返回可识别的 `audit.ErrConflict`，不能重新生成 ID 或 upsert 覆盖。合法清理后的重放不能恢复已删除隐私。宿主记录器必须自行冻结输入、避免业务路径阻塞并提供安全失败观测；默认 `audit.Async` 已完成入队前冻结及有界批处理，但不提供持久化队列或可靠投递。
 
 source/action 最长 128 ASCII 字符，source 匹配 `[A-Za-z0-9][A-Za-z0-9._/-]*`，action 匹配 `[A-Z][A-Z0-9_]*`；非 nil Result 只能是 SUCCESS/FAILURE。已知主体为 namespace + id，资源为 namespace + type + id；namespace/id 各最多 512 字节，name 最多 256 Unicode 字符。完整事件不超过 64 KiB，targets/related_resources 各最多 32 项，超限和重复 JSON 键拒绝，不截断稳定标识。
+
+这些业务内容规则统一由 Go 校验：默认 `Async.Record` 在入队前调用 `event.Freeze`，本地 `Store.InsertBatch` 在写入前独立调用同一入口，Go 脱敏投影写回前也校验。数据库保留 UUIDv7、JSON 基本形状、非空、列类型、默认值、主键和索引，不再用自定义函数校验主体、资源、上下文、事件大小或业务时间范围。直接 SQL 可以写入形状合法但业务内容非法的数据；导入和修数必须复用应用校验，读侧仍可能拒绝这些非法记录。既有合法 Go/HTTP 输入及错误语义不变。
+
+这是未发布初始定义的职责调整，不是同号数据库自动升级：已有完整十列 version=1 实例重复 Up 不会移除旧审计函数与 CHECK，也不改变数据和版本。采用新定义须经人工核验后准备新空资源，不 Force、不自动清库。其他四张表的 CHECK 和全部索引保持。验收记录见[本次变更](../openspec/changes/archive/2026-10-18-audit-validation-in-go/verification.md)。
 
 认证映射可省略无效 IP、超长设备字段、自定义 request_id 或可选 name，并单独安全计数/告警；新边界不收紧原认证 HTTP 输入。已验证管理员 issuer/sub 超过 512 字节则拒绝该审计事件并安全观测，认证结果保持。显式历史映射 `authentication.MapLegacy` 对不兼容可选字段拒绝转换，不能据此推断包提供旧库自动升级。
 

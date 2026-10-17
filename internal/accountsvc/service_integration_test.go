@@ -134,9 +134,6 @@ func TestServiceIntegrationDependencyFailure(t *testing.T) {
 	}
 	f.call("GET", p.baseURL+"/healthz", "", nil, 200)
 	f.introspect(p, access, true)
-	if !strings.Contains(p.output.String(), "fail-open") {
-		t.Fatal("Redis fail-open warning missing")
-	}
 	proxy.fail(false)
 	f.call("GET", p.baseURL+"/readyz", "", nil, 200)
 	// SMTP rejection is isolated to send-code and must not make the process unready.
@@ -147,6 +144,11 @@ func TestServiceIntegrationDependencyFailure(t *testing.T) {
 	f.call("POST", p.baseURL+"/v1/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": "failed-mail@example.test"}, 429)
 	f.call("GET", p.baseURL+"/readyz", "", nil, 200)
 	p.stop()
+	// Wait for exec.Cmd.Wait to drain the process output before inspecting it;
+	// the HTTP response alone does not synchronize the output-copy goroutine.
+	if !strings.Contains(p.output.String(), "fail-open") {
+		t.Fatal("Redis fail-open warning missing")
+	}
 	f.assertAuditPrivate()
 }
 

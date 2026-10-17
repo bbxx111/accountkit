@@ -319,3 +319,11 @@ README、兼容指南、实施计划及本记录的相对链接已按归档位�
 本次合并前检查未重跑 Linux race、真实服务进程测试、pg_dump/pg_restore 或完整发布入口；既有完整验收仍作为历史证据保留，不能代替本轮执行。原始状态、归档输出、测试 JSONL 和独立退出文件保留于 `.test-output/archive-audit/`。合并使用独立 merge commit，不进行 squash、rebase、tag、发布或产品部署。
 
 提交前再次运行 sqlc 并比较生成文件哈希，结果稳定；归档收尾独立只读审查为 0 Critical、0 Important、0 Minor，确认五份主规格及旧场景完整、归档内容保持、链接与锚点正确、其他活跃变更未动。最终严格规格校验仍为 20 通过、0 失败。
+
+## PR #6 合并前的 CI 日志观察竞态修正
+
+已按用户选定的 GitHub PR 流程创建 [PR #6](https://github.com/bbxx111/accountkit/pull/6)，保留独立 merge commit。候选 `10925e2` 的 [push CI](https://github.com/bbxx111/accountkit/actions/runs/39031219623) 完整通过；同一候选的 [PR CI](https://github.com/bbxx111/accountkit/actions/runs/39031223443) 在 `TestServiceIntegrationDependencyFailure` 报“Redis fail-open warning missing”，HTTP 内省成功及其他行为断言已通过，因此阻止合并并调查，未通过重跑旧失败任务掩盖问题。
+
+该测试将子进程 Stdout/Stderr 设置为 safeBuffer，`os/exec` 在独立 goroutine 中复制输出；HTTP 响应完成不保证该复制完成。将原日志断言移到既有 `p.stop()` 后，利用其等待 `cmd.Wait()` 及输出复制结束的同步保证；告警仍来自同一 Redis 故障窗口，没有增加 sleep、轮询或宽限，也未删除就绪、可用性、fail-open 或隐私断言。仅修改测试，不改变生产认证或日志行为。
+
+在专用 Linux / PostgreSQL 17.5 / Redis 7 上，Go 1.26.5、CGO=1、测试及子服务均启用 race，执行 `go test -race -count=10 -run '^TestServiceIntegrationDependencyFailure$' -v ./internal/accountsvc`：连续十轮通过，退出 0（约 72 秒）；Docker 外层也退出 0。独立只读审查通过且无实质问题。原始失败日志及回归证据保留于 `.test-output/archive-audit/` 和其 `fix/` 子目录；修复后的远端完整 CI 另以对应新候选运行结果核对。

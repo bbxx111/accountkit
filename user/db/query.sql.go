@@ -154,7 +154,7 @@ type CountActiveSessionsByUserParams struct {
 	Now    time.Time
 }
 
-// 管理端用户详情：活跃会话数；命中 session_user_id_idx。
+// 管理端用户详情：活跃会话数；命中 idx_session_user_id。
 func (q *Queries) CountActiveSessionsByUser(ctx context.Context, arg CountActiveSessionsByUserParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countActiveSessionsByUser, arg.UserID, arg.Now)
 	var count int64
@@ -411,7 +411,7 @@ type DeleteStaleSessionsParams struct {
 }
 
 // 维护任务 cleanup_sessions：物理删除吊销/过期超过保留期的会话；子查询限批，避免单事务锁太多行。
-// 两个 OR 分支分别命中 session_revoke_time_idx / session_refresh_expire_time_idx。
+// 两个 OR 分支分别命中 idx_session_revoke_time / idx_session_refresh_expire_time。
 func (q *Queries) DeleteStaleSessions(ctx context.Context, arg DeleteStaleSessionsParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteStaleSessions, arg.Before, arg.BatchSize)
 	if err != nil {
@@ -432,7 +432,7 @@ type FindActiveIdentityByDigestsParams struct {
 }
 
 // 多版本查找：@digests 是 pii.Digester.AllDigests 的结果（active 在前）。漏掉任一活跃版本
-// 会让该版本下写入的行查不到，同一手机号就会被再次注册。命中 identity_kind_subject_digest_uidx。
+// 会让该版本下写入的行查不到，同一手机号就会被再次注册。命中 uk_identity_kind_subject_digest。
 func (q *Queries) FindActiveIdentityByDigests(ctx context.Context, arg FindActiveIdentityByDigestsParams) (Identity, error) {
 	row := q.db.QueryRow(ctx, findActiveIdentityByDigests, arg.Kind, arg.Digests)
 	var i Identity
@@ -949,7 +949,7 @@ type ListIdentitiesByCipherKeyVersionParams struct {
 	BatchSize int32
 }
 
-// 维护任务 reencrypt_subjects：仍用旧加密版本的活跃锚点身份；命中 identity_cipher_key_version_idx。
+// 维护任务 reencrypt_subjects：仍用旧加密版本的活跃锚点身份；命中 idx_identity_cipher_key_version。
 func (q *Queries) ListIdentitiesByCipherKeyVersion(ctx context.Context, arg ListIdentitiesByCipherKeyVersionParams) ([]Identity, error) {
 	rows, err := q.db.Query(ctx, listIdentitiesByCipherKeyVersion, arg.Version, arg.BatchSize)
 	if err != nil {
@@ -997,7 +997,7 @@ type ListIdentitiesByDigestKeyVersionParams struct {
 	BatchSize int32
 }
 
-// 维护任务 rekey_digests：仍用旧 HMAC 版本的活跃锚点身份；命中 identity_digest_key_version_idx。
+// 维护任务 rekey_digests：仍用旧 HMAC 版本的活跃锚点身份；命中 idx_identity_digest_key_version。
 func (q *Queries) ListIdentitiesByDigestKeyVersion(ctx context.Context, arg ListIdentitiesByDigestKeyVersionParams) ([]Identity, error) {
 	rows, err := q.db.Query(ctx, listIdentitiesByDigestKeyVersion, arg.Version, arg.BatchSize)
 	if err != nil {
@@ -1037,7 +1037,7 @@ const listIdentitiesByUserIncludingDeleted = `-- name: ListIdentitiesByUserInclu
 SELECT id, user_id, kind, subject_digest, digest_key_version, provider_subject, subject_ciphertext, cipher_key_version, hint_prefix, hint_suffix, provider_meta, create_time, update_time, delete_time FROM identity WHERE user_id = $1 ORDER BY create_time, id
 `
 
-// purge 专用：含已解绑（软删）的行——它们仍带原 subject 的摘要/密文/hint，必须一并匿名化。命中 identity_user_id_idx。
+// purge 专用：含已解绑（软删）的行——它们仍带原 subject 的摘要/密文/hint，必须一并匿名化。命中 idx_identity_user_id。
 func (q *Queries) ListIdentitiesByUserIncludingDeleted(ctx context.Context, userID string) ([]Identity, error) {
 	rows, err := q.db.Query(ctx, listIdentitiesByUserIncludingDeleted, userID)
 	if err != nil {
@@ -1108,7 +1108,7 @@ type ListUsersAdminParams struct {
 }
 
 // 管理端 GET /users：可空参数实现可选过滤（sqlc.narg），keyset 分页 ORDER BY create_time, id（§3.4），
-// 由 user_account_create_time_id_idx 提供索引序，避免每页全表排序。
+// 由 idx_user_account_create_time_id 提供索引序，避免每页全表排序。
 // state NOT IN (3, 4) 写死数值（PENDING_DELETION / DELETED，与 enum 钉死），与 purge 索引谓词同理。
 // 身份条件落在同一条活跃身份行（单个 EXISTS）；identity.phone/email 的 digests 是 AllDigests 的结果。
 // 注意：EXISTS 子查询里的 ($n IS NULL OR col = $n) 形式在 PostgreSQL 通用计划（generic plan）下可能不走
@@ -1171,7 +1171,7 @@ type ListUsersDueForPurgeParams struct {
 	BatchSize int32
 }
 
-// purge 任务取批。谓词写死 state = 3（PENDING_DELETION）而非绑定参数：它必须与 user_account_purge_time_idx
+// purge 任务取批。谓词写死 state = 3（PENDING_DELETION）而非绑定参数：它必须与 idx_user_account_purge_time
 // 的部分索引谓词逐字一致——通用计划下绑定参数无法证明蕴含部分索引谓词，会退化为全表扫描。
 func (q *Queries) ListUsersDueForPurge(ctx context.Context, arg ListUsersDueForPurgeParams) ([]string, error) {
 	rows, err := q.db.Query(ctx, listUsersDueForPurge, arg.Now, arg.BatchSize)

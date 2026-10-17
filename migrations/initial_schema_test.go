@@ -173,6 +173,21 @@ func TestInitialSchemaPreservesNonAuditCatalog(t *testing.T) {
 	if _, err := old.Exec(ctx, historicalFlowSQL(t)); err != nil {
 		t.Fatal(err)
 	}
+	// Apply only the authorized index naming change to the historical test
+	// database. Keep the frozen SQL and the full catalog comparison unchanged.
+	if _, err := old.Exec(ctx, `DO $$
+DECLARE old_index text;
+BEGIN
+ FOR old_index IN SELECT indexname FROM pg_indexes
+  WHERE schemaname=current_schema() AND tablename<>'audit_event' AND indexname ~ '_(uidx|idx)$'
+ LOOP
+  EXECUTE format('ALTER INDEX %I RENAME TO %I', old_index,
+   CASE WHEN old_index ~ '_uidx$' THEN 'uk_' ELSE 'idx_' END
+   || regexp_replace(old_index, '_(uidx|idx)$', ''));
+ END LOOP;
+END $$`); err != nil {
+		t.Fatal(err)
+	}
 	initialUp(t, cfg, newSchema)
 	current := migrationTestConn(t, cfg, newSchema)
 	if before, after := migrationCatalogForTables(t, old, oldSchema, true), migrationCatalogForTables(t, current, newSchema, true); before != after {

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、PostgreSQL 17、pgx/v5、sqlc 1.31.1、Chi、miniredis、golang-migrate；计划采用 github.com/google/uuid v1.6.0 的 UUID/NewV7，并在任务一核验依赖及 pgx/sqlc 互操作。
 
-**Spec:** [变更设计](../../../openspec/changes/generalize-audit-events/design.md)、[通用事件](../../../openspec/changes/generalize-audit-events/specs/generic-audit-events/spec.md)、[宿主集成](../../../openspec/changes/generalize-audit-events/specs/audit-host-integration/spec.md)、[兼容](../../../openspec/changes/generalize-audit-events/specs/embedded-auth-package/spec.md)、[存储迁移](../../../openspec/changes/generalize-audit-events/specs/versioned-auth-storage/spec.md)。本计划只定义实施接口和顺序，规格仍为需求来源。
+**Spec:** [变更设计](../../../openspec/changes/archive/2026-10-17-generalize-audit-events/design.md)、[通用事件](../../../openspec/changes/archive/2026-10-17-generalize-audit-events/specs/generic-audit-events/spec.md)、[宿主集成](../../../openspec/changes/archive/2026-10-17-generalize-audit-events/specs/audit-host-integration/spec.md)、[兼容](../../../openspec/changes/archive/2026-10-17-generalize-audit-events/specs/embedded-auth-package/spec.md)、[存储迁移](../../../openspec/changes/archive/2026-10-17-generalize-audit-events/specs/versioned-auth-storage/spec.md)。本计划只定义实施接口和顺序，规格仍为需求来源。
 
 **Inventory:** [26 种认证事件、字段兼容边界与锁序盘点](2026-10-16-generalize-audit-events-inventory.md)。其中锁图是需要并发测试验证的推演，不代表已复现或修复。
 
@@ -173,7 +173,7 @@ live flow 归属接口采用 user.Service.AuditFlowBelongsToUser(context.Context
 
 **OpenSpec tasks:** 6.2～6.5。
 
-**Files:** scripts/required-tests.txt、必要的迁移/恢复 fixture 和 tests/Dockerfile 使用说明；openspec/changes/generalize-audit-events/verification.md、tasks.md。
+**Files:** scripts/required-tests.txt、必要的迁移/恢复 fixture 和 tests/Dockerfile 使用说明；openspec/changes/archive/2026-10-17-generalize-audit-events/verification.md、tasks.md。
 
 - [ ] Step 1：把实际新增必需顶层测试加入清单，不删除旧门禁；执行 GOWORK=off build/vet/test、sqlc 和迁移历史检查，保存原始输出至本任务 .test-output 目录。
 - [ ] Step 2：创建可识别的本任务 PostgreSQL 17 一次性资源及独立空恢复源/目标库，在 Linux CGO 验证环境执行 scripts/verify.sh；不复用未经核验的产品/现有测试库，不以禁用 race 代替验证。

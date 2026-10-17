@@ -22,9 +22,9 @@ CREATE TABLE user_account (
 );
 -- purge 维护任务：WHERE state = PENDING_DELETION AND purge_time <= now()
 -- 枚举值由 Go 定义并在此钉死：ACTIVE=1, FROZEN=2, PENDING_DELETION=3, DELETED=4（0 为 UNSPECIFIED，不存储）
-CREATE INDEX user_account_purge_time_idx ON user_account (purge_time) WHERE state = 3;
+CREATE INDEX idx_user_account_purge_time ON user_account (purge_time) WHERE state = 3;
 -- 管理端 GET /users（ListUsersAdmin）：ORDER BY create_time, id 的 keyset 分页；没有它每页都是全表排序
-CREATE INDEX user_account_create_time_id_idx ON user_account (create_time, id);
+CREATE INDEX idx_user_account_create_time_id ON user_account (create_time, id);
 
 -- 身份：一行一个。锚点类（PHONE/EMAIL）存 subject_digest + subject_ciphertext；
 -- 第三方类（WECHAT/APPLE）存 provider_subject 明文。二者恰好一个非空。
@@ -47,18 +47,18 @@ CREATE TABLE identity (
     CONSTRAINT identity_subject_exactly_one CHECK ((subject_digest IS NULL) <> (provider_subject IS NULL))
 );
 -- 登录查找 + "一个身份只属一个账号"：按 (kind, digest) 精确命中
-CREATE UNIQUE INDEX identity_kind_subject_digest_uidx ON identity (kind, subject_digest) WHERE delete_time IS NULL;
-CREATE UNIQUE INDEX identity_kind_provider_subject_uidx ON identity (kind, provider_subject) WHERE delete_time IS NULL;
+CREATE UNIQUE INDEX uk_identity_kind_subject_digest ON identity (kind, subject_digest) WHERE delete_time IS NULL;
+CREATE UNIQUE INDEX uk_identity_kind_provider_subject ON identity (kind, provider_subject) WHERE delete_time IS NULL;
 -- users/me/identities 列表与 per-kind 计数（delete_time IS NULL 由查询自己过滤）；
 -- purge 匿名化按 user_id 取**全部**行（含已解绑的软删行，§3.5），因此不能是 delete_time IS NULL 的部分索引
-CREATE INDEX identity_user_id_idx ON identity (user_id);
+CREATE INDEX idx_identity_user_id ON identity (user_id);
 -- 管理端 filter：identity.phone_suffix / email_domain
-CREATE INDEX identity_kind_hint_suffix_idx ON identity (kind, hint_suffix) WHERE delete_time IS NULL;
+CREATE INDEX idx_identity_kind_hint_suffix ON identity (kind, hint_suffix) WHERE delete_time IS NULL;
 -- 管理端 filter：identity.phone_prefix / email_prefix
-CREATE INDEX identity_kind_hint_prefix_idx ON identity (kind, hint_prefix) WHERE delete_time IS NULL;
+CREATE INDEX idx_identity_kind_hint_prefix ON identity (kind, hint_prefix) WHERE delete_time IS NULL;
 -- 维护任务 rekey_digests / reencrypt_subjects：按旧密钥版本取活跃锚点行；Migrate 的 CheckKeyVersions 取 DISTINCT 版本
-CREATE INDEX identity_digest_key_version_idx ON identity (digest_key_version) WHERE delete_time IS NULL;
-CREATE INDEX identity_cipher_key_version_idx ON identity (cipher_key_version) WHERE delete_time IS NULL;
+CREATE INDEX idx_identity_digest_key_version ON identity (digest_key_version) WHERE delete_time IS NULL;
+CREATE INDEX idx_identity_cipher_key_version ON identity (cipher_key_version) WHERE delete_time IS NULL;
 
 -- 设备会话。id 即 JWT sid。
 CREATE TABLE session (
@@ -79,15 +79,15 @@ CREATE TABLE session (
     update_time                 TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 -- /token 刷新：按当前 refresh 哈希精确命中
-CREATE UNIQUE INDEX session_refresh_token_hash_uidx ON session (refresh_token_hash);
+CREATE UNIQUE INDEX uk_session_refresh_token_hash ON session (refresh_token_hash);
 -- 宽限外重放检测：按旧哈希命中
-CREATE INDEX session_previous_refresh_token_hash_idx ON session (previous_refresh_token_hash) WHERE previous_refresh_token_hash IS NOT NULL;
+CREATE INDEX idx_session_previous_refresh_token_hash ON session (previous_refresh_token_hash) WHERE previous_refresh_token_hash IS NOT NULL;
 -- users/me/sessions 列表、revokeOthers、冻结/删除时吊销全部
-CREATE INDEX session_user_id_idx ON session (user_id) WHERE revoke_time IS NULL;
+CREATE INDEX idx_session_user_id ON session (user_id) WHERE revoke_time IS NULL;
 -- 维护任务 cleanup_sessions：清理吊销 30 天以上的会话（§3.2、§5.6 #2）
-CREATE INDEX session_revoke_time_idx ON session (revoke_time) WHERE revoke_time IS NOT NULL;
+CREATE INDEX idx_session_revoke_time ON session (revoke_time) WHERE revoke_time IS NOT NULL;
 -- 维护任务 cleanup_sessions：清理 refresh 过期 30 天以上且从未被吊销的会话
-CREATE INDEX session_refresh_expire_time_idx ON session (refresh_expire_time) WHERE revoke_time IS NULL;
+CREATE INDEX idx_session_refresh_expire_time ON session (refresh_expire_time) WHERE revoke_time IS NULL;
 
 -- Generic audit events; append-only and independent of resource lifecycle.
 -- These immutable validators also protect direct SQL writers. Application
@@ -184,14 +184,14 @@ CREATE TABLE audit_event (
    ||coalesce('.'||nullif(rtrim(to_char(occur_time AT TIME ZONE 'UTC','US'),'0'),''),'')||'Z'))<=65536)
 );
 -- Stable timeline, source-bound retention, and exact resource membership.
-CREATE INDEX audit_event_occur_time_id_idx ON audit_event(occur_time,id);
-CREATE INDEX audit_event_source_occur_time_id_idx ON audit_event(source,occur_time,id);
-CREATE INDEX audit_event_actor_idx ON audit_event(source,(actor->>'namespace'),(actor->>'id'),occur_time,id);
-CREATE INDEX audit_event_targets_idx ON audit_event USING gin(targets jsonb_path_ops);
-CREATE INDEX audit_event_related_resources_idx ON audit_event USING gin((context->'related_resources') jsonb_path_ops);
-CREATE INDEX audit_event_request_id_idx ON audit_event(source,(context->>'request_id'));
+CREATE INDEX idx_audit_event_occur_time_id ON audit_event(occur_time,id);
+CREATE INDEX idx_audit_event_source_occur_time_id ON audit_event(source,occur_time,id);
+CREATE INDEX idx_audit_event_actor ON audit_event(source,(actor->>'namespace'),(actor->>'id'),occur_time,id);
+CREATE INDEX idx_audit_event_targets ON audit_event USING gin(targets jsonb_path_ops);
+CREATE INDEX idx_audit_event_related_resources ON audit_event USING gin((context->'related_resources') jsonb_path_ops);
+CREATE INDEX idx_audit_event_request_id ON audit_event(source,(context->>'request_id'));
 -- Historical flow closure remains queryable after identity_flow cleanup.
-CREATE INDEX audit_event_flow_id_idx ON audit_event(source,(data#>>'{accountkit,flow_id}'));
+CREATE INDEX idx_audit_event_flow_id ON audit_event(source,(data#>>'{accountkit,flow_id}'));
 
 -- Short-lived sign-in completion; only token digests and context-bound encrypted payloads are stored.
 CREATE TABLE identity_flow (
@@ -210,10 +210,10 @@ CREATE TABLE identity_flow (
  expire_time TIMESTAMPTZ NOT NULL
 );
 -- Token lookup uses a unique random-secret digest, separate from the internal resource ID.
-CREATE UNIQUE INDEX identity_flow_token_digest_uidx ON identity_flow(token_digest);
+CREATE UNIQUE INDEX uk_identity_flow_token_digest ON identity_flow(token_digest);
 -- Bounded expiry cleanup scans in deterministic order.
-CREATE INDEX identity_flow_expire_time_id_idx ON identity_flow(expire_time,id);
+CREATE INDEX idx_identity_flow_expire_time_id ON identity_flow(expire_time,id);
 -- Account deletion/anonymization removes every proof owner and completed result reference.
-CREATE INDEX identity_flow_proof_user_ids_idx ON identity_flow USING GIN(proof_user_ids);
-CREATE INDEX identity_flow_user_id_idx ON identity_flow(user_id);
-CREATE INDEX identity_flow_session_id_idx ON identity_flow(session_id);
+CREATE INDEX idx_identity_flow_proof_user_ids ON identity_flow USING GIN(proof_user_ids);
+CREATE INDEX idx_identity_flow_user_id ON identity_flow(user_id);
+CREATE INDEX idx_identity_flow_session_id ON identity_flow(session_id);

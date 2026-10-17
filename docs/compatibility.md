@@ -30,7 +30,7 @@ source/action 最长 128 ASCII 字符，source 匹配 `[A-Za-z0-9][A-Za-z0-9._/-
 
 本地默认 source/namespace 分别为 `accountkit/<schema>`、`accountkit/<schema>/resources`。`ConfigFromEnv(prefix)` 对 `AUDIT_SOURCE/AUDIT_NAMESPACE` 保留原始空值，`New` 才应用本地默认；`Config.Validate` 检查有效默认而不修改调用方字段。注入 `Deps.Audit` 时必须显式提供 `Config.AuditSource/AuditNamespace`，允许明确填写与默认字符串相同的值。直接构造 `user.NewService` 时，每个缺失值分别从 Repo 池配置的首个 search_path schema 推导，池为空或首项为空回退 account；直接服务不强制判断外部接管，跨库中心审计仍须显式配置二者。
 
-`audit.NewStore(pool)` 同样只推导本地默认；自定义配置使用 `audit.NewStoreWithOptions(pool, audit.StoreOptions{Source: source, Namespace: namespace})`，与事件生产方保持一致。namespace 表示稳定身份体系，可以是受控 URN 或完整 issuer URL，无需可访问；source 区分事件来源，role 和显示名不构成稳定身份。实际共享同一主体体系时才复用 namespace，独立数据库汇聚时须明确隔离，已有 namespace/source 变化须独立迁移。三个消费者应用案例见[设计说明](../openspec/changes/generalize-audit-events/design.md#to-c-案例一单个-app-使用自建账号体系)。
+`audit.NewStore(pool)` 同样只推导本地默认；自定义配置使用 `audit.NewStoreWithOptions(pool, audit.StoreOptions{Source: source, Namespace: namespace})`，与事件生产方保持一致。namespace 表示稳定身份体系，可以是受控 URN 或完整 issuer URL，无需可访问；source 区分事件来源，role 和显示名不构成稳定身份。实际共享同一主体体系时才复用 namespace，独立数据库汇聚时须明确隔离，已有 namespace/source 变化须独立迁移。三个消费者应用案例见[设计说明](../openspec/changes/archive/2026-10-17-generalize-audit-events/design.md#to-c-案例一单个-app-使用自建账号体系)。
 
 `Deps.AuditReader` 和管理适配器的读侧改用 `audit.Reader.ListByResource(ctx, audit.Query) (audit.Page, error)`，不再接收生成数据库行。`Query` 指定 Source、完整 Resource、可选 Actions、After 和 Limit；适配器按 `(occur_time, UUID)` 严格升序返回不超过 Limit 的 RecordView，所有记录严格大于 After，CreateTime 必须非零且为可序列化的有效时间。不得重复 UUID，包括同 UUID 不同发生时间；全页及用于判断下一页的额外记录都会被复核。
 

@@ -35,7 +35,7 @@ WHERE id = @id
 RETURNING *;
 
 -- name: ListUsersDueForPurge :many
--- purge 任务取批。谓词写死 state = 3（PENDING_DELETION）而非绑定参数：它必须与 user_account_purge_time_idx
+-- purge 任务取批。谓词写死 state = 3（PENDING_DELETION）而非绑定参数：它必须与 idx_user_account_purge_time
 -- 的部分索引谓词逐字一致——通用计划下绑定参数无法证明蕴含部分索引谓词，会退化为全表扫描。
 SELECT id FROM user_account
 WHERE state = 3 AND purge_time <= @now::timestamptz
@@ -70,7 +70,7 @@ RETURNING *;
 
 -- name: ListUsersAdmin :many
 -- 管理端 GET /users：可空参数实现可选过滤（sqlc.narg），keyset 分页 ORDER BY create_time, id（§3.4），
--- 由 user_account_create_time_id_idx 提供索引序，避免每页全表排序。
+-- 由 idx_user_account_create_time_id 提供索引序，避免每页全表排序。
 -- state NOT IN (3, 4) 写死数值（PENDING_DELETION / DELETED，与 enum 钉死），与 purge 索引谓词同理。
 -- 身份条件落在同一条活跃身份行（单个 EXISTS）；identity.phone/email 的 digests 是 AllDigests 的结果。
 -- 注意：EXISTS 子查询里的 ($n IS NULL OR col = $n) 形式在 PostgreSQL 通用计划（generic plan）下可能不走
@@ -103,7 +103,7 @@ RETURNING *;
 
 -- name: FindActiveIdentityByDigests :one
 -- 多版本查找：@digests 是 pii.Digester.AllDigests 的结果（active 在前）。漏掉任一活跃版本
--- 会让该版本下写入的行查不到，同一手机号就会被再次注册。命中 identity_kind_subject_digest_uidx。
+-- 会让该版本下写入的行查不到，同一手机号就会被再次注册。命中 uk_identity_kind_subject_digest。
 SELECT * FROM identity
 WHERE kind = @kind AND subject_digest = ANY(@digests::text[]) AND delete_time IS NULL
 LIMIT 1;
@@ -125,7 +125,7 @@ UPDATE identity SET delete_time = @now::timestamptz, update_time = @now::timesta
 WHERE id = @id AND user_id = @user_id AND delete_time IS NULL;
 
 -- name: ListIdentitiesByUserIncludingDeleted :many
--- purge 专用：含已解绑（软删）的行——它们仍带原 subject 的摘要/密文/hint，必须一并匿名化。命中 identity_user_id_idx。
+-- purge 专用：含已解绑（软删）的行——它们仍带原 subject 的摘要/密文/hint，必须一并匿名化。命中 idx_identity_user_id。
 SELECT * FROM identity WHERE user_id = $1 ORDER BY create_time, id;
 
 -- name: AnonymizeIdentity :execrows
@@ -140,7 +140,7 @@ SET subject_digest     = CASE WHEN subject_digest   IS NULL THEN NULL ELSE @repl
 WHERE id = @id AND user_id = @user_id;
 
 -- name: ListIdentitiesByDigestKeyVersion :many
--- 维护任务 rekey_digests：仍用旧 HMAC 版本的活跃锚点身份；命中 identity_digest_key_version_idx。
+-- 维护任务 rekey_digests：仍用旧 HMAC 版本的活跃锚点身份；命中 idx_identity_digest_key_version。
 SELECT * FROM identity
 WHERE delete_time IS NULL AND digest_key_version = @version::smallint
 ORDER BY create_time, id
@@ -153,7 +153,7 @@ SET subject_digest = @digest::text, digest_key_version = @version::smallint, upd
 WHERE id = @id AND digest_key_version = @old_version::smallint AND delete_time IS NULL;
 
 -- name: ListIdentitiesByCipherKeyVersion :many
--- 维护任务 reencrypt_subjects：仍用旧加密版本的活跃锚点身份；命中 identity_cipher_key_version_idx。
+-- 维护任务 reencrypt_subjects：仍用旧加密版本的活跃锚点身份；命中 idx_identity_cipher_key_version。
 SELECT * FROM identity
 WHERE delete_time IS NULL AND cipher_key_version = @version::smallint
 ORDER BY create_time, id
@@ -233,7 +233,7 @@ WHERE id = @id AND revoke_time IS NULL AND refresh_expire_time > @auth_time::tim
 
 -- name: DeleteStaleSessions :execrows
 -- 维护任务 cleanup_sessions：物理删除吊销/过期超过保留期的会话；子查询限批，避免单事务锁太多行。
--- 两个 OR 分支分别命中 session_revoke_time_idx / session_refresh_expire_time_idx。
+-- 两个 OR 分支分别命中 idx_session_revoke_time / idx_session_refresh_expire_time。
 DELETE FROM session
 WHERE id IN (
     SELECT id FROM session
@@ -243,7 +243,7 @@ WHERE id IN (
 );
 
 -- name: CountActiveSessionsByUser :one
--- 管理端用户详情：活跃会话数；命中 session_user_id_idx。
+-- 管理端用户详情：活跃会话数；命中 idx_session_user_id。
 SELECT count(*) FROM session
 WHERE user_id = @user_id AND revoke_time IS NULL AND refresh_expire_time > @now::timestamptz;
 

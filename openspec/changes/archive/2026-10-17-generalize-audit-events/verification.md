@@ -46,7 +46,7 @@
 - 按用户指令提交提案：612056b，docs(audit): propose generic audit events。
 - 本地 develop 使用 --no-ff 合并提案：8793e8a，docs(audit): merge generic audit proposal；随后创建 feat/generalize-audit-events。未推送远端，未合并实施代码。
 - 已按 openspec-apply-change 读取全部 contextFiles；初始进度 0/26，完成实施计划与只读事件盘点后为 2/26（仅 1.1、1.2）。尚未写产品代码或新增行为测试。
-- [实施计划](../../../docs/superpowers/plans/2026-10-16-generalize-audit-events.md)覆盖全部规格及 26 项任务，默认执行方法为项目规定的子代理实施/审查；[盘点](../../../docs/superpowers/plans/2026-10-16-generalize-audit-events-inventory.md)覆盖 26 种动作、具体代码引用、输入边界及锁序。
+- [实施计划](../../../../docs/superpowers/plans/2026-10-16-generalize-audit-events.md)覆盖全部规格及 26 项任务，默认执行方法为项目规定的子代理实施/审查；[盘点](../../../../docs/superpowers/plans/2026-10-16-generalize-audit-events-inventory.md)覆盖 26 种动作、具体代码引用、输入边界及锁序。
 - 计划待用户评审；需明确超长已验证主体字段的审计拒绝策略，以及不可变早期 flow 事件的查询关联证据。计划中的锁环是代码推演，未声称已复现或修复。
 
 ### 当前实际证据
@@ -273,3 +273,49 @@ Windows 全库 JSON 记录 `task5/windows-all.json.log`、`.exit=0`：636 顶层
 26/26任务完成，变更实施完成但未归档；实施分支保留，未推送/合并/tag/发布。仍不宣称生产SLA、跨实例锁池上限或无碰撞保证、任意宿主外部清理已完成、任意旧产品数据转换、动态时钟回拨演练或未Start关闭统一硬截止。上述明确边界不因测试通过消失。
 
 收尾实际清理：核验容器挂载和网络成员后，仅删除本任务PG/Redis两个容器及其匿名数据卷、专用network和两个cache volume，三条清理命令现场退出0（`cleanup-*.log/.exit`）。四个恢复库和规模测试schema随本任务PG容器销毁，合成dump/日志继续保留于被忽略的.test-output；既有验证镜像及其他容器/网络/卷未操作。实施流程报告、审查差异和全部27项裁决保留于 `.test-output/generalize-audit-events/workflow-final/`；永久摘要及代价在本记录中。
+
+## 2026-10-17 索引命名维护
+
+用户补充要求“索引名称的规范也参考 duopandian，并根据规范调整已有的索引，不新增迁移”。据此直接调整当前未发布 0001 的 26 个独立索引，普通和唯一索引均为 `idx_<表名>_<字段或用途>`，5 个业务表主键名称保持。同步 AGENTS、迁移说明、查询及测试引用，由 sqlc 生成 Go 注释；本次不增加迁移，也不自动改名已有同号数据库。up SHA256 更新为 `e91aedbe39fd2aae4ea6fe5e1e2c0314e329dfa3c151dd638fc3fff0a99b4732`，down 和固定历史源不变。
+
+实际验证环境为 Go 1.26.5 / Windows、本任务独立 PostgreSQL 17.5 容器，`GOWORK=off`。原始材料位于仓库根目录 `.test-output/index-naming/`：
+
+- 将改名前后的 SQL 装入独立测试 schema，PostgreSQL 目录双向差集核验 26 个独立索引与 5 个主键索引：唯一性、列序、表达式、谓词及访问方法完全一致，`catalog-compare.exit=0`。独立审查另对 SQL 全文仅消除索引名后比较，全文相同；所有新名称最长 39 字节。
+- `sqlc generate` 后再次生成并比较 user/db、audit/db 全部 Go 文件哈希，无变化。`go build ./...`、`go vet ./...` 以及补充测试适配后的 `go vet ./migrations` 均退出 0。
+- `go run ./internal/migrationcheck` 退出 0，当前固定哈希、全部可达正式标签及冻结源快照检查通过；生产目录仍只有 0001 up/down，历史夹具没有修改。
+- 首轮真实数据库 `go test -count=1 -json ./...` 唯一失败为 `TestInitialSchemaPreservesNonAuditCatalog`：该测试将历史索引旧名与当前新名逐字比较。仅在该测试的临时历史 schema 中执行确定的索引改名，再保留原完整目录比较；未归一化当前 schema、未移除字段/约束/索引检查。单项回归退出 0，独立补充审查确认仍能发现当前索引名错误、缺失/新增或定义变化。
+- 最终 `go test -count=1 -json ./...` 退出 0：33 个测试包通过，660 个顶层测试通过，0 失败；15 个顶层测试跳过，含子测试共 47 个跳过。除普通套件按约定跳过的 RecoveryFixture 外，其余跳过来自未配置真实 Redis 的验证码及 accountsvc 服务集成路径，不能据此声称完整发布门禁通过。
+- `openspec validate --all --strict` 为 19 通过、0 失败；`git diff --check` 通过。首次 PowerShell 调用将 psql NOTICE / OpenSpec 进度输出误视为错误，重新调用后取得实际成功退出码；不将首次调用计作完整成功证据。
+- 两轮独立只读审查均为 0 Critical、0 Important、0 Minor，第二轮专门复核历史目录对照测试适配未放宽门禁。
+
+本次未运行 race、真实 Redis 服务集成、pg_dump/pg_restore 恢复演练或完整 `scripts/verify.sh`；此前完整验收记录不视为本次执行结果。任务 3.6 已按上述实际证据完成，归档、提交和推送未执行。
+
+核验任务标签、精确容器名及 AutoRemove 后，已停止本任务 PostgreSQL 容器并随之删除匿名数据卷，`cleanup.exit=0`；既有 postgres/redis 容器未操作，原始日志继续保留。
+
+## 2026-10-17 唯一索引前缀优化
+
+用户随后明确优化为“普通索引用 idx_，唯一索引用 uk_”，本节取代上一节普通与唯一索引同前缀的最终约定；上一节的执行证据按历史保留。本轮仅将 4 个独立唯一索引从 idx_ 改为 uk_，22 个普通索引及主键名称保持；UNIQUE 约束及其所属索引也采用 uk_ 规范。继续直接修改当前未发布 0001、不新增迁移，当前 up SHA256 为 `11af9574d5f109516b867ccfefeb1e887038c38b81c0956106378ce3f2aaf887`。
+
+查询及 sqlc 生成注释、历史目录对照测试的临时旧库名称转换、规范和相关工件均已同步。历史测试将旧 `_uidx` 改为 `uk_`、旧 `_idx` 改为 `idx_`，仍完整比较当前数据库目录，不改历史源 SQL。新旧初始 SQL 全文仅消除索引名后完全相同，索引定义没有变化。
+
+本轮实际检查（Go 1.26.5 / Windows、GOWORK=off、本任务独立 PostgreSQL 17.5）材料在 `.test-output/index-prefix/`：
+
+- `go test -count=1 -json ./migrations ./internal/migrationcheck`：退出 0，2 个包、42 个顶层测试通过，0 失败、0 跳过，覆盖真实数据库的完整目录对照、唯一性、初始化、重复执行和迁移锁等既有用例。
+- `go vet ./migrations ./internal/migrationcheck`、`go run ./internal/migrationcheck` 均退出 0；当前固定校验及历史标签/源快照检查通过。
+- `sqlc generate` 后再次生成并比较全部生成 Go 文件哈希，无差异；`openspec validate --all --strict` 为 19 通过、0 失败；`git diff --check` 通过。
+
+本轮未重跑全量 Go 套件、race、真实 Redis 服务集成或恢复演练；上一节结果不视为本轮重跑。未提交、推送或归档。
+
+本轮一次性 PostgreSQL 容器已核验任务标签、名称及 AutoRemove 后清理，`cleanup.exit=0`；既有容器未操作。
+
+本轮独立只读复审通过：0 Critical、0 Important、0 Minor；确认四处改名及固定校验一致，历史测试保留完整比较，规范和工件一致。
+
+## 2026-10-17 归档及合并前核验
+
+用户明确要求“存档，合并”。全部 27 项任务已完成，五份 delta 已同步到主规格：新增 audit-host-integration、generic-audit-events，更新 embedded-auth-package、migration-safety、versioned-auth-storage；逐项核对增量需求全文及旧场景均保留，未涉及的主规格需求保持。随后使用正常 CLI 归档到当前目录，`--skip-specs` 仅因主规格已经完成独立同步，未跳过验证。CLI 归档退出 0；关于超过十项 delta 的提案拆分提示不影响已完成变更的归档。另一个活跃变更 refine-verification-code-delivery 保持原位。
+
+README、兼容指南、实施计划及本记录的相对链接已按归档位置修复，实际检查本变更和引用文档的本地 Markdown 链接全部有效。当前源码在新的独立 PostgreSQL 17.5 / Redis 7 容器上重新运行 `GOWORK=off go test -count=1 -json ./...`，退出 0：33 个测试包、664 个顶层测试通过，0 失败；11 个顶层 skip 为 Windows 不执行的十项真实服务用例及普通套件按规定单独运行的 RecoveryFixture。`go build ./...`、`go vet ./...`、当前迁移历史及固定哈希检查均退出 0，归档后 `openspec validate --all --strict` 为 20 通过、0 失败。
+
+本次合并前检查未重跑 Linux race、真实服务进程测试、pg_dump/pg_restore 或完整发布入口；既有完整验收仍作为历史证据保留，不能代替本轮执行。原始状态、归档输出、测试 JSONL 和独立退出文件保留于 `.test-output/archive-audit/`。合并使用独立 merge commit，不进行 squash、rebase、tag、发布或产品部署。
+
+提交前再次运行 sqlc 并比较生成文件哈希，结果稳定；归档收尾独立只读审查为 0 Critical、0 Important、0 Minor，确认五份主规格及旧场景完整、归档内容保持、链接与锚点正确、其他活跃变更未动。最终严格规格校验仍为 20 通过、0 失败。

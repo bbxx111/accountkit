@@ -81,7 +81,7 @@ reason 为固定枚举，按需复用已有语义：none、invalid_argument、id
 
 为保持原类型和构造方式，优先在服务的固定调用边界统一帮助函数，不给宿主 Pool／Redis 安装全局 hook，也不包装成另一套数据访问层。首版不声称覆盖直接使用 code.Store 等低层组件的任意调用；这些指标的覆盖对象是账号领域业务路径。
 
-降级 scenario 固定为 `revocation_check_fail_open`、`refresh_grace_write_failed`、`apple_cached_key_fallback`。第一个在实际放行时发出；第二个将事务中的写失败事实暂存，在最终轮换提交成功后发出，回滚只保留依赖失败；第三个仅内置 Apple 在故障后实际选择可用缓存密钥时产生，不宣称最终登录一定成功。外部 IdP 内部的降级是宿主责任。
+降级 scenario 固定为 `revocation_check_fail_open`、`refresh_grace_write_failed`、`apple_cached_key_fallback`。第一个在实际放行时发出；第二个将事务中的写失败事实暂存，在最终轮换提交成功后发出，回滚只保留依赖失败；第三个指内置 Apple 已经历失败刷新（lastRefreshOK=false）后，后续验证实际命中缓存密钥，直到成功刷新恢复；不要求同一次失败刷新找到原本未知的 kid，不增加主动刷新或网络调用，不宣称最终登录一定成功。Apple 观测回调在释放缓存锁后执行。外部 IdP 内部的降级是宿主责任。
 
 缓存故障不更改现有 invalid_grant；发生故障与最终 HTTP 状态分开解释。指标不会为了区分一个原本不可观测的原因额外访问 Redis 或数据库。
 
@@ -93,7 +93,7 @@ reason 为固定枚举，按需复用已有语义：none、invalid_argument、id
 
 维护分三个投影：轮次结果、任务终态、已处理数量。轮次 result=`acquired/skipped/error/canceled/deadline_exceeded`；acquired 只说明锁已获得，不表示全部任务成功。任务 result=`success/error/canceled/deadline_exceeded/panic`。六个内置 task 名保持现状，其余公共 Runner 名称映射 other。
 
-Runner 记录锁结果及任务终态；执行任务时通过私有 context 标记当前内置任务。直接领域维护方法在没有匹配 Runner 标记时自行记录任务终态，在匹配时抑制重复终态；Runner 负责该次调用的外层耗时与 panic。未知宿主任务不伪造内置标记。处理数量始终在真正拥有返回数量的边界记录，根门面闭包不再次累计；audit_retention 的数量由该任务闭包独占记录。旧 CleanupIdentityFlows 转调新方法，不增加第二次记录。
+Runner 记录锁结果及任务终态；仅启用观测的 Runner 在执行任务时通过内部叶子包的私有 context 标记当前内置任务及观测所有者。直接领域维护方法仅在任务名和共享安全 Recorder 所有者均匹配时抑制重复终态，否则自行记录；根装配通过幂等 NewRecorder 复用同一指针，直接装配不同观察者不互相吞计数。Runner 负责其外层耗时与 panic。未知宿主任务不伪造内置标记。处理数量始终在真正拥有返回数量的边界记录，根门面闭包不再次累计；audit_retention 的数量由该任务闭包独占记录。旧 CleanupIdentityFlows 转调新方法，不增加第二次记录。
 
 直接调用被支持的领域维护方法不产生维护“轮次”指标。失败前的已完成数量保留；CAS 未命中、被恢复账号的状态复核跳过不计处理成功。Observer panic 被单独隔离，不能把任务成功改成 panic。
 

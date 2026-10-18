@@ -8,15 +8,17 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/audit/event"
+	"github.com/bbxx111/accountkit/observability"
 )
 
 // AsyncOptions 配置 Async；零值取默认。
 type AsyncOptions struct {
-	QueueSize     int           // 默认 1024
-	BatchSize     int           // 默认 100
-	FlushInterval time.Duration // 默认 1s
-	CloseTimeout  time.Duration // 默认 5s：单次写入超时，也是 Close 等待 worker 退出的上限
-	Logger        *slog.Logger  // 默认 slog.Default()
+	QueueSize     int                    // 默认 1024
+	BatchSize     int                    // 默认 100
+	FlushInterval time.Duration          // 默认 1s
+	CloseTimeout  time.Duration          // 默认 5s：单次写入超时，也是 Close 等待 worker 退出的上限
+	Logger        *slog.Logger           // 默认 slog.Default()
+	Observer      observability.Observer // 可选；必须并发安全并快速返回
 }
 
 // Stats 是累计计数（进程内，随实例生命周期）。
@@ -36,8 +38,9 @@ const dropLogInterval = 10 * time.Second
 // 设计文档 §5.1：写入在认证动作提交之后异步进行，失败只记日志并计数，绝不改变动作结果；
 // 因此 Record 永不阻塞、永不返回错误，队列满时丢弃。关键计数通过 Stats 与日志暴露（§6.3）。
 type Async struct {
-	store Inserter
-	o     AsyncOptions
+	store    Inserter
+	o        AsyncOptions
+	observer *observability.Recorder
 
 	ch   chan Event
 	stop chan struct{}
@@ -76,18 +79,19 @@ func NewAsync(store Inserter, o AsyncOptions) *Async {
 	if o.Logger == nil {
 		o.Logger = slog.Default()
 	}
-	return &Async{store: store, o: o, ch: make(chan Event, o.QueueSize), stop: make(chan struct{}), done: make(chan struct{})}
+	return &Async{store: store, o: o, observer: observability.NewRecorder(o.Observer, o.Logger), ch: make(chan Event, o.QueueSize), stop: make(chan struct{}), done: make(chan struct{})}
 }
 
 // Record 实现 Recorder：非阻塞入队；队列满或已 Close → 丢弃并计数。
-func (a *Async) Record(_ context.Context, e Event) {
+func (a *Async) Record(ctx context.Context, e Event) {
 	if a.closed.Load() {
-		a.drop()
+		a.drop(ctx)
 		return
 	}
 	frozen, err := event.Freeze(e)
 	if err != nil {
 		a.invalid.Add(1)
+		a.observe(ctx, observability.AuditAdmission, observability.ResultInvalid, 1)
 		return
 	}
 	a.admission.Lock()
@@ -101,7 +105,7 @@ func (a *Async) Record(_ context.Context, e Event) {
 	}
 	a.admission.Unlock()
 	if !accepted {
-		a.drop() // Host logging must remain outside the admission boundary.
+		a.drop(ctx) // Host callbacks must remain outside the admission boundary.
 	}
 }
 
@@ -111,12 +115,19 @@ func (a *Async) closeAdmission() {
 	a.admission.Unlock()
 }
 
-func (a *Async) drop() {
+func (a *Async) drop(ctx context.Context) {
 	n := a.dropped.Add(1)
+	a.observe(ctx, observability.AuditAdmission, observability.ResultDropped, 1)
 	now := time.Now().UnixNano()
 	last := a.lastDropLog.Load()
 	if now-last >= int64(dropLogInterval) && a.lastDropLog.CompareAndSwap(last, now) {
 		a.o.Logger.Warn("audit: events dropped (queue full or recorder closed)", "dropped_total", n)
+	}
+}
+
+func (a *Async) observe(ctx context.Context, stage observability.AuditStage, result observability.Result, count int) {
+	if count > 0 && a.observer.Enabled() {
+		a.observer.Observe(ctx, observability.AuditObservation{Kind: observability.AuditEvents, Stage: stage, Result: result, Count: int64(count)})
 	}
 }
 
@@ -197,6 +208,11 @@ func (a *Async) flush(batch []Event) {
 	a.invalid.Add(uint64(result.Invalid))
 	a.conflicts.Add(uint64(result.Conflicts))
 	failedTotal := a.failed.Add(uint64(result.Failed))
+	a.observe(ctx, observability.AuditWrite, observability.ResultWritten, result.Written)
+	a.observe(ctx, observability.AuditWrite, observability.ResultDuplicate, result.Duplicate)
+	a.observe(ctx, observability.AuditWrite, observability.ResultInvalid, result.Invalid)
+	a.observe(ctx, observability.AuditWrite, observability.ResultConflict, result.Conflicts)
+	a.observe(ctx, observability.AuditWrite, observability.ResultFailed, result.Failed)
 	if err != nil || result.Failed+result.Invalid+result.Conflicts > 0 {
 		now := time.Now().UnixNano()
 		last := a.lastFailLog.Load()

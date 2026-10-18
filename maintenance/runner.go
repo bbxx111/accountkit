@@ -7,12 +7,15 @@ package maintenance
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"log/slog"
 	"sync"
 	"time"
 
+	"github.com/bbxx111/accountkit/internal/maintenancectx"
+	"github.com/bbxx111/accountkit/observability"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -73,6 +76,7 @@ type Runner struct {
 	locker   Locker
 	logger   *slog.Logger
 	tasks    []Task
+	observer *observability.Recorder
 
 	startOnce sync.Once
 	closeOnce sync.Once
@@ -84,10 +88,16 @@ type Runner struct {
 
 // NewRunner 构造 Runner。interval 为 ticker 周期。
 func NewRunner(interval time.Duration, locker Locker, logger *slog.Logger, tasks ...Task) *Runner {
+	return NewRunnerWithObserver(interval, locker, logger, nil, tasks...)
+}
+
+// NewRunnerWithObserver constructs a Runner with optional task observations.
+// It does not own or close the supplied observer.
+func NewRunnerWithObserver(interval time.Duration, locker Locker, logger *slog.Logger, observer observability.Observer, tasks ...Task) *Runner {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Runner{interval: interval, locker: locker, logger: logger, tasks: tasks,
+	return &Runner{interval: interval, locker: locker, logger: logger, tasks: tasks, observer: observability.NewRecorder(observer, logger),
 		stopCh: make(chan struct{}), doneCh: make(chan struct{})}
 }
 
@@ -136,14 +146,17 @@ func (r *Runner) RunOnce(ctx context.Context) bool {
 	defer r.roundMu.Unlock()
 	ok, release, err := r.locker.TryLock(ctx)
 	if err != nil {
+		r.observeRound(ctx, maintenanceResult(err))
 		r.logger.Warn("maintenance: lock error, skipping round", "err", err)
 		return false
 	}
 	if !ok {
+		r.observeRound(ctx, observability.ResultSkipped)
 		r.logger.Debug("maintenance: lock held elsewhere, skipping round")
 		return false
 	}
 	defer release()
+	r.observeRound(ctx, observability.ResultAcquired)
 	for _, task := range r.tasks {
 		r.runTask(ctx, task)
 	}
@@ -151,6 +164,31 @@ func (r *Runner) RunOnce(ctx context.Context) bool {
 }
 
 func (r *Runner) runTask(ctx context.Context, task Task) {
+	if !r.observer.Enabled() {
+		r.runTaskUnobserved(ctx, task)
+		return
+	}
+	classification := maintenanceTask(task.Name)
+	ctx = maintenancectx.WithTask(ctx, classification, r.observer)
+	start := time.Now()
+	result := observability.ResultPanic
+	defer func() {
+		elapsed := time.Since(start)
+		if p := recover(); p != nil {
+			r.logger.Error("maintenance: task panicked", "task", task.Name, "panic", fmt.Sprint(p))
+		}
+		r.observer.Observe(ctx, observability.MaintenanceObservation{Kind: observability.MaintenanceRun, Task: classification, Result: result, Duration: elapsed})
+	}()
+	if err := task.Run(ctx); err != nil {
+		result = maintenanceResult(err)
+		r.logger.Warn("maintenance: task failed", "task", task.Name, "err", err, "elapsed", time.Since(start))
+		return
+	}
+	result = observability.ResultSuccess
+	r.logger.Debug("maintenance: task ok", "task", task.Name, "elapsed", time.Since(start))
+}
+
+func (r *Runner) runTaskUnobserved(ctx context.Context, task Task) {
 	defer func() {
 		if p := recover(); p != nil {
 			r.logger.Error("maintenance: task panicked", "task", task.Name, "panic", fmt.Sprint(p))
@@ -162,4 +200,34 @@ func (r *Runner) runTask(ctx context.Context, task Task) {
 		return
 	}
 	r.logger.Debug("maintenance: task ok", "task", task.Name, "elapsed", time.Since(start))
+}
+
+func (r *Runner) observeRound(ctx context.Context, result observability.Result) {
+	if r.observer.Enabled() {
+		r.observer.Observe(ctx, observability.MaintenanceObservation{Kind: observability.MaintenanceRound, Result: result})
+	}
+}
+
+func maintenanceResult(err error) observability.Result {
+	switch {
+	case err == nil:
+		return observability.ResultSuccess
+	case errors.Is(err, context.Canceled):
+		return observability.ResultCanceled
+	case errors.Is(err, context.DeadlineExceeded):
+		return observability.ResultDeadlineExceeded
+	default:
+		return observability.ResultError
+	}
+}
+
+func maintenanceTask(name string) observability.Task {
+	switch task := observability.Task(name); task {
+	case observability.TaskCleanupSignInCompletionFlows, observability.TaskPurgeUsers,
+		observability.TaskCleanupSessions, observability.TaskAuditRetention,
+		observability.TaskRekeyDigests, observability.TaskReencryptSubjects:
+		return task
+	default:
+		return observability.TaskOther
+	}
 }

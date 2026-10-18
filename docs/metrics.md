@@ -19,6 +19,8 @@ PowerShell 先设置 `$env:GOWORK = 'off'`，再运行对应 `go run`。两者�
 
 适配器的构造函数分别为 `otel.New(metric.MeterProvider, instance)`、`prometheus.New(prometheus.Registerer, instance)`，均返回 `(*Observer, error)`。必需设施为 nil、包装 nil 或实例名非法时返回错误，不回退到全局对象。构造和本地记录不访问业务存储或远程导出端。
 
+下列片段的完整编译示例见 [OTel 宿主装配](../examples/metricsotel/host_example_test.go)和[Prometheus 宿主装配](../examples/metricsprometheus/host_example_test.go)。这两个 `Example_hostObserver` 没有 `Output`，只参与编译，不执行依赖 I/O、迁移、监听或真实认证；其中 `cfg`/`deps` 的变量声明须替换为宿主真实配置和对象。`go run` 执行的仍是前述合成示例。
+
 OTel 宿主创建 Reader/Exporter 和 Provider，再把 adapter 注入已有依赖。下面的 `reader` 由宿主提供：本地诊断可用 `sdkmetric.NewManualReader()`；生产可使用宿主选定 Exporter 的 `sdkmetric.NewPeriodicReader(exporter)`。Exporter 的连接、安全配置、周期和失败处理归宿主。
 
 ```go
@@ -64,7 +66,7 @@ hostAdminMux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOp
 
 指标 handler 的监听地址、端口、TLS、身份验证和网络可达范围均由宿主决定。不要直接将其暴露在消费者公网入口。本次没有给 accountsvc 增加指标路由、配置或网络导出连接。两个适配器不注册 Go/process 默认 collectors；宿主可以独立添加运行时指标。
 
-直接构造 `user.NewService` 时给 `user.Deps.Observer` 传同一 adapter；直接构造公共审计、认证映射器或 Apple 验证器时通过各自 Options 的 Observer 字段接入。已有位置参数构造函数保持可用。根门面负责把其 Observer 传给自建服务、审计、Apple 和维护组件，宿主注入的外部组件需自行接入观测。
+直接构造 `user.NewService` 时给 `user.Deps.Observer` 传同一 adapter；直接构造公共审计、认证映射器或 Apple 验证器时通过各自 Options 的 Observer 字段接入。已有位置参数构造函数保持可用。根门面将其 Observer 归一为同一个安全 Recorder，再传给自建服务、本地 Async、认证映射器、Apple 和维护运行器；宿主注入的外部组件需自行接入观测。
 
 ## 实例与生命周期
 

@@ -185,7 +185,10 @@ func completionRequest(token string, cred CodeCredential) string {
 }
 
 // CleanupSignInCompletionFlows 一次只清理固定批次，过期记录在读取时已经立即失效。
-func (s *Service) CleanupSignInCompletionFlows(ctx context.Context) (int64, error) {
+func (s *Service) CleanupSignInCompletionFlows(ctx context.Context) (total int64, resultErr error) {
+	if s.observer.Enabled() {
+		defer s.observeMaintenance(ctx, ob.TaskCleanupSignInCompletionFlows, func() int64 { return total }, &resultErr, time.Now())
+	}
 	return s.d.Repo.Q().DeleteExpiredSignInCompletionFlows(ctx, db.DeleteExpiredSignInCompletionFlowsParams{Now: s.now(), BatchSize: 1000})
 }
 

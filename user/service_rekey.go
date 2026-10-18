@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/bbxx111/accountkit/observability"
 	"github.com/bbxx111/accountkit/pii"
 	"github.com/bbxx111/accountkit/user/db"
 )
@@ -69,8 +70,10 @@ func (s *Service) decryptSubject(row db.Identity) (string, error) {
 
 // RekeyDigests（维护任务 rekey_digests，§5.6 #4）：把仍用非 active HMAC 版本的活跃锚点身份重算为 active 版本的摘要。
 // 查找始终用 AllDigests 覆盖全部已配置版本，因此回填期间登录/绑定不受影响；改写用 CAS，与并发写互不覆盖。
-func (s *Service) RekeyDigests(ctx context.Context) (int, error) {
-	total := 0
+func (s *Service) RekeyDigests(ctx context.Context) (total int, resultErr error) {
+	if s.observer.Enabled() {
+		defer s.observeMaintenance(ctx, observability.TaskRekeyDigests, func() int64 { return int64(total) }, &resultErr, time.Now())
+	}
 	active := s.d.Digester.Active()
 	for _, old := range s.d.Digester.Versions() {
 		if old == active {
@@ -100,8 +103,10 @@ func (s *Service) RekeyDigests(ctx context.Context) (int, error) {
 }
 
 // ReencryptSubjects（维护任务 reencrypt_subjects，§5.6 #5）：把仍用非 active 加密版本的活跃锚点身份的密文用 active 版本重新加密。
-func (s *Service) ReencryptSubjects(ctx context.Context) (int, error) {
-	total := 0
+func (s *Service) ReencryptSubjects(ctx context.Context) (total int, resultErr error) {
+	if s.observer.Enabled() {
+		defer s.observeMaintenance(ctx, observability.TaskReencryptSubjects, func() int64 { return int64(total) }, &resultErr, time.Now())
+	}
 	active := s.d.Cipher.Active()
 	for _, old := range s.d.Cipher.Versions() {
 		if old == active {

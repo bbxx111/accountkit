@@ -26,6 +26,7 @@ import (
 	"github.com/bbxx111/accountkit/httpapi/enduser"
 	"github.com/bbxx111/accountkit/maintenance"
 	"github.com/bbxx111/accountkit/migrations"
+	"github.com/bbxx111/accountkit/observability"
 	"github.com/bbxx111/accountkit/pii"
 	"github.com/bbxx111/accountkit/session/grace"
 	"github.com/bbxx111/accountkit/session/revocation"
@@ -55,6 +56,8 @@ type Deps struct {
 	Redis redis.UniversalClient
 	// Logger 默认 slog.Default()。
 	Logger *slog.Logger
+	// Observer 可选；宿主负责生命周期，库只记录安全、有限分类的本地事件。
+	Observer observability.Observer
 	// ClientIP 从请求解析来源 IP（限流用）。默认取 RemoteAddr 的 host；
 	// 部署在代理后时宿主应注入按可信跳数解析 X-Forwarded-For 的实现。
 	ClientIP func(*http.Request) string
@@ -130,6 +133,9 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 	if deps.Logger == nil {
 		deps.Logger = slog.Default()
 	}
+	// All built-in producers share one panic boundary and one ownership identity.
+	observer := observability.NewRecorder(deps.Observer, deps.Logger)
+	deps.Observer = observer
 	if deps.ClientIP == nil {
 		deps.ClientIP = defaultClientIP
 	}
@@ -166,11 +172,11 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 	auditReader := deps.AuditReader
 	var auditAsync *audit.Async
 	if deps.Audit == nil {
-		auditAsync = audit.NewAsync(auditStore, audit.AsyncOptions{Logger: deps.Logger})
+		auditAsync = audit.NewAsync(auditStore, audit.AsyncOptions{Logger: deps.Logger, Observer: deps.Observer})
 		deps.Audit = auditAsync
 		auditReader = auditStore
 	}
-	authAudit, err := audit.NewAuthenticationRecorder(deps.Audit, audit.AuthenticationOptions{Source: cfg.AuditSource, Namespace: cfg.AuditNamespace}, deps.Logger)
+	authAudit, err := audit.NewAuthenticationRecorder(deps.Audit, audit.AuthenticationOptions{Source: cfg.AuditSource, Namespace: cfg.AuditNamespace, Observer: deps.Observer}, deps.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +200,7 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 	if len(cfg.AppleBundleIDs) > 0 {
 		apple = idp.NewApple(idp.AppleOptions{
 			BundleIDs: cfg.AppleBundleIDs, JWKSURL: cfg.AppleJWKSURL, HTTP: deps.HTTPClient,
-			Nonces: idp.NewNonceRegistry(deps.Redis, cfg.KeyPrefix), Logger: deps.Logger, NonceTTL: cfg.AppleNonceTTL,
+			Nonces: idp.NewNonceRegistry(deps.Redis, cfg.KeyPrefix), Logger: deps.Logger, NonceTTL: cfg.AppleNonceTTL, Observer: deps.Observer,
 		})
 	}
 	users, err := user.NewService(user.Deps{
@@ -203,7 +209,7 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 		Repo: user.NewRepo(deps.Pool), Codes: a.codes, Revocation: a.revocation, Grace: a.grace,
 		Signer: signer, Cipher: cipher, Digester: digester,
 		AuditSource: cfg.AuditSource, AuditNamespace: cfg.AuditNamespace,
-		SMS: deps.SMSSender, Email: deps.EmailSender, Audit: deps.Audit, Logger: deps.Logger,
+		SMS: deps.SMSSender, Email: deps.EmailSender, Audit: deps.Audit, Logger: deps.Logger, Observer: deps.Observer,
 		WeChat: wechat, Apple: apple,
 		AccessTTL: cfg.AccessTokenTTL, RefreshTTL: cfg.RefreshTokenTTL, RefreshGrace: cfg.RefreshGrace, CodeTTL: cfg.CodeTTL,
 		DefaultRegion:           cfg.DefaultRegion,
@@ -239,7 +245,7 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 		a.adminHandler = admin.Unconfigured(deps.RequestID)
 	}
 	// 维护任务（§5.6 #1–#5）：顺序执行、失败互不影响。
-	a.runner = maintenance.NewRunner(cfg.MaintenanceInterval, maintenance.NewPGLocker(deps.Pool, cfg.Schema), deps.Logger,
+	a.runner = maintenance.NewRunnerWithObserver(cfg.MaintenanceInterval, maintenance.NewPGLocker(deps.Pool, cfg.Schema), deps.Logger, deps.Observer,
 		maintenance.Task{Name: "cleanup_sign_in_completion_flows", Run: func(ctx context.Context) error {
 			_, err := users.CleanupSignInCompletionFlows(ctx)
 			return err
@@ -261,6 +267,9 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 		maintenance.Task{Name: "audit_retention", Run: func(ctx context.Context) error {
 			before := time.Now().Add(-time.Duration(cfg.AuditRetentionDays) * 24 * time.Hour)
 			n, err := auditStore.DeleteOlderThan(ctx, before)
+			if n > 0 {
+				observer.Observe(ctx, observability.MaintenanceObservation{Kind: observability.MaintenanceItems, Task: observability.TaskAuditRetention, Count: n})
+			}
 			if n > 0 {
 				deps.Logger.Info("maintenance: deleted expired audit events", "count", n)
 			}

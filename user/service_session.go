@@ -390,9 +390,11 @@ const sessionCleanupBatch = 1000
 
 // CleanupSessions 物理删除吊销时间早于 now − SessionRetention、或从未吊销但 refresh 过期时间早于该点的会话行，
 // 每批 sessionCleanupBatch 行，删到一批不满为止；返回删除总数。维护任务 cleanup_sessions 每轮调用一次。
-func (s *Service) CleanupSessions(ctx context.Context) (int64, error) {
+func (s *Service) CleanupSessions(ctx context.Context) (total int64, resultErr error) {
+	if s.observer.Enabled() {
+		defer s.observeMaintenance(ctx, ob.TaskCleanupSessions, func() int64 { return total }, &resultErr, time.Now())
+	}
 	before := s.now().Add(-SessionRetention)
-	var total int64
 	for {
 		if err := ctx.Err(); err != nil {
 			return total, err

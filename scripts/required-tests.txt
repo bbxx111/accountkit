@@ -630,3 +630,4 @@ github.com/bbxx111/accountkit/user/TestMaintenanceObservationsPartialFailure
 github.com/bbxx111/accountkit/user/TestMaintenanceObservationsObserverPanic
 github.com/bbxx111/accountkit/user/TestMaintenanceObservationsDurationExcludesCallback
 github.com/bbxx111/accountkit/user/idp/TestAppleCachedKeyObservation
+github.com/bbxx111/accountkit/user/TestMaintenanceObservationsCASMissNoItems

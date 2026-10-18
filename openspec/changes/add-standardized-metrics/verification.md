@@ -44,7 +44,7 @@
 
 本轮只完成规划和上述文档恢复，未执行 Go 构建、运行时测试、数据库／Redis 集成、race、性能基准、恢复演练、真实指标后端或在线 CI。两种适配器尚未实现，未宣称已具有等价输出或性能保证。未提交、合并、推送、发布或归档本次变更。
 
-## 后续实施阶段（2026-10-19，进行中）
+## 后续实施阶段（2026-10-19，已完成）
 
 用户进一步要求“commit, merge back, and apply”。规划与中文记录恢复提交为 d674796，并以独立 merge commit 48a633b 合入本地 develop；未推送。随后在忽略目录中的隔离工作树创建 feat/standardized-metrics，详细计划为 docs/superpowers/plans/2026-10-19-standardized-metrics.md，实施计划提交 e6e7551。本节记录后续实际动作，前文规划阶段边界保留为当时状态。
 
@@ -85,3 +85,64 @@ Linux amd64 基准运行于 Intel Core Ultra 7 155H：实际禁用 Recorder 2.70
 - 自定义 Observer 仍须快速返回，不得同步重入持轮次锁的同一 Runner，亦不得递归等待其所在事务的锁；panic 隔离不能中断任意阻塞回调。该约束已写入指标指南。
 
 最终全库组合验证、必需测试检查、服务门禁、备份恢复、最后审查与资源清理尚未完成，后续结果继续补记。当前未将未完成实施任务勾选，也未归档或把实现合回 develop。
+
+## 最终组合验收（2026-10-19）
+
+冻结验证快照为 **09064b1**。该快照包含全部运行时代码、宿主编译示例、维护测试加固、幂等整理后的依赖和 630 项必需测试清单。此后只更新本记录、任务复选框和实施计划状态，运行时及测试源码保持。
+
+### 实际结果
+
+| 检查 | 结果 |
+|---|---|
+| Windows GOWORK=off go build ./... | 退出 0 |
+| Windows go vet ./... | 退出 0 |
+| Windows go test -count=1 -json ./... | 41 个测试包通过，1316 个通过事件、547 个依赖／平台 skip、0 失败；此行仅为快速验证 |
+| Linux bash scripts/check-generated.sh | sqlc 1.31.1，退出 0，无生成差异 |
+| Linux bash scripts/verify.sh | 退出 0，包含迁移历史、独立 build、vet、全库 race、必需测试检查及真实备份恢复 |
+| 全库 Linux race | 41 个测试包通过、2025 个通过事件、0 失败，630/630 个必需顶层测试通过；测试级仅 TestRecoveryFixture 常规 skip |
+| 恢复演练 | 专用源库与目标库不同且最初为空；seed、verify、source-unchanged 三阶段通过，pg_dump／pg_restore 成功，保留认证数据、密文解密、access／refresh、登录补全流程和源库未改变核验 |
+| Linux bash scripts/verify-accountsvc.sh | 退出 0；5 个测试包、395 个通过事件、0 测试级 skip，15/15 个服务必需测试通过；保留脚本原 5 分钟时限与真实子进程 race |
+| 依赖整理 | go.mod 只固定已选版本及 direct 分类，无 replace；重复 go mod tidy 的文件哈希不变，全部必需项均可按实际包与测试名找到 |
+| HTTP 文档对应 | 原生脚本确认 enduser 21、admin 11 个操作对应，引用／路径参数／主要 DTO 检查通过 |
+| OpenSpec／格式／链接 | 全量严格校验 20 项通过、0 失败；工件与文档格式、链接、gofmt 和 git diff --check 在交付前再次核对 |
+| 存储保护 | 相对提案合并基点 48a633b，migrations、固定源快照、user/db、audit/db 无差异 |
+
+计数包含子测试事件；无测试文件的包不计为测试级 skip。常规套件的 TestRecoveryFixture 已由恢复脚本强制执行三阶段，不能把常规 skip 误解为恢复未测。
+
+### 审查收口
+
+核心、适配器、领域认证、审计／Apple、维护／根装配及示例文档均完成独立阶段审查；全分支最终审查结论为 **Approved**，无 Critical、Important 或新的 Minor。审查者没有把源码审查冒充自行执行的测试，最终门禁由协调者在冻结快照运行。
+
+所有审查发现均已处理：完整指标描述表独立断言、authenticate 直方图必须存在、Prometheus 示例完整行匹配、维护耗时因果上界及真实 CAS 未命中计数。最后两项为 d9cb2c4 的测试增量并经限定复审；真实行锁用 pg_blocking_pids 确认，不以固定 sleep 猜测竞争次序。
+
+### 设计解释及其影响
+
+本轮没有遗留搁置发现；以下四项解释均已同步设计并经最终审查核对：
+
+1. Apple 回退指失败刷新之后的实际缓存命中，不改变刷新／认证；若宿主需要“本次网络失败后回退成功”的另一种含义，须另行调整指标语义，不能直接推断登录成功。
+2. 维护终态去重同时匹配任务和共享启用的 Recorder；独立观测器组合不会互相吞计数。同一逻辑采集器的手工装配应复用安全 Recorder，否则可能观察到两个独立边界，需按文档装配。
+3. 低层包装已丢失 context 原因时仍记依赖故障，避免猜测取消；影响是取消专项计数可能少于实际底层取消，设施故障总量仍保留。
+4. 已知宽限读取故障按 dependency_error 分类，虽然公开仍为 invalid_grant；可用率与错误原因查询据运行事实解释，不单按 HTTP 状态判断。
+
+自定义 Observer 的同步快速返回与不重入同一 Runner／事务锁的契约已在指南明确；内置适配器只记录本地聚合，不执行网络导出。上述范围不新增 accountsvc 指标端点。
+
+### 原始证据
+
+- [完整库日志](../../../.test-output/standardized-metrics-linux/library.log)、[全库测试事件](../../../.test-output/standardized-metrics-linux/tests.jsonl)、[630 项核对汇总](../../../.test-output/standardized-metrics-linux/library-summary.json)。
+- [服务日志](../../../.test-output/standardized-metrics-linux/accountsvc.log)、[服务测试事件](../../../.test-output/standardized-metrics-linux/accountsvc-tests.jsonl)、[服务汇总](../../../.test-output/standardized-metrics-linux/accountsvc-summary.json)。
+- [合成恢复材料](../../../.test-output/standardized-metrics-linux/recovery.X24t9y/)、[Linux 环境](../../../.test-output/standardized-metrics-linux/environment.txt)、[精确快照](../../../.test-output/standardized-metrics-linux/verified-commit.txt)。
+- [Linux 基准](../../../.test-output/standardized-metrics-linux/benchmarks-linux.txt)、[示例与适配器 race](../../../.test-output/standardized-metrics-linux/examples-race.log)。
+- [Windows 构建日志](../../../.test-output/standardized-metrics-windows/build.log)、[vet 日志](../../../.test-output/standardized-metrics-windows/vet.log)、[快速测试事件](../../../.test-output/standardized-metrics-windows/tests.jsonl)。Windows JSON 保留 PowerShell 重定向的 UTF-16LE 原始编码，按 BOM 解码统计；Linux JSON 为 UTF-8。
+- [阶段报告、TDD、审查与裁决 ledger](../../../.test-output/standardized-metrics-sdd/)，含 task-1..7 报告、限定复审和 final-review.md。材料保留于忽略目录，不提交真实凭证或备份。
+
+### 交付与边界
+
+22/22 实施任务已完成；归档作为后续明确步骤。本轮仅在 feat/standardized-metrics 保存实施提交，提案已按用户要求合入本地 develop。未推送、发布、部署或将实施分支再次合回 develop。
+
+实际采集使用本地 OTel SDK／ManualReader 和 Prometheus Registry，未验证远程 Collector／监控平台、真实外部服务商或产品部署。指标保持进程内尽力语义，不保证精确账本；最终历史存储、导出网络、访问控制和生命周期仍由宿主负责。
+
+全部验证和证据复制完成后，逐一核验 accountkit.task 标签及缓存卷使用者，已删除本任务三个容器、隔离网络和两个构建缓存卷；既有 postgres、redis 容器未操作。48 份计划专属报告／TDD 原始输出已复制并逐文件 SHA-256 核对，随后仅移除对应 SDD 临时目录。隔离实施工作树、Windows 缓存和忽略目录中的日志／合成恢复材料保留。
+
+Linux、Windows 和 SDD 三组证据亦复制到主工作区的同名 .test-output 子目录，以便后续明确合并或清理工作树后仍能核对原始材料；没有覆盖既有目录。
+
+最终文档检查覆盖 9 份 Markdown 的 123 个本地链接，49 个变更 Go 文件均已 gofmt；验证快照之后仅三份计划／任务／验收 Markdown 变化，没有运行时或测试源码差异。

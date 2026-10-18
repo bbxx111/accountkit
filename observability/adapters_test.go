@@ -377,26 +377,27 @@ func TestAdaptersEquivalent(t *testing.T) {
 	wg.Wait()
 	a := readOTel(t, reader, "concurrent", adapterBuckets)
 	assertAdapterPoints(t, a, readPrometheus(t, registry, "concurrent"))
-	for key, point := range a {
-		if strings.HasPrefix(key, "accountkit.auth.operation.duration|") && strings.Contains(key, "operation=authenticate") {
-			if point.Count != workers*repeats*uint64(len(durations)) {
-				t.Fatalf("concurrent count = %d", point.Count)
-			}
-			var sum float64
-			wantBuckets := make([]uint64, len(adapterBuckets)+1)
-			for _, d := range durations {
-				sum += d.Seconds()
-				for i, upper := range adapterBuckets {
-					if d.Seconds() <= upper {
-						wantBuckets[i] += workers * repeats
-					}
-				}
-				wantBuckets[len(adapterBuckets)] += workers * repeats
-			}
-			if math.Abs(point.Sum-sum*workers*repeats) > 1e-8 || !reflect.DeepEqual(point.Buckets, wantBuckets) {
-				t.Fatalf("bucket boundaries/overflow: got %+v, want sum %v buckets %v", point, sum*workers*repeats, wantBuckets)
+	const key = "accountkit.auth.operation.duration|accountkit_instance=concurrent,method=none,operation=authenticate,result=success"
+	point, found := a[key]
+	if !found {
+		t.Fatalf("missing authenticate histogram: %s", key)
+	}
+	if point.Count != workers*repeats*uint64(len(durations)) {
+		t.Fatalf("concurrent count = %d", point.Count)
+	}
+	var sum float64
+	wantBuckets := make([]uint64, len(adapterBuckets)+1)
+	for _, d := range durations {
+		sum += d.Seconds()
+		for i, upper := range adapterBuckets {
+			if d.Seconds() <= upper {
+				wantBuckets[i] += workers * repeats
 			}
 		}
+		wantBuckets[len(adapterBuckets)] += workers * repeats
+	}
+	if math.Abs(point.Sum-sum*workers*repeats) > 1e-8 || !reflect.DeepEqual(point.Buckets, wantBuckets) {
+		t.Fatalf("bucket boundaries/overflow: got %+v, want sum %v buckets %v", point, sum*workers*repeats, wantBuckets)
 	}
 }
 

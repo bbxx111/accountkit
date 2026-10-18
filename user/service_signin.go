@@ -8,13 +8,14 @@ import (
 
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
+	ob "github.com/bbxx111/accountkit/observability"
 	"github.com/bbxx111/accountkit/user/code"
 	"github.com/bbxx111/accountkit/user/idp"
 	"github.com/bbxx111/accountkit/user/sender"
 )
 
-// SendSignInCode 发送登录验证码（purpose SIGN_IN）。额度先占后发，发送失败不退还。
-func (s *Service) SendSignInCode(ctx context.Context, channel enum.IdentityKind, target string, meta Meta) (CodeChallenge, error) {
+// sendSignInCode 发送登录验证码（purpose SIGN_IN）。额度先占后发，发送失败不退还。
+func (s *Service) sendSignInCode(ctx context.Context, channel enum.IdentityKind, target string, meta Meta) (CodeChallenge, error) {
 	return s.sendCode(ctx, channel, enum.PurposeSignIn, target, code.Binding{}, meta)
 }
 
@@ -51,7 +52,7 @@ func (s *Service) sendCodeUntil(ctx context.Context, channel enum.IdentityKind, 
 		return CodeChallenge{}, sender.ErrDisabled
 	}
 
-	issued, err := s.d.Codes.IssueChallengeUntil(ctx, channel, purpose, norm, meta.IP, binding, deadline)
+	issued, err := s.issueChallenge(ctx, channel, purpose, norm, meta.IP, binding, deadline)
 	if err != nil {
 		var rl *code.RateLimitedError
 		switch {
@@ -71,12 +72,13 @@ func (s *Service) sendCodeUntil(ctx context.Context, channel enum.IdentityKind, 
 	}
 	switch channel {
 	case enum.IdentityPhone:
-		err = s.d.SMS.SendSMS(ctx, norm, msg)
+		err = s.sendSMS(ctx, norm, msg)
 	case enum.IdentityEmail:
-		err = s.d.Email.SendEmail(ctx, norm, msg)
+		err = s.sendEmail(ctx, norm, msg)
 	}
 	if err != nil {
-		_ = s.d.Codes.DiscardChallenge(ctx, channel, purpose, norm, issued.CodeID)
+		s.observationReason(ctx, ob.ReasonSendFailed)
+		_ = s.discardChallenge(ctx, channel, purpose, norm, issued.CodeID)
 		base.Type, base.Result, base.Reason = enum.EventCodeSendFailed, enum.ResultFailure, "SEND_FAILED"
 		s.record(ctx, base)
 		if errors.Is(err, sender.ErrUnavailable) {
@@ -94,7 +96,7 @@ func (s *Service) verifyCode(ctx context.Context, channel enum.IdentityKind, pur
 	if err := s.requireIdentityEnabled(channel); err != nil {
 		return "IDENTITY_KIND_NOT_ENABLED", err
 	}
-	err = s.d.Codes.VerifyChallenge(ctx, code.Credential{Channel: channel, Purpose: purpose, Target: norm, CodeID: cred.CodeID, Code: cred.Code, Binding: binding})
+	err = s.verifyChallenge(ctx, code.Credential{Channel: channel, Purpose: purpose, Target: norm, CodeID: cred.CodeID, Code: cred.Code, Binding: binding})
 	return codeFailure(err)
 }
 
@@ -118,8 +120,8 @@ func codeFailure(err error) (string, error) {
 	}
 }
 
-// SignInWithCode 验证码登录；未知身份按策略直接注册或返回待补全结果。
-func (s *Service) SignInWithCode(ctx context.Context, cred CodeCredential, dev Device, meta Meta) (SignInResult, error) {
+// signInWithCode 验证码登录；未知身份按策略直接注册或返回待补全结果。
+func (s *Service) signInWithCode(ctx context.Context, cred CodeCredential, dev Device, meta Meta) (SignInResult, error) {
 	if err := validateCodeCredential(cred); err != nil {
 		return SignInResult{}, err
 	}
@@ -137,7 +139,7 @@ func (s *Service) SignInWithCode(ctx context.Context, cred CodeCredential, dev D
 	digest, _ := s.d.Digester.Digest(norm)
 	ev := audit.AuthenticationEvent{IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, DeviceID: dev.ID, RequestID: meta.RequestID}
 
-	expiry, verifyErr := s.d.Codes.VerifyChallengeWithExpiry(ctx, code.Credential{Channel: channel, Purpose: enum.PurposeSignIn, Target: norm, CodeID: cred.CodeID, Code: cred.Code})
+	expiry, verifyErr := s.verifyChallengeWithExpiry(ctx, code.Credential{Channel: channel, Purpose: enum.PurposeSignIn, Target: norm, CodeID: cred.CodeID, Code: cred.Code})
 	if reason, err := codeFailure(verifyErr); err != nil {
 		if !errors.Is(err, ErrUnavailable) {
 			ev.Type, ev.Result, ev.Reason = enum.EventSignInFailed, enum.ResultFailure, reason

@@ -54,8 +54,8 @@ func (s *Service) ListIdentities(ctx context.Context, userID string) ([]Identity
 	return out, nil
 }
 
-// SendBindCode 向即将绑定的新锚点发送 BIND 码。不预检占用（避免枚举），冲突在绑定时报告。
-func (s *Service) SendBindCode(ctx context.Context, p Principal, channel enum.IdentityKind, target string, meta Meta) (CodeChallenge, error) {
+// sendBindCode 向即将绑定的新锚点发送 BIND 码。不预检占用（避免枚举），冲突在绑定时报告。
+func (s *Service) sendBindCode(ctx context.Context, p Principal, channel enum.IdentityKind, target string, meta Meta) (CodeChallenge, error) {
 	if !channel.IsChannel() {
 		return CodeChallenge{}, ErrInvalidArgument
 	}

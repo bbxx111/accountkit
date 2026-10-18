@@ -22,8 +22,8 @@ type IdpCredential struct {
 	Nonce   string
 }
 
-// SignInWithIdp 验证第三方身份，按完整性策略选择登录、直接注册或待补全。
-func (s *Service) SignInWithIdp(ctx context.Context, cred IdpCredential, dev Device, meta Meta) (SignInResult, error) {
+// signInWithIdp 验证第三方身份，按完整性策略选择登录、直接注册或待补全。
+func (s *Service) signInWithIdp(ctx context.Context, cred IdpCredential, dev Device, meta Meta) (SignInResult, error) {
 	if err := validDevice(dev); err != nil {
 		return SignInResult{}, err
 	}
@@ -52,12 +52,12 @@ func (s *Service) verifyIdp(ctx context.Context, cred IdpCredential) (idp.Identi
 		if s.d.WeChat == nil {
 			return idp.Identity{}, fmt.Errorf("%w: wechat sign-in not configured", idp.ErrAppNotAllowed)
 		}
-		return s.d.WeChat.VerifyWeChat(ctx, cred.AppID, cred.Code)
+		return s.verifyWeChat(ctx, cred)
 	case enum.IdentityApple:
 		if s.d.Apple == nil {
 			return idp.Identity{}, fmt.Errorf("%w: apple sign-in not configured", idp.ErrAppNotAllowed)
 		}
-		return s.d.Apple.VerifyApple(ctx, cred.IDToken, cred.Nonce)
+		return s.verifyApple(ctx, cred)
 	default:
 		return idp.Identity{}, fmt.Errorf("%w: kind %s is not an identity provider", ErrInvalidArgument, cred.Kind)
 	}

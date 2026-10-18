@@ -63,4 +63,4 @@ node -e "const p=require('./.test-output/contract-tools/node_modules/@apidevtool
 
 随后按改动范围运行 `GOWORK=off go test -count=1 ./httpapi/...` 与相关领域测试。标准工具通过只证明文档结构与引用合法；生成客户端、Mock、产品网关和真实业务链路仍需按宿主环境验收。
 
-本次验证记录见 [document-go-integration-and-http-contracts](../openspec/changes/document-go-integration-and-http-contracts/verification.md)。
+本次验证记录见 [document-go-integration-and-http-contracts](../openspec/changes/archive/2026-10-18-document-go-integration-and-http-contracts/verification.md)。

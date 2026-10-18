@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、Go 标准库 MIME/SMTP、miniredis，真实 PostgreSQL 17/Redis 验证既有失败边界。
 
-**Spec:** [design.md](../../../openspec/changes/refine-verification-code-delivery/design.md)、[spec.md](../../../openspec/changes/refine-verification-code-delivery/specs/verification-delivery/spec.md)。
+**Spec:** [design.md](../../../openspec/changes/archive/2026-10-18-refine-verification-code-delivery/design.md)、[spec.md](../../../openspec/changes/archive/2026-10-18-refine-verification-code-delivery/specs/verification-delivery/spec.md)。
 
 ## Global Constraints
 

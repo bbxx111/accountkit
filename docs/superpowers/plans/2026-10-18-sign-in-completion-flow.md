@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、sqlc 1.31.1、PostgreSQL 17。
 
-**Spec:** [OpenSpec design](../../../openspec/changes/rename-sign-in-completion-flow/design.md) 及其 specs/versioned-auth-storage/spec.md。
+**Spec:** [OpenSpec design](../../../openspec/changes/archive/2026-10-18-rename-sign-in-completion-flow/design.md) 及其 specs/versioned-auth-storage/spec.md。
 
 ## Global Constraints
 

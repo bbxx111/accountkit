@@ -55,7 +55,7 @@
 | 更多登录与认证方式 | 按目标产品需要评估更多第三方提供方、Passkey、MFA；现有身份完整性策略不提供多因素认证 | 按需分别立项 |
 | 两个已有账号合并 | 首次身份关联已经支持；合并两个已有 user_id 还需要处理业务数据归属、冲突、授权及审计 | 有明确产品需求后 |
 
-Go 集成指南与内置 HTTP 契约已补充，实际验证与限制见[本轮记录](../openspec/changes/document-go-integration-and-http-contracts/verification.md)。后续根据目标客户端完善完整调用示例，并根据手机号需求决定短信适配。其余候选不作为当前版本的未完成任务。
+Go 集成指南与内置 HTTP 契约已补充，实际验证与限制见[本轮记录](../openspec/changes/archive/2026-10-18-document-go-integration-and-http-contracts/verification.md)。后续根据目标客户端完善完整调用示例，并根据手机号需求决定短信适配。其余候选不作为当前版本的未完成任务。
 
 ## 维护方式
 

@@ -42,7 +42,7 @@
 | 6 | examples/metricsotel、examples/metricsprometheus、docs/metrics.md、README.md、docs/{features,go-integration,compatibility}.md；指标 benchmark | 示例、集成指南、性能、跨路径验收 |
 | 7 | scripts/required-tests.txt、本变更 tasks／verification、必要修复 | 全库真实依赖、race、恢复、最终审查 |
 
-目录内可按单一职责拆小文件，不能借埋点修改领域事务。Task 1 接口验收后，Task 2 与 Task 3 可以在互不共享写入文件的情况下并行；Task 4 亦只写自己的域。Task 5 等 Task 3／4 完成再整合；Task 6 等两适配器及根装配就绪。
+目录内可按单一职责拆小文件，不能借埋点修改领域事务。Task 1 接口验收后，Task 2 与 Task 3 可以在互不共享写入文件的情况下并行；Task 4 亦只写自己的域。Task 5 的 maintenance／内部标记部分仅依赖 Task 1，可先独立实施；修改 user／根装配前须等 Task 3／4 审查通过。Task 6 的合成示例、指标契约和适配器基准在 Task 2 审查通过后可独立实施，真实根装配说明及最终验收等 Task 5 就绪再核对。
 
 ### Task 1: 核心观测和共同投影（OpenSpec 1.2，2.1 的核心部分）
 

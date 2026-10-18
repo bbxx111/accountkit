@@ -43,3 +43,45 @@
 ## 未验证与交付边界
 
 本轮只完成规划和上述文档恢复，未执行 Go 构建、运行时测试、数据库／Redis 集成、race、性能基准、恢复演练、真实指标后端或在线 CI。两种适配器尚未实现，未宣称已具有等价输出或性能保证。未提交、合并、推送、发布或归档本次变更。
+
+## 后续实施阶段（2026-10-19，进行中）
+
+用户进一步要求“commit, merge back, and apply”。规划与中文记录恢复提交为 d674796，并以独立 merge commit 48a633b 合入本地 develop；未推送。随后在忽略目录中的隔离工作树创建 feat/standardized-metrics，详细计划为 docs/superpowers/plans/2026-10-19-standardized-metrics.md，实施计划提交 e6e7551。本节记录后续实际动作，前文规划阶段边界保留为当时状态。
+
+当前已实现并完成阶段审查的内容：
+
+- 核心事件、共享投影与安全记录：6a2c326，独立审查通过；全库快速测试通过，真实依赖 skip 不计入集成证据；禁用 Recorder 为零额外分配。
+- OTel 1.38.0／Prometheus client_golang 1.23.2 适配器：3f3fc6d，独立审查通过；测试加固 c726e1e 已定向复审通过，强制要求目标直方图序列存在。
+- 审计阶段与 Apple 缓存回退：258b4c2，真实 PostgreSQL 包测试、vet 和独立审查通过。
+- Runner／观测归属标记：08c8740，真实 PostgreSQL 锁测试与阶段审查通过；领域维护数量及根装配尚待整合。
+- 认证与验证码：7a520fa，Windows 真实 PostgreSQL／Redis 全库测试 1996 个通过事件、17 个预期环境／恢复用例 skip、0 失败；50 个定向事件通过且无 skip；独立审查进行中。
+- 合成示例、指南和基准：5782386，阶段审查通过；完整行匹配的测试加固及根门面注入片段待完成。
+
+### 已执行的 Linux 检查
+
+使用本任务创建的隔离网络、PostgreSQL 17.5、Redis 7 和原生文件系统中的完整历史 clone。验证镜像包含 Go 1.26.5、CGO/gcc、PostgreSQL 17.11 客户端，sqlc 为固定 1.31.1。普通测试库和两个初始为空且互不相同的恢复库均属本任务，未修改既有 postgres／redis 容器。所有 Go 命令 GOWORK=off。
+
+| 精确快照 | 命令 | 实际结果 |
+|---|---|---|
+| 6a2c326 | go test -race -count=1 ./observability/... ./internal/obstest | 通过 |
+| 6a2c326 | bash scripts/check-generated.sh；bash scripts/check-migrations.sh | 通过，无生成或历史迁移差异 |
+| 258b4c2 | go test -race -count=1 ./audit/... ./user/idp | 带真实 PostgreSQL／Redis 环境通过 |
+| 3f3fc6d | go test -race -count=1 ./observability/... | 两种适配器与真实本地聚合器通过 |
+| 08c8740 | go test -race -count=1 ./maintenance ./internal/maintenancectx | 带真实 PostgreSQL 环境通过 |
+| 7a520fa | go test -race -count=1 ./user/... | user 56.861s、code 13.230s、idp 3.588s、sender 1.010s、smtp 5.401s，全部通过 |
+| 5782386 | go test -race -count=1 ./examples/metricsotel ./examples/metricsprometheus ./observability/... | 通过，原始日志保存在 .test-output/standardized-metrics-linux/examples-race.log |
+| 5782386 | go test -run '^$' -bench '^Benchmark(RecorderDisabled\|MetricRecording)$' -benchmem -benchtime=500ms -count=1 ./observability | 通过，原始数据保存在 .test-output/standardized-metrics-linux/benchmarks-linux.txt |
+
+Linux amd64 基准运行于 Intel Core Ultra 7 155H：实际禁用 Recorder 2.709 ns/op、0 B/op、0 allocs/op；外层禁用快路径亦为零分配和零 goroutine 增量。OTel 串行 3198 ns/op、1856 B/op、11 allocs/op，Prometheus 串行 677.7 ns/op、528 B/op、5 allocs/op；并发数据见原始日志。结果描述单个合成观测的本地记录开销，不能代替真实认证链路性能或跨机器保证。
+
+一次 Linux 示例／基准命令因 PowerShell 到 Bash 的引号解析在测试前失败；改用 UTF-8 脚本后通过。Windows 部分构建曾有外部缓存写权限警告，干净 Linux 快照的最终构建仍待完整门禁，未把该警告或 skip 隐藏为完整发布验证。
+
+### 实施中的明确解释
+
+- Apple 指标表示最近一次刷新已失败后，实际命中旧缓存密钥的观测，直到成功刷新恢复；不新增拉取，不声称最终认证必然成功。
+- 维护去重须同时匹配任务和共享且启用的安全 Recorder 所有者，未观测的 Runner 不得吞掉领域服务指标。
+- 低层既有 ErrUnavailable 包装若丢失 context 原因，则按可确认依赖故障记录，不根据返回时 ctx.Err 猜测取消原因。
+- 已确认的宽限读取故障按 Auth dependency_error/grace_read_error 分类，Go／HTTP 原 invalid_grant 保持；miss 和 pair 到期为正常拒绝。
+- 自定义 Observer 仍须快速返回，不得同步重入持轮次锁的同一 Runner，亦不得递归等待其所在事务的锁；panic 隔离不能中断任意阻塞回调。该约束已写入指标指南。
+
+最终全库组合验证、必需测试检查、服务门禁、备份恢复、最后审查与资源清理尚未完成，后续结果继续补记。当前未将未完成实施任务勾选，也未归档或把实现合回 develop。

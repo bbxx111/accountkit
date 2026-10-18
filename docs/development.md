@@ -1,5 +1,7 @@
 # 开发与验证
 
+直接嵌入 Go 库的装配、调用与宿主责任见 [Go 集成指南](go-integration.md)。调用片段可用 `GOWORK=off go test -count=1 -v ./examples/gointegration` 检查：无 Output 的片段只编译，带 Output 的示例执行合成数据，不访问数据库或服务商。
+
 要求 Go 1.26.5、sqlc 1.31.1、PostgreSQL 17。Redis 快速测试使用 miniredis；验证码轮换集成测试使用真实 Redis。先设置 SERVER_TEST_DB_DSN 指向一次性测试数据库。
 
 快速检查：GOWORK=off go test ./...。未提供数据库时部分数据库测试会跳过，不能据此宣称生产发布验证通过。

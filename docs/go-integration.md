@@ -1,0 +1,133 @@
+# Go 库集成指南
+
+本指南面向在自己的 Go 进程中嵌入 `github.com/bbxx111/accountkit` 的宿主。可以挂载内置 HTTP handler，也可以直接调用 `auth.Users()`；两者使用同一个领域服务，不需要启动 accountsvc。
+
+内容依据当前开发代码，包含 v0.2.0 尚未提供的登录补全和通用审计 API。实际集成应固定一个经过验证、包含所需接口的版本或提交；不要把本指南的新签名直接套到 v0.2.0。升级边界见[兼容指南](compatibility.md)。
+
+## 选择入口
+
+| 需求 | 入口与宿主责任 |
+|---|---|
+| 直接提供内置账号 HTTP API | 挂载 `auth.EndUserHandler()`；宿主负责监听、TLS、可信代理、入口限流和业务路由 |
+| 使用自己的 HTTP/RPC 协议或后台业务入口 | 调用 `auth.Users()`；宿主负责认证、scope、业务授权、输入/错误和 DTO 转换 |
+| 提供账号管理 API | 独立挂载 `auth.AdminHandler()`，先完成管理员认证，成对注入 `AdminVerifier` / `AdminPrincipal` |
+| 创建与账号关联的业务数据 | 完成业务授权后用 `WithActiveUsers`，同事务确认账号 ACTIVE 并写入业务表 |
+
+优先通过根门面装配；`user.NewService` 是较低层入口，需要自己提供密码学、仓储、策略和审计等依赖，不适合作为首次接入的起点。不要直接读写 `user/db` 生成模型来绕过领域状态机。
+
+## 装配、启动与关闭
+
+完整开发宿主位于 [examples/embedded/main.go](../examples/embedded/main.go)，直接 Go 调用片段位于 [examples/gointegration/example_test.go](../examples/gointegration/example_test.go)。后者无 `Output` 的函数只参与编译，不实际连接依赖；变量声明处需替换为宿主真实对象。带 `Output` 的两个示例使用合成数据验证分支和错误判定。
+
+1. 使用 `ConfigFromEnv("ACCOUNTKIT_")` 或显式 `Config` 加载配置。前缀由宿主决定；数据库 DSN、Redis 地址和发送器配置由宿主读取，不属于核心 `ConfigFromEnv` 的连接配置。
+2. 用 `PoolConfig(dsn, cfg.Schema)` 创建 pgx 连接配置，再创建池。显式构造 `Config` 时先填入所需 schema（默认名称为 `account`）；不能向 `PoolConfig` 传空 schema。查询与迁移依赖 search_path 首项为该 schema。
+3. 创建 Redis 客户端和发送器，注入 `Deps`。按部署设置独立 schema、以冒号结尾的 Redis 前缀、issuer、audience 和密钥。
+4. 调用 `New(cfg, deps)`，完成默认值与依赖校验；此步不做 I/O。使用独立启动超时调用 `Migrate`，它检查 PostgreSQL、Redis、迁移状态及历史密钥；失败时停止启动。
+5. 调用 `Start`，使用服务存活期间的 context，随后才接受请求。不能传一次 HTTP 请求的 context，也不能传马上会取消的迁移超时 context。
+6. 关闭时先停止接入并排空所有 HTTP/RPC/后台调用，再 `Auth.Close()`，再关闭宿主拥有的审计组件，最后关闭 Pool、Redis 等共享依赖。`Auth.Close()` 不关闭宿主连接池或注入的审计组件。
+
+HTTP `Shutdown` 超时不意味着在途请求已完成。生产宿主应制定明确的排空与总退出预算，不能让仍在运行的调用使用已经关闭的依赖。`Start`/`Close` 具有幂等保护，但已关闭的实例不能重新启动，也不应再调用维护入口。
+
+`Migrate` 不是通用旧库接管工具。旧初始定义、dirty 状态和不兼容历史必须按[迁移手册](migrations.md)处理，不自动 Force、改版本或清库。
+
+## 身份策略与发送器
+
+默认 `RequiredIdentityKinds` 是 PHONE/EMAIL 二选一，`nil` 与显式空列表含义不同。邮箱单渠道部署可显式配置：
+
+```go
+cfg.EnabledIdentityKinds = []enum.IdentityKind{enum.IdentityEmail}
+cfg.RequiredIdentityKinds = []enum.IdentityKind{enum.IdentityEmail}
+// deps.EmailSender 必须提供；此策略无需 deps.SMSSender。
+```
+
+`RequiredIdentityKinds: []enum.IdentityKind{}` 允许纯第三方完整账号；仍须至少有一个已启用身份，并装配相应 IdP。Required 是账号完整性规则，不是每次登录都验证多个因素。配置在装配时固定，变更策略或实例配置可能使旧补全流程失效。
+
+发送器实现 `sender.SMSCodeSender` / `sender.EmailCodeSender`，参数为 `sender.CodeMessage`。可用[SMTP 与渲染示例](../examples/codeemail/example_test.go)，或在宿主适配服务商模板；语言、模板 ID 和服务商凭据属于宿主。日志发送器仅用于明确启用的本地开发，不能用于生产。真实送达仍需单独联调。
+
+## 验证码登录与登录补全
+
+发码和提交验证码是两个客户端交互阶段：
+
+1. `SendSignInCode(ctx, channel, target, meta)` 返回 `CodeChallenge{CodeID, ExpireTime}`。将轮次和期限返回客户端，验证码通过发送器送达。
+2. 客户端提交同一目标、轮次和用户输入的验证码，宿主构造 `CodeCredential{Channel, Target, CodeID, Code}`，并调用 `SignInWithCode(ctx, cred, device, meta)`。
+3. 检查错误后再处理 `SignInResult`：`Tokens` 与 `Pending` 恰好一个非 nil。第三方 `SignInWithIdp` 返回相同的结果类型。
+
+| 结果 | 后续操作 |
+|---|---|
+| `Pending != nil` | 尚未创建账号、身份、会话或 token pair；保存短期补全票据，展示启用且符合要求的 PHONE/EMAIL 证明选项 |
+| `Tokens.Scope == user.ScopeUser` | 正常业务；仍需业务授权与资源归属校验 |
+| `Tokens.Scope == user.ScopeBind` | 已有账号缺少策略要求的身份；通过该账号的绑定流程补齐，再刷新获取新 scope |
+| `Tokens.Scope == user.ScopeUndelete` | 注销冷静期账号；取得用户恢复意愿后走 `Undelete`，再刷新；不能进入普通业务 |
+
+pending 与 `user:bind` 是不同状态。补全先调用 `SendSignInCompletionCode`，再用它返回的新轮次调用 `CompleteSignIn`，不能复用普通登录、绑定或 REAUTH 验证码。目标归属活动账号时可能关联本次尚未占用的身份，无归属且满足策略时注册；界面须说明这一含义，两个已有账号不会自动合并。
+
+初次登录必须传 `Device.ID`；同设备重登会替换旧会话。补全可以省略设备字段，重复提供必须与初次相同。直接 Go 调用由宿主构造 `Device`，内置 HTTP 使用 `X-Device-Id` / `X-Device-Name`。
+
+票据最多五分钟且不续期，只能用于补全。相同完成请求在原期限及账号/会话/refresh 仍有效时可以取回相同结果；refresh 已轮换返回 `ErrSignInAlreadyCompleted`。不能无限重试、把票据当 access/refresh 或凭第三方邮箱提示自动绑定。验证码消费与 SQL 不构成跨存储事务；SQL 失败后验证码不会恢复，应根据实际错误和已有流程状态决定是否重新取证。
+
+## 认证、刷新与敏感操作
+
+直接 Go 调用时先通过 `Authenticate(ctx, rawAccess)` 获取可信 `Principal`，不要从客户端提交的 user_id、session_id、scope 或 auth_time 构造它。认证成功后仍须检查允许的 scope，以及业务资源所属用户；不要把 `GetMe`、`BatchPublicProfiles` 或账号存在性检查视为授权。
+
+`Authenticate` 校验 JWT、资源 ID 格式和 Redis 吊销集，不为每次请求查询 PostgreSQL 中的当前账号状态。吊销查询故障按既有策略 fail-open 并告警；需要防止冻结/注销并发穿透的业务写入，使用 `WithActiveUsers` 同事务复核 ACTIVE。宿主入口限流和可信 IP 解析仍由宿主完成；直接调用时必须自己传 `Meta`，`Deps.ClientIP` / `RequestID` 不会自动作用于 Go 方法。
+
+刷新成功必须原子替换整个 token pair。宿主应协调同会话的并发刷新及持久化，防止旧响应覆盖新令牌；默认宽限内重复刷新返回相同 pair，宽限外重放执行原防重放处理。遇到 `ErrInvalidGrant` 不应无限重试；Redis 宽限故障也可能返回该错误，不能仅凭它断言发生攻击。
+
+手机/邮箱近期认证先使用 `SendReauthenticationCode` 获取绑定用户与会话的轮次，再调用 `Reauthenticate`。它只返回新 access，不返回新 refresh，也不延长原 refresh 的绝对有效期。只更新 access、其期限与 scope，保留现存 refresh。
+
+直接调用 Go 方法不会执行 HTTP 中间件。`DeleteMe` 与 `UnbindIdentity` 的 scope/近期认证保护位于内置 HTTP 路由，直接调用前宿主必须检查 `ScopeUser`，并按 `auth.Config()` 中的 `SensitiveOpVerification` / `ReauthMaxAge` 校验可信 `Principal.AuthTime`；不能等待它们自动返回 `ErrReauthenticationRequired`。开启近期认证时，AuthTime 为零或距当前时间超过窗口均应拒绝并引导重新认证。`Undelete` 必须先检查专用 `ScopeUndelete`，普通 user 凭据不能替代。`ReplaceIdentity` 在领域层也重复校验 scope 与近期认证。自有敏感业务同样需要这些入口检查；HTTP 宿主可组合 `RequireScope` 和 `RequireRecentAuth`。
+
+纯第三方账号当前通过普通 IdP 重登获得新的认证状态：核对返回的账号仍是原账号，再更新完整 pair；这会替换同设备会话，且不保证提供方强制输入密码或 MFA。纯第三方冷静期账号没有第三方自助恢复入口。
+
+## 业务事务与匿名化
+
+| 接口 | 事务由谁管理 | 使用边界 |
+|---|---|---|
+| `WithActiveUsers(ctx, ids, fn)` | 库创建、提交、回滚 | 非空 ID 集合，先排序锁账号并确认 ACTIVE，再在 `fn` 中锁业务资源并写入 |
+| `Deps.BeforeDelete` | 库的注销事务 | 消费者和管理注销共用；返回 `ErrDeletionBlocked` 拒绝，其他错误使事务失败 |
+| `Deps.Anonymizers` | 库的到期匿名化事务 | 所有回调使用同一 `pgx.Tx`，任一失败则认证表与业务表一起回滚 |
+| `ImportAccounts(ctx, tx, accounts)` | **宿主** | 受控停写导入，宿主开始事务；任一错误回滚整批，成功后连同业务引用一起提交 |
+
+回调必须使用传入的 `pgx.Tx`，不能自行提交/回滚、改用池另开连接或在事务中等待远端清理。业务表必须与认证表同库，可使用宿主自己的 schema；示例不向 accountkit 迁移中添加业务表。
+
+`WithActiveUsers` 保证状态与写入的并发一致性，不负责业务授权。宿主先校验调用者是否有权为这些账号创建关联，再进入事务；空业务批次直接跳过。不能在持有业务资源锁后反向请求账号锁。
+
+匿名化器的 `Name` 唯一，`Tables` 列出覆盖表；宿主须检查每张 user_id 关联表均已覆盖或明确豁免，不能把声明列表当作已验证覆盖。外部审计、搜索索引或其他远端副本须有宿主持久化清理、重试和完成核验；可以在传入事务中写宿主清理任务，不能以尽力 `USER_PURGED` 审计作为唯一完成证据。
+
+导入接受 ACTIVE（有 PHONE/EMAIL 锚点）或 DELETED 墓碑，不自动合并、不创建会话或令牌。它是 Go 管理工具契约，不应直接包装为任意客户端可调用的导入 API。详见[离线导入边界](compatibility.md#离线账号导入)。
+
+## Go 错误处理
+
+用 `errors.Is` 判断哨兵错误，用 `errors.As` 读取结构化限流信息，不匹配错误字符串。`code.RateLimitedError` 包含 `Dimension` 和 `RetryAfter`；宿主可以转换为自己的协议，但不要丢失重试等待时间。
+
+| 错误 | 宿主可采取的处理 |
+|---|---|
+| `code.ErrInvalid` / `code.ErrExpired` | 提示验证码错误或轮次失效；保留尝试限制，不当作 access token 失效 |
+| `*code.RateLimitedError` | 按 `RetryAfter` 等待，不自动循环发码 |
+| `user.ErrInvalidToken` | 当前 access 认证失败；按客户端会话策略刷新或重新登录 |
+| `user.ErrInvalidGrant` | 刷新失败，停止无界重试，按客户端策略重新认证 |
+| `user.ErrInsufficientScope` / `ErrReauthenticationRequired` | 分别引导权限对应流程或近期认证 |
+| `user.ErrIdentityConflict` / `ErrDeletionBlocked` | 呈现明确业务冲突/拒绝，不自动合并身份或强制注销 |
+| `user.ErrUnavailable` | 依赖不可用，返回安全错误；不回退到弱校验 |
+| `user.ErrInvalidArgument` / `ErrInvalidTarget` / `ErrNotFound` | 分别作为输入错误或资源不存在处理；不暴露其他用户资源的存在性 |
+| 已知账号状态、身份策略、IdP 或补全错误 | 按具体方法区分业务拒绝、重新取证或依赖故障；不能都变成 401 或 500 |
+| 未识别的内部/基础设施错误 | 对外固定内部错误，内部仅记录经脱敏的必要诊断和关联 ID |
+
+直接序列化 `SignInResult` 或 `TokenResult` 不会自动产生内置 HTTP 协议。自定义 HTTP 层应定义自己的 DTO；若要求兼容内置 API，必须保留标准 token 字段、pending 分支、OAuth token 错误及 Bearer challenge。不要输出原始 `err.Error()`、数据库 Detail、验证码、票据或完整目标。
+
+## 管理面、审计与验证
+
+管理员与消费者是独立身份体系。挂载管理面时，宿主中间件验证管理员身份，注入角色检查与可信主体；角色拒绝钩子接入 `RecordAdminForbidden`。直接调用管理领域方法同样是可信宿主边界，不能将客户端自报的管理员身份当作授权。未配置管理认证不影响消费者能力。
+
+默认本地审计由库启动和关闭；注入外部 `Audit` 时显式设置稳定的 `AuditSource` / `AuditNamespace`，需要管理查询则同时提供 `AuditReader`。仅写侧模式的查询返回 503，不读本地旧副本；宿主仍负责旧副本及外部副本治理。三种装配见[审计示例](../examples/audit/main.go)。
+
+在仓库根目录验证示例：
+
+```powershell
+$env:GOWORK = 'off'
+go build ./examples/...
+go test -count=1 -v ./examples/gointegration
+go vet ./examples/...
+```
+
+这些检查验证示例类型与合成输出，不等于数据库事务、真实发送器或产品环境联调。实际宿主还应验证启动失败、token/pending 分支、刷新协调、业务授权、回调回滚与匿名化覆盖；库完整门禁见[开发与验证](development.md)。

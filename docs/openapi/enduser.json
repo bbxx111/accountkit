@@ -1,0 +1,2432 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "accountkit 消费者 HTTP API",
+    "version": "development-9b8d626",
+    "description": "依据当前开发代码，非已发布 v0.2.0 的接口承诺。只描述现有 HTTP 行为，宿主配置实际挂载地址。请求体为单个 JSON 对象，默认上限 64 KiB，拒绝未知字段与尾随内容。领域状态、事务、故障策略以仓库规格与 README 为准。"
+  },
+  "servers": [
+    {
+      "url": "{basePath}",
+      "description": "basePath 是宿主实际挂载前缀，可改为完整服务 URL。",
+      "variables": {
+        "basePath": {
+          "default": "/v1"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "ConsumerBearer": []
+    }
+  ],
+  "paths": {
+    "/users:sendSignInCode": {
+      "post": {
+        "operationId": "sendSignInCode",
+        "summary": "发送登录验证码",
+        "description": "发送器接受投递后才返回轮次，不等于最终送达。失败保留已经占用的额度与冷却；不自动重发。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {
+              "Cache-Control": {
+                "description": "凭证响应禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeChallenge"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendCodeRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users:signInWithCode": {
+      "post": {
+        "operationId": "signInWithCode",
+        "summary": "验证码登录或进入补全",
+        "description": "验证码用途为 SIGN_IN；已存在账号按状态返回 user、user:bind 或 user:undelete。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {
+              "Cache-Control": {
+                "description": "凭证响应禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Pragma": {
+                "description": "禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-cache"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignInResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "required": true,
+            "description": "稳定设备标识；同设备重登替换旧会话。",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,64}$"
+            }
+          },
+          {
+            "name": "X-Device-Name",
+            "in": "header",
+            "required": false,
+            "description": "最多 64 个 Unicode 字符且无控制字符；初次登录先 TrimSpace。补全按原值与初次设备信息匹配。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users:signInWithIdp": {
+      "post": {
+        "operationId": "signInWithIdp",
+        "summary": "微信或 Apple 登录",
+        "description": "第三方提示邮箱不证明本地邮箱归属；冷静期账号返回 403 USER_PENDING_DELETION，不提供第三方恢复认证。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {
+              "Cache-Control": {
+                "description": "凭证响应禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Pragma": {
+                "description": "禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-cache"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignInResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "required": true,
+            "description": "稳定设备标识；同设备重登替换旧会话。",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,64}$"
+            }
+          },
+          {
+            "name": "X-Device-Name",
+            "in": "header",
+            "required": false,
+            "description": "最多 64 个 Unicode 字符且无控制字符；初次登录先 TrimSpace。补全按原值与初次设备信息匹配。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdpRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users:sendSignInCompletionCode": {
+      "post": {
+        "operationId": "sendSignInCompletionCode",
+        "summary": "发送登录补全验证码",
+        "description": "专用票据与 SIGN_IN_COMPLETE 轮次绑定，不能使用普通登录码。可省略设备字段；重复提供须匹配初次登录。缺可选能力为 503 SIGN_IN_COMPLETION_NOT_CONFIGURED。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {
+              "Cache-Control": {
+                "description": "凭证响应禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeChallenge"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "required": false,
+            "description": "稳定设备标识；同设备重登替换旧会话。",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,64}$"
+            }
+          },
+          {
+            "name": "X-Device-Name",
+            "in": "header",
+            "required": false,
+            "description": "最多 64 个 Unicode 字符且无控制字符；初次登录先 TrimSpace。补全按原值与初次设备信息匹配。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendCompletionCodeRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users:completeSignIn": {
+      "post": {
+        "operationId": "completeSignIn",
+        "summary": "验证并继续登录补全",
+        "description": "可能继续 pending，也可能返回已有账号的 user:bind。原票据最长五分钟且不续期；同一完成请求只在原期限、账号/会话/refresh 有效时返回原 pair，refresh 已轮换则 400 SIGN_IN_ALREADY_COMPLETED。验证会关联尚未占用身份或注册，不合并两个已有账号。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {
+              "Cache-Control": {
+                "description": "凭证响应禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Pragma": {
+                "description": "禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-cache"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignInResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "required": false,
+            "description": "稳定设备标识；同设备重登替换旧会话。",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,64}$"
+            }
+          },
+          {
+            "name": "X-Device-Name",
+            "in": "header",
+            "required": false,
+            "description": "最多 64 个 Unicode 字符且无控制字符；初次登录先 TrimSpace。补全按原值与初次设备信息匹配。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteSignInRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/token": {
+      "post": {
+        "operationId": "refreshToken",
+        "summary": "刷新并轮换令牌",
+        "description": "仅接受 JSON refresh_token grant，不是完整 OAuth 授权服务器。默认宽限内重复返回同一 pair；客户端协调并发与原子保存，宽限外按重放规则处理。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {
+              "Cache-Control": {
+                "description": "凭证响应禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Pragma": {
+                "description": "禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-cache"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenPair"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request、unsupported_grant_type（仅 token）或 invalid_grant。",
+            "headers": {
+              "Cache-Control": {
+                "description": "凭证响应禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Pragma": {
+                "description": "禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-cache"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "冻结账号：invalid_grant，reason=USER_FROZEN。",
+            "headers": {
+              "Cache-Control": {
+                "description": "凭证响应禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Pragma": {
+                "description": "禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-cache"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "server_error；固定安全描述。",
+            "headers": {
+              "Cache-Control": {
+                "description": "凭证响应禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Pragma": {
+                "description": "禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-cache"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "temporarily_unavailable。",
+            "headers": {
+              "Cache-Control": {
+                "description": "凭证响应禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Pragma": {
+                "description": "禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-cache"
+                }
+              },
+              "Retry-After": {
+                "description": "等待秒数。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/revoke": {
+      "post": {
+        "operationId": "revokeToken",
+        "summary": "撤销凭证",
+        "description": "未知凭证也返回 200 空响应；token_type_hint 仅作提示。",
+        "responses": {
+          "200": {
+            "description": "成功，无响应体。",
+            "headers": {
+              "Cache-Control": {
+                "description": "凭证响应禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request、unsupported_grant_type（仅 token）或 invalid_grant。",
+            "headers": {
+              "Cache-Control": {
+                "description": "凭证响应禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Pragma": {
+                "description": "禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-cache"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "冻结账号：invalid_grant，reason=USER_FROZEN。",
+            "headers": {
+              "Cache-Control": {
+                "description": "凭证响应禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Pragma": {
+                "description": "禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-cache"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "server_error；固定安全描述。",
+            "headers": {
+              "Cache-Control": {
+                "description": "凭证响应禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Pragma": {
+                "description": "禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-cache"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "temporarily_unavailable。",
+            "headers": {
+              "Cache-Control": {
+                "description": "凭证响应禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Pragma": {
+                "description": "禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-cache"
+                }
+              },
+              "Retry-After": {
+                "description": "等待秒数。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/me": {
+      "get": {
+        "operationId": "getMe",
+        "summary": "读取当前账号",
+        "description": "任何通过 Bearer 校验的消费者 scope 均可读取。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "updateMe",
+        "summary": "更新显示名",
+        "description": " 允许的消费者 scope：user。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "x-allowed-scopes": [
+          "user"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMeRequest"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteMe",
+        "summary": "申请注销",
+        "description": "软删除进入冷静期，调用宿主 BeforeDelete 并撤销会话；返回 PENDING_DELETION 资源，非 204。请求体忽略。 允许的消费者 scope：user。 启用敏感操作验证时要求近期认证（默认 5 分钟），过期返回 400 REAUTHENTICATION_REQUIRED。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "x-allowed-scopes": [
+          "user"
+        ],
+        "x-recent-authentication": true
+      }
+    },
+    "/users/me:undelete": {
+      "post": {
+        "operationId": "undeleteMe",
+        "summary": "恢复冷静期账号",
+        "description": "仅专用恢复 scope；恢复后刷新取得 user 或 user:bind。请求体忽略。 允许的消费者 scope：user:undelete。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "x-allowed-scopes": [
+          "user:undelete"
+        ]
+      }
+    },
+    "/users/me:sendReauthenticationCode": {
+      "post": {
+        "operationId": "sendReauthenticationCode",
+        "summary": "发送近期认证验证码",
+        "description": "目标须为本账号已绑定手机/邮箱；轮次绑定用户和会话。 允许的消费者 scope：user。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {
+              "Cache-Control": {
+                "description": "凭证响应禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeChallenge"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "x-allowed-scopes": [
+          "user"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendCodeRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/me:reauthenticate": {
+      "post": {
+        "operationId": "reauthenticate",
+        "summary": "完成近期认证",
+        "description": "只返回新 access，原 refresh 和绝对期限保持。会话到期返回 401 TOKEN_INVALID。 允许的消费者 scope：user。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {
+              "Cache-Control": {
+                "description": "凭证响应禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "Pragma": {
+                "description": "禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-cache"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessToken"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "x-allowed-scopes": [
+          "user"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/me/sessions": {
+      "get": {
+        "operationId": "listSessions",
+        "summary": "列出当前账号活跃会话",
+        "description": "不分页；仅未吊销且 refresh_expire_time 严格晚于当前时间的会话。 允许的消费者 scope：user。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "x-allowed-scopes": [
+          "user"
+        ]
+      }
+    },
+    "/users/me/sessions/{session}": {
+      "delete": {
+        "operationId": "revokeSession",
+        "summary": "撤销指定会话",
+        "description": " 允许的消费者 scope：user。",
+        "responses": {
+          "204": {
+            "description": "成功，无响应体。"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "session",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/SessionID"
+            }
+          }
+        ],
+        "x-allowed-scopes": [
+          "user"
+        ]
+      }
+    },
+    "/users/me/sessions:revokeOthers": {
+      "post": {
+        "operationId": "revokeOtherSessions",
+        "summary": "撤销其他会话",
+        "description": "保留当前会话，返回空 JSON 对象。请求体忽略。 允许的消费者 scope：user。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Empty"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "x-allowed-scopes": [
+          "user"
+        ]
+      }
+    },
+    "/users/me:sendBindCode": {
+      "post": {
+        "operationId": "sendBindCode",
+        "summary": "发送绑定或换绑验证码",
+        "description": "BIND 轮次绑定当前用户；换绑新目标也使用此入口发码。 允许的消费者 scope：user 或 user:bind。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {
+              "Cache-Control": {
+                "description": "凭证响应禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeChallenge"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "x-allowed-scopes": [
+          "user",
+          "user:bind"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendCodeRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/me/identities": {
+      "get": {
+        "operationId": "listIdentities",
+        "summary": "列出当前账号身份",
+        "description": " 允许的消费者 scope：user 或 user:bind。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "x-allowed-scopes": [
+          "user",
+          "user:bind"
+        ]
+      },
+      "post": {
+        "operationId": "bindIdentity",
+        "summary": "绑定已验证身份",
+        "description": "新增为 201，已绑定的幂等结果为 200。占用身份不会转移或自动合并；完成账号补全后刷新获取新 scope。 允许的消费者 scope：user 或 user:bind。",
+        "responses": {
+          "200": {
+            "description": "已绑定的幂等结果。",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Identity"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "成功。",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Identity"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "x-allowed-scopes": [
+          "user",
+          "user:bind"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BindRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/me/identities/{identity}": {
+      "delete": {
+        "operationId": "unbindIdentity",
+        "summary": "解绑身份",
+        "description": "须保留至少一个可用身份并满足 Required 身份策略。 允许的消费者 scope：user。 启用敏感操作验证时要求近期认证（默认 5 分钟），过期返回 400 REAUTHENTICATION_REQUIRED。",
+        "responses": {
+          "204": {
+            "description": "成功，无响应体。"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/IdentityID"
+            }
+          }
+        ],
+        "x-allowed-scopes": [
+          "user"
+        ],
+        "x-recent-authentication": true
+      }
+    },
+    "/users/me/identities/{identity}:replace": {
+      "post": {
+        "operationId": "replaceIdentity",
+        "summary": "换绑同类手机或邮箱",
+        "description": "凭证必须与路径身份同类型并使用 BIND 轮次。保留当前会话、撤销其他会话；返回新的身份资源。未实现可选能力返回 503 IDENTITY_REPLACEMENT_NOT_CONFIGURED。 允许的消费者 scope：user。 启用敏感操作验证时要求近期认证（默认 5 分钟），过期返回 400 REAUTHENTICATION_REQUIRED。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Identity"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/IdentityID"
+            }
+          }
+        ],
+        "x-allowed-scopes": [
+          "user"
+        ],
+        "x-recent-authentication": true,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeRequest"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ConsumerBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "消费者 access JWT；sub 为 u_ ID，sid 为 s_ ID；scope 要求见各 operation 的说明和 x-allowed-scopes。"
+      }
+    },
+    "parameters": {
+      "RequestID": {
+        "name": "X-Request-Id",
+        "in": "header",
+        "required": false,
+        "description": "默认接受 1–64 位字母、数字、点、下划线、连字符，缺失或非法时生成；宿主可覆盖关联 ID 策略。",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "Error400": {
+        "description": "输入、轮次或前置条件不满足。FAILED_PRECONDITION 映射为 400。",
+        "headers": {},
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "Error401": {
+        "description": "Bearer 缺失、格式错误或凭证失效。",
+        "headers": {
+          "WWW-Authenticate": {
+            "description": "消费者 Bearer 401 的认证 challenge。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "Error403": {
+        "description": "作用域不足或账号状态拒绝。",
+        "headers": {},
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "Error404": {
+        "description": "资源不存在或不属于当前用户；不暴露其他账号资源。",
+        "headers": {},
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "Error409": {
+        "description": "身份占用或同类身份数量限制。",
+        "headers": {},
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "Error429": {
+        "description": "发送/验证预算耗尽；retry_after_seconds 与 Retry-After 指定等待秒数。",
+        "headers": {
+          "Retry-After": {
+            "description": "存在时为等待秒数。",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "Error500": {
+        "description": "固定 internal error，不暴露内部诊断。",
+        "headers": {},
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "Error503": {
+        "description": "依赖或可选能力未配置/不可用；不降级绕过验证。",
+        "headers": {
+          "Retry-After": {
+            "description": "存在时为等待秒数。",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "UserID": {
+        "type": "string",
+        "pattern": "^u_[0-9a-hjkmnp-tv-z]{13}$"
+      },
+      "IdentityID": {
+        "type": "string",
+        "pattern": "^i_[0-9a-hjkmnp-tv-z]{13}$"
+      },
+      "SessionID": {
+        "type": "string",
+        "pattern": "^s_[0-9a-hjkmnp-tv-z]{13}$"
+      },
+      "IdentityKind": {
+        "type": "string",
+        "enum": [
+          "PHONE",
+          "EMAIL",
+          "WECHAT",
+          "APPLE"
+        ]
+      },
+      "Channel": {
+        "type": "string",
+        "enum": [
+          "PHONE",
+          "EMAIL"
+        ]
+      },
+      "UserState": {
+        "type": "string",
+        "enum": [
+          "ACTIVE",
+          "FROZEN",
+          "PENDING_DELETION",
+          "DELETED"
+        ]
+      },
+      "CodeCredential": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "minLength": 1
+          },
+          "code_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "description": "敏感凭证，不得写入日志、URL 或审计。"
+          }
+        },
+        "required": [
+          "target",
+          "code_id",
+          "code"
+        ],
+        "additionalProperties": false
+      },
+      "WeChatCredential": {
+        "type": "object",
+        "properties": {
+          "app_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "description": "敏感凭证，不得写入日志、URL 或审计。"
+          }
+        },
+        "required": [
+          "app_id",
+          "code"
+        ],
+        "additionalProperties": false
+      },
+      "AppleCredential": {
+        "type": "object",
+        "properties": {
+          "id_token": {
+            "type": "string",
+            "minLength": 1,
+            "description": "敏感凭证，不得写入日志、URL 或审计。"
+          },
+          "nonce": {
+            "type": "string",
+            "minLength": 1,
+            "description": "敏感凭证，不得写入日志、URL 或审计。"
+          }
+        },
+        "required": [
+          "id_token",
+          "nonce"
+        ],
+        "additionalProperties": false
+      },
+      "SendCodeRequest": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "$ref": "#/components/schemas/Channel"
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "channel",
+          "target"
+        ],
+        "additionalProperties": false
+      },
+      "CodeChallenge": {
+        "type": "object",
+        "properties": {
+          "code_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "expire_time": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "code_id",
+          "expire_time"
+        ],
+        "additionalProperties": false
+      },
+      "PendingSignIn": {
+        "type": "object",
+        "properties": {
+          "next_action": {
+            "type": "string",
+            "const": "COMPLETE_IDENTITY"
+          },
+          "sign_in_completion_token": {
+            "type": "string",
+            "minLength": 1,
+            "description": "敏感凭证，不得写入日志、URL 或审计。"
+          },
+          "expire_time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "enabled_identity_kinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IdentityKind"
+            }
+          },
+          "required_identity_kinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Channel"
+            }
+          }
+        },
+        "required": [
+          "next_action",
+          "sign_in_completion_token",
+          "expire_time",
+          "enabled_identity_kinds",
+          "required_identity_kinds"
+        ],
+        "additionalProperties": false
+      },
+      "Me": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^users/u_[0-9a-hjkmnp-tv-z]{13}$"
+          },
+          "state": {
+            "$ref": "#/components/schemas/UserState"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "create_time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "delete_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "purge_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "state",
+          "display_name",
+          "create_time",
+          "delete_time",
+          "purge_time"
+        ],
+        "additionalProperties": false
+      },
+      "Identity": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^users/u_[0-9a-hjkmnp-tv-z]{13}/identities/i_[0-9a-hjkmnp-tv-z]{13}$"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IdentityKind"
+          },
+          "masked_subject": {
+            "type": "string",
+            "description": "PHONE/EMAIL 掩码；第三方身份为空字符串。"
+          },
+          "create_time": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "masked_subject",
+          "create_time"
+        ],
+        "additionalProperties": false
+      },
+      "Session": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^users/u_[0-9a-hjkmnp-tv-z]{13}/sessions/s_[0-9a-hjkmnp-tv-z]{13}$"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "device_name": {
+            "type": "string"
+          },
+          "create_time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_used_time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "is_current": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "device_id",
+          "device_name",
+          "create_time",
+          "last_used_time",
+          "is_current"
+        ],
+        "additionalProperties": false
+      },
+      "Empty": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "ApiError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "minimum": 400,
+                "maximum": 599
+              },
+              "message": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "INVALID_ARGUMENT",
+                  "FAILED_PRECONDITION",
+                  "UNAUTHENTICATED",
+                  "PERMISSION_DENIED",
+                  "NOT_FOUND",
+                  "RESOURCE_EXHAUSTED",
+                  "INTERNAL",
+                  "UNAVAILABLE",
+                  "ALREADY_EXISTS"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              },
+              "retry_after_seconds": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "OAuthError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "invalid_request",
+              "unsupported_grant_type",
+              "invalid_grant",
+              "temporarily_unavailable",
+              "server_error"
+            ]
+          },
+          "error_description": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "CodeRequest": {
+        "type": "object",
+        "properties": {
+          "phone": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CodeCredential"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "email": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CodeCredential"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "wechat": {
+            "type": "null"
+          },
+          "apple": {
+            "type": "null"
+          }
+        },
+        "required": [],
+        "additionalProperties": false,
+        "description": "恰好一个允许的凭证成员非 null；显式 null 等同缺失，拒绝未知字段。",
+        "oneOf": [
+          {
+            "required": [
+              "phone"
+            ],
+            "properties": {
+              "phone": {
+                "$ref": "#/components/schemas/CodeCredential"
+              }
+            }
+          },
+          {
+            "required": [
+              "email"
+            ],
+            "properties": {
+              "email": {
+                "$ref": "#/components/schemas/CodeCredential"
+              }
+            }
+          }
+        ]
+      },
+      "IdpRequest": {
+        "type": "object",
+        "properties": {
+          "phone": {
+            "type": "null"
+          },
+          "email": {
+            "type": "null"
+          },
+          "wechat": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WeChatCredential"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "apple": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AppleCredential"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [],
+        "additionalProperties": false,
+        "description": "恰好一个允许的凭证成员非 null；显式 null 等同缺失，拒绝未知字段。",
+        "oneOf": [
+          {
+            "required": [
+              "wechat"
+            ],
+            "properties": {
+              "wechat": {
+                "$ref": "#/components/schemas/WeChatCredential"
+              }
+            }
+          },
+          {
+            "required": [
+              "apple"
+            ],
+            "properties": {
+              "apple": {
+                "$ref": "#/components/schemas/AppleCredential"
+              }
+            }
+          }
+        ]
+      },
+      "BindRequest": {
+        "type": "object",
+        "properties": {
+          "phone": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CodeCredential"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "email": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CodeCredential"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "wechat": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WeChatCredential"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "apple": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AppleCredential"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [],
+        "additionalProperties": false,
+        "description": "恰好一个允许的凭证成员非 null；显式 null 等同缺失，拒绝未知字段。",
+        "oneOf": [
+          {
+            "required": [
+              "phone"
+            ],
+            "properties": {
+              "phone": {
+                "$ref": "#/components/schemas/CodeCredential"
+              }
+            }
+          },
+          {
+            "required": [
+              "email"
+            ],
+            "properties": {
+              "email": {
+                "$ref": "#/components/schemas/CodeCredential"
+              }
+            }
+          },
+          {
+            "required": [
+              "wechat"
+            ],
+            "properties": {
+              "wechat": {
+                "$ref": "#/components/schemas/WeChatCredential"
+              }
+            }
+          },
+          {
+            "required": [
+              "apple"
+            ],
+            "properties": {
+              "apple": {
+                "$ref": "#/components/schemas/AppleCredential"
+              }
+            }
+          }
+        ]
+      },
+      "CompleteSignInRequest": {
+        "type": "object",
+        "properties": {
+          "phone": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CodeCredential"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "email": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CodeCredential"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sign_in_completion_token": {
+            "type": "string",
+            "minLength": 1,
+            "description": "敏感凭证，不得写入日志、URL 或审计。"
+          }
+        },
+        "required": [
+          "sign_in_completion_token"
+        ],
+        "additionalProperties": false,
+        "description": "恰好一个允许的凭证成员非 null；显式 null 等同缺失，拒绝未知字段。",
+        "oneOf": [
+          {
+            "required": [
+              "phone"
+            ],
+            "properties": {
+              "phone": {
+                "$ref": "#/components/schemas/CodeCredential"
+              }
+            }
+          },
+          {
+            "required": [
+              "email"
+            ],
+            "properties": {
+              "email": {
+                "$ref": "#/components/schemas/CodeCredential"
+              }
+            }
+          }
+        ]
+      },
+      "SendCompletionCodeRequest": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "$ref": "#/components/schemas/Channel"
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sign_in_completion_token": {
+            "type": "string",
+            "minLength": 1,
+            "description": "敏感凭证，不得写入日志、URL 或审计。"
+          }
+        },
+        "required": [
+          "channel",
+          "target",
+          "sign_in_completion_token"
+        ],
+        "additionalProperties": false
+      },
+      "AccessToken": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "minLength": 1,
+            "description": "敏感凭证，不得写入日志、URL 或审计。"
+          },
+          "token_type": {
+            "type": "string",
+            "const": "Bearer"
+          },
+          "expires_in": {
+            "type": "integer"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "user",
+              "user:bind",
+              "user:undelete"
+            ]
+          },
+          "user_id": {
+            "$ref": "#/components/schemas/UserID"
+          },
+          "is_new_user": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_in",
+          "scope",
+          "user_id",
+          "is_new_user"
+        ],
+        "additionalProperties": false,
+        "description": "重新认证响应仅含 access，不包含 refresh_token 或 refresh_expires_in。原 refresh 与绝对期限保持。"
+      },
+      "TokenPair": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "minLength": 1,
+            "description": "敏感凭证，不得写入日志、URL 或审计。"
+          },
+          "token_type": {
+            "type": "string",
+            "const": "Bearer"
+          },
+          "expires_in": {
+            "type": "integer"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "user",
+              "user:bind",
+              "user:undelete"
+            ]
+          },
+          "user_id": {
+            "$ref": "#/components/schemas/UserID"
+          },
+          "is_new_user": {
+            "type": "boolean"
+          },
+          "refresh_token": {
+            "type": "string",
+            "minLength": 1,
+            "description": "敏感凭证，不得写入日志、URL 或审计。"
+          },
+          "refresh_expires_in": {
+            "type": "integer"
+          },
+          "hint_email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_in",
+          "scope",
+          "user_id",
+          "is_new_user",
+          "refresh_token"
+        ],
+        "additionalProperties": false,
+        "description": "登录/刷新 token pair。refresh_expires_in 非零时输出；hint_email 仅供预填，不等于本地已绑定邮箱。scope 决定正常业务、绑定或恢复入口。"
+      },
+      "SignInResult": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TokenPair"
+          },
+          {
+            "$ref": "#/components/schemas/PendingSignIn"
+          }
+        ],
+        "description": "HTTP 200 的两种互斥响应：令牌对或待补全。不得把 pending 当作已有账号。"
+      },
+      "IdentityList": {
+        "type": "object",
+        "properties": {
+          "identities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Identity"
+            }
+          }
+        },
+        "required": [
+          "identities"
+        ],
+        "additionalProperties": false
+      },
+      "SessionList": {
+        "type": "object",
+        "properties": {
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Session"
+            }
+          }
+        },
+        "required": [
+          "sessions"
+        ],
+        "additionalProperties": false
+      },
+      "RefreshRequest": {
+        "type": "object",
+        "properties": {
+          "grant_type": {
+            "type": "string",
+            "const": "refresh_token"
+          },
+          "refresh_token": {
+            "type": "string",
+            "minLength": 1,
+            "description": "敏感凭证，不得写入日志、URL 或审计。"
+          }
+        },
+        "required": [
+          "grant_type",
+          "refresh_token"
+        ],
+        "additionalProperties": false
+      },
+      "RevokeRequest": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 1,
+            "description": "敏感凭证，不得写入日志、URL 或审计。"
+          },
+          "token_type_hint": {
+            "type": "string",
+            "description": "仅作提示；服务端自行判定类型，不限制为固定枚举。"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateMeRequest": {
+        "type": "object",
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "description": "TrimSpace 后最多 32 个 Unicode 字符；空字符串清空，禁止控制字符及指定双向格式控制符。"
+          }
+        },
+        "required": [
+          "display_name"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

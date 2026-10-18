@@ -5,6 +5,10 @@
 
 已有能力、待真实环境验证项和未立项候选统一记录在[功能清单与候选功能](docs/features.md)。
 
+首次以库方式接入请阅读 [Go 集成指南](docs/go-integration.md)，配套[可编译调用示例](examples/gointegration/example_test.go)涵盖登录分支、刷新与重新认证、业务事务和错误处理。
+
+挂载内置 HTTP handler 的宿主可使用[消费者与管理面 OpenAPI 契约](docs/openapi.md)，按实际地址调整挂载前缀。
+
 本文描述当前开发代码；身份策略与登录补全尚未发布到 v0.2.0，账号资源沿用 `/users`。升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
 
 accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可选服务实现，使用同一套库能力；选择库集成不需要部署或调用 accountsvc。服务入口是 `cmd/accountsvc`，包含 SMTP 邮件投递、消费者远程鉴权和默认关闭的外部管理员 JWT 验证，运行与配置见 [accountsvc 服务手册](docs/accountsvc.md)。`examples/embedded` 保留为库集成开发示例。

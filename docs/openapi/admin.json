@@ -1,0 +1,1363 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "accountkit 管理 HTTP API",
+    "version": "development-9b8d626",
+    "description": "依据当前开发代码，非已发布 v0.2.0 的接口承诺。只描述现有 HTTP 行为，宿主配置实际挂载地址。请求体为单个 JSON 对象，默认上限 64 KiB，拒绝未知字段与尾随内容。领域状态、事务、故障策略以仓库规格与 README 为准。 管理员认证由宿主前置完成，库执行逐路由角色检查。未配置管理面时全部请求返回 503 ADMIN_NOT_CONFIGURED；401/403 的外部认证错误体由宿主决定。"
+  },
+  "servers": [
+    {
+      "url": "{basePath}",
+      "description": "basePath 是宿主实际挂载前缀，可改为完整服务 URL。",
+      "variables": {
+        "basePath": {
+          "default": "/admin/v1"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "AdminBearer": []
+    }
+  ],
+  "paths": {
+    "/users": {
+      "get": {
+        "operationId": "adminListUsers",
+        "summary": "筛选与分页列出账号",
+        "description": "按 create_time、id 的 keyset 分页。filter 使用 AND 子集，无 OR/NOT/括号。身份条件必须同一 kind 且命中同一活跃身份；具体支持字段见 docs/openapi.md。 所需管理员角色：operator；角色层级由宿主 verifier 决定。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "省略或 0 使用 20；大于 100 时截为 100；负数或非整数返回 400。",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 20
+            }
+          },
+          {
+            "name": "page_token",
+            "in": "query",
+            "description": "不透明游标；省略或空字符串从第一页开始。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "show_deleted",
+            "in": "query",
+            "description": "true 才包含 PENDING_DELETION / DELETED。",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "x-required-role": "operator"
+      }
+    },
+    "/users/{user}": {
+      "get": {
+        "operationId": "adminGetUser",
+        "summary": "获取账号详情",
+        "description": " 所需管理员角色：operator；角色层级由宿主 verifier 决定。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "user",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UserID"
+            }
+          }
+        ],
+        "x-required-role": "operator"
+      },
+      "delete": {
+        "operationId": "adminDeleteUser",
+        "summary": "管理代办注销",
+        "description": "经过领域状态校验和宿主 BeforeDelete；请求体忽略。 所需管理员角色：super-admin；角色层级由宿主 verifier 决定。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUser"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "user",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UserID"
+            }
+          }
+        ],
+        "x-required-role": "super-admin"
+      }
+    },
+    "/users/{user}:freeze": {
+      "post": {
+        "operationId": "adminFreezeUser",
+        "summary": "冻结账号",
+        "description": "ACTIVE → FROZEN，同时撤销会话。目标账号状态问题返回 400。 所需管理员角色：operator；角色层级由宿主 verifier 决定。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUser"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "user",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UserID"
+            }
+          }
+        ],
+        "x-required-role": "operator",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FreezeRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/{user}:unfreeze": {
+      "post": {
+        "operationId": "adminUnfreezeUser",
+        "summary": "解冻账号",
+        "description": "必须发送 JSON 对象，可用 {}。FROZEN → ACTIVE，不重建会话。 所需管理员角色：operator；角色层级由宿主 verifier 决定。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUser"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "user",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UserID"
+            }
+          }
+        ],
+        "x-required-role": "operator",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnfreezeRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/{user}:undelete": {
+      "post": {
+        "operationId": "adminUndeleteUser",
+        "summary": "管理代办恢复",
+        "description": "恢复冷静期账号，最终匿名化后不可恢复；请求体忽略。 所需管理员角色：super-admin；角色层级由宿主 verifier 决定。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUser"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "user",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UserID"
+            }
+          }
+        ],
+        "x-required-role": "super-admin"
+      }
+    },
+    "/users/{user}/identities/{identity}:reveal": {
+      "get": {
+        "operationId": "adminRevealIdentity",
+        "summary": "授权查看身份明文",
+        "description": "保留既有 GET :reveal 协议并写入审计；此契约不改 HTTP 方法。宿主应对敏感响应实施缓存和日志保护。 所需管理员角色：super-admin；角色层级由宿主 verifier 决定。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevealIdentity"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "user",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UserID"
+            }
+          },
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/IdentityID"
+            }
+          }
+        ],
+        "x-required-role": "super-admin"
+      }
+    },
+    "/users/{user}/sessions": {
+      "get": {
+        "operationId": "adminListSessions",
+        "summary": "列出账号活跃会话",
+        "description": "不分页；不含消费者 DTO 的 is_current。 所需管理员角色：operator；角色层级由宿主 verifier 决定。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSessionList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "user",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UserID"
+            }
+          }
+        ],
+        "x-required-role": "operator"
+      }
+    },
+    "/users/{user}/sessions/{session}": {
+      "delete": {
+        "operationId": "adminRevokeSession",
+        "summary": "管理撤销指定会话",
+        "description": " 所需管理员角色：operator；角色层级由宿主 verifier 决定。",
+        "responses": {
+          "204": {
+            "description": "成功，无响应体。"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "user",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UserID"
+            }
+          },
+          {
+            "name": "session",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/SessionID"
+            }
+          }
+        ],
+        "x-required-role": "operator"
+      }
+    },
+    "/users/{user}/sessions:revokeAll": {
+      "post": {
+        "operationId": "adminRevokeAllSessions",
+        "summary": "管理撤销全部会话",
+        "description": "返回实际撤销数量，请求体忽略。 所需管理员角色：operator；角色层级由宿主 verifier 决定。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokeAllResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "user",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UserID"
+            }
+          }
+        ],
+        "x-required-role": "operator"
+      }
+    },
+    "/users/{user}/auditEvents": {
+      "get": {
+        "operationId": "adminListAuditEvents",
+        "summary": "读取账号认证审计",
+        "description": "仅返回当前账号范围的认证事件，不透传通用业务 data。按 occur_time、UUID 升序；v2 游标绑定来源、账号和认证动作集合，旧游标返回 400 INVALID_PAGE_TOKEN，须从第一页重新开始。仅外部写侧为 503 AUDIT_QUERY_NOT_CONFIGURED；读侧故障/越界为 503 AUDIT_QUERY_UNAVAILABLE。 所需管理员角色：operator；角色层级由宿主 verifier 决定。",
+        "responses": {
+          "200": {
+            "description": "成功。",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditEventList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "user",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/UserID"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "省略或 0 使用 20；大于 100 时截为 100；负数或非整数返回 400。",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 20
+            }
+          },
+          {
+            "name": "page_token",
+            "in": "query",
+            "description": "不透明游标；省略或空字符串从第一页开始。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-required-role": "operator"
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "AdminBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "独立管理员身份凭证。宿主验证 issuer/audience/签名并注入角色与主体，不接受消费者令牌代替。宿主采用不同认证协议时须适配此定义。"
+      }
+    },
+    "parameters": {
+      "RequestID": {
+        "name": "X-Request-Id",
+        "in": "header",
+        "required": false,
+        "description": "默认接受 1–64 位字母、数字、点、下划线、连字符，缺失或非法时生成；宿主可覆盖关联 ID 策略。",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "Error400": {
+        "description": "输入、轮次或前置条件不满足。FAILED_PRECONDITION 映射为 400。",
+        "headers": {},
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "Error401": {
+        "description": "宿主管理员认证/角色校验拒绝；错误体与 challenge 由宿主 verifier 定义。库内缺失管理员主体时返回 ApiError。"
+      },
+      "Error403": {
+        "description": "宿主管理员认证/角色校验拒绝；错误体与 challenge 由宿主 verifier 定义。库内缺失管理员主体时返回 ApiError。"
+      },
+      "Error404": {
+        "description": "资源不存在或不属于当前用户；不暴露其他账号资源。",
+        "headers": {},
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "Error409": {
+        "description": "身份占用或同类身份数量限制。",
+        "headers": {},
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "Error429": {
+        "description": "发送/验证预算耗尽；retry_after_seconds 与 Retry-After 指定等待秒数。",
+        "headers": {
+          "Retry-After": {
+            "description": "存在时为等待秒数。",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "Error500": {
+        "description": "固定 internal error，不暴露内部诊断。",
+        "headers": {},
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      },
+      "Error503": {
+        "description": "依赖或可选能力未配置/不可用；不降级绕过验证。",
+        "headers": {
+          "Retry-After": {
+            "description": "存在时为等待秒数。",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "UserID": {
+        "type": "string",
+        "pattern": "^u_[0-9a-hjkmnp-tv-z]{13}$"
+      },
+      "IdentityID": {
+        "type": "string",
+        "pattern": "^i_[0-9a-hjkmnp-tv-z]{13}$"
+      },
+      "SessionID": {
+        "type": "string",
+        "pattern": "^s_[0-9a-hjkmnp-tv-z]{13}$"
+      },
+      "IdentityKind": {
+        "type": "string",
+        "enum": [
+          "PHONE",
+          "EMAIL",
+          "WECHAT",
+          "APPLE"
+        ]
+      },
+      "UserState": {
+        "type": "string",
+        "enum": [
+          "ACTIVE",
+          "FROZEN",
+          "PENDING_DELETION",
+          "DELETED"
+        ]
+      },
+      "ApiError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "minimum": 400,
+                "maximum": 599
+              },
+              "message": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "INVALID_ARGUMENT",
+                  "FAILED_PRECONDITION",
+                  "UNAUTHENTICATED",
+                  "PERMISSION_DENIED",
+                  "NOT_FOUND",
+                  "RESOURCE_EXHAUSTED",
+                  "INTERNAL",
+                  "UNAVAILABLE",
+                  "ALREADY_EXISTS"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              },
+              "retry_after_seconds": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "Freeze": {
+        "type": "object",
+        "properties": {
+          "freeze_time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "actor_subject": {
+            "type": "string"
+          },
+          "actor_username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "freeze_time",
+          "reason",
+          "actor_subject",
+          "actor_username"
+        ],
+        "additionalProperties": false
+      },
+      "AdminUser": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^users/u_[0-9a-hjkmnp-tv-z]{13}$"
+          },
+          "state": {
+            "$ref": "#/components/schemas/UserState"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "create_time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "delete_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "purge_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "update_time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "freeze": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Freeze"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "state",
+          "display_name",
+          "create_time",
+          "delete_time",
+          "purge_time",
+          "update_time",
+          "freeze"
+        ],
+        "additionalProperties": false
+      },
+      "AdminIdentity": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^users/u_[0-9a-hjkmnp-tv-z]{13}/identities/i_[0-9a-hjkmnp-tv-z]{13}$"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IdentityKind"
+          },
+          "masked_subject": {
+            "type": "string",
+            "description": "PHONE/EMAIL 掩码；第三方身份为空字符串。"
+          },
+          "create_time": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "masked_subject",
+          "create_time"
+        ],
+        "additionalProperties": false
+      },
+      "AdminUserDetail": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^users/u_[0-9a-hjkmnp-tv-z]{13}$"
+          },
+          "state": {
+            "$ref": "#/components/schemas/UserState"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "create_time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "delete_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "purge_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "update_time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "freeze": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Freeze"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "identities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminIdentity"
+            }
+          },
+          "active_session_count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "name",
+          "state",
+          "display_name",
+          "create_time",
+          "delete_time",
+          "purge_time",
+          "update_time",
+          "freeze",
+          "identities",
+          "active_session_count"
+        ],
+        "additionalProperties": false
+      },
+      "AdminUserList": {
+        "type": "object",
+        "properties": {
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminUser"
+            }
+          },
+          "next_page_token": {
+            "type": "string",
+            "description": "空字符串表示最后一页。"
+          }
+        },
+        "required": [
+          "users",
+          "next_page_token"
+        ],
+        "additionalProperties": false
+      },
+      "AdminSession": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^users/u_[0-9a-hjkmnp-tv-z]{13}/sessions/s_[0-9a-hjkmnp-tv-z]{13}$"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "device_name": {
+            "type": "string"
+          },
+          "create_time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_used_time": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "name",
+          "device_id",
+          "device_name",
+          "create_time",
+          "last_used_time"
+        ],
+        "additionalProperties": false
+      },
+      "AdminSessionList": {
+        "type": "object",
+        "properties": {
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminSession"
+            }
+          }
+        },
+        "required": [
+          "sessions"
+        ],
+        "additionalProperties": false
+      },
+      "RevealIdentity": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^users/u_[0-9a-hjkmnp-tv-z]{13}/identities/i_[0-9a-hjkmnp-tv-z]{13}$"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IdentityKind"
+          },
+          "subject": {
+            "type": "string",
+            "description": "经授权查看的明文；不得记录或缓存为普通身份列表。"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "subject"
+        ],
+        "additionalProperties": false
+      },
+      "RevokeAllResult": {
+        "type": "object",
+        "properties": {
+          "revoked_count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "revoked_count"
+        ],
+        "additionalProperties": false
+      },
+      "FreezeRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "TrimSpace 后非空，最多 200 个 Unicode 字符；拒绝控制及指定双向格式控制符。"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "UnfreezeRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "可省略或为空；TrimSpace 后最多 200 个 Unicode 字符。"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "AuditEvent": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^users/u_[0-9a-hjkmnp-tv-z]{13}/auditEvents/[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+          },
+          "event_type": {
+            "type": "string",
+            "description": "认证动作名称，来自 enum.EventType；不是任意业务事件。"
+          },
+          "actor_kind": {
+            "type": "string",
+            "enum": [
+              "USER",
+              "ADMIN",
+              "SYSTEM"
+            ]
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "SUCCESS",
+                  "FAILURE"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionID"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "flow_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^f_[0-9a-hjkmnp-tv-z]{13}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "identity_kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IdentityKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "subject_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "admin_issuer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "admin_subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "admin_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "occur_time": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "name",
+          "event_type",
+          "actor_kind",
+          "result",
+          "reason",
+          "session_id",
+          "identity_kind",
+          "subject_hint",
+          "ip",
+          "device_id",
+          "request_id",
+          "admin_issuer",
+          "admin_subject",
+          "admin_username",
+          "occur_time"
+        ],
+        "additionalProperties": false
+      },
+      "AuditEventList": {
+        "type": "object",
+        "properties": {
+          "audit_events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditEvent"
+            }
+          },
+          "next_page_token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "audit_events",
+          "next_page_token"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

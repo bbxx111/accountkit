@@ -101,6 +101,59 @@ func TestMaintenanceObservationsPartialFailure(t *testing.T) {
 	}
 }
 
+func TestMaintenanceObservationsCASMissNoItems(t *testing.T) {
+	f := newFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	recorded := &obstest.Recorder{}
+	f.deps.Observer = recorded
+	rebuildMetricsService(t, f)
+	token := f.signIn(t, enum.IdentityPhone, phone1, dev1)
+	rotate(t, f)
+	row := findKind(t, f, token.UserID, enum.IdentityPhone, false)
+	if row.DigestKeyVersion == nil || *row.DigestKeyVersion != 1 {
+		t.Fatalf("row must start on old digest version: %+v", row)
+	}
+	digest, _ := f.dig.Digest(phone1)
+	tx, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tx.Rollback(context.Background()) })
+	var lockedID string
+	if err := tx.QueryRow(ctx, `SELECT id FROM identity WHERE id = $1 FOR UPDATE`, row.ID).Scan(&lockedID); err != nil || lockedID != row.ID {
+		t.Fatalf("lock identity: id=%q err=%v", lockedID, err)
+	}
+	type outcome struct {
+		n   int
+		err error
+	}
+	completed := make(chan error, 1)
+	results := make(chan outcome, 1)
+	recorded.Reset()
+	go func() {
+		n, err := f.svc.RekeyDigests(ctx)
+		results <- outcome{n: n, err: err}
+		completed <- err
+	}()
+	waitIdentityRaceBlocked(t, ctx, f, tx, completed)
+	tag, err := tx.Exec(ctx, `UPDATE identity SET subject_digest = $1, digest_key_version = 2 WHERE id = $2`, digest, row.ID)
+	if err != nil || tag.RowsAffected() != 1 {
+		t.Fatalf("winning update: rows=%d err=%v", tag.RowsAffected(), err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	result := <-results
+	if result.n != 0 || result.err != nil {
+		t.Fatalf("missed CAS must not count another worker's update: n=%d err=%v", result.n, result.err)
+	}
+	if after := findKind(t, f, token.UserID, enum.IdentityPhone, false); after.DigestKeyVersion == nil || *after.DigestKeyVersion != 2 || after.SubjectDigest == nil || *after.SubjectDigest != digest {
+		t.Fatalf("concurrent winner's update not preserved: %+v", after)
+	}
+	assertMaintenanceRuns(t, recorded.Snapshot(), []ob.Task{ob.TaskRekeyDigests})
+}
+
 func TestMaintenanceObservationsObserverPanic(t *testing.T) {
 	f := newFixture(t)
 	f.deps.Observer = metricsObserverFunc(func(context.Context, ob.Observation) { panic("private-observer-payload") })
@@ -123,6 +176,7 @@ func TestMaintenanceObservationsDurationExcludesCallback(t *testing.T) {
 		t.Fatal(err)
 	}
 	var duration time.Duration
+	var itemsCallbackEntry time.Time
 	f.deps.Observer = metricsObserverFunc(func(_ context.Context, event ob.Observation) {
 		m, ok := event.(ob.MaintenanceObservation)
 		if !ok {
@@ -130,17 +184,19 @@ func TestMaintenanceObservationsDurationExcludesCallback(t *testing.T) {
 		}
 		switch m.Kind {
 		case ob.MaintenanceItems:
+			itemsCallbackEntry = time.Now()
 			time.Sleep(200 * time.Millisecond)
 		case ob.MaintenanceRun:
 			duration = m.Duration
 		}
 	})
 	rebuildMetricsService(t, f)
+	callStart := time.Now()
 	if n, err := f.svc.CleanupSessions(ctx); err != nil || n != 1 {
 		t.Fatalf("cleanup: n=%d err=%v", n, err)
 	}
-	if duration <= 0 || duration >= 100*time.Millisecond {
-		t.Fatalf("run duration includes 200ms observer callback: %s", duration)
+	if itemsCallbackEntry.IsZero() || duration <= 0 || duration > itemsCallbackEntry.Sub(callStart) {
+		t.Fatalf("run duration %s extends past first observer callback at %s from call start", duration, itemsCallbackEntry.Sub(callStart))
 	}
 }
 

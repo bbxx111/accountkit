@@ -71,7 +71,7 @@ func TestUpgradePreservesDataAndIsRepeatable(t *testing.T) {
 		"INSERT INTO identity(id,user_id,kind,provider_subject) VALUES('i_0000000000001','u_0000000000001',3,'source-subject')",
 		"INSERT INTO session(id,user_id,device_id,auth_time,refresh_token_hash,refresh_expire_time) VALUES('s_0000000000001','u_0000000000001','device',now(),decode('1234','hex'),now()+interval '1 day')",
 		`INSERT INTO audit_event(id,source,action,result,actor,targets,occur_time) VALUES('019a0000-0000-7000-8000-000000000001','test/auth','CODE_SENT',1,'{"type":"ANONYMOUS"}','[{"type":"IDENTITY_FLOW","namespace":"urn:test:accounts","id":"f_0000000000001"}]',now())`,
-		"INSERT INTO identity_flow(id,token_digest,state,policy_fingerprint,payload,cipher_version,proof_user_ids,user_id,session_id,create_time,update_time,expire_time) VALUES('f_0000000000001','upgrade-token-digest',1,'policy',decode('1234','hex'),1,ARRAY['u_0000000000001'],'u_0000000000001','s_0000000000001',now(),now(),now()+interval '5 minutes')",
+		"INSERT INTO sign_in_completion_flow(id,token_digest,state,policy_fingerprint,payload,cipher_version,proof_user_ids,user_id,session_id,create_time,update_time,expire_time) VALUES('f_0000000000001','upgrade-token-digest',1,'policy',decode('1234','hex'),1,ARRAY['u_0000000000001'],'u_0000000000001','s_0000000000001',now(),now(),now()+interval '5 minutes')",
 	} {
 		if _, err := c.Exec(ctx, q); err != nil {
 			t.Fatal(err)
@@ -80,7 +80,7 @@ func TestUpgradePreservesDataAndIsRepeatable(t *testing.T) {
 	snapshot := func() string {
 		t.Helper()
 		var s string
-		if err := c.QueryRow(ctx, `SELECT jsonb_build_array((SELECT jsonb_agg(t) FROM user_account t),(SELECT jsonb_agg(t) FROM identity t),(SELECT jsonb_agg(t) FROM session t),(SELECT jsonb_agg(t) FROM audit_event t),(SELECT jsonb_agg(t) FROM identity_flow t))::text`).Scan(&s); err != nil {
+		if err := c.QueryRow(ctx, `SELECT jsonb_build_array((SELECT jsonb_agg(t) FROM user_account t),(SELECT jsonb_agg(t) FROM identity t),(SELECT jsonb_agg(t) FROM session t),(SELECT jsonb_agg(t) FROM audit_event t),(SELECT jsonb_agg(t) FROM sign_in_completion_flow t))::text`).Scan(&s); err != nil {
 			t.Fatal(err)
 		}
 		return s

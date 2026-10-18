@@ -46,12 +46,14 @@ func checkBaseline(ctx context.Context, db *sql.DB, schema string, src source.Dr
 	if err := migration.Close(); err != nil {
 		return fmt.Errorf("migrations: close baseline source: %w", err)
 	}
+	const flowTable, otherFlowTable = "sign_in_completion_flow", "identity_flow"
 	var complete bool
 	if err := db.QueryRowContext(ctx, `SELECT
- EXISTS (SELECT 1 FROM pg_class r JOIN pg_namespace n ON n.oid=r.relnamespace WHERE n.nspname=$1 AND r.relname='identity_flow' AND r.relkind='r')
+ EXISTS (SELECT 1 FROM pg_class r JOIN pg_namespace n ON n.oid=r.relnamespace WHERE n.nspname=$1 AND r.relname=$2 AND r.relkind='r')
+ AND NOT EXISTS (SELECT 1 FROM pg_class r JOIN pg_namespace n ON n.oid=r.relnamespace WHERE n.nspname=$1 AND r.relname=$3)
  AND (SELECT count(*)=13 AND bool_and(udt_name=CASE column_name WHEN 'state' THEN 'int2' WHEN 'cipher_version' THEN 'int2' WHEN 'revision' THEN 'int8' WHEN 'payload' THEN 'bytea' WHEN 'proof_user_ids' THEN '_text' WHEN 'create_time' THEN 'timestamptz' WHEN 'update_time' THEN 'timestamptz' WHEN 'expire_time' THEN 'timestamptz' ELSE 'text' END
   AND is_nullable=CASE WHEN column_name IN ('user_id','session_id') THEN 'YES' ELSE 'NO' END)
- FROM information_schema.columns WHERE table_schema=$1 AND table_name='identity_flow' AND column_name IN ('id','token_digest','state','policy_fingerprint','payload','cipher_version','revision','proof_user_ids','user_id','session_id','create_time','update_time','expire_time'))
+ FROM information_schema.columns WHERE table_schema=$1 AND table_name=$2 AND column_name IN ('id','token_digest','state','policy_fingerprint','payload','cipher_version','revision','proof_user_ids','user_id','session_id','create_time','update_time','expire_time'))
  AND
   (SELECT count(*)=10 AND bool_and(CASE column_name
    WHEN 'id' THEN udt_name='uuid' AND is_nullable='NO'
@@ -66,7 +68,7 @@ func checkBaseline(ctx context.Context, db *sql.DB, schema string, src source.Dr
    WHEN 'create_time' THEN udt_name='timestamptz' AND datetime_precision=6 AND is_nullable='NO'
    ELSE false END)
   FROM information_schema.columns WHERE table_schema=$1 AND table_name='audit_event')
-`, schema).Scan(&complete); err != nil {
+`, schema, flowTable, otherFlowTable).Scan(&complete); err != nil {
 		return fmt.Errorf("migrations: inspect baseline structure: %w", err)
 	}
 	if !complete {

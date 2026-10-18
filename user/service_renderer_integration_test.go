@@ -47,7 +47,7 @@ func TestSMTPRendererFailureHTTPAgainstRealDB(t *testing.T) {
 				request["sign_in_completion_token"] = pending.SignInCompletionToken
 				flowExpiry = pending.ExpireTime
 				f.advance(flowExpiry.Sub(*f.clock) - 90*time.Second)
-				if err := f.pool.QueryRow(ctx, "SELECT id FROM identity_flow").Scan(&flowID); err != nil {
+				if err := f.pool.QueryRow(ctx, "SELECT id FROM sign_in_completion_flow").Scan(&flowID); err != nil {
 					t.Fatal(err)
 				}
 			}

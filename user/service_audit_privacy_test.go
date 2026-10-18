@@ -122,7 +122,7 @@ func TestAuditCleanupLocksFlowsBeforeAudit(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer tx.Rollback(context.Background())
-			if _, err := tx.Exec(ctx, `SELECT id FROM identity_flow FOR UPDATE`); err != nil {
+			if _, err := tx.Exec(ctx, `SELECT id FROM sign_in_completion_flow FOR UPDATE`); err != nil {
 				t.Fatal(err)
 			}
 			done := make(chan error, 1)
@@ -190,7 +190,7 @@ func TestPurgeRollbackPreservesAudit(t *testing.T) {
 	auditPrivacyDue(t, f, uid)
 	snapshot := func() string {
 		var s string
-		if err := f.pool.QueryRow(ctx, `SELECT jsonb_build_array((SELECT jsonb_agg(t ORDER BY id) FROM user_account t),(SELECT jsonb_agg(t ORDER BY id) FROM identity t),(SELECT jsonb_agg(t ORDER BY id) FROM identity_flow t),(SELECT jsonb_agg(t ORDER BY id) FROM audit_event t))::text`).Scan(&s); err != nil {
+		if err := f.pool.QueryRow(ctx, `SELECT jsonb_build_array((SELECT jsonb_agg(t ORDER BY id) FROM user_account t),(SELECT jsonb_agg(t ORDER BY id) FROM identity t),(SELECT jsonb_agg(t ORDER BY id) FROM sign_in_completion_flow t),(SELECT jsonb_agg(t ORDER BY id) FROM audit_event t))::text`).Scan(&s); err != nil {
 			t.Fatal(err)
 		}
 		return s
@@ -232,7 +232,7 @@ func TestAuditPurgeCallbackCancellationRollsBack(t *testing.T) {
 	if err := f.pool.QueryRow(context.Background(), `SELECT state FROM user_account WHERE id=$1`, uid).Scan(&state); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM identity_flow`).Scan(&flows); err != nil {
+	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM sign_in_completion_flow`).Scan(&flows); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM audit_event WHERE id=$1 AND context->>'device_id'='private-device'`, e.ID).Scan(&private); err != nil {
@@ -467,7 +467,7 @@ func TestAuditSharedFlowPrivacyDoesNotExpandReaderScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mustExec(t, f, `UPDATE identity_flow SET proof_user_ids=ARRAY[$2,$3] WHERE id=$1`, flow.FlowID, a, b)
+	mustExec(t, f, `UPDATE sign_in_completion_flow SET proof_user_ids=ARRAY[$2,$3] WHERE id=$1`, flow.FlowID, a, b)
 	e.Actor.ID = b
 	for i := range e.Targets {
 		if e.Targets[i].Type == "USER" {
@@ -518,7 +518,7 @@ func TestAuditFlowExpiryCleanupKeepsFlowOnlyLockOrder(t *testing.T) {
 	f, _, e := auditPrivacyFixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	mustExec(t, f, `UPDATE identity_flow SET expire_time=now()-interval '1 minute'`)
+	mustExec(t, f, `UPDATE sign_in_completion_flow SET expire_time=now()-interval '1 minute'`)
 	gate, err := f.pool.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -531,14 +531,14 @@ func TestAuditFlowExpiryCleanupKeepsFlowOnlyLockOrder(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { _, err := audit.NewStore(f.pool).InsertBatch(ctx, []audit.Event{e}); done <- err }()
 	auditPrivacyWait(t, ctx, f.pool, 0, gate.Conn().PgConn().PID(), done)
-	if n, err := f.svc.CleanupIdentityFlows(ctx); n != 0 || err != nil {
+	if n, err := f.svc.CleanupSignInCompletionFlows(ctx); n != 0 || err != nil {
 		t.Fatalf("cleanup did not skip audit-locked flow: %d %v", n, err)
 	}
 	_ = gate.Commit(ctx)
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	if n, err := f.svc.CleanupIdentityFlows(ctx); n != 1 || err != nil {
+	if n, err := f.svc.CleanupSignInCompletionFlows(ctx); n != 1 || err != nil {
 		t.Fatalf("cleanup after release: %d %v", n, err)
 	}
 	auditPrivacyAssertScrubbed(t, f, e)

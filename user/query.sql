@@ -298,11 +298,11 @@ VALUES (@id, @user_id, @kind, sqlc.narg('subject_digest')::text, sqlc.narg('dige
         sqlc.narg('hint_prefix')::text, sqlc.narg('hint_suffix')::text,
         @create_time::timestamptz, @update_time::timestamptz);
 
--- identity_flow: callers lock existing users in sorted order before locking flows.
+-- sign_in_completion_flow: callers lock existing users in sorted order before locking flows.
 -- State constants: PENDING=1, VERIFIED=2, COMPLETED=3, EXPIRED=4, REJECTED=5.
 
--- name: CreateIdentityFlow :one
-INSERT INTO identity_flow (
+-- name: CreateSignInCompletionFlow :one
+INSERT INTO sign_in_completion_flow (
     id, token_digest, state, policy_fingerprint, payload, cipher_version,
     proof_user_ids, create_time, update_time, expire_time
 )
@@ -313,14 +313,14 @@ VALUES (
 )
 RETURNING *;
 
--- name: GetIdentityFlowByTokenDigest :one
-SELECT * FROM identity_flow WHERE token_digest = @token_digest;
+-- name: GetSignInCompletionFlowByTokenDigest :one
+SELECT * FROM sign_in_completion_flow WHERE token_digest = @token_digest;
 
--- name: LockIdentityFlow :one
-SELECT * FROM identity_flow WHERE id = @id FOR UPDATE;
+-- name: LockSignInCompletionFlow :one
+SELECT * FROM sign_in_completion_flow WHERE id = @id FOR UPDATE;
 
--- name: UpdateIdentityFlow :one
-UPDATE identity_flow
+-- name: UpdateSignInCompletionFlow :one
+UPDATE sign_in_completion_flow
 SET state = @state, payload = @payload, cipher_version = @cipher_version,
     proof_user_ids = @proof_user_ids::text[], revision = revision + 1,
     update_time = @now::timestamptz
@@ -328,8 +328,8 @@ WHERE id = @id AND revision = @revision
   AND state IN (1, 2) AND expire_time > @now::timestamptz
 RETURNING *;
 
--- name: CompleteIdentityFlow :one
-UPDATE identity_flow
+-- name: CompleteSignInCompletionFlow :one
+UPDATE sign_in_completion_flow
 SET state = 3, payload = @payload, cipher_version = @cipher_version,
     proof_user_ids = @proof_user_ids::text[], user_id = @user_id::text,
     session_id = @session_id::text, revision = revision + 1,
@@ -338,18 +338,18 @@ WHERE id = @id AND revision = @revision
   AND state IN (1, 2) AND expire_time > @now::timestamptz
 RETURNING *;
 
--- name: DeleteIdentityFlowsForUser :execrows
+-- name: DeleteSignInCompletionFlowsForUser :execrows
 WITH locked AS (
-    SELECT id FROM identity_flow
+    SELECT id FROM sign_in_completion_flow
     WHERE user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text]
     ORDER BY id FOR UPDATE
 )
-DELETE FROM identity_flow WHERE id IN (SELECT id FROM locked);
+DELETE FROM sign_in_completion_flow WHERE id IN (SELECT id FROM locked);
 
--- name: ScrubIdentityFlowAuditForUser :execrows
+-- name: ScrubSignInCompletionFlowAuditForUser :execrows
 WITH flow_resources AS MATERIALIZED (
  SELECT jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',@namespace::text,'id',id)) AS resource
- FROM identity_flow WHERE user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text]
+ FROM sign_in_completion_flow WHERE user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text]
 )
 UPDATE audit_event e SET
  actor = e.actor - 'name',
@@ -365,21 +365,21 @@ WHERE e.source = @source::text AND (
  OR (e.action = ANY(@authentication_actions::text[]) AND jsonb_typeof(e.data->'accountkit') = 'object' AND e.data->'accountkit' ? 'subject_hint')
  OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) p WHERE p ? 'name'));
 
--- name: DeleteExpiredIdentityFlows :execrows
-DELETE FROM identity_flow
+-- name: DeleteExpiredSignInCompletionFlows :execrows
+DELETE FROM sign_in_completion_flow
 WHERE id IN (
-    SELECT id FROM identity_flow WHERE expire_time <= @now::timestamptz
+    SELECT id FROM sign_in_completion_flow WHERE expire_time <= @now::timestamptz
     ORDER BY expire_time, id LIMIT @batch_size::int FOR UPDATE SKIP LOCKED
 );
 
--- name: RequiredIdentityFlowCipherVersions :many
-SELECT DISTINCT cipher_version FROM identity_flow
+-- name: RequiredSignInCompletionFlowCipherVersions :many
+SELECT DISTINCT cipher_version FROM sign_in_completion_flow
 WHERE expire_time > @now::timestamptz ORDER BY cipher_version;
 
 -- name: AuditFlowBelongsToUser :one
-SELECT EXISTS (SELECT 1 FROM identity_flow WHERE id = @flow_id::text AND (user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text]));
--- name: LockIdentityFlowsForUser :many
-SELECT id FROM identity_flow
+SELECT EXISTS (SELECT 1 FROM sign_in_completion_flow WHERE id = @flow_id::text AND (user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text]));
+-- name: LockSignInCompletionFlowsForUser :many
+SELECT id FROM sign_in_completion_flow
 WHERE user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text]
 ORDER BY id FOR UPDATE;
 
@@ -395,7 +395,7 @@ WITH user_events AS MATERIALIZED (
   OR context->'related_resources' @> jsonb_build_array(jsonb_build_object('type','USER','namespace',@namespace::text,'id',@user_id::text)))
 ), flow_resources AS MATERIALIZED (
  SELECT jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',@namespace::text,'id',id)) AS resource
- FROM identity_flow WHERE user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text]
+ FROM sign_in_completion_flow WHERE user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text]
  UNION
  SELECT jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',@namespace::text,'id',f->>'id')) AS resource
  FROM user_events linked

@@ -41,7 +41,9 @@ const maxDeviceField = 64
 
 // Deps 是 Service 的依赖。
 type Deps struct {
-	// IdentityFlowContext 可补充宿主稳定实例标识；内置数据库/Redis/JWT域仍自动绑定。
+	// SignInCompletionFlowContext 可补充宿主稳定实例标识；内置数据库/Redis/JWT域仍自动绑定。
+	SignInCompletionFlowContext string
+	// Deprecated: use SignInCompletionFlowContext. Used only when that field is empty.
 	IdentityFlowContext string
 	// ProviderConfiguration 是自定义 IdP 验证器的稳定配置标识，应用允许列表变化时应变化。
 	// 内置验证器自动提供 PolicyFingerprint；此字段不含秘密。
@@ -200,7 +202,7 @@ func NewService(d Deps) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	flowContext, flowPolicy := identityFlowConfiguration(d, policy)
+	flowContext, flowPolicy := signInCompletionFlowConfiguration(d, policy)
 	return &Service{authAudit: mapper, d: d, policy: policy, flowContext: flowContext, flowPolicy: flowPolicy}, nil
 }
 

@@ -41,22 +41,6 @@ type Identity struct {
 	DeleteTime        *time.Time
 }
 
-type IdentityFlow struct {
-	ID                string
-	TokenDigest       string
-	State             enum.FlowState
-	PolicyFingerprint string
-	Payload           []byte
-	CipherVersion     int16
-	Revision          int64
-	ProofUserIds      []string
-	UserID            *string
-	SessionID         *string
-	CreateTime        time.Time
-	UpdateTime        time.Time
-	ExpireTime        time.Time
-}
-
 type Session struct {
 	ID                       string
 	UserID                   string
@@ -72,6 +56,22 @@ type Session struct {
 	RevokeReason             *enum.RevokeReason
 	CreateTime               time.Time
 	UpdateTime               time.Time
+}
+
+type SignInCompletionFlow struct {
+	ID                string
+	TokenDigest       string
+	State             enum.FlowState
+	PolicyFingerprint string
+	Payload           []byte
+	CipherVersion     int16
+	Revision          int64
+	ProofUserIds      []string
+	UserID            *string
+	SessionID         *string
+	CreateTime        time.Time
+	UpdateTime        time.Time
+	ExpireTime        time.Time
 }
 
 type UserAccount struct {

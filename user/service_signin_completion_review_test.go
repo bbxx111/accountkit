@@ -146,9 +146,9 @@ func TestSignInCompletionCodeFailurePreservesFreshFlowError(t *testing.T) {
 			t.Cleanup(func() { _ = rdb.Close() })
 			rdb.AddHook(&completionCodeHook{before: func() {
 				if storageFailure {
-					mustExec(t, f, "ALTER TABLE identity_flow RENAME TO unavailable_identity_flow")
+					mustExec(t, f, "ALTER TABLE sign_in_completion_flow RENAME TO unavailable_sign_in_completion_flow")
 				} else {
-					mustExec(t, f, "DELETE FROM identity_flow")
+					mustExec(t, f, "DELETE FROM sign_in_completion_flow")
 				}
 			}})
 			newServiceWith(t, f, func(d *user.Deps) {
@@ -168,7 +168,7 @@ func TestSignInCompletionCodeFailurePreservesFreshFlowError(t *testing.T) {
 					t.Errorf("fresh storage error discarded: %v", err)
 				}
 				reason = "INTERNAL"
-				mustExec(t, f, "ALTER TABLE unavailable_identity_flow RENAME TO identity_flow")
+				mustExec(t, f, "ALTER TABLE unavailable_sign_in_completion_flow RENAME TO sign_in_completion_flow")
 			} else if !errors.Is(err, user.ErrSignInCompletionInvalid) {
 				t.Errorf("removed flow error discarded: %v", err)
 			}

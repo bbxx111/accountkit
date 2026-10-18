@@ -226,7 +226,7 @@ func challengeResult(res []interface{}, now time.Time, allowed ...string) error 
 
 func validBinding(p enum.CodePurpose, b Binding) bool {
 	if p == enum.PurposeSignInComplete {
-		return ids.Valid(ids.IdentityFlow, b.FlowID) && b.UserID == "" && b.SessionID == ""
+		return ids.Valid(ids.SignInCompletionFlow, b.FlowID) && b.UserID == "" && b.SessionID == ""
 	}
 	return b.FlowID == ""
 }

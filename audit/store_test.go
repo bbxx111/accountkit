@@ -437,7 +437,7 @@ func TestStoreFlowClosureDoesNotLeakOtherProofOwners(t *testing.T) {
 	if _, err := s.InsertBatch(ctx, []audit.Event{early}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO identity_flow(id,token_digest,state,policy_fingerprint,payload,cipher_version,proof_user_ids,create_time,update_time,expire_time) VALUES($1,'synthetic-flow',1,'policy','\x1234',1,ARRAY[$2::text],now(),now(),now()+interval '5 minutes')`, flow, a); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO sign_in_completion_flow(id,token_digest,state,policy_fingerprint,payload,cipher_version,proof_user_ids,create_time,update_time,expire_time) VALUES($1,'synthetic-flow',1,'policy','\x1234',1,ARRAY[$2::text],now(),now(),now()+interval '5 minutes')`, flow, a); err != nil {
 		t.Fatal(err)
 	}
 	query := audit.Query{Source: "test/source", Resource: audit.Resource{Type: "USER", Namespace: "test/ns", ID: a}, Limit: 20}
@@ -451,7 +451,7 @@ func TestStoreFlowClosureDoesNotLeakOtherProofOwners(t *testing.T) {
 	if _, err := s.InsertBatch(ctx, []audit.Event{proofA, proofB, sessionB}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, "DELETE FROM identity_flow WHERE id=$1", flow); err != nil {
+	if _, err := pool.Exec(ctx, "DELETE FROM sign_in_completion_flow WHERE id=$1", flow); err != nil {
 		t.Fatal(err)
 	}
 	page, err = s.ListByResource(ctx, query)

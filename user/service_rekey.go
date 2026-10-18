@@ -156,12 +156,12 @@ func CheckKeyVersions(ctx context.Context, repo *Repo, digester *pii.Digester, c
 	if bad := unconfigured(cipherUsed, cipher.Versions()); len(bad) > 0 {
 		return fmt.Errorf("%w: identity.cipher_key_version %v not in configured SubjectCipherKeys %v", ErrUnknownKeyVersion, bad, cipher.Versions())
 	}
-	flowUsed, err := q.RequiredIdentityFlowCipherVersions(ctx, now)
+	flowUsed, err := q.RequiredSignInCompletionFlowCipherVersions(ctx, now)
 	if err != nil {
 		return fmt.Errorf("user: list flow cipher versions: %w", err)
 	}
 	if bad := unconfigured(flowUsed, cipher.Versions()); len(bad) > 0 {
-		return fmt.Errorf("%w: identity_flow.cipher_version %v", ErrUnknownKeyVersion, bad)
+		return fmt.Errorf("%w: sign_in_completion_flow.cipher_version %v", ErrUnknownKeyVersion, bad)
 	}
 	return nil
 }

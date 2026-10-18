@@ -87,7 +87,7 @@ func TestAuditOwnershipExpansionExhaustsRetries(t *testing.T) {
 				}
 				if mode == "live_owner" {
 					change := privacyLock(t, p, `SELECT id FROM user_account WHERE id=$1 FOR UPDATE`, owner)
-					if _, err := change.Exec(ctx, `UPDATE identity_flow SET proof_user_ids=array_append(proof_user_ids,$2::text) WHERE id=$1`, privacyFlow, owner); err != nil {
+					if _, err := change.Exec(ctx, `UPDATE sign_in_completion_flow SET proof_user_ids=array_append(proof_user_ids,$2::text) WHERE id=$1`, privacyFlow, owner); err != nil {
 						t.Fatal(err)
 					}
 					if err := change.Commit(ctx); err != nil {

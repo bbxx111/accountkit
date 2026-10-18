@@ -52,7 +52,7 @@ func TestGenericAuditNonemptyRepeatInstall(t *testing.T) {
 		`INSERT INTO user_account(id,state,display_name) VALUES('u_0000000000001',1,'preserved')`,
 		`INSERT INTO identity(id,user_id,kind,provider_subject) VALUES('i_0000000000001','u_0000000000001',3,'synthetic-provider')`,
 		`INSERT INTO session(id,user_id,device_id,auth_time,refresh_token_hash,refresh_expire_time) VALUES('s_0000000000001','u_0000000000001','device',now(),decode('1234','hex'),now()+interval '1 day')`,
-		`INSERT INTO identity_flow(id,token_digest,state,policy_fingerprint,payload,cipher_version,proof_user_ids,user_id,session_id,create_time,update_time,expire_time) VALUES('f_0000000000001','test-token-digest',1,'policy',decode('1234','hex'),1,ARRAY['u_0000000000001'],'u_0000000000001','s_0000000000001',now(),now(),now()+interval '5 minutes')`,
+		`INSERT INTO sign_in_completion_flow(id,token_digest,state,policy_fingerprint,payload,cipher_version,proof_user_ids,user_id,session_id,create_time,update_time,expire_time) VALUES('f_0000000000001','test-token-digest',1,'policy',decode('1234','hex'),1,ARRAY['u_0000000000001'],'u_0000000000001','s_0000000000001',now(),now(),now()+interval '5 minutes')`,
 		`INSERT INTO audit_event(id,source,action,result,actor,targets,context,data,occur_time) VALUES('019a0000-0000-7000-8000-000000000001','test/auth','SIGN_IN',1,'{"type":"USER","namespace":"urn:test:accounts","id":"u_0000000000001"}','[]','{}','{"accountkit":{"flow_id":"f_0000000000001"}}','2024-03-04T05:06:07.123456Z')`,
 	} {
 		if _, err := c.Exec(context.Background(), q); err != nil {
@@ -62,7 +62,7 @@ func TestGenericAuditNonemptyRepeatInstall(t *testing.T) {
 	snapshot := func() string {
 		t.Helper()
 		var s string
-		if err := c.QueryRow(context.Background(), `SELECT jsonb_build_array((SELECT jsonb_agg(t) FROM user_account t),(SELECT jsonb_agg(t) FROM identity t),(SELECT jsonb_agg(t) FROM session t),(SELECT jsonb_agg(t) FROM identity_flow t),(SELECT jsonb_agg(t) FROM audit_event t),(SELECT jsonb_agg(t) FROM schema_migrations t))::text`).Scan(&s); err != nil {
+		if err := c.QueryRow(context.Background(), `SELECT jsonb_build_array((SELECT jsonb_agg(t) FROM user_account t),(SELECT jsonb_agg(t) FROM identity t),(SELECT jsonb_agg(t) FROM session t),(SELECT jsonb_agg(t) FROM sign_in_completion_flow t),(SELECT jsonb_agg(t) FROM audit_event t),(SELECT jsonb_agg(t) FROM schema_migrations t))::text`).Scan(&s); err != nil {
 			t.Fatal(err)
 		}
 		return s
@@ -77,10 +77,10 @@ func TestGenericAuditNonemptyRepeatInstall(t *testing.T) {
 	if snapshot() != before || migrationCatalog(t, c, schema) != catalog {
 		t.Fatal("repeat Up changed nonempty current schema or data")
 	}
-	assertVersion(t, cfg, schema, 1, false)
+	assertVersion(t, cfg, schema, latestVersion(t), false)
 }
 
-func TestGenericAuditLegacySameVersionRepeatInstall(t *testing.T) {
+func TestGenericAuditLegacySameVersionRejected(t *testing.T) {
 	cfg, schema := safetyDB(t)
 	source := fstest.MapFS{}
 	// Pin the complete ten-column definition before the authorized validation change.
@@ -119,12 +119,12 @@ func TestGenericAuditLegacySameVersionRepeatInstall(t *testing.T) {
 	}
 	before, catalog := snapshot(), migrationCatalog(t, c, schema)
 	for range 2 {
-		if err := Up(ctx, cfg, schema); err != nil {
-			t.Fatal(err)
+		if err := Up(ctx, cfg, schema); !errors.Is(err, ErrIncompatibleBaseline) {
+			t.Fatalf("old table name accepted: %v", err)
 		}
 	}
 	if snapshot() != before || migrationCatalog(t, c, schema) != catalog {
-		t.Fatal("repeat Up changed old same-version functions, constraints, or data")
+		t.Fatal("rejected baseline changed functions, constraints, data or version")
 	}
 	_, err := c.Exec(ctx, `UPDATE audit_event SET action='bad-action'`)
 	var pgErr *pgconn.PgError
@@ -149,7 +149,7 @@ func TestGenericAuditConcurrentInitialInstall(t *testing.T) {
 			t.Error(err)
 		}
 	}
-	assertVersion(t, cfg, schema, 1, false)
+	assertVersion(t, cfg, schema, latestVersion(t), false)
 }
 
 func TestGenericAuditBaselineRejectsPartialLatest(t *testing.T) {
@@ -158,7 +158,7 @@ func TestGenericAuditBaselineRejectsPartialLatest(t *testing.T) {
 		{"wrong_type", `ALTER TABLE audit_event ALTER COLUMN source TYPE text`},
 		{"extra_column", `ALTER TABLE audit_event ADD COLUMN old_column text`},
 		{"wrong_nullability", `ALTER TABLE audit_event ALTER COLUMN result SET NOT NULL`},
-		{"missing_flow_structure", `ALTER TABLE identity_flow DROP COLUMN proof_user_ids`},
+		{"missing_flow_structure", `ALTER TABLE sign_in_completion_flow DROP COLUMN proof_user_ids`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg, schema := safetyDB(t)
@@ -176,7 +176,7 @@ func TestGenericAuditBaselineRejectsPartialLatest(t *testing.T) {
 			if after := migrationCatalog(t, c, schema); before != after {
 				t.Fatal("preflight modified partial schema")
 			}
-			assertVersion(t, cfg, schema, 1, false)
+			assertVersion(t, cfg, schema, latestVersion(t), false)
 		})
 	}
 }
@@ -263,7 +263,7 @@ func TestGenericAuditQualifiedInsertWithoutSearchPath(t *testing.T) {
 }
 
 func TestAuditMigrationRejectsIncompleteInitialBaseline(t *testing.T) {
-	for _, q := range []string{`ALTER TABLE audit_event RENAME COLUMN source TO unexpected_column`, `ALTER TABLE identity_flow DROP COLUMN token_digest`} {
+	for _, q := range []string{`ALTER TABLE audit_event RENAME COLUMN source TO unexpected_column`, `ALTER TABLE sign_in_completion_flow DROP COLUMN token_digest`} {
 		t.Run(q, func(t *testing.T) {
 			cfg, schema := safetyDB(t)
 			initialUp(t, cfg, schema)
@@ -297,5 +297,5 @@ func TestGenericAuditEmptyInstall(t *testing.T) {
 	if columns != 10 || idType != "uuid" {
 		t.Fatalf("generic audit schema: columns=%d id=%s, want 10/uuid", columns, idType)
 	}
-	assertVersion(t, cfg, schema, 1, false)
+	assertVersion(t, cfg, schema, latestVersion(t), false)
 }

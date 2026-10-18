@@ -48,9 +48,9 @@ Go 的 nil 表示省略；非 nil 空切片表示显式空。E 省略时沿用 P
 
 HTTP 新增 `POST /users:sendSignInCompletionCode`（`{sign_in_completion_token,channel,target}`）和 `POST /users:completeSignIn`（`{sign_in_completion_token,phone|email:{target,code_id,code}}`）。唯一票据字段为 `sign_in_completion_token`，普通发码不接收它，也不接收公开 purpose。pending 返回 HTTP 200、no-store，仅含 `next_action=COMPLETE_IDENTITY`、票据、`expire_time`、`enabled_identity_kinds`、`required_identity_kinds`；成功继续使用顶层 RFC 6749 token 字段。
 
-票据使用独立随机秘密，数据库仅存摘要；`identity_flow` 中的证明、设备与完成结果按版本加密并绑定实例和流程。原期限最多5分钟，取原证明更早期限，追加证明和重试不续期。只有相同完成请求、原期限内且账号/会话/refresh 仍有效时才能读取原 token pair；refresh 已轮换则返回 `SIGN_IN_ALREADY_COMPLETED`，票据过期返回 `SIGN_IN_COMPLETION_INVALID`。验证码消费不会随 SQL 回滚恢复，证明落库失败须按原额度重新取证；数据库备份不含 Redis，恢复不能跳过缺失证明。
+票据使用独立随机秘密，数据库仅存摘要；`sign_in_completion_flow` 中的证明、设备与完成结果按版本加密并绑定实例和流程。原期限最多5分钟，取原证明更早期限，追加证明和重试不续期。只有相同完成请求、原期限内且账号/会话/refresh 仍有效时才能读取原 token pair；refresh 已轮换则返回 `SIGN_IN_ALREADY_COMPLETED`，票据过期返回 `SIGN_IN_COMPLETION_INVALID`。验证码消费不会随 SQL 回滚恢复，证明落库失败须按原额度重新取证；数据库备份不含 Redis，恢复不能跳过缺失证明。
 
-直接构造 `user.NewService` 的宿主可用 `IdentityFlowContext` 补充稳定实例域；自定义 IdP 的应用允许列表等配置变化时须改变 `ProviderConfiguration`。内置验证器自动提供配置指纹。策略或实例上下文变化拒绝旧流程；有效流程引用的旧加密密钥须保留到到期或清理。
+直接构造 `user.NewService` 的宿主可用 `user.Deps.SignInCompletionFlowContext` 补充稳定实例域；原 `IdentityFlowContext` 保留为 deprecated 兼容字段，新字段非空时优先，否则回退旧字段。自定义 IdP 的应用允许列表等配置变化时须改变 `ProviderConfiguration`。内置验证器自动提供配置指纹。策略或实例上下文变化拒绝旧流程；有效流程引用的旧加密密钥须保留到到期或清理。重命名保持密文上下文和 AAD、`f_` ID、审计资源类型 `IDENTITY_FLOW` 与 JSON `flow_id`，公开 Go 名称迁移见[兼容说明](docs/compatibility.md#登录补全流程重命名)。
 
 ### 验证码轮次
 
@@ -216,11 +216,11 @@ r.Route("/v1", func(r chi.Router) {
 
 - **默认本地审计**：不注入 `Deps.Audit/AuditReader` 时，库创建 `audit.Async(audit.Store)` 并配置本地管理查询。队列容量 1024，单 worker 每 100 条或每 1 秒批量写入 `audit_event`；`auth.Start` 启动 worker，`auth.Close` 刷出残留（默认关闭等待上限 5 秒）。写失败、生成失败、队列满及关闭后到达都不改变认证结果，允许丢失事件。`Async.Stats()` 区分 Written、Duplicate、Invalid、Conflicts、Dropped、Failed；丢弃和写失败日志分别节流，只输出安全计数，不输出宿主原始错误或事件正文。
 - **事件模型**：`audit.Event` 是生产事件，ID 为生产方首次投递前生成的 UUIDv7；`audit.RecordView` 增加存储首次生成的 `CreateTime`。`Actor` 用 namespace + id 表示主体，`Resource` 用 namespace + type + id 表示资源；认证字段位于 `data.accountkit`。凭证、完整手机号/邮箱、完整摘要和原始请求不进入审计。公开 Go 类型和读侧的破坏性迁移见[兼容说明](docs/compatibility.md#通用审计公开接口与协议迁移)。
-- **校验职责**：审计业务内容由 Go 的 `audit/event.Freeze` 统一校验，包括字段格式、资源数量和完整事件 64 KiB 上限；默认异步入队与本地 Store 直接写入分别调用。数据库保留 UUIDv7、JSON 基本形状、非空和唯一性等基础结构，不再提供自定义审计校验函数。导入和修数必须复用 Go 校验，直接 SQL 不获得完整业务校验；其他表 CHECK 保持现状。已有同号库不会因重复 Up 自动移除旧函数，见[迁移手册](docs/migrations.md#当前初始基线)。
+- **校验职责**：审计业务内容由 Go 的 `audit/event.Freeze` 统一校验，包括字段格式、资源数量和完整事件 64 KiB 上限；默认异步入队与本地 Store 直接写入分别调用。数据库保留 UUIDv7、JSON 基本形状、非空和唯一性等基础结构，不再提供自定义审计校验函数。导入和修数必须复用 Go 校验，直接 SQL 不获得完整业务校验；其他表 CHECK 表达式保持。已有同号库不会因重复 Up 自动移除旧函数；仍使用 identity_flow 的旧库明确拒绝接管，见[迁移手册](docs/migrations.md#当前初始基线)。
 - **保留期与排序**：`audit_retention` 按配置 source 删除 `occur_time` 早于 `now − AuditRetentionDays`（默认 180 天）的本地事件，每批 1000，包含没有消费者资源的匿名/管理员事件。管理时间线按 `occur_time, UUID` 升序查询，索引覆盖 source、主体及 JSONB 资源关联。
 - **密钥回填**：任务 `rekey_digests` / `reencrypt_subjects` 逐批（100）把仍用非 active 版本的活跃手机/邮箱身份重算摘要 / 重加密（CAS 更新，与并发登录/绑定不冲突；查找始终覆盖全部已配置版本，回填期间登录不受影响）。单行失败只记日志（`identity_id`）、计数，下一轮重试；第三方身份与已解绑/已 purge 的行不参与。
 - **启动期校验**：`auth.Migrate` 在迁移后检查 `identity` 活跃行使用的密钥版本都在配置内，否则返回 `user.ErrUnknownKeyVersion`——在回填完成前移除旧密钥会在启动时失败，而不是在第一次登录时。
-- **维护任务全集**（`auth.Start` 的 ticker；`auth.RunMaintenanceOnce(ctx)` 手动跑一轮）：`cleanup_identity_flows`（每批最多1000条到期流程，清除密文与结果）→ `purge_users` → `cleanup_sessions` → `audit_retention` → `rekey_digests` → `reencrypt_subjects`，顺序执行、失败互不影响。
+- **维护任务全集**（`auth.Start` 的 ticker；`auth.RunMaintenanceOnce(ctx)` 手动跑一轮）：`cleanup_sign_in_completion_flows`（每批最多1000条到期流程，清除密文与结果）→ `purge_users` → `cleanup_sessions` → `audit_retention` → `rekey_digests` → `reencrypt_subjects`，顺序执行、失败互不影响。流程清理任务原名为 `cleanup_identity_flows`，运维指标、日志检索和告警规则须同步采用新名称。
 
 ### 宿主审计装配与清理责任
 
@@ -267,7 +267,7 @@ r.Route("/v1", func(r chi.Router) {
 ## 数据库与 Redis 隔离
 
 - 所有表位于 `Config.Schema`（默认 `account`），迁移记录表也在其中；同一库可并存多个实例（不同 schema）。
-- 表：`user_account`、`identity`、`session`、`audit_event`、`identity_flow`，无外键；账号/身份/会话/流程 id 使用 `u_`、`i_`、`s_`、`f_` + 13 字符 TSID，审计使用原生 UUIDv7，对外为标准小写带连字符 UUID。
+- 表：`user_account`、`identity`、`session`、`audit_event`、`sign_in_completion_flow`，无外键；账号/身份/会话/流程 id 使用 `u_`、`i_`、`s_`、`f_` + 13 字符 TSID，审计使用原生 UUIDv7，对外为标准小写带连字符 UUID。
 - 所有 Redis 键以 `Config.KeyPrefix`（默认 `auth:`）开头。
 - `Deps.Pool` 的连接 `search_path` 首位必须是 `Config.Schema`；`Migrate` 会校验并返回 `ErrSearchPath`。宿主业务表建议通过明确的 schema 限定名访问，避免 search_path 名称冲突。
 
@@ -310,7 +310,7 @@ r.Route("/v1", func(r chi.Router) {
 
 周期性 `rekey_digests` / `reencrypt_subjects` 回填及默认5分钟维护间隔保持原状。混合 active 期间，不同进程可能把数据库回填到各自的 active，方向仍可能变化；应在 T0 后确认实际回填结果，不能以等待一个维护周期或重启成功代替检查。HMAC 退役要求实际 `Config.Schema` 下未删除的手机/邮箱 `identity` 不再引用 K1 的 `digest_key_version`。若同时独立轮换 AES，另行确认旧 AES 的 `cipher_key_version` 引用归零；只轮换 HMAC 不要求密文也切到相同版本编号。
 
-HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额度的业务窗口结束，截止为 `max(T0 + 旧 CodeTTL, T0 + 旧 CodeFailureWindow, T0 + 旧 CodeCooldown, T0 之后的下一个 UTC 零点)`。配置曾变化时使用仍可能存活记录对应的最大旧期限，并留出部署时钟偏差余量。日额度键额外1小时仅用于垃圾回收，不延长业务窗口。数据库引用与这些 Redis 条件同时满足后，才从全部运行配置移除旧 HMAC 并重新部署；AES 退役还须确认有效 identity_flow 的 cipher_version 不再引用旧版本；等待流程原期限或完成清理后再移除。`Migrate` 缺少仍被未删除身份引用的密钥时返回 `user.ErrUnknownKeyVersion`，但它不检查 Redis 状态，启动成功不证明 HMAC 可以退役。为仍需恢复的旧备份受控保留相应历史密钥，从运行配置移除不等于立即永久销毁。
+HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额度的业务窗口结束，截止为 `max(T0 + 旧 CodeTTL, T0 + 旧 CodeFailureWindow, T0 + 旧 CodeCooldown, T0 之后的下一个 UTC 零点)`。配置曾变化时使用仍可能存活记录对应的最大旧期限，并留出部署时钟偏差余量。日额度键额外1小时仅用于垃圾回收，不延长业务窗口。数据库引用与这些 Redis 条件同时满足后，才从全部运行配置移除旧 HMAC 并重新部署；AES 退役还须确认有效 sign_in_completion_flow 的 cipher_version 不再引用旧版本；等待流程原期限或完成清理后再移除。`Migrate` 缺少仍被未删除身份引用的密钥时返回 `user.ErrUnknownKeyVersion`，但它不检查 Redis 状态，启动成功不证明 HMAC 可以退役。为仍需恢复的旧备份受控保留相应历史密钥，从运行配置移除不等于立即永久销毁。
 
 旧程序曾在不同 active 下留下多份同用途存活验证码时，无法可靠判断签发先后；新实现原子作废全部冲突码并返回原 `CODE_EXPIRED`，冷却和额度保留，用户按原限制重新发码。连续性仅适用于所有进程已升级、持有相同完整密钥集合且策略一致的正常轮换，不覆盖缺失密钥、丢失 Redis 状态或泄露密钥的紧急撤销。回退优先保留支持本能力的程序与完整密钥集合，仅切回 active 并重新计算退役窗口；切回旧程序不能承诺轮换后状态连续。实际验证与未验证项见[轮换验收记录](openspec/changes/archive/2026-10-04-harden-code-key-rotation/verification.md)。
 
@@ -328,6 +328,6 @@ Go module：github.com/bbxx111/accountkit。`v0.2.0` 已发布，使用 `go get 
 
 库版本发布与各产品生产上线分别验收。产品实际环境接入、真实服务商与预发布升级/恢复仍待完成；产品各自配置 schema、Redis 前缀、issuer/audience 和密钥，并承担自己的匿名化与网关接入责任。当前未附开源 LICENSE，本次版本供自有产品接入，尚未向外部使用方定义复用许可。
 
-当前开发代码在尚无产品接入前整合了初始数据库定义：`migrations/0001_init.up.sql` 直接创建全部认证表、identity_flow 和审计关联结构，初始化 version=1，后续变更从 0002 开始。旧版本的开发库不直接接管，基线不兼容时明确拒绝；经人工核验后重建一次性开发库，不自动改版本或清库。已发布标签和固定源快照保持。
+本次按用户明确授权，直接修改未发布的 `migrations/0001_init.up.sql`，以 `sign_in_completion_flow` 定义登录补全流程表，同步主键、格式 CHECK、五个独立索引、配套 down 和当前固定校验；列与索引定义保持。撤回本分支新增的 0002，新空库直接安装为 version=1、dirty=false，后续真实增量从 0002 开始。旧表名的同号 v1、双表并存及任何已撤回旧 v2（包括此前新表名 v2）均拒绝且保留数据、结构和版本；重复 Up 不自动改名或接管。采用新定义须人工核验后使用新空资源，需要保留旧数据时另行制定并验证迁移方案，不 Force、不修改版本、不自动清库。公共 `Down` 仍拒绝执行。操作与恢复边界见[迁移手册](docs/migrations.md#登录补全流程命名调整)。已发布标签和固定源快照保持。
 
 原 migrations.Down 保留签名但默认拒绝执行；新基线的一次性测试清库使用显式 UnsafeReset。升级、故障处理与恢复步骤见 [迁移手册](docs/migrations.md)，本次边界见[兼容说明](docs/compatibility.md#初始数据库基线整合)。

@@ -117,7 +117,7 @@ func TestSignInCompletionProofPersistenceAndFinalFailure(t *testing.T) {
 				condition = "NEW.state = 3"
 			}
 			mustExec(t, f, "CREATE FUNCTION reject_flow() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF "+condition+" THEN RAISE EXCEPTION 'synthetic flow failure'; END IF; RETURN NEW; END $$")
-			mustExec(t, f, "CREATE TRIGGER reject_flow BEFORE UPDATE ON identity_flow FOR EACH ROW EXECUTE FUNCTION reject_flow()")
+			mustExec(t, f, "CREATE TRIGGER reject_flow BEFORE UPDATE ON sign_in_completion_flow FOR EACH ROW EXECUTE FUNCTION reject_flow()")
 			before := len(f.audit.Events())
 			if _, err := f.svc.CompleteSignIn(ctx, p.SignInCompletionToken, cred, user.Device{}, meta1); err == nil {
 				t.Fatal("injected failure accepted")
@@ -143,7 +143,7 @@ func TestSignInCompletionProofPersistenceAndFinalFailure(t *testing.T) {
 			if n != 0 {
 				t.Fatal("partial user commit")
 			}
-			mustExec(t, f, "DROP TRIGGER reject_flow ON identity_flow")
+			mustExec(t, f, "DROP TRIGGER reject_flow ON sign_in_completion_flow")
 			r, err := f.svc.CompleteSignIn(ctx, p.SignInCompletionToken, cred, user.Device{}, meta1)
 			if stage == "proof" {
 				if !errors.Is(err, code.ErrExpired) {
@@ -167,7 +167,7 @@ func TestSignInCompletionDevicePolicyAndInstanceIsolation(t *testing.T) {
 		}
 	}
 	original := f.svc
-	for _, mutate := range []func(*user.Deps){func(d *user.Deps) { d.IdentityFlowContext = "other-instance" }, func(d *user.Deps) { d.RequiredIdentityKinds = []enum.IdentityKind{enum.IdentityEmail} }, func(d *user.Deps) { d.ProviderConfiguration = "changed-apps" }} {
+	for _, mutate := range []func(*user.Deps){func(d *user.Deps) { d.SignInCompletionFlowContext = "other-instance" }, func(d *user.Deps) { d.RequiredIdentityKinds = []enum.IdentityKind{enum.IdentityEmail} }, func(d *user.Deps) { d.ProviderConfiguration = "changed-apps" }} {
 		d := f.deps
 		mutate(&d)
 		other, err := user.NewService(d)
@@ -184,7 +184,7 @@ func TestSignInCompletionDevicePolicyAndInstanceIsolation(t *testing.T) {
 	}
 	var payload []byte
 	var digest string
-	if err = f.pool.QueryRow(ctx, "SELECT payload,token_digest FROM identity_flow").Scan(&payload, &digest); err != nil {
+	if err = f.pool.QueryRow(ctx, "SELECT payload,token_digest FROM sign_in_completion_flow").Scan(&payload, &digest); err != nil {
 		t.Fatal(err)
 	}
 	if bytes.Contains(payload, []byte(email1)) || bytes.Contains(payload, []byte(r.Tokens.RefreshToken)) || bytes.Contains(payload, []byte(p.SignInCompletionToken)) {
@@ -289,7 +289,7 @@ func TestSignInCompletionExpiryAndDeletionCleanup(t *testing.T) {
 				if _, err := f.svc.CompleteSignIn(ctx, p.SignInCompletionToken, cred, user.Device{}, meta1); !errors.Is(err, user.ErrSignInCompletionInvalid) {
 					t.Fatal(err)
 				}
-				if n, err := f.svc.CleanupIdentityFlows(ctx); err != nil || n != 1 {
+				if n, err := f.svc.CleanupSignInCompletionFlows(ctx); err != nil || n != 1 {
 					t.Fatalf("cleanup %d %v", n, err)
 				}
 				return
@@ -302,7 +302,7 @@ func TestSignInCompletionExpiryAndDeletionCleanup(t *testing.T) {
 				t.Fatal(err)
 			}
 			var n int
-			_ = f.pool.QueryRow(ctx, "SELECT count(*) FROM identity_flow").Scan(&n)
+			_ = f.pool.QueryRow(ctx, "SELECT count(*) FROM sign_in_completion_flow").Scan(&n)
 			if n != 0 {
 				t.Fatal("deleted user retains encrypted flow")
 			}
@@ -463,7 +463,7 @@ func TestSignInCompletionDoesNotPersistProofAfterUserDeletionWhileWaiting(t *tes
 	}
 	var state int
 	var proofs []string
-	if err = f.pool.QueryRow(ctx, "SELECT state,proof_user_ids FROM identity_flow").Scan(&state, &proofs); err != nil {
+	if err = f.pool.QueryRow(ctx, "SELECT state,proof_user_ids FROM sign_in_completion_flow").Scan(&state, &proofs); err != nil {
 		t.Fatal(err)
 	}
 	if state != 1 || len(proofs) != 0 {
@@ -569,7 +569,7 @@ func TestSignInCompletionPurgeRollbackPreservesFlowUntilSuccessfulAnonymization(
 		t.Fatal("expected callback failure")
 	}
 	var n int
-	_ = f.pool.QueryRow(ctx, "SELECT count(*) FROM identity_flow").Scan(&n)
+	_ = f.pool.QueryRow(ctx, "SELECT count(*) FROM sign_in_completion_flow").Scan(&n)
 	if n != 1 {
 		t.Fatal("rollback lost flow")
 	}
@@ -577,7 +577,7 @@ func TestSignInCompletionPurgeRollbackPreservesFlowUntilSuccessfulAnonymization(
 	if n, err := f.svc.PurgeDueUsers(ctx); err != nil || n != 1 {
 		t.Fatalf("purge retry: %d %v", n, err)
 	}
-	_ = f.pool.QueryRow(ctx, "SELECT count(*) FROM identity_flow").Scan(&n)
+	_ = f.pool.QueryRow(ctx, "SELECT count(*) FROM sign_in_completion_flow").Scan(&n)
 	if n != 0 {
 		t.Fatal("purged flow remains")
 	}

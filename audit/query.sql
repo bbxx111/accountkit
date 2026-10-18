@@ -17,7 +17,7 @@ WITH candidates AS MATERIALIZED (
 DELETE FROM audit_event WHERE id IN (SELECT id FROM locked);
 
 -- name: ListLiveAuditFlows :many
-SELECT id FROM identity_flow WHERE user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text];
+SELECT id FROM sign_in_completion_flow WHERE user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text];
 
 -- name: ListAuditFlowEvidence :many
 SELECT * FROM audit_event e
@@ -45,7 +45,7 @@ WHERE e.source = @source::text
  AND (sqlc.narg('after_time')::timestamptz IS NULL OR (e.occur_time,e.id) > (sqlc.narg('after_time')::timestamptz,sqlc.narg('after_id')::uuid))
 ORDER BY occur_time,id LIMIT @page_limit::int;
 -- name: SnapshotAuditFlows :many
-SELECT id, user_id, proof_user_ids FROM identity_flow
+SELECT id, user_id, proof_user_ids FROM sign_in_completion_flow
 WHERE id = ANY(@flow_ids::text[]) ORDER BY id;
 
 -- name: LockAuditUsers :many
@@ -53,7 +53,7 @@ SELECT id, state FROM user_account
 WHERE id = ANY(@user_ids::text[]) ORDER BY id FOR UPDATE;
 
 -- name: LockAuditFlows :many
-SELECT id, user_id, proof_user_ids, expire_time FROM identity_flow
+SELECT id, user_id, proof_user_ids, expire_time FROM sign_in_completion_flow
 WHERE id = ANY(@flow_ids::text[]) ORDER BY id FOR UPDATE;
 
 -- name: ListAuditPrivacyFlowUsers :many
@@ -105,7 +105,7 @@ WHERE id = @id;
 -- Bind locks to the resolved local relation, not the first search_path schema.
 -- Hash collisions only serialize more work; callers lock actual keys in order.
 SELECT DISTINCT hashtextextended(jsonb_build_array(
- 'accountkit.audit.privacy.flow', 'identity_flow'::regclass::oid,
+ 'accountkit.audit.privacy.flow', 'sign_in_completion_flow'::regclass::oid,
  @source::text, @namespace::text, f.flow_id)::text, 0)::bigint AS lock_key
 FROM unnest(@flow_ids::text[]) AS f(flow_id)
 ORDER BY lock_key;

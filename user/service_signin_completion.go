@@ -296,7 +296,7 @@ func sameProof(a, b completionProof) bool {
 	return a.Provider != nil && b.Provider != nil && a.Provider.Subject == b.Provider.Subject
 }
 
-func (s *Service) persistCompletionProof(ctx context.Context, row db.IdentityFlow, p completionPayload, proof completionProof, request string, dev Device, meta Meta) (db.IdentityFlow, completionPayload, error) {
+func (s *Service) persistCompletionProof(ctx context.Context, row db.SignInCompletionFlow, p completionPayload, proof completionProof, request string, dev Device, meta Meta) (db.SignInCompletionFlow, completionPayload, error) {
 	// Only the newly verified target may discover an existing owner here. Earlier
 	// proofs retain their original ownership snapshot throughout the flow.
 	current, err := s.findProof(ctx, s.d.Repo.Q(), proof)
@@ -314,7 +314,7 @@ func (s *Service) persistCompletionProof(ctx context.Context, row db.IdentityFlo
 		if e != nil {
 			return e
 		}
-		fresh, e := q.LockIdentityFlow(ctx, row.ID)
+		fresh, e := q.LockSignInCompletionFlow(ctx, row.ID)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return ErrSignInCompletionInvalid
 		}
@@ -352,7 +352,7 @@ func (s *Service) persistCompletionProof(ctx context.Context, row db.IdentityFlo
 		if e != nil {
 			return e
 		}
-		fresh, e = q.UpdateIdentityFlow(ctx, db.UpdateIdentityFlowParams{ID: row.ID, Revision: fresh.Revision, State: enum.FlowVerified, Payload: ct, CipherVersion: v, ProofUserIds: proofOwnerIDs(fp), Now: s.now()})
+		fresh, e = q.UpdateSignInCompletionFlow(ctx, db.UpdateSignInCompletionFlowParams{ID: row.ID, Revision: fresh.Revision, State: enum.FlowVerified, Payload: ct, CipherVersion: v, ProofUserIds: proofOwnerIDs(fp), Now: s.now()})
 		if errors.Is(e, pgx.ErrNoRows) {
 			return ErrSignInCompletionInvalid
 		}
@@ -369,7 +369,7 @@ func (s *Service) persistCompletionProof(ctx context.Context, row db.IdentityFlo
 	return row, p, err
 }
 
-func (s *Service) replayCompletion(ctx context.Context, q *db.Queries, row db.IdentityFlow, p completionPayload, request string, owners map[string]db.UserAccount) (SignInResult, error) {
+func (s *Service) replayCompletion(ctx context.Context, q *db.Queries, row db.SignInCompletionFlow, p completionPayload, request string, owners map[string]db.UserAccount) (SignInResult, error) {
 	if p.Result == nil || row.UserID == nil || row.SessionID == nil || p.FinalRequest != request {
 		return SignInResult{}, ErrSignInAlreadyCompleted
 	}
@@ -411,7 +411,7 @@ func (s *Service) replayCompletion(ctx context.Context, q *db.Queries, row db.Id
 	return SignInResult{Tokens: p.Result}, nil
 }
 
-func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.IdentityFlow, p completionPayload, request string, dev Device, meta Meta) (SignInResult, error) {
+func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.SignInCompletionFlow, p completionPayload, request string, dev Device, meta Meta) (SignInResult, error) {
 	var result SignInResult
 	var replaced []string
 	var bound []db.Identity
@@ -422,7 +422,7 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.Ident
 		if err != nil {
 			return err
 		}
-		fresh, err := q.LockIdentityFlow(ctx, row.ID)
+		fresh, err := q.LockSignInCompletionFlow(ctx, row.ID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrSignInCompletionInvalid
 		}
@@ -523,7 +523,7 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.Ident
 		if err != nil {
 			return err
 		}
-		_, err = q.CompleteIdentityFlow(ctx, db.CompleteIdentityFlowParams{ID: fresh.ID, Revision: fresh.Revision, Payload: ct, CipherVersion: v, ProofUserIds: proofOwnerIDs(fp), UserID: u.ID, SessionID: sess.ID, Now: s.now()})
+		_, err = q.CompleteSignInCompletionFlow(ctx, db.CompleteSignInCompletionFlowParams{ID: fresh.ID, Revision: fresh.Revision, Payload: ct, CipherVersion: v, ProofUserIds: proofOwnerIDs(fp), UserID: u.ID, SessionID: sess.ID, Now: s.now()})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrSignInCompletionInvalid
 		}

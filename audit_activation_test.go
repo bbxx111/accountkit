@@ -87,13 +87,13 @@ func TestMigrateAuditConfigurationSingleConnection(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				before := snapshotSource(t, pool)
+				before := snapshotSourceWithFlowTable(t, pool, "identity_flow")
 				for range 2 {
 					if err := single.Migrate(ctx); !errors.Is(err, migrations.ErrIncompatibleBaseline) {
 						t.Errorf("old baseline accepted or changed: %v", err)
 					}
 				}
-				if snapshotSource(t, pool) != before {
+				if snapshotSourceWithFlowTable(t, pool, "identity_flow") != before {
 					t.Fatal("rejected old schema changed data/version")
 				}
 			} else {

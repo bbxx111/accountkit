@@ -245,7 +245,7 @@ func serviceMigrationFlowKeys(t *testing.T) {
 	p.stop()
 	var payload []byte
 	var version int
-	if err := f.pool.QueryRow(t.Context(), "SELECT payload, cipher_version FROM identity_flow").Scan(&payload, &version); err != nil || version != 2 || len(payload) == 0 {
+	if err := f.pool.QueryRow(t.Context(), "SELECT payload, cipher_version FROM sign_in_completion_flow").Scan(&payload, &version); err != nil || version != 2 || len(payload) == 0 {
 		t.Fatal("old-key flow was not encrypted and persisted")
 	}
 	minimal := map[string]string{"ACCOUNTSVC_SMTP_PORT": "invalid-unused", "ACCOUNTKIT_WECHAT_APPS": "", "ACCOUNTSVC_INTROSPECTION_CLIENTS": ""}
@@ -253,14 +253,14 @@ func serviceMigrationFlowKeys(t *testing.T) {
 		t.Fatal("migrate ignored an active flow's missing cipher key")
 	}
 	var unchanged []byte
-	if err := f.pool.QueryRow(t.Context(), "SELECT payload FROM identity_flow").Scan(&unchanged); err != nil || !bytes.Equal(unchanged, payload) {
+	if err := f.pool.QueryRow(t.Context(), "SELECT payload FROM sign_in_completion_flow").Scan(&unchanged); err != nil || !bytes.Equal(unchanged, payload) {
 		t.Fatal("failed key check mutated the encrypted flow")
 	}
 	minimal["ACCOUNTKIT_SUBJECT_CIPHER_KEYS"] = f.env["ACCOUNTKIT_SUBJECT_CIPHER_KEYS"] + ",2:" + oldKey
 	if _, err := f.command(minimal, "migrate"); err != nil {
 		t.Fatal("migrate rejected a retained old flow key")
 	}
-	if _, err := f.pool.Exec(t.Context(), "UPDATE identity_flow SET expire_time=now()-interval '1 second'"); err != nil {
+	if _, err := f.pool.Exec(t.Context(), "UPDATE sign_in_completion_flow SET expire_time=now()-interval '1 second'"); err != nil {
 		t.Fatal(err)
 	}
 	delete(minimal, "ACCOUNTKIT_SUBJECT_CIPHER_KEYS")

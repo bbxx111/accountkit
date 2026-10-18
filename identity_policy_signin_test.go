@@ -213,7 +213,7 @@ func TestIdentityPolicyTighteningAndFlowIsolation(t *testing.T) {
 	if err := other.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := op.Exec(ctx, "INSERT INTO identity_flow SELECT * FROM "+b.Config().Schema+".identity_flow"); err != nil {
+	if _, err := op.Exec(ctx, "INSERT INTO sign_in_completion_flow SELECT * FROM "+b.Config().Schema+".sign_in_completion_flow"); err != nil {
 		t.Fatal(err)
 	}
 	_, err = other.Users().SendSignInCompletionCode(ctx, pending.Pending.SignInCompletionToken, enum.IdentityEmail, "isolation@example.test", user.Device{}, meta)

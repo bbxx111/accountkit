@@ -112,12 +112,12 @@ CREATE INDEX idx_audit_event_actor ON audit_event(source,(actor->>'namespace'),(
 CREATE INDEX idx_audit_event_targets ON audit_event USING gin(targets jsonb_path_ops);
 CREATE INDEX idx_audit_event_related_resources ON audit_event USING gin((context->'related_resources') jsonb_path_ops);
 CREATE INDEX idx_audit_event_request_id ON audit_event(source,(context->>'request_id'));
--- Historical flow closure remains queryable after identity_flow cleanup.
+-- Historical flow closure remains queryable after sign_in_completion_flow cleanup.
 CREATE INDEX idx_audit_event_flow_id ON audit_event(source,(data#>>'{accountkit,flow_id}'));
 
 -- Short-lived sign-in completion; only token digests and context-bound encrypted payloads are stored.
-CREATE TABLE identity_flow (
- id TEXT COLLATE "C" PRIMARY KEY CONSTRAINT identity_flow_id_format CHECK (id ~ '^f_[0-9a-hjkmnp-tv-z]{13}$'),
+CREATE TABLE sign_in_completion_flow (
+ id TEXT COLLATE "C" PRIMARY KEY CONSTRAINT sign_in_completion_flow_id_format CHECK (id ~ '^f_[0-9a-hjkmnp-tv-z]{13}$'),
  token_digest TEXT COLLATE "C" NOT NULL,
  state SMALLINT NOT NULL,
  policy_fingerprint TEXT COLLATE "C" NOT NULL,
@@ -132,10 +132,10 @@ CREATE TABLE identity_flow (
  expire_time TIMESTAMPTZ NOT NULL
 );
 -- Token lookup uses a unique random-secret digest, separate from the internal resource ID.
-CREATE UNIQUE INDEX uk_identity_flow_token_digest ON identity_flow(token_digest);
+CREATE UNIQUE INDEX uk_sign_in_completion_flow_token_digest ON sign_in_completion_flow(token_digest);
 -- Bounded expiry cleanup scans in deterministic order.
-CREATE INDEX idx_identity_flow_expire_time_id ON identity_flow(expire_time,id);
+CREATE INDEX idx_sign_in_completion_flow_expire_time_id ON sign_in_completion_flow(expire_time,id);
 -- Account deletion/anonymization removes every proof owner and completed result reference.
-CREATE INDEX idx_identity_flow_proof_user_ids ON identity_flow USING GIN(proof_user_ids);
-CREATE INDEX idx_identity_flow_user_id ON identity_flow(user_id);
-CREATE INDEX idx_identity_flow_session_id ON identity_flow(session_id);
+CREATE INDEX idx_sign_in_completion_flow_proof_user_ids ON sign_in_completion_flow USING GIN(proof_user_ids);
+CREATE INDEX idx_sign_in_completion_flow_user_id ON sign_in_completion_flow(user_id);
+CREATE INDEX idx_sign_in_completion_flow_session_id ON sign_in_completion_flow(session_id);

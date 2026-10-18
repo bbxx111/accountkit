@@ -91,6 +91,17 @@ func seedFormatFixture(t *testing.T, pool *pgxpool.Pool, cfg accountkit.Config) 
 
 func snapshotSource(t *testing.T, pool *pgxpool.Pool) string {
 	t.Helper()
+	return snapshotSourceWithFlowTable(t, pool, "sign_in_completion_flow")
+}
+
+// Historical baseline tests explicitly retain their original flow table name.
+// Snapshot every table and version in either baseline, without probing or skipping
+// absent tables, so an unexpected rename still fails the preservation assertion.
+func snapshotSourceWithFlowTable(t *testing.T, pool *pgxpool.Pool, flowTable string) string {
+	t.Helper()
+	if flowTable != "identity_flow" && flowTable != "sign_in_completion_flow" {
+		t.Fatalf("unsupported snapshot flow table %q", flowTable)
+	}
 	var out string
 	err := pool.QueryRow(context.Background(), `
  SELECT jsonb_build_object(
@@ -98,7 +109,7 @@ func snapshotSource(t *testing.T, pool *pgxpool.Pool) string {
  'identities',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM identity t),
  'sessions',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM session t),
  'audit',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM audit_event t),
- 'flows',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM identity_flow t),
+ 'flows',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM `+flowTable+` t),
  'version',(SELECT jsonb_agg(to_jsonb(t)) FROM schema_migrations t))::text`).Scan(&out)
 	if err != nil {
 		t.Fatal(err)
@@ -147,7 +158,7 @@ func TestHistoricalFormatsOnInitialSchema(t *testing.T) {
 	}
 	var version, flows int
 	var dirty bool
-	if err := pool.QueryRow(ctx, "SELECT version,dirty,(SELECT count(*) FROM identity_flow) FROM schema_migrations").Scan(&version, &dirty, &flows); err != nil || version != 1 || dirty || flows != 0 {
+	if err := pool.QueryRow(ctx, "SELECT version,dirty,(SELECT count(*) FROM sign_in_completion_flow) FROM schema_migrations").Scan(&version, &dirty, &flows); err != nil || version != 1 || dirty || flows != 0 {
 		t.Fatalf("initial version=%d dirty=%v flows=%d: %v", version, dirty, flows, err)
 	}
 	var mappedID uuid.UUID

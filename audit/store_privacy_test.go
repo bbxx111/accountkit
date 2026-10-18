@@ -31,7 +31,7 @@ func privacyFlowRow(t *testing.T, p *pgxpool.Pool, owners []string) {
 	if owners == nil {
 		owners = []string{}
 	}
-	if _, err := p.Exec(context.Background(), `INSERT INTO identity_flow(id,token_digest,state,policy_fingerprint,payload,cipher_version,proof_user_ids,create_time,update_time,expire_time) VALUES ($1,$1,1,'test','test',1,$2,now(),now(),now()+interval '1 hour')`, privacyFlow, owners); err != nil {
+	if _, err := p.Exec(context.Background(), `INSERT INTO sign_in_completion_flow(id,token_digest,state,policy_fingerprint,payload,cipher_version,proof_user_ids,create_time,update_time,expire_time) VALUES ($1,$1,1,'test','test',1,$2,now(),now(),now()+interval '1 hour')`, privacyFlow, owners); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -69,7 +69,7 @@ func TestAuditMissingFlowLateEvent(t *testing.T) {
 			p := testPool(t)
 			if removed {
 				privacyFlowRow(t, p, nil)
-				if _, err := p.Exec(context.Background(), `DELETE FROM identity_flow WHERE id=$1`, privacyFlow); err != nil {
+				if _, err := p.Exec(context.Background(), `DELETE FROM sign_in_completion_flow WHERE id=$1`, privacyFlow); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -87,7 +87,7 @@ func TestAuditMissingFlowLateEvent(t *testing.T) {
 func TestAuditExpiredFlowLateEvent(t *testing.T) {
 	p := testPool(t)
 	privacyFlowRow(t, p, []string{})
-	if _, err := p.Exec(context.Background(), `UPDATE identity_flow SET expire_time=now()-interval '1 second' WHERE id=$1`, privacyFlow); err != nil {
+	if _, err := p.Exec(context.Background(), `UPDATE sign_in_completion_flow SET expire_time=now()-interval '1 second' WHERE id=$1`, privacyFlow); err != nil {
 		t.Fatal(err)
 	}
 	e := privateEvent(t, "", privacyFlow)
@@ -325,7 +325,7 @@ func TestAuditFlowOwnerSnapshotMustRetry(t *testing.T) {
 	// A real ownership writer locks B before the flow, but its uncommitted
 	// addition is invisible to the audit writer's initial snapshot.
 	change := privacyLock(t, p, `SELECT id FROM user_account WHERE id=$1 FOR UPDATE`, privacyB)
-	if _, err := change.Exec(ctx, `UPDATE identity_flow SET proof_user_ids=ARRAY[$2] WHERE id=$1`, privacyFlow, privacyB); err != nil {
+	if _, err := change.Exec(ctx, `UPDATE sign_in_completion_flow SET proof_user_ids=ARRAY[$2] WHERE id=$1`, privacyFlow, privacyB); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := change.Exec(ctx, `UPDATE user_account SET state=$2 WHERE id=$1`, privacyB, enum.UserDeleted); err != nil {

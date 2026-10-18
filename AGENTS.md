@@ -74,7 +74,7 @@
 
 ### 命名与实例边界
 
-- 包拥有 `user_account`、`identity`、`session`、`audit_event`、`identity_flow` 和 `schema_migrations`，位于 `Config.Schema` 指定的 schema，默认 `account`。使用无业务前缀的单数 snake_case 表名；隔离靠 schema，不添加产品专用表前缀。
+- 包拥有 `user_account`、`identity`、`session`、`audit_event`、`sign_in_completion_flow` 和 `schema_migrations`，位于 `Config.Schema` 指定的 schema，默认 `account`。使用无业务前缀的单数 snake_case 表名；隔离靠 schema，不添加产品专用表前缀。
 - 同一数据库可有多个独立实例。宿主使用 `PoolConfig` 设置 search_path，并独立配置 schema、Redis `KeyPrefix`（以 `:` 结尾）、JWT issuer/audience 和密钥。新增 Redis 键必须包含实例前缀。
 - 索引与约束名称包含表名；重命名表时检查关联索引和约束名称，不能假定会自动同步。新增表与查询沿用现有领域归属和 sqlc 配置，不引入产品表前缀或第二套数据访问方式。
 - 独立创建的普通索引命名为 `idx_<表名>_<字段或用途>`，`CREATE UNIQUE INDEX` 唯一索引命名为 `uk_<表名>_<字段或用途>`，不使用 `_idx`、`_uidx` 后缀；例如 `idx_identity_user_id`、`uk_identity_kind_subject_digest`。复合索引字段按索引列顺序命名；表达式、GIN 或部分索引可使用清晰的用途名，例如 `idx_audit_event_related_resources`，唯一性仍决定使用 `idx_` 还是 `uk_`。
@@ -109,8 +109,9 @@
 
 操作步骤以 [docs/migrations.md](docs/migrations.md) 为准。以下规则不能因为独立包尚未发布而放宽：
 
-- 用户确认尚无实际产品接入后，`consolidate-initial-schema` 执行一次明确的初始结构整合：当前 `0001_init` 直接定义全部认证及登录补全结构，初始化版本为 1，后续增量从 0002 开始。本次 `generalize-audit-events` 经用户明确授权，直接将十列 UUIDv7 审计定义纳入当前未发布的 0001、更新其固定校验，并撤回本分支新增的 0002/staging 工具。旧完整十七列审计 v1 和任何旧 v2 均拒绝且保留数据与版本；固定源快照和已发布历史不变。当前初始 SQL 按独立固定哈希保护，不提供日常改写、squash 或跳过历史检查的开关。
-- 本次索引命名维护另经用户明确要求“不新增迁移”，限定为直接将当前未发布 0001 的 22 个普通索引改用 `idx_`、4 个独立唯一索引改用 `uk_` 前缀并同步固定校验；主键、索引定义、初始化版本和历史源快照不变。已有同号数据库不会因重复 Up 自动重命名索引，本次授权不扩展为后续任意改写初始 SQL。
+- 用户确认尚无实际产品接入后，`consolidate-initial-schema` 执行过一次明确的初始结构整合：`0001_init` 直接定义全部认证及登录补全结构，初始版本为 1。此前 `generalize-audit-events` 经用户明确授权，将十列 UUIDv7 审计定义纳入未发布的 0001、更新其固定校验，并撤回当时新增的 0002/staging 工具。旧完整十七列审计 v1 和旧增量结构 v2 均拒绝且保留数据与版本；固定源快照和已发布历史不变。当前初始 SQL 按独立固定哈希保护，不提供日常改写、squash 或跳过历史检查的开关。
+- `rename-sign-in-completion-flow` 经用户本次明确要求“不新增 0002，直接改 0001 中的表定义”，限定为修改当前未发布 0001 的流程表、五个独立索引、主键与格式 CHECK 名称及配套 down，并同步当前固定哈希；列、约束表达式和索引定义保持。撤回本分支新增的 0002，初始化保持 version=1，后续真实增量从 0002 开始。旧表名 v1、双表并存及已撤回旧 v2（包括此前新表名 v2）均拒绝且保留数据、结构和版本，重复 Up 不自动改名或接管。采用新定义须人工核验后使用新空资源，需保留数据时另行制定并验证迁移方案，不 Force、不修改版本、不自动清库；公共 Down 仍拒绝。内部使用 `SignInCompletionFlow`，公开旧 `ids.IdentityFlow`、`user.Deps.IdentityFlowContext`、`CleanupIdentityFlows` 保留 deprecated 兼容入口，新上下文字段非空时优先、否则回退旧字段；密文 AAD、`f_`、审计 `IDENTITY_FLOW` 和 JSON `flow_id` 保持。本次授权不扩展为日常改写初始 SQL 或修改冻结源与已发布历史。
+- 此前索引命名维护另经用户明确要求“不新增迁移”，限定为直接将未发布 0001 的 22 个普通索引改用 `idx_`、4 个独立唯一索引改用 `uk_` 前缀并同步固定校验；当次主键、索引定义、初始版本和历史源快照未变。旧同号数据库不会重放 0001，也不会自动得到该次索引命名调整；这些有限授权不扩展为后续任意改写初始 SQL。
 - `tests/testdata/source-baseline/` 的原始 SQL 与 manifest 仍冻结；已发布 v0.1.0/v0.2.0 的精确标签提交和历史 SQL 保持。历史检查分别核验两代基线，不能改写源快照或移动旧 tag 来让检查通过。旧开发数据库不自动接管，使用新基线须经人工核验后重建一次性资源；不得 Force、修改版本或自动清库。
 - 新业务结构使用递增 `NNNN_name.up.sql` / `.down.sql`，已发布版本不可修改、删除、重编号或 squash。测试专用下一版本放 `migrations/testdata/`，不混入生产嵌入目录。
 - `schema_migrations` 记录当前 version/dirty，不是完整历史账本。重复 Up 只忽略无新迁移；dirty 必须阻断后续升级，禁止自动 Force、清除 dirty 或把失败标记为成功。

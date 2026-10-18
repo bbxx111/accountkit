@@ -46,7 +46,7 @@ func (q *Queries) AnonymizeIdentity(ctx context.Context, arg AnonymizeIdentityPa
 }
 
 const auditFlowBelongsToUser = `-- name: AuditFlowBelongsToUser :one
-SELECT EXISTS (SELECT 1 FROM identity_flow WHERE id = $1::text AND (user_id = $2::text OR proof_user_ids @> ARRAY[$2::text]))
+SELECT EXISTS (SELECT 1 FROM sign_in_completion_flow WHERE id = $1::text AND (user_id = $2::text OR proof_user_ids @> ARRAY[$2::text]))
 `
 
 type AuditFlowBelongsToUserParams struct {
@@ -92,8 +92,8 @@ func (q *Queries) BatchPublicProfiles(ctx context.Context, ids []string) ([]Batc
 	return items, nil
 }
 
-const completeIdentityFlow = `-- name: CompleteIdentityFlow :one
-UPDATE identity_flow
+const completeSignInCompletionFlow = `-- name: CompleteSignInCompletionFlow :one
+UPDATE sign_in_completion_flow
 SET state = 3, payload = $1, cipher_version = $2,
     proof_user_ids = $3::text[], user_id = $4::text,
     session_id = $5::text, revision = revision + 1,
@@ -103,7 +103,7 @@ WHERE id = $7 AND revision = $8
 RETURNING id, token_digest, state, policy_fingerprint, payload, cipher_version, revision, proof_user_ids, user_id, session_id, create_time, update_time, expire_time
 `
 
-type CompleteIdentityFlowParams struct {
+type CompleteSignInCompletionFlowParams struct {
 	Payload       []byte
 	CipherVersion int16
 	ProofUserIds  []string
@@ -114,8 +114,8 @@ type CompleteIdentityFlowParams struct {
 	Revision      int64
 }
 
-func (q *Queries) CompleteIdentityFlow(ctx context.Context, arg CompleteIdentityFlowParams) (IdentityFlow, error) {
-	row := q.db.QueryRow(ctx, completeIdentityFlow,
+func (q *Queries) CompleteSignInCompletionFlow(ctx context.Context, arg CompleteSignInCompletionFlowParams) (SignInCompletionFlow, error) {
+	row := q.db.QueryRow(ctx, completeSignInCompletionFlow,
 		arg.Payload,
 		arg.CipherVersion,
 		arg.ProofUserIds,
@@ -125,7 +125,7 @@ func (q *Queries) CompleteIdentityFlow(ctx context.Context, arg CompleteIdentity
 		arg.ID,
 		arg.Revision,
 	)
-	var i IdentityFlow
+	var i SignInCompletionFlow
 	err := row.Scan(
 		&i.ID,
 		&i.TokenDigest,
@@ -219,65 +219,6 @@ func (q *Queries) CreateIdentity(ctx context.Context, arg CreateIdentityParams) 
 	return i, err
 }
 
-const createIdentityFlow = `-- name: CreateIdentityFlow :one
-
-INSERT INTO identity_flow (
-    id, token_digest, state, policy_fingerprint, payload, cipher_version,
-    proof_user_ids, create_time, update_time, expire_time
-)
-VALUES (
-    $1, $2, $3, $4, $5, $6,
-    $7::text[], $8::timestamptz, $8::timestamptz,
-    $9::timestamptz
-)
-RETURNING id, token_digest, state, policy_fingerprint, payload, cipher_version, revision, proof_user_ids, user_id, session_id, create_time, update_time, expire_time
-`
-
-type CreateIdentityFlowParams struct {
-	ID                string
-	TokenDigest       string
-	State             enum.FlowState
-	PolicyFingerprint string
-	Payload           []byte
-	CipherVersion     int16
-	ProofUserIds      []string
-	CreateTime        time.Time
-	ExpireTime        time.Time
-}
-
-// identity_flow: callers lock existing users in sorted order before locking flows.
-// State constants: PENDING=1, VERIFIED=2, COMPLETED=3, EXPIRED=4, REJECTED=5.
-func (q *Queries) CreateIdentityFlow(ctx context.Context, arg CreateIdentityFlowParams) (IdentityFlow, error) {
-	row := q.db.QueryRow(ctx, createIdentityFlow,
-		arg.ID,
-		arg.TokenDigest,
-		arg.State,
-		arg.PolicyFingerprint,
-		arg.Payload,
-		arg.CipherVersion,
-		arg.ProofUserIds,
-		arg.CreateTime,
-		arg.ExpireTime,
-	)
-	var i IdentityFlow
-	err := row.Scan(
-		&i.ID,
-		&i.TokenDigest,
-		&i.State,
-		&i.PolicyFingerprint,
-		&i.Payload,
-		&i.CipherVersion,
-		&i.Revision,
-		&i.ProofUserIds,
-		&i.UserID,
-		&i.SessionID,
-		&i.CreateTime,
-		&i.UpdateTime,
-		&i.ExpireTime,
-	)
-	return i, err
-}
-
 const createSession = `-- name: CreateSession :one
 
 INSERT INTO session (id, user_id, device_id, device_name, auth_time, refresh_token_hash, refresh_expire_time, last_used_time)
@@ -326,6 +267,65 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 	return i, err
 }
 
+const createSignInCompletionFlow = `-- name: CreateSignInCompletionFlow :one
+
+INSERT INTO sign_in_completion_flow (
+    id, token_digest, state, policy_fingerprint, payload, cipher_version,
+    proof_user_ids, create_time, update_time, expire_time
+)
+VALUES (
+    $1, $2, $3, $4, $5, $6,
+    $7::text[], $8::timestamptz, $8::timestamptz,
+    $9::timestamptz
+)
+RETURNING id, token_digest, state, policy_fingerprint, payload, cipher_version, revision, proof_user_ids, user_id, session_id, create_time, update_time, expire_time
+`
+
+type CreateSignInCompletionFlowParams struct {
+	ID                string
+	TokenDigest       string
+	State             enum.FlowState
+	PolicyFingerprint string
+	Payload           []byte
+	CipherVersion     int16
+	ProofUserIds      []string
+	CreateTime        time.Time
+	ExpireTime        time.Time
+}
+
+// sign_in_completion_flow: callers lock existing users in sorted order before locking flows.
+// State constants: PENDING=1, VERIFIED=2, COMPLETED=3, EXPIRED=4, REJECTED=5.
+func (q *Queries) CreateSignInCompletionFlow(ctx context.Context, arg CreateSignInCompletionFlowParams) (SignInCompletionFlow, error) {
+	row := q.db.QueryRow(ctx, createSignInCompletionFlow,
+		arg.ID,
+		arg.TokenDigest,
+		arg.State,
+		arg.PolicyFingerprint,
+		arg.Payload,
+		arg.CipherVersion,
+		arg.ProofUserIds,
+		arg.CreateTime,
+		arg.ExpireTime,
+	)
+	var i SignInCompletionFlow
+	err := row.Scan(
+		&i.ID,
+		&i.TokenDigest,
+		&i.State,
+		&i.PolicyFingerprint,
+		&i.Payload,
+		&i.CipherVersion,
+		&i.Revision,
+		&i.ProofUserIds,
+		&i.UserID,
+		&i.SessionID,
+		&i.CreateTime,
+		&i.UpdateTime,
+		&i.ExpireTime,
+	)
+	return i, err
+}
+
 const createUser = `-- name: CreateUser :one
 
 INSERT INTO user_account (id, state) VALUES ($1, $2)
@@ -357,38 +357,38 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (UserAcc
 	return i, err
 }
 
-const deleteExpiredIdentityFlows = `-- name: DeleteExpiredIdentityFlows :execrows
-DELETE FROM identity_flow
+const deleteExpiredSignInCompletionFlows = `-- name: DeleteExpiredSignInCompletionFlows :execrows
+DELETE FROM sign_in_completion_flow
 WHERE id IN (
-    SELECT id FROM identity_flow WHERE expire_time <= $1::timestamptz
+    SELECT id FROM sign_in_completion_flow WHERE expire_time <= $1::timestamptz
     ORDER BY expire_time, id LIMIT $2::int FOR UPDATE SKIP LOCKED
 )
 `
 
-type DeleteExpiredIdentityFlowsParams struct {
+type DeleteExpiredSignInCompletionFlowsParams struct {
 	Now       time.Time
 	BatchSize int32
 }
 
-func (q *Queries) DeleteExpiredIdentityFlows(ctx context.Context, arg DeleteExpiredIdentityFlowsParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteExpiredIdentityFlows, arg.Now, arg.BatchSize)
+func (q *Queries) DeleteExpiredSignInCompletionFlows(ctx context.Context, arg DeleteExpiredSignInCompletionFlowsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredSignInCompletionFlows, arg.Now, arg.BatchSize)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
 }
 
-const deleteIdentityFlowsForUser = `-- name: DeleteIdentityFlowsForUser :execrows
+const deleteSignInCompletionFlowsForUser = `-- name: DeleteSignInCompletionFlowsForUser :execrows
 WITH locked AS (
-    SELECT id FROM identity_flow
+    SELECT id FROM sign_in_completion_flow
     WHERE user_id = $1::text OR proof_user_ids @> ARRAY[$1::text]
     ORDER BY id FOR UPDATE
 )
-DELETE FROM identity_flow WHERE id IN (SELECT id FROM locked)
+DELETE FROM sign_in_completion_flow WHERE id IN (SELECT id FROM locked)
 `
 
-func (q *Queries) DeleteIdentityFlowsForUser(ctx context.Context, userID string) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteIdentityFlowsForUser, userID)
+func (q *Queries) DeleteSignInCompletionFlowsForUser(ctx context.Context, userID string) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteSignInCompletionFlowsForUser, userID)
 	if err != nil {
 		return 0, err
 	}
@@ -628,31 +628,6 @@ func (q *Queries) GetActiveSessionByUserDevice(ctx context.Context, arg GetActiv
 	return i, err
 }
 
-const getIdentityFlowByTokenDigest = `-- name: GetIdentityFlowByTokenDigest :one
-SELECT id, token_digest, state, policy_fingerprint, payload, cipher_version, revision, proof_user_ids, user_id, session_id, create_time, update_time, expire_time FROM identity_flow WHERE token_digest = $1
-`
-
-func (q *Queries) GetIdentityFlowByTokenDigest(ctx context.Context, tokenDigest string) (IdentityFlow, error) {
-	row := q.db.QueryRow(ctx, getIdentityFlowByTokenDigest, tokenDigest)
-	var i IdentityFlow
-	err := row.Scan(
-		&i.ID,
-		&i.TokenDigest,
-		&i.State,
-		&i.PolicyFingerprint,
-		&i.Payload,
-		&i.CipherVersion,
-		&i.Revision,
-		&i.ProofUserIds,
-		&i.UserID,
-		&i.SessionID,
-		&i.CreateTime,
-		&i.UpdateTime,
-		&i.ExpireTime,
-	)
-	return i, err
-}
-
 const getSessionByPreviousRefreshHash = `-- name: GetSessionByPreviousRefreshHash :one
 SELECT id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time FROM session WHERE previous_refresh_token_hash = $1
 `
@@ -701,6 +676,31 @@ func (q *Queries) GetSessionByRefreshHash(ctx context.Context, refreshTokenHash 
 		&i.RevokeReason,
 		&i.CreateTime,
 		&i.UpdateTime,
+	)
+	return i, err
+}
+
+const getSignInCompletionFlowByTokenDigest = `-- name: GetSignInCompletionFlowByTokenDigest :one
+SELECT id, token_digest, state, policy_fingerprint, payload, cipher_version, revision, proof_user_ids, user_id, session_id, create_time, update_time, expire_time FROM sign_in_completion_flow WHERE token_digest = $1
+`
+
+func (q *Queries) GetSignInCompletionFlowByTokenDigest(ctx context.Context, tokenDigest string) (SignInCompletionFlow, error) {
+	row := q.db.QueryRow(ctx, getSignInCompletionFlowByTokenDigest, tokenDigest)
+	var i SignInCompletionFlow
+	err := row.Scan(
+		&i.ID,
+		&i.TokenDigest,
+		&i.State,
+		&i.PolicyFingerprint,
+		&i.Payload,
+		&i.CipherVersion,
+		&i.Revision,
+		&i.ProofUserIds,
+		&i.UserID,
+		&i.SessionID,
+		&i.CreateTime,
+		&i.UpdateTime,
+		&i.ExpireTime,
 	)
 	return i, err
 }
@@ -1202,7 +1202,7 @@ WITH user_events AS MATERIALIZED (
   OR context->'related_resources' @> jsonb_build_array(jsonb_build_object('type','USER','namespace',$3::text,'id',$4::text)))
 ), flow_resources AS MATERIALIZED (
  SELECT jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',$3::text,'id',id)) AS resource
- FROM identity_flow WHERE user_id = $4::text OR proof_user_ids @> ARRAY[$4::text]
+ FROM sign_in_completion_flow WHERE user_id = $4::text OR proof_user_ids @> ARRAY[$4::text]
  UNION
  SELECT jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',$3::text,'id',f->>'id')) AS resource
  FROM user_events linked
@@ -1255,57 +1255,6 @@ func (q *Queries) LockAuditEventsForUserCleanup(ctx context.Context, arg LockAud
 	return items, nil
 }
 
-const lockIdentityFlow = `-- name: LockIdentityFlow :one
-SELECT id, token_digest, state, policy_fingerprint, payload, cipher_version, revision, proof_user_ids, user_id, session_id, create_time, update_time, expire_time FROM identity_flow WHERE id = $1 FOR UPDATE
-`
-
-func (q *Queries) LockIdentityFlow(ctx context.Context, id string) (IdentityFlow, error) {
-	row := q.db.QueryRow(ctx, lockIdentityFlow, id)
-	var i IdentityFlow
-	err := row.Scan(
-		&i.ID,
-		&i.TokenDigest,
-		&i.State,
-		&i.PolicyFingerprint,
-		&i.Payload,
-		&i.CipherVersion,
-		&i.Revision,
-		&i.ProofUserIds,
-		&i.UserID,
-		&i.SessionID,
-		&i.CreateTime,
-		&i.UpdateTime,
-		&i.ExpireTime,
-	)
-	return i, err
-}
-
-const lockIdentityFlowsForUser = `-- name: LockIdentityFlowsForUser :many
-SELECT id FROM identity_flow
-WHERE user_id = $1::text OR proof_user_ids @> ARRAY[$1::text]
-ORDER BY id FOR UPDATE
-`
-
-func (q *Queries) LockIdentityFlowsForUser(ctx context.Context, userID string) ([]string, error) {
-	rows, err := q.db.Query(ctx, lockIdentityFlowsForUser, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const lockSessionByID = `-- name: LockSessionByID :one
 SELECT id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time FROM session WHERE id = $1 FOR UPDATE
 `
@@ -1331,6 +1280,57 @@ func (q *Queries) LockSessionByID(ctx context.Context, id string) (Session, erro
 		&i.UpdateTime,
 	)
 	return i, err
+}
+
+const lockSignInCompletionFlow = `-- name: LockSignInCompletionFlow :one
+SELECT id, token_digest, state, policy_fingerprint, payload, cipher_version, revision, proof_user_ids, user_id, session_id, create_time, update_time, expire_time FROM sign_in_completion_flow WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) LockSignInCompletionFlow(ctx context.Context, id string) (SignInCompletionFlow, error) {
+	row := q.db.QueryRow(ctx, lockSignInCompletionFlow, id)
+	var i SignInCompletionFlow
+	err := row.Scan(
+		&i.ID,
+		&i.TokenDigest,
+		&i.State,
+		&i.PolicyFingerprint,
+		&i.Payload,
+		&i.CipherVersion,
+		&i.Revision,
+		&i.ProofUserIds,
+		&i.UserID,
+		&i.SessionID,
+		&i.CreateTime,
+		&i.UpdateTime,
+		&i.ExpireTime,
+	)
+	return i, err
+}
+
+const lockSignInCompletionFlowsForUser = `-- name: LockSignInCompletionFlowsForUser :many
+SELECT id FROM sign_in_completion_flow
+WHERE user_id = $1::text OR proof_user_ids @> ARRAY[$1::text]
+ORDER BY id FOR UPDATE
+`
+
+func (q *Queries) LockSignInCompletionFlowsForUser(ctx context.Context, userID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, lockSignInCompletionFlowsForUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockUserByID = `-- name: LockUserByID :one
@@ -1388,13 +1388,13 @@ func (q *Queries) PurgeUser(ctx context.Context, arg PurgeUserParams) (int64, er
 	return result.RowsAffected(), nil
 }
 
-const requiredIdentityFlowCipherVersions = `-- name: RequiredIdentityFlowCipherVersions :many
-SELECT DISTINCT cipher_version FROM identity_flow
+const requiredSignInCompletionFlowCipherVersions = `-- name: RequiredSignInCompletionFlowCipherVersions :many
+SELECT DISTINCT cipher_version FROM sign_in_completion_flow
 WHERE expire_time > $1::timestamptz ORDER BY cipher_version
 `
 
-func (q *Queries) RequiredIdentityFlowCipherVersions(ctx context.Context, now time.Time) ([]int16, error) {
-	rows, err := q.db.Query(ctx, requiredIdentityFlowCipherVersions, now)
+func (q *Queries) RequiredSignInCompletionFlowCipherVersions(ctx context.Context, now time.Time) ([]int16, error) {
+	rows, err := q.db.Query(ctx, requiredSignInCompletionFlowCipherVersions, now)
 	if err != nil {
 		return nil, err
 	}
@@ -1561,10 +1561,10 @@ func (q *Queries) ScrubAuditEventsByUser(ctx context.Context, arg ScrubAuditEven
 	return result.RowsAffected(), nil
 }
 
-const scrubIdentityFlowAuditForUser = `-- name: ScrubIdentityFlowAuditForUser :execrows
+const scrubSignInCompletionFlowAuditForUser = `-- name: ScrubSignInCompletionFlowAuditForUser :execrows
 WITH flow_resources AS MATERIALIZED (
  SELECT jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',$3::text,'id',id)) AS resource
- FROM identity_flow WHERE user_id = $4::text OR proof_user_ids @> ARRAY[$4::text]
+ FROM sign_in_completion_flow WHERE user_id = $4::text OR proof_user_ids @> ARRAY[$4::text]
 )
 UPDATE audit_event e SET
  actor = e.actor - 'name',
@@ -1581,15 +1581,15 @@ WHERE e.source = $2::text AND (
  OR EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) p WHERE p ? 'name'))
 `
 
-type ScrubIdentityFlowAuditForUserParams struct {
+type ScrubSignInCompletionFlowAuditForUserParams struct {
 	AuthenticationActions []string
 	Source                string
 	Namespace             string
 	UserID                string
 }
 
-func (q *Queries) ScrubIdentityFlowAuditForUser(ctx context.Context, arg ScrubIdentityFlowAuditForUserParams) (int64, error) {
-	result, err := q.db.Exec(ctx, scrubIdentityFlowAuditForUser,
+func (q *Queries) ScrubSignInCompletionFlowAuditForUser(ctx context.Context, arg ScrubSignInCompletionFlowAuditForUserParams) (int64, error) {
+	result, err := q.db.Exec(ctx, scrubSignInCompletionFlowAuditForUser,
 		arg.AuthenticationActions,
 		arg.Source,
 		arg.Namespace,
@@ -1783,55 +1783,6 @@ func (q *Queries) UpdateIdentityDigest(ctx context.Context, arg UpdateIdentityDi
 	return result.RowsAffected(), nil
 }
 
-const updateIdentityFlow = `-- name: UpdateIdentityFlow :one
-UPDATE identity_flow
-SET state = $1, payload = $2, cipher_version = $3,
-    proof_user_ids = $4::text[], revision = revision + 1,
-    update_time = $5::timestamptz
-WHERE id = $6 AND revision = $7
-  AND state IN (1, 2) AND expire_time > $5::timestamptz
-RETURNING id, token_digest, state, policy_fingerprint, payload, cipher_version, revision, proof_user_ids, user_id, session_id, create_time, update_time, expire_time
-`
-
-type UpdateIdentityFlowParams struct {
-	State         enum.FlowState
-	Payload       []byte
-	CipherVersion int16
-	ProofUserIds  []string
-	Now           time.Time
-	ID            string
-	Revision      int64
-}
-
-func (q *Queries) UpdateIdentityFlow(ctx context.Context, arg UpdateIdentityFlowParams) (IdentityFlow, error) {
-	row := q.db.QueryRow(ctx, updateIdentityFlow,
-		arg.State,
-		arg.Payload,
-		arg.CipherVersion,
-		arg.ProofUserIds,
-		arg.Now,
-		arg.ID,
-		arg.Revision,
-	)
-	var i IdentityFlow
-	err := row.Scan(
-		&i.ID,
-		&i.TokenDigest,
-		&i.State,
-		&i.PolicyFingerprint,
-		&i.Payload,
-		&i.CipherVersion,
-		&i.Revision,
-		&i.ProofUserIds,
-		&i.UserID,
-		&i.SessionID,
-		&i.CreateTime,
-		&i.UpdateTime,
-		&i.ExpireTime,
-	)
-	return i, err
-}
-
 const updateIdentityProviderMeta = `-- name: UpdateIdentityProviderMeta :execrows
 UPDATE identity SET provider_meta = $1, update_time = $2::timestamptz WHERE id = $3 AND delete_time IS NULL
 `
@@ -1866,6 +1817,55 @@ func (q *Queries) UpdateSessionAuthTime(ctx context.Context, arg UpdateSessionAu
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const updateSignInCompletionFlow = `-- name: UpdateSignInCompletionFlow :one
+UPDATE sign_in_completion_flow
+SET state = $1, payload = $2, cipher_version = $3,
+    proof_user_ids = $4::text[], revision = revision + 1,
+    update_time = $5::timestamptz
+WHERE id = $6 AND revision = $7
+  AND state IN (1, 2) AND expire_time > $5::timestamptz
+RETURNING id, token_digest, state, policy_fingerprint, payload, cipher_version, revision, proof_user_ids, user_id, session_id, create_time, update_time, expire_time
+`
+
+type UpdateSignInCompletionFlowParams struct {
+	State         enum.FlowState
+	Payload       []byte
+	CipherVersion int16
+	ProofUserIds  []string
+	Now           time.Time
+	ID            string
+	Revision      int64
+}
+
+func (q *Queries) UpdateSignInCompletionFlow(ctx context.Context, arg UpdateSignInCompletionFlowParams) (SignInCompletionFlow, error) {
+	row := q.db.QueryRow(ctx, updateSignInCompletionFlow,
+		arg.State,
+		arg.Payload,
+		arg.CipherVersion,
+		arg.ProofUserIds,
+		arg.Now,
+		arg.ID,
+		arg.Revision,
+	)
+	var i SignInCompletionFlow
+	err := row.Scan(
+		&i.ID,
+		&i.TokenDigest,
+		&i.State,
+		&i.PolicyFingerprint,
+		&i.Payload,
+		&i.CipherVersion,
+		&i.Revision,
+		&i.ProofUserIds,
+		&i.UserID,
+		&i.SessionID,
+		&i.CreateTime,
+		&i.UpdateTime,
+		&i.ExpireTime,
+	)
+	return i, err
 }
 
 const updateUserDisplayName = `-- name: UpdateUserDisplayName :one

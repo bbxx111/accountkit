@@ -53,7 +53,7 @@ func rendererBinding(t *testing.T, purpose enum.CodePurpose) code.Binding {
 		}
 		return code.Binding{UserID: uid, SessionID: sid}
 	case enum.PurposeSignInComplete:
-		id, err := ids.New(ids.IdentityFlow)
+		id, err := ids.New(ids.SignInCompletionFlow)
 		if err != nil {
 			t.Fatal(err)
 		}

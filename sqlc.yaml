@@ -28,7 +28,7 @@ sql:
               import: "time"
               type: "Time"
               pointer: true
-          - column: "identity_flow.state"
+          - column: "sign_in_completion_flow.state"
             go_type:
               import: "github.com/bbxx111/accountkit/enum"
               type: "FlowState"

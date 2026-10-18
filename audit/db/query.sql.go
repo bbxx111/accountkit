@@ -217,7 +217,7 @@ func (q *Queries) ListAuditFlowEvidence(ctx context.Context, arg ListAuditFlowEv
 
 const listAuditFlowLockKeys = `-- name: ListAuditFlowLockKeys :many
 SELECT DISTINCT hashtextextended(jsonb_build_array(
- 'accountkit.audit.privacy.flow', 'identity_flow'::regclass::oid,
+ 'accountkit.audit.privacy.flow', 'sign_in_completion_flow'::regclass::oid,
  $1::text, $2::text, f.flow_id)::text, 0)::bigint AS lock_key
 FROM unnest($3::text[]) AS f(flow_id)
 ORDER BY lock_key
@@ -347,7 +347,7 @@ func (q *Queries) ListAuditPrivacyFlowUsers(ctx context.Context, arg ListAuditPr
 }
 
 const listLiveAuditFlows = `-- name: ListLiveAuditFlows :many
-SELECT id FROM identity_flow WHERE user_id = $1::text OR proof_user_ids @> ARRAY[$1::text]
+SELECT id FROM sign_in_completion_flow WHERE user_id = $1::text OR proof_user_ids @> ARRAY[$1::text]
 `
 
 func (q *Queries) ListLiveAuditFlows(ctx context.Context, userID string) ([]string, error) {
@@ -402,7 +402,7 @@ func (q *Queries) LockAuditFlowScope(ctx context.Context, lockKey int64) error {
 }
 
 const lockAuditFlows = `-- name: LockAuditFlows :many
-SELECT id, user_id, proof_user_ids, expire_time FROM identity_flow
+SELECT id, user_id, proof_user_ids, expire_time FROM sign_in_completion_flow
 WHERE id = ANY($1::text[]) ORDER BY id FOR UPDATE
 `
 
@@ -495,7 +495,7 @@ func (q *Queries) ScrubAuditEventPrivacy(ctx context.Context, arg ScrubAuditEven
 }
 
 const snapshotAuditFlows = `-- name: SnapshotAuditFlows :many
-SELECT id, user_id, proof_user_ids FROM identity_flow
+SELECT id, user_id, proof_user_ids FROM sign_in_completion_flow
 WHERE id = ANY($1::text[]) ORDER BY id
 `
 

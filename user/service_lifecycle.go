@@ -73,16 +73,16 @@ func (s *Service) softDelete(ctx context.Context, userID string, missing error, 
 		if err != nil {
 			return fmt.Errorf("user: soft delete user: %w", err)
 		}
-		if _, err = q.LockIdentityFlowsForUser(ctx, userID); err != nil {
+		if _, err = q.LockSignInCompletionFlowsForUser(ctx, userID); err != nil {
 			return fmt.Errorf("user: lock sign-in flows: %w", err)
 		}
 		if _, err = q.LockAuditEventsForUserCleanup(ctx, db.LockAuditEventsForUserCleanupParams{UserID: userID, Source: s.d.AuditSource, Namespace: s.d.AuditNamespace}); err != nil {
 			return fmt.Errorf("user: lock flow audit: %w", err)
 		}
-		if _, err = q.ScrubIdentityFlowAuditForUser(ctx, db.ScrubIdentityFlowAuditForUserParams{UserID: userID, Source: s.d.AuditSource, Namespace: s.d.AuditNamespace, AuthenticationActions: authenticationAuditActions()}); err != nil {
+		if _, err = q.ScrubSignInCompletionFlowAuditForUser(ctx, db.ScrubSignInCompletionFlowAuditForUserParams{UserID: userID, Source: s.d.AuditSource, Namespace: s.d.AuditNamespace, AuthenticationActions: authenticationAuditActions()}); err != nil {
 			return fmt.Errorf("user: scrub sign-in flow audit: %w", err)
 		}
-		if _, err = q.DeleteIdentityFlowsForUser(ctx, userID); err != nil {
+		if _, err = q.DeleteSignInCompletionFlowsForUser(ctx, userID); err != nil {
 			return fmt.Errorf("user: delete sign-in flows: %w", err)
 		}
 		revoked, err = s.revokeAllForUser(ctx, q, userID, nil, enum.RevokeUserDeleted, now)

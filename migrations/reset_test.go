@@ -42,7 +42,7 @@ func TestUnsafeResetOnlyTargetSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	var objects, functions, otherFunctions, schemas, users int
-	if err := c.QueryRow(ctx, "SELECT count(*) FROM pg_tables WHERE schemaname=$1 AND tablename IN ('user_account','identity','session','audit_event','identity_flow')", a).Scan(&objects); err != nil {
+	if err := c.QueryRow(ctx, "SELECT count(*) FROM pg_tables WHERE schemaname=$1 AND tablename IN ('user_account','identity','session','audit_event','sign_in_completion_flow')", a).Scan(&objects); err != nil {
 		t.Fatal(err)
 	}
 	for schema, count := range map[string]*int{a: &functions, b: &otherFunctions} {

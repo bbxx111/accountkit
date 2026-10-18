@@ -29,7 +29,7 @@ func historicalPrivacyFixture(t *testing.T) (*fixture, string, string, audit.Eve
 	if err != nil {
 		t.Fatal(err)
 	}
-	mustExec(t, f, `UPDATE identity_flow SET user_id=$2,proof_user_ids=ARRAY[$2::text] WHERE id=$1`, projection.FlowID, b)
+	mustExec(t, f, `UPDATE sign_in_completion_flow SET user_id=$2,proof_user_ids=ARRAY[$2::text] WHERE id=$1`, projection.FlowID, b)
 	flow := audit.Resource{Type: "IDENTITY_FLOW", Namespace: template.Actor.Namespace, ID: projection.FlowID, Name: "private flow name"}
 	makeEvent := func(uid, action string) audit.Event {
 		return audit.Event{ID: uuid.Must(uuid.NewV7()), Source: template.Source, Action: action, Actor: audit.Actor{Type: audit.ActorUser, Namespace: flow.Namespace, ID: uid, Name: "private actor"}, Targets: []audit.Resource{flow}, Context: event.EventContext{ClientIP: "203.0.113.26", DeviceID: "private device", UserAgent: "private agent", RequestID: "kept-request"}, Data: []byte(`{"business":{"keep":7},"accountkit":{"subject_hint":"business-owned"}}`), OccurTime: time.Now()}
@@ -72,7 +72,7 @@ func historicalPurge(t *testing.T, f *fixture, a, b string, flow string) {
 		t.Fatalf("purge %d %v", n, err)
 	}
 	var owner string
-	if err := f.pool.QueryRow(context.Background(), `SELECT user_id FROM identity_flow WHERE id=$1`, flow).Scan(&owner); err != nil || owner != b {
+	if err := f.pool.QueryRow(context.Background(), `SELECT user_id FROM sign_in_completion_flow WHERE id=$1`, flow).Scan(&owner); err != nil || owner != b {
 		t.Fatalf("A purge changed B's flow: owner=%s err=%v", owner, err)
 	}
 }

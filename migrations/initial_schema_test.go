@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// A fresh installation contains only the current initial pair and reaches version one.
+// The frozen initial definition remains first; fresh installations reach the latest version.
 func TestConsolidatedInitialSchema(t *testing.T) {
 	entries, err := fs.ReadDir(".")
 	if err != nil {
@@ -33,7 +33,7 @@ func TestConsolidatedInitialSchema(t *testing.T) {
 	if err := Up(context.Background(), cfg, schema); err != nil {
 		t.Fatal(err)
 	}
-	assertVersion(t, cfg, schema, 1, false)
+	assertVersion(t, cfg, schema, latestVersion(t), false)
 	c := migrationTestConn(t, cfg, schema)
 	var tables int
 	if err := c.QueryRow(context.Background(), "SELECT count(*) FROM pg_tables WHERE schemaname=$1 AND tablename <> 'schema_migrations'", schema).Scan(&tables); err != nil {
@@ -190,7 +190,7 @@ END $$`); err != nil {
 	}
 	initialUp(t, cfg, newSchema)
 	current := migrationTestConn(t, cfg, newSchema)
-	if before, after := migrationCatalogForTables(t, old, oldSchema, true), migrationCatalogForTables(t, current, newSchema, true); before != after {
+	if before, after := strings.ReplaceAll(migrationCatalogForTables(t, old, oldSchema, true), "identity_flow", "sign_in_completion_flow"), migrationCatalogForTables(t, current, newSchema, true); sortedRenameCatalog(t, before) != sortedRenameCatalog(t, after) {
 		t.Fatalf("catalog mismatch\nprevious: %s\ninitial: %s", before, after)
 	}
 }

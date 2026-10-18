@@ -60,7 +60,7 @@ func fingerprintJSON(v any) string {
 	return hex.EncodeToString(h[:])
 }
 
-func identityFlowConfiguration(d Deps, policy *IdentityPolicy) (string, string) {
+func signInCompletionFlowConfiguration(d Deps, policy *IdentityPolicy) (string, string) {
 	var searchPath string
 	if d.Repo.pool != nil {
 		cfg := d.Repo.pool.Config().ConnConfig
@@ -69,8 +69,13 @@ func identityFlowConfiguration(d Deps, policy *IdentityPolicy) (string, string) 
 	}
 	// Bind the logical instance, not the physical database name: pg_restore into
 	// an independent database must preserve the original instance's flow context.
+	extra := d.SignInCompletionFlowContext
+	if extra == "" {
+		extra = d.IdentityFlowContext
+	}
+	// The JSON field names and order are persisted encryption context, including Extra.
 	context := fingerprintJSON(struct{ SearchPath, Prefix, JWT, Extra string }{
-		searchPath, d.Codes.InstancePrefix(), d.Signer.ContextFingerprint(), d.IdentityFlowContext,
+		searchPath, d.Codes.InstancePrefix(), d.Signer.ContextFingerprint(), extra,
 	})
 	provider := func(v any) string {
 		if p, ok := v.(interface{ PolicyFingerprint() string }); ok {
@@ -95,7 +100,7 @@ func (s *Service) encodeFlow(id string, p completionPayload) ([]byte, int16, err
 	return ct, int16(v), err
 }
 
-func (s *Service) decodeFlow(row db.IdentityFlow, dev Device) (completionPayload, error) {
+func (s *Service) decodeFlow(row db.SignInCompletionFlow, dev Device) (completionPayload, error) {
 	var p completionPayload
 	if !row.ExpireTime.After(s.now()) || row.PolicyFingerprint != s.flowPolicy || (row.State != enum.FlowPending && row.State != enum.FlowVerified && row.State != enum.FlowCompleted) {
 		return p, ErrSignInCompletionInvalid
@@ -118,12 +123,12 @@ func (s *Service) decodeFlow(row db.IdentityFlow, dev Device) (completionPayload
 	return p, nil
 }
 
-func (s *Service) loadFlow(ctx context.Context, token string, dev Device) (db.IdentityFlow, completionPayload, error) {
+func (s *Service) loadFlow(ctx context.Context, token string, dev Device) (db.SignInCompletionFlow, completionPayload, error) {
 	b, err := base64.RawURLEncoding.DecodeString(token)
 	if err != nil || len(b) != 32 {
-		return db.IdentityFlow{}, completionPayload{}, ErrSignInCompletionInvalid
+		return db.SignInCompletionFlow{}, completionPayload{}, ErrSignInCompletionInvalid
 	}
-	row, err := s.d.Repo.Q().GetIdentityFlowByTokenDigest(ctx, hex.EncodeToString(hashRefresh(token)))
+	row, err := s.d.Repo.Q().GetSignInCompletionFlowByTokenDigest(ctx, hex.EncodeToString(hashRefresh(token)))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return row, completionPayload{}, ErrSignInCompletionInvalid
 	}
@@ -151,7 +156,7 @@ func (s *Service) createPending(ctx context.Context, q *db.Queries, proof comple
 	if err != nil {
 		return SignInResult{}, "", err
 	}
-	id, err := ids.New(ids.IdentityFlow)
+	id, err := ids.New(ids.SignInCompletionFlow)
 	if err != nil {
 		return SignInResult{}, "", err
 	}
@@ -160,7 +165,7 @@ func (s *Service) createPending(ctx context.Context, q *db.Queries, proof comple
 	if err != nil {
 		return SignInResult{}, "", err
 	}
-	_, err = q.CreateIdentityFlow(ctx, db.CreateIdentityFlowParams{ID: id, TokenDigest: hex.EncodeToString(digest), State: enum.FlowPending, PolicyFingerprint: s.flowPolicy, Payload: ct, CipherVersion: version, ProofUserIds: []string{}, CreateTime: now, ExpireTime: deadline})
+	_, err = q.CreateSignInCompletionFlow(ctx, db.CreateSignInCompletionFlowParams{ID: id, TokenDigest: hex.EncodeToString(digest), State: enum.FlowPending, PolicyFingerprint: s.flowPolicy, Payload: ct, CipherVersion: version, ProofUserIds: []string{}, CreateTime: now, ExpireTime: deadline})
 	if err != nil {
 		return SignInResult{}, "", err
 	}
@@ -174,7 +179,13 @@ func completionRequest(token string, cred CodeCredential) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// CleanupIdentityFlows 一次只清理固定批次，过期记录在读取时已经立即失效。
+// CleanupSignInCompletionFlows 一次只清理固定批次，过期记录在读取时已经立即失效。
+func (s *Service) CleanupSignInCompletionFlows(ctx context.Context) (int64, error) {
+	return s.d.Repo.Q().DeleteExpiredSignInCompletionFlows(ctx, db.DeleteExpiredSignInCompletionFlowsParams{Now: s.now(), BatchSize: 1000})
+}
+
+// CleanupIdentityFlows removes an expired batch of sign-in completion flows.
+// Deprecated: use CleanupSignInCompletionFlows.
 func (s *Service) CleanupIdentityFlows(ctx context.Context) (int64, error) {
-	return s.d.Repo.Q().DeleteExpiredIdentityFlows(ctx, db.DeleteExpiredIdentityFlowsParams{Now: s.now(), BatchSize: 1000})
+	return s.CleanupSignInCompletionFlows(ctx)
 }

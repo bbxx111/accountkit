@@ -13,7 +13,7 @@ accountsvc 是 accountkit 的可选官方宿主。同一个 Go module 同时支�
 
 服务默认使用库管理的本地有界异步审计及本地管理查询，`Auth.Start/Close` 管理 worker，服务管理连接。`ACCOUNTKIT_AUDIT_SOURCE` / `ACCOUNTKIT_AUDIT_NAMESPACE` 可显式设置，默认分别为 `accountkit/<schema>` / `accountkit/<schema>/resources`；同库共享审计时保持实例范围稳定。服务未内置远端审计适配器或任意业务审计 HTTP 写入接口。嵌入宿主的读写接管与仅写入模式见 [examples/audit](../examples/audit/main.go) 和[库装配说明](../README.md#宿主审计装配与清理责任)。
 
-当前审计使用 UUIDv7 标准字符串，管理 HTTP 仍返回认证投影；result 未知时为 null。旧审计 page_token 返回 400，客户端清除后重新翻页。旧十七列审计的 version=1 及旧 version=2 库均拒绝自动接管，需按[迁移手册](migrations.md)处理。外部清理须有持久化流程和完成核验，`USER_PURGED` 不能独立证明清理完成；切换后旧本地副本仍受保留和匿名化责任约束，详见[审计迁移说明](compatibility.md#通用审计公开接口与协议迁移)。
+当前审计使用 UUIDv7 标准字符串，管理 HTTP 仍返回认证投影；result 未知时为 null。旧审计 page_token 返回 400，客户端清除后重新翻页。当前 0001 直接定义 sign_in_completion_flow，新空库初始化为 version=1。旧表名 identity_flow 的同号 v1、旧十七列审计、双表并存和任何已撤回旧 v2（含此前新表名 v2）均拒绝接管；重复 migrate 不会自动改名。采用新定义须人工核验后使用新空资源，需保留旧数据时另行制定并验证迁移方案，见[迁移手册](migrations.md#登录补全流程命名调整)。外部清理须有持久化流程和完成核验，`USER_PURGED` 不能独立证明清理完成；切换后旧本地副本仍受保留和匿名化责任约束，详见[审计迁移说明](compatibility.md#通用审计公开接口与协议迁移)。
 
 ## 构建与运行
 

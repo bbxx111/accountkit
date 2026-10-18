@@ -135,7 +135,7 @@ func TestAuditHistoryBatchDoesNotCrossUnrelatedFlows(t *testing.T) {
 	privacyFlowRow(t, p, []string{privacyB})
 	ctx := context.Background()
 	const otherFlow = "f_0000000000002"
-	if _, err := p.Exec(ctx, `INSERT INTO identity_flow SELECT $1,$1,state,policy_fingerprint,payload,cipher_version,revision,proof_user_ids,user_id,session_id,create_time,update_time,expire_time FROM identity_flow WHERE id=$2`, otherFlow, privacyFlow); err != nil {
+	if _, err := p.Exec(ctx, `INSERT INTO sign_in_completion_flow SELECT $1,$1,state,policy_fingerprint,payload,cipher_version,revision,proof_user_ids,user_id,session_id,create_time,update_time,expire_time FROM sign_in_completion_flow WHERE id=$2`, otherFlow, privacyFlow); err != nil {
 		t.Fatal(err)
 	}
 	old := historicalGeneric(t, privacyB, privacyFlow)
@@ -171,7 +171,7 @@ func TestAuditLateLinkAfterFlowRemovalScrubsHistory(t *testing.T) {
 	if _, err := testStore(t, p).InsertBatch(ctx, []audit.Event{old}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.Exec(ctx, `DELETE FROM identity_flow WHERE id=$1`, privacyFlow); err != nil {
+	if _, err := p.Exec(ctx, `DELETE FROM sign_in_completion_flow WHERE id=$1`, privacyFlow); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := p.Exec(ctx, `UPDATE user_account SET state=$2 WHERE id=$1`, privacyA, enum.UserDeleted); err != nil {

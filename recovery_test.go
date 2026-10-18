@@ -148,7 +148,7 @@ func TestRecoveryFixture(t *testing.T) {
 	}
 	completedResult, err := a.Users().CompleteSignIn(ctx, state.CompletedToken, state.CompletedCode, user.Device{}, meta)
 	var completedDeadline time.Time
-	if e := pool.QueryRow(ctx, "SELECT expire_time FROM identity_flow WHERE state=$1", enum.FlowCompleted).Scan(&completedDeadline); e != nil {
+	if e := pool.QueryRow(ctx, "SELECT expire_time FROM sign_in_completion_flow WHERE state=$1", enum.FlowCompleted).Scan(&completedDeadline); e != nil {
 		t.Fatal(e)
 	}
 	if time.Now().Before(completedDeadline) {
@@ -178,7 +178,7 @@ func TestRecoveryFixture(t *testing.T) {
 func snapshotRecovery(t *testing.T, pool *pgxpool.Pool) string {
 	t.Helper()
 	var flows string
-	if err := pool.QueryRow(context.Background(), "SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY id),'[]'::jsonb)::text FROM identity_flow t").Scan(&flows); err != nil {
+	if err := pool.QueryRow(context.Background(), "SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY id),'[]'::jsonb)::text FROM sign_in_completion_flow t").Scan(&flows); err != nil {
 		t.Fatal(err)
 	}
 	return snapshotSource(t, pool) + "\n" + flows
@@ -186,7 +186,7 @@ func snapshotRecovery(t *testing.T, pool *pgxpool.Pool) string {
 
 func assertRecoveryFlows(t *testing.T, pool *pgxpool.Pool, state recoveryState) {
 	t.Helper()
-	rows, err := pool.Query(context.Background(), "SELECT state,payload,cipher_version,expire_time,user_id,session_id FROM identity_flow ORDER BY state")
+	rows, err := pool.Query(context.Background(), "SELECT state,payload,cipher_version,expire_time,user_id,session_id FROM sign_in_completion_flow ORDER BY state")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -206,18 +206,18 @@ func TestReplacementConcurrentMutations(t *testing.T) {
 				if replacementFirst {
 					switch operation {
 					case "same-identity", "unbind":
-						wantMutation = user.ErrNotFound
+						wantMutation = user.ErrInvalidToken
 					case "sign-in":
 						wantMutation = code.ErrInvalid
 					case "reauthenticate":
-						wantMutation = user.ErrNotAnchor
-					case "refresh-other":
+						wantMutation = user.ErrInvalidToken
+					case "refresh-current", "refresh-other":
 						wantMutation = user.ErrInvalidGrant
 					}
 				} else {
 					switch operation {
 					case "same-identity", "unbind":
-						wantReplacement = user.ErrNotFound
+						wantReplacement = user.ErrInvalidToken
 					case "freeze":
 						wantReplacement = user.ErrUserFrozen
 					case "delete", "logout", "revoke-others", "admin-revoke-all":
@@ -280,18 +280,9 @@ func TestReplacementConcurrentMutations(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				wantSessions := 1
-				switch operation {
-				case "freeze", "delete", "admin-revoke-all":
-					wantSessions = 0
-				case "logout", "revoke-others":
-					if replacementFirst {
-						wantSessions = 0
-					}
-				case "unbind":
-					if !replacementFirst {
-						wantSessions = 2
-					}
+				wantSessions := 0
+				if !replacementFirst && (operation == "logout" || operation == "revoke-others") {
+					wantSessions = 1
 				}
 				if len(active) != wantSessions {
 					t.Fatalf("active sessions=%d want=%d", len(active), wantSessions)

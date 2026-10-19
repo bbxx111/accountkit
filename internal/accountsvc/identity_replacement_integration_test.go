@@ -18,9 +18,10 @@ import (
 func TestServiceIntegrationIdentityReplacement(t *testing.T) {
 	f := newIntegration(t)
 	f.env["ACCOUNTKIT_REAUTH_MAX_AGE"] = "5s"
+	f.env["ACCOUNTKIT_MAX_IDENTITIES_PER_KIND"] = "2"
 	p := f.start(nil)
-	const oldTarget, newTarget = "replace-old@example.test", "replace-new@example.test"
-	f.secrets = append(f.secrets, oldTarget, newTarget)
+	const oldTarget, newTarget, retainedTarget = "replace-old@example.test", "replace-new@example.test", "replace-retained@example.test"
+	f.secrets = append(f.secrets, oldTarget, newTarget, retainedTarget)
 	rememberPair := func(pair map[string]any) {
 		f.secrets = append(f.secrets, pair["access_token"].(string), pair["refresh_token"].(string))
 	}
@@ -71,6 +72,11 @@ func TestServiceIntegrationIdentityReplacement(t *testing.T) {
 	oldName := identities[0].(map[string]any)["name"].(string)
 	oldID := oldName[strings.LastIndex(oldName, "/")+1:]
 	path := "/v1/users/me/identities/" + oldID + ":replace"
+	// Retention requires a separate authentication source, even after successful BIND.
+	f.call("POST", p.baseURL+"/v1/users/me:sendBindCode", access, map[string]string{"channel": "EMAIL", "target": retainedTarget}, 200)
+	retainedCode := mail(retainedTarget, "绑定")
+	retainedIdentity := f.call("POST", p.baseURL+"/v1/users/me/identities", access, map[string]any{"email": map[string]string{"code_id": f.codeID(retainedTarget), "target": retainedTarget, "code": retainedCode}}, 201)
+	retainedName := retainedIdentity["name"].(string)
 	f.call("POST", p.baseURL+"/v1/users/me:sendBindCode", access, map[string]string{"channel": "EMAIL", "target": newTarget}, 200)
 	bindCode := mail(newTarget, "绑定")
 	body := map[string]any{"email": map[string]string{"code_id": f.codeID(newTarget), "target": newTarget, "code": bindCode}}
@@ -80,9 +86,9 @@ func TestServiceIntegrationIdentityReplacement(t *testing.T) {
 	if rejected["error"].(map[string]any)["reason"] != "REAUTHENTICATION_REQUIRED" {
 		t.Fatal("expired auth did not require reauthentication")
 	}
-	f.call("POST", p.baseURL+"/v1/users/me:sendReauthenticationCode", access, map[string]string{"channel": "EMAIL", "target": oldTarget}, 200)
-	reauthCode := mail(oldTarget, "重新认证")
-	reauth := f.call("POST", p.baseURL+"/v1/users/me:reauthenticate", access, map[string]any{"email": map[string]string{"code_id": f.codeID(oldTarget), "target": oldTarget, "code": reauthCode}}, 200)
+	f.call("POST", p.baseURL+"/v1/users/me:sendReauthenticationCode", access, map[string]string{"channel": "EMAIL", "target": retainedTarget}, 200)
+	reauthCode := mail(retainedTarget, "重新认证")
+	reauth := f.call("POST", p.baseURL+"/v1/users/me:reauthenticate", access, map[string]any{"email": map[string]string{"code_id": f.codeID(retainedTarget), "target": retainedTarget, "code": reauthCode}}, 200)
 	if _, ok := reauth["refresh_token"]; ok {
 		t.Fatal("reauthentication returned unexpected refresh token")
 	}
@@ -99,7 +105,7 @@ func TestServiceIntegrationIdentityReplacement(t *testing.T) {
 	list = f.call("GET", p.baseURL+"/v1/users/me/identities", access, nil, 200)
 	privateResponse(list)
 	identities = list["identities"].([]any)
-	if len(identities) != 1 || identities[0].(map[string]any)["name"] != newName {
+	if len(identities) != 2 || identities[0].(map[string]any)["name"] != newName && identities[1].(map[string]any)["name"] != newName || identities[0].(map[string]any)["name"] != retainedName && identities[1].(map[string]any)["name"] != retainedName {
 		t.Fatal("list does not confirm replacement")
 	}
 	me := f.call("GET", p.baseURL+"/v1/users/me", access, nil, 200)
@@ -135,7 +141,7 @@ func TestServiceIntegrationIdentityReplacement(t *testing.T) {
 	list = f.call("GET", p.baseURL+"/v1/users/me/identities", access, nil, 200)
 	privateResponse(list)
 	identities = list["identities"].([]any)
-	if len(identities) != 1 || identities[0].(map[string]any)["name"] != newName {
+	if len(identities) != 2 || identities[0].(map[string]any)["name"] != newName && identities[1].(map[string]any)["name"] != newName || identities[0].(map[string]any)["name"] != retainedName && identities[1].(map[string]any)["name"] != retainedName {
 		t.Fatal("new identity not retained across service restart")
 	}
 	retained = f.call("POST", p.baseURL+"/v1/token", "", map[string]string{"grant_type": "refresh_token", "refresh_token": retained["refresh_token"].(string)}, 200)

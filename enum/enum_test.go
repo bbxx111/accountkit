@@ -88,3 +88,13 @@ func TestIdentityReplacementEnumValues(t *testing.T) {
 		t.Fatalf("event roundtrip: %v %v", e, err)
 	}
 }
+
+func TestIdentityUnboundRevokeReason(t *testing.T) {
+	if enum.RevokeAdmin != 7 || enum.RevokeIdentityReplaced != 8 || enum.RevokeIdentityUnbound != 9 {
+		t.Fatal("append-only revoke values changed")
+	}
+	r, err := enum.ParseRevokeReason("IDENTITY_UNBOUND")
+	if err != nil || r != enum.RevokeIdentityUnbound || !r.Valid() || r.String() != "IDENTITY_UNBOUND" || enum.RevokeReason(10).Valid() {
+		t.Fatalf("unbind revoke reason: %v %v", r, err)
+	}
+}

@@ -47,6 +47,8 @@ func TestWriteServiceErrorMapping(t *testing.T) {
 		{code.ErrExhausted, 400, "INVALID_ARGUMENT/CODE_ATTEMPTS_EXHAUSTED", ""},
 		{user.ErrInvalidTarget, 400, "INVALID_ARGUMENT/INVALID_TARGET", ""},
 		{fmt.Errorf("%w: device id required", user.ErrInvalidArgument), 400, "INVALID_ARGUMENT/INVALID_ARGUMENT", ""},
+		{user.ErrReauthenticationRequired, 400, "FAILED_PRECONDITION/REAUTHENTICATION_REQUIRED", ""},
+		{user.ErrInsufficientScope, 403, "PERMISSION_DENIED/INSUFFICIENT_SCOPE", ""},
 		{user.ErrNotAnchor, 400, "FAILED_PRECONDITION/TARGET_NOT_ANCHOR", ""},
 		{user.ErrUserFrozen, 403, "PERMISSION_DENIED/USER_FROZEN", ""},
 		{user.ErrNotFound, 404, "NOT_FOUND/NOT_FOUND", ""},

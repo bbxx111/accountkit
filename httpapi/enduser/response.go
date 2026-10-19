@@ -185,6 +185,10 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, r *http.Request, err 
 			msg = "invalid argument"
 		}
 		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_ARGUMENT", msg))
+	case errors.Is(err, user.ErrInsufficientScope):
+		apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, "INSUFFICIENT_SCOPE", "token scope does not permit this operation"))
+	case errors.Is(err, user.ErrReauthenticationRequired):
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "REAUTHENTICATION_REQUIRED", "recent authentication required for this operation"))
 	case errors.Is(err, user.ErrNotAnchor):
 		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "TARGET_NOT_ANCHOR", "target must be a phone or email already bound to this account"))
 	case errors.Is(err, sender.ErrDisabled):

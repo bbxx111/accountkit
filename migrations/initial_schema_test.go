@@ -26,7 +26,7 @@ func TestConsolidatedInitialSchema(t *testing.T) {
 			names = append(names, entry.Name())
 		}
 	}
-	if !slices.Equal(names, []string{"0001_init.down.sql", "0001_init.up.sql"}) {
+	if !slices.Equal(names, []string{"0001_init.down.sql", "0001_init.up.sql", "0002_session_authentication_context.down.sql", "0002_session_authentication_context.up.sql"}) {
 		t.Errorf("unexpected production migrations: %v", names)
 	}
 	cfg, schema := safetyDB(t)
@@ -39,8 +39,8 @@ func TestConsolidatedInitialSchema(t *testing.T) {
 	if err := c.QueryRow(context.Background(), "SELECT count(*) FROM pg_tables WHERE schemaname=$1 AND tablename <> 'schema_migrations'", schema).Scan(&tables); err != nil {
 		t.Fatal(err)
 	}
-	if tables != 5 {
-		t.Fatalf("business tables = %d, want 5", tables)
+	if tables != 7 {
+		t.Fatalf("business tables = %d, want 7", tables)
 	}
 	if _, err := c.Exec(context.Background(), "INSERT INTO user_account(id,state) VALUES('u_0000000000001',1)"); err != nil {
 		t.Fatal(err)

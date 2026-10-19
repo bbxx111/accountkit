@@ -103,9 +103,7 @@ func TestSignInCompletionFlowNonemptyRepeatAndIsolation(t *testing.T) {
 	if err := c.QueryRow(context.Background(), `SELECT 'sign_in_completion_flow'::regclass::oid`).Scan(&oldOID); err != nil {
 		t.Fatal(err)
 	}
-	if err := Up(context.Background(), cfg, schema); err != nil {
-		t.Fatal(err)
-	}
+	initialUp(t, cfg, schema)
 	assertVersion(t, cfg, schema, 1, false)
 	if got := renameDataSnapshot(t, c, "sign_in_completion_flow"); got != before {
 		t.Fatal("repeat Up changed records or encrypted bytes")
@@ -119,9 +117,7 @@ func TestSignInCompletionFlowNonemptyRepeatAndIsolation(t *testing.T) {
 	if err := c.QueryRow(context.Background(), `SELECT 'sign_in_completion_flow'::regclass::oid, to_regclass('identity_flow') IS NOT NULL`).Scan(&newOID, &oldExists); err != nil || newOID != oldOID || oldExists {
 		t.Fatalf("repeat Up recreated table: %d -> %d old=%v err=%v", oldOID, newOID, oldExists, err)
 	}
-	if err := Up(context.Background(), cfg, schema); err != nil {
-		t.Fatal(err)
-	}
+	initialUp(t, cfg, schema)
 	if renameDataSnapshot(t, c, "sign_in_completion_flow") != before || migrationCatalog(t, c, schema) != renamedCatalog {
 		t.Fatal("repeat Up changed schema or records")
 	}

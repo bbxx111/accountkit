@@ -45,6 +45,20 @@ sql:
               import: "github.com/bbxx111/accountkit/enum"
               type: "RevokeReason"
               pointer: true
+          - column: "session_client_info.snapshot_kind"
+            go_type:
+              import: "github.com/bbxx111/accountkit/enum"
+              type: "ClientInfoSnapshotKind"
+          - column: "session_client_info.client_type"
+            go_type:
+              import: "github.com/bbxx111/accountkit/enum"
+              type: "ClientType"
+              pointer: true
+          - column: "session_client_info.device_type"
+            go_type:
+              import: "github.com/bbxx111/accountkit/enum"
+              type: "DeviceType"
+              pointer: true
           - column: "audit_event.result"
             go_type:
               import: "github.com/bbxx111/accountkit/enum"
@@ -77,6 +91,20 @@ sql:
             go_type:
               import: "time"
               type: "Time"
+              pointer: true
+          - column: "session_client_info.snapshot_kind"
+            go_type:
+              import: "github.com/bbxx111/accountkit/enum"
+              type: "ClientInfoSnapshotKind"
+          - column: "session_client_info.client_type"
+            go_type:
+              import: "github.com/bbxx111/accountkit/enum"
+              type: "ClientType"
+              pointer: true
+          - column: "session_client_info.device_type"
+            go_type:
+              import: "github.com/bbxx111/accountkit/enum"
+              type: "DeviceType"
               pointer: true
           - column: "audit_event.result"
             go_type:

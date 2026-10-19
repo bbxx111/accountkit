@@ -2,12 +2,16 @@ package user
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	"testing"
 	"time"
 
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
 	"github.com/bbxx111/accountkit/user/db"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // A malformed internal reference must fail before changing the previous source
@@ -71,6 +75,37 @@ func TestSessionAuthenticationReferences(t *testing.T) {
 			rows, err := repo.Q().ListSessionAuthenticationIdentities(ctx, db.ListSessionAuthenticationIdentitiesParams{UserID: uid, SessionID: sid})
 			if err != nil || len(rows) != 1 || rows[0].IdentityID != valid {
 				t.Fatalf("invalid source changed previous set: %+v %v", rows, err)
+			}
+		})
+	}
+}
+
+func TestCurrentSessionContextStorageErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		cause       error
+		unavailable bool
+	}{
+		{"EOF", io.EOF, true},
+		{"unexpected EOF", io.ErrUnexpectedEOF, true},
+		{"wrapped EOF", fmt.Errorf("read current session: %w", io.EOF), true},
+		{"wrapped unexpected EOF", fmt.Errorf("read current session: %w", io.ErrUnexpectedEOF), true},
+		{"SQL programming error", &pgconn.PgError{Code: "42703", Message: "synthetic undefined column"}, false},
+		{"wrapped SQL programming error", fmt.Errorf("read current session: %w", &pgconn.PgError{Code: "42P01", Message: "synthetic undefined table"}), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := sessionContextStorageError(tc.cause)
+			if errors.Is(got, ErrUnavailable) != tc.unavailable {
+				t.Errorf("dependency classification=%v want unavailable=%v", got, tc.unavailable)
+			}
+			if errors.Is(got, ErrInvalidToken) {
+				t.Error("storage failure classified as invalid token")
+			}
+			if !errors.Is(got, tc.cause) {
+				t.Error("storage cause lost")
+			}
+			if !tc.unavailable && got != tc.cause {
+				t.Error("programming error must remain unchanged")
 			}
 		})
 	}

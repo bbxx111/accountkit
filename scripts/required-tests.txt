@@ -648,3 +648,4 @@ github.com/bbxx111/accountkit/user/TestReauthenticationSourceRollback
 github.com/bbxx111/accountkit/user/TestUnknownSessionAuthenticationSourcesRefresh
 github.com/bbxx111/accountkit/user/TestSessionAuthenticationPendingExistingAccount
 github.com/bbxx111/accountkit/user/TestSessionAuthenticationReferences
+github.com/bbxx111/accountkit/user/TestCurrentSessionContextStorageErrors

@@ -167,8 +167,22 @@ func TestSessionAuthenticationSourceWriteRollback(t *testing.T) {
 			if pending {
 				p := pendingFlow(t, f, "rollback-source")
 				cred := completionCredential(t, f, p, enum.IdentityEmail, email1)
-				if _, err := f.svc.CompleteSignIn(ctx, p.SignInCompletionToken, cred, user.Device{}, meta1); err == nil {
-					t.Fatal("source write failure ignored")
+				for attempt := 0; attempt < 2; attempt++ {
+					result, err := f.svc.CompleteSignIn(ctx, p.SignInCompletionToken, cred, user.Device{}, meta1)
+					if err == nil {
+						t.Fatal("source write failure ignored")
+					}
+					if result.Tokens != nil || result.Pending != nil {
+						t.Fatal("rolled-back completion returned a result")
+					}
+					var state enum.FlowState
+					var owner, sessionID *string
+					if err := f.pool.QueryRow(ctx, `SELECT state,user_id,session_id FROM sign_in_completion_flow`).Scan(&state, &owner, &sessionID); err != nil {
+						t.Fatal(err)
+					}
+					if state != enum.FlowVerified || owner != nil || sessionID != nil {
+						t.Fatalf("completion/replay result partially committed: state=%v owner_present=%v session_present=%v", state, owner != nil, sessionID != nil)
+					}
 				}
 			} else {
 				if err := f.sendSignInCode(ctx, enum.IdentityPhone, phone1, meta1); err != nil {

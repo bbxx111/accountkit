@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 
@@ -112,7 +113,7 @@ func sessionContextStorageError(err error) error {
 	var connect *pgconn.ConnectError
 	var network net.Error
 	var database *pgconn.PgError
-	if errors.Is(err, puddle.ErrClosedPool) || errors.Is(err, context.DeadlineExceeded) || errors.As(err, &connect) || errors.As(err, &network) ||
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, puddle.ErrClosedPool) || errors.Is(err, context.DeadlineExceeded) || errors.As(err, &connect) || errors.As(err, &network) ||
 		(errors.As(err, &database) && (strings.HasPrefix(database.Code, "08") || strings.HasPrefix(database.Code, "53") || database.Code == "57P01" || database.Code == "57P02" || database.Code == "57P03")) {
 		return fmt.Errorf("%w: session context storage: %w", ErrUnavailable, err)
 	}

@@ -1,5 +1,7 @@
 # accountkit 接入契约 Implementation Plan
 
+> **最终状态（2026-10-19 核对）：** 本计划对应变更已实施、发布为 v0.2.0 并归档，[正式任务](../../../openspec/changes/archive/2026-10-09-add-host-account-contracts/tasks.md)为 24/24 完成；实际检查、发布及消费证据见[验收记录](../../../openspec/changes/archive/2026-10-09-add-host-account-contracts/verification.md)。下文未勾选步骤保留为历史计划，不表示当前开发待办，也不作为重复实施指令。产品接入与真实环境验收由集成方按[上线清单](../../release-checklist.md)跟踪。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
 **Goal:** 为嵌入式宿主发布包含验证码轮次、跨轮次失败预算、公开资料查询、生命周期事务保护和受控离线导入能力的 accountkit 固定版本。

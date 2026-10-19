@@ -85,6 +85,9 @@ func (s *Service) GetCurrentSession(ctx context.Context, p Principal) (CurrentSe
 		if sess.DeviceName != nil {
 			result.DeviceName = *sess.DeviceName
 		}
+		if err := s.loadCurrentSessionClientInfo(ctx, q, p.UserID, &result); err != nil {
+			return err
+		}
 		if !sess.AuthenticationIdentitiesKnown {
 			return nil
 		}

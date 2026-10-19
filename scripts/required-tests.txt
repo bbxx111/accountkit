@@ -662,3 +662,14 @@ github.com/bbxx111/accountkit/user/TestIdentityUnbindSameKindSources
 github.com/bbxx111/accountkit/user/TestReplacementCurrentAuthenticationSource
 github.com/bbxx111/accountkit/user/TestSessionContextConcurrentRevocation
 github.com/bbxx111/accountkit/user/TestSessionContextPendingUnbindOrder
+github.com/bbxx111/accountkit/user/TestSessionClientInfoSnapshots
+github.com/bbxx111/accountkit/user/TestSessionClientInfoValidationBeforeConsumption
+github.com/bbxx111/accountkit/user/TestPendingClientInfoSnapshots
+github.com/bbxx111/accountkit/user/TestRefreshClientInfoGrace
+github.com/bbxx111/accountkit/user/TestSessionContextCleanupAndPurge
+github.com/bbxx111/accountkit/user/TestPendingClientInfoLegacyAndFallback
+github.com/bbxx111/accountkit/user/TestSessionClientInfoWriteRollback
+github.com/bbxx111/accountkit/user/TestSessionContextCleanupBoundedAndAtomic
+github.com/bbxx111/accountkit/user/TestSessionClientInfoCurrentAtomicRead
+github.com/bbxx111/accountkit/user/TestSessionContextPurgeRefreshConcurrency
+github.com/bbxx111/accountkit/user/TestSessionClientInfoSparseObservations

@@ -457,13 +457,19 @@ func (q *Queries) DeleteSignInCompletionFlowsForUser(ctx context.Context, userID
 }
 
 const deleteStaleSessions = `-- name: DeleteStaleSessions :execrows
-DELETE FROM session
-WHERE id IN (
-    SELECT id FROM session
-    WHERE (revoke_time IS NOT NULL AND revoke_time < $1::timestamptz)
-       OR (revoke_time IS NULL AND refresh_expire_time < $1::timestamptz)
-    LIMIT $2::int
+WITH targets AS MATERIALIZED (
+ SELECT id FROM session
+ WHERE (revoke_time IS NOT NULL AND revoke_time < $1::timestamptz)
+    OR (revoke_time IS NULL AND refresh_expire_time < $1::timestamptz)
+ ORDER BY id LIMIT $2::int FOR UPDATE
+), removed_identities AS (
+ DELETE FROM session_authentication_identity WHERE session_id IN (SELECT id FROM targets)
+ RETURNING session_id
+), removed_snapshots AS (
+ DELETE FROM session_client_info WHERE session_id IN (SELECT id FROM targets)
+ RETURNING session_id
 )
+DELETE FROM session WHERE id IN (SELECT id FROM targets)
 `
 
 type DeleteStaleSessionsParams struct {
@@ -471,8 +477,8 @@ type DeleteStaleSessionsParams struct {
 	BatchSize int32
 }
 
-// 维护任务 cleanup_sessions：物理删除吊销/过期超过保留期的会话；子查询限批，避免单事务锁太多行。
-// 两个 OR 分支分别命中 idx_session_revoke_time / idx_session_refresh_expire_time。
+// Lock a bounded batch before deleting context and parents atomically. Retention
+// is based on the original revoke/expiry time, never on snapshot observations.
 func (q *Queries) DeleteStaleSessions(ctx context.Context, arg DeleteStaleSessionsParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteStaleSessions, arg.Before, arg.BatchSize)
 	if err != nil {
@@ -1502,6 +1508,32 @@ func (q *Queries) LockSessionByID(ctx context.Context, id string) (Session, erro
 		&i.AuthenticationIdentitiesKnown,
 	)
 	return i, err
+}
+
+const lockSessionsForUserContextCleanup = `-- name: LockSessionsForUserContextCleanup :many
+SELECT id FROM session WHERE user_id = $1 ORDER BY id FOR UPDATE
+`
+
+// Lock historical and current sessions in the same order as revocation, before
+// removing context. Refresh holds a session lock without acquiring a user lock.
+func (q *Queries) LockSessionsForUserContextCleanup(ctx context.Context, userID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, lockSessionsForUserContextCleanup, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockSignInCompletionFlow = `-- name: LockSignInCompletionFlow :one

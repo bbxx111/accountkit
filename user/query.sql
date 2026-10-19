@@ -232,15 +232,21 @@ UPDATE session SET auth_time = @auth_time, update_time = @auth_time
 WHERE id = @id AND revoke_time IS NULL AND refresh_expire_time > @auth_time::timestamptz;
 
 -- name: DeleteStaleSessions :execrows
--- 维护任务 cleanup_sessions：物理删除吊销/过期超过保留期的会话；子查询限批，避免单事务锁太多行。
--- 两个 OR 分支分别命中 idx_session_revoke_time / idx_session_refresh_expire_time。
-DELETE FROM session
-WHERE id IN (
-    SELECT id FROM session
-    WHERE (revoke_time IS NOT NULL AND revoke_time < @before::timestamptz)
-       OR (revoke_time IS NULL AND refresh_expire_time < @before::timestamptz)
-    LIMIT @batch_size::int
-);
+-- Lock a bounded batch before deleting context and parents atomically. Retention
+-- is based on the original revoke/expiry time, never on snapshot observations.
+WITH targets AS MATERIALIZED (
+ SELECT id FROM session
+ WHERE (revoke_time IS NOT NULL AND revoke_time < @before::timestamptz)
+    OR (revoke_time IS NULL AND refresh_expire_time < @before::timestamptz)
+ ORDER BY id LIMIT @batch_size::int FOR UPDATE
+), removed_identities AS (
+ DELETE FROM session_authentication_identity WHERE session_id IN (SELECT id FROM targets)
+ RETURNING session_id
+), removed_snapshots AS (
+ DELETE FROM session_client_info WHERE session_id IN (SELECT id FROM targets)
+ RETURNING session_id
+)
+DELETE FROM session WHERE id IN (SELECT id FROM targets);
 
 -- name: CountActiveSessionsByUser :one
 -- 管理端用户详情：活跃会话数；命中 idx_session_user_id。
@@ -493,3 +499,8 @@ WITH removed_identities AS (
 )
 DELETE FROM session_client_info c USING session s
 WHERE c.session_id = s.id AND s.user_id = @user_id;
+
+-- name: LockSessionsForUserContextCleanup :many
+-- Lock historical and current sessions in the same order as revocation, before
+-- removing context. Refresh holds a session lock without acquiring a user lock.
+SELECT id FROM session WHERE user_id = @user_id ORDER BY id FOR UPDATE;

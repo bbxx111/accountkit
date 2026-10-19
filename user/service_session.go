@@ -20,6 +20,11 @@ import (
 
 // refresh 实现 refresh_token grant。
 func (s *Service) refresh(ctx context.Context, refreshToken string, meta Meta) (TokenResult, error) {
+	normalizedClientInfo, clientInfoErr := NormalizeClientInfo(meta.ClientInfo)
+	if clientInfoErr != nil {
+		return TokenResult{}, clientInfoErr
+	}
+	meta.ClientInfo = normalizedClientInfo
 	hash := hashRefresh(refreshToken)
 	ev := audit.AuthenticationEvent{IP: meta.IP, RequestID: meta.RequestID}
 
@@ -30,7 +35,7 @@ func (s *Service) refresh(ctx context.Context, refreshToken string, meta Meta) (
 		if _, err := s.ensureSessionRefreshable(ctx, sess, ev); err != nil {
 			return TokenResult{}, err
 		}
-		res, rotated, err := s.rotate(ctx, sess, hash, ev)
+		res, rotated, err := s.rotate(ctx, sess, hash, ev, meta.ClientInfo)
 		if err != nil {
 			return TokenResult{}, err
 		}
@@ -182,7 +187,7 @@ func (s *Service) revokeSession(ctx context.Context, sid string, reason enum.Rev
 // rotate 在事务内对会话行加锁后 CAS 轮换 refresh，并在提交前把新 pair 写入宽限缓存。
 // 并发刷新者在行锁上排队：胜者提交时缓存已就位，失败者随后走宽限路径必然命中同一 pair。
 // 返回 rotated=false 表示加锁后发现哈希已被他人轮换（CAS 未命中）。
-func (s *Service) rotate(ctx context.Context, sess db.Session, oldHash []byte, ev audit.AuthenticationEvent) (TokenResult, bool, error) {
+func (s *Service) rotate(ctx context.Context, sess db.Session, oldHash []byte, ev audit.AuthenticationEvent, info *ClientInfo) (TokenResult, bool, error) {
 	var res TokenResult
 	rotated := false
 	graceWriteFailed := false
@@ -224,6 +229,9 @@ func (s *Service) rotate(ctx context.Context, sess db.Session, oldHash []byte, e
 		}
 		if n == 0 {
 			return nil
+		}
+		if err := s.updateSessionClientInfo(ctx, q, locked, info, now); err != nil {
+			return err
 		}
 		locked.RefreshExpireTime = expire
 		res, err = s.tokensFor(locked, plain, scope, now)
@@ -321,11 +329,29 @@ func (s *Service) ListSessions(ctx context.Context, userID, currentSID string) (
 	if err != nil {
 		return nil, fmt.Errorf("user: list sessions: %w", err)
 	}
+	sessionIDs := make([]string, 0, len(rows))
+	for _, r := range rows {
+		sessionIDs = append(sessionIDs, r.ID)
+	}
+	snapshots := map[string]db.SessionClientInfo{}
+	if len(sessionIDs) > 0 {
+		infos, err := s.d.Repo.Q().ListSessionClientInfosByUser(ctx, db.ListSessionClientInfosByUserParams{UserID: userID, SessionIds: sessionIDs, SnapshotKind: enum.ClientSnapshotLatest})
+		if err != nil {
+			return nil, fmt.Errorf("user: list session client snapshots: %w", err)
+		}
+		for _, info := range infos {
+			snapshots[info.SessionID] = info
+		}
+	}
 	out := make([]SessionInfo, 0, len(rows))
 	for _, r := range rows {
 		info := SessionInfo{ID: r.ID, DeviceID: r.DeviceID, CreateTime: r.CreateTime, LastUsedTime: r.LastUsedTime, IsCurrent: r.ID == currentSID}
 		if r.DeviceName != nil {
 			info.DeviceName = *r.DeviceName
+		}
+		if snapshot, ok := snapshots[r.ID]; ok {
+			info.ClientInfo = clientInfoFrom(snapshot)
+			info.ClientInfoUpdateTime = &snapshot.ObserveTime
 		}
 		out = append(out, info)
 	}

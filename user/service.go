@@ -17,6 +17,7 @@ import (
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
 	"github.com/bbxx111/accountkit/internal/auditconfig"
+	"github.com/bbxx111/accountkit/observability"
 	"github.com/bbxx111/accountkit/phone"
 	"github.com/bbxx111/accountkit/pii"
 	"github.com/bbxx111/accountkit/session/grace"
@@ -63,6 +64,8 @@ type Deps struct {
 	AuditSource           string
 	AuditNamespace        string
 	Logger                *slog.Logger
+	// Observer 可选，以尽力语义记录本地运行观测；宿主负责其生命周期。
+	Observer observability.Observer
 
 	// WeChat / Apple 为 nil 表示未启用对应 IdP。
 	WeChat idp.WeChatVerifier
@@ -91,6 +94,7 @@ type Deps struct {
 
 // Service 持有用户域的全部业务规则。
 type Service struct {
+	observer    *observability.Recorder
 	authAudit   *audit.AuthenticationRecorder
 	d           Deps
 	policy      *IdentityPolicy
@@ -198,12 +202,13 @@ func NewService(d Deps) (*Service, error) {
 	if d.AuditNamespace == "" {
 		d.AuditNamespace = defaults.Namespace
 	}
-	mapper, err := audit.NewAuthenticationRecorder(d.Audit, audit.AuthenticationOptions{Source: d.AuditSource, Namespace: d.AuditNamespace}, d.Logger)
+	observer := observability.NewRecorder(d.Observer, d.Logger)
+	mapper, err := audit.NewAuthenticationRecorder(d.Audit, audit.AuthenticationOptions{Source: d.AuditSource, Namespace: d.AuditNamespace, Observer: observer}, d.Logger)
 	if err != nil {
 		return nil, err
 	}
 	flowContext, flowPolicy := signInCompletionFlowConfiguration(d, policy)
-	return &Service{authAudit: mapper, d: d, policy: policy, flowContext: flowContext, flowPolicy: flowPolicy}, nil
+	return &Service{observer: observer, authAudit: mapper, d: d, policy: policy, flowContext: flowContext, flowPolicy: flowPolicy}, nil
 }
 
 // Device 是客户端设备身份（X-Device-Id / X-Device-Name）。
@@ -318,7 +323,7 @@ func (s *Service) record(ctx context.Context, e audit.AuthenticationEvent) {
 // 一个刚好落在 leeway 内的旧 token 过期，让该 token 在窗口内重新被判定为有效。
 func (s *Service) revokeInSet(ctx context.Context, sid string) {
 	ttl := s.d.AccessTTL + s.d.Signer.Leeway()
-	if err := s.d.Revocation.Revoke(ctx, sid, ttl); err != nil {
+	if err := s.revokeObserved(ctx, sid, ttl); err != nil {
 		s.d.Logger.Warn("user: revocation set write failed (fail-open)", "sid", sid, "err", err)
 	}
 }

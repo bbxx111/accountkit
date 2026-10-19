@@ -13,6 +13,7 @@ import (
 
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
+	ob "github.com/bbxx111/accountkit/observability"
 	"github.com/bbxx111/accountkit/user/code"
 	"github.com/bbxx111/accountkit/user/db"
 )
@@ -129,8 +130,8 @@ func (s *Service) anchorOfUser(ctx context.Context, q *db.Queries, userID string
 	return false, nil
 }
 
-// SendReauthenticationCode 向用户自己的锚点身份发送 REAUTH 码。
-func (s *Service) SendReauthenticationCode(ctx context.Context, p Principal, channel enum.IdentityKind, target string, meta Meta) (CodeChallenge, error) {
+// sendReauthenticationCode 向用户自己的锚点身份发送 REAUTH 码。
+func (s *Service) sendReauthenticationCode(ctx context.Context, p Principal, channel enum.IdentityKind, target string, meta Meta) (CodeChallenge, error) {
 	if !channel.IsChannel() {
 		return CodeChallenge{}, ErrInvalidArgument
 	}
@@ -151,8 +152,8 @@ func (s *Service) SendReauthenticationCode(ctx context.Context, p Principal, cha
 	return s.sendCode(ctx, channel, enum.PurposeReauth, norm, code.Binding{UserID: p.UserID, SessionID: p.SessionID}, meta)
 }
 
-// Reauthenticate 校验 REAUTH 码，刷新会话的 auth_time 并重签 access。
-func (s *Service) Reauthenticate(ctx context.Context, p Principal, cred CodeCredential, meta Meta) (TokenResult, error) {
+// reauthenticate 校验 REAUTH 码，刷新会话的 auth_time 并重签 access。
+func (s *Service) reauthenticate(ctx context.Context, p Principal, cred CodeCredential, meta Meta) (TokenResult, error) {
 	if err := validateCodeCredential(cred); err != nil {
 		return TokenResult{}, err
 	}
@@ -194,12 +195,14 @@ func (s *Service) Reauthenticate(ctx context.Context, p Principal, cred CodeCred
 		}
 		sess, err := q.LockSessionByID(ctx, p.SessionID)
 		if errors.Is(err, pgx.ErrNoRows) {
+			s.observationReason(ctx, ob.ReasonSessionRevoked)
 			return fmt.Errorf("%w: session not found", ErrInvalidToken)
 		}
 		if err != nil {
 			return fmt.Errorf("user: lock session: %w", err)
 		}
 		if sess.UserID != p.UserID || sess.RevokeTime != nil {
+			s.observationReason(ctx, ob.ReasonSessionRevoked)
 			return fmt.Errorf("%w: session revoked", ErrInvalidToken)
 		}
 		if u.State == enum.UserFrozen {
@@ -226,6 +229,7 @@ func (s *Service) Reauthenticate(ctx context.Context, p Principal, cred CodeCred
 			return fmt.Errorf("user: update auth_time: %w", err)
 		}
 		if n == 0 {
+			s.observationReason(ctx, ob.ReasonSessionRevoked)
 			return fmt.Errorf("%w: session revoked", ErrInvalidToken)
 		}
 		sess.AuthTime = now

@@ -24,11 +24,13 @@
 3. 创建 Redis 客户端和发送器，注入 `Deps`。按部署设置独立 schema、以冒号结尾的 Redis 前缀、issuer、audience 和密钥。
 4. 调用 `New(cfg, deps)`，完成默认值与依赖校验；此步不做 I/O。使用独立启动超时调用 `Migrate`，它检查 PostgreSQL、Redis、迁移状态及历史密钥；失败时停止启动。
 5. 调用 `Start`，使用服务存活期间的 context，随后才接受请求。不能传一次 HTTP 请求的 context，也不能传马上会取消的迁移超时 context。
-6. 关闭时先停止接入并排空所有 HTTP/RPC/后台调用，再 `Auth.Close()`，再关闭宿主拥有的审计组件，最后关闭 Pool、Redis 等共享依赖。`Auth.Close()` 不关闭宿主连接池或注入的审计组件。
+6. 关闭时先停止接入并排空所有 HTTP/RPC/后台调用，再 `Auth.Close()`，再关闭宿主拥有的审计组件，完成最终指标采集/刷新并关闭宿主观测设施，最后关闭 Pool、Redis 等共享依赖。`Auth.Close()` 不关闭宿主连接池、注入的审计或观测组件。
 
 HTTP `Shutdown` 超时不意味着在途请求已完成。生产宿主应制定明确的排空与总退出预算，不能让仍在运行的调用使用已经关闭的依赖。`Start`/`Close` 具有幂等保护，但已关闭的实例不能重新启动，也不应再调用维护入口。
 
 `Migrate` 不是通用旧库接管工具。旧初始定义、dirty 状态和不兼容历史必须按[迁移手册](migrations.md)处理，不自动 Force、改版本或清库。
+
+可选指标通过 `accountkit.Deps.Observer` 注入；直接领域服务使用 `user.Deps.Observer`，均允许 nil/typed nil 并默认 no-op。宿主选择 OpenTelemetry 或原生 Prometheus，显式创建 Provider/Registry，提供固定非秘密实例名，负责导出与指标端点的网络访问控制。装配、指标口径和合成示例见[指标指南](metrics.md)；不要把合成采集称为真实认证联调。
 
 ## 身份策略与发送器
 

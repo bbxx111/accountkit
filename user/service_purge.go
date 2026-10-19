@@ -6,12 +6,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/audit/authentication"
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/observability"
 	"github.com/bbxx111/accountkit/user/db"
 )
 
@@ -38,8 +40,10 @@ var PurgeCoveredTables = map[string]string{
 // 按批取（PurgeBatchSize）、逐账号独立事务：某账号失败则记 Error 日志、跳过，批结束后返回首个错误
 // （维护运行器记日志，下一轮重试），且不再取下一批——避免在同一个坏账号上空转。
 // 一批全部成功且批满时继续取下一批。
-func (s *Service) PurgeDueUsers(ctx context.Context) (int, error) {
-	total := 0
+func (s *Service) PurgeDueUsers(ctx context.Context) (total int, resultErr error) {
+	if s.observer.Enabled() {
+		defer s.observeMaintenance(ctx, observability.TaskPurgeUsers, func() int64 { return int64(total) }, &resultErr, time.Now())
+	}
 	for {
 		if err := ctx.Err(); err != nil {
 			return total, err

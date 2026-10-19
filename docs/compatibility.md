@@ -2,6 +2,14 @@
 
 固定兼容基线包含 130 个文件，原始文件清单与 SHA-256 见 `tests/testdata/source-baseline/manifest.json`；该清单用于追溯冻结快照，不表示当前文件名和内容必须与历史快照相同。当前根包名为 `accountkit`，导入路径为 `github.com/bbxx111/accountkit`。
 
+## 可选标准化指标
+
+当前开发代码新增 `accountkit.Deps.Observer`、`user.Deps.Observer` 及相关审计/IdP Options 字段，未配置或 typed nil 时使用 no-op。原位置参数构造入口保持可用；外部结构体字面量请使用具名字段，新增字段不兼容未命名字段字面量。该能力尚未包含在已发布 v0.2.0，接入时固定包含新接口的版本或提交。
+
+宿主显式选择 `observability/otel.New(provider, instance)` 或 `observability/prometheus.New(registerer, instance)`，注入同一个 Observer；依赖仍在根 go.mod，核心领域不导入后端。实例名、指标名称/标签/单位是有界公共观测契约，见[指标指南](metrics.md)。切换适配器无需修改领域调用；新进程或新聚合设施可能重置时间序列，OTel Exporter 可能转换最终名称。
+
+宿主拥有 Provider/Registry、导出与端点，先排空业务并关闭库，再最终采集与关闭观测设施。库不关闭或注销注入组件。回退可移除 Observer 注入或回退宿主依赖版本，本次不涉及 SQL、Redis 键、HTTP、令牌、密文或既有审计 Stats 迁移；accountsvc 不自动新增指标路由或网络导出。实际证据与未验证项见[本次验收记录](../openspec/changes/add-standardized-metrics/verification.md)。
+
 ## 初始数据库基线整合
 
 在尚无实际产品接入的前提下，项目曾执行初始结构整合：当时 `0001_init.up.sql` 定义 user_account、identity、session、audit_event、identity_flow 及字段、索引与约束。十列 UUIDv7 通用审计按用户授权纳入原始定义并更新固定校验，撤回当时独立的 `0002_identity_flow` 和通用审计 0002，也不提供 staging/Prepare 转换工具；初始版本为 1，配套 down 覆盖五个表，公开 Down 拒绝执行。后续审计校验职责调整经另行授权修改未发布 0001，移除五个审计校验函数并同步固定校验，其他表 CHECK 保持。本次另经用户明确授权，直接将 0001 的流程对象命名调整为 sign_in_completion_flow 并更新当前固定校验，撤回本分支新增的重命名 0002；初始化仍为 1，后续真实增量从 0002 开始。

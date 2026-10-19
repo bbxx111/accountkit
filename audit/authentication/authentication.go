@@ -16,6 +16,7 @@ import (
 
 	"github.com/bbxx111/accountkit/audit/event"
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/observability"
 	"github.com/google/uuid"
 )
 
@@ -45,7 +46,10 @@ type Input struct {
 }
 
 // Options 由可信装配配置指定，映射器不猜测来源或命名空间。
-type Options struct{ Source, Namespace string }
+type Options struct {
+	Source, Namespace string
+	Observer          observability.Observer // 可选；仅观测本地映射失败和字段省略
+}
 
 // Actions returns an independent canonical set from the authentication enum.
 // It is the common registry for authentication queries and privacy projection.
@@ -407,6 +411,7 @@ type Recorder struct {
 	out             event.Recorder
 	options         Options
 	logger          *slog.Logger
+	observer        *observability.Recorder
 	newID           func() (uuid.UUID, error)
 	failed, omitted atomic.Uint64
 }
@@ -421,16 +426,22 @@ func NewRecorder(out event.Recorder, o Options, logger *slog.Logger) (*Recorder,
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Recorder{out: out, options: o, logger: logger, newID: uuid.NewV7}, nil
+	return &Recorder{out: out, options: o, logger: logger, observer: observability.NewRecorder(o.Observer, logger), newID: uuid.NewV7}, nil
 }
 func (r *Recorder) Record(ctx context.Context, in Input) {
 	e, omitted, err := mapEvent(in, r.options, r.newID, "")
 	for _, field := range omitted {
 		r.omitted.Add(1)
+		if r.observer.Enabled() {
+			r.observer.Observe(ctx, observability.AuditObservation{Kind: observability.AuditOmittedFields, Field: observationField(field), Count: 1})
+		}
 		r.logger.WarnContext(ctx, "authentication audit optional field omitted", "field", field)
 	}
 	if err != nil {
 		r.failed.Add(1)
+		if r.observer.Enabled() {
+			r.observer.Observe(ctx, observability.AuditObservation{Kind: observability.AuditEvents, Stage: observability.AuditMapping, Result: observability.ResultFailed, Count: 1})
+		}
 		reason := "validation"
 		if errors.Is(err, errIDGeneration) {
 			reason = "id_generation"
@@ -441,3 +452,20 @@ func (r *Recorder) Record(ctx context.Context, in Input) {
 	r.out.Record(ctx, e)
 }
 func (r *Recorder) Stats() Stats { return Stats{Failed: r.failed.Load(), Omitted: r.omitted.Load()} }
+
+func observationField(field string) observability.AuditField {
+	switch field {
+	case "request_id":
+		return observability.FieldRequestID
+	case "device_id":
+		return observability.FieldDeviceID
+	case "subject_hint":
+		return observability.FieldSubjectHint
+	case "actor_name":
+		return observability.FieldActorName
+	case "client_ip":
+		return observability.FieldClientIP
+	default:
+		return observability.FieldUnknown
+	}
+}

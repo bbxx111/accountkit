@@ -15,6 +15,7 @@ import (
 
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
+	ob "github.com/bbxx111/accountkit/observability"
 	"github.com/bbxx111/accountkit/user/db"
 	"github.com/bbxx111/accountkit/user/idp"
 	"github.com/jackc/pgx/v5"
@@ -100,9 +101,13 @@ func (s *Service) encodeFlow(id string, p completionPayload) ([]byte, int16, err
 	return ct, int16(v), err
 }
 
-func (s *Service) decodeFlow(row db.SignInCompletionFlow, dev Device) (completionPayload, error) {
+func (s *Service) decodeFlow(ctx context.Context, row db.SignInCompletionFlow, dev Device) (completionPayload, error) {
 	var p completionPayload
-	if !row.ExpireTime.After(s.now()) || row.PolicyFingerprint != s.flowPolicy || (row.State != enum.FlowPending && row.State != enum.FlowVerified && row.State != enum.FlowCompleted) {
+	if !row.ExpireTime.After(s.now()) {
+		s.observationReason(ctx, ob.ReasonFlowExpired)
+		return p, ErrSignInCompletionInvalid
+	}
+	if row.PolicyFingerprint != s.flowPolicy || (row.State != enum.FlowPending && row.State != enum.FlowVerified && row.State != enum.FlowCompleted) {
 		return p, ErrSignInCompletionInvalid
 	}
 	plain, err := s.d.Cipher.DecryptWithAAD(row.Payload, uint16(row.CipherVersion), s.flowAAD(row.ID))
@@ -135,7 +140,7 @@ func (s *Service) loadFlow(ctx context.Context, token string, dev Device) (db.Si
 	if err != nil {
 		return row, completionPayload{}, err
 	}
-	p, err := s.decodeFlow(row, dev)
+	p, err := s.decodeFlow(ctx, row, dev)
 	return row, p, err
 }
 
@@ -180,7 +185,10 @@ func completionRequest(token string, cred CodeCredential) string {
 }
 
 // CleanupSignInCompletionFlows 一次只清理固定批次，过期记录在读取时已经立即失效。
-func (s *Service) CleanupSignInCompletionFlows(ctx context.Context) (int64, error) {
+func (s *Service) CleanupSignInCompletionFlows(ctx context.Context) (total int64, resultErr error) {
+	if s.observer.Enabled() {
+		defer s.observeMaintenance(ctx, ob.TaskCleanupSignInCompletionFlows, func() int64 { return total }, &resultErr, time.Now())
+	}
 	return s.d.Repo.Q().DeleteExpiredSignInCompletionFlows(ctx, db.DeleteExpiredSignInCompletionFlowsParams{Now: s.now(), BatchSize: 1000})
 }
 

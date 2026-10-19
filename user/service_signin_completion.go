@@ -11,6 +11,7 @@ import (
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
+	ob "github.com/bbxx111/accountkit/observability"
 	"github.com/bbxx111/accountkit/user/code"
 	"github.com/bbxx111/accountkit/user/db"
 	"github.com/bbxx111/accountkit/user/idp"
@@ -133,8 +134,8 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 	return result, nil
 }
 
-// SendSignInCompletionCode 仅向本流程发送 PHONE/EMAIL 补全验证码，不预查询目标归属。
-func (s *Service) SendSignInCompletionCode(ctx context.Context, token string, channel enum.IdentityKind, target string, dev Device, meta Meta) (result CodeChallenge, err error) {
+// sendSignInCompletionCode 仅向本流程发送 PHONE/EMAIL 补全验证码，不预查询目标归属。
+func (s *Service) sendSignInCompletionCode(ctx context.Context, token string, channel enum.IdentityKind, target string, dev Device, meta Meta) (result CodeChallenge, err error) {
 	var flowID string
 	defer func() {
 		err = flowStorageError(err)
@@ -167,8 +168,8 @@ func (s *Service) SendSignInCompletionCode(ctx context.Context, token string, ch
 	return result, err
 }
 
-// CompleteSignIn 先持久化成功证明，再由独立事务完成账号、身份与会话。
-func (s *Service) CompleteSignIn(ctx context.Context, token string, cred CodeCredential, dev Device, meta Meta) (result SignInResult, err error) {
+// completeSignIn 先持久化成功证明，再由独立事务完成账号、身份与会话。
+func (s *Service) completeSignIn(ctx context.Context, token string, cred CodeCredential, dev Device, meta Meta) (result SignInResult, err error) {
 	var flowID string
 	defer func() {
 		err = flowStorageError(err)
@@ -195,7 +196,7 @@ func (s *Service) CompleteSignIn(ctx context.Context, token string, cred CodeCre
 	}
 	if row.State != enum.FlowCompleted && !slices.Contains(p.Requests, request) {
 		// The ticket is checked before Redis consumption and again under SQL locks.
-		_, err = s.d.Codes.VerifyChallengeWithExpiry(ctx, code.Credential{Channel: cred.Channel, Purpose: enum.PurposeSignInComplete, Target: norm, CodeID: cred.CodeID, Code: cred.Code, Binding: code.Binding{FlowID: row.ID}})
+		_, err = s.verifyChallengeWithExpiry(ctx, code.Credential{Channel: cred.Channel, Purpose: enum.PurposeSignInComplete, Target: norm, CodeID: cred.CodeID, Code: cred.Code, Binding: code.Binding{FlowID: row.ID}})
 		if err != nil {
 			if errors.Is(err, code.ErrUnavailable) {
 				return SignInResult{}, ErrUnavailable
@@ -321,7 +322,7 @@ func (s *Service) persistCompletionProof(ctx context.Context, row db.SignInCompl
 		if e != nil {
 			return e
 		}
-		fp, e := s.decodeFlow(fresh, dev)
+		fp, e := s.decodeFlow(ctx, fresh, dev)
 		if e != nil {
 			return e
 		}
@@ -385,6 +386,7 @@ func (s *Service) replayCompletion(ctx context.Context, q *db.Queries, row db.Si
 		return SignInResult{}, err
 	}
 	if !row.ExpireTime.After(s.now()) {
+		s.observationReason(ctx, ob.ReasonFlowExpired)
 		return SignInResult{}, ErrSignInCompletionInvalid
 	}
 	if sess.UserID != u.ID || !sessionActiveAt(sess, s.now()) || sess.RevokeTime != nil || !bytes.Equal(sess.RefreshTokenHash, hashRefresh(p.Result.RefreshToken)) || !p.AccessExpireTime.After(s.now()) {
@@ -394,7 +396,7 @@ func (s *Service) replayCompletion(ctx context.Context, q *db.Queries, row db.Si
 	if err != nil || claims.UserID != u.ID || claims.SessionID != sess.ID {
 		return SignInResult{}, ErrSignInAlreadyCompleted
 	}
-	revoked, err := s.d.Revocation.IsRevoked(ctx, sess.ID)
+	revoked, err := s.revocationCheck(ctx, sess.ID)
 	if err != nil {
 		return SignInResult{}, ErrUnavailable
 	}
@@ -403,6 +405,7 @@ func (s *Service) replayCompletion(ctx context.Context, q *db.Queries, row db.Si
 	}
 	now := s.now()
 	if !row.ExpireTime.After(now) {
+		s.observationReason(ctx, ob.ReasonFlowExpired)
 		return SignInResult{}, ErrSignInCompletionInvalid
 	}
 	if !p.AccessExpireTime.After(now) || !sessionActiveAt(sess, now) {
@@ -429,7 +432,7 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.SignI
 		if err != nil {
 			return err
 		}
-		fp, err := s.decodeFlow(fresh, dev)
+		fp, err := s.decodeFlow(ctx, fresh, dev)
 		if err != nil {
 			return err
 		}

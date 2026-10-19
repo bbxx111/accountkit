@@ -1,6 +1,6 @@
 # v0.3.0 发布准备验收
 
-日期：2026-10-19。状态：发布准备完成，已获继续发布授权，正式发布进行中。用户确认按 v0.3.0 准备；[发布说明](../../../docs/releases/v0.3.0.md)、[发布门禁](../../../docs/release-checklist.md)。
+日期：2026-10-19。状态：v0.3.0 已发布，固定版本远端消费通过，未归档。用户确认版本并授权继续发布；[发布说明](../../../docs/releases/v0.3.0.md)、[发布门禁](../../../docs/release-checklist.md)。
 
 ## 范围与快照
 
@@ -49,3 +49,30 @@ review_v030_release 对照 v0.2.0..c3bdc8d 最终变更、公开源码、主规�
 用户在准备结果及下一步“提交、合并至 main，核对最终候选 CI，再创建 tag/Release”说明后明确要求继续。本次据此提交准备文档，以独立 merge commit 集成并推送，最终 main 候选 CI 成功后才发布 v0.3.0，随后验证远端固定版本消费。实际 SHA、CI、tag/Release 与消费结果继续补记；不改写历史 tag，不自动归档或部署产品。
 
 准备提交为 290fb42，首轮 develop/main 合并分别为 45ef80e / e898864，均已推送。发布前交叉检查长期文档时发现 docs/features.md 仍保留 accountsvc 尚无指标端点的旧描述，已按实际可选 GET /metrics 配置修正，并在 README 补充 v0.3.0 发布入口及初始结构有限授权的历史边界。该修正仅涉及文档，运行时保持；最终发布候选须包含此次修正并核对其自己的 CI，不以首轮候选结果替代。
+
+### 最终发布与消费结果
+
+| 项目 | 实际结果 |
+|---|---|
+| 最终文档修正 | 7fe6290，独立只读复审通过；76 个本地链接目标及 23 项 OpenSpec 严格校验通过 |
+| 最终 develop 集成 | d07bae6，以独立 merge commit 合入 |
+| 最终 main 发布 SHA | ba2d0412764c659beabdbd0d3f0f0f9bb9007657，以独立 merge commit 合入；文件树与最终文档任务分支一致，运行时仍与本地完整验证基线相同 |
+| 最终候选 CI | [verify #39203841497](https://github.com/bbxx111/accountkit/actions/runs/39203841497)，head_sha 精确匹配，全部步骤 success，含生成、完整库/恢复与严格服务门禁 |
+| 固定版本 | annotated v0.3.0，远端 tag 对象 b1764c61fbffc4d4e4b9f1fc8ef73e3bdb427f70，解引用为上述 main 发布 SHA |
+| 标签后迁移历史 | GOWORK=off go run ./internal/migrationcheck 退出 0；新正式 tag 纳入检查，v0.1.0/v0.2.0 对象与解引用提交前后逐项一致 |
+| GitHub Release | [v0.3.0](https://github.com/bbxx111/accountkit/releases/tag/v0.3.0)，已发布，非 draft、非 prerelease；复用本版本说明，正文相对链接转换为固定提交链接 |
+| 根门面独立宿主 | 公共远端 go get @v0.3.0、go mod tidy、GOWORK=off go build 均退出 0；编译身份策略、token/pending、补全调用、根 HTTP 门面、外部审计 Reader/Recorder 与两个指标适配器；本地执行审计映射器和指标构造/关闭成功 |
+| 直接 enduser 独立宿主 | 远端 go get、tidy、build 均退出 0；Service、IdentityReplacer、SignInCompletionService 和 New/Router 契约编译，空入口执行退出 0 |
+| 消费来源 | 两个 go list -m -json 均 Version=v0.3.0、无 Replace，GOWORK=off；使用本轮独立模块缓存从公共代理/远端获取，不使用本地源码替换 |
+
+根宿主涉及认证和数据库的方法只做编译契约核验；运行检查仅构造本地审计/指标组件，不表示真实服务商或产品环境联调通过。首轮候选 CI #39203421635 亦成功，但发布依据始终为包含文档修正的最终 #39203841497。
+
+原始材料：[候选元数据](../../../.test-output/prepare-v0.3-release/candidate.json)、[最终 CI](../../../.test-output/prepare-v0.3-release/main-ci-final.json)、[CI 步骤](../../../.test-output/prepare-v0.3-release/main-ci-final-jobs.json)、[远端 tag](../../../.test-output/prepare-v0.3-release/remote-tag.txt)、[标签后迁移检查](../../../.test-output/prepare-v0.3-release/tag-migrationcheck.log)、[Release 创建结果](../../../.test-output/prepare-v0.3-release/release-result.json)、[独立宿主源码和日志](../../../.test-output/prepare-v0.3-release/hosts/)、[模块下载来源](../../../.test-output/prepare-v0.3-release/download.json)。材料保持 ignored，不提交缓存、二进制或合成数据。
+
+### 发布记录维护
+
+在 docs/record-v0.3.0-publication 分支补记上述事实，并更新 README、功能/集成/观测指南及 OpenAPI info 版本状态。OpenAPI 的路径、请求/响应结构保持，现有契约检查仍为消费者 21、管理员 11 个操作通过。AGENTS 与迁移手册明确当前 0001 已随 v0.3.0 发布，之前的有限授权不再适用于修改它；未改任何 SQL、固定哈希、源快照或 tag。
+
+本轮记录检查：175 个本地链接目标存在，git diff --check 通过，OpenSpec 严格校验 23 项通过；逐份比较 OpenAPI JSON，除 info.version/description 外全部内容一致。发布后的记录维护仅涉及文档，未重复运行全库测试，最终发布候选 CI 和远端消费证据如上。
+
+发布记录作为后续文档提交合入 develop/main；不移动已验证的 v0.3.0 tag。Release 正文同步最终说明并使用记录提交的固定链接，产品部署与真实环境验收继续由集成方负责。本变更 8/8 任务完成，归档仍待单独明确请求。

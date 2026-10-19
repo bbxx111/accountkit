@@ -6,7 +6,7 @@
 
 2026-10-19 盘点时无活动 OpenSpec 变更；随后启动[v0.3.0 发布准备](../openspec/changes/prepare-v0-3-0-release/proposal.md)。归档任务中唯一未勾选的是[身份策略与登录补全任务 8.5](../openspec/changes/archive/2026-10-15-add-identity-policy-sign-in-completion/tasks.md)，属于集成方真实微信/Apple 联调，继续保留未验证状态。归档不代表产品上线验收完成。
 
-仓库侧正在准备 v0.3.0，最终 main 候选提交尚待确定；本轮进度与证据见下方版本专属门禁：
+仓库侧 v0.3.0 已发布并完成远端固定版本消费确认；本轮证据见下方版本专属门禁。发布变更仍待单独明确归档：
 
 以下工作由集成方在自己的环境负责，库侧提供契约、测试工具并配合排查实现问题。应在各产品任务中跟踪负责人、目标环境、采用版本及验收证据；不作为库内尚未实现的功能重复排期。
 
@@ -69,11 +69,11 @@
 - [x] 确认版本号 v0.3.0，盘点 v0.2.0 后的最终变更；明确旧数据库不能直接接管、Go/HTTP 登录返回与通用审计的破坏性变化。
 - [x] 对记录的准备代码快照执行生成检查、迁移历史、完整库与服务 race/必需测试门禁，以及恢复 seed/verify/source-unchanged；结果写入本次验收记录。
 - [x] 发布说明及迁移/回退边界完成独立审查，本地链接、差异与 OpenSpec 严格检查通过。
-- [ ] 按明确授权将准备内容合入 develop，再以独立 merge commit 将 develop 合入 main；确定包含全部发布文件的最终候选 SHA，确认工作区干净。
-- [ ] 核对最终 main 候选在线 CI 的 check-generated.sh、verify.sh、verify-accountsvc.sh 全部成功；候选变化后重新核对，不以准备基线或历史 CI 替代。
-- [ ] 取得本版本发布授权，确认远端 v0.3.0 不存在，创建并推送指向已验证最终 SHA 的 tag，并使用本说明发布 GitHub Release；不移动历史 tag。
-- [ ] 发布后从远端以 GOWORK=off、无本地 replace 的独立宿主消费 @v0.3.0，编译根门面与直接 enduser 接口，并覆盖新登录返回、审计及指标装配；核对 go list -m -json。
-- [ ] 补记 tag/Release、最终 SHA/CI 与消费结果，将说明改为已发布；归档按单独明确请求执行。
+- [x] 按明确授权将准备内容合入 develop，再以独立 merge commit 将 develop 合入 main；最终候选为 ba2d0412764c659beabdbd0d3f0f0f9bb9007657，发布前工作区干净。
+- [x] 最终 main 候选在线 CI #39203841497 的 check-generated.sh、verify.sh、verify-accountsvc.sh 全部成功；未以准备基线或首轮候选 CI 替代。
+- [x] 发布前确认远端 v0.3.0 不存在，创建并推送固定 tag，GitHub Release 已发布；历史 tag 保持。
+- [x] 两个独立宿主以 GOWORK=off、无 replace 从远端消费 @v0.3.0，根门面和直接 enduser 构建通过，新登录返回、审计/指标装配及模块版本核验通过。
+- [x] 已补记 tag/Release、最终 SHA/CI 与消费结果，说明改为已发布。归档不属于本条完成条件，仍按单独明确请求执行。
 
 正式发布须先通过最终 main 候选门禁；发布授权不扩展为产品部署或归档。真实服务商及各产品部署验收继续由集成方按下列清单执行。
 

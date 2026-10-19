@@ -1,6 +1,6 @@
 # HTTP OpenAPI 契约
 
-本契约描述当前开发代码的内置 HTTP handler，不改变现有 API，也不表示已发布 v0.2.0 已包含这些能力。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
+本契约描述 v0.3.0 的内置 HTTP handler，不改变现有 API；v0.2.0 不包含全部这些能力。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
 
 ## 两个独立 HTTP 面
 

@@ -11,7 +11,7 @@
 
 挂载内置 HTTP handler 的宿主可使用[消费者与管理面 OpenAPI 契约](docs/openapi.md)，按实际地址调整挂载前缀。
 
-本文描述当前源码；身份策略与登录补全不包含在 v0.2.0，拟随 v0.3.0 交付，版本状态见[发布说明](docs/releases/v0.3.0.md)。账号资源沿用 `/users`，升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
+本文描述 v0.3.0 已交付的身份策略、登录补全、通用审计及指标能力，版本状态见[发布说明](docs/releases/v0.3.0.md)。账号资源沿用 `/users`，升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
 
 accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可选服务实现，使用同一套库能力；选择库集成不需要部署或调用 accountsvc。服务入口是 `cmd/accountsvc`，包含 SMTP 邮件投递、消费者远程鉴权和默认关闭的外部管理员 JWT 验证，运行与配置见 [accountsvc 服务手册](docs/accountsvc.md)。`examples/embedded` 保留为库集成开发示例。
 
@@ -330,7 +330,7 @@ HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额
 
 远程仓库：https://github.com/bbxx111/accountkit.git
 
-Go module：github.com/bbxx111/accountkit。`v0.2.0` 已发布，使用 `go get github.com/bbxx111/accountkit@v0.2.0` 接入；破坏性验证码协议和默认 schema 升级见[发布说明](docs/releases/v0.2.0.md)。固定提交 `e19af85` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/37814180599)已通过，两个独立宿主已确认无本地 replace 的远端拉取与构建，涵盖根门面和直接 enduser 接口。[验收记录](openspec/changes/archive/2026-10-09-add-host-account-contracts/verification.md)保存本轮证据；发布及上线要求见[检查表](docs/release-checklist.md)。`v0.1.0` 历史说明继续保留，tag 不变。
+Go module：github.com/bbxx111/accountkit。`v0.3.0` 已发布，使用 `go get github.com/bbxx111/accountkit@v0.3.0` 接入；登录返回、通用审计及旧库不能直接接管等升级边界见[发布说明](docs/releases/v0.3.0.md)。固定提交 `ba2d041` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/39203841497)已通过。[发布验收](openspec/changes/prepare-v0-3-0-release/verification.md)记录候选、tag/Release 与独立宿主远端消费结果；发布及上线要求见[检查表](docs/release-checklist.md)。`v0.1.0`、`v0.2.0` 历史说明和 tag 保持。
 
 库版本发布与各产品生产上线分别验收。产品实际环境接入、真实服务商与预发布升级/恢复仍待完成；产品各自配置 schema、Redis 前缀、issuer/audience 和密钥，并承担自己的匿名化与网关接入责任。当前未附开源 LICENSE，本次版本供自有产品接入，尚未向外部使用方定义复用许可。
 

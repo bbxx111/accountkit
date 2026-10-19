@@ -143,7 +143,7 @@
 **Interfaces:** Consume所有实现；用精确Git快照构造Linux验证副本，包含完整Git历史/tags和本任务代码。
 
 - [x] **Step 1:** 在一次性PG17生成代表性会话/来源数据，EXPLAIN按身份撤销和当前会话读取，验证索引、用户范围及列表无N+1，保存规模/计划。
-- [ ] **Step 2:** GOWORK=off执行build/vet/go test；Linux镜像执行race、scripts/verify.sh、accountsvc严格入口和独立空源/目标恢复；保存实际日志，不以skip通过冒充集成通过。
-- [ ] **Step 3:** check-generated.sh、check-migrations.sh、openspec validate --all --strict、diff检查；按实际覆盖勾选32项验收任务。
-- [ ] **Step 4:** 提供最终代码审查包（基线8190167至实施HEAD），解决实质发现后重跑受影响测试；把证据/限制写verification.md。
-- [ ] **Step 5:** 保留实施分支和工作区供用户审阅；仅清理本任务明确创建的测试资源，未经另行授权不合并、推送、发布、归档。
+- [x] **Step 2:** GOWORK=off执行build/vet/go test；Linux镜像执行race、scripts/verify.sh、accountsvc严格入口和独立空源/目标恢复；保存实际日志，不以skip通过冒充集成通过。
+- [x] **Step 3:** check-generated.sh、check-migrations.sh、openspec validate --all --strict、diff检查；按实际覆盖勾选32项验收任务。
+- [x] **Step 4:** 提供最终代码审查包（基线8190167至实施HEAD），解决实质发现后重跑受影响测试；把证据/限制写verification.md。
+- [x] **Step 5:** 保留实施分支和工作区供用户审阅；仅清理本任务明确创建的测试资源，未经另行授权不合并、推送、发布、归档。

@@ -129,3 +129,20 @@
 7. 领域锁后重新认证/作用域失败沿用HTTP400/403，而不是原通用映射遗漏导致的500。影响局限于把明确业务错误恢复为既有协议分类。
 8. 既有指标没有业务撤销原因接口，沿用有界依赖观测并验证通用审计IDENTITY_UNBOUND，不新增指标API。代价是没有新增专用按解绑原因计数器。
 9. 新描述只在SignInWithCode、SignInWithIdp、CompleteSignIn、Reauthenticate、Refresh采集校验；绑定、换绑、发码、撤销等不扩大采集。代价是这些其他动作不会刷新客户端观察时间，符合本次快照范围。
+
+## 最终验收（2026-10-20）
+
+本节为当前实现的最终结果，取代提案阶段及各中间阶段的“未实施/待验证”状态；前文保留实际过程和失败修复证据。
+
+- 最终受测/审查代码：70ef246c7bfcbb72a318051f0887d3aa24d9702c，完整历史独立副本.test-output/linux-source。随后提交仅更新本计划、tasks和本记录，不改变Go/SQL/HTTP契约。提案ae71fdf已经--no-ff合入develop为8190167；实施仍在feat/session-authentication-context，不推送、不合并该实施分支、不发布、不归档。
+- 实际执行环境：Linux accountkit-verify:local、Go1.26.5/CGO、PostgreSQL17与Redis7任务专属容器；所有验证使用GOWORK=off。Windows已有范围与完整非race证据，最终并发及服务验收以本节Linux结果为准。
+- scripts/verify.sh完整退出0：迁移历史保护、go build ./...、go vet ./...、go test -race -json -count=1 ./...、687项清单中的必需测试核验及真实恢复脚本通过。42个测试包PASS、2261个测试通过事件、0FAIL、8个无测试包。唯一普通测试SKIP为TestRecoveryFixture，按照既定契约另行三阶段强制执行。
+- scripts/verify-accountsvc.sh完整退出0：真实accountsvc构建、范围vet、服务及外围包race、服务必需门禁全部通过；5包PASS、419个测试通过事件、0FAIL/0SKIP，主包130.742s。实际进程启用ACCOUNTSVC_TEST_RACE=1，包含SIGTERM、TLS、本地代理及本次新当前会话端到端流程。
+- 真实备份恢复：先检查源recovery_source和目标recovery_target实际独立且为空，再seed、pg_dump自定义格式、pg_restore、verify、source-unchanged；三个阶段TestRecoveryFixture均强制PASS，客户端pg_dump/pg_restore17.11。核对迁移version/dirty、七个业务表、known双来源/unknown会话、INITIAL App1.0/LATEST App2.0、流程密文/引用/期限、身份解密、access/refresh及源库完整快照未改变；不以清Redis、修改版本或延长期限换取通过。
+- 原始完整证据：.test-output/linux-source/.test-output/final-verify.log、tests.jsonl、final-accountsvc.log、accountsvc-tests.jsonl；恢复合成数据/备份/阶段日志保留在其recovery.KWrbQZ目录。这些是忽略的原始材料，未提交备份或测试数据。
+- check-generated.sh在37ea446通过，之后未修改查询、迁移、sqlc配置或生成Go；最终verify.sh再次核验迁移历史通过。已发布0001、冻结source-baseline、正式tags和openspec/specs未改。Task7的22/11操作OpenAPI检查、Swagger合法性与136链接检查对应同一最终代码，未重复已通过检查。
+- 最终独立final_branch_review对8190167..70ef246判定计划一致、Ready to merge: Yes，Critical/Important/Minor均无。审查覆盖跨模块来源、撤销、锁序、缓存重放、元数据生命周期、协议/热路径及迁移兼容；无待修复或搁置问题。审查报告及各任务报告原文保留在.test-output/session-context/reviews/，主要结论统一落在本记录。
+- 对最终审查Declined to judge的裁决：真实浏览器/原生SDK及产品网关CORS、真实微信/Apple生产凭证联调、产品生产升级/回退切换均依赖未提供的宿主环境，本次未执行也不宣称验收；仓库内解析样本、HTTP/代理fixture、实际进程和独立恢复已按要求验收。这三项是外部部署边界，不是本变更省略的实现任务。
+- 已精确核对并移除本任务创建的PG/Redis容器（含匿名数据卷）、专属Docker网络和两个构建缓存卷；没有清理其他容器/目录。原生工作区和实施分支保留，测试日志、备份及审查材料保留；SDD临时工作目录在证据转存并记录全部裁决后删除。
+
+- 最终 openspec validate --all --strict：24项通过、0失败；git diff --check通过。32项验收任务及详细计划的40个步骤已依据上述实际证据完成，无遗留实施任务。

@@ -49,7 +49,7 @@
 
 ## 8. 整体验证与交付
 
-- [ ] 8.1 在GOWORK=off下完成build、vet、相关测试及完整go test，必要时使用Linux验证镜像完成race；记录实际命令、代码快照与任何skip，不用单元通过冒充数据库验证。
-- [ ] 8.2 更新新增必需顶层测试清单并执行scripts/verify.sh，包含真实数据库/Redis、非空升级、备份恢复、来源与客户端快照恢复核对；使用隔离空资源并记录未验证的真实网关/提供方项。
-- [ ] 8.3 进行规格与代码复核并修复实质问题，更新本change的verification.md；只有实际完成且验证的任务才能勾选。
-- [ ] 8.4 运行check-generated.sh、check-migrations.sh、openspec validate --all --strict和差异检查，确认主规格/迁移历史未被误改；交付变更和证据，归档、提交、推送及发布按各自授权执行。
+- [x] 8.1 在GOWORK=off下完成build、vet、相关测试及完整go test，必要时使用Linux验证镜像完成race；记录实际命令、代码快照与任何skip，不用单元通过冒充数据库验证。
+- [x] 8.2 更新新增必需顶层测试清单并执行scripts/verify.sh，包含真实数据库/Redis、非空升级、备份恢复、来源与客户端快照恢复核对；使用隔离空资源并记录未验证的真实网关/提供方项。
+- [x] 8.3 进行规格与代码复核并修复实质问题，更新本change的verification.md；只有实际完成且验证的任务才能勾选。
+- [x] 8.4 运行check-generated.sh、check-migrations.sh、openspec validate --all --strict和差异检查，确认主规格/迁移历史未被误改；交付变更和证据，归档、提交、推送及发布按各自授权执行。

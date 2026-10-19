@@ -1,0 +1,66 @@
+# HTTP OpenAPI 契约
+
+本契约描述当前开发代码的内置 HTTP handler，不改变现有 API，也不表示已发布 v0.2.0 已包含这些能力。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
+
+## 两个独立 HTTP 面
+
+| 文档 | 范围 | 默认挂载示例 |
+|---|---|---|
+| [enduser.json](openapi/enduser.json) | 消费者 21 个操作：登录、补全、token/revoke、资料、身份、会话及注销/恢复 | `/v1` |
+| [admin.json](openapi/admin.json) | 管理面 11 个操作：账号查询、状态操作、明文查看、会话及认证审计 | `/admin/v1` |
+
+两份文件各自独立，使用 [OpenAPI 3.1.0](https://spec.openapis.org/oas/v3.1.0.html) 与 JSON Schema 描述。所有 paths 均为相对 handler 路由，`servers[0].variables.basePath.default` 由宿主调整为实际挂载前缀或完整服务 URL。路径中的 `user` / `session` / `identity` 是原始 `u_` / `s_` / `i_` ID；响应 `name` 才是 `users/{id}` 等资源名。
+
+`info.version` 标识文档所依据的开发基准，不是新发布 tag。文件不包含 accountsvc 专属的 `/v1/introspect`、探针或管理员登录流程，也不描述宿主自有业务接口；这些不能由库契约自动推导。
+
+消费者使用自己的 Bearer access token。`x-allowed-scopes` 表示允许的 scope 列表，`x-recent-authentication` 表示现有近期认证要求；这些扩展与说明用于接入核对，代码生成器不会自动替宿主实施授权。未标 scope 的 `GET /users/me` 接受任何有效消费者 Bearer scope。
+
+管理面使用独立宿主身份系统，`x-required-role` 对应路由要求；`operator` 与 `super-admin` 的层级由宿主 verifier 决定。文件中的 AdminBearer 表示常见的外部 Bearer 接入，宿主若使用其他认证方式须修改安全定义。外部 verifier 的 401/403 响应体与 challenge 由宿主定义，契约没有伪造统一错误体。完全未配置管理面时返回 `503 ADMIN_NOT_CONFIGURED`。
+
+## 客户端需要区分的响应
+
+- 登录和 `completeSignIn` 的 HTTP 200 是 `TokenPair` / `PendingSignIn` 的 `oneOf`。补全成功响应仍可能 pending，或返回 `user:bind`；只看状态码不能判断已获得普通业务权限。
+- `reauthenticate` 使用独立 `AccessToken` schema，不含 refresh 字段。客户端保留原 refresh 和原绝对期限；普通登录/刷新才更新完整 pair。
+- 身份绑定新增返回 201，幂等命中返回 200。单会话撤销和解绑返回 204 无内容；`revoke` 返回 200 无内容；`revokeOthers` 返回 200 `{}`。账号注销返回更新后的资源。
+- 普通错误为 `{"error":{"code":400,"message":"…","status":"INVALID_ARGUMENT","reason":"…"}}`；`code` 是数字 HTTP 状态，`reason` 才是细分原因。`token` / `revoke` 使用独立 OAuth 错误体，不能按普通错误解析。
+- 消费者 Bearer 401 带 `WWW-Authenticate`；限流 429 带 `Retry-After` 和 `retry_after_seconds`，部分 503 也带等待提示。凭证响应包含 `Cache-Control: no-store`，token/pending/OAuth 错误还带 `Pragma: no-cache`。
+- PHONE/EMAIL/WECHAT/APPLE 等枚举使用大写字符串。凭证 oneOf 恰好一个允许成员非 null；显式 null 等同缺失，未知字段拒绝。POST token/revoke 也使用 JSON，不使用表单编码。
+- nullable 字段和 optional 字段不同：例如 `delete_time` 必须出现但可以为 null；审计 `flow_id` 可以省略。管理 DTO 与消费者 DTO 独立，管理会话没有 `is_current`。
+
+示例 token、验证码和票据只能使用合成值，不应把真实响应导入公开文档。刷新重放、验证码失败预算、事务回滚、账号状态及外部审计治理仍以 [README](../README.md)、[主规格](../openspec/specs/)和对应实现为准，schema 不能表达或证明所有行为。
+
+## 管理查询
+
+账号列表支持 `page_size`、`page_token`、`show_deleted` 和 `filter`。page_size 缺省或 0 时为 20，大于 100 截为 100，负数或非整数返回 400。`show_deleted=true` 才包含 PENDING_DELETION/DELETED，未提供或 false 时不包含。
+
+filter 是 `term (AND term)*` 子集，不支持 OR、NOT 或括号。支持：
+
+- `state = ACTIVE|FROZEN|PENDING_DELETION|DELETED`。
+- `create_time >= "RFC3339"`、`create_time < "RFC3339"`。
+- `identity.phone = "…"`、`identity.email = "…"`。
+- `identity.phone_prefix`、`identity.phone_suffix`、`identity.email_prefix`、`identity.email_domain` 的等值条件。
+
+身份条件必须同一种 kind 且作用于同一活跃身份。手机号/邮箱过滤值属于隐私数据，网关与日志应脱敏。游标按返回值原样传递，不能作为授权凭据或自行推断 ID 时间顺序。
+
+审计只接受 `page_size` / `page_token`，按 `(occur_time, UUID)` 升序，限定认证动作及账号关联范围。审计使用独立 v2 游标，绑定 source、资源与认证动作集合；旧或跨范围游标返回 `400 INVALID_PAGE_TOKEN`，客户端从第一页重新开始，不复用用户列表游标。
+
+## 验证与维护
+
+JSON 文档直接维护，修改路由、DTO、scope、状态码或错误时同步更新；不从本文反向生成服务器实现。无依赖的源码对应检查：
+
+```powershell
+node scripts/check-openapi.cjs
+```
+
+此检查从现有 Router 提取方法与路径，核对覆盖、引用、路径参数及主要响应 DTO 字段与必填/可空规则；它不是完整 OpenAPI schema 校验，也不代替真实 HTTP 测试。提取器只处理当前 handler.go 中直接使用字符串字面量的 Get/Post 等注册；发现 Route/Mount/Method/Handle 或非字面量路径会要求更新提取器。若将注册逻辑移到其他文件或自定义辅助函数，也须同步调整检查范围，不能把它当作通用 Go 路由分析器。
+
+正式结构校验可将工具安装到仓库忽略目录，不修改 Go module 或全局工具：
+
+```powershell
+npm.cmd install --prefix .test-output/contract-tools --cache .test-output/npm-cache --no-audit --no-fund @apidevtools/swagger-parser@12.1.0
+node -e "const p=require('./.test-output/contract-tools/node_modules/@apidevtools/swagger-parser'); (async()=>{for(const n of ['enduser','admin']){await p.validate('docs/openapi/'+n+'.json');console.log(n+': valid')}})().catch(e=>{console.error(e.message);process.exit(1)})"
+```
+
+随后按改动范围运行 `GOWORK=off go test -count=1 ./httpapi/...` 与相关领域测试。标准工具通过只证明文档结构与引用合法；生成客户端、Mock、产品网关和真实业务链路仍需按宿主环境验收。
+
+本次验证记录见 [document-go-integration-and-http-contracts](../openspec/changes/archive/2026-10-18-document-go-integration-and-http-contracts/verification.md)。

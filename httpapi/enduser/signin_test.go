@@ -106,23 +106,23 @@ func TestSignInWithCode(t *testing.T) {
 		target, code string
 		dev          user.Device
 	}
-	f := &fakeService{signInWithCode: func(_ context.Context, cred user.CodeCredential, dev user.Device, meta user.Meta) (user.TokenResult, error) {
+	f := &fakeService{signInWithCode: func(_ context.Context, cred user.CodeCredential, dev user.Device, meta user.Meta) (user.SignInResult, error) {
 		ch, target, c := cred.Channel, cred.Target, cred.Code
 
 		got.ch, got.target, got.code, got.dev = ch, target, c, dev
 		switch c {
 		case "000000":
-			return user.TokenResult{}, code.ErrInvalid
+			return user.SignInResult{}, code.ErrInvalid
 		case "111111":
-			return user.TokenResult{}, code.ErrExpired
+			return user.SignInResult{}, code.ErrExpired
 		case "222222":
-			return user.TokenResult{}, code.ErrExhausted
+			return user.SignInResult{}, code.ErrExhausted
 		case "333333":
-			return user.TokenResult{}, user.ErrUserFrozen
+			return user.SignInResult{}, user.ErrUserFrozen
 		case "444444":
-			return user.TokenResult{}, errors.New("pg: down")
+			return user.SignInResult{}, errors.New("pg: down")
 		}
-		return user.TokenResult{AccessToken: "at", RefreshToken: "rt", ExpiresIn: 900, RefreshExpiresIn: 2592000, Scope: "user", UserID: "u_1", IsNewUser: true}, nil
+		return user.SignInResult{Tokens: &user.TokenResult{AccessToken: "at", RefreshToken: "rt", ExpiresIn: 900, RefreshExpiresIn: 2592000, Scope: "user", UserID: "u_1", IsNewUser: true}}, nil
 	}}
 	h := newHandler(t, f)
 	body := map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "123456"}}
@@ -187,27 +187,27 @@ func TestSignInWithIdp(t *testing.T) {
 		cred user.IdpCredential
 		dev  user.Device
 	}
-	f := &fakeService{signInWithIdp: func(_ context.Context, cred user.IdpCredential, dev user.Device, meta user.Meta) (user.TokenResult, error) {
+	f := &fakeService{signInWithIdp: func(_ context.Context, cred user.IdpCredential, dev user.Device, meta user.Meta) (user.SignInResult, error) {
 		got.cred, got.dev = cred, dev
 		switch {
 		case cred.Kind == enum.IdentityWeChat && cred.Code == "bad":
-			return user.TokenResult{}, idp.ErrInvalidCredential
+			return user.SignInResult{}, idp.ErrInvalidCredential
 		case cred.Kind == enum.IdentityWeChat && cred.AppID == "wx-no":
-			return user.TokenResult{}, idp.ErrAppNotAllowed
+			return user.SignInResult{}, idp.ErrAppNotAllowed
 		case cred.Kind == enum.IdentityApple && cred.Nonce == "replay":
-			return user.TokenResult{}, idp.ErrNonceReplayed
+			return user.SignInResult{}, idp.ErrNonceReplayed
 		case cred.Kind == enum.IdentityWeChat && cred.Code == "down":
-			return user.TokenResult{}, idp.ErrUnavailable
+			return user.SignInResult{}, idp.ErrUnavailable
 		case cred.Kind == enum.IdentityWeChat && cred.Code == "miscfg":
-			return user.TokenResult{}, idp.ErrMisconfigured
+			return user.SignInResult{}, idp.ErrMisconfigured
 		case cred.Kind == enum.IdentityWeChat && cred.Code == "frozen":
-			return user.TokenResult{}, user.ErrUserFrozen
+			return user.SignInResult{}, user.ErrUserFrozen
 		}
 		res := user.TokenResult{AccessToken: "at", RefreshToken: "rt", ExpiresIn: 900, RefreshExpiresIn: 2592000, Scope: "user:bind", UserID: "u_1", IsNewUser: true}
 		if cred.Kind == enum.IdentityApple {
 			res.HintEmail = "x@privaterelay.appleid.com"
 		}
-		return res, nil
+		return user.SignInResult{Tokens: &res}, nil
 	}}
 	h := newHandler(t, f)
 
@@ -277,8 +277,8 @@ func TestSignInWithIdp(t *testing.T) {
 }
 
 func TestSignInWithIdpPendingDeletionIs403(t *testing.T) {
-	f := &fakeService{signInWithIdp: func(context.Context, user.IdpCredential, user.Device, user.Meta) (user.TokenResult, error) {
-		return user.TokenResult{}, user.ErrUserPendingDeletion
+	f := &fakeService{signInWithIdp: func(context.Context, user.IdpCredential, user.Device, user.Meta) (user.SignInResult, error) {
+		return user.SignInResult{}, user.ErrUserPendingDeletion
 	}}
 	h := newHandler(t, f)
 	rec := do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"wechat": map[string]string{"app_id": "wx1", "code": "c1"}}, headers: devHeaders()})

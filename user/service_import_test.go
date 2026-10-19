@@ -30,11 +30,11 @@ import (
 // 离线导入不得触发外部身份校验或投递；这些边界一旦调用直接使测试失败。
 type importExternalGuard struct{ t *testing.T }
 
-func (g importExternalGuard) SendSMS(context.Context, string, sender.Message) error {
+func (g importExternalGuard) SendSMS(context.Context, string, sender.CodeMessage) error {
 	g.t.Fatal("import sent SMS")
 	return nil
 }
-func (g importExternalGuard) SendEmail(context.Context, string, sender.Message) error {
+func (g importExternalGuard) SendEmail(context.Context, string, sender.CodeMessage) error {
 	g.t.Fatal("import sent email")
 	return nil
 }
@@ -461,7 +461,7 @@ func TestImportAccountsSignInWithNewProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := f.svc.SignInWithCode(ctx, user.CodeCredential{Channel: enum.IdentityEmail, Target: "LOGIN.USER@EXAMPLE.COM", CodeID: issued.CodeID, Code: issued.Code}, user.Device{ID: "legacy-import-device"}, user.Meta{IP: "203.0.113.10"})
-	if err != nil || result.UserID != a.ID || result.IsNewUser || result.Scope != user.ScopeUser || result.AccessToken == "" || result.RefreshToken == "" {
+	if err != nil || result.Tokens == nil || result.Pending != nil || result.Tokens.UserID != a.ID || result.Tokens.IsNewUser || result.Tokens.Scope != user.ScopeUser || result.Tokens.AccessToken == "" || result.Tokens.RefreshToken == "" {
 		t.Fatal("imported anchor did not sign in with the new protocol", err)
 	}
 }

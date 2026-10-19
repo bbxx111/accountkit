@@ -16,6 +16,8 @@ import (
 	"github.com/bbxx111/accountkit/email"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
+	"github.com/bbxx111/accountkit/internal/auditconfig"
+	"github.com/bbxx111/accountkit/observability"
 	"github.com/bbxx111/accountkit/phone"
 	"github.com/bbxx111/accountkit/pii"
 	"github.com/bbxx111/accountkit/session/grace"
@@ -40,17 +42,30 @@ const maxDeviceField = 64
 
 // Deps 是 Service 的依赖。
 type Deps struct {
-	Repo       *Repo
-	Codes      *code.Store
-	Revocation *revocation.Set
-	Grace      *grace.Cache
-	Signer     *tokens.Signer
-	Cipher     *pii.Cipher
-	Digester   *pii.Digester
-	SMS        sender.SMSSender
-	Email      sender.EmailSender
-	Audit      audit.Recorder
-	Logger     *slog.Logger
+	// SignInCompletionFlowContext 可补充宿主稳定实例标识；内置数据库/Redis/JWT域仍自动绑定。
+	SignInCompletionFlowContext string
+	// Deprecated: use SignInCompletionFlowContext. Used only when that field is empty.
+	IdentityFlowContext string
+	// ProviderConfiguration 是自定义 IdP 验证器的稳定配置标识，应用允许列表变化时应变化。
+	// 内置验证器自动提供 PolicyFingerprint；此字段不含秘密。
+	ProviderConfiguration string
+	EnabledIdentityKinds  []enum.IdentityKind
+	RequiredIdentityKinds []enum.IdentityKind
+	Repo                  *Repo
+	Codes                 *code.Store
+	Revocation            *revocation.Set
+	Grace                 *grace.Cache
+	Signer                *tokens.Signer
+	Cipher                *pii.Cipher
+	Digester              *pii.Digester
+	SMS                   sender.SMSCodeSender
+	Email                 sender.EmailCodeSender
+	Audit                 audit.Recorder
+	AuditSource           string
+	AuditNamespace        string
+	Logger                *slog.Logger
+	// Observer 可选，以尽力语义记录本地运行观测；宿主负责其生命周期。
+	Observer observability.Observer
 
 	// WeChat / Apple 为 nil 表示未启用对应 IdP。
 	WeChat idp.WeChatVerifier
@@ -78,10 +93,58 @@ type Deps struct {
 }
 
 // Service 持有用户域的全部业务规则。
-type Service struct{ d Deps }
+type Service struct {
+	observer    *observability.Recorder
+	authAudit   *audit.AuthenticationRecorder
+	d           Deps
+	policy      *IdentityPolicy
+	flowContext string
+	flowPolicy  string
+}
 
-// NewService 校验依赖并构造。
+// IdentityPolicy 返回策略值的副本，避免调用方整体覆盖服务内的策略。
+func (s *Service) IdentityPolicy() *IdentityPolicy {
+	policy := *s.policy
+	return &policy
+}
+
+// NewService 校验依赖并构造，不做 I/O。AuditSource 和 AuditNamespace 各自缺省时，
+// 使用 Repo 连接池配置中 search_path 的首个 schema，分别生成 accountkit/<schema>
+// 和 accountkit/<schema>/resources；池为空或首项为空时回退到 account。
+// 这些默认值只承诺当前数据库内一致，跨数据库汇聚审计时须显式提供稳定且可区分的二者。
 func NewService(d Deps) (*Service, error) {
+	var providers []enum.IdentityKind
+	if d.WeChat != nil {
+		providers = append(providers, enum.IdentityWeChat)
+	}
+	if d.Apple != nil {
+		providers = append(providers, enum.IdentityApple)
+	}
+	policy, err := NewIdentityPolicy(d.EnabledIdentityKinds, d.RequiredIdentityKinds, providers...)
+	if err != nil {
+		return nil, err
+	}
+	if d.EnabledIdentityKinds != nil {
+		available := func(v any) bool {
+			if v == nil {
+				return false
+			}
+			if e, ok := v.(interface{ Enabled() bool }); ok {
+				return e.Enabled()
+			}
+			return true
+		}
+		if err := policy.ValidateCapabilities(IdentityCapabilities{Phone: available(d.SMS), Email: available(d.Email), WeChat: d.WeChat != nil, Apple: d.Apple != nil}); err != nil {
+			return nil, err
+		}
+		if d.SMS == nil {
+			d.SMS = sender.Disabled{}
+		}
+		if d.Email == nil {
+			d.Email = sender.Disabled{}
+		}
+	}
+
 	switch {
 	case d.Repo == nil, d.Codes == nil, d.Revocation == nil, d.Grace == nil, d.Signer == nil, d.Cipher == nil, d.Digester == nil, d.SMS == nil, d.Email == nil:
 		return nil, errors.New("user: Deps.Repo/Codes/Revocation/Grace/Signer/Cipher/Digester/SMS/Email are required")
@@ -132,7 +195,20 @@ func NewService(d Deps) (*Service, error) {
 	if d.Now == nil {
 		d.Now = time.Now
 	}
-	return &Service{d: d}, nil
+	defaults := auditconfig.Local(d.Repo.pool)
+	if d.AuditSource == "" {
+		d.AuditSource = defaults.Source
+	}
+	if d.AuditNamespace == "" {
+		d.AuditNamespace = defaults.Namespace
+	}
+	observer := observability.NewRecorder(d.Observer, d.Logger)
+	mapper, err := audit.NewAuthenticationRecorder(d.Audit, audit.AuthenticationOptions{Source: d.AuditSource, Namespace: d.AuditNamespace, Observer: observer}, d.Logger)
+	if err != nil {
+		return nil, err
+	}
+	flowContext, flowPolicy := signInCompletionFlowConfiguration(d, policy)
+	return &Service{observer: observer, authAudit: mapper, d: d, policy: policy, flowContext: flowContext, flowPolicy: flowPolicy}, nil
 }
 
 // Device 是客户端设备身份（X-Device-Id / X-Device-Name）。
@@ -166,6 +242,20 @@ type TokenResult struct {
 	IsNewUser        bool
 	// HintEmail 是 Apple 已验证的邮箱（含 Apple 私密转发地址），仅供客户端预填绑定页，不代表已绑定。
 	HintEmail string
+}
+
+// SignInResult 是登录结果；成功返回 Tokens，等待身份补全返回 Pending，恰好一个成员非 nil。
+type SignInResult struct {
+	Tokens  *TokenResult
+	Pending *PendingSignIn
+}
+
+// PendingSignIn 不代表已经创建账号，也不能作为访问或刷新令牌使用。
+type PendingSignIn struct {
+	SignInCompletionToken string
+	ExpireTime            time.Time
+	EnabledIdentityKinds  []enum.IdentityKind
+	RequiredIdentityKinds []enum.IdentityKind
 }
 
 func (s *Service) now() time.Time { return s.d.Now() }
@@ -218,14 +308,14 @@ func validDevice(dev Device) error {
 }
 
 // record 填充审计事件的时间与默认 actor 后交给 Recorder。
-func (s *Service) record(ctx context.Context, e audit.Event) {
+func (s *Service) record(ctx context.Context, e audit.AuthenticationEvent) {
 	if e.Actor == enum.ActorKindUnspecified {
 		e.Actor = enum.ActorUser
 	}
 	if e.OccurTime.IsZero() {
 		e.OccurTime = s.now()
 	}
-	s.d.Audit.Record(ctx, e)
+	s.authAudit.Record(ctx, e)
 }
 
 // revokeInSet 把 sid 写入 Redis 吊销集；失败只记日志（fail-open：吊销退化为最多一个 access TTL）。
@@ -233,7 +323,7 @@ func (s *Service) record(ctx context.Context, e audit.Event) {
 // 一个刚好落在 leeway 内的旧 token 过期，让该 token 在窗口内重新被判定为有效。
 func (s *Service) revokeInSet(ctx context.Context, sid string) {
 	ttl := s.d.AccessTTL + s.d.Signer.Leeway()
-	if err := s.d.Revocation.Revoke(ctx, sid, ttl); err != nil {
+	if err := s.revokeObserved(ctx, sid, ttl); err != nil {
 		s.d.Logger.Warn("user: revocation set write failed (fail-open)", "sid", sid, "err", err)
 	}
 }
@@ -336,10 +426,10 @@ func (s *Service) establishSession(ctx context.Context, q *db.Queries, u db.User
 }
 
 // finishSignIn 在事务提交后处理被替换会话的吊销集与审计，并记录 SIGN_IN。
-func (s *Service) finishSignIn(ctx context.Context, ev audit.Event, res TokenResult, replaced []string, dev Device, meta Meta) {
+func (s *Service) finishSignIn(ctx context.Context, ev audit.AuthenticationEvent, res TokenResult, replaced []string, dev Device, meta Meta) {
 	for _, sid := range replaced {
 		s.revokeInSet(ctx, sid)
-		s.record(ctx, audit.Event{Type: enum.EventSessionRevoked, Result: enum.ResultSuccess, Reason: enum.RevokeReplacedByRelogin.String(), UserID: ev.UserID, SessionID: sid, IP: meta.IP, DeviceID: dev.ID, RequestID: meta.RequestID})
+		s.record(ctx, audit.AuthenticationEvent{Type: enum.EventSessionRevoked, Result: enum.ResultSuccess, Reason: enum.RevokeReplacedByRelogin.String(), FlowID: ev.FlowID, UserID: ev.UserID, SessionID: sid, IP: meta.IP, DeviceID: dev.ID, RequestID: meta.RequestID})
 	}
 	ev.Type, ev.Result = enum.EventSignIn, enum.ResultSuccess
 	if res.IsNewUser {

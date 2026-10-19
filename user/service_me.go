@@ -13,6 +13,7 @@ import (
 
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
+	ob "github.com/bbxx111/accountkit/observability"
 	"github.com/bbxx111/accountkit/user/code"
 	"github.com/bbxx111/accountkit/user/db"
 )
@@ -129,8 +130,14 @@ func (s *Service) anchorOfUser(ctx context.Context, q *db.Queries, userID string
 	return false, nil
 }
 
-// SendReauthenticationCode 向用户自己的锚点身份发送 REAUTH 码。
-func (s *Service) SendReauthenticationCode(ctx context.Context, p Principal, channel enum.IdentityKind, target string, meta Meta) (CodeChallenge, error) {
+// sendReauthenticationCode 向用户自己的锚点身份发送 REAUTH 码。
+func (s *Service) sendReauthenticationCode(ctx context.Context, p Principal, channel enum.IdentityKind, target string, meta Meta) (CodeChallenge, error) {
+	if !channel.IsChannel() {
+		return CodeChallenge{}, ErrInvalidArgument
+	}
+	if err := s.requireIdentityEnabled(channel); err != nil {
+		return CodeChallenge{}, err
+	}
 	norm, _, _, err := s.normalizeTarget(channel, target)
 	if err != nil {
 		return CodeChallenge{}, err
@@ -145,9 +152,12 @@ func (s *Service) SendReauthenticationCode(ctx context.Context, p Principal, cha
 	return s.sendCode(ctx, channel, enum.PurposeReauth, norm, code.Binding{UserID: p.UserID, SessionID: p.SessionID}, meta)
 }
 
-// Reauthenticate 校验 REAUTH 码，刷新会话的 auth_time 并重签 access。
-func (s *Service) Reauthenticate(ctx context.Context, p Principal, cred CodeCredential, meta Meta) (TokenResult, error) {
+// reauthenticate 校验 REAUTH 码，刷新会话的 auth_time 并重签 access。
+func (s *Service) reauthenticate(ctx context.Context, p Principal, cred CodeCredential, meta Meta) (TokenResult, error) {
 	if err := validateCodeCredential(cred); err != nil {
+		return TokenResult{}, err
+	}
+	if err := s.requireIdentityEnabled(cred.Channel); err != nil {
 		return TokenResult{}, err
 	}
 	channel, target := cred.Channel, cred.Target
@@ -156,7 +166,7 @@ func (s *Service) Reauthenticate(ctx context.Context, p Principal, cred CodeCred
 		return TokenResult{}, err
 	}
 	digest, _ := s.d.Digester.Digest(norm)
-	ev := audit.Event{UserID: p.UserID, SessionID: p.SessionID, IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, RequestID: meta.RequestID}
+	ev := audit.AuthenticationEvent{UserID: p.UserID, SessionID: p.SessionID, IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, RequestID: meta.RequestID}
 
 	if reason, err := s.verifyCode(ctx, channel, enum.PurposeReauth, norm, cred, code.Binding{UserID: p.UserID, SessionID: p.SessionID}); err != nil {
 		if !errors.Is(err, ErrUnavailable) {
@@ -185,12 +195,14 @@ func (s *Service) Reauthenticate(ctx context.Context, p Principal, cred CodeCred
 		}
 		sess, err := q.LockSessionByID(ctx, p.SessionID)
 		if errors.Is(err, pgx.ErrNoRows) {
+			s.observationReason(ctx, ob.ReasonSessionRevoked)
 			return fmt.Errorf("%w: session not found", ErrInvalidToken)
 		}
 		if err != nil {
 			return fmt.Errorf("user: lock session: %w", err)
 		}
 		if sess.UserID != p.UserID || sess.RevokeTime != nil {
+			s.observationReason(ctx, ob.ReasonSessionRevoked)
 			return fmt.Errorf("%w: session revoked", ErrInvalidToken)
 		}
 		if u.State == enum.UserFrozen {
@@ -203,6 +215,10 @@ func (s *Service) Reauthenticate(ctx context.Context, p Principal, cred CodeCred
 		if !ok {
 			return ErrNotAnchor
 		}
+		complete, err := s.userIdentityComplete(ctx, q, p.UserID)
+		if err != nil {
+			return err
+		}
 		// 等待 user/session 锁及身份复核后重新判期，不能用消费验证码前后的旧时间。
 		now := sessionTime(s.now())
 		if !sessionActiveAt(sess, now) {
@@ -213,10 +229,11 @@ func (s *Service) Reauthenticate(ctx context.Context, p Principal, cred CodeCred
 			return fmt.Errorf("user: update auth_time: %w", err)
 		}
 		if n == 0 {
+			s.observationReason(ctx, ob.ReasonSessionRevoked)
 			return fmt.Errorf("%w: session revoked", ErrInvalidToken)
 		}
 		sess.AuthTime = now
-		res, err = s.tokensFor(sess, "", deriveScope(u.State, true), now) // 锚点存在已由 anchorOfUser 证明
+		res, err = s.tokensFor(sess, "", deriveScope(u.State, complete), now)
 		return err
 	})
 	if err != nil {

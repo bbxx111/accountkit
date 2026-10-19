@@ -61,6 +61,7 @@ func newTestGateway(t *testing.T, upstream string, cert tls.Certificate, interna
 	}
 	public := map[string]bool{
 		"/v1/users:sendSignInCode": true, "/v1/users:signInWithCode": true,
+		"/v1/users:sendSignInCompletionCode": true, "/v1/users:completeSignIn": true,
 		"/v1/users/me": true, "/v1/users/me/sessions": true,
 		"/v1/token": true, "/v1/revoke": true,
 	}
@@ -83,6 +84,55 @@ func newTestGateway(t *testing.T, upstream string, cert tls.Certificate, interna
 		g.transport.base.CloseIdleConnections()
 	})
 	return g
+}
+
+func TestGatewayUsersCompletionAllowlist(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil || !strings.Contains(string(body), `"sign_in_completion_token":"private-completion-token"`) {
+			t.Error("gateway changed completion proof body")
+		}
+		if r.Header.Get("X-Device-Id") != "completion-device" || r.Header.Get("X-Device-Name") != "Completion phone" {
+			t.Error("gateway changed completion device headers")
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer upstream.Close()
+	cert, _, _ := integrationCertificate(t)
+	g := newTestGateway(t, upstream.URL, cert, false)
+	client := g.server.Client()
+	defer client.CloseIdleConnections()
+	for _, action := range []string{"sendSignInCompletionCode", "completeSignIn"} {
+		r, err := http.NewRequest("POST", g.server.URL+"/v1/users:"+action, strings.NewReader(`{"sign_in_completion_token":"private-completion-token"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Header.Set("X-Device-Id", "completion-device")
+		r.Header.Set("X-Device-Name", "Completion phone")
+		resp, err := client.Do(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusAccepted || resp.Header.Get("Cache-Control") != "no-store" {
+			t.Fatalf("completion route not explicitly forwarded: %s returned %d", action, resp.StatusCode)
+		}
+	}
+	before := g.transport.calls.Load()
+	for _, path := range []string{"/v1/accounts:sendSignInCompletionCode", "/v1/accounts:completeSignIn", "/v1/accounts/me", "/v1/users:prepareSignIn", "/v1/users:anything", "/admin/v1/users", "/v1/introspect", "/healthz", "/readyz"} {
+		resp, err := client.Post(g.server.URL+path, "application/json", strings.NewReader(`{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("unlisted route %s returned %d", path, resp.StatusCode)
+		}
+	}
+	if g.transport.calls.Load() != before || strings.Contains(g.logs.String(), "private-completion-token") {
+		t.Fatal("denied request reached upstream or completion secret entered logs")
+	}
 }
 
 func TestServiceIntegrationGatewayBoundary(t *testing.T) {
@@ -188,10 +238,10 @@ func TestServiceIntegrationGatewayBoundary(t *testing.T) {
 	p.stop()
 	f.assertAuditPrivate()
 	var ip, device string
-	if err := f.pool.QueryRow(t.Context(), "SELECT host(ip), device_id FROM audit_event WHERE request_id='gateway-signin' AND event_type=$1", enum.EventSignIn).Scan(&ip, &device); err != nil || ip != "127.0.0.1" || device != "gateway-device" {
+	if err := f.pool.QueryRow(t.Context(), "SELECT context->>'client_ip', context->>'device_id' FROM audit_event WHERE context->>'request_id'='gateway-signin' AND action=$1", enum.EventSignIn.String()).Scan(&ip, &device); err != nil || ip != "127.0.0.1" || device != "gateway-device" {
 		t.Fatal("forged forwarding header affected audit IP or device metadata")
 	}
-	if err := f.pool.QueryRow(t.Context(), "SELECT host(ip) FROM audit_event WHERE request_id='trusted-chain' AND event_type=$1", enum.EventCodeSent).Scan(&ip); err != nil || ip != "203.0.113.77" {
+	if err := f.pool.QueryRow(t.Context(), "SELECT context->>'client_ip' FROM audit_event WHERE context->>'request_id'='trusted-chain' AND action=$1", enum.EventCodeSent.String()).Scan(&ip); err != nil || ip != "203.0.113.77" {
 		t.Fatal("service ignored a configured trusted proxy chain")
 	}
 	f.assertSafe(public.logs.String())
@@ -205,7 +255,7 @@ func TestServiceIntegrationGatewayBoundary(t *testing.T) {
 	m = f.smtp.mail(t)
 	f.secrets = append(f.secrets, m.target, m.code)
 	p.stop()
-	if err := f.pool.QueryRow(t.Context(), "SELECT host(ip) FROM audit_event WHERE request_id='untrusted-direct' AND event_type=$1", enum.EventCodeSent).Scan(&ip); err != nil || ip != "127.0.0.1" {
+	if err := f.pool.QueryRow(t.Context(), "SELECT context->>'client_ip' FROM audit_event WHERE context->>'request_id'='untrusted-direct' AND action=$1", enum.EventCodeSent.String()).Scan(&ip); err != nil || ip != "127.0.0.1" {
 		t.Fatal("service trusted an unconfigured forwarding peer")
 	}
 	f.assertAuditPrivate()

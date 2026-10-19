@@ -58,6 +58,9 @@ type Store struct {
 	o        Options
 }
 
+// InstancePrefix 返回实例命名空间，用于绑定跨存储证明。
+func (s *Store) InstancePrefix() string { return s.prefix }
+
 // NewStore 构造 Store。keyPrefix 以 ':' 结尾（Config.KeyPrefix）。
 // Options 字段的合法性（TTL/Cooldown/MaxAttempts 等须为正）由 accountkit.Config.Validate
 // 在启动时校验，此处不再重复校验。

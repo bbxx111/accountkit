@@ -41,9 +41,14 @@ func TestUnsafeResetOnlyTargetSchema(t *testing.T) {
 	if err := UnsafeReset(ctx, cfg, a, UnsafeResetOptions{ConfirmSchema: a}); err != nil {
 		t.Fatal(err)
 	}
-	var objects, schemas, users int
-	if err := c.QueryRow(ctx, "SELECT count(*) FROM pg_tables WHERE schemaname=$1 AND tablename='user_account'", a).Scan(&objects); err != nil {
+	var objects, functions, otherFunctions, schemas, users int
+	if err := c.QueryRow(ctx, "SELECT count(*) FROM pg_tables WHERE schemaname=$1 AND tablename IN ('user_account','identity','session','audit_event','sign_in_completion_flow')", a).Scan(&objects); err != nil {
 		t.Fatal(err)
+	}
+	for schema, count := range map[string]*int{a: &functions, b: &otherFunctions} {
+		if err := c.QueryRow(ctx, "SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=$1 AND p.proname IN ('audit_context_valid','audit_actor_valid','audit_resources_valid','audit_resource_valid','audit_json_bytes')", schema).Scan(count); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := c.QueryRow(ctx, "SELECT count(*) FROM pg_namespace WHERE nspname=$1", a).Scan(&schemas); err != nil {
 		t.Fatal(err)
@@ -51,7 +56,7 @@ func TestUnsafeResetOnlyTargetSchema(t *testing.T) {
 	if err := c.QueryRow(ctx, "SELECT count(*) FROM "+b+".user_account").Scan(&users); err != nil {
 		t.Fatal(err)
 	}
-	if objects != 0 || schemas != 1 || users != 1 {
-		t.Fatalf("reset isolation: tables=%d schema=%d other-users=%d", objects, schemas, users)
+	if objects != 0 || functions != 0 || otherFunctions != 0 || schemas != 1 || users != 1 {
+		t.Fatalf("reset isolation: tables=%d functions=%d other-functions=%d schema=%d other-users=%d", objects, functions, otherFunctions, schemas, users)
 	}
 }

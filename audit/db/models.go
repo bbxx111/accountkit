@@ -5,29 +5,23 @@
 package db
 
 import (
-	"net/netip"
 	"time"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/google/uuid"
 )
 
 type AuditEvent struct {
-	ID            string
-	EventType     enum.EventType
-	ActorKind     enum.ActorKind
-	UserID        *string
-	AdminIssuer   *string
-	AdminSubject  *string
-	AdminUsername *string
-	SessionID     *string
-	IdentityKind  *enum.IdentityKind
-	SubjectHint   *string
-	Result        enum.Result
-	Reason        *string
-	Ip            *netip.Addr
-	DeviceID      *string
-	RequestID     *string
-	OccurTime     time.Time
+	ID         uuid.UUID
+	Source     string
+	Action     string
+	Result     *enum.Result
+	Actor      []byte
+	Targets    []byte
+	Context    []byte
+	Data       []byte
+	OccurTime  time.Time
+	CreateTime time.Time
 }
 
 type Identity struct {
@@ -62,6 +56,22 @@ type Session struct {
 	RevokeReason             *int16
 	CreateTime               time.Time
 	UpdateTime               time.Time
+}
+
+type SignInCompletionFlow struct {
+	ID                string
+	TokenDigest       string
+	State             int16
+	PolicyFingerprint string
+	Payload           []byte
+	CipherVersion     int16
+	Revision          int64
+	ProofUserIds      []string
+	UserID            *string
+	SessionID         *string
+	CreateTime        time.Time
+	UpdateTime        time.Time
+	ExpireTime        time.Time
 }
 
 type UserAccount struct {

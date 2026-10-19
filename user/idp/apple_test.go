@@ -125,6 +125,9 @@ func TestAppleVerifyHappyPathAndHintEmail(t *testing.T) {
 	if err != nil || id.Kind != enum.IdentityApple || id.Subject != "001234.abcdef" || id.HintEmail != "x@privaterelay.appleid.com" || id.OpenIDs != nil {
 		t.Fatalf("%+v %v", id, err)
 	}
+	if !id.ExpireTime.Equal(f.now.Add(10 * time.Minute)) {
+		t.Fatalf("verified exp lost: %v", id.ExpireTime)
+	}
 	if f.hits.Load() != 1 {
 		t.Fatalf("JWKS fetched %d times, want 1 (lazy, then cached)", f.hits.Load())
 	}

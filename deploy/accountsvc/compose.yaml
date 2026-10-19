@@ -45,6 +45,8 @@ services:
       ACCOUNTSVC_HTTP_ADDR: 0.0.0.0:8080
       # This local development example explicitly selects HTTP; it is not the service default.
       ACCOUNTSVC_TLS_ENABLED: ${ACCOUNTSVC_TLS_ENABLED-false}
+      ACCOUNTSVC_METRICS_ENABLED: ${ACCOUNTSVC_METRICS_ENABLED:-false}
+      ACCOUNTSVC_METRICS_INSTANCE: ${ACCOUNTSVC_METRICS_INSTANCE:-}
       ACCOUNTSVC_SMTP_HOST: mailpit
       ACCOUNTSVC_SMTP_PORT: "1025"
       ACCOUNTSVC_SMTP_FROM: accounts@example.test
@@ -52,6 +54,8 @@ services:
       ACCOUNTSVC_INTROSPECTION_CLIENTS: ${ACCOUNTSVC_INTROSPECTION_CLIENTS:?Generate development client credentials}
       ACCOUNTKIT_AUTH_SCHEMA: account
       ACCOUNTKIT_AUTH_KEY_PREFIX: "accountsvc-dev:"
+      ACCOUNTKIT_ENABLED_IDENTITY_KINDS: EMAIL
+      ACCOUNTKIT_REQUIRED_IDENTITY_KINDS: EMAIL
       ACCOUNTKIT_JWT_ISSUER: accountsvc-dev
       ACCOUNTKIT_JWT_AUDIENCE: accountsvc-dev-api
       ACCOUNTKIT_JWT_KEYS: "1:${JWT_KEY:?Generate a JWT key}"

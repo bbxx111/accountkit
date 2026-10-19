@@ -23,8 +23,8 @@ func TestIndependentInstances(t *testing.T) {
 	cb.JWTKeys = map[uint16][]byte{1: k(9)}
 	a, pa, sa := integrationInstance(t, ca, rdb)
 	b, pb, sb := integrationInstance(t, cb, rdb)
-	fa, accessA := seedSourceFixture(t, pa, a.Config())
-	fb, accessB := seedSourceFixture(t, pb, b.Config())
+	fa, accessA := seedFormatFixture(t, pa, a.Config())
+	fb, accessB := seedFormatFixture(t, pb, b.Config())
 	if err := a.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -84,12 +84,12 @@ func TestIndependentInstances(t *testing.T) {
 	}
 	// Consuming A's OTP must not consume B's, even with equal HMAC keys and target.
 	for _, x := range []struct {
-		signIn func() (user.TokenResult, error)
+		signIn func() (user.SignInResult, error)
 	}{
-		{func() (user.TokenResult, error) {
+		{func() (user.SignInResult, error) {
 			return a.Users().SignInWithCode(ctx, user.CodeCredential{Channel: enum.IdentityPhone, Target: fa.Phone, CodeID: challengeA.CodeID, Code: sa.code(fa.Phone)}, user.Device{ID: "otp-device"}, meta)
 		}},
-		{func() (user.TokenResult, error) {
+		{func() (user.SignInResult, error) {
 			return b.Users().SignInWithCode(ctx, user.CodeCredential{Channel: enum.IdentityPhone, Target: fb.Phone, CodeID: challengeB.CodeID, Code: sb.code(fb.Phone)}, user.Device{ID: "otp-device"}, meta)
 		}},
 	} {

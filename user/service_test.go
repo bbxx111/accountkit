@@ -15,7 +15,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/email"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/phone"
@@ -32,24 +31,26 @@ import (
 // capture 记录最近发出的验证码，供测试取码登录。
 type capture struct {
 	mu   sync.Mutex
-	last map[string]sender.Message // target → message
+	last map[string]sender.CodeMessage // target → message
 	fail error
 }
 
-func (c *capture) set(target string, m sender.Message) error {
+func (c *capture) set(target string, m sender.CodeMessage) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.fail != nil {
 		return c.fail
 	}
 	if c.last == nil {
-		c.last = map[string]sender.Message{}
+		c.last = map[string]sender.CodeMessage{}
 	}
 	c.last[target] = m
 	return nil
 }
-func (c *capture) SendSMS(_ context.Context, to string, m sender.Message) error { return c.set(to, m) }
-func (c *capture) SendEmail(_ context.Context, to string, m sender.Message) error {
+func (c *capture) SendSMS(_ context.Context, to string, m sender.CodeMessage) error {
+	return c.set(to, m)
+}
+func (c *capture) SendEmail(_ context.Context, to string, m sender.CodeMessage) error {
 	return c.set(to, m)
 }
 func (c *capture) code(target string) string {
@@ -65,7 +66,7 @@ type fixture struct {
 	pool       *pgxpool.Pool
 	mr         *miniredis.Miniredis
 	sent       *capture
-	audit      *audit.Memory
+	audit      *testAuditMemory
 	dig        *pii.Digester
 	ciph       *pii.Cipher
 	clock      *time.Time // 可推进的时钟
@@ -86,7 +87,7 @@ func newFixture(t *testing.T) *fixture {
 	now := time.Now().Truncate(time.Second)
 	clock := &now
 	sent := &capture{}
-	mem := &audit.Memory{}
+	mem := &testAuditMemory{}
 	repo := user.NewRepo(pool)
 	wechat := &fakeWeChat{}
 	apple := &fakeApple{}
@@ -133,7 +134,15 @@ func (f *fixture) signIn(t *testing.T, channel enum.IdentityKind, target string,
 		t.Fatalf("sign in: %v", err)
 	}
 	f.advance(61 * time.Second) // 过冷却，便于后续再次发码
-	return res
+	return requireSignInTokens(t, res)
+}
+
+func requireSignInTokens(t *testing.T, res user.SignInResult) user.TokenResult {
+	t.Helper()
+	if res.Tokens == nil || res.Pending != nil {
+		t.Fatalf("expected token branch, got %+v", res)
+	}
+	return *res.Tokens
 }
 
 // normalizedTarget 镜像 Service.normalizeTarget 对 channel 的归一化，仅供测试查找 capture 用。
@@ -151,7 +160,7 @@ func normalizedTarget(channel enum.IdentityKind, target string) string {
 	return target
 }
 
-func hasEvent(m *audit.Memory, typ enum.EventType, result enum.Result) bool {
+func hasEvent(m *testAuditMemory, typ enum.EventType, result enum.Result) bool {
 	for _, e := range m.Events() {
 		if e.Type == typ && e.Result == result {
 			return true
@@ -161,7 +170,7 @@ func hasEvent(m *audit.Memory, typ enum.EventType, result enum.Result) bool {
 }
 
 // hasEventReason 同 hasEvent，额外要求 Reason 匹配。
-func hasEventReason(m *audit.Memory, typ enum.EventType, result enum.Result, reason string) bool {
+func hasEventReason(m *testAuditMemory, typ enum.EventType, result enum.Result, reason string) bool {
 	for _, e := range m.Events() {
 		if e.Type == typ && e.Result == result && e.Reason == reason {
 			return true
@@ -277,7 +286,7 @@ func TestSignInFrozenAndPendingDeletion(t *testing.T) {
 	mustExec(t, f, `UPDATE user_account SET state = 3 WHERE id = $1`, res.UserID) // PENDING_DELETION
 	_ = f.sendSignInCode(ctx, enum.IdentityPhone, phone1, meta1)
 	got, err := f.svc.SignInWithCode(ctx, f.credential(enum.PurposeSignIn, enum.IdentityPhone, phone1, f.sent.code(phone1)), dev1, meta1)
-	if err != nil || got.Scope != user.ScopeUndelete {
+	if err != nil || got.Tokens == nil || got.Pending != nil || got.Tokens.Scope != user.ScopeUndelete {
 		t.Fatalf("pending deletion via anchor must yield user:undelete scope: %+v %v", got, err)
 	}
 }
@@ -361,8 +370,8 @@ func TestSendSignInCodeRequiresIP(t *testing.T) {
 }
 
 // resetAudit 用新的 Memory 记录器重建 Service（Deps 不可变），返回新记录器。
-func resetAudit(f *fixture) *audit.Memory {
-	mem := &audit.Memory{}
+func resetAudit(f *fixture) *testAuditMemory {
+	mem := &testAuditMemory{}
 	d := f.deps
 	d.Audit = mem
 	svc, err := user.NewService(d)

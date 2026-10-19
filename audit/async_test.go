@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/audit"
+	"github.com/bbxx111/accountkit/audit/authentication"
 	"github.com/bbxx111/accountkit/enum"
 )
 
@@ -24,15 +25,15 @@ type fakeInserter struct {
 	calls   atomic.Int32
 }
 
-func (f *fakeInserter) InsertBatch(_ context.Context, events []audit.Event) (int, error) {
+func (f *fakeInserter) InsertBatch(_ context.Context, events []audit.Event) (audit.BatchResult, error) {
 	f.calls.Add(1)
 	if f.fail.Load() {
-		return len(events), errors.New("db down")
+		return audit.BatchResult{Failed: len(events)}, errors.New("credential-private-host-error")
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.batches = append(f.batches, append([]audit.Event(nil), events...))
-	return 0, nil
+	return audit.BatchResult{Written: len(events)}, nil
 }
 
 func (f *fakeInserter) total() int {
@@ -58,7 +59,11 @@ func (f *fakeInserter) maxBatch() int {
 }
 
 func ev(i int) audit.Event {
-	return audit.Event{Type: enum.EventCodeSent, Actor: enum.ActorUser, Result: enum.ResultSuccess, IP: "203.0.113.77", RequestID: "req-e2e-1", OccurTime: time.Unix(int64(1_800_000_000+i), 0)}
+	e, err := authentication.Map(audit.AuthenticationEvent{Type: enum.EventCodeSent, Actor: enum.ActorUser, Result: enum.ResultSuccess, IP: "203.0.113.77", RequestID: "req-e2e-1", OccurTime: time.Unix(int64(1_800_000_000+i), 0)}, audit.AuthenticationOptions{Source: "test/source", Namespace: "test/ns"})
+	if err != nil {
+		panic(err)
+	}
+	return e
 }
 
 func waitFor(t *testing.T, cond func() bool) {
@@ -178,8 +183,8 @@ func TestAsyncWriteFailureIsCountedNotPropagated(t *testing.T) {
 		t.Fatalf("stats after failures: %+v", s)
 	}
 	out := logs.String()
-	if !strings.Contains(out, "db down") || strings.Contains(out, "203.0.113.77") {
-		t.Fatalf("failure log must carry the error, never event content: %s", out)
+	if strings.Contains(out, "credential-private-host-error") || strings.Contains(out, "203.0.113.77") {
+		t.Fatalf("failure log must hide host errors, never event content: %s", out)
 	}
 	// 后端恢复后同一实例已 Close，新实例正常写入（失败不会让 worker 退出，这里用第二个实例验证独立性）
 	f.fail.Store(false)
@@ -251,14 +256,14 @@ func TestAsyncContextCancelFlushesAndStops(t *testing.T) {
 func TestAsyncWritesToPostgres(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
-	a := audit.NewAsync(audit.NewStore(pool), audit.AsyncOptions{Logger: slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))})
+	a := audit.NewAsync(testStore(t, pool), audit.AsyncOptions{Logger: slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))})
 	a.Start(ctx)
 	for i := 0; i < 3; i++ {
 		a.Record(ctx, ev(i))
 	}
 	a.Close()
 	var n int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_event WHERE event_type = $1`, int16(enum.EventCodeSent)).Scan(&n); err != nil || n != 3 {
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_event WHERE action = $1`, enum.EventCodeSent.String()).Scan(&n); err != nil || n != 3 {
 		t.Fatalf("rows: %d %v", n, err)
 	}
 	if s := a.Stats(); s.Written != 3 {

@@ -56,7 +56,7 @@ func (s *healthState) serveReady(w http.ResponseWriter, r *http.Request) {
 	healthResponse(w, 200, "ready")
 }
 
-func serviceHandler(cfg Config, endUser, admin, introspect http.Handler, state *healthState) http.Handler {
+func serviceHandler(cfg Config, endUser, admin, introspect http.Handler, state *healthState, metrics ...http.Handler) http.Handler {
 	router := chi.NewRouter()
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -69,6 +69,9 @@ func serviceHandler(cfg Config, endUser, admin, introspect http.Handler, state *
 	router.Mount("/admin/v1", admin)
 	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) { healthResponse(w, 200, "ok") })
 	router.Get("/readyz", state.serveReady)
+	if cfg.MetricsEnabled && len(metrics) > 0 && metrics[0] != nil {
+		router.Get("/metrics", metrics[0].ServeHTTP)
+	}
 	return requestMetadata(cfg.TrustedProxyCIDRs, router)
 }
 

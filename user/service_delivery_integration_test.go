@@ -85,7 +85,7 @@ func TestDisabledSenderDoesNotInvalidateIssuedCode(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := disabled.SignInWithCode(ctx, f.credential(enum.PurposeSignIn, enum.IdentityPhone, phone1, issued), dev1, meta1)
-	if err != nil || result.AccessToken == "" || result.Scope != user.ScopeUser {
+	if err != nil || result.Tokens == nil || result.Pending != nil || result.Tokens.AccessToken == "" || result.Tokens.Scope != user.ScopeUser {
 		t.Fatal("disabling future delivery invalidated existing code sign-in")
 	}
 }

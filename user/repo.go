@@ -31,7 +31,13 @@ func (r *Repo) Q() *db.Queries { return r.q }
 // WithTxRaw 在一个事务内执行 fn，同时把 pgx.Tx 交给 fn（purge 需要把同一事务传给宿主 Anonymizer）；
 // fn 返回错误或 panic 时回滚。
 func (r *Repo) WithTxRaw(ctx context.Context, fn func(tx pgx.Tx, q *db.Queries) error) (err error) {
-	tx, err := r.pool.Begin(ctx)
+	return r.withTxRawOptions(ctx, pgx.TxOptions{}, fn)
+}
+
+// Privacy cleanup needs a fresh statement snapshot after waiting for user locks.
+// Other callers keep the host's default isolation through WithTxRaw above.
+func (r *Repo) withTxRawOptions(ctx context.Context, options pgx.TxOptions, fn func(tx pgx.Tx, q *db.Queries) error) (err error) {
+	tx, err := r.pool.BeginTx(ctx, options)
 	if err != nil {
 		return fmt.Errorf("user: begin tx: %w", err)
 	}

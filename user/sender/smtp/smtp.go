@@ -7,19 +7,15 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"fmt"
 	"io"
-	"math"
-	"mime"
-	"mime/quotedprintable"
 	"net"
 	"net/mail"
 	netsmtp "net/smtp"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/user/sender"
 )
 
@@ -38,12 +34,30 @@ type Config struct {
 
 // Sender 复用不可变配置，每次发送建立一个独立连接，不持有后台任务。
 type Sender struct {
-	cfg Config
-	tls *tls.Config
+	cfg      Config
+	tls      *tls.Config
+	renderer Renderer
 }
 
 // New 只校验和复制配置，不进行网络 I/O。错误只包含配置项名。
 func New(cfg Config) (*Sender, error) {
+	return NewWithRenderer(cfg, LegacyChineseRenderer{})
+}
+
+// NewWithRenderer 只校验和复制连接配置，既不渲染也不进行网络 I/O。
+// renderer 必须并发安全；发送期间的语言和模板选择由宿主管理。
+func NewWithRenderer(cfg Config, renderer Renderer) (*Sender, error) {
+	if renderer == nil {
+		return nil, errors.New("smtp: invalid Renderer")
+	}
+	value := reflect.ValueOf(renderer)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		if value.IsNil() {
+			return nil, errors.New("smtp: invalid Renderer")
+		}
+	}
+
 	if cfg.Host == "" || strings.ContainsAny(cfg.Host, "\r\n\t /\\") {
 		return nil, errors.New("smtp: invalid Host")
 	}
@@ -89,7 +103,7 @@ func New(cfg Config) (*Sender, error) {
 	}
 	// 不保留调用方 TLSConfig，防止调用方修改配置影响后续发送。
 	cfg.TLSConfig = nil
-	return &Sender{cfg: cfg, tls: tlsCfg}, nil
+	return &Sender{cfg: cfg, tls: tlsCfg, renderer: renderer}, nil
 }
 
 func validAddress(value string) bool {
@@ -100,46 +114,22 @@ func validAddress(value string) bool {
 	return err == nil && addr.Address == value && addr.Name == ""
 }
 
-func message(from, to string, m sender.Message) ([]byte, error) {
-	var purpose string
-	switch m.Purpose {
-	case enum.PurposeSignIn:
-		purpose = "登录"
-	case enum.PurposeBind:
-		purpose = "绑定"
-	case enum.PurposeReauth:
-		purpose = "重新认证"
-	default:
-		return nil, sender.ErrUnavailable
-	}
-	if !validAddress(to) || m.TTL <= 0 || m.Code == "" {
-		return nil, sender.ErrUnavailable
-	}
-	for _, digit := range m.Code {
-		if digit < '0' || digit > '9' {
-			return nil, sender.ErrUnavailable
-		}
-	}
-	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n", from, to, mime.QEncoding.Encode("UTF-8", purpose+"验证码"))
-	body := quotedprintable.NewWriter(&buf)
-	// 向上取整以免正的短有效期显示为零分钟；实际校验仍由验证码存储控制。
-	fmt.Fprintf(body, "您正在进行%s。\r\n\r\n验证码：%s\r\n有效期：%.0f 分钟。\r\n\r\n请勿向他人透露验证码。如非本人操作，请忽略此邮件。\r\n", purpose, m.Code, math.Ceil(m.TTL.Minutes()))
-	if err := body.Close(); err != nil {
-		return nil, sender.ErrUnavailable
-	}
-	return buf.Bytes(), nil
-}
-
-// SendEmail 使用有限总预算完成连接、TLS、AUTH 与 DATA；取消会关闭整个连接。
+// SendEmail 使用有限总预算完成渲染、连接、TLS、AUTH 与 DATA；取消会关闭整个连接。
 // 对外始终返回固定安全错误，避免 SMTP 服务端响应泄漏收件地址或凭据。
-func (s *Sender) SendEmail(ctx context.Context, to string, m sender.Message) error {
-	data, err := message(s.cfg.From, to, m)
-	if err != nil {
-		return sender.ErrUnavailable
-	}
+func (s *Sender) SendEmail(ctx context.Context, to string, m sender.CodeMessage) error {
 	ctx, cancel := context.WithTimeout(ctx, s.cfg.Timeout)
 	defer cancel()
+	if ctx.Err() != nil || !validAddress(to) || !validCodeMessage(m) {
+		return sender.ErrUnavailable
+	}
+	content, err := s.renderer.Render(ctx, m)
+	if err != nil || ctx.Err() != nil {
+		return sender.ErrUnavailable
+	}
+	data, err := message(s.cfg.From, to, content)
+	if err != nil || ctx.Err() != nil {
+		return sender.ErrUnavailable
+	}
 	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", net.JoinHostPort(s.cfg.Host, strconv.Itoa(s.cfg.Port)))
 	if err != nil {
 		return sender.ErrUnavailable
@@ -200,4 +190,4 @@ func (s *Sender) SendEmail(ctx context.Context, to string, m sender.Message) err
 	return nil
 }
 
-var _ sender.EmailSender = (*Sender)(nil)
+var _ sender.EmailCodeSender = (*Sender)(nil)

@@ -141,10 +141,10 @@ func TestNewDefaultsAuditToAsyncStoreUnlessInjected(t *testing.T) {
 	}
 	a.Close() // 未 Start、队列为空：不得触碰数据库（lazyPool 不可连接）
 
-	mem := &audit.Memory{}
+	mem := &testAuditMemory{}
 	d := baseDeps(t)
 	d.Audit = mem
-	b, err := accountkit.New(minimal(), d)
+	b, err := accountkit.New(externalAuditConfig(minimal()), d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -489,10 +489,10 @@ func TestAdminHandlerMountsBehindHostVerifier(t *testing.T) {
 }
 
 func TestRecordAdminForbidden(t *testing.T) {
-	mem := &audit.Memory{}
+	mem := &testAuditMemory{}
 	d := baseDeps(t)
 	d.Audit = mem
-	a, err := accountkit.New(minimal(), d)
+	a, err := accountkit.New(externalAuditConfig(minimal()), d)
 	if err != nil {
 		t.Fatal(err)
 	}

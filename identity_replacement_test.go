@@ -249,7 +249,7 @@ func TestIdentityReplacementEndToEndAgainstRealDB(t *testing.T) {
 	assertPrivate(auditJSON)
 	assertPrivate(logs.String())
 	var linked int
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM audit_event WHERE user_id=$1 AND request_id=$2 AND reason='IDENTITY_REPLACED' AND event_type IN ($3,$4,$5)", uid, "replacement-e2e", enum.EventIdentityBound, enum.EventIdentityUnbound, enum.EventSessionRevoked).Scan(&linked); err != nil {
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM audit_event WHERE COALESCE((SELECT r->>'id' FROM jsonb_array_elements(targets || COALESCE(context->'related_resources','[]'::jsonb)) r WHERE r->>'type'='USER' LIMIT 1),actor->>'id')=$1 AND context->>'request_id'=$2 AND data->>'reason'='IDENTITY_REPLACED' AND action IN ($3,$4,$5)", uid, "replacement-e2e", enum.EventIdentityBound.String(), enum.EventIdentityUnbound.String(), enum.EventSessionRevoked.String()).Scan(&linked); err != nil {
 		t.Fatal(err)
 	}
 	if linked != 3 {

@@ -79,7 +79,7 @@ func TestDefaultSchemaMigrateAgainstRealDB(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	wantTables := []string{"audit_event", "identity", "schema_migrations", "session", "user_account"}
+	wantTables := []string{"audit_event", "identity", "schema_migrations", "session", "sign_in_completion_flow", "user_account"}
 	if !reflect.DeepEqual(tables, wantTables) {
 		t.Fatalf("account tables = %v, want %v", tables, wantTables)
 	}

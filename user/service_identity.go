@@ -54,8 +54,14 @@ func (s *Service) ListIdentities(ctx context.Context, userID string) ([]Identity
 	return out, nil
 }
 
-// SendBindCode 向即将绑定的新锚点发送 BIND 码。不预检占用（避免枚举），冲突在绑定时报告。
-func (s *Service) SendBindCode(ctx context.Context, p Principal, channel enum.IdentityKind, target string, meta Meta) (CodeChallenge, error) {
+// sendBindCode 向即将绑定的新锚点发送 BIND 码。不预检占用（避免枚举），冲突在绑定时报告。
+func (s *Service) sendBindCode(ctx context.Context, p Principal, channel enum.IdentityKind, target string, meta Meta) (CodeChallenge, error) {
+	if !channel.IsChannel() {
+		return CodeChallenge{}, ErrInvalidArgument
+	}
+	if err := s.requireIdentityEnabled(channel); err != nil {
+		return CodeChallenge{}, err
+	}
 	norm, _, _, err := s.normalizeTarget(channel, target)
 	if err != nil {
 		return CodeChallenge{}, err
@@ -129,13 +135,16 @@ func (s *Service) BindWithCode(ctx context.Context, p Principal, cred CodeCreden
 	if err := validateCodeCredential(cred); err != nil {
 		return IdentityInfo{}, false, err
 	}
+	if err := s.requireIdentityEnabled(cred.Channel); err != nil {
+		return IdentityInfo{}, false, err
+	}
 	channel, target := cred.Channel, cred.Target
 	norm, hintPrefix, hintSuffix, err := s.normalizeTarget(channel, target)
 	if err != nil {
 		return IdentityInfo{}, false, err
 	}
 	digest, _ := s.d.Digester.Digest(norm)
-	ev := audit.Event{UserID: p.UserID, SessionID: p.SessionID, IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, RequestID: meta.RequestID}
+	ev := audit.AuthenticationEvent{UserID: p.UserID, SessionID: p.SessionID, IdentityKind: channel, SubjectHint: audit.Hint(digest), IP: meta.IP, RequestID: meta.RequestID}
 	if reason, err := s.verifyCode(ctx, channel, enum.PurposeBind, norm, cred, code.Binding{UserID: p.UserID}); err != nil {
 		if !errors.Is(err, ErrUnavailable) {
 			ev.Type, ev.Result, ev.Reason = enum.EventIdentityBindRejected, enum.ResultFailure, reason
@@ -180,6 +189,7 @@ func (s *Service) BindWithCode(ctx context.Context, p Principal, cred CodeCreden
 		}
 		return IdentityInfo{}, false, err
 	}
+	ev.IdentityID = info.ID
 	ev.Type, ev.Result = enum.EventIdentityBound, enum.ResultSuccess
 	if !created {
 		ev.Reason = "ALREADY_BOUND"
@@ -217,7 +227,17 @@ func (s *Service) createProviderIdentity(ctx context.Context, q *db.Queries, use
 
 // BindWithIdp 把第三方身份绑定到当前账号。
 func (s *Service) BindWithIdp(ctx context.Context, p Principal, cred IdpCredential, meta Meta) (IdentityInfo, bool, error) {
-	ev := audit.Event{UserID: p.UserID, SessionID: p.SessionID, IdentityKind: cred.Kind, IP: meta.IP, RequestID: meta.RequestID}
+	if cred.Kind != enum.IdentityWeChat && cred.Kind != enum.IdentityApple {
+		return IdentityInfo{}, false, ErrInvalidArgument
+	}
+	ev := audit.AuthenticationEvent{UserID: p.UserID, SessionID: p.SessionID, IdentityKind: cred.Kind, IP: meta.IP, RequestID: meta.RequestID}
+	if err := s.requireIdentityEnabled(cred.Kind); err != nil {
+		if reason := idpFailureReason(err); reason != "" {
+			ev.Type, ev.Result, ev.Reason = enum.EventIdentityBindRejected, enum.ResultFailure, reason
+			s.record(ctx, ev)
+		}
+		return IdentityInfo{}, false, err
+	}
 	ident, err := s.verifyIdp(ctx, cred)
 	if err != nil {
 		if reason := idpFailureReason(err); reason != "" {
@@ -269,6 +289,7 @@ func (s *Service) BindWithIdp(ctx context.Context, p Principal, cred IdpCredenti
 		}
 		return IdentityInfo{}, false, err
 	}
+	ev.IdentityID = info.ID
 	ev.Type, ev.Result = enum.EventIdentityBound, enum.ResultSuccess
 	if !created {
 		ev.Reason = "ALREADY_BOUND"
@@ -277,7 +298,7 @@ func (s *Service) BindWithIdp(ctx context.Context, p Principal, cred IdpCredenti
 	return info, created, nil
 }
 
-// UnbindIdentity 软删除本人的一个身份；解绑后必须仍有至少一个 PHONE/EMAIL 锚点。
+// UnbindIdentity 软删除本人的一个身份；当前账号及解绑后的身份集合均须满足策略。
 func (s *Service) UnbindIdentity(ctx context.Context, p Principal, identityID string, meta Meta) error {
 	if !ids.Valid(ids.Identity, identityID) {
 		return fmt.Errorf("%w: malformed identity id", ErrInvalidArgument)
@@ -300,21 +321,18 @@ func (s *Service) UnbindIdentity(ctx context.Context, p Principal, identityID st
 			return fmt.Errorf("user: get identity: %w", err)
 		}
 		target = row
-		if row.Kind.IsAnchor() {
-			idents, err := q.ListActiveIdentitiesByUser(ctx, p.UserID)
-			if err != nil {
-				return fmt.Errorf("user: list identities: %w", err)
+		idents, err := q.ListActiveIdentitiesByUser(ctx, p.UserID)
+		if err != nil {
+			return fmt.Errorf("user: list identities: %w", err)
+		}
+		remaining := make([]db.Identity, 0, len(idents))
+		for _, id := range idents {
+			if id.ID != row.ID {
+				remaining = append(remaining, id)
 			}
-			otherAnchor := false
-			for _, id := range idents {
-				if id.ID != row.ID && id.Kind.IsAnchor() {
-					otherAnchor = true
-					break
-				}
-			}
-			if !otherAnchor {
-				return ErrLastAnchor
-			}
+		}
+		if !s.identitiesComplete(idents) || !s.identitiesComplete(remaining) {
+			return ErrLastAnchor
 		}
 		n, err := q.SoftDeleteIdentity(ctx, db.SoftDeleteIdentityParams{ID: identityID, UserID: p.UserID, Now: now})
 		if err != nil {
@@ -335,6 +353,6 @@ func (s *Service) UnbindIdentity(ctx context.Context, p Principal, identityID st
 	case target.ProviderSubject != nil:
 		hint = audit.Hint(*target.ProviderSubject)
 	}
-	s.record(ctx, audit.Event{Type: enum.EventIdentityUnbound, Result: enum.ResultSuccess, UserID: p.UserID, SessionID: p.SessionID, IdentityKind: target.Kind, SubjectHint: hint, IP: meta.IP, RequestID: meta.RequestID})
+	s.record(ctx, audit.AuthenticationEvent{Type: enum.EventIdentityUnbound, Result: enum.ResultSuccess, UserID: p.UserID, SessionID: p.SessionID, IdentityID: target.ID, IdentityKind: target.Kind, SubjectHint: hint, IP: meta.IP, RequestID: meta.RequestID})
 	return nil
 }

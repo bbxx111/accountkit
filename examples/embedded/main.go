@@ -44,6 +44,8 @@ func run() error {
 	defer pool.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: addr})
 	defer rdb.Close()
+	// 未注入 Audit/AuditReader：库管理默认本地审计读写及 worker 生命周期。
+	// 宿主读写与仅写入模式见 examples/audit；注入组件由宿主启动和关闭。
 	a, err := accountkit.New(cfg, accountkit.Deps{Pool: pool, Redis: rdb, SMSSender: sender.NewLog(nil), EmailSender: sender.NewLog(nil)})
 	if err != nil {
 		return err

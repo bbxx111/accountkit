@@ -17,6 +17,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/observability"
 )
 
 const (
@@ -33,7 +34,8 @@ type AppleOptions struct {
 	HTTP      *http.Client
 	Nonces    *NonceRegistry // 必填
 	Logger    *slog.Logger
-	Now       func() time.Time // nil → time.Now（验签时钟）
+	Observer  observability.Observer // 可选；缓存降级不表示最终验证成功
+	Now       func() time.Time       // nil → time.Now（验签时钟）
 	// NonceTTL 是登记 nonce 的下限 TTL；实际登记时长取它与 id_token 剩余有效期
 	// （exp + leeway）中的较大者，以覆盖整个 id_token 生命周期。默认 10m。
 	NonceTTL time.Duration
@@ -46,6 +48,7 @@ type Apple struct {
 	hc        *http.Client
 	nonces    *NonceRegistry
 	logger    *slog.Logger
+	observer  *observability.Recorder
 	now       func() time.Time
 	nonceTTL  time.Duration
 
@@ -73,7 +76,7 @@ func NewApple(o AppleOptions) *Apple {
 	for _, b := range o.BundleIDs {
 		set[b] = struct{}{}
 	}
-	return &Apple{bundleIDs: set, jwksURL: o.JWKSURL, hc: o.HTTP, nonces: o.Nonces, logger: o.Logger, now: o.Now, nonceTTL: o.NonceTTL}
+	return &Apple{bundleIDs: set, jwksURL: o.JWKSURL, hc: o.HTTP, nonces: o.Nonces, logger: o.Logger, observer: observability.NewRecorder(o.Observer, o.Logger), now: o.Now, nonceTTL: o.NonceTTL}
 }
 
 // errJWKSUnavailable 在 keyfunc 内部标记“取不到 JWKS 且无缓存”，外层映射为 ErrUnavailable。
@@ -137,6 +140,9 @@ func (a *Apple) VerifyApple(ctx context.Context, idToken, rawNonce string) (Iden
 		return Identity{}, err // ErrNonceReplayed / ErrUnavailable / ErrInvalidCredential 原样透出
 	}
 	id := Identity{Kind: enum.IdentityApple, Subject: sub}
+	if exp, err := claims.GetExpirationTime(); err == nil && exp != nil {
+		id.ExpireTime = exp.Time
+	}
 	if email, _ := claims["email"].(string); email != "" && emailVerified(claims["email_verified"]) {
 		id.HintEmail = email
 	}
@@ -189,8 +195,15 @@ func emailVerified(v any) bool {
 // errJWKSUnavailable——否则一次 JWKS 故障会被误判成"这是个坏 kid"。
 func (a *Apple) key(ctx context.Context, kid string) (*rsa.PublicKey, error) {
 	a.mu.Lock()
-	defer a.mu.Unlock()
+	cachedFallback := false
+	defer func() {
+		a.mu.Unlock()
+		if cachedFallback && a.observer.Enabled() {
+			a.observer.Observe(ctx, observability.DegradationObservation{Scenario: observability.DegradationAppleCachedKeyFallback, Count: 1})
+		}
+	}()
 	if k, ok := a.keys[kid]; ok {
+		cachedFallback = !a.lastRefreshOK
 		return k, nil
 	}
 	now := a.now()

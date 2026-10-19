@@ -1,8 +1,9 @@
--- auth-server 初始 schema。所有对象位于连接 search_path 首位的 schema（由 migrations.Up 设置），
--- 因此表名不带前缀。规则见设计文档 §3.1–3.2：TSID 文本主键带类型前缀，_time 时间戳，
+-- accountkit 初始 schema。所有对象位于连接 search_path 首位的 schema（由 migrations.Up 设置），
+-- 因此表名不带前缀。账号/身份/会话/流程主键采用带类型前缀的 TSID，审计采用 UUIDv7；_time 时间戳，
 -- SMALLINT 枚举无 CHECK（值由 Go 定义），全部表不设外键（一致性由 service 层与测试保证）。
 --
--- 尚未部署任何环境前允许原地修改本文件；一旦部署，后续变更从 0002 起新增文件。
+-- User-authorized generic audit definition is included in this initial version.
+-- Future changes must use version 0002 or higher; historical source snapshots remain frozen.
 
 -- 用户（表名 user_account：user 是 PG 关键字）
 CREATE TABLE user_account (
@@ -21,9 +22,9 @@ CREATE TABLE user_account (
 );
 -- purge 维护任务：WHERE state = PENDING_DELETION AND purge_time <= now()
 -- 枚举值由 Go 定义并在此钉死：ACTIVE=1, FROZEN=2, PENDING_DELETION=3, DELETED=4（0 为 UNSPECIFIED，不存储）
-CREATE INDEX user_account_purge_time_idx ON user_account (purge_time) WHERE state = 3;
+CREATE INDEX idx_user_account_purge_time ON user_account (purge_time) WHERE state = 3;
 -- 管理端 GET /users（ListUsersAdmin）：ORDER BY create_time, id 的 keyset 分页；没有它每页都是全表排序
-CREATE INDEX user_account_create_time_id_idx ON user_account (create_time, id);
+CREATE INDEX idx_user_account_create_time_id ON user_account (create_time, id);
 
 -- 身份：一行一个。锚点类（PHONE/EMAIL）存 subject_digest + subject_ciphertext；
 -- 第三方类（WECHAT/APPLE）存 provider_subject 明文。二者恰好一个非空。
@@ -46,18 +47,18 @@ CREATE TABLE identity (
     CONSTRAINT identity_subject_exactly_one CHECK ((subject_digest IS NULL) <> (provider_subject IS NULL))
 );
 -- 登录查找 + "一个身份只属一个账号"：按 (kind, digest) 精确命中
-CREATE UNIQUE INDEX identity_kind_subject_digest_uidx ON identity (kind, subject_digest) WHERE delete_time IS NULL;
-CREATE UNIQUE INDEX identity_kind_provider_subject_uidx ON identity (kind, provider_subject) WHERE delete_time IS NULL;
+CREATE UNIQUE INDEX uk_identity_kind_subject_digest ON identity (kind, subject_digest) WHERE delete_time IS NULL;
+CREATE UNIQUE INDEX uk_identity_kind_provider_subject ON identity (kind, provider_subject) WHERE delete_time IS NULL;
 -- users/me/identities 列表与 per-kind 计数（delete_time IS NULL 由查询自己过滤）；
 -- purge 匿名化按 user_id 取**全部**行（含已解绑的软删行，§3.5），因此不能是 delete_time IS NULL 的部分索引
-CREATE INDEX identity_user_id_idx ON identity (user_id);
+CREATE INDEX idx_identity_user_id ON identity (user_id);
 -- 管理端 filter：identity.phone_suffix / email_domain
-CREATE INDEX identity_kind_hint_suffix_idx ON identity (kind, hint_suffix) WHERE delete_time IS NULL;
+CREATE INDEX idx_identity_kind_hint_suffix ON identity (kind, hint_suffix) WHERE delete_time IS NULL;
 -- 管理端 filter：identity.phone_prefix / email_prefix
-CREATE INDEX identity_kind_hint_prefix_idx ON identity (kind, hint_prefix) WHERE delete_time IS NULL;
+CREATE INDEX idx_identity_kind_hint_prefix ON identity (kind, hint_prefix) WHERE delete_time IS NULL;
 -- 维护任务 rekey_digests / reencrypt_subjects：按旧密钥版本取活跃锚点行；Migrate 的 CheckKeyVersions 取 DISTINCT 版本
-CREATE INDEX identity_digest_key_version_idx ON identity (digest_key_version) WHERE delete_time IS NULL;
-CREATE INDEX identity_cipher_key_version_idx ON identity (cipher_key_version) WHERE delete_time IS NULL;
+CREATE INDEX idx_identity_digest_key_version ON identity (digest_key_version) WHERE delete_time IS NULL;
+CREATE INDEX idx_identity_cipher_key_version ON identity (cipher_key_version) WHERE delete_time IS NULL;
 
 -- 设备会话。id 即 JWT sid。
 CREATE TABLE session (
@@ -78,38 +79,63 @@ CREATE TABLE session (
     update_time                 TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 -- /token 刷新：按当前 refresh 哈希精确命中
-CREATE UNIQUE INDEX session_refresh_token_hash_uidx ON session (refresh_token_hash);
+CREATE UNIQUE INDEX uk_session_refresh_token_hash ON session (refresh_token_hash);
 -- 宽限外重放检测：按旧哈希命中
-CREATE INDEX session_previous_refresh_token_hash_idx ON session (previous_refresh_token_hash) WHERE previous_refresh_token_hash IS NOT NULL;
+CREATE INDEX idx_session_previous_refresh_token_hash ON session (previous_refresh_token_hash) WHERE previous_refresh_token_hash IS NOT NULL;
 -- users/me/sessions 列表、revokeOthers、冻结/删除时吊销全部
-CREATE INDEX session_user_id_idx ON session (user_id) WHERE revoke_time IS NULL;
+CREATE INDEX idx_session_user_id ON session (user_id) WHERE revoke_time IS NULL;
 -- 维护任务 cleanup_sessions：清理吊销 30 天以上的会话（§3.2、§5.6 #2）
-CREATE INDEX session_revoke_time_idx ON session (revoke_time) WHERE revoke_time IS NOT NULL;
+CREATE INDEX idx_session_revoke_time ON session (revoke_time) WHERE revoke_time IS NOT NULL;
 -- 维护任务 cleanup_sessions：清理 refresh 过期 30 天以上且从未被吊销的会话
-CREATE INDEX session_refresh_expire_time_idx ON session (refresh_expire_time) WHERE revoke_time IS NULL;
+CREATE INDEX idx_session_refresh_expire_time ON session (refresh_expire_time) WHERE revoke_time IS NULL;
 
--- 审计事件（追加写，无外键：日志生命周期独立于主体）
+-- Generic audit events; append-only and independent of resource lifecycle.
+-- Go validates business content; storage preserves basic JSON shapes and UUIDv7.
 CREATE TABLE audit_event (
-    id              TEXT COLLATE "C" CONSTRAINT audit_event_pkey PRIMARY KEY
-                    CONSTRAINT audit_event_id_format CHECK (id ~ '^e_[0-9a-hjkmnp-tv-z]{13}$'),
-    event_type      SMALLINT NOT NULL,
-    actor_kind      SMALLINT NOT NULL,                  -- USER / ADMIN / SYSTEM
-    user_id         TEXT COLLATE "C",
-    admin_issuer    TEXT,
-    admin_subject   TEXT,
-    admin_username  TEXT,
-    session_id      TEXT COLLATE "C",
-    identity_kind   SMALLINT,
-    subject_hint    TEXT,                               -- digest 或 provider_subject 前 8 位
-    result          SMALLINT NOT NULL,                  -- SUCCESS / FAILURE
-    reason          TEXT,
-    ip              INET,
-    device_id       TEXT,
-    request_id      TEXT,
-    occur_time      TIMESTAMPTZ NOT NULL DEFAULT now()
+ id uuid CONSTRAINT audit_event_pkey PRIMARY KEY
+  CONSTRAINT audit_event_id_v7 CHECK (get_byte(uuid_send(id),6)>>4=7 AND get_byte(uuid_send(id),8)&192=128),
+ source varchar(128) COLLATE "C" NOT NULL,
+ action varchar(128) COLLATE "C" NOT NULL,
+ -- Enum membership is checked by the public model, not frozen in a SQL CHECK.
+ result smallint,
+ actor jsonb NOT NULL CONSTRAINT audit_event_actor_valid CHECK(jsonb_typeof(actor)='object'),
+ targets jsonb NOT NULL DEFAULT '[]' CONSTRAINT audit_event_targets_valid CHECK(jsonb_typeof(targets)='array'),
+ context jsonb NOT NULL DEFAULT '{}' CONSTRAINT audit_event_context_valid CHECK(jsonb_typeof(context)='object'),
+ data jsonb NOT NULL DEFAULT '{}' CONSTRAINT audit_event_data_object CHECK(jsonb_typeof(data)='object'),
+ occur_time timestamptz(6) NOT NULL,
+ create_time timestamptz(6) NOT NULL DEFAULT clock_timestamp()
 );
--- 管理端 users/{user}/auditEvents 分页：ORDER BY occur_time, id（§3.4 勘误：本表没有 create_time；
--- 同一事务/同一毫秒可能多条事件，id 作 tiebreaker 才能做稳定游标）
-CREATE INDEX audit_event_user_id_occur_time_idx ON audit_event (user_id, occur_time, id);
--- 保留期清理
-CREATE INDEX audit_event_occur_time_idx ON audit_event (occur_time);
+-- Stable timeline, source-bound retention, and exact resource membership.
+CREATE INDEX idx_audit_event_occur_time_id ON audit_event(occur_time,id);
+CREATE INDEX idx_audit_event_source_occur_time_id ON audit_event(source,occur_time,id);
+CREATE INDEX idx_audit_event_actor ON audit_event(source,(actor->>'namespace'),(actor->>'id'),occur_time,id);
+CREATE INDEX idx_audit_event_targets ON audit_event USING gin(targets jsonb_path_ops);
+CREATE INDEX idx_audit_event_related_resources ON audit_event USING gin((context->'related_resources') jsonb_path_ops);
+CREATE INDEX idx_audit_event_request_id ON audit_event(source,(context->>'request_id'));
+-- Historical flow closure remains queryable after sign_in_completion_flow cleanup.
+CREATE INDEX idx_audit_event_flow_id ON audit_event(source,(data#>>'{accountkit,flow_id}'));
+
+-- Short-lived sign-in completion; only token digests and context-bound encrypted payloads are stored.
+CREATE TABLE sign_in_completion_flow (
+ id TEXT COLLATE "C" PRIMARY KEY CONSTRAINT sign_in_completion_flow_id_format CHECK (id ~ '^f_[0-9a-hjkmnp-tv-z]{13}$'),
+ token_digest TEXT COLLATE "C" NOT NULL,
+ state SMALLINT NOT NULL,
+ policy_fingerprint TEXT COLLATE "C" NOT NULL,
+ payload BYTEA NOT NULL,
+ cipher_version SMALLINT NOT NULL,
+ revision BIGINT NOT NULL DEFAULT 1,
+ proof_user_ids TEXT[] NOT NULL DEFAULT '{}',
+ user_id TEXT COLLATE "C",
+ session_id TEXT COLLATE "C",
+ create_time TIMESTAMPTZ NOT NULL,
+ update_time TIMESTAMPTZ NOT NULL,
+ expire_time TIMESTAMPTZ NOT NULL
+);
+-- Token lookup uses a unique random-secret digest, separate from the internal resource ID.
+CREATE UNIQUE INDEX uk_sign_in_completion_flow_token_digest ON sign_in_completion_flow(token_digest);
+-- Bounded expiry cleanup scans in deterministic order.
+CREATE INDEX idx_sign_in_completion_flow_expire_time_id ON sign_in_completion_flow(expire_time,id);
+-- Account deletion/anonymization removes every proof owner and completed result reference.
+CREATE INDEX idx_sign_in_completion_flow_proof_user_ids ON sign_in_completion_flow USING GIN(proof_user_ids);
+CREATE INDEX idx_sign_in_completion_flow_user_id ON sign_in_completion_flow(user_id);
+CREATE INDEX idx_sign_in_completion_flow_session_id ON sign_in_completion_flow(session_id);

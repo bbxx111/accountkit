@@ -2,13 +2,105 @@
 
 固定兼容基线包含 130 个文件，原始文件清单与 SHA-256 见 `tests/testdata/source-baseline/manifest.json`；该清单用于追溯冻结快照，不表示当前文件名和内容必须与历史快照相同。当前根包名为 `accountkit`，导入路径为 `github.com/bbxx111/accountkit`。
 
+## 可选标准化指标
+
+当前开发代码新增 `accountkit.Deps.Observer`、`user.Deps.Observer` 及相关审计/IdP Options 字段，未配置或 typed nil 时使用 no-op。原位置参数构造入口保持可用；外部结构体字面量请使用具名字段，新增字段不兼容未命名字段字面量。该能力尚未包含在已发布 v0.2.0，接入时固定包含新接口的版本或提交。
+
+宿主显式选择 `observability/otel.New(provider, instance)` 或 `observability/prometheus.New(registerer, instance)`，注入同一个 Observer；依赖仍在根 go.mod，核心领域不导入后端。实例名、指标名称/标签/单位是有界公共观测契约，见[指标指南](metrics.md)。切换适配器无需修改领域调用；新进程或新聚合设施可能重置时间序列，OTel Exporter 可能转换最终名称。
+
+宿主拥有 Provider/Registry、导出与端点，先排空业务并关闭库，再最终采集与关闭观测设施。库不关闭或注销注入组件。标准化指标适配器的回退可移除 Observer 注入或回退宿主依赖版本，不涉及 SQL、Redis 键、HTTP、令牌、密文或既有审计 Stats 迁移。accountsvc 默认关闭指标；显式启用 Prometheus 的配置、采集边界与回退见[服务手册](accountsvc.md#prometheus-指标)，不需要数据库迁移。标准化适配器的实际证据与未验证项见[验收记录](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)。
+
+## 初始数据库基线整合
+
+在尚无实际产品接入的前提下，项目曾执行初始结构整合：当时 `0001_init.up.sql` 定义 user_account、identity、session、audit_event、identity_flow 及字段、索引与约束。十列 UUIDv7 通用审计按用户授权纳入原始定义并更新固定校验，撤回当时独立的 `0002_identity_flow` 和通用审计 0002，也不提供 staging/Prepare 转换工具；初始版本为 1，配套 down 覆盖五个表，公开 Down 拒绝执行。后续审计校验职责调整经另行授权修改未发布 0001，移除五个审计校验函数并同步固定校验，其他表 CHECK 保持。本次另经用户明确授权，直接将 0001 的流程对象命名调整为 sign_in_completion_flow 并更新当前固定校验，撤回本分支新增的重命名 0002；初始化仍为 1，后续真实增量从 0002 开始。
+
+这是迁移基线的破坏性调整。旧 version=1 仍使用 identity_flow、缺少完整流程结构或保留旧十七列审计（审计表为空也不例外），新旧流程表并存，以及任何已撤回旧 version=2（包括此前重命名方案的新表名 v2）均明确拒绝，保留数据、结构和版本；不重放初始 SQL、不自动改名、不修改 schema_migrations、不 Force 或自动清库。当前受支持的初始结构为完整 sign_in_completion_flow 与十列审计、version=1。采用新定义须人工核验后使用新空资源；包含需保留数据的旧库应先备份并单独制定和验证迁移方案，不能用修改版本标记替代数据迁移。
+
+历史 v0.1.0/v0.2.0 标签及 source-baseline 原始字节保持。历史检查固定两个旧发布的精确提交和原始 SQL，所有新发布遵循整合后的独立初始校验值及递增迁移规则。历史合成数据直接装入完整新结构，验证非审计 ID、摘要、密文和有效 access/refresh 格式兼容；审计合成记录明确映射为固定合法 UUIDv7 并保留 legacy_event_id，不再把该用例描述为旧 schema 的原地接管。操作与恢复边界见[迁移手册](migrations.md)。
+
+## 登录补全流程重命名
+
+当前流程表名为 `sign_in_completion_flow`，内部 sqlc 模型和查询使用 `SignInCompletionFlow`。用户本次明确要求“不新增 0002，直接改 0001 中的表定义”：未发布 0001 直接使用新表名，同步主键、格式 CHECK、五个独立索引、配套 down 与当前固定哈希，列、约束表达式和索引定义保持；此前新增的 0002 已撤回。新空库安装为 version=1、dirty=false，新结构非空实例重复 Up 无变化；旧表名同号库及旧 v2 均不自动接管。固定源快照和已发布标签不变，此次有限授权不扩展为后续任意改写初始 SQL。
+
+| 旧公开 Go 名称（deprecated，仍可使用） | 新名称 |
+|---|---|
+| `ids.IdentityFlow` | `ids.SignInCompletionFlow` |
+| `user.Deps.IdentityFlowContext` | `user.Deps.SignInCompletionFlowContext` |
+| `(*user.Service).CleanupIdentityFlows` | `(*user.Service).CleanupSignInCompletionFlows` |
+
+新上下文字段非空时优先，否则回退旧字段；迁移字段名称时沿用原值。实例上下文的序列化形状、AAD、`f_` ID 格式、`FlowState`、审计资源类型 `IDENTITY_FLOW`、JSON `flow_id` 和既有 HTTP 协议保持，票据仍受原期限与原证明校验约束；格式兼容不表示提供旧库自动迁移。维护任务名称由 `cleanup_identity_flows` 改为 `cleanup_sign_in_completion_flows`；运维指标、日志检索和告警规则需同步更新。
+
+采用新定义时先核对目标、备份与密钥，人工核验后使用新空数据库/schema，由 `Migrate` 安装并确认 version=1/dirty=false 和新表名。需保留旧数据时另行制定并验证迁移方案，不能重复 Up、Force、修改版本或自动清库接管。旧应用查询原表名，不能直接使用新结构，回退前须单独核验应用与数据库兼容；公共 `Down` 继续拒绝。旧备份先恢复到独立库核验，旧表名 v1 或旧 v2 不会因恢复而变成当前基线，详见[迁移手册](migrations.md#登录补全流程命名调整)。
+
+## 通用审计公开接口与协议迁移
+
+本次审计 Go API 和审计资源标识是明确的破坏性升级，认证动作结果、其他 `u_/i_/s_/f_` ID、JWT/refresh/验证码格式保持。初始结构、旧库拒绝和历史格式演练边界见上节及[迁移手册](migrations.md)。客户端、宿主适配器和当前数据库基线应一并升级，旧二进制须验证结构兼容后才能回退。
+
+### 事件生产与写侧
+
+`audit.Event` 不再是认证字段集合，也不再由 Store 生成 `e_` ID。它与叶子包 `audit/event.Event` 是同一类型，包含 `ID uuid.UUID`、`Source`、`Action string`、`Result *enum.Result`、`Actor`、`Targets`、`Context`、`Data json.RawMessage`、`OccurTime`；`audit.RecordView` 在事件外增加存储方首次生成的 `CreateTime`。SQL 固定为十列，认证专属快照位于 `data.accountkit`，不再提供 `user_id/session_id/flow_id/identity_kind` 专属列或公共 schema_version。
+
+认证专用调用迁移到 `audit.AuthenticationEvent`（`audit/authentication.Input`）和 `audit.NewAuthenticationRecorder`。直接操作通用事件的宿主先用 `uuid.NewV7()` 生成 ID，设置实际发生时间及可信 source，调用 `audit/event.Freeze` 校验、规范化并冻结可变值，再交给 `Recorder.Record(ctx, event)`。已有 UUIDv7 的认证输入由映射器保留，缺失时映射器首次生成；重投递保持 ID、OccurTime 和逻辑内容。生成或校验失败不得改变认证动作结果。
+
+`Inserter.InsertBatch` 返回 `(audit.BatchResult, error)`，分别统计 Written、Duplicate、Failed、Invalid、Conflicts。同一 ID 同一事实不新增记录、不更新 CreateTime；真正冲突返回可识别的 `audit.ErrConflict`，不能重新生成 ID 或 upsert 覆盖。合法清理后的重放不能恢复已删除隐私。宿主记录器必须自行冻结输入、避免业务路径阻塞并提供安全失败观测；默认 `audit.Async` 已完成入队前冻结及有界批处理，但不提供持久化队列或可靠投递。
+
+source/action 最长 128 ASCII 字符，source 匹配 `[A-Za-z0-9][A-Za-z0-9._/-]*`，action 匹配 `[A-Z][A-Z0-9_]*`；非 nil Result 只能是 SUCCESS/FAILURE。已知主体为 namespace + id，资源为 namespace + type + id；namespace/id 各最多 512 字节，name 最多 256 Unicode 字符。完整事件不超过 64 KiB，targets/related_resources 各最多 32 项，超限和重复 JSON 键拒绝，不截断稳定标识。
+
+这些业务内容规则统一由 Go 校验：默认 `Async.Record` 在入队前调用 `event.Freeze`，本地 `Store.InsertBatch` 在写入前独立调用同一入口，Go 脱敏投影写回前也校验。数据库保留 UUIDv7、JSON 基本形状、非空、列类型、默认值、主键和索引，不再用自定义函数校验主体、资源、上下文、事件大小或业务时间范围。直接 SQL 可以写入形状合法但业务内容非法的数据；导入和修数必须复用应用校验，读侧仍可能拒绝这些非法记录。既有合法 Go/HTTP 输入及错误语义不变。
+
+这是此前未发布初始定义的职责调整，当次没有为同号实例自动移除旧审计函数与 CHECK。此前仍使用 identity_flow 的完整十列 version=1 实例现在也明确拒绝接管；重复 Up 不会重放 0001 或自动转换。采用当前定义须经人工核验后准备新空资源，需保留数据时另行制定并验证迁移方案，不 Force、不修改版本、不自动清库。当次调整保留了其他四张表的 CHECK 和全部索引；验收记录见[该次变更](../openspec/changes/archive/2026-10-18-audit-validation-in-go/verification.md)。
+
+认证映射可省略无效 IP、超长设备字段、自定义 request_id 或可选 name，并单独安全计数/告警；新边界不收紧原认证 HTTP 输入。已验证管理员 issuer/sub 超过 512 字节则拒绝该审计事件并安全观测，认证结果保持。显式历史映射 `authentication.MapLegacy` 对不兼容可选字段拒绝转换，不能据此推断包提供旧库自动升级。
+
+### 配置、所有权与读侧
+
+本地默认 source/namespace 分别为 `accountkit/<schema>`、`accountkit/<schema>/resources`。`ConfigFromEnv(prefix)` 对 `AUDIT_SOURCE/AUDIT_NAMESPACE` 保留原始空值，`New` 才应用本地默认；`Config.Validate` 检查有效默认而不修改调用方字段。注入 `Deps.Audit` 时必须显式提供 `Config.AuditSource/AuditNamespace`，允许明确填写与默认字符串相同的值。直接构造 `user.NewService` 时，每个缺失值分别从 Repo 池配置的首个 search_path schema 推导，池为空或首项为空回退 account；直接服务不强制判断外部接管，跨库中心审计仍须显式配置二者。
+
+`audit.NewStore(pool)` 同样只推导本地默认；自定义配置使用 `audit.NewStoreWithOptions(pool, audit.StoreOptions{Source: source, Namespace: namespace})`，与事件生产方保持一致。namespace 表示稳定身份体系，可以是受控 URN 或完整 issuer URL，无需可访问；source 区分事件来源，role 和显示名不构成稳定身份。实际共享同一主体体系时才复用 namespace，独立数据库汇聚时须明确隔离，已有 namespace/source 变化须独立迁移。三个消费者应用案例见[设计说明](../openspec/changes/archive/2026-10-17-generalize-audit-events/design.md#to-c-案例一单个-app-使用自建账号体系)。
+
+`Deps.AuditReader` 和管理适配器的读侧改用 `audit.Reader.ListByResource(ctx, audit.Query) (audit.Page, error)`，不再接收生成数据库行。`Query` 指定 Source、完整 Resource、可选 Actions、After 和 Limit；适配器按 `(occur_time, UUID)` 严格升序返回不超过 Limit 的 RecordView，所有记录严格大于 After，CreateTime 必须非零且为可序列化的有效时间。不得重复 UUID，包括同 UUID 不同发生时间；全页及用于判断下一页的额外记录都会被复核。
+
+`Actions` 为空表示该资源的全部动作，通用 Reader 仍能查询业务事件；非空集合必须在排序和 Limit 前过滤。`Query.NormalizedActions()` 校验动作标识、返回排序去重的独立副本，不修改调用方输入，不将小写或空白改写为合法值。管理路由固定使用 `authentication.Actions()` 从认证枚举导出的完整集合，不增加业务审计 HTTP 接口或客户端动作筛选参数。宿主 Reader 必须执行这一条件；HTTP 对忽略条件的返回值仍整页拒绝为 503，不能先取页再静默跳过业务事件。`FlowLinks` 的归属证据独立查询，即使其动作不在记录筛选集合中，也须保留必要证据。
+
+默认无注入时库管理本地写读；注入 Audit + AuditReader 时管理查询走宿主读侧；仅注入 Audit 时已授权审计查询返回 `503 AUDIT_QUERY_NOT_CONFIGURED`；只注入 Reader 在 New 被拒绝。读侧故障、越界记录、顺序或记录结构不合规返回安全的 `503 AUDIT_QUERY_UNAVAILABLE`。`ADMIN_NOT_CONFIGURED`、角色检查、目标账号存在性检查和独立管理员身份系统保持。
+
+查询范围是本来源、本 namespace 下账号作为主体、直接目标或关联资源的认证事件。早期仅有 flow 的记录用 `Page.FlowLinks` 提供归属证据：历史 Evidence 须为同源、成功的 `SIGN_IN_COMPLETION_PROOF_VERIFIED` 或 `SIGN_IN_COMPLETION_COMPLETED`，并有可复核的 USER/FLOW 资源引用；`Live=true` 时 Evidence 必须为空，由管理面独立调用领域 FlowOwner 核验。已有明确其他账号归属的事件不能通过共享 flow 混入结果。历史资源后来被删除不使有效历史证据失效；证据不直接序列化，任意业务 data 不进入认证 HTTP DTO。
+
+库只管理自建 worker，不会启动、刷新或关闭宿主组件；宿主先排空业务、关闭 Auth，再关闭自建审计组件与连接。三种可编译装配见 [examples/audit](../examples/audit/main.go)，默认嵌入宿主见 [examples/embedded](../examples/embedded/main.go)。示例中的宿主 Store 仍与认证同库，远端 Recorder/Reader 由宿主实现；不能把阻塞网络调用直接放入 Record 并声称不影响认证。
+
+### HTTP 资源与游标
+
+审计资源 name 的末段从 `e_…` 改为标准小写带连字符 UUIDv7，例如 `users/u_0000000000001/auditEvents/0199ed00-0000-7000-8000-000000000001`。不增加 `e_` 前缀。旧认证 DTO 的 event_type、actor_kind、用户/会话关联及受控管理员快照语义保持，result 为 `SUCCESS`、`FAILURE` 或 JSON `null`，其他可空字段仍输出 null；任意业务 JSON 不原样暴露。
+
+审计使用独立的 v2 游标，绑定 source/resource、规范化的认证动作集合和 `(occur_time, UUID)`，客户端继续将其视为不透明字符串。旧 v1 UUID 游标、旧 `e_` 审计游标、跨账号/来源/动作集合的游标返回 `400 INVALID_PAGE_TOKEN`，响应提示从第一页重新开始，客户端须清空 page_token。认证枚举扩展导致动作范围变化时也须重新开始分页。用户列表等其他游标协议保持，不能通用解码或把游标当作授权凭据。
+
+### 外部隐私与模式切换
+
+本地匿名化保留事件事实及稳定资源引用，清理 actor/targets/related_resources 的 name、context 中 client_ip/user_agent/device_id 和 `data.accountkit.subject_hint`，保留 request/trace/span 关联；覆盖账号和流程历史，迟到及重放不能恢复隐私字段。外部设施须实现对应的资源关联、保留期和清理完成核验。
+
+宿主必须建立独立于尽力审计的持久化清理流程，保存待清理资源、失败重试和完成状态。同库匿名化回调可用传入 pgx.Tx 写入宿主自己的清理任务，不可等待远端服务或另开连接提交同批数据。只收到 `USER_PURGED` 不构成完成证据；清理未完成时不得声称外部副本已匿名化，也不能回滚已提交本地事务或丢弃清理责任。此变更不内置可靠消息/outbox，也不承诺跨库原子提交。
+
+切换外部写读不会自动迁移或删除本地旧副本，本地保留和匿名化继续覆盖配置范围内旧记录；外部历史回填须独立受控执行。改变 source/namespace 前须安排旧范围的持续清理，不能用新配置下查不到记录证明旧副本已删除。外部备份、副本及回填数据也须纳入宿主治理。
+
+## 身份策略与登录补全协议升级
+
+当前开发分支包含身份策略与登录补全的破坏性 Go/HTTP 升级，尚不表示已发布的 v0.2.0 具备这些能力。C 端及管理端沿用 `/users` 账号路由，包括自定义动作、me、身份和会话；响应 `name` 使用 `users/{user_id}` 及其子资源。此前开发中的 `/accounts` 路径尚未发布，本轮撤回，返回 404，不注册别名或重定向；已发布的 users 调用无须迁移资源名。管理列表顶层 JSON 字段 `users`、`user_id`、u_ ID、JWT claims、scope、Go User 类型、`user` 包和 `Auth.Users()` 均保留。客户端仍须适配下述 token/pending 与 Go 返回签名，网关须显式增加两个 users 补全端点。
+
+`SignInWithCode` / `SignInWithIdp` 的返回类型由 `TokenResult` 改为 `SignInResult`，调用方先检查 `Tokens` 或 `Pending`，两者恰一非 nil。自定义 `enduser.Service` 同步改签名；新增补全能力为可选接口，缺能力返回503。成功 HTTP token 字段保持，pending 只有 next_action、`sign_in_completion_token`、期限和策略集合。新增两个端点及配置 nil/[]、自动关联与注册、设备绑定、幂等和失败边界见 [README](../README.md#身份策略与登录补全)。旧 `user:bind` 表示已有账号不完整；pending 尚无账号，不能把补全票据作为 Bearer 或 refresh 使用。
+
+E/R 环境键沿宿主前缀，R 仅 PHONE/EMAIL any-of；省略 R 默认二选一，`[]` 允许纯第三方。服务显式禁用 EMAIL 时无需 SMTP，显式启用 PHONE 因未装配 SMS 服务商而报错。纯第三方账号需要近期认证时重走普通 IdP 登录，会按同设备规则替换会话；客户端保存新 pair、核对仍为原 user_id 后再继续敏感操作。此操作不保证提供方强制输入密码或 MFA。手机/邮箱及管理员恢复保留，普通 IdP 仍拒绝冷静期账号；纯第三方没有手机/邮箱自助恢复路径。
+
+当前 0001 直接定义 sign_in_completion_flow 及 data.accountkit.flow_id 审计关联，初始化版本为 1，旧表名库不自动接管。全部认证副本及调用者采用同一新基线和协议后再启用策略，避免同实例混跑旧登录即建号流程。收紧策略前核验存量可用身份；新登录和新一轮 refresh 可能取得 user:bind，已有 access 沿原期限与吊销规则处理。保留 schema、Redis 前缀、issuer/audience 和完整旧密钥。回退先停新流程并排空最长 TTL 与在途请求，保留流程表和密钥；旧程序无法等价执行策略或兼容当前基线时不能作为安全回退。恢复先落独立空库，数据库备份不包含 Redis 或密钥系统，不能通过清 Redis 恢复证明。
+
+以下旧变更的说明与提取索引记录各自升级边界；当前调用应优先遵循本节。
+
 ## 开发版默认 schema 调整
 
 `v0.2.0` 在 `Config.Schema` 未指定或为空时采用 `account`；`v0.1.0` 的默认值为 `auth`。升级已有实例须显式保留原 schema。显式合法 schema（包括 `auth`）继续按配置使用，宿主通过 `Config.Schema` 或带宿主前缀的 `AUTH_SCHEMA` 设置。库与 accountsvc 共用默认值，连接池仍须通过 `PoolConfig` 配置匹配的 search_path。环境变量名称 `AUTH_SCHEMA` 和 Redis 默认前缀 `auth:` 保持不变。
 
 ## 验证码轮次契约升级
 
-`v0.2.0` 的 `add-host-account-contracts` 修改 Go、HTTP 和短期 Redis 验证码格式；以下能力已在该固定版本发布，不属于 `v0.1.0` 接口。发布状态和本轮实际检查见[验收记录](../openspec/changes/add-host-account-contracts/verification.md)。JWT、refresh、身份密文、数据库结构、冻结迁移和发送器签名保持。
+`v0.2.0` 的 `add-host-account-contracts` 修改 Go、HTTP 和短期 Redis 验证码格式；以下能力已在该固定版本发布，不属于 `v0.1.0` 接口。发布状态和本轮实际检查见[验收记录](../openspec/changes/archive/2026-10-09-add-host-account-contracts/verification.md)。JWT、refresh、身份密文、数据库结构、冻结迁移和发送器签名保持。
 
 | 旧调用 | 新调用 |
 |---|---|
@@ -88,6 +180,24 @@ HTTP 调用方继续使用原 URL（包括 `/users`）、DTO、设备头、JWT �
 
 消费者内省沿用当前吊销查询 fail-open；管理员适配位于服务内部，不给消费者增加管理员身份。无数据库迁移、默认库配置变化或令牌格式变化。独立服务不执行宿主业务匿名化回调，不能与依赖此回调的宿主混跑同一实例的维护任务。
 
+## 验证码发送器命名与渲染接入
+
+验证码投递的正式名称更精确，旧名称继续作为带 Deprecated 注释的 Go 类型别名保留：
+
+| 旧名称 | 正式名称 |
+|---|---|
+| `sender.SMSSender` | `sender.SMSCodeSender` |
+| `sender.EmailSender` | `sender.EmailCodeSender` |
+| `sender.Message` | `sender.CodeMessage` |
+
+`SendSMS` / `SendEmail` 的签名及 Purpose、Code、TTL 字段保持，旧实现无需增加方法或显式转换；`accountkit.Deps.SMSSender` / `EmailSender`、`user.Deps.SMS` / `Email` 字段名不变。可逐步替换引用，不要求同步升级所有宿主。
+
+原 `smtp.New(Config)` 与 Config 结构保持，仍由独立 `LegacyChineseRenderer` 生成原四用途中文纯文本，正 TTL 向上取整到分钟。自定义内容改用 `smtp.NewWithRenderer(cfg, renderer)`，实现 `Render(context.Context, sender.CodeMessage) (smtp.EmailContent, error)`；Subject 与 Text 必需，HTML 可选。新入口要求非 nil 渲染器，构造时不渲染、不连接网络；渲染失败不自动回退旧文案。accountsvc 显式注入中文兼容渲染器，部署配置、EMAIL 禁用和 migrate 依赖边界保持，不增加环境变量。
+
+[本地化示例](../examples/codeemail/renderer.go)演示固定默认语言、私有类型化 context 键与请求级回退；[装配示例](../examples/codeemail/example_test.go)不发送网络请求、不输出验证码。宿主负责语言选择、并发安全、Text/HTML 的用途/验证码/有效期一致性、HTML 动态值转义与合作式取消；详见 [README 发送器契约](../README.md#发送器)。使用服务商托管模板的宿主继续直接实现两个发送器接口，把用途映射到模板与参数，无需先生成 SMTP 正文。
+
+本变更无配置默认值、数据、令牌或限流迁移。回退旧版本时，使用新名称或 NewWithRenderer 的源码需同步回退并重新编译；只使用原接口的宿主保留原构建方式。自定义本地化内容不会自动保留到旧二进制，部署回退前需确认文案差异；不执行 Down、UnsafeReset 或清空 Redis。
+
 ## 服务单监听与传输迁移
 
 本次 accountsvc 部署接口为破坏性直接迁移：消费者、管理员、内省与探针使用一个监听地址，独立认证链保持。根库 Config/Deps、嵌入式生命周期、SQL、数据库结构、令牌和业务额度契约不变，无数据迁移或重新登录要求。服务通用入口限流和网络隔离由部署方配置，规则见[网关接入手册](gateway-integration.md)。
@@ -149,8 +259,8 @@ HTTP 调用方继续使用原 URL（包括 `/users`）、DTO、设备头、JWT �
 | 加密、旧密钥、维护 | pii、maintenance、service_rekey.go | pii_test.go、runner_test.go、service_rekey_test.go、TestKeyRotationBackfillEndToEnd |
 | 业务同事务匿名化 | anonymize、service_purge.go | service_purge_test.go、TestHostContracts（宿主先写入再失败） |
 | 产品隔离 | Config.Schema/KeyPrefix、JWTIssuer/JWTAudience | TestIndependentInstances（故意复用 ID、refresh、目标与 HMAC 密钥暴露缺少命名空间） |
-| 包内 schema/版本/重复迁移 | migrations、Auth.Migrate | migrations_test.go、TestSourceDatabaseTakeover |
-| 旧存储及凭证接管 | 原样 0001、合成旧格式数据 | TestSourceDatabaseTakeover：四类表和版本快照不变、旧 JWT/refresh 可用、旧身份可解密 |
+| 包内 schema/版本/重复迁移 | migrations、Auth.Migrate | migrations_test.go、TestHistoricalFormatsOnInitialSchema；0001 直接定义新流程表，初始版本为 1，旧表名 v1、双表与已撤回旧 v2 明确拒绝 |
+| 历史数据及凭证格式 | 新初始结构、固定历史合成数据 | TestHistoricalFormatsOnInitialSchema：重复迁移保留数据、旧 JWT/refresh 可用、旧身份可解密；不承诺旧 schema 原地接管 |
 
 HTTP 请求响应、状态码、错误码和环境配置约定见 README；下列三个索引保留提取阶段的入口、实现与测试事实，其中 `httpapi/consumer`、`ConsumerHandler`、私有字段及源码行号均为历史记录，不是当前路径或可执行示例。当前入口见[终端用户入口迁移](#终端用户-http-入口迁移)及上方功能对照，当前必需测试选择器以 `scripts/required-tests.txt` 为准；后续服务与换绑验证分别见对应验收记录。Redis 吊销检查 fail-open、审计失败不阻断、刷新宽限故障拒绝请求等原语义不变。第三方真实发送和设备联调由宿主负责。
 

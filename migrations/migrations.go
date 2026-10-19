@@ -76,6 +76,15 @@ func runWithSource(ctx context.Context, connCfg *pgx.ConnConfig, schema string, 
 	db.SetMaxIdleConns(1)
 	defer db.Close()
 
+	src, err := iofs.New(source, ".")
+	if err != nil {
+		return fmt.Errorf("migrations: source: %w", err)
+	}
+	defer src.Close()
+	if err := checkBaseline(ctx, db, schema, src); err != nil {
+		return err
+	}
+
 	if _, err := db.ExecContext(ctx, `CREATE SCHEMA IF NOT EXISTS `+schema); err != nil {
 		return fmt.Errorf("migrations: create schema %s: %w", schema, err)
 	}
@@ -85,10 +94,6 @@ func runWithSource(ctx context.Context, connCfg *pgx.ConnConfig, schema string, 
 	})
 	if err != nil {
 		return fmt.Errorf("migrations: driver: %w", err)
-	}
-	src, err := iofs.New(source, ".")
-	if err != nil {
-		return fmt.Errorf("migrations: source: %w", err)
 	}
 	m, err := migrate.NewWithInstance("iofs", src, "pgx5", driver)
 	if err != nil {

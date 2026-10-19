@@ -6,12 +6,11 @@ import (
 	"testing"
 
 	"github.com/bbxx111/accountkit/audit"
-	"github.com/bbxx111/accountkit/enum"
 )
 
 func TestNoopImplementsRecorder(t *testing.T) {
 	var r audit.Recorder = audit.Noop{}
-	r.Record(context.Background(), audit.Event{Type: enum.EventSignIn}) // 不 panic 即可
+	r.Record(context.Background(), audit.Event{}) // 不 panic 即可
 }
 
 func TestMemoryRecordsInOrderAndIsConcurrencySafe(t *testing.T) {
@@ -21,7 +20,7 @@ func TestMemoryRecordsInOrderAndIsConcurrencySafe(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			m.Record(context.Background(), audit.Event{Type: enum.EventCodeSent, Reason: string(rune('a' + i%26))})
+			m.Record(context.Background(), ev(i))
 		}(i)
 	}
 	wg.Wait()
@@ -30,8 +29,8 @@ func TestMemoryRecordsInOrderAndIsConcurrencySafe(t *testing.T) {
 	}
 	// Events 返回拷贝：修改返回值不影响内部
 	evs := m.Events()
-	evs[0].Type = enum.EventUserPurged
-	if m.Events()[0].Type == enum.EventUserPurged {
+	evs[0].Action = "USER_PURGED"
+	if m.Events()[0].Action == "USER_PURGED" {
 		t.Fatal("Events must return a copy")
 	}
 }

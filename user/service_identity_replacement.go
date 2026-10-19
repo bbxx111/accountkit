@@ -38,6 +38,9 @@ func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID s
 			s.record(ctx, ev)
 		}
 	}()
+	if err := s.requireIdentityEnabled(channel); err != nil {
+		return IdentityInfo{}, err
+	}
 	if !ids.Valid(ids.User, p.UserID) || !ids.Valid(ids.Session, p.SessionID) {
 		return IdentityInfo{}, ErrInvalidToken
 	}
@@ -60,6 +63,9 @@ func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID s
 	if err != nil {
 		return IdentityInfo{}, err
 	}
+	// Only successful account/session/identity preflight establishes audit attribution.
+	ev.VerifiedSubject = true
+	ev.IdentityID = old.ID
 	if reason, verifyErr := s.verifyCode(ctx, channel, enum.PurposeBind, norm, cred, code.Binding{UserID: p.UserID}); verifyErr != nil {
 		if !errors.Is(verifyErr, ErrUnavailable) && reason != "INTERNAL" {
 			rejectReason = reason
@@ -137,6 +143,7 @@ func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID s
 		ev.SubjectHint = audit.Hint(*old.SubjectDigest)
 	}
 	s.record(ctx, ev)
+	ev.IdentityID = info.ID
 	ev.Type, ev.SubjectHint = enum.EventIdentityBound, audit.Hint(digest)
 	s.record(ctx, ev)
 	return info, nil
@@ -196,12 +203,20 @@ func (s *Service) replacementIdentity(ctx context.Context, q *db.Queries, userID
 	if err != nil {
 		return db.Identity{}, nil, fmt.Errorf("user: replacement identity count: %w", err)
 	}
+	// 同类换绑不改变有效 Kind 集合，但旧 user token 不能绕过收紧后的完整性要求。
+	if !s.identitiesComplete(idents) {
+		return db.Identity{}, nil, ErrLastAnchor
+	}
 	return old, idents, nil
 }
 
 // 基础设施错误不伪装成业务拒绝，审计原因固定且不包含原始输入或错误文本。
 func identityReplaceRejectReason(err error) string {
 	switch {
+	case errors.Is(err, ErrIdentityKindNotEnabled):
+		return "IDENTITY_KIND_NOT_ENABLED"
+	case errors.Is(err, ErrLastAnchor):
+		return "LAST_ANCHOR"
 	case errors.Is(err, ErrInsufficientScope):
 		return "INSUFFICIENT_SCOPE"
 	case errors.Is(err, ErrReauthenticationRequired):

@@ -60,10 +60,10 @@ func (h *Handler) signInWithCode(w http.ResponseWriter, r *http.Request) {
 		h.writeServiceError(w, r, err)
 		return
 	}
-	writeToken(w, res)
+	h.writeSignIn(w, r, res)
 }
 
-// POST /users:signInWithIdp — 微信 / Apple 登录即注册。
+// POST /users:signInWithIdp — 微信 / Apple 登录或等待身份补全。
 func (h *Handler) signInWithIdp(w http.ResponseWriter, r *http.Request) {
 	dev, e := deviceFrom(r)
 	if e != nil {
@@ -85,5 +85,5 @@ func (h *Handler) signInWithIdp(w http.ResponseWriter, r *http.Request) {
 		h.writeServiceError(w, r, err)
 		return
 	}
-	writeToken(w, res)
+	h.writeSignIn(w, r, res)
 }

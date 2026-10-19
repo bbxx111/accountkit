@@ -43,14 +43,19 @@ func (d *legacyDelivery) SendEmail(ctx context.Context, to string, m sender.Mess
 	return d.SendSMS(ctx, to, m)
 }
 
-func deliveryService(t *testing.T, sms sender.SMSSender, email sender.EmailSender) (*Service, *miniredis.Miniredis, *audit.Memory) {
+func deliveryService(t *testing.T, sms sender.SMSSender, email sender.EmailSender) (*Service, *miniredis.Miniredis, *testAuditMemory) {
 	t.Helper()
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
 	dig, _ := pii.NewDigester(map[uint16][]byte{1: bytes.Repeat([]byte{1}, 32)}, 1)
-	mem := &audit.Memory{}
-	return &Service{d: Deps{Now: time.Now, SMS: sms, Email: email, Digester: dig, Audit: mem, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), DefaultRegion: "CN", CodeTTL: 5 * time.Minute, Codes: code.NewStore(rdb, "delivery:", dig, code.Options{FailureLimitPerTarget: 10, FailureWindow: 15 * time.Minute, TTL: 5 * time.Minute, Cooldown: time.Minute, MaxAttempts: 5, DailyLimitPerTarget: 2, DailyLimitPerIP: 3})}}, mr, mem
+	mem := &testAuditMemory{}
+	policy, _ := NewIdentityPolicy(nil, nil)
+	mapper, err := audit.NewAuthenticationRecorder(mem, audit.AuthenticationOptions{Source: "test/source", Namespace: "test/ns"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &Service{authAudit: mapper, policy: policy, d: Deps{Now: time.Now, SMS: sms, Email: email, Digester: dig, Audit: mem, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), DefaultRegion: "CN", CodeTTL: 5 * time.Minute, Codes: code.NewStore(rdb, "delivery:", dig, code.Options{FailureLimitPerTarget: 10, FailureWindow: 15 * time.Minute, TTL: 5 * time.Minute, Cooldown: time.Minute, MaxAttempts: 5, DailyLimitPerTarget: 2, DailyLimitPerIP: 3})}}, mr, mem
 }
 
 func TestDisabledChannel(t *testing.T) {

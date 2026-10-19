@@ -19,6 +19,18 @@ var frozen = map[string]string{
 	"0001_init.up.sql":   "c696c3dcb613283ab61547d3f9c3146d3db6e18c32c90fbfb1a33ccea76f1d0e",
 	"0001_init.down.sql": "06671861850f1c317eadaf73dc004684be0ea467332e94ae54b978358308bdcd",
 }
+
+// The user-authorized current initial definition has its own immutable baseline. The source
+// snapshot remains independently pinned for the two exact historical releases.
+var initialFrozen = map[string]string{
+	"0001_init.up.sql":   "5480fd1b7183b43cfc09792683627c9c41dfd691c3626c1b4ae3905b6b8cffa8",
+	"0001_init.down.sql": "53613c379dacd01f9739ce2824570f833060aca26548ff13b3ae8c42c49e63d6",
+}
+
+var legacyReleases = map[string]string{
+	"refs/tags/v0.1.0": "48603d6d349c57910328d393d5e17decec934f11",
+	"refs/tags/v0.2.0": "e19af8542f099f14103627140c0fe23f14c99b7e",
+}
 var migrationName = regexp.MustCompile(`^([0-9]+)_(.+)\.(up|down)\.sql$`)
 var releaseTag = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`)
 
@@ -81,66 +93,136 @@ func releasedHistory(root string) ([]string, error) {
 	}
 	return refs, nil
 }
-func mergeRelease(root, ref string, baseline map[string][]byte) error {
+func releaseMigrations(root, ref string) (map[string][]byte, error) {
 	paths, err := git(root, "ls-tree", "-r", "--name-only", ref, "--", "migrations")
 	if err != nil {
-		return err
+		return nil, err
 	}
+	out := map[string][]byte{}
 	for _, path := range strings.Fields(string(paths)) {
 		if filepath.ToSlash(filepath.Dir(path)) != "migrations" || !strings.HasSuffix(path, ".sql") {
 			continue
 		}
 		data, err := git(root, "show", ref+":"+path)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		name := filepath.Base(path)
-		if old, exists := baseline[name]; exists && !bytes.Equal(old, data) {
-			return fmt.Errorf("release rewrote historical migration: %s", name)
-		}
-		baseline[name] = data
+		out[name] = data
 	}
-	return nil
+	return out, nil
 }
 func check(root string) error {
-	baseline, err := sourceBaseline(root)
+	return checkWithBaselines(root, initialFrozen, legacyReleases)
+}
+
+func checkWithBaselines(root string, initialHashes, legacyCommits map[string]string) error {
+	legacy, err := sourceBaseline(root)
 	if err != nil {
 		return err
-	}
-	// Always enforce the source baseline, even if a past release was created incorrectly.
-	for name, want := range baseline {
-		got, err := os.ReadFile(filepath.Join(root, "migrations", name))
-		if err != nil {
-			return err
-		}
-		if !bytes.Equal(got, want) {
-			return fmt.Errorf("historical migration changed: %s", name)
-		}
 	}
 	releases, err := releasedHistory(root)
 	if err != nil {
 		return err
 	}
-	// Every reachable release, including merged branches and HEAD, is immutable.
-	// Conflicting published contents are errors, regardless of tag ordering.
-	for _, ref := range releases {
-		if err := mergeRelease(root, ref, baseline); err != nil {
-			return err
-		}
-	}
-	maxVersion := uint64(0)
-	for name, want := range baseline {
-		m := migrationName.FindStringSubmatch(name)
-		if m == nil {
-			return fmt.Errorf("invalid historical migration: %s", name)
-		}
-		version, err := strconv.ParseUint(m[1], 10, 64)
+	baseline := map[string][]byte{}
+	for name, want := range initialHashes {
+		got, err := os.ReadFile(filepath.Join(root, "migrations", name))
 		if err != nil {
 			return err
 		}
-		if version > maxVersion {
-			maxVersion = version
+		sum := sha256.Sum256(got)
+		if hex.EncodeToString(sum[:]) != want {
+			return fmt.Errorf("consolidated initial migration changed: %s", name)
 		}
+		baseline[name] = got
+	}
+	initialVersion, err := validateNames(baseline)
+	if err != nil {
+		return err
+	}
+	snapshots := map[string]map[string][]byte{}
+	// Every reachable release, including merged branches and HEAD, is immutable.
+	// Conflicting published contents are errors, regardless of tag ordering.
+	for _, ref := range releases {
+		initial := baseline
+		if wantCommit, ok := legacyCommits[ref]; ok {
+			commit, err := git(root, "rev-parse", ref+"^{commit}")
+			if err != nil {
+				return err
+			}
+			if strings.TrimSpace(string(commit)) != wantCommit {
+				return fmt.Errorf("historical release tag moved: %s", ref)
+			}
+			initial = legacy
+		}
+		files, err := releaseMigrations(root, ref)
+		if err != nil {
+			return err
+		}
+		for name := range initialHashes {
+			if !bytes.Equal(files[name], initial[name]) {
+				return fmt.Errorf("release initial migration changed or missing: %s: %s", ref, name)
+			}
+		}
+		if _, err := validateNames(files); err != nil {
+			return fmt.Errorf("%s: %w", ref, err)
+		}
+		snapshots[ref] = files
+		for name, data := range files {
+			if _, initial := initialHashes[name]; initial {
+				continue
+			}
+			version, _ := strconv.ParseUint(migrationName.FindStringSubmatch(name)[1], 10, 64)
+			if version <= initialVersion {
+				return fmt.Errorf("release new migration version must exceed %d: %s: %s", initialVersion, ref, name)
+			}
+			if old, exists := baseline[name]; exists && !bytes.Equal(old, data) {
+				return fmt.Errorf("release rewrote historical migration: %s", name)
+			}
+			baseline[name] = data
+		}
+	}
+	for prior, older := range snapshots {
+		for ref, files := range snapshots {
+			if prior == ref {
+				continue
+			}
+			ancestor, err := isAncestor(root, prior, ref)
+			if err != nil {
+				return err
+			}
+			if !ancestor {
+				continue
+			}
+			maxVersion, err := validateNames(older)
+			if err != nil {
+				return err
+			}
+			for name, data := range older {
+				if _, initial := initialHashes[name]; initial {
+					continue
+				}
+				if !bytes.Equal(files[name], data) {
+					return fmt.Errorf("release removed or changed historical migration: %s: %s", ref, name)
+				}
+			}
+			for name := range files {
+				if _, exists := older[name]; exists {
+					continue
+				}
+				version, _ := strconv.ParseUint(migrationName.FindStringSubmatch(name)[1], 10, 64)
+				if version <= maxVersion {
+					return fmt.Errorf("release new migration version must exceed %d: %s: %s", maxVersion, ref, name)
+				}
+			}
+		}
+	}
+	maxVersion, err := validateNames(baseline)
+	if err != nil {
+		return err
+	}
+	for name, want := range baseline {
 		got, err := os.ReadFile(filepath.Join(root, "migrations", name))
 		if err != nil {
 			return fmt.Errorf("historical migration missing: %s", name)
@@ -153,35 +235,67 @@ func check(root string) error {
 	if err != nil {
 		return err
 	}
-	names := map[uint64]string{}
-	directions := map[string]bool{}
+	current := map[string][]byte{}
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || !strings.HasSuffix(name, ".sql") {
 			continue
 		}
+		current[name] = nil
+	}
+	if _, err := validateNames(current); err != nil {
+		return err
+	}
+	for name := range current {
 		m := migrationName.FindStringSubmatch(name)
-		if m == nil {
-			return fmt.Errorf("invalid migration filename: %s", name)
-		}
-		version, err := strconv.ParseUint(m[1], 10, 64)
-		if err != nil {
-			return err
-		}
-		if prior, ok := names[version]; ok && prior != m[2] {
-			return fmt.Errorf("duplicate migration version: %s", name)
-		}
-		names[version] = m[2]
-		direction := fmt.Sprintf("%d/%s", version, m[3])
-		if directions[direction] {
-			return fmt.Errorf("duplicate migration direction: %s", name)
-		}
-		directions[direction] = true
+		version, _ := strconv.ParseUint(m[1], 10, 64)
 		if _, old := baseline[name]; !old && version <= maxVersion {
 			return fmt.Errorf("new migration version must exceed %d: %s", maxVersion, name)
 		}
 	}
 	return nil
+}
+
+func validateNames(files map[string][]byte) (uint64, error) {
+	names := map[uint64]string{}
+	directions := map[string]bool{}
+	maxVersion := uint64(0)
+	for name := range files {
+		m := migrationName.FindStringSubmatch(name)
+		if m == nil {
+			return 0, fmt.Errorf("invalid migration filename: %s", name)
+		}
+		version, err := strconv.ParseUint(m[1], 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		if prior, ok := names[version]; ok && prior != m[2] {
+			return 0, fmt.Errorf("duplicate migration version: %s", name)
+		}
+		names[version] = m[2]
+		direction := fmt.Sprintf("%d/%s", version, m[3])
+		if directions[direction] {
+			return 0, fmt.Errorf("duplicate migration direction: %s", name)
+		}
+		directions[direction] = true
+		if version > maxVersion {
+			maxVersion = version
+		}
+	}
+	return maxVersion, nil
+}
+
+func isAncestor(root, prior, ref string) (bool, error) {
+	c := exec.Command("git", "merge-base", "--is-ancestor", prior, ref)
+	c.Dir = root
+	err := c.Run()
+	if err == nil {
+		return true, nil
+	}
+	if exit, ok := err.(*exec.ExitError); ok && exit.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, fmt.Errorf("git merge-base %s %s: %w", prior, ref, err)
 }
 func main() {
 	root, err := os.Getwd()

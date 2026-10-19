@@ -9,7 +9,11 @@ accountsvc 是 accountkit 的可选官方宿主。同一个 Go module 同时支�
 | 嵌入 accountkit | 连接、发送器、HTTP 挂载、管理员验证和业务匿名化回调 | 需要同库业务事务或定制装配 |
 | 运行 accountsvc | 运行配置、TLS、SMTP、外部管理员提供方、业务端授权 | 通过消费者 API 和内部令牌内省接入 |
 
-服务首版提供 SMTP 邮件验证码，短信显式禁用；禁用渠道请求返回 400 `CHANNEL_NOT_ENABLED`，不生成验证码、不扣发送额度。库宿主原有短信/邮件发送器继续可用。
+服务提供可选 SMTP 邮件验证码；显式身份策略启用 EMAIL 时要求 SMTP，禁用 EMAIL 时不解析或要求 SMTP。未设置新策略保留原 SMTP 装配，短信显式禁用；禁用渠道请求返回 400 `CHANNEL_NOT_ENABLED`，不生成验证码、不扣发送额度。库宿主原有短信/邮件发送器继续可用。
+
+服务默认使用库管理的本地有界异步审计及本地管理查询，`Auth.Start/Close` 管理 worker，服务管理连接。`ACCOUNTKIT_AUDIT_SOURCE` / `ACCOUNTKIT_AUDIT_NAMESPACE` 可显式设置，默认分别为 `accountkit/<schema>` / `accountkit/<schema>/resources`；同库共享审计时保持实例范围稳定。服务未内置远端审计适配器或任意业务审计 HTTP 写入接口。嵌入宿主的读写接管与仅写入模式见 [examples/audit](../examples/audit/main.go) 和[库装配说明](../README.md#宿主审计装配与清理责任)。
+
+当前审计使用 UUIDv7 标准字符串，管理 HTTP 仍返回认证投影；result 未知时为 null。旧审计 page_token 返回 400，客户端清除后重新翻页。当前 0001 直接定义 sign_in_completion_flow，新空库初始化为 version=1。旧表名 identity_flow 的同号 v1、旧十七列审计、双表并存和任何已撤回旧 v2（含此前新表名 v2）均拒绝接管；重复 migrate 不会自动改名。采用新定义须人工核验后使用新空资源，需保留旧数据时另行制定并验证迁移方案，见[迁移手册](migrations.md#登录补全流程命名调整)。外部清理须有持久化流程和完成核验，`USER_PURGED` 不能独立证明清理完成；切换后旧本地副本仍受保留和匿名化责任约束，详见[审计迁移说明](compatibility.md#通用审计公开接口与协议迁移)。
 
 ## 构建与运行
 
@@ -23,7 +27,7 @@ GOWORK=off go build -o bin/accountsvc ./cmd/accountsvc
 
 PowerShell 使用 `$env:GOWORK = 'off'`，构建目标可使用 `bin/accountsvc.exe`。无参数等同 `serve`。命令不自动读取 `.env` 文件，应由 shell、容器或进程管理器注入环境变量。
 
-`migrate` 仅要求库配置、数据库/Redis URL 和启动超时，不要求 SMTP、TLS 监听配置、内省客户端或管理员参数；它不监听、不运行维护任务。`serve` 仍执行幂等迁移、依赖连通性和身份密钥版本检查。迁移 dirty 或密钥缺失会阻止启动，不自动 Force 或清库。恢复流程见 [迁移手册](migrations.md)。
+`migrate` 仅要求库配置、数据库/Redis URL 和启动超时，不要求 SMTP、TLS 监听配置、内省客户端或管理员参数；也不解析两个指标设置、不创建指标组件，即使指标设置无效也不影响迁移。它不监听、不运行维护任务。`serve` 仍执行幂等迁移、依赖连通性和身份密钥版本检查。迁移 dirty 或密钥缺失会阻止启动，不自动 Force 或清库。恢复流程见 [迁移手册](migrations.md)。
 
 开发环境可使用 [Compose](../deploy/accountsvc/compose.yaml)：
 
@@ -37,6 +41,14 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 默认统一服务地址为 `http://127.0.0.1:18080`，邮件捕获界面为 `http://127.0.0.1:18025`。`ACCOUNTSVC_PUBLIC_PORT` 保留为统一端口映射变量；数据库和 Redis 不映射宿主端口。Compose 明确使用 development、`TLS_ENABLED=false`、隔离邮件捕获及回环端口，只用于本地开发。这个示例显式选择 HTTP，服务未设置开关时的默认行为见下表；模板不提供证书挂载，使用 true 时需另行装配证书。`down` 保留开发数据库 volume，清理数据需由使用者明确选择。
 
 同一地址检查探针：`curl -f http://127.0.0.1:18080/healthz` 和 `curl -f http://127.0.0.1:18080/readyz`。启用服务 TLS 时，两者改用同址 HTTPS 并校验证书。探针访问范围见[网关接入手册](gateway-integration.md)。
+
+## 身份策略与登录补全
+
+服务读取 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS` 和 `ACCOUNTKIT_REQUIRED_IDENTITY_KINDS`。省略 E 沿用原装配，省略 R 为 PHONE/EMAIL any-of；非空 R 只能包含 PHONE/EMAIL 且为 E 子集，`[]` 显式不限定类型。仅邮件可设 E=EMAIL、R=EMAIL；纯微信可设 E=WECHAT、R=[] 并配置微信应用，无需 SMTP。显式启用 PHONE 报错，因为服务没有 SMS 服务商。配置在重启后生效，所有同实例副本须一致。
+
+消费者沿用 `/v1/users`，管理面沿用 `/admin/v1/users`；资源 name 使用 users 及其子资源。此前未发布的 accounts 路径返回 404，不注册别名或重定向。未知第三方身份不满足 R 时返回 pending，尚不建号。客户端调用 `/v1/users:sendSignInCompletionCode` 和 `/v1/users:completeSignIn`，只用 `sign_in_completion_token` 和 PHONE/EMAIL 轮次；验证后关联已有活动账号或注册，详见 [库协议](../README.md#身份策略与登录补全)及[协议升级说明](compatibility.md#身份策略与登录补全协议升级)。
+
+普通第三方绑定从已登录账号设置发起。纯第三方近期认证要重新登录并替换 token pair，核对 user_id 后继续；普通 IdP 仍不能恢复冷静期账号，手机/邮箱和管理员恢复保留。migrate 只检查静态 E/R 与迁移依赖，不构造发送器、IdP 或认证 handler；serve 才校验显式启用类型的真实运行能力。
 
 ## 配置
 
@@ -53,9 +65,11 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 | `INTERNAL_ADDR` | 已移除；serve 读取到任意非空值即报错，必须删除旧注入 |
 | `TLS_ENABLED` | 未设置/空沿用原模式默认；true 强制 HTTPS；false 显式 HTTP |
 | `TLS_CERT_FILE` / `TLS_KEY_FILE` | 有效 TLS 模式启用时要求完整有效证书对；false 与任一证书项冲突 |
+| `METRICS_ENABLED` | 未设置、空或 false 时关闭；true 启用 Prometheus；非法布尔在监听前拒绝 |
+| `METRICS_INSTANCE` | 指标启用时必填的固定非秘密标签，匹配 `[A-Za-z0-9][A-Za-z0-9._-]{0,63}`；关闭时忽略 |
 | `TRUSTED_PROXY_CIDRS` | 空；逗号分隔可信代理网段 |
 | `STARTUP_TIMEOUT` / `SHUTDOWN_TIMEOUT` | 60s / 30s；关闭预算需给库收尾预留15秒 |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_FROM` | serve 必填；一个发件地址 |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_FROM` | serve 在 EMAIL 启用时必填；一个发件地址 |
 | `SMTP_TLS_MODE` | implicit；可选 starttls；none 仅限 development |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | 成对配置，生产必填 |
 | `SMTP_TIMEOUT` | 10s，包含连接、TLS、认证和提交 |
@@ -83,7 +97,7 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 | false | 任一合法模式 | 均为空 | HTTP；日志明确本进程未启用 HTTP TLS |
 | false | 任一合法模式 | 任一非空 | 配置冲突，拒绝启动 |
 
-启用服务 TLS 时最低 TLS1.2。显式 false 可供受控外部 TLS 终止使用，但开关本身不证明网关或网格提供了加密。生产 SMTP 仍要求认证与经过证书验证的 TLS，外部 OIDC 仍使用 HTTPS；PostgreSQL/Redis 的 TLS 分别由 DSN/URI 控制。`migrate` 不读取监听地址、TLS 开关/证书、SMTP、内省或管理员设置，因此这些服务设置即使无效也不影响它。传输部署方式、可信代理与验收职责统一见[网关接入手册](gateway-integration.md)。
+启用服务 TLS 时最低 TLS1.2。显式 false 可供受控外部 TLS 终止使用，但开关本身不证明网关或网格提供了加密。启用 EMAIL 时生产 SMTP 仍要求认证与经过证书验证的 TLS，外部 OIDC 仍使用 HTTPS；PostgreSQL/Redis 的 TLS 分别由 DSN/URI 控制。`migrate` 不读取监听地址、TLS 开关/证书、SMTP、内省或管理员设置，因此这些服务设置即使无效也不影响它。传输部署方式、可信代理与验收职责统一见[网关接入手册](gateway-integration.md)。
 
 ## 身份密钥与验证码轮换
 
@@ -101,10 +115,25 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 | HTTP_ADDR | /admin/v1 | 独立外部管理员 JWT，关闭时503 |
 | HTTP_ADDR | POST /v1/introspect | 独立服务调用 Basic 凭据 |
 | HTTP_ADDR | GET /healthz、GET /readyz | 无认证探针；访问范围由部署策略限制 |
+| HTTP_ADDR | GET /metrics | 指标开关启用时提供，无内建鉴权；仅允许监控来源 |
 
-服务只绑定一个监听器，路径不构成网络隔离。公网明确允许消费者路由、分别设置管理员策略并阻断内省和探针；不得直接公开全部 `/v1/*`，后端端口也须限制直连来源。具体接入规则见[网关接入手册](gateway-integration.md)。旧 `/internal/v1/introspect` 返回404，无别名或重定向；旧配置、端口、调用方与整体回退见[兼容迁移说明](compatibility.md#服务单监听与传输迁移)。服务无管理前端，不提供 Cookie 登录或默认宽松 CORS。
+服务只绑定一个监听器，路径不构成网络隔离。公网明确允许消费者路由、分别设置管理员策略并阻断内省、探针和指标；不得直接公开全部 `/v1/*`，后端端口也须限制直连来源。具体接入规则见[网关接入手册](gateway-integration.md)。旧 `/internal/v1/introspect` 返回404，无别名或重定向；旧配置、端口、调用方与整体回退见[兼容迁移说明](compatibility.md#服务单监听与传输迁移)。服务无管理前端，不提供 Cookie 登录或默认宽松 CORS。
 
 healthz 只表示进程存活。readyz 要求启动完成、未停机且 PostgreSQL/Redis 在两秒内可用；SMTP 或运行期 OIDC 故障不影响整个服务就绪，但对应功能会失败。请求/响应携带 X-Request-Id 用于关联；不要记录 Authorization 或请求体中的凭据。
+
+## Prometheus 指标
+
+默认关闭。先按[网关接入手册](gateway-integration.md#指标访问)配置网关允许清单与后端端口来源限制，再设置 `ACCOUNTSVC_METRICS_ENABLED=true` 和 `ACCOUNTSVC_METRICS_INSTANCE=consumer-auth`，重启后抓取同址 `GET /metrics`。Compose 透传这两个变量，默认仍关闭，不另开端口或部署 Prometheus。启用服务 TLS 时采集使用同址 HTTPS 并校验证书。
+
+实例值是部署时确定的非秘密标签，不从 schema、Redis 前缀、连接串或请求推导；配置错误只指出字段名，不回显输入。不同逻辑账号实例使用不同标签；同一逻辑实例的多副本可以共用该值，Prometheus 仍须按抓取目标标签（例如 `instance`）区分进程。
+
+关闭时 `/metrics` 返回404，启用时只接受 GET，其他方法返回405。入口不要求消费者或管理员凭据，不能直接暴露到公网。响应带 `Cache-Control: no-store`；采集错误返回不含内部详情的503，最多允许5个并发采集，超限返回503，并沿用服务 HTTP 超时。
+
+每个应用拥有独立 Registry，复用[既有指标与默认耗时桶](metrics.md#名称单位和默认桶)，不注册 Go/process 默认 collectors 或 HTTP 抓取指标。采集只读本地聚合值，不访问 PostgreSQL、Redis、SMTP 或 IdP；readiness 失败不阻断已运行服务的采集。尚无观测时可以没有序列或输出为空，不能据此判定采集失败或全部为零。
+
+进程重启后累计值重置；指标不是业务账本。停机仍先排空 HTTP，再关闭 kit 和连接，不增加后台导出任务或最终刷新等待，关闭尾部增量不保证被最后一次抓取。回退可关闭开关并重启、移除抓取目标，无需数据库迁移。库宿主的自主管理与采集语义见[指标指南](metrics.md)。
+
+配置、真实服务采集和网关夹具验证见[指标装配验收记录](../openspec/changes/archive/2026-10-19-add-accountsvc-prometheus/verification.md)；实际 Prometheus 与产品网络策略仍需部署验收。
 
 ## 更换邮箱或手机号
 
@@ -145,6 +174,8 @@ healthz 只表示进程存活。readyz 要求启动完成、未停机且 Postgre
 JWKS 最多缓存1小时；未知 kid 刷新合并并按60秒节流，无法取得新 key 时不会无限信任旧缓存。启用管理面但首次 discovery/JWKS 失败会阻止启动。首版不支持 opaque token、其他签名算法或管理员浏览器登录流程。
 
 ## 邮件、匿名化与停机
+
+EMAIL 启用时，服务显式调用 `smtp.NewWithRenderer(cfg.SMTP, smtp.LegacyChineseRenderer{})`，保留原四用途中文纯文本与有效期分钟数向上取整行为。这里不增加语言协商、模板管理或环境变量；EMAIL 关闭时仍不要求 SMTP，`migrate` 不装配发送器。嵌入式宿主需要本地化时，可参考[双语渲染实现](../examples/codeemail/renderer.go)和[装配示例](../examples/codeemail/example_test.go)，通过自己的 context 约定选择语言；并发、取消、HTML 转义和安全日志责任见 [README 发送器契约](../README.md#发送器)。新旧名称与回退说明见[兼容指南](compatibility.md#验证码发送器命名与渲染接入)。
 
 SMTP 认证使用 AUTH PLAIN，并在生产模式要求证书验证和加密；首版不支持 OAuth SMTP 凭据。提交被接受不代表邮件最终进入收件箱。发送器不自动重发；超时/拒绝返回503且保留已经占用的额度和冷却，避免故障时产生发送风暴。生产日志不包含验证码或完整邮箱。
 

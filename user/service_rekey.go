@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/bbxx111/accountkit/observability"
+	"github.com/bbxx111/accountkit/pii"
 	"github.com/bbxx111/accountkit/user/db"
 )
 
@@ -68,8 +70,10 @@ func (s *Service) decryptSubject(row db.Identity) (string, error) {
 
 // RekeyDigests（维护任务 rekey_digests，§5.6 #4）：把仍用非 active HMAC 版本的活跃锚点身份重算为 active 版本的摘要。
 // 查找始终用 AllDigests 覆盖全部已配置版本，因此回填期间登录/绑定不受影响；改写用 CAS，与并发写互不覆盖。
-func (s *Service) RekeyDigests(ctx context.Context) (int, error) {
-	total := 0
+func (s *Service) RekeyDigests(ctx context.Context) (total int, resultErr error) {
+	if s.observer.Enabled() {
+		defer s.observeMaintenance(ctx, observability.TaskRekeyDigests, func() int64 { return int64(total) }, &resultErr, time.Now())
+	}
 	active := s.d.Digester.Active()
 	for _, old := range s.d.Digester.Versions() {
 		if old == active {
@@ -99,8 +103,10 @@ func (s *Service) RekeyDigests(ctx context.Context) (int, error) {
 }
 
 // ReencryptSubjects（维护任务 reencrypt_subjects，§5.6 #5）：把仍用非 active 加密版本的活跃锚点身份的密文用 active 版本重新加密。
-func (s *Service) ReencryptSubjects(ctx context.Context) (int, error) {
-	total := 0
+func (s *Service) ReencryptSubjects(ctx context.Context) (total int, resultErr error) {
+	if s.observer.Enabled() {
+		defer s.observeMaintenance(ctx, observability.TaskReencryptSubjects, func() int64 { return int64(total) }, &resultErr, time.Now())
+	}
 	active := s.d.Cipher.Active()
 	for _, old := range s.d.Cipher.Versions() {
 		if old == active {
@@ -135,20 +141,32 @@ func (s *Service) ReencryptSubjects(ctx context.Context) (int, error) {
 // CheckKeyVersions 断言 identity 活跃行使用的每个密钥版本都在配置内(§5.2 轮换第 3 步的硬约束)。
 // 违反时返回包装 ErrUnknownKeyVersion 的错误，点名列与版本号；不含任何 PII。
 func (s *Service) CheckKeyVersions(ctx context.Context) error {
-	q := s.d.Repo.Q()
+	return CheckKeyVersions(ctx, s.d.Repo, s.d.Digester, s.d.Cipher, s.now())
+}
+
+// CheckKeyVersions 只检查存储所需密钥，迁移宿主不必装配认证发送器或提供方。
+func CheckKeyVersions(ctx context.Context, repo *Repo, digester *pii.Digester, cipher *pii.Cipher, now time.Time) error {
+	q := repo.Q()
 	digestUsed, err := q.ListActiveDigestKeyVersions(ctx)
 	if err != nil {
 		return fmt.Errorf("user: list digest key versions: %w", err)
 	}
-	if bad := unconfigured(digestUsed, s.d.Digester.Versions()); len(bad) > 0 {
-		return fmt.Errorf("%w: identity.digest_key_version %v not in configured SubjectHMACKeys %v", ErrUnknownKeyVersion, bad, s.d.Digester.Versions())
+	if bad := unconfigured(digestUsed, digester.Versions()); len(bad) > 0 {
+		return fmt.Errorf("%w: identity.digest_key_version %v not in configured SubjectHMACKeys %v", ErrUnknownKeyVersion, bad, digester.Versions())
 	}
 	cipherUsed, err := q.ListActiveCipherKeyVersions(ctx)
 	if err != nil {
 		return fmt.Errorf("user: list cipher key versions: %w", err)
 	}
-	if bad := unconfigured(cipherUsed, s.d.Cipher.Versions()); len(bad) > 0 {
-		return fmt.Errorf("%w: identity.cipher_key_version %v not in configured SubjectCipherKeys %v", ErrUnknownKeyVersion, bad, s.d.Cipher.Versions())
+	if bad := unconfigured(cipherUsed, cipher.Versions()); len(bad) > 0 {
+		return fmt.Errorf("%w: identity.cipher_key_version %v not in configured SubjectCipherKeys %v", ErrUnknownKeyVersion, bad, cipher.Versions())
+	}
+	flowUsed, err := q.RequiredSignInCompletionFlowCipherVersions(ctx, now)
+	if err != nil {
+		return fmt.Errorf("user: list flow cipher versions: %w", err)
+	}
+	if bad := unconfigured(flowUsed, cipher.Versions()); len(bad) > 0 {
+		return fmt.Errorf("%w: sign_in_completion_flow.cipher_version %v", ErrUnknownKeyVersion, bad)
 	}
 	return nil
 }

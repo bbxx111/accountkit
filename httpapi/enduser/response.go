@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/httpapi/authn"
 	"github.com/bbxx111/accountkit/user"
@@ -111,10 +112,53 @@ func writeToken(w http.ResponseWriter, res user.TokenResult) {
 	apierror.WriteJSON(w, http.StatusOK, newTokenResponse(res))
 }
 
+type pendingSignInResponse struct {
+	NextAction            string   `json:"next_action"`
+	SignInCompletionToken string   `json:"sign_in_completion_token"`
+	ExpireTime            string   `json:"expire_time"`
+	EnabledIdentityKinds  []string `json:"enabled_identity_kinds"`
+	RequiredIdentityKinds []string `json:"required_identity_kinds"`
+}
+
+func identityKindNames(kinds []enum.IdentityKind) []string {
+	names := make([]string, len(kinds))
+	for i, kind := range kinds {
+		names[i] = kind.String()
+	}
+	return names
+}
+
+func (h *Handler) writeSignIn(w http.ResponseWriter, r *http.Request, res user.SignInResult) {
+	if (res.Tokens == nil) == (res.Pending == nil) {
+		apierror.WriteInternal(w, h.d.Logger, requestIDFrom(r.Context()), errors.New("enduser: sign-in result must contain exactly one member"))
+		return
+	}
+	if res.Tokens != nil {
+		writeToken(w, *res.Tokens)
+		return
+	}
+	p := res.Pending
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+	apierror.WriteJSON(w, http.StatusOK, pendingSignInResponse{
+		NextAction:            "COMPLETE_IDENTITY",
+		SignInCompletionToken: p.SignInCompletionToken,
+		ExpireTime:            fmtTime(p.ExpireTime),
+		EnabledIdentityKinds:  identityKindNames(p.EnabledIdentityKinds),
+		RequiredIdentityKinds: identityKindNames(p.RequiredIdentityKinds),
+	})
+}
+
 // writeServiceError 把领域错误映射为 AIP-193 响应。
 func (h *Handler) writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 	var rl *code.RateLimitedError
 	switch {
+	case errors.Is(err, user.ErrSignInCompletionInvalid):
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "SIGN_IN_COMPLETION_INVALID", "sign-in completion token is missing, invalid, or expired"))
+	case errors.Is(err, user.ErrSignInAlreadyCompleted):
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "SIGN_IN_ALREADY_COMPLETED", "sign-in is already completed; start again"))
+	case errors.Is(err, user.ErrIdentityKindNotEnabled):
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "IDENTITY_KIND_NOT_ENABLED", "this identity kind is not enabled"))
 	case errors.As(err, &rl):
 		apierror.Write(w, &apierror.Error{Status: apierror.StatusResourceExhausted, Reason: rl.Dimension, Message: "too many requests, retry later", RetryAfterSeconds: retryAfterSeconds(rl.RetryAfter)})
 	case errors.Is(err, idp.ErrNonceReplayed):
@@ -158,7 +202,7 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, r *http.Request, err 
 	case errors.Is(err, user.ErrIdentityKindLimit):
 		apierror.Write(w, apierror.New(apierror.StatusAlreadyExists, "IDENTITY_KIND_LIMIT", "the maximum number of identities of this kind is already bound"))
 	case errors.Is(err, user.ErrLastAnchor):
-		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "LAST_ANCHOR_IDENTITY", "cannot unbind the last phone or email identity"))
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "LAST_ANCHOR_IDENTITY", "the account must retain at least one usable identity and satisfy its identity policy"))
 	case errors.Is(err, user.ErrNotFound):
 		apierror.Write(w, apierror.New(apierror.StatusNotFound, "NOT_FOUND", "resource not found"))
 	case errors.Is(err, user.ErrUnavailable):

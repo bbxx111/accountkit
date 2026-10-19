@@ -9,9 +9,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bbxx111/accountkit/audit/authentication"
+	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/migrations"
 	"github.com/bbxx111/accountkit/pii"
 	"github.com/bbxx111/accountkit/tokens"
+	"github.com/bbxx111/accountkit/user"
 )
 
 // WeChatApp 是一个微信应用（小程序/App/公众号）的凭据；Secret 只在服务端换取 token 时使用。
@@ -23,10 +26,17 @@ type WeChatApp struct {
 // Config 是 accountkit 的全部配置。零值字段由 applyDefaults 填默认；Validate 在 New 中调用。
 // 密钥只来自配置：JWT/HMAC/加密三组都是"版本 → 密钥"映射加一个 active 版本。
 type Config struct {
+	// nil 使用默认策略，非 nil 空切片表示显式空列表。
+	EnabledIdentityKinds  []enum.IdentityKind
+	RequiredIdentityKinds []enum.IdentityKind
 	// Schema 是所有表所在的 PostgreSQL schema。默认 "account"。
 	Schema string
 	// KeyPrefix 是所有 Redis 键的前缀，须以 ':' 结尾。默认 "auth:"。
 	KeyPrefix string
+	// AuditSource 默认 accountkit/<schema>；汇聚到外部记录器时必须显式配置。
+	AuditSource string
+	// AuditNamespace 默认 accountkit/<schema>/resources，持久化后变更须迁移。
+	AuditNamespace string
 
 	JWTKeys      map[uint16][]byte
 	JWTActiveKey uint16
@@ -70,6 +80,17 @@ type Config struct {
 	MaintenanceInterval time.Duration // 默认 5m
 }
 
+func (c Config) identityPolicy() (*user.IdentityPolicy, error) {
+	var providers []enum.IdentityKind
+	if len(c.WeChatApps) > 0 {
+		providers = append(providers, enum.IdentityWeChat)
+	}
+	if len(c.AppleBundleIDs) > 0 {
+		providers = append(providers, enum.IdentityApple)
+	}
+	return user.NewIdentityPolicy(c.EnabledIdentityKinds, c.RequiredIdentityKinds, providers...)
+}
+
 func boolPtr(b bool) *bool { return &b }
 
 func (c *Config) applyDefaults() {
@@ -88,6 +109,12 @@ func (c *Config) applyDefaults() {
 	}
 	if c.KeyPrefix == "" {
 		c.KeyPrefix = "auth:"
+	}
+	if c.AuditSource == "" {
+		c.AuditSource = "accountkit/" + c.Schema
+	}
+	if c.AuditNamespace == "" {
+		c.AuditNamespace = "accountkit/" + c.Schema + "/resources"
 	}
 	def(&c.AccessTokenTTL, 15*time.Minute)
 	def(&c.RefreshTokenTTL, 720*time.Hour)
@@ -123,11 +150,17 @@ func (c *Config) applyDefaults() {
 // Validate 应用默认值后校验配置。宿主可在启动早期调用以尽早失败。
 func (c Config) Validate() error {
 	c.applyDefaults()
+	if _, err := c.identityPolicy(); err != nil {
+		return err
+	}
 	if !migrations.ValidSchema(c.Schema) {
 		return fmt.Errorf("accountkit: Schema %q must match ^[a-z][a-z0-9_]{0,62}$", c.Schema)
 	}
 	if !strings.HasSuffix(c.KeyPrefix, ":") || len(c.KeyPrefix) < 2 {
 		return fmt.Errorf("accountkit: KeyPrefix %q must be non-empty and end with ':'", c.KeyPrefix)
+	}
+	if err := (authentication.Options{Source: c.AuditSource, Namespace: c.AuditNamespace}).Validate(); err != nil {
+		return fmt.Errorf("accountkit: audit configuration: %w", err)
 	}
 	if err := checkKeySet("JWTKeys", c.JWTKeys, c.JWTActiveKey, tokens.MinKeyLen, false); err != nil {
 		return err
@@ -252,6 +285,8 @@ func ParseWeChatApps(spec string) ([]WeChatApp, error) {
 
 // ConfigFromEnv 从环境变量读取配置（变量名 = prefix + 名称，见 README）。
 // 只解析与格式相关的错误在此报告（并点名变量）；语义校验由 Validate 完成。
+// AuditSource/AuditNamespace 保留显式输入的空/非空状态，默认值延迟到 New 装配；
+// Validate 对其本地默认值做校验但不填回。其他既有字段仍在返回前应用默认值。
 func ConfigFromEnv(prefix string) (Config, error) {
 	var c Config
 	var firstErr error
@@ -302,8 +337,43 @@ func ConfigFromEnv(prefix string) (Config, error) {
 		}
 	}
 
+	kinds := func(name string, dst *[]enum.IdentityKind) {
+		raw, ok := os.LookupEnv(prefix + name)
+		if !ok {
+			return
+		}
+		raw = strings.TrimSpace(raw)
+		if raw == "[]" {
+			*dst = []enum.IdentityKind{}
+			return
+		}
+		if raw == "" {
+			fail(name, errors.New("empty value; use [] for an explicit empty list"))
+			return
+		}
+		values := []enum.IdentityKind{}
+		seen := map[enum.IdentityKind]bool{}
+		for _, v := range strings.Split(raw, ",") {
+			k, err := enum.ParseIdentityKind(strings.TrimSpace(v))
+			if err != nil {
+				fail(name, err)
+				return
+			}
+			if seen[k] {
+				fail(name, errors.New("duplicate identity kind"))
+				return
+			}
+			seen[k] = true
+			values = append(values, k)
+		}
+		*dst = values
+	}
+	kinds("ENABLED_IDENTITY_KINDS", &c.EnabledIdentityKinds)
+	kinds("REQUIRED_IDENTITY_KINDS", &c.RequiredIdentityKinds)
 	c.Schema = str("AUTH_SCHEMA")
 	c.KeyPrefix = str("AUTH_KEY_PREFIX")
+	c.AuditSource = str("AUDIT_SOURCE")
+	c.AuditNamespace = str("AUDIT_NAMESPACE")
 	keylist("JWT_KEYS", &c.JWTKeys)
 	u16("JWT_ACTIVE_KEY", &c.JWTActiveKey)
 	c.JWTIssuer = str("JWT_ISSUER")
@@ -358,7 +428,10 @@ func ConfigFromEnv(prefix string) (Config, error) {
 	if firstErr != nil {
 		return Config{}, firstErr
 	}
+	// 外部记录器需要区分未配置和显式配置相同默认字符串。
+	auditSource, auditNamespace := c.AuditSource, c.AuditNamespace
 	c.applyDefaults()
+	c.AuditSource, c.AuditNamespace = auditSource, auditNamespace
 	if err := c.Validate(); err != nil {
 		return Config{}, err
 	}

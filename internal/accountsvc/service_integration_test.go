@@ -44,7 +44,7 @@ func TestServiceIntegrationEmailLifecycle(t *testing.T) {
 	time.Sleep(1100 * time.Millisecond)
 	f.call("POST", p.baseURL+"/v1/users/me:sendReauthenticationCode", access, map[string]string{"channel": "EMAIL", "target": "lifecycle@example.test"}, 200)
 	m := f.smtp.mail(t)
-	if !strings.Contains(m.body, "重新认证") {
+	if !strings.Contains(m.body, "您正在进行重新认证。") || !strings.Contains(m.body, "验证码："+m.code) || !strings.Contains(m.body, "有效期：5 分钟。") || !strings.Contains(m.body, "请勿向他人透露验证码。") {
 		t.Fatal("wrong reauthentication email purpose")
 	}
 	f.secrets = append(f.secrets, m.code)
@@ -109,7 +109,7 @@ func TestServiceIntegrationAdminLifecycle(t *testing.T) {
 	p.stop()
 	f.assertAuditPrivate()
 	var denied, reveals int
-	if err := f.pool.QueryRow(context.Background(), "SELECT count(*) FILTER (WHERE event_type=$1), count(*) FILTER (WHERE event_type=$2) FROM audit_event", enum.EventAdminForbidden, enum.EventIdentityRevealed).Scan(&denied, &reveals); err != nil {
+	if err := f.pool.QueryRow(context.Background(), "SELECT count(*) FILTER (WHERE action=$1), count(*) FILTER (WHERE action=$2) FROM audit_event", enum.EventAdminForbidden.String(), enum.EventIdentityRevealed.String()).Scan(&denied, &reveals); err != nil {
 		t.Fatal(err)
 	}
 	if denied != 1 || reveals != 1 {
@@ -134,9 +134,6 @@ func TestServiceIntegrationDependencyFailure(t *testing.T) {
 	}
 	f.call("GET", p.baseURL+"/healthz", "", nil, 200)
 	f.introspect(p, access, true)
-	if !strings.Contains(p.output.String(), "fail-open") {
-		t.Fatal("Redis fail-open warning missing")
-	}
 	proxy.fail(false)
 	f.call("GET", p.baseURL+"/readyz", "", nil, 200)
 	// SMTP rejection is isolated to send-code and must not make the process unready.
@@ -147,6 +144,11 @@ func TestServiceIntegrationDependencyFailure(t *testing.T) {
 	f.call("POST", p.baseURL+"/v1/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": "failed-mail@example.test"}, 429)
 	f.call("GET", p.baseURL+"/readyz", "", nil, 200)
 	p.stop()
+	// Wait for exec.Cmd.Wait to drain the process output before inspecting it;
+	// the HTTP response alone does not synchronize the output-copy goroutine.
+	if !strings.Contains(p.output.String(), "fail-open") {
+		t.Fatal("Redis fail-open warning missing")
+	}
 	f.assertAuditPrivate()
 }
 
@@ -171,6 +173,9 @@ func TestServiceIntegrationStartupSafety(t *testing.T) {
 	f := newIntegration(t)
 	// Both processes start from an absent schema and use the same migration locks.
 	minimal := map[string]string{"ACCOUNTSVC_SMTP_HOST": "", "ACCOUNTSVC_SMTP_PORT": "", "ACCOUNTSVC_SMTP_FROM": "", "ACCOUNTSVC_SMTP_USERNAME": "", "ACCOUNTSVC_SMTP_PASSWORD": "", "ACCOUNTSVC_INTROSPECTION_CLIENTS": "", "ACCOUNTSVC_TLS_CERT_FILE": "", "ACCOUNTSVC_TLS_KEY_FILE": ""}
+	minimal["ACCOUNTKIT_ENABLED_IDENTITY_KINDS"] = "PHONE,WECHAT"
+	minimal["ACCOUNTKIT_REQUIRED_IDENTITY_KINDS"] = "PHONE"
+	minimal["ACCOUNTKIT_WECHAT_APPS"] = ""
 	var wg sync.WaitGroup
 	errs := make(chan error, 2)
 	for range 2 {
@@ -202,6 +207,9 @@ func TestServiceIntegrationStartupSafety(t *testing.T) {
 	}
 	if _, err := f.command(nil, "serve"); err == nil {
 		t.Fatal("unknown key version started service")
+	}
+	if _, err := f.command(minimal, "migrate"); err == nil {
+		t.Fatal("migration ignored unknown key version")
 	}
 	var keyVersion int
 	if err := f.pool.QueryRow(context.Background(), "SELECT cipher_key_version FROM identity LIMIT 1").Scan(&keyVersion); err != nil || keyVersion != 99 {

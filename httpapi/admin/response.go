@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	auditdb "github.com/bbxx111/accountkit/audit/db"
+	"github.com/bbxx111/accountkit/audit/authentication"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/httpapi/reqid"
@@ -110,9 +110,10 @@ type auditEventResource struct {
 	Name          string  `json:"name"`
 	EventType     string  `json:"event_type"`
 	ActorKind     string  `json:"actor_kind"`
-	Result        string  `json:"result"`
+	Result        *string `json:"result"`
 	Reason        *string `json:"reason"`
 	SessionID     *string `json:"session_id"`
+	FlowID        *string `json:"flow_id,omitempty"`
 	IdentityKind  *string `json:"identity_kind"`
 	SubjectHint   *string `json:"subject_hint"`
 	IP            *string `json:"ip"`
@@ -124,21 +125,24 @@ type auditEventResource struct {
 	OccurTime     string  `json:"occur_time"`
 }
 
-func newAuditEventResource(userID string, e auditdb.AuditEvent) auditEventResource {
-	out := auditEventResource{
-		Name: "users/" + userID + "/auditEvents/" + e.ID, EventType: e.EventType.String(), ActorKind: e.ActorKind.String(), Result: e.Result.String(),
-		Reason: e.Reason, SessionID: e.SessionID, SubjectHint: e.SubjectHint, DeviceID: e.DeviceID, RequestID: e.RequestID,
-		AdminIssuer: e.AdminIssuer, AdminSubject: e.AdminSubject, AdminUsername: e.AdminUsername, OccurTime: fmtTime(e.OccurTime),
+func newAuditEventResource(userID string, e authentication.Input) auditEventResource {
+	out := auditEventResource{Name: "users/" + userID + "/auditEvents/" + e.ID.String(), EventType: e.Type.String(), ActorKind: e.Actor.String(),
+		Reason: auditString(e.Reason), SessionID: auditString(e.SessionID), FlowID: auditString(e.FlowID), SubjectHint: auditString(e.SubjectHint), DeviceID: auditString(e.DeviceID), RequestID: auditString(e.RequestID),
+		AdminIssuer: auditString(e.AdminIssuer), AdminSubject: auditString(e.AdminSubject), AdminUsername: auditString(e.AdminUsername), OccurTime: fmtTime(e.OccurTime), IP: auditString(e.IP)}
+	if e.Result.Valid() {
+		out.Result = auditString(e.Result.String())
 	}
-	if e.IdentityKind != nil && *e.IdentityKind != enum.IdentityKindUnspecified {
+	if e.IdentityKind != enum.IdentityKindUnspecified {
 		k := e.IdentityKind.String()
 		out.IdentityKind = &k
 	}
-	if e.Ip != nil {
-		ip := e.Ip.String()
-		out.IP = &ip
-	}
 	return out
+}
+func auditString(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 type auditEventList struct {

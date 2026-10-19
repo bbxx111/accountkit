@@ -158,14 +158,14 @@ func TestAuditEventsPersistedAndExpiredEndToEnd(t *testing.T) {
 	a.Close() // 刷出队列
 
 	type row struct {
-		typ     int16
+		typ     string
 		userID  *string
 		reqID   *string
 		ip      *string
 		device  *string
 		hintLen *int
 	}
-	rows, err := pool.Query(ctx, `SELECT event_type, user_id, request_id, host(ip), device_id, length(subject_hint) FROM audit_event ORDER BY occur_time, id`)
+	rows, err := pool.Query(ctx, `SELECT action, COALESCE((SELECT r->>'id' FROM jsonb_array_elements(targets || COALESCE(context->'related_resources','[]'::jsonb)) r WHERE r->>'type'='USER' LIMIT 1),actor->>'id'), context->>'request_id', context->>'client_ip', context->>'device_id', length(data#>>'{accountkit,subject_hint}') FROM audit_event ORDER BY occur_time, id`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestAuditEventsPersistedAndExpiredEndToEnd(t *testing.T) {
 		got = append(got, r)
 	}
 	rows.Close()
-	want := map[int16]bool{int16(enum.EventCodeSent): false, int16(enum.EventSignIn): false, int16(enum.EventSignInFailed): false}
+	want := map[string]bool{enum.EventCodeSent.String(): false, enum.EventSignIn.String(): false, enum.EventSignInFailed.String(): false}
 	for _, r := range got {
 		if _, ok := want[r.typ]; ok {
 			want[r.typ] = true
@@ -186,10 +186,10 @@ func TestAuditEventsPersistedAndExpiredEndToEnd(t *testing.T) {
 		if r.reqID == nil || *r.reqID != "e2e-audit-1" || r.ip == nil || *r.ip != "127.0.0.1" {
 			t.Fatalf("every event must carry request_id and ip: %+v", r)
 		}
-		if r.typ == int16(enum.EventSignIn) && (r.userID == nil || *r.userID != tok["user_id"]) {
+		if r.typ == enum.EventSignIn.String() && (r.userID == nil || *r.userID != tok["user_id"]) {
 			t.Fatalf("SIGN_IN must carry user_id: %+v", r)
 		}
-		if r.typ == int16(enum.EventSignIn) || r.typ == int16(enum.EventSignInFailed) {
+		if r.typ == enum.EventSignIn.String() || r.typ == enum.EventSignInFailed.String() {
 			// 错码在找到账号之前就被拒绝，所以 SIGN_IN_FAILED 没有 user_id，但设备与 8 位 hint 都在
 			if r.device == nil || *r.device != "e2e-audit-dev" || r.hintLen == nil || *r.hintLen != 8 {
 				t.Fatalf("sign-in events must carry device_id and an 8-char hint: %+v", r)
@@ -198,7 +198,7 @@ func TestAuditEventsPersistedAndExpiredEndToEnd(t *testing.T) {
 	}
 	for typ, seen := range want {
 		if !seen {
-			t.Fatalf("event type %d not persisted; got %+v", typ, got)
+			t.Fatalf("event type %s not persisted; got %+v", typ, got)
 		}
 	}
 	// 保留期：把所有事件拨到 200 天前，跑一轮维护（AuditRetentionDays 默认 180）→ 全部删除
@@ -221,7 +221,7 @@ type captureSender struct {
 	codes   map[string]string
 }
 
-func (c *captureSender) SendSMS(_ context.Context, to string, m sender.Message) error {
+func (c *captureSender) SendSMS(_ context.Context, to string, m sender.CodeMessage) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.codes == nil {
@@ -230,7 +230,7 @@ func (c *captureSender) SendSMS(_ context.Context, to string, m sender.Message) 
 	c.codes[to] = m.Code
 	return nil
 }
-func (c *captureSender) SendEmail(ctx context.Context, to string, m sender.Message) error {
+func (c *captureSender) SendEmail(ctx context.Context, to string, m sender.CodeMessage) error {
 	return c.SendSMS(ctx, to, m)
 }
 func (c *captureSender) code(to string) string { c.mu.Lock(); defer c.mu.Unlock(); return c.codes[to] }
@@ -398,6 +398,7 @@ func TestWeChatSignInEndToEndAgainstRealDB(t *testing.T) {
 
 	cfg := minimal()
 	cfg.Schema = schema
+	cfg.RequiredIdentityKinds = []enum.IdentityKind{}
 	cfg.WeChatApps = []accountkit.WeChatApp{{AppID: "wx1", Secret: "s1"}, {AppID: "wx2", Secret: "s2"}}
 	cfg.WeChatAPIBaseURL = wx.URL
 	a, err := accountkit.New(cfg, accountkit.Deps{Pool: pool, Redis: testRedis(t), SMSSender: sender.NewLog(nil), EmailSender: sender.NewLog(nil), HTTPClient: wx.Client()})
@@ -427,13 +428,13 @@ func TestWeChatSignInEndToEndAgainstRealDB(t *testing.T) {
 		return resp, out
 	}
 	resp, tok := signIn("wx1", "ok-UNION-1", "dev-a")
-	if resp.StatusCode != 200 || tok["is_new_user"] != true || tok["scope"] != "user:bind" {
+	if resp.StatusCode != 200 || tok["is_new_user"] != true || tok["scope"] != "user" {
 		t.Fatalf("first: %d %v", resp.StatusCode, tok)
 	}
 	if _, has := tok["hint_email"]; has {
 		t.Fatal("wechat has no hint_email")
 	}
-	// user:bind 只能读 users/me，不能改
+	// Explicit empty Required permits the complete user scope.
 	get := func(path, bearer string) int {
 		req, _ := http.NewRequest("GET", srv.URL+path, nil)
 		req.Header.Set("Authorization", "Bearer "+bearer)
@@ -445,10 +446,10 @@ func TestWeChatSignInEndToEndAgainstRealDB(t *testing.T) {
 		return resp.StatusCode
 	}
 	if get("/v1/users/me", tok["access_token"].(string)) != 200 {
-		t.Fatal("user:bind can read me")
+		t.Fatal("user can read me")
 	}
-	if get("/v1/users/me/sessions", tok["access_token"].(string)) != 403 {
-		t.Fatal("user:bind must not list sessions")
+	if get("/v1/users/me/sessions", tok["access_token"].(string)) != 200 {
+		t.Fatal("user must not list sessions")
 	}
 	// 同 UnionID 从 wx2 登录 → 同一用户、非新用户
 	resp, tok2 := signIn("wx2", "ok-UNION-1", "dev-b")
@@ -545,6 +546,17 @@ func TestIdentityBindingEndToEndAgainstRealDB(t *testing.T) {
 	const phone = "+8613812340001"
 	const mail = "bind@shifang.co"
 
+	// Existing incomplete accounts retain user:bind under the default required policy.
+	for i, subject := range []string{"UNION-B", "UNION-C"} {
+		uid := fmt.Sprintf("u_000000000000%d", i+1)
+		iid := fmt.Sprintf("i_000000000000%d", i+1)
+		if _, err := pool.Exec(ctx, "INSERT INTO user_account(id,state) VALUES($1,1)", uid); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, "INSERT INTO identity(id,user_id,kind,provider_subject,provider_meta) VALUES($1,$2,3,$3,'{}')", iid, uid, subject); err != nil {
+			t.Fatal(err)
+		}
+	}
 	// 1. 微信登录 → user:bind
 	resp, tok := call("POST", "/v1/users:signInWithIdp", "", map[string]any{"wechat": map[string]string{"app_id": "wx1", "code": "ok-UNION-B"}}, dev)
 	if resp.StatusCode != 200 || tok["scope"] != "user:bind" {

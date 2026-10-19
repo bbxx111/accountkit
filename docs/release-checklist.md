@@ -4,7 +4,7 @@
 
 ## 当前待办与责任归属
 
-2026-10-19 盘点时无活动 OpenSpec 变更；随后启动[v0.3.0 发布准备](../openspec/changes/prepare-v0-3-0-release/proposal.md)。归档任务中唯一未勾选的是[身份策略与登录补全任务 8.5](../openspec/changes/archive/2026-10-15-add-identity-policy-sign-in-completion/tasks.md)，属于集成方真实微信/Apple 联调，继续保留未验证状态。归档不代表产品上线验收完成。
+2026-10-19 盘点时无活动 OpenSpec 变更；随后启动[v0.3.0 发布准备](../openspec/changes/archive/2026-10-20-prepare-v0-3-0-release/proposal.md)。归档任务中唯一未勾选的是[身份策略与登录补全任务 8.5](../openspec/changes/archive/2026-10-15-add-identity-policy-sign-in-completion/tasks.md)，属于集成方真实微信/Apple 联调，继续保留未验证状态。归档不代表产品上线验收完成。
 
 仓库侧 v0.3.0 已发布并完成远端固定版本消费确认；本轮证据见下方版本专属门禁。发布变更仍待单独明确归档：
 
@@ -64,7 +64,7 @@
 
 ## v0.3.0 发布门禁
 
-用户已确认按 v0.3.0 准备，并在准备完成后授权继续提交、合并、推送及正式发布。说明见[v0.3.0 发布说明](releases/v0.3.0.md)，进度、快照和证据集中在[发布验收](../openspec/changes/prepare-v0-3-0-release/verification.md)。下面分别跟踪准备工作与正式发布，历史版本勾选不适用于本版本。
+用户已确认按 v0.3.0 准备，并在准备完成后授权继续提交、合并、推送及正式发布。说明见[v0.3.0 发布说明](releases/v0.3.0.md)，进度、快照和证据集中在[发布验收](../openspec/changes/archive/2026-10-20-prepare-v0-3-0-release/verification.md)。下面分别跟踪准备工作与正式发布，历史版本勾选不适用于本版本。
 
 - [x] 确认版本号 v0.3.0，盘点 v0.2.0 后的最终变更；明确旧数据库不能直接接管、Go/HTTP 登录返回与通用审计的破坏性变化。
 - [x] 对记录的准备代码快照执行生成检查、迁移历史、完整库与服务 race/必需测试门禁，以及恢复 seed/verify/source-unchanged；结果写入本次验收记录。

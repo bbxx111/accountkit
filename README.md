@@ -7,7 +7,7 @@
 
 首次以库方式接入请阅读 [Go 集成指南](docs/go-integration.md)，配套[可编译调用示例](examples/gointegration/example_test.go)涵盖登录分支、刷新与重新认证、业务事务和错误处理。
 
-可选的标准化指标通过 `Deps.Observer` 接入，默认 no-op。支持显式宿主 Provider 的 OpenTelemetry 和独立 Registry 的原生 Prometheus；[指标指南](docs/metrics.md)包含 13 项指标、有限标签、实例隔离和关闭顺序。[OTel](examples/metricsotel/main.go)与[Prometheus](examples/metricsprometheus/main.go)示例只采集合成事件，不依赖业务存储或监听端口。accountsvc 本次没有新增指标端点。
+可选的标准化指标通过 `Deps.Observer` 接入，默认 no-op。支持显式宿主 Provider 的 OpenTelemetry 和独立 Registry 的原生 Prometheus；[指标指南](docs/metrics.md)包含 13 项指标、有限标签、实例隔离和关闭顺序。[OTel](examples/metricsotel/main.go)与[Prometheus](examples/metricsprometheus/main.go)示例只采集合成事件，不依赖业务存储或监听端口。accountsvc 可显式启用同监听器的 Prometheus 指标端点，默认关闭，配置与网络边界见[服务手册](docs/accountsvc.md#prometheus-指标)。
 
 挂载内置 HTTP handler 的宿主可使用[消费者与管理面 OpenAPI 契约](docs/openapi.md)，按实际地址调整挂载前缀。
 

@@ -27,7 +27,7 @@ GOWORK=off go build -o bin/accountsvc ./cmd/accountsvc
 
 PowerShell 使用 `$env:GOWORK = 'off'`，构建目标可使用 `bin/accountsvc.exe`。无参数等同 `serve`。命令不自动读取 `.env` 文件，应由 shell、容器或进程管理器注入环境变量。
 
-`migrate` 仅要求库配置、数据库/Redis URL 和启动超时，不要求 SMTP、TLS 监听配置、内省客户端或管理员参数；它不监听、不运行维护任务。`serve` 仍执行幂等迁移、依赖连通性和身份密钥版本检查。迁移 dirty 或密钥缺失会阻止启动，不自动 Force 或清库。恢复流程见 [迁移手册](migrations.md)。
+`migrate` 仅要求库配置、数据库/Redis URL 和启动超时，不要求 SMTP、TLS 监听配置、内省客户端或管理员参数；也不解析两个指标设置、不创建指标组件，即使指标设置无效也不影响迁移。它不监听、不运行维护任务。`serve` 仍执行幂等迁移、依赖连通性和身份密钥版本检查。迁移 dirty 或密钥缺失会阻止启动，不自动 Force 或清库。恢复流程见 [迁移手册](migrations.md)。
 
 开发环境可使用 [Compose](../deploy/accountsvc/compose.yaml)：
 
@@ -65,6 +65,8 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 | `INTERNAL_ADDR` | 已移除；serve 读取到任意非空值即报错，必须删除旧注入 |
 | `TLS_ENABLED` | 未设置/空沿用原模式默认；true 强制 HTTPS；false 显式 HTTP |
 | `TLS_CERT_FILE` / `TLS_KEY_FILE` | 有效 TLS 模式启用时要求完整有效证书对；false 与任一证书项冲突 |
+| `METRICS_ENABLED` | 未设置、空或 false 时关闭；true 启用 Prometheus；非法布尔在监听前拒绝 |
+| `METRICS_INSTANCE` | 指标启用时必填的固定非秘密标签，匹配 `[A-Za-z0-9][A-Za-z0-9._-]{0,63}`；关闭时忽略 |
 | `TRUSTED_PROXY_CIDRS` | 空；逗号分隔可信代理网段 |
 | `STARTUP_TIMEOUT` / `SHUTDOWN_TIMEOUT` | 60s / 30s；关闭预算需给库收尾预留15秒 |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_FROM` | serve 在 EMAIL 启用时必填；一个发件地址 |
@@ -113,10 +115,25 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 | HTTP_ADDR | /admin/v1 | 独立外部管理员 JWT，关闭时503 |
 | HTTP_ADDR | POST /v1/introspect | 独立服务调用 Basic 凭据 |
 | HTTP_ADDR | GET /healthz、GET /readyz | 无认证探针；访问范围由部署策略限制 |
+| HTTP_ADDR | GET /metrics | 指标开关启用时提供，无内建鉴权；仅允许监控来源 |
 
-服务只绑定一个监听器，路径不构成网络隔离。公网明确允许消费者路由、分别设置管理员策略并阻断内省和探针；不得直接公开全部 `/v1/*`，后端端口也须限制直连来源。具体接入规则见[网关接入手册](gateway-integration.md)。旧 `/internal/v1/introspect` 返回404，无别名或重定向；旧配置、端口、调用方与整体回退见[兼容迁移说明](compatibility.md#服务单监听与传输迁移)。服务无管理前端，不提供 Cookie 登录或默认宽松 CORS。
+服务只绑定一个监听器，路径不构成网络隔离。公网明确允许消费者路由、分别设置管理员策略并阻断内省、探针和指标；不得直接公开全部 `/v1/*`，后端端口也须限制直连来源。具体接入规则见[网关接入手册](gateway-integration.md)。旧 `/internal/v1/introspect` 返回404，无别名或重定向；旧配置、端口、调用方与整体回退见[兼容迁移说明](compatibility.md#服务单监听与传输迁移)。服务无管理前端，不提供 Cookie 登录或默认宽松 CORS。
 
 healthz 只表示进程存活。readyz 要求启动完成、未停机且 PostgreSQL/Redis 在两秒内可用；SMTP 或运行期 OIDC 故障不影响整个服务就绪，但对应功能会失败。请求/响应携带 X-Request-Id 用于关联；不要记录 Authorization 或请求体中的凭据。
+
+## Prometheus 指标
+
+默认关闭。先按[网关接入手册](gateway-integration.md#指标访问)配置网关允许清单与后端端口来源限制，再设置 `ACCOUNTSVC_METRICS_ENABLED=true` 和 `ACCOUNTSVC_METRICS_INSTANCE=consumer-auth`，重启后抓取同址 `GET /metrics`。Compose 透传这两个变量，默认仍关闭，不另开端口或部署 Prometheus。启用服务 TLS 时采集使用同址 HTTPS 并校验证书。
+
+实例值是部署时确定的非秘密标签，不从 schema、Redis 前缀、连接串或请求推导；配置错误只指出字段名，不回显输入。不同逻辑账号实例使用不同标签；同一逻辑实例的多副本可以共用该值，Prometheus 仍须按抓取目标标签（例如 `instance`）区分进程。
+
+关闭时 `/metrics` 返回404，启用时只接受 GET，其他方法返回405。入口不要求消费者或管理员凭据，不能直接暴露到公网。响应带 `Cache-Control: no-store`；采集错误返回不含内部详情的503，最多允许5个并发采集，超限返回503，并沿用服务 HTTP 超时。
+
+每个应用拥有独立 Registry，复用[既有指标与默认耗时桶](metrics.md#名称单位和默认桶)，不注册 Go/process 默认 collectors 或 HTTP 抓取指标。采集只读本地聚合值，不访问 PostgreSQL、Redis、SMTP 或 IdP；readiness 失败不阻断已运行服务的采集。尚无观测时可以没有序列或输出为空，不能据此判定采集失败或全部为零。
+
+进程重启后累计值重置；指标不是业务账本。停机仍先排空 HTTP，再关闭 kit 和连接，不增加后台导出任务或最终刷新等待，关闭尾部增量不保证被最后一次抓取。回退可关闭开关并重启、移除抓取目标，无需数据库迁移。库宿主的自主管理与采集语义见[指标指南](metrics.md)。
+
+配置、真实服务采集和网关夹具验证见[指标装配验收记录](../openspec/changes/archive/2026-10-19-add-accountsvc-prometheus/verification.md)；实际 Prometheus 与产品网络策略仍需部署验收。
 
 ## 更换邮箱或手机号
 

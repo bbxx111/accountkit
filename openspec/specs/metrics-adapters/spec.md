@@ -81,5 +81,5 @@ Provider、Registry、Exporter、Reader 和 HTTP 指标端点 SHALL 由宿主创
 - **THEN** 得到可核对的合成指标，进程正常退出，不打印真实隐私、不自动监听外网或依赖产品配置
 
 #### Scenario: accountsvc 边界
-- **WHEN** 本次变更完成后按现有方式运行 accountsvc
-- **THEN** 现有路由、探针、配置和监听方式保持，不自动新增指标端点或导出网络连接
+- **WHEN** 按默认配置运行 accountsvc，或显式启用服务 Prometheus 指标
+- **THEN** 默认无新增端点或导出连接；显式启用时由服务创建独立采集设施并在现有监听器提供 /metrics，部署方限制访问，不改变嵌入宿主的自主管理契约

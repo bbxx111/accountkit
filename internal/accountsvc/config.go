@@ -39,6 +39,8 @@ type Config struct {
 	IntrospectionClients map[string][]string
 	AdminEnabled         bool
 	Admin                adminauth.Config
+	MetricsEnabled       bool
+	MetricsInstance      string
 	command              string
 	tlsConfig            *tls.Config
 }
@@ -96,6 +98,18 @@ func LoadConfig(command string) (Config, error) {
 	}
 	if command == "migrate" {
 		return c, nil
+	}
+	if raw := env("METRICS_ENABLED"); raw != "" {
+		c.MetricsEnabled, err = strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, invalidConfig("ACCOUNTSVC_METRICS_ENABLED")
+		}
+	}
+	if c.MetricsEnabled {
+		c.MetricsInstance = env("METRICS_INSTANCE")
+		if !metricsInstancePattern.MatchString(c.MetricsInstance) {
+			return Config{}, invalidConfig("ACCOUNTSVC_METRICS_INSTANCE")
+		}
 	}
 	if c.Library.EnabledIdentityKinds != nil {
 		if c.identityEnabled(enum.IdentityPhone) {
@@ -254,6 +268,7 @@ func validListenAddress(addr string) bool {
 	return err == nil && p >= 0 && p <= 65535
 }
 
+var metricsInstancePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 var libraryErrorName = regexp.MustCompile(`^accountkit: (ACCOUNTKIT_[A-Z0-9_]+):`)
 var libraryErrorField = regexp.MustCompile(`^(?:accountkit|user): ([A-Za-z][A-Za-z0-9]*)`)
 

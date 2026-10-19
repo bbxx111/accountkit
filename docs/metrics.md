@@ -64,9 +64,17 @@ hostAdminMux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOp
 // 继续执行 Migrate、Start，再接入宿主请求。
 ```
 
-指标 handler 的监听地址、端口、TLS、身份验证和网络可达范围均由宿主决定。不要直接将其暴露在消费者公网入口。本次没有给 accountsvc 增加指标路由、配置或网络导出连接。两个适配器不注册 Go/process 默认 collectors；宿主可以独立添加运行时指标。
+指标 handler 的监听地址、端口、TLS、身份验证和网络可达范围均由宿主决定。不要直接将其暴露在消费者公网入口。accountsvc 可选择启用同监听器的 Prometheus 入口，具体配置见下节。两个适配器不注册 Go/process 默认 collectors；宿主可以独立添加运行时指标。
 
 直接构造 `user.NewService` 时给 `user.Deps.Observer` 传同一 adapter；直接构造公共审计、认证映射器或 Apple 验证器时通过各自 Options 的 Observer 字段接入。已有位置参数构造函数保持可用。根门面将其 Observer 归一为同一个安全 Recorder，再传给自建服务、本地 Async、认证映射器、Apple 和维护运行器；宿主注入的外部组件需自行接入观测。
+
+## accountsvc 采集
+
+accountsvc 默认不装配 Observer 或指标路由。设置 `ACCOUNTSVC_METRICS_ENABLED=true` 并提供 `ACCOUNTSVC_METRICS_INSTANCE` 后，服务创建应用专属 Registry 和原生 Prometheus Observer；沿用下表全部指标、标签和默认桶，不使用全局 Registry，不注册 Go/process 默认 collectors 或 HTTP 抓取指标。实例必须匹配 `[A-Za-z0-9][A-Za-z0-9._-]{0,63}`，固定且非秘密；关闭时忽略实例值，非法开关或启用时非法实例会在监听前失败。`migrate` 忽略两个设置，不创建观测设施。
+
+同监听器的 `GET /metrics` 继承 TLS 与请求排空，无内建消费者/管理员鉴权。关闭返回404；启用后其他方法返回405。响应禁止缓存（`Cache-Control: no-store`），采集错误返回安全的503，最多5个并发采集、超限503。它只采集本地聚合，不访问业务依赖，也不受 readiness 失败阻断。先完成[网关及直连隔离](gateway-integration.md#指标访问)再启用；公网不得抓取。
+
+无观测前允许没有序列或空输出。重启重置累计值；同一逻辑实例多副本可共用 `accountkit_instance`，抓取配置仍须保留每副本目标标签（例如 Prometheus 的 `instance`），不同逻辑实例使用不同值。服务退出时先排空 HTTP 再关闭 kit，不执行最终主动导出或额外刷新等待，关闭期间新增观测可能无法被抓取。完整配置与回退见[服务手册](accountsvc.md#prometheus-指标)。
 
 ## 实例与生命周期
 
@@ -74,7 +82,7 @@ hostAdminMux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOp
 
 共享同一 Provider/Registry 的不同逻辑账号实例使用不同实例名。同一逻辑实例跨进程可以复用该值，进程身份由采集目标或 OTel Resource 区分。同一进程中重复创建同一逻辑实例时复用已有 Observer；Prometheus 重复或不兼容注册返回错误，失败时只撤回本次已注册 collectors，保留宿主已有 collector 和数据。Registry 可能保留历史 descriptor 元数据。OTel 的同名 instrument 与属性可能合并，adapter 无法检测宿主所有误用。
 
-关闭顺序为：停止接入并排空业务请求 → `Auth.Close()` 停止维护和自建审计 → 排空宿主外部审计等仍会产生观测的组件 → 最终采集/刷新 → 关闭宿主 Provider、Reader、Exporter 和其他设施。共享 Provider 需等所有使用者停止后再关闭。库不会调用注入对象的 `Shutdown`、`Close` 或 `Unregister`，成功注册后的 collectors 由宿主管理；Registry 本身没有 Shutdown。
+嵌入式宿主可安排关闭顺序为：停止接入并排空业务请求 → `Auth.Close()` 停止维护和自建审计 → 排空宿主外部审计等仍会产生观测的组件 → 最终采集/刷新 → 关闭宿主 Provider、Reader、Exporter 和其他设施。共享 Provider 需等所有使用者停止后再关闭。库不会调用注入对象的 `Shutdown`、`Close` 或 `Unregister`，成功注册后的 collectors 由宿主管理；Registry 本身没有 Shutdown。
 
 ## 名称、单位和默认桶
 

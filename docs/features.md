@@ -2,7 +2,7 @@
 
 更新日期：2026-10-19。Go 集成与 HTTP 文档基于 develop 的 `9b8d626`；标准化指标实现与验证状态见[库指标验收](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)，accountsvc 采集端点见[服务指标验收](../openspec/changes/archive/2026-10-19-add-accountsvc-prometheus/verification.md)。版本交付状态以[v0.3.0 发布说明](releases/v0.3.0.md)为准。
 
-本文统一记录当前已支持能力、已实现但待真实环境验证的项目，以及尚未立项的候选功能。“已支持”描述当前开发代码，不表示已发布的 v0.2.0 包含所有能力，也不表示产品环境已验收。目前尚无实际产品接入，正式部署暂不安排。
+本文统一记录 v0.3.0 已支持能力、已实现但待真实环境验证的项目，以及尚未立项的候选功能。版本发布不表示产品环境已验收；v0.2.0 不包含本表全部能力。目前尚无实际产品接入，正式部署暂不安排。
 
 协议和配置细节以 [README](../README.md)、[主规格](../openspec/specs/)及公开 Go 类型为准；调用升级见[兼容指南](compatibility.md)，独立服务边界见[accountsvc 手册](accountsvc.md)。
 

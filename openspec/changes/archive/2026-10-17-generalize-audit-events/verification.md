@@ -327,3 +327,9 @@ README、兼容指南、实施计划及本记录的相对链接已按归档位�
 该测试将子进程 Stdout/Stderr 设置为 safeBuffer，`os/exec` 在独立 goroutine 中复制输出；HTTP 响应完成不保证该复制完成。将原日志断言移到既有 `p.stop()` 后，利用其等待 `cmd.Wait()` 及输出复制结束的同步保证；告警仍来自同一 Redis 故障窗口，没有增加 sleep、轮询或宽限，也未删除就绪、可用性、fail-open 或隐私断言。仅修改测试，不改变生产认证或日志行为。
 
 在专用 Linux / PostgreSQL 17.5 / Redis 7 上，Go 1.26.5、CGO=1、测试及子服务均启用 race，执行 `go test -race -count=10 -run '^TestServiceIntegrationDependencyFailure$' -v ./internal/accountsvc`：连续十轮通过，退出 0（约 72 秒）；Docker 外层也退出 0。独立只读审查通过且无实质问题。原始失败日志及回归证据保留于 `.test-output/archive-audit/` 和其 `fix/` 子目录；修复后的远端完整 CI 另以对应新候选运行结果核对。
+
+## 2026-10-19 待办归属与计划状态整理
+
+本次仅为文档维护：在对应旧实施计划顶部补充最终状态与正式任务、验收记录链接，保留历史步骤复选框；在[发布与上线清单](../../../../docs/release-checklist.md)明确仓库侧新版本发布准备及集成方五类实际环境验收责任。真实微信/Apple 联调任务 8.5 仍未勾选，不将其作为库内未实现功能重复排期。
+
+实际核对宿主账号契约 24/24、通用审计 27/27 正式任务完成；三份维护文档的 27 个本地链接目标存在，git diff --check 通过。本次未修改代码、规格要求或正式任务状态，未运行 Go/数据库/race/恢复测试，未重新核对在线 CI；当前终端未找到 openspec 命令，未重新运行严格规格校验。本次维护不代表新版本发布或产品上线验收通过。

@@ -1,5 +1,7 @@
 # 通用审计事件 Implementation Plan
 
+> **最终状态（2026-10-19 核对）：** 本计划对应变更已实施并归档，[正式任务](../../../openspec/changes/archive/2026-10-17-generalize-audit-events/tasks.md)为 27/27 完成；实际检查、设计调整与交付边界见[验收记录](../../../openspec/changes/archive/2026-10-17-generalize-audit-events/verification.md)。下文未勾选步骤及被后续决定取代的方案保留为历史计划，不表示当前开发待办，也不作为重复实施指令。新版本发布与集成方上线分别按[发布及上线清单](../../release-checklist.md)跟踪。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 将 accountkit 的审计升级为十字段 UUIDv7 通用事件，保留认证语义并支持宿主统一存储、查询与数据治理。

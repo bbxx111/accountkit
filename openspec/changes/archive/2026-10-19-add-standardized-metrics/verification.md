@@ -128,12 +128,12 @@ Linux amd64 基准运行于 Intel Core Ultra 7 155H：实际禁用 Recorder 2.70
 
 ### 原始证据
 
-- [完整库日志](../../../.test-output/standardized-metrics-linux/library.log)、[全库测试事件](../../../.test-output/standardized-metrics-linux/tests.jsonl)、[630 项核对汇总](../../../.test-output/standardized-metrics-linux/library-summary.json)。
-- [服务日志](../../../.test-output/standardized-metrics-linux/accountsvc.log)、[服务测试事件](../../../.test-output/standardized-metrics-linux/accountsvc-tests.jsonl)、[服务汇总](../../../.test-output/standardized-metrics-linux/accountsvc-summary.json)。
-- [合成恢复材料](../../../.test-output/standardized-metrics-linux/recovery.X24t9y/)、[Linux 环境](../../../.test-output/standardized-metrics-linux/environment.txt)、[精确快照](../../../.test-output/standardized-metrics-linux/verified-commit.txt)。
-- [Linux 基准](../../../.test-output/standardized-metrics-linux/benchmarks-linux.txt)、[示例与适配器 race](../../../.test-output/standardized-metrics-linux/examples-race.log)。
-- [Windows 构建日志](../../../.test-output/standardized-metrics-windows/build.log)、[vet 日志](../../../.test-output/standardized-metrics-windows/vet.log)、[快速测试事件](../../../.test-output/standardized-metrics-windows/tests.jsonl)。Windows JSON 保留 PowerShell 重定向的 UTF-16LE 原始编码，按 BOM 解码统计；Linux JSON 为 UTF-8。
-- [阶段报告、TDD、审查与裁决 ledger](../../../.test-output/standardized-metrics-sdd/)，含 task-1..7 报告、限定复审和 final-review.md。材料保留于忽略目录，不提交真实凭证或备份。
+- [完整库日志](../../../../.test-output/standardized-metrics-linux/library.log)、[全库测试事件](../../../../.test-output/standardized-metrics-linux/tests.jsonl)、[630 项核对汇总](../../../../.test-output/standardized-metrics-linux/library-summary.json)。
+- [服务日志](../../../../.test-output/standardized-metrics-linux/accountsvc.log)、[服务测试事件](../../../../.test-output/standardized-metrics-linux/accountsvc-tests.jsonl)、[服务汇总](../../../../.test-output/standardized-metrics-linux/accountsvc-summary.json)。
+- [合成恢复材料](../../../../.test-output/standardized-metrics-linux/recovery.X24t9y/)、[Linux 环境](../../../../.test-output/standardized-metrics-linux/environment.txt)、[精确快照](../../../../.test-output/standardized-metrics-linux/verified-commit.txt)。
+- [Linux 基准](../../../../.test-output/standardized-metrics-linux/benchmarks-linux.txt)、[示例与适配器 race](../../../../.test-output/standardized-metrics-linux/examples-race.log)。
+- [Windows 构建日志](../../../../.test-output/standardized-metrics-windows/build.log)、[vet 日志](../../../../.test-output/standardized-metrics-windows/vet.log)、[快速测试事件](../../../../.test-output/standardized-metrics-windows/tests.jsonl)。Windows JSON 保留 PowerShell 重定向的 UTF-16LE 原始编码，按 BOM 解码统计；Linux JSON 为 UTF-8。
+- [阶段报告、TDD、审查与裁决 ledger](../../../../.test-output/standardized-metrics-sdd/)，含 task-1..7 报告、限定复审和 final-review.md。材料保留于忽略目录，不提交真实凭证或备份。
 
 ### 交付与边界
 
@@ -154,3 +154,13 @@ Linux、Windows 和 SDD 三组证据亦复制到主工作区的同名 .test-outp
 本次重新执行 GOWORK=off 的全库快速测试：41 个包、1316 个通过事件、547 个依赖／平台 skip、0 失败；OpenSpec 全量严格校验 20 项通过、git diff --check 通过。真实依赖 race、630 项库必需检查、服务门禁和恢复演练沿用上文同一代码树的精确证据，本次未重新创建测试数据库或容器。
 
 按仓库约定使用 git merge --no-ff 将 feat/standardized-metrics 合入本地 develop；合并结果需与实施分支树完全一致，并在主工作区再跑快速套件和规格检查。原始日志、合成恢复材料及工作树内辅助脚本在清理前保留到主工作区忽略目录。本次授权为本地合并，不包含推送、发布或归档。
+
+## 归档核验（2026-10-19）
+
+用户随后要求“归档并提交”。实施已以独立 merge commit 0dad763 合入本地 develop；本次从该干净基点创建 chore/archive-standardized-metrics 分支，归档目录为 openspec/changes/archive/2026-10-19-add-standardized-metrics。
+
+归档前检查全部工件存在、22/22 任务完成，并将 standardized-metrics 与 metrics-adapters 的 15 条新增要求、34 个场景及 Purpose 同步到两份新主规格；同步后逐块比较一致，主规格使用单一 Requirements 标题。归档保留 .openspec.yaml 及全部七份工件，修复内部父级相对链接和四份外部文档引用，指标指南的公共契约改为指向主规格。
+
+本次实际检查：主规格及全量严格校验均为 21 项通过、0 失败；活动变更列表为空。12 份 Markdown 的 79 个本地链接目标存在，无旧活动目录引用；七份归档文件的既有内容按工作树换行规范化并还原路径调整后与合并基点一致，既有实施／验证记录保留。git diff --check 通过。
+
+本次仅同步规格、移动工件和维护引用，未修改 Go、依赖、SQL、固定源或生成代码，未重复运行时测试／数据库／race／恢复演练；此前证据仍按其精确快照解释。本次提交留在归档任务分支，不包含再次合并、推送或发布。

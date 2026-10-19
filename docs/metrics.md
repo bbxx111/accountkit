@@ -13,7 +13,7 @@ GOWORK=off go run ./examples/metricsprometheus
 
 PowerShell 先设置 `$env:GOWORK = 'off'`，再运行对应 `go run`。两者均构造本地设施、记录两个合成 access 校验成功事件、采集一次并退出；次数为 2，耗时分别为 0.125、0.375 秒，总和为 0.5 秒。示例没有执行真实认证，不需要 PostgreSQL、Redis、真实凭证或远程 Collector，也不启动 listener。OTel 使用 SDK `ManualReader`，Prometheus 使用独立 `Registry.Gather` 并输出文本格式。
 
-代码与输出断言见 [OTel 示例](../examples/metricsotel/main.go)、[Prometheus 示例](../examples/metricsprometheus/main.go)。这些示例只验证合成事件的适配和采集；真实领域路径的验证状态见[本次验收记录](../openspec/changes/add-standardized-metrics/verification.md)。
+代码与输出断言见 [OTel 示例](../examples/metricsotel/main.go)、[Prometheus 示例](../examples/metricsprometheus/main.go)。这些示例只验证合成事件的适配和采集；真实领域路径的验证状态见[本次验收记录](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)。
 
 ## 真实宿主装配
 
@@ -78,7 +78,7 @@ hostAdminMux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOp
 
 ## 名称、单位和默认桶
 
-以下表格与[公共指标规格](../openspec/changes/add-standardized-metrics/specs/metrics-adapters/spec.md#requirement-公共指标契约)一致。所有行额外带 `accountkit_instance`；表中只列业务分类。计数器累积观测数量，耗时为秒；Histogram 的计数、总和和桶来自同一份耗时观测。
+以下表格与[公共指标规格](../openspec/specs/metrics-adapters/spec.md#requirement-公共指标契约)一致。所有行额外带 `accountkit_instance`；表中只列业务分类。计数器累积观测数量，耗时为秒；Histogram 的计数、总和和桶来自同一份耗时观测。
 
 | OTel 名称 | 原生 Prometheus 名称 | 类型／单位 | 额外标签 |
 |---|---|---|---|

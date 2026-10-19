@@ -11,7 +11,7 @@
 - 维护运行器处理锁和 panic，领域方法返回已处理数量；两层同时埋点需要避免重复。流程清理的旧别名继续转调新入口。
 - `New` 无 I/O；Pool、Redis、外部审计及其他宿主组件所有权已有明确约定。
 
-相关主规格： [嵌入契约](../../specs/embedded-auth-package/spec.md)、[验证码轮次](../../specs/verification-challenges/spec.md)、[投递](../../specs/verification-delivery/spec.md)、[补全](../../specs/sign-in-completion/spec.md)、[会话期限](../../specs/session-expiry/spec.md)、[宿主审计](../../specs/audit-host-integration/spec.md)。
+相关主规格： [嵌入契约](../../../specs/embedded-auth-package/spec.md)、[验证码轮次](../../../specs/verification-challenges/spec.md)、[投递](../../../specs/verification-delivery/spec.md)、[补全](../../../specs/sign-in-completion/spec.md)、[会话期限](../../../specs/session-expiry/spec.md)、[宿主审计](../../../specs/audit-host-integration/spec.md)。
 
 ## Goals / Non-Goals
 

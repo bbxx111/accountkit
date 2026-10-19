@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5，现有 pgx／go-redis／miniredis，OTel Metrics API 与测试用 SDK，Prometheus client_golang，Linux CGO/race 与 PostgreSQL 17 恢复工具。
 
-**Spec:** [提案](../../../openspec/changes/add-standardized-metrics/proposal.md)、[设计](../../../openspec/changes/add-standardized-metrics/design.md)、[核心规格](../../../openspec/changes/add-standardized-metrics/specs/standardized-metrics/spec.md)、[适配器规格](../../../openspec/changes/add-standardized-metrics/specs/metrics-adapters/spec.md)。
+**Spec:** [提案](../../../openspec/changes/archive/2026-10-19-add-standardized-metrics/proposal.md)、[设计](../../../openspec/changes/archive/2026-10-19-add-standardized-metrics/design.md)、[核心规格](../../../openspec/changes/archive/2026-10-19-add-standardized-metrics/specs/standardized-metrics/spec.md)、[适配器规格](../../../openspec/changes/archive/2026-10-19-add-standardized-metrics/specs/metrics-adapters/spec.md)。
 
 ## Global Constraints
 

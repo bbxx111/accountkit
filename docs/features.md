@@ -1,6 +1,6 @@
 # 功能清单与候选功能
 
-更新日期：2026-10-19。Go 集成与 HTTP 文档基于 develop 的 `9b8d626`；标准化指标实现与验证状态以[当前变更](../openspec/changes/add-standardized-metrics/verification.md)为准。
+更新日期：2026-10-19。Go 集成与 HTTP 文档基于 develop 的 `9b8d626`；标准化指标实现与验证状态以[验收记录](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)为准。
 
 本文统一记录当前已支持能力、已实现但待真实环境验证的项目，以及尚未立项的候选功能。“已支持”描述当前开发代码，不表示已发布的 v0.2.0 包含所有能力，也不表示产品环境已验收。目前尚无实际产品接入，正式部署暂不安排。
 

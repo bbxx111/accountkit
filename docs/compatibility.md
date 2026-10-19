@@ -8,7 +8,7 @@
 
 宿主显式选择 `observability/otel.New(provider, instance)` 或 `observability/prometheus.New(registerer, instance)`，注入同一个 Observer；依赖仍在根 go.mod，核心领域不导入后端。实例名、指标名称/标签/单位是有界公共观测契约，见[指标指南](metrics.md)。切换适配器无需修改领域调用；新进程或新聚合设施可能重置时间序列，OTel Exporter 可能转换最终名称。
 
-宿主拥有 Provider/Registry、导出与端点，先排空业务并关闭库，再最终采集与关闭观测设施。库不关闭或注销注入组件。回退可移除 Observer 注入或回退宿主依赖版本，本次不涉及 SQL、Redis 键、HTTP、令牌、密文或既有审计 Stats 迁移；accountsvc 不自动新增指标路由或网络导出。实际证据与未验证项见[本次验收记录](../openspec/changes/add-standardized-metrics/verification.md)。
+宿主拥有 Provider/Registry、导出与端点，先排空业务并关闭库，再最终采集与关闭观测设施。库不关闭或注销注入组件。回退可移除 Observer 注入或回退宿主依赖版本，本次不涉及 SQL、Redis 键、HTTP、令牌、密文或既有审计 Stats 迁移；accountsvc 不自动新增指标路由或网络导出。实际证据与未验证项见[本次验收记录](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)。
 
 ## 初始数据库基线整合
 

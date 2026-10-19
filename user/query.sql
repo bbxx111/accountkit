@@ -492,7 +492,9 @@ WHERE s.user_id = @user_id AND s.id = ANY(@session_ids::text[]) AND c.snapshot_k
 ORDER BY c.session_id;
 
 -- name: DeleteSessionContextByUser :execrows
--- Call before anonymizing/deleting sessions, in the same user-locked transaction.
+-- Caller must hold the user lock AND locks on ALL associated sessions, including
+-- historical sessions, in the same transaction before deleting context. Refresh
+-- locks only its session, so a user lock alone cannot prevent context recreation.
 WITH removed_identities AS (
  DELETE FROM session_authentication_identity a USING session s
  WHERE a.session_id = s.id AND s.user_id = @user_id RETURNING a.session_id

@@ -430,7 +430,9 @@ DELETE FROM session_client_info c USING session s
 WHERE c.session_id = s.id AND s.user_id = $1
 `
 
-// Call before anonymizing/deleting sessions, in the same user-locked transaction.
+// Caller must hold the user lock AND locks on ALL associated sessions, including
+// historical sessions, in the same transaction before deleting context. Refresh
+// locks only its session, so a user lock alone cannot prevent context recreation.
 func (q *Queries) DeleteSessionContextByUser(ctx context.Context, userID string) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteSessionContextByUser, userID)
 	if err != nil {

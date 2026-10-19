@@ -6,6 +6,8 @@ Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史�
 
 ## 当前初始基线
 
+本节记录的初始结构已随 v0.3.0 发布并固定。下述直接修改初始 SQL 的授权均为发布前的历史有限授权，不能用于后续改写；新增结构使用 0002 起的递增迁移，已发布 SQL 与 tag 不变。
+
 尚无实际产品接入时，用户曾明确要求将数据库定义整合为一个初始 SQL；后续通用审计按授权纳入未发布的原始定义并更新固定校验，撤回当时的独立增量和 staging/Prepare 工具。本次另经明确授权，直接调整 0001 的登录补全流程对象名称并同步当前固定校验。当前 `0001_init.up.sql` 直接定义五个业务表及全部索引/约束，包括 sign_in_completion_flow 和十列 UUIDv7 audit_event，审计流程关联存于 data.accountkit.flow_id；配套 down 覆盖五个表。生产目录仅保留这一对 SQL，新空库初始化为 version=1、dirty=false；本分支新增的 0002 重命名迁移已撤回。测试专用下一版本位于 testdata，未来真实增量从 0002 递增。
 
 基线预检要求完整 sign_in_completion_flow 且不存在 identity_flow，审计须为十列 UUIDv7 结构。旧 version=1 仍使用 identity_flow、缺少完整流程结构或保留旧十七列审计（即使审计表为空），以及新旧流程表并存时，迁移返回可由 errors.Is 识别的 `migrations.ErrIncompatibleBaseline`。当前单版本迁移源也拒绝任何已撤回旧 version=2，包括此前重命名方案产生的新表名 v2。拒绝保留原数据、结构和版本；dirty 仍按原规则优先阻断。新初始结构的非空实例重复 Up 不改变结构和记录，也不影响其他 schema。不要修改版本号、Force 或清 dirty 来伪装完整结构。UnsafeReset 沿用相同预检，不接受旧基线；本包不自动重命名、重放 0001、清理或转换旧库。

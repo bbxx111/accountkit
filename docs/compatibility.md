@@ -4,7 +4,7 @@
 
 ## 可选标准化指标
 
-当前开发代码新增 `accountkit.Deps.Observer`、`user.Deps.Observer` 及相关审计/IdP Options 字段，未配置或 typed nil 时使用 no-op。原位置参数构造入口保持可用；外部结构体字面量请使用具名字段，新增字段不兼容未命名字段字面量。该能力尚未包含在已发布 v0.2.0，接入时固定包含新接口的版本或提交。
+v0.3.0 新增 `accountkit.Deps.Observer`、`user.Deps.Observer` 及相关审计/IdP Options 字段，未配置或 typed nil 时使用 no-op。原位置参数构造入口保持可用；外部结构体字面量请使用具名字段，新增字段不兼容未命名字段字面量。v0.2.0 不包含该能力，接入时固定包含新接口的版本。
 
 宿主显式选择 `observability/otel.New(provider, instance)` 或 `observability/prometheus.New(registerer, instance)`，注入同一个 Observer；依赖仍在根 go.mod，核心领域不导入后端。实例名、指标名称/标签/单位是有界公共观测契约，见[指标指南](metrics.md)。切换适配器无需修改领域调用；新进程或新聚合设施可能重置时间序列，OTel Exporter 可能转换最终名称。
 
@@ -84,7 +84,7 @@ source/action 最长 128 ASCII 字符，source 匹配 `[A-Za-z0-9][A-Za-z0-9._/-
 
 ## 身份策略与登录补全协议升级
 
-当前开发分支包含身份策略与登录补全的破坏性 Go/HTTP 升级，尚不表示已发布的 v0.2.0 具备这些能力。C 端及管理端沿用 `/users` 账号路由，包括自定义动作、me、身份和会话；响应 `name` 使用 `users/{user_id}` 及其子资源。此前开发中的 `/accounts` 路径尚未发布，本轮撤回，返回 404，不注册别名或重定向；已发布的 users 调用无须迁移资源名。管理列表顶层 JSON 字段 `users`、`user_id`、u_ ID、JWT claims、scope、Go User 类型、`user` 包和 `Auth.Users()` 均保留。客户端仍须适配下述 token/pending 与 Go 返回签名，网关须显式增加两个 users 补全端点。
+v0.3.0 包含身份策略与登录补全的破坏性 Go/HTTP 升级，v0.2.0 不具备这些能力。C 端及管理端沿用 `/users` 账号路由，包括自定义动作、me、身份和会话；响应 `name` 使用 `users/{user_id}` 及其子资源。此前开发中的 `/accounts` 路径尚未发布，本轮撤回，返回 404，不注册别名或重定向；已发布的 users 调用无须迁移资源名。管理列表顶层 JSON 字段 `users`、`user_id`、u_ ID、JWT claims、scope、Go User 类型、`user` 包和 `Auth.Users()` 均保留。客户端仍须适配下述 token/pending 与 Go 返回签名，网关须显式增加两个 users 补全端点。
 
 `SignInWithCode` / `SignInWithIdp` 的返回类型由 `TokenResult` 改为 `SignInResult`，调用方先检查 `Tokens` 或 `Pending`，两者恰一非 nil。自定义 `enduser.Service` 同步改签名；新增补全能力为可选接口，缺能力返回503。成功 HTTP token 字段保持，pending 只有 next_action、`sign_in_completion_token`、期限和策略集合。新增两个端点及配置 nil/[]、自动关联与注册、设备绑定、幂等和失败边界见 [README](../README.md#身份策略与登录补全)。旧 `user:bind` 表示已有账号不完整；pending 尚无账号，不能把补全票据作为 Bearer 或 refresh 使用。
 

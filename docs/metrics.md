@@ -1,6 +1,6 @@
 # 指标与宿主观测
 
-当前开发代码提供可选的类型化 `observability.Observer`，以及 OpenTelemetry 和原生 Prometheus 适配器。未配置 `Deps.Observer` 时使用 no-op；包装 nil 的实现也视为未配置。核心领域不导入具体后端。项目仍为单 Go module，适配器依赖存在于根 `go.mod`，使用核心包不要求启动监控服务。
+v0.3.0 提供可选的类型化 `observability.Observer`，以及 OpenTelemetry 和原生 Prometheus 适配器。未配置 `Deps.Observer` 时使用 no-op；包装 nil 的实现也视为未配置。核心领域不导入具体后端。项目仍为单 Go module，适配器依赖存在于根 `go.mod`，使用核心包不要求启动监控服务。
 
 ## 先运行合成示例
 

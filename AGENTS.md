@@ -107,7 +107,9 @@
 
 ## 迁移安全
 
-操作步骤以 [docs/migrations.md](docs/migrations.md) 为准。以下规则不能因为独立包尚未发布而放宽：
+操作步骤以 [docs/migrations.md](docs/migrations.md) 为准。以下规则不能因版本尚处开发阶段而放宽：
+
+- v0.3.0 已发布，tag 固定到 ba2d0412764c659beabdbd0d3f0f0f9bb9007657，当前 0001 已成为已发布历史。下述整合、审计校验、流程及索引改名均是发布前的有限授权，不能继续用于修改当前初始 SQL；后续结构使用 0002 起的递增迁移，v0.1.0/v0.2.0/v0.3.0 标签、已发布 SQL 和固定源快照均保持。发布证据见 [v0.3.0 说明](docs/releases/v0.3.0.md)。
 
 - 用户确认尚无实际产品接入后，`consolidate-initial-schema` 执行过一次明确的初始结构整合：`0001_init` 直接定义全部认证及登录补全结构，初始版本为 1。此前 `generalize-audit-events` 经用户明确授权，将十列 UUIDv7 审计定义纳入未发布的 0001、更新其固定校验，并撤回当时新增的 0002/staging 工具。旧完整十七列审计 v1 和旧增量结构 v2 均拒绝且保留数据与版本；固定源快照和已发布历史不变。当前初始 SQL 按独立固定哈希保护，不提供日常改写、squash 或跳过历史检查的开关。
 - `rename-sign-in-completion-flow` 经用户本次明确要求“不新增 0002，直接改 0001 中的表定义”，限定为修改当前未发布 0001 的流程表、五个独立索引、主键与格式 CHECK 名称及配套 down，并同步当前固定哈希；列、约束表达式和索引定义保持。撤回本分支新增的 0002，初始化保持 version=1，后续真实增量从 0002 开始。旧表名 v1、双表并存及已撤回旧 v2（包括此前新表名 v2）均拒绝且保留数据、结构和版本，重复 Up 不自动改名或接管。采用新定义须人工核验后使用新空资源，需保留数据时另行制定并验证迁移方案，不 Force、不修改版本、不自动清库；公共 Down 仍拒绝。内部使用 `SignInCompletionFlow`，公开旧 `ids.IdentityFlow`、`user.Deps.IdentityFlowContext`、`CleanupIdentityFlows` 保留 deprecated 兼容入口，新上下文字段非空时优先、否则回退旧字段；密文 AAD、`f_`、审计 `IDENTITY_FLOW` 和 JSON `flow_id` 保持。本次授权不扩展为日常改写初始 SQL 或修改冻结源与已发布历史。

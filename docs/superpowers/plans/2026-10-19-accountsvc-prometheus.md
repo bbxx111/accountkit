@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go、Chi、client_golang、现有 accountkit observability/prometheus。
 
-**Spec:** [设计](../../../openspec/changes/add-accountsvc-prometheus/design.md) 与该变更 specs/ 下全部规格。
+**Spec:** [设计](../../../openspec/changes/archive/2026-10-19-add-accountsvc-prometheus/design.md) 与该变更 specs/ 下全部规格。
 
 ## Global Constraints
 

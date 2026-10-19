@@ -1,6 +1,6 @@
 # accountsvc Prometheus 验证记录
 
-日期：2026-10-19。变更：[proposal](proposal.md)、[design](design.md)；计划：[实施计划](../../../docs/superpowers/plans/2026-10-19-accountsvc-prometheus.md)。
+日期：2026-10-19。变更：[proposal](proposal.md)、[design](design.md)；计划：[实施计划](../../../../docs/superpowers/plans/2026-10-19-accountsvc-prometheus.md)。
 
 ## 范围与环境
 
@@ -29,10 +29,17 @@
 
 ## 收尾与结论
 
-本次配置、装配、路由、文档、真实进程与公网代理边界已实现并通过上述验证，无未解决审查问题。仅在独立任务分支保留未提交改动，未提交、推送、合并或归档。
+本次配置、装配、路由、文档、真实进程与公网代理边界已实现并通过上述验证，无未解决审查问题。实施完成时在任务分支保留改动；随后用户明确要求提交、归档并本地合并，执行记录见下节。
 
 全部日志复制到工作区 `.test-output/accountsvc-prometheus-*`。清理前逐项核验任务标签，仅删除本任务三个容器、临时数据卷及网络，保留既有容器与编译缓存。实施过程原始报告保留在忽略目录，长期结论以本记录为准。
 
 ## 未验证项
 
 未部署实际 Prometheus 或产品网关/防火墙，未执行生产环境验收；本地网关夹具不代替产品网络策略。未运行发布完整 `scripts/verify.sh` 恢复演练、全库 race、sqlc 重生成和独立历史迁移脚本；本次未改 SQL、schema、迁移或生成配置，已执行全库真实依赖测试及服务专用完整 race 门禁。
+
+## 提交与归档核验
+
+- 实现提交：`85f357e`（`feat(accountsvc): add opt-in Prometheus metrics`）。
+- 提交前重新执行 Windows `GOWORK=off go build ./...`、服务包 vet 和 `go test -count=1 ./internal/accountsvc/...`，均退出 0；未配置真实依赖，不能据此替代上文 Linux 集成和 race 证据。
+- 归档前核对 5/5 任务完成；新增 `accountsvc-metrics` 主规格并同步 `metrics-adapters` 的 accountsvc 场景，逐一比对增量要求与主规格完整一致；主规格严格校验 22 项通过。
+- 已移动至 `openspec/changes/archive/2026-10-19-add-accountsvc-prometheus/`，保留元数据和验证记录，修复计划、服务手册及本记录的相对链接。未推送远端。

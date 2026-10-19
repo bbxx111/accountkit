@@ -133,7 +133,7 @@ healthz 只表示进程存活。readyz 要求启动完成、未停机且 Postgre
 
 进程重启后累计值重置；指标不是业务账本。停机仍先排空 HTTP，再关闭 kit 和连接，不增加后台导出任务或最终刷新等待，关闭尾部增量不保证被最后一次抓取。回退可关闭开关并重启、移除抓取目标，无需数据库迁移。库宿主的自主管理与采集语义见[指标指南](metrics.md)。
 
-配置、真实服务采集和网关夹具验证见[指标装配验收记录](../openspec/changes/add-accountsvc-prometheus/verification.md)；实际 Prometheus 与产品网络策略仍需部署验收。
+配置、真实服务采集和网关夹具验证见[指标装配验收记录](../openspec/changes/archive/2026-10-19-add-accountsvc-prometheus/verification.md)；实际 Prometheus 与产品网络策略仍需部署验收。
 
 ## 更换邮箱或手机号
 

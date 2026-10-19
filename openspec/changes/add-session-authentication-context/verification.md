@@ -80,3 +80,12 @@
 - 独立review_revocation对d1bc58e..34b5b2a判定规格及质量Approved，无Critical/Important/Minor。专项核对用户→会话锁序、完成重放和提交后吊销。
 - 34b5b2a固定Linux快照的根/领域/HTTP race已通过，真实TestServiceIntegrationIdentityReplacement PASS（14.99s）；完整服务包结束结果随后记录。RecoveryFixture仍留独立恢复阶段。
 - 现有指标没有会话撤销业务reason API，保持有界依赖/Authenticate分类，验证新reason通用审计roundtrip，无额外指标接口。
+
+## 实施阶段：客户端快照与生命周期（Task 5）
+
+- 检查点c9ec742：仅五条认证观察路径校验ClientInfo；普通INITIAL/LATEST、pending加密首次描述与旧payload兼容、reauth/新刷新LATEST、重放不更新、同事务当前详情（含未知来源）、列表批量读取，以及有界清理/匿名化接线。
+- RED确认缺少快照、非法输入被接受、清理来源孤儿；11项新增真实PG回归通过并加入必需清单。额外mutation RED把上下文删除移到会话锁前，确实捕获refresh重新留下快照；恢复顺序后GREEN。
+- 全仓go test -json -count=1 ./...通过42包，0失败（根39.221s、migrations32.265s、user86.176s）；build/vet/sqlc一致性/diff通过。Windows仍跳过18项Linux服务测试及普通RecoveryFixture。原始日志.test-output/session-context/task-5-suite.json；首次误用WSL bash缺sqlc退出127，改指定Git Bash后检查通过。
+- 独立review_snapshots判定规格符合、质量Approved。Minor锁前置条件注释已在c45b065补齐并重新生成，差异仅注释；未为注释重跑全套。当前快照Linux user race通过，日志.test-output/linux-source/.test-output/linux-snapshots.jsonl。
+- 审查指出全套WARN，已比对3639424的linux-baseline.jsonl确认同一TestMigrateStartCloseAgainstRealDB的audit dropped、TestBeforeDeleteSharedTransaction/admin=true/success的audit validation rejected已存在；其他WARN属于维护取消/故障、IdP失败/重定向测试。测试通过不等于日志无警告，没有以关闭日志或删测试掩盖问题。
+- 交接Task6：只在SignInWithCode/Idp、CompleteSignIn、Reauthenticate、Refresh五条路径解析元数据；binding/send/revoke不扩展。宿主回调错误不得把原始描述写日志；当前/两面列表必须独立DTO并保留原协议错误格式。

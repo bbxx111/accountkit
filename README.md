@@ -11,7 +11,7 @@
 
 挂载内置 HTTP handler 的宿主可使用[消费者与管理面 OpenAPI 契约](docs/openapi.md)，按实际地址调整挂载前缀。
 
-本文描述当前开发代码；身份策略与登录补全尚未发布到 v0.2.0，账号资源沿用 `/users`。升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
+本文描述当前源码；身份策略与登录补全不包含在 v0.2.0，拟随 v0.3.0 交付，版本状态见[发布说明](docs/releases/v0.3.0.md)。账号资源沿用 `/users`，升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
 
 accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可选服务实现，使用同一套库能力；选择库集成不需要部署或调用 accountsvc。服务入口是 `cmd/accountsvc`，包含 SMTP 邮件投递、消费者远程鉴权和默认关闭的外部管理员 JWT 验证，运行与配置见 [accountsvc 服务手册](docs/accountsvc.md)。`examples/embedded` 保留为库集成开发示例。
 
@@ -334,6 +334,6 @@ Go module：github.com/bbxx111/accountkit。`v0.2.0` 已发布，使用 `go get 
 
 库版本发布与各产品生产上线分别验收。产品实际环境接入、真实服务商与预发布升级/恢复仍待完成；产品各自配置 schema、Redis 前缀、issuer/audience 和密钥，并承担自己的匿名化与网关接入责任。当前未附开源 LICENSE，本次版本供自有产品接入，尚未向外部使用方定义复用许可。
 
-本次按用户明确授权，直接修改未发布的 `migrations/0001_init.up.sql`，以 `sign_in_completion_flow` 定义登录补全流程表，同步主键、格式 CHECK、五个独立索引、配套 down 和当前固定校验；列与索引定义保持。撤回本分支新增的 0002，新空库直接安装为 version=1、dirty=false，后续真实增量从 0002 开始。旧表名的同号 v1、双表并存及任何已撤回旧 v2（包括此前新表名 v2）均拒绝且保留数据、结构和版本；重复 Up 不自动改名或接管。采用新定义须人工核验后使用新空资源，需要保留旧数据时另行制定并验证迁移方案，不 Force、不修改版本、不自动清库。公共 `Down` 仍拒绝执行。操作与恢复边界见[迁移手册](docs/migrations.md#登录补全流程命名调整)。已发布标签和固定源快照保持。
+此前按用户明确授权，在 v0.3.0 发布前直接修改当时未发布的 `migrations/0001_init.up.sql`，以 `sign_in_completion_flow` 定义登录补全流程表，同步主键、格式 CHECK、五个独立索引、配套 down 和当前固定校验；列与索引定义保持。当时新增的 0002 已撤回，新空库直接安装为 version=1、dirty=false，后续真实增量从 0002 开始。旧表名的同号 v1、双表并存及任何已撤回旧 v2（包括此前新表名 v2）均拒绝且保留数据、结构和版本；重复 Up 不自动改名或接管。采用新定义须人工核验后使用新空资源，需要保留旧数据时另行制定并验证迁移方案，不 Force、不修改版本、不自动清库。公共 `Down` 仍拒绝执行。操作与恢复边界见[迁移手册](docs/migrations.md#登录补全流程命名调整)。已发布标签和固定源快照保持，发布后不再适用当时修改未发布基线的有限授权。
 
 原 migrations.Down 保留签名但默认拒绝执行；新基线的一次性测试清库使用显式 UnsafeReset。升级、故障处理与恢复步骤见 [迁移手册](docs/migrations.md)，本次边界见[兼容说明](docs/compatibility.md#初始数据库基线整合)。

@@ -2,6 +2,25 @@
 
 固定兼容基线包含 130 个文件，原始文件清单与 SHA-256 见 `tests/testdata/source-baseline/manifest.json`；该清单用于追溯冻结快照，不表示当前文件名和内容必须与历史快照相同。当前根包名为 `accountkit`，导入路径为 `github.com/bbxx111/accountkit`。
 
+## 会话认证依据与客户端描述（开发中）
+
+本节对应当前开发变更，已发布 v0.3.0 尚不包含。新查询 GET /users/me/sessions/current 是可选 enduser.CurrentSessionService 能力，签名 GetCurrentSession(context.Context, user.Principal) (user.CurrentSessionInfo, error)，不扩大既有 enduser.Service 方法集；缺能力返回503 SESSION_QUERY_NOT_CONFIGURED。查询允许user/user:bind，拒绝user:undelete，按数据库检查会话，不改变普通Authenticate/内省热路径。token、JWT、refresh、身份列表、scope、设备头和认证请求体保持原形状。
+
+**行为升级：** 解绑在同事务撤销命中该具体身份及来源未知的同账号未吊销会话，包括当前和自然过期未清理的会话。204成功仍可能退出；换绑仍撤销其他会话，当前会话仅来源已知且不包含旧身份时保留。BIND证明不改变来源。升级本身不批量退出；旧会话不从身份列表/审计推算来源，refresh仍未知，成功重新认证才能建立已知来源。客户端用详情中的完整身份name判断，未知时保守提示，重新认证后重查；预览不保证提交前没有并发变化。
+
+直接Go UnbindIdentity 现在也验证完整user scope、配置要求的近期认证、ACTIVE账号和所属有效当前会话。仅给UserID的旧调用须迁移为Authenticate取得的可信完整Principal；关闭新鲜度检查仍必须scope和会话有效。ReplaceIdentity同样复核；DeleteMe的直接Go入口仍按[Go指南](go-integration.md#认证刷新与敏感操作)要求由宿主做入口保护。
+
+Meta、SessionInfo、accountkit.Deps和enduser.Deps等公开结构新增字段，字段名初始化继续适用，位置式复合字面量须修改并重新编译，不能宣称全部Go源码兼容：
+
+```go
+meta := user.Meta{IP: trustedIP, ClientInfo: &user.ClientInfo{ClientType: enum.ClientNative, AppName: "Example App"}}
+deps := accountkit.Deps{Pool: pool, Redis: redisClient, ClientInfo: parseClientInfo}
+```
+
+客户端描述可缺省，不能识别不阻断认证，显式非法值在凭证消费前400（token为OAuth invalid_request）。INITIAL/LATEST仅反映成功认证观察，不是每次业务活动；客户端快照不保存原始UA/IP/位置，字段边界与可选头见[README](../README.md#当前会话与客户端描述开发中)。
+
+新增真实0002迁移，合法完整v1保留账号/身份/凭据升级到v2；历史撤回旧v2仍拒绝，0001、固定源和标签不变。部署须暂停并排空旧认证写入口或统一切换副本，避免旧程序继续执行旧来源/撤销行为。旧v0.3.0的Migrate会拒绝新版本；即使绕过启动也不具备新行为，DDL可读不等于安全回退。旧sqlc查询虽然SQL源用SELECT *，生成Go实际显式列，不能据增加列推断必然scan数量错误。回退优先前向修复；必要应用回退先停写另行核验，不能Down、Force或清Redis，见[迁移步骤](migrations.md#会话认证依据递增升级开发中)。
+
 ## 可选标准化指标
 
 v0.3.0 新增 `accountkit.Deps.Observer`、`user.Deps.Observer` 及相关审计/IdP Options 字段，未配置或 typed nil 时使用 no-op。原位置参数构造入口保持可用；外部结构体字面量请使用具名字段，新增字段不兼容未命名字段字面量。v0.2.0 不包含该能力，接入时固定包含新接口的版本。
@@ -12,7 +31,7 @@ v0.3.0 新增 `accountkit.Deps.Observer`、`user.Deps.Observer` 及相关审计/
 
 ## 初始数据库基线整合
 
-在尚无实际产品接入的前提下，项目曾执行初始结构整合：当时 `0001_init.up.sql` 定义 user_account、identity、session、audit_event、identity_flow 及字段、索引与约束。十列 UUIDv7 通用审计按用户授权纳入原始定义并更新固定校验，撤回当时独立的 `0002_identity_flow` 和通用审计 0002，也不提供 staging/Prepare 转换工具；初始版本为 1，配套 down 覆盖五个表，公开 Down 拒绝执行。后续审计校验职责调整经另行授权修改未发布 0001，移除五个审计校验函数并同步固定校验，其他表 CHECK 保持。本次另经用户明确授权，直接将 0001 的流程对象命名调整为 sign_in_completion_flow 并更新当前固定校验，撤回本分支新增的重命名 0002；初始化仍为 1，后续真实增量从 0002 开始。
+在尚无实际产品接入的前提下，项目曾执行初始结构整合：当时 `0001_init.up.sql` 定义 user_account、identity、session、audit_event、identity_flow 及字段、索引与约束。十列 UUIDv7 通用审计按用户授权纳入原始定义并更新固定校验，撤回当时独立的 `0002_identity_flow` 和通用审计 0002，也不提供 staging/Prepare 转换工具；初始版本为 1，配套 down 覆盖五个表，公开 Down 拒绝执行。后续审计校验职责调整经另行授权修改未发布 0001，移除五个审计校验函数并同步固定校验，其他表 CHECK 保持。在v0.3.0发布前另经用户明确授权，直接将 0001 的流程对象命名调整为 sign_in_completion_flow 并更新当前固定校验，撤回本分支新增的重命名 0002；初始化仍为 1，后续真实增量从 0002 开始。
 
 这是迁移基线的破坏性调整。旧 version=1 仍使用 identity_flow、缺少完整流程结构或保留旧十七列审计（审计表为空也不例外），新旧流程表并存，以及任何已撤回旧 version=2（包括此前重命名方案的新表名 v2）均明确拒绝，保留数据、结构和版本；不重放初始 SQL、不自动改名、不修改 schema_migrations、不 Force 或自动清库。当前受支持的初始结构为完整 sign_in_completion_flow 与十列审计、version=1。采用新定义须人工核验后使用新空资源；包含需保留数据的旧库应先备份并单独制定和验证迁移方案，不能用修改版本标记替代数据迁移。
 
@@ -20,7 +39,7 @@ v0.3.0 新增 `accountkit.Deps.Observer`、`user.Deps.Observer` 及相关审计/
 
 ## 登录补全流程重命名
 
-当前流程表名为 `sign_in_completion_flow`，内部 sqlc 模型和查询使用 `SignInCompletionFlow`。用户本次明确要求“不新增 0002，直接改 0001 中的表定义”：未发布 0001 直接使用新表名，同步主键、格式 CHECK、五个独立索引、配套 down 与当前固定哈希，列、约束表达式和索引定义保持；此前新增的 0002 已撤回。新空库安装为 version=1、dirty=false，新结构非空实例重复 Up 无变化；旧表名同号库及旧 v2 均不自动接管。固定源快照和已发布标签不变，此次有限授权不扩展为后续任意改写初始 SQL。
+当前流程表名为 `sign_in_completion_flow`，内部 sqlc 模型和查询使用 `SignInCompletionFlow`。v0.3.0发布前用户当时明确要求“不新增 0002，直接改 0001 中的表定义”：当时未发布 0001 直接使用新表名，同步主键、格式 CHECK、五个独立索引、配套 down 与当前固定哈希，列、约束表达式和索引定义保持；此前新增的 0002 已撤回。v0.3.0的新空库安装为version=1、dirty=false，当时目标版本重复Up无变化；当前开发分支须应用真实会话0002至version=2；旧表名同号库及旧 v2 均不自动接管。固定源快照和已发布标签不变，此次有限授权不扩展为后续任意改写初始 SQL。
 
 | 旧公开 Go 名称（deprecated，仍可使用） | 新名称 |
 |---|---|
@@ -30,7 +49,7 @@ v0.3.0 新增 `accountkit.Deps.Observer`、`user.Deps.Observer` 及相关审计/
 
 新上下文字段非空时优先，否则回退旧字段；迁移字段名称时沿用原值。实例上下文的序列化形状、AAD、`f_` ID 格式、`FlowState`、审计资源类型 `IDENTITY_FLOW`、JSON `flow_id` 和既有 HTTP 协议保持，票据仍受原期限与原证明校验约束；格式兼容不表示提供旧库自动迁移。维护任务名称由 `cleanup_identity_flows` 改为 `cleanup_sign_in_completion_flows`；运维指标、日志检索和告警规则需同步更新。
 
-采用新定义时先核对目标、备份与密钥，人工核验后使用新空数据库/schema，由 `Migrate` 安装并确认 version=1/dirty=false 和新表名。需保留旧数据时另行制定并验证迁移方案，不能重复 Up、Force、修改版本或自动清库接管。旧应用查询原表名，不能直接使用新结构，回退前须单独核验应用与数据库兼容；公共 `Down` 继续拒绝。旧备份先恢复到独立库核验，旧表名 v1 或旧 v2 不会因恢复而变成当前基线，详见[迁移手册](migrations.md#登录补全流程命名调整)。
+采用新定义时先核对目标、备份与密钥，人工核验后使用新空数据库/schema，由匹配版本的 `Migrate` 安装并确认新表名（v0.3.0为version=1，当前开发分支为version=2，dirty=false）。需保留旧数据时另行制定并验证迁移方案，不能重复 Up、Force、修改版本或自动清库接管。旧应用查询原表名，不能直接使用新结构，回退前须单独核验应用与数据库兼容；公共 `Down` 继续拒绝。旧备份先恢复到独立库核验，旧表名 v1 或旧 v2 不会因恢复而变成当前基线，详见[迁移手册](migrations.md#登录补全流程命名调整)。
 
 ## 通用审计公开接口与协议迁移
 

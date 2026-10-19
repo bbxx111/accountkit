@@ -43,10 +43,11 @@ function fields(source, name) {
 
 const mappings = {
   enduser: {meResource:'Me', identityResource:'Identity', sessionResource:'Session', identityList:'IdentityList',
-    pendingSignInResponse:'PendingSignIn', challengeResponse:'CodeChallenge', tokenResponse:'TokenPair'},
+    pendingSignInResponse:'PendingSignIn', challengeResponse:'CodeChallenge', tokenResponse:'TokenPair',
+    currentSessionResource:'CurrentSession', authenticationIdentityResource:'AuthenticationIdentity', clientInfoResource:'ClientInfo'},
   admin: {freezeResource:'Freeze', userResource:'AdminUser', identityResource:'AdminIdentity',
     userDetailResource:'AdminUserDetail', userList:'AdminUserList', revealResource:'RevealIdentity',
-    sessionResource:'AdminSession', sessionList:'AdminSessionList', revokeAllResponse:'RevokeAllResult',
+    sessionResource:'AdminSession', clientInfoResource:'AdminClientInfo', sessionList:'AdminSessionList', revokeAllResponse:'RevokeAllResult',
     auditEventResource:'AuditEvent', auditEventList:'AuditEventList'},
 };
 
@@ -76,12 +77,14 @@ for (const surface of ['enduser', 'admin']) {
     }
   }
   assert.deepEqual(declared.sort(), actual, `${surface} 路由与文档不一致`);
-  const source = read(`httpapi/${surface}/response.go`);
+  // currentSessionResource 在独立文件，仍完整解析嵌入的 sessionResource。
+  const source = read(`httpapi/${surface}/response.go`) + (surface === 'enduser' ? '\n' + read('httpapi/enduser/current_session.go') : '');
   for (const [dto, schemaName] of Object.entries(mappings[surface])) {
     const dtoFields = fields(source, dto);
     const schema = doc.components.schemas[schemaName];
     assert.deepEqual(Object.keys(schema.properties).sort(), [...dtoFields.keys()].sort(), `${dto} 字段漂移`);
     for (const [name, info] of dtoFields) {
+      if (info.optional && ['sessionResource','currentSessionResource','clientInfoResource'].includes(dto)) assert.ok(!schema.required?.includes(name), `${dto}.${name} 应为可省略字段`);
       if (!info.optional) assert.ok(schema.required.includes(name), `${dto}.${name} 应为必需输出字段`);
       if (info.nullable && !info.optional) {
         const property = schema.properties[name];
@@ -91,3 +94,31 @@ for (const surface of ['enduser', 'admin']) {
   }
   console.log(`${surface}: ${declared.length} operations, refs/path parameters/response DTOs OK`);
 }
+
+// 新查询、采集入口和原协议边界的明确契约。
+const enduser = JSON.parse(read('docs/openapi/enduser.json'));
+const current = enduser.paths['/users/me/sessions/current'].get;
+assert.deepEqual(Object.keys(current.responses).sort(), ['200','401','403','500','503']);
+assert.deepEqual(current['x-allowed-scopes'], ['user','user:bind']);
+assert.equal(current.responses['200'].headers['Cache-Control'].schema.const, 'no-store');
+assert.equal(enduser.components.schemas.CurrentSession.properties.is_current.const, true);
+assert.deepEqual(Object.keys(enduser.components.schemas.AuthenticationIdentity.properties).sort(), ['kind','name']);
+const observed = new Set(['signInWithCode','signInWithIdp','completeSignIn','reauthenticate','refreshToken']);
+const explicitHeaders = ['X-Client-Type','X-Client-OS-Name','X-Client-OS-Version','X-Client-Browser-Name','X-Client-Browser-Version','X-Client-App-Name','X-Client-App-Version','X-Device-Type','X-Device-Model'];
+for (const item of Object.values(enduser.paths)) for (const op of Object.values(item)) {
+  if (!op.operationId) continue;
+  const headers = (op.parameters || []).map(p => p.$ref ? resolve(enduser,p.$ref) : p).filter(p => p.in === 'header');
+  const clientHeaders = headers.filter(p => explicitHeaders.includes(p.name));
+  if (observed.has(op.operationId)) {
+    assert.deepEqual(clientHeaders.map(p=>p.name).sort(), [...explicitHeaders].sort(), op.operationId+' client headers');
+    assert.ok(clientHeaders.every(p=>!p.required));
+  } else assert.equal(clientHeaders.length,0,op.operationId+' must not collect client info');
+}
+for (const name of ['TokenPair','AccessToken','Identity','IdentityList']) {
+  assert.ok(!Object.keys(enduser.components.schemas[name].properties).some(k=>/authentication_identities|client_info/.test(k)),name+' leaks session context');
+}
+for (const item of Object.values(enduser.paths)) for (const op of Object.values(item)) {
+  if (!['signInWithCode','signInWithIdp','completeSignIn'].includes(op.operationId)) continue;
+  assert.deepEqual(resolve(enduser,op.responses['200'].content['application/json'].schema.$ref).oneOf.map(s=>s.$ref).sort(), ['#/components/schemas/PendingSignIn','#/components/schemas/TokenPair']);
+}
+console.log('session context: scopes/statuses/optional headers/oneOf/token boundaries OK');

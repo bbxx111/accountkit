@@ -683,3 +683,8 @@ github.com/bbxx111/accountkit/httpapi/enduser/TestSessionClientInfoDTO
 github.com/bbxx111/accountkit/httpapi/admin/TestAdminSessionClientInfoDTO
 github.com/bbxx111/accountkit/internal/accountsvc/TestGatewayCurrentSessionAndOptionalHeaders
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationCurrentSessionContext
+github.com/bbxx111/accountkit/TestRecoverySessionContextSnapshot
+github.com/bbxx111/accountkit/httpapi/enduser/TestCurrentSessionOpenAPIContract
+github.com/bbxx111/accountkit/user/TestNormalizeClientInfo
+github.com/bbxx111/accountkit/user/TestMergeClientInfo
+github.com/bbxx111/accountkit/httpapi/clientinfo/TestParseClientInfo

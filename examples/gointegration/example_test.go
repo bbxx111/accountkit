@@ -238,3 +238,83 @@ func Example_errors() {
 	// true
 	// COOLDOWN 1m0s
 }
+
+// 具体name比较可区分同类型的不同身份；未知来源不能解释为安全。
+func Example_currentSessionImpact() {
+	affected := func(current user.CurrentSessionInfo, userID, targetName string) bool {
+		if !current.AuthenticationIdentitiesKnown {
+			return true
+		}
+		for _, identity := range current.AuthenticationIdentities {
+			if "users/"+userID+"/identities/"+identity.ID == targetName {
+				return true
+			}
+		}
+		return false
+	}
+	const uid = "u_0000000000001"
+	const target = "users/" + uid + "/identities/i_0000000000001"
+	fmt.Println(affected(user.CurrentSessionInfo{}, uid, target))
+	current := user.CurrentSessionInfo{AuthenticationIdentitiesKnown: true, AuthenticationIdentities: []user.AuthenticationIdentity{{ID: "i_0000000000002", Kind: enum.IdentityEmail}}}
+	fmt.Println(affected(current, uid, target)) // 同为EMAIL，具体身份不同。
+	current.AuthenticationIdentities = append(current.AuthenticationIdentities, user.AuthenticationIdentity{ID: "i_0000000000001", Kind: enum.IdentityEmail})
+	fmt.Println(affected(current, uid, target))
+	// Output:
+	// true
+	// false
+	// true
+}
+
+func Example_unbindIdentity() {
+	var auth *accountkit.Auth
+	var current user.TokenResult
+	var credential user.CodeCredential // 保留身份的REAUTH轮次，不是新目标的BIND证明。
+	var targetIdentityID string
+	var meta user.Meta
+	var showExitWarning func() // 交互层展示确认提示；此片段假定已取得用户操作意愿。
+	var clearCredentials func()
+	ctx := context.Background()
+	p, err := auth.Users().Authenticate(ctx, current.AccessToken)
+	if err != nil {
+		return
+	}
+	reauthenticated, err := auth.Users().Reauthenticate(ctx, p, credential, meta)
+	if err != nil {
+		return
+	}
+	current.AccessToken = reauthenticated.AccessToken // 保留原refresh与其绝对期限。
+	current.ExpiresIn, current.Scope = reauthenticated.ExpiresIn, reauthenticated.Scope
+	p, err = auth.Users().Authenticate(ctx, current.AccessToken)
+	if err != nil || p.Scope != user.ScopeUser {
+		return
+	}
+	details, err := auth.Users().GetCurrentSession(ctx, p) // 重新认证后必须重查。
+	if err != nil {
+		return
+	}
+	targetName := "users/" + p.UserID + "/identities/" + targetIdentityID
+	mayExit := !details.AuthenticationIdentitiesKnown
+	for _, identity := range details.AuthenticationIdentities {
+		if "users/"+p.UserID+"/identities/"+identity.ID == targetName {
+			mayExit = true
+		}
+	}
+	if mayExit {
+		showExitWarning()
+	} // unknown也保守提示，不能只按Kind比较。
+	if err := auth.Users().UnbindIdentity(ctx, p, targetIdentityID, meta); err != nil {
+		if errors.Is(err, user.ErrInvalidToken) {
+			clearCredentials()
+		}
+		return
+	}
+	// 对应HTTP 204，解绑已成功；查询预览不能承诺并发操作后的最终结果。
+	if mayExit {
+		clearCredentials()
+		return
+	}
+	if _, err := auth.Users().GetCurrentSession(ctx, p); errors.Is(err, user.ErrInvalidToken) {
+		clearCredentials() // 成功解绑后若会话实际失效，退出并重新登录，不重试解绑。
+	}
+	// 依赖不可用不冒充凭据失效，由宿主展示暂时不可用并按需重新查询。
+}

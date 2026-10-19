@@ -4,11 +4,13 @@ go 1.26.5
 
 require (
 	github.com/alicebob/miniredis/v2 v2.39.0
+	github.com/dunglas/httpsfv v1.1.2
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
+	github.com/mileusna/useragent v1.3.5
 	github.com/nyaruka/phonenumbers v1.8.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/common v0.66.1

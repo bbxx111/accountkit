@@ -217,10 +217,12 @@ type Device struct {
 	Name string
 }
 
-// Meta 是请求元数据，用于审计与限流。
+// Meta 是请求元数据，用于审计、限流和可选客户端描述观察。
+// ClientInfo 不进入审计正文，也不作为凭证、限流身份或可信设备证明。
 type Meta struct {
-	IP        string
-	RequestID string
+	ClientInfo *ClientInfo
+	IP         string
+	RequestID  string
 }
 
 // Principal 是已通过校验的 access token 主体。

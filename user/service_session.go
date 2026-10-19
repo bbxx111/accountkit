@@ -305,12 +305,14 @@ func (s *Service) authenticate(ctx context.Context, rawAccess string) (Principal
 
 // SessionInfo 是会话列表项。
 type SessionInfo struct {
-	ID           string
-	DeviceID     string
-	DeviceName   string
-	CreateTime   time.Time
-	LastUsedTime time.Time
-	IsCurrent    bool
+	ClientInfo           *ClientInfo
+	ClientInfoUpdateTime *time.Time
+	ID                   string
+	DeviceID             string
+	DeviceName           string
+	CreateTime           time.Time
+	LastUsedTime         time.Time
+	IsCurrent            bool
 }
 
 // ListSessions 列出用户的活跃会话（不分页）。

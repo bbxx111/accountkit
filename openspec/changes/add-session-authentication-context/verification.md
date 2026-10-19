@@ -71,3 +71,12 @@
 - 独立review_sources发现连接中途EOF未归503；精确direct/wrapped EOF四项RED后修复，42703/42P01编程错误保持内部。首次/重试的pending回滚直接断言无结果、flow=VERIFIED、user_id/session_id=NULL。修复定向测试3.078s、vet/diff通过，复审两项均ADDRESSED、质量Approved。
 - 144b96d固定快照的来源/重新认证/当前会话定向Linux race通过；EOF修复后的完整Linux/race仍由最终门禁覆盖。迁移快照c958ca9的Linux迁移及accountsvc四个包race通过，无测试skip。
 - 计划补齐Task4的HTTP错误映射：领域锁后新鲜度不足应沿用400，scope不足沿用403，不能落入通用500；该接线维持已批准协议。
+
+## 实施阶段：身份移除联动撤销（Task 4）
+
+- 检查点34b5b2a：解绑的直接Go与HTTP前置条件一致，来源命中/未知及已过期未清理会话同事务撤销；换绑当前会话仅在已知且不依赖旧身份时保留，其他会话仍撤销。新增撤销原因9/IDENTITY_UNBOUND；HTTP领域错误保持400/403，成功204/200保持。
+- RED覆盖缺少直接Go校验、会话未撤销和通用错误500；实现后定向通过。真实PostgreSQL触发器/advisory锁屏障并用pg_blocking_pids确认顺序，覆盖reauth、登录、pending、刷新、换绑、退出、冻结/注销；保留既有22个换绑并发组合。最后锚点测试仍严格要求一个成功一个ErrLastAnchor。
+- 完整go test -json -count=1 ./...通过42包、2163项含子测试PASS、0失败，build/vet/diff通过；13个新增必需回归已登记并逐项核对PASS。日志.test-output/task-4/。
+- 独立review_revocation对d1bc58e..34b5b2a判定规格及质量Approved，无Critical/Important/Minor。专项核对用户→会话锁序、完成重放和提交后吊销。
+- 34b5b2a固定Linux快照的根/领域/HTTP race已通过，真实TestServiceIntegrationIdentityReplacement PASS（14.99s）；完整服务包结束结果随后记录。RecoveryFixture仍留独立恢复阶段。
+- 现有指标没有会话撤销业务reason API，保持有界依赖/Authenticate分类，验证新reason通用审计roundtrip，无额外指标接口。

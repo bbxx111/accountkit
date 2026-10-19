@@ -105,3 +105,27 @@
 - 四会话批量快照通过单条SQL读取，内部索引loop=4不是HTTP/Go逐条查询；0.052ms。应用层固定读取次数由Task6真实PG计数测试另行证明。
 - 反向身份查询命中idx_session_authentication_identity_identity_id_session_id，9行；真实撤销CTE使用该反向索引及账号会话部分索引，按id排序加锁，更新9条命中+1条未知会话，0.394ms。撤销写入随事务回滚。
 - 原始SQL与输出：.test-output/session-context/final-explain.sql、final-explain.log；此快照SQL后续未改变时可复用该证据。
+
+## 实施阶段：文档、OpenAPI与恢复夹具（Task 7）
+
+- 检查点70ef246：更新README、兼容/Go/迁移/服务/网关/OpenAPI说明、可编译会话示例、两面OpenAPI及严格漂移检查；开发版本明确为未发布变更。直接Go解绑前置条件、keyed初始化和协调切换/回退限制均已说明。
+- 恢复夹具增加known双身份来源、unknown历史会话、INITIAL App1.0/LATEST App2.0；完整快照纳入两个子表全部列，seed/verify/source-unchanged均核对语义。必需清单补充恢复/契约和Task1三个核心顶层测试。
+- RED/GREEN：基线文档缺current路由/schema、原恢复快照遗漏来源关联均得到实际失败，恢复当前实现后通过。临时变体已恢复，无遗留修改。
+- 范围验收：node契约检查22消费者+11管理操作通过；Swagger Parser两文档合法；136个相对链接/锚点0失败；示例编译及3个执行示例、全部8个HTTP包、新真实PG快照回归、user校验合并测试及范围vet通过。普通RecoveryFixture仍预期skip，不当作恢复成功。
+- 原始日志：.test-output/session-context/task-7-{validation,red-proof,swagger,doc-links}.log。一次审核服务usage limit后恢复同权限操作成功，无权限绕过；不是未解决的安全拒绝。
+- 独立review_docs_recovery对37ea446..70ef246判定Spec compliant、Quality Approved，无发现。完整Linux/race/恢复由控制器固定70ef246执行，结果另记。
+- 补记Task6固定bf86d52的Linux/race：根、enduser、admin、accountsvc四包通过，新TestServiceIntegrationCurrentSessionContext实际PASS5.16s，唯一skip是普通RecoveryFixture；日志.test-output/linux-source/.test-output/linux-http-context.jsonl。
+
+## 实施中的执行口径与影响
+
+以下是控制器按已授权范围作出的执行判断，便于复核；没有改变用户确认的来源与撤销规则。
+
+1. 用户已明确apply，按仓库默认计划/子代理流程继续，不重复索取确认。若此判断不符预期，影响是执行方式和耗时，代码仍在独立分支可审阅。
+2. 允许本地实现检查点提交，但提案合回develop后，实施分支保留，不自动合并/推送。代价是实施完成后仍有单独的集成步骤。
+3. 原生工作区位于默认可写根外，写入与构建通过获准的require_escalated执行，所有workdir明确。若授权不可用则该操作阻断，不以其他路径绕过。
+4. 一个实现代理顺序写入，每步独立审查，控制器并行准备验证环境。代价是实现阶段耗时增加，避免共享写入冲突。
+5. 2048字节总上限计算规范化文本，不计算JSON序列化开销；各字段rune上限使最大合法文本1408字节。代价是线上JSON包体可能超过2048字节，字段及输入保护仍独立生效。
+6. 规范化保留仅版本观察；持久快照Merge丢弃无名称的孤立版本，首次同样Merge(nil, observation)。代价是缺名称的首次版本无法展示，避免编造名称或错误拼接。
+7. 领域锁后重新认证/作用域失败沿用HTTP400/403，而不是原通用映射遗漏导致的500。影响局限于把明确业务错误恢复为既有协议分类。
+8. 既有指标没有业务撤销原因接口，沿用有界依赖观测并验证通用审计IDENTITY_UNBOUND，不新增指标API。代价是没有新增专用按解绑原因计数器。
+9. 新描述只在SignInWithCode、SignInWithIdp、CompleteSignIn、Reauthenticate、Refresh采集校验；绑定、换绑、发码、撤销等不扩大采集。代价是这些其他动作不会刷新客户端观察时间，符合本次快照范围。

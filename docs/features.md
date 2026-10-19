@@ -1,6 +1,6 @@
 # 功能清单与候选功能
 
-更新日期：2026-10-19。Go 集成与 HTTP 文档基于 develop 的 `9b8d626`；标准化指标实现与验证状态以[验收记录](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)为准。
+更新日期：2026-10-19。Go 集成与 HTTP 文档基于 develop 的 `9b8d626`；标准化指标实现与验证状态见[库指标验收](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)，accountsvc 采集端点见[服务指标验收](../openspec/changes/archive/2026-10-19-add-accountsvc-prometheus/verification.md)。版本交付状态以[v0.3.0 发布说明](releases/v0.3.0.md)为准。
 
 本文统一记录当前已支持能力、已实现但待真实环境验证的项目，以及尚未立项的候选功能。“已支持”描述当前开发代码，不表示已发布的 v0.2.0 包含所有能力，也不表示产品环境已验收。目前尚无实际产品接入，正式部署暂不安排。
 
@@ -19,7 +19,7 @@
 | 资料与生命周期 | 显示名更新、批量公开资料、冻结/解冻、注销冷静期、恢复、到期匿名化 | 手机/邮箱与管理员恢复保留；普通第三方登录不能恢复冷静期账号；最终匿名化后不可恢复 |
 | 管理接口 | 用户筛选与游标分页、账号状态操作、身份掩码/授权查看、会话撤销、审计查询 | 消费者与管理员身份体系独立；管理员验证由宿主提供，未配置时管理面返回 503 |
 | 安全与审计 | 验证码轮次和用途隔离、发送额度、跨轮次失败预算、身份加密/摘要、密钥轮换、异步脱敏审计 | Required 不是 MFA；不同依赖操作保留各自故障策略，详见 [Redis 契约](../README.md#redis-键与失败模式) |
-| 标准化指标 | 可选类型化 Observer、OTel/原生 Prometheus、认证/验证码/依赖/降级/审计/维护的 13 项指标 | 默认 no-op；固定实例和有限标签；Provider/Registry、导出与端点由宿主负责，见[指标指南](metrics.md)；合成示例不替代真实联调，accountsvc 无新增指标端点 |
+| 标准化指标 | 可选类型化 Observer、OTel/原生 Prometheus、认证/验证码/依赖/降级/审计/维护的 13 项指标；accountsvc 可选 Prometheus 采集端点 | 默认 no-op；嵌入宿主负责 Provider/Registry、导出与端点，见[指标指南](metrics.md)；accountsvc 默认关闭指标，启用后提供同址 GET /metrics，部署方落实采集访问控制，见[服务配置](accountsvc.md#prometheus-指标)；合成示例不替代真实联调 |
 | 宿主事务集成 | 注销前检查、同库业务匿名化回调、活动账号事务保护、受控离线导入 | 导入仅 Go 接口，不发令牌或自动合并；业务表和业务授权仍由宿主负责 |
 | 存储与维护 | PostgreSQL + Redis、schema/键前缀/令牌域隔离、版本迁移、迁移锁、dirty 阻断、定期清理、备份恢复验证 | 新库由 0001 直接定义 sign_in_completion_flow，初始化版本为 1；旧表名 v1、双表和已撤回旧 v2 拒绝接管，见[迁移手册](migrations.md#当前初始基线)；公开 Down 拒绝执行 |
 | 集成与运行形式 | 嵌入式 Go 包；可选 accountsvc，提供 SMTP、TLS、远程令牌内省、外部管理员 OIDC 验证、探针和优雅关闭 | accountsvc 尚未装配短信服务商；网关、入口流量控制和实际网络隔离由部署方负责 |

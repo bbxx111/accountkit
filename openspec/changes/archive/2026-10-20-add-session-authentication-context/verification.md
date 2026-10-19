@@ -146,3 +146,15 @@
 - 已精确核对并移除本任务创建的PG/Redis容器（含匿名数据卷）、专属Docker网络和两个构建缓存卷；没有清理其他容器/目录。原生工作区和实施分支保留，测试日志、备份及审查材料保留；SDD临时工作目录在证据转存并记录全部裁决后删除。
 
 - 最终 openspec validate --all --strict：24项通过、0失败；git diff --check通过。32项验收任务及详细计划的40个步骤已依据上述实际证据完成，无遗留实施任务。
+
+## 归档（2026-10-20）
+
+用户在实施完成后明确要求归档；本节记录新的归档授权与结果，上方实施阶段“不归档”的描述仅代表当时的交付边界。
+
+- 工件proposal/specs/design/tasks均done；32项任务全部完成，无未完成警告。schema为spec-driven。
+- 已读取archive运行上下文及唯一specs规则快照，按中文正文、英文结构标题与SHALL/MUST约定同步六个能力；新增两份主规格共11个要求，更新四份既有主规格共11个要求。逐项核对所有delta与主规格一致，原有未涉及要求、Purpose及既有场景完整保留，无删除或重命名要求。
+- 同步后openspec validate --specs：24项通过、0失败；确认全部六份规格同步后才移动变更目录，未在同步进行中归档。
+- 归档位置为openspec/changes/archive/2026-10-20-add-session-authentication-context/，原.openspec.yaml与verification.md随目录保留；修复docs/openapi.md和详细实施计划的外部引用。归档目录内proposal/design/tasks之间相对链接保持有效。
+- 本轮仅同步规格、归档与修复文档引用，不改变Go、SQL、配置、JWT或HTTP契约；实施阶段完整库/服务/race/恢复证据仍对应原受测代码，不为纯文档归档重复运行这些套件。
+
+- 归档后 openspec validate --all --strict：25项通过、0失败；活动变更清单已不含本change。归档标记保留、任务32/32，修复后的相对文件链接与git diff --check通过；无遗留旧活动目录链接。

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、PostgreSQL 17、pgx/v5、sqlc 1.31.1、Chi、Redis/miniredis；UA解析库由任务1通过官方源码和样本选型。
 
-**Spec:** [设计](../../../openspec/changes/add-session-authentication-context/design.md)及同change下全部六份spec；OpenSpec任务为验收清单，本计划将其组合成八个可独立审查的交付单元。
+**Spec:** [设计](../../../openspec/changes/archive/2026-10-20-add-session-authentication-context/design.md)及同change下全部六份spec；OpenSpec任务为验收清单，本计划将其组合成八个可独立审查的交付单元。
 
 ## Global Constraints
 

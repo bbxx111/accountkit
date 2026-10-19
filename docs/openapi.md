@@ -73,4 +73,4 @@ node -e "const p=require('./.test-output/contract-tools/node_modules/@apidevtool
 
 v0.3.0基础文档验收记录见 [document-go-integration-and-http-contracts](../openspec/changes/archive/2026-10-18-document-go-integration-and-http-contracts/verification.md)。
 
-当前开发会话变更的整体验证与未验证项由[本变更验收记录](../openspec/changes/add-session-authentication-context/verification.md)汇总；不能用历史验收代替当前检查。
+当前开发会话变更的整体验证与未验证项由[本变更验收记录](../openspec/changes/archive/2026-10-20-add-session-authentication-context/verification.md)汇总；不能用历史验收代替当前检查。

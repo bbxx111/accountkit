@@ -66,16 +66,19 @@ func newMeResource(m user.Me) meResource {
 }
 
 type sessionResource struct {
-	Name         string `json:"name"`
-	DeviceID     string `json:"device_id"`
-	DeviceName   string `json:"device_name"`
-	CreateTime   string `json:"create_time"`
-	LastUsedTime string `json:"last_used_time"`
-	IsCurrent    bool   `json:"is_current"`
+	ClientInfo           *clientInfoResource `json:"client_info,omitempty"`
+	ClientInfoUpdateTime *string             `json:"client_info_update_time,omitempty"`
+	Name                 string              `json:"name"`
+	DeviceID             string              `json:"device_id"`
+	DeviceName           string              `json:"device_name"`
+	CreateTime           string              `json:"create_time"`
+	LastUsedTime         string              `json:"last_used_time"`
+	IsCurrent            bool                `json:"is_current"`
 }
 
 func newSessionResource(userID string, s user.SessionInfo) sessionResource {
 	return sessionResource{
+		ClientInfo: newClientInfoResource(s.ClientInfo), ClientInfoUpdateTime: fmtTimePtr(s.ClientInfoUpdateTime),
 		Name: "users/" + userID + "/sessions/" + s.ID, DeviceID: s.DeviceID, DeviceName: s.DeviceName,
 		CreateTime: fmtTime(s.CreateTime), LastUsedTime: fmtTime(s.LastUsedTime), IsCurrent: s.IsCurrent,
 	}
@@ -153,6 +156,8 @@ func (h *Handler) writeSignIn(w http.ResponseWriter, r *http.Request, res user.S
 func (h *Handler) writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 	var rl *code.RateLimitedError
 	switch {
+	case errors.Is(err, user.ErrInvalidClientInfo):
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_CLIENT_INFO", "invalid client information"))
 	case errors.Is(err, user.ErrSignInCompletionInvalid):
 		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "SIGN_IN_COMPLETION_INVALID", "sign-in completion token is missing, invalid, or expired"))
 	case errors.Is(err, user.ErrSignInAlreadyCompleted):
@@ -185,6 +190,10 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, r *http.Request, err 
 			msg = "invalid argument"
 		}
 		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_ARGUMENT", msg))
+	case errors.Is(err, user.ErrInsufficientScope):
+		apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, "INSUFFICIENT_SCOPE", "token scope does not permit this operation"))
+	case errors.Is(err, user.ErrReauthenticationRequired):
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "REAUTHENTICATION_REQUIRED", "recent authentication required for this operation"))
 	case errors.Is(err, user.ErrNotAnchor):
 		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "TARGET_NOT_ANCHOR", "target must be a phone or email already bound to this account"))
 	case errors.Is(err, sender.ErrDisabled):
@@ -217,6 +226,8 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, r *http.Request, err 
 // writeOAuthError 把领域错误映射为 RFC 6749 §5.2 响应（/token、/revoke）。
 func (h *Handler) writeOAuthError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
+	case errors.Is(err, user.ErrInvalidClientInfo):
+		apierror.WriteOAuth(w, http.StatusBadRequest, "invalid_request", "invalid client information", nil)
 	case errors.Is(err, errMalformedBody):
 		apierror.WriteOAuth(w, http.StatusBadRequest, "invalid_request", "request body must be a single JSON object with known fields", nil)
 	case errors.Is(err, user.ErrUserFrozen):
@@ -241,4 +252,31 @@ type challengeResponse struct {
 func writeChallenge(w http.ResponseWriter, c user.CodeChallenge) {
 	w.Header().Set("Cache-Control", "no-store")
 	apierror.WriteJSON(w, http.StatusOK, challengeResponse{CodeID: c.CodeID, ExpireTime: c.ExpireTime})
+}
+
+// clientInfoResource 仅输出可选结构化描述，未知字段省略。
+type clientInfoResource struct {
+	ClientType     string `json:"client_type,omitempty"`
+	OSName         string `json:"os_name,omitempty"`
+	OSVersion      string `json:"os_version,omitempty"`
+	BrowserName    string `json:"browser_name,omitempty"`
+	BrowserVersion string `json:"browser_version,omitempty"`
+	AppName        string `json:"app_name,omitempty"`
+	AppVersion     string `json:"app_version,omitempty"`
+	DeviceType     string `json:"device_type,omitempty"`
+	DeviceModel    string `json:"device_model,omitempty"`
+}
+
+func newClientInfoResource(info *user.ClientInfo) *clientInfoResource {
+	if info == nil {
+		return nil
+	}
+	out := &clientInfoResource{OSName: info.OSName, OSVersion: info.OSVersion, BrowserName: info.BrowserName, BrowserVersion: info.BrowserVersion, AppName: info.AppName, AppVersion: info.AppVersion, DeviceModel: info.DeviceModel}
+	if info.ClientType.Valid() {
+		out.ClientType = info.ClientType.String()
+	}
+	if info.DeviceType.Valid() {
+		out.DeviceType = info.DeviceType.String()
+	}
+	return out
 }

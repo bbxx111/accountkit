@@ -236,6 +236,8 @@ func TestReauthenticateUsesLockedDecisionTime(t *testing.T) {
 // expiry and mutation, rather than allowing PostgreSQL to round nanoseconds.
 func TestReplaceIdentityExpiryMicroseconds(t *testing.T) {
 	f, p, id, _ := replacementSetup(t, enum.IdentityPhone, phone1)
+	contextBindEmail(t, f, p, email1)
+	p = contextReauthenticate(t, f, p, enum.IdentityEmail, email1)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	decision := f.clock.UTC().Add(123 * time.Microsecond)

@@ -73,6 +73,7 @@ func TestIdentityReplacementEndToEndAgainstRealDB(t *testing.T) {
 	cfg := minimal()
 	cfg.Schema, cfg.KeyPrefix = schema, prefix
 	cfg.CodeCooldown, cfg.ReauthMaxAge = time.Second, 5*time.Second
+	cfg.MaxIdentitiesPerKind = 2
 	a, err := accountkit.New(cfg, accountkit.Deps{Pool: pool, Redis: rdb, SMSSender: captured, EmailSender: captured, Logger: slog.New(slog.NewTextHandler(logs, nil))})
 	if err != nil {
 		t.Fatal(err)
@@ -160,6 +161,8 @@ func TestIdentityReplacementEndToEndAgainstRealDB(t *testing.T) {
 		return pair
 	}
 	oldTarget, newTarget := secrets[0], secrets[1]
+	const retainedTarget = "replacement-retained@example.test"
+	secrets = append(secrets, retainedTarget)
 	current := login(oldTarget, "replacement-current")
 	uid, access, refresh := current["user_id"].(string), current["access_token"].(string), current["refresh_token"].(string)
 	mr.FastForward(2 * time.Second)
@@ -178,6 +181,12 @@ func TestIdentityReplacementEndToEndAgainstRealDB(t *testing.T) {
 	oldName := identities[0].(map[string]any)["name"].(string)
 	oldID := oldName[strings.LastIndex(oldName, "/")+1:]
 	path := "/v1/users/me/identities/" + oldID + ":replace"
+	// A separate verified email keeps the current session independent of the replaced identity.
+	call("POST", "/v1/users/me:sendBindCode", access, "", map[string]string{"channel": "EMAIL", "target": retainedTarget}, 200)
+	retainedCode := captured.code(retainedTarget)
+	secrets = append(secrets, retainedCode)
+	retainedIdentity := call("POST", "/v1/users/me/identities", access, "", map[string]any{"email": map[string]string{"code_id": captured.codeID(retainedTarget), "target": retainedTarget, "code": retainedCode}}, 201)
+	retainedName := retainedIdentity["name"].(string)
 	call("POST", "/v1/users/me:sendBindCode", access, "", map[string]string{"channel": "EMAIL", "target": newTarget}, 200)
 	bindCode := captured.code(newTarget)
 	if bindCode == "" {
@@ -192,10 +201,10 @@ func TestIdentityReplacementEndToEndAgainstRealDB(t *testing.T) {
 		t.Fatal("expired auth was not rejected as reauthentication required")
 	}
 	mr.FastForward(2 * time.Second)
-	call("POST", "/v1/users/me:sendReauthenticationCode", access, "", map[string]string{"channel": "EMAIL", "target": oldTarget}, 200)
-	reauthCode := captured.code(oldTarget)
+	call("POST", "/v1/users/me:sendReauthenticationCode", access, "", map[string]string{"channel": "EMAIL", "target": retainedTarget}, 200)
+	reauthCode := captured.code(retainedTarget)
 	secrets = append(secrets, reauthCode)
-	reauth := call("POST", "/v1/users/me:reauthenticate", access, "", map[string]any{"email": map[string]string{"code_id": captured.codeID(oldTarget), "target": oldTarget, "code": reauthCode}}, 200)
+	reauth := call("POST", "/v1/users/me:reauthenticate", access, "", map[string]any{"email": map[string]string{"code_id": captured.codeID(retainedTarget), "target": retainedTarget, "code": reauthCode}}, 200)
 	access = reauth["access_token"].(string)
 	secrets = append(secrets, access)
 	before, err := a.Users().Authenticate(ctx, access)
@@ -210,7 +219,7 @@ func TestIdentityReplacementEndToEndAgainstRealDB(t *testing.T) {
 	call("POST", path, access, "", body, 404)
 	list = call("GET", "/v1/users/me/identities", access, "", nil, 200)
 	identities = list["identities"].([]any)
-	if len(identities) != 1 || identities[0].(map[string]any)["name"] != newName {
+	if len(identities) != 2 || identities[0].(map[string]any)["name"] != newName && identities[1].(map[string]any)["name"] != newName || identities[0].(map[string]any)["name"] != retainedName && identities[1].(map[string]any)["name"] != retainedName {
 		t.Fatal("identity list did not confirm replacement")
 	}
 	call("GET", "/v1/users/me", access, "", nil, 200)
@@ -231,6 +240,14 @@ func TestIdentityReplacementEndToEndAgainstRealDB(t *testing.T) {
 		t.Fatal("replacement or refresh changed current session/auth_time")
 	}
 	call("GET", "/v1/users/me", access, "", nil, 200)
+	// Removing the current independent source succeeds with 204 and revokes its session.
+	retainedID := retainedName[strings.LastIndex(retainedName, "/")+1:]
+	call("DELETE", "/v1/users/me/identities/"+retainedID, access, "", nil, 204)
+	call("GET", "/v1/users/me", access, "", nil, 401)
+	revokedRefresh := call("POST", "/v1/token", "", "", map[string]string{"grant_type": "refresh_token", "refresh_token": retained["refresh_token"].(string)}, 400)
+	if revokedRefresh["error"] != "invalid_grant" {
+		t.Fatal("unbound current source refreshed")
+	}
 	newLogin := login(newTarget, "replacement-new-login")
 	if newLogin["user_id"] != uid || newLogin["is_new_user"] != false {
 		t.Fatal("new target did not enter original account")

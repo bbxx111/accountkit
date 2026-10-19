@@ -2,7 +2,25 @@
 
 本指南面向在自己的 Go 进程中嵌入 `github.com/bbxx111/accountkit` 的宿主。可以挂载内置 HTTP handler，也可以直接调用 `auth.Users()`；两者使用同一个领域服务，不需要启动 accountsvc。
 
-内容依据 v0.3.0 公开契约，包含 v0.2.0 未提供的登录补全和通用审计 API。实际集成应固定包含所需接口的已验证版本；不要把本指南的新签名直接套到 v0.2.0。升级边界见[兼容指南](compatibility.md)。
+基础内容依据 v0.3.0 公开契约，包含 v0.2.0 未提供的登录补全和通用审计 API；标注“开发中”的会话功能是 v0.3.0 之后的变更，尚未发布。实际集成应固定包含所需接口的已验证版本；不要把本指南的新签名直接套到 v0.2.0。升级边界见[兼容指南](compatibility.md)。
+
+## 当前会话、解绑与客户端描述（开发中）
+
+使用Authenticate获取完整可信Principal，再调用auth.Users().GetCurrentSession(ctx,p)。user/user:bind可查询，user:undelete不允许。结果提供数据库最新AuthTime、AuthenticationIdentitiesKnown和具体AuthenticationIdentities；HTTP转换的name是users/{user}/identities/{identity}。与拟解绑身份的完整资源名精确匹配，不能只比较Kind。未知来源应提示可能退出，重新认证成功后用新access重新Authenticate并重查；查询不会改写旧JWT或自动给它新的近期认证证明。
+
+[可编译示例](../examples/gointegration/example_test.go)展示重新认证后重查、来源未知保守提示及成功解绑后的凭据清理。UnbindIdentity要求可信Principal包含UserID、SessionID、ScopeUser和AuthTime，并在领域层复核账号与会话及按配置的近期认证；仅填写UserID的旧调用须迁移。204成功语义不变，当前会话可能同时撤销；命中任一来源或未知时退出，后续实际认证失效也应清理凭据。来源不命中只是快照，提交时可能并发变化。换绑当前保留也受来源条件约束，新BIND证明不替换来源。
+
+直接Go请求元数据由宿主显式传入，HTTP回调不会自动用于Go调用：
+
+```go
+meta := user.Meta{IP: trustedIP, RequestID: requestID, ClientInfo: &user.ClientInfo{
+    ClientType: enum.ClientNative, AppName: "Example App", AppVersion: "1.0",
+}}
+```
+
+新增公开结构字段可能使位置式初始化无法编译，请使用上述字段名写法。内置HTTP默认解析显式头、Client Hints和UA，宿主可通过accountkit.Deps.ClientInfo / enduser.Deps.ClientInfo的func(*http.Request) (*user.ClientInfo,error)替代；回调结果仍规范化校验，ErrInvalidClientInfo为400，任意其他回调错误固定500且不保留原文本。宿主回调也不得记录私密输入。不无条件信任转发UA；BFF明确适配原客户端描述，可信IP仍由ClientIP提供。
+
+只有成功登录（含补全）、重新认证和新轮刷新采集描述。旧客户端可缺省；描述不作为授权或可信设备证明。INITIAL/LATEST与观察时间边界见[README](../README.md#当前会话与客户端描述开发中)，上线和回退见[迁移手册](migrations.md#会话认证依据递增升级开发中)。
 
 ## 选择入口
 
@@ -17,7 +35,7 @@
 
 ## 装配、启动与关闭
 
-完整开发宿主位于 [examples/embedded/main.go](../examples/embedded/main.go)，直接 Go 调用片段位于 [examples/gointegration/example_test.go](../examples/gointegration/example_test.go)。后者无 `Output` 的函数只参与编译，不实际连接依赖；变量声明处需替换为宿主真实对象。带 `Output` 的两个示例使用合成数据验证分支和错误判定。
+完整开发宿主位于 [examples/embedded/main.go](../examples/embedded/main.go)，直接 Go 调用片段位于 [examples/gointegration/example_test.go](../examples/gointegration/example_test.go)。后者无 `Output` 的函数只参与编译，不实际连接依赖；变量声明处需替换为宿主真实对象。带 `Output` 的示例使用合成数据验证分支和错误判定。
 
 1. 使用 `ConfigFromEnv("ACCOUNTKIT_")` 或显式 `Config` 加载配置。前缀由宿主决定；数据库 DSN、Redis 地址和发送器配置由宿主读取，不属于核心 `ConfigFromEnv` 的连接配置。
 2. 用 `PoolConfig(dsn, cfg.Schema)` 创建 pgx 连接配置，再创建池。显式构造 `Config` 时先填入所需 schema（默认名称为 `account`）；不能向 `PoolConfig` 传空 schema。查询与迁移依赖 search_path 首项为该 schema。
@@ -77,7 +95,7 @@ pending 与 `user:bind` 是不同状态。补全先调用 `SendSignInCompletionC
 
 手机/邮箱近期认证先使用 `SendReauthenticationCode` 获取绑定用户与会话的轮次，再调用 `Reauthenticate`。它只返回新 access，不返回新 refresh，也不延长原 refresh 的绝对有效期。只更新 access、其期限与 scope，保留现存 refresh。
 
-直接调用 Go 方法不会执行 HTTP 中间件。`DeleteMe` 与 `UnbindIdentity` 的 scope/近期认证保护位于内置 HTTP 路由，直接调用前宿主必须检查 `ScopeUser`，并按 `auth.Config()` 中的 `SensitiveOpVerification` / `ReauthMaxAge` 校验可信 `Principal.AuthTime`；不能等待它们自动返回 `ErrReauthenticationRequired`。开启近期认证时，AuthTime 为零或距当前时间超过窗口均应拒绝并引导重新认证。`Undelete` 必须先检查专用 `ScopeUndelete`，普通 user 凭据不能替代。`ReplaceIdentity` 在领域层也重复校验 scope 与近期认证。自有敏感业务同样需要这些入口检查；HTTP 宿主可组合 `RequireScope` 和 `RequireRecentAuth`。
+直接调用 Go 方法不会执行 HTTP 中间件。`DeleteMe` 的 scope/近期认证保护位于内置 HTTP 路由，直接调用前宿主必须检查 `ScopeUser`，并按 `auth.Config()` 中的 `SensitiveOpVerification` / `ReauthMaxAge` 校验可信 `Principal.AuthTime`；不能等待它自动返回 `ErrReauthenticationRequired`。开启近期认证时，AuthTime 为零或距当前时间超过窗口均应拒绝并引导重新认证。`Undelete` 必须先检查专用 `ScopeUndelete`，普通 user 凭据不能替代。当前开发变更的 `UnbindIdentity` 与 `ReplaceIdentity` 在领域层也复核 scope、近期认证和所属有效当前会话；仅UserID的Principal不能解绑。自有敏感业务同样需要这些入口检查；HTTP 宿主可组合 `RequireScope` 和 `RequireRecentAuth`。
 
 纯第三方账号当前通过普通 IdP 重登获得新的认证状态：核对返回的账号仍是原账号，再更新完整 pair；这会替换同设备会话，且不保证提供方强制输入密码或 MFA。纯第三方冷静期账号没有第三方自助恢复入口。
 

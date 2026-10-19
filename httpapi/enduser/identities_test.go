@@ -240,3 +240,23 @@ func TestUnbindIdentityRequiresRecentAuth(t *testing.T) {
 		t.Fatalf("verification off: %d", rec.Code)
 	}
 }
+
+func TestUnbindIdentityDomainGuardErrors(t *testing.T) {
+	for _, tc := range []struct {
+		err    error
+		code   int
+		reason string
+	}{
+		{user.ErrReauthenticationRequired, 400, "FAILED_PRECONDITION/REAUTHENTICATION_REQUIRED"},
+		{user.ErrInsufficientScope, 403, "PERMISSION_DENIED/INSUFFICIENT_SCOPE"},
+	} {
+		t.Run(tc.reason, func(t *testing.T) {
+			f := withAuth(&fakeService{unbindIdentity: func(context.Context, user.Principal, string, user.Meta) error { return tc.err }}, principal)
+			rec := do(t, newHandler(t, f), call{method: "DELETE", path: "/users/me/identities/i_0k3f9c2m1xq7a", bearer: "good"})
+			reason, _ := aipError(t, rec)
+			if rec.Code != tc.code || reason != tc.reason || rec.Header().Get("WWW-Authenticate") != "" {
+				t.Fatalf("domain guard: %d %s", rec.Code, reason)
+			}
+		})
+	}
+}

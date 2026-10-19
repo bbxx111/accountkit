@@ -24,6 +24,11 @@ type IdpCredential struct {
 
 // signInWithIdp 验证第三方身份，按完整性策略选择登录、直接注册或待补全。
 func (s *Service) signInWithIdp(ctx context.Context, cred IdpCredential, dev Device, meta Meta) (SignInResult, error) {
+	normalizedClientInfo, clientInfoErr := NormalizeClientInfo(meta.ClientInfo)
+	if clientInfoErr != nil {
+		return SignInResult{}, clientInfoErr
+	}
+	meta.ClientInfo = normalizedClientInfo
 	if err := validDevice(dev); err != nil {
 		return SignInResult{}, err
 	}

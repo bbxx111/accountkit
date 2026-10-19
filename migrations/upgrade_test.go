@@ -33,9 +33,9 @@ func safetySource(t *testing.T, failure bool) fstest.MapFS {
 		}
 		out[name] = &fstest.MapFile{Data: b}
 	}
-	name := "testdata/0002_success.up.sql"
+	name := "testdata/0003_success.up.sql"
 	if failure {
-		name = "testdata/0002_failure.up.sql"
+		name = "testdata/0003_failure.up.sql"
 	}
 	b, err := os.ReadFile(name)
 	if err != nil {

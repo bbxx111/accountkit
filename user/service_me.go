@@ -154,6 +154,11 @@ func (s *Service) sendReauthenticationCode(ctx context.Context, p Principal, cha
 
 // reauthenticate 校验 REAUTH 码，刷新会话的 auth_time 并重签 access。
 func (s *Service) reauthenticate(ctx context.Context, p Principal, cred CodeCredential, meta Meta) (TokenResult, error) {
+	normalizedClientInfo, clientInfoErr := NormalizeClientInfo(meta.ClientInfo)
+	if clientInfoErr != nil {
+		return TokenResult{}, clientInfoErr
+	}
+	meta.ClientInfo = normalizedClientInfo
 	if err := validateCodeCredential(cred); err != nil {
 		return TokenResult{}, err
 	}
@@ -224,6 +229,19 @@ func (s *Service) reauthenticate(ctx context.Context, p Principal, cred CodeCred
 		if !sessionActiveAt(sess, now) {
 			return errSessionExpired
 		}
+		identity, err := s.findProof(ctx, q, completionProof{Kind: channel, Target: norm})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotAnchor
+		}
+		if err != nil {
+			return fmt.Errorf("user: find reauthentication identity: %w", err)
+		}
+		if identity.UserID != p.UserID {
+			return ErrNotAnchor
+		}
+		if err := s.setSessionAuthenticationIdentities(ctx, q, sess, []string{identity.ID}); err != nil {
+			return err
+		}
 		n, err := q.UpdateSessionAuthTime(ctx, db.UpdateSessionAuthTimeParams{ID: p.SessionID, AuthTime: now})
 		if err != nil {
 			return fmt.Errorf("user: update auth_time: %w", err)
@@ -231,6 +249,9 @@ func (s *Service) reauthenticate(ctx context.Context, p Principal, cred CodeCred
 		if n == 0 {
 			s.observationReason(ctx, ob.ReasonSessionRevoked)
 			return fmt.Errorf("%w: session revoked", ErrInvalidToken)
+		}
+		if err := s.updateSessionClientInfo(ctx, q, sess, meta.ClientInfo, now); err != nil {
+			return err
 		}
 		sess.AuthTime = now
 		res, err = s.tokensFor(sess, "", deriveScope(u.State, complete), now)

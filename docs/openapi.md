@@ -1,12 +1,12 @@
 # HTTP OpenAPI 契约
 
-本契约描述 v0.3.0 的内置 HTTP handler，不改变现有 API；v0.2.0 不包含全部这些能力。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
+本契约描述当前开发分支的内置HTTP handler，包含已发布v0.3.0之后的会话认证依据和可选客户端描述；这些新增能力尚未发布，v0.3.0不包含它们，v0.2.0也不包含全部基础能力。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
 
 ## 两个独立 HTTP 面
 
 | 文档 | 范围 | 默认挂载示例 |
 |---|---|---|
-| [enduser.json](openapi/enduser.json) | 消费者 21 个操作：登录、补全、token/revoke、资料、身份、会话及注销/恢复 | `/v1` |
+| [enduser.json](openapi/enduser.json) | 消费者 22 个操作：登录、补全、token/revoke、资料、身份、会话及注销/恢复 | `/v1` |
 | [admin.json](openapi/admin.json) | 管理面 11 个操作：账号查询、状态操作、明文查看、会话及认证审计 | `/admin/v1` |
 
 两份文件各自独立，使用 [OpenAPI 3.1.0](https://spec.openapis.org/oas/v3.1.0.html) 与 JSON Schema 描述。所有 paths 均为相对 handler 路由，`servers[0].variables.basePath.default` 由宿主调整为实际挂载前缀或完整服务 URL。路径中的 `user` / `session` / `identity` 是原始 `u_` / `s_` / `i_` ID；响应 `name` 才是 `users/{id}` 等资源名。
@@ -28,6 +28,14 @@
 - nullable 字段和 optional 字段不同：例如 `delete_time` 必须出现但可以为 null；审计 `flow_id` 可以省略。管理 DTO 与消费者 DTO 独立，管理会话没有 `is_current`。
 
 示例 token、验证码和票据只能使用合成值，不应把真实响应导入公开文档。刷新重放、验证码失败预算、事务回滚、账号状态及外部审计治理仍以 [README](../README.md)、[主规格](../openspec/specs/)和对应实现为准，schema 不能表达或证明所有行为。
+
+## 当前会话和客户端摘要（开发中）
+
+GET /users/me/sessions/current支持user/user:bind；返回真实s_资源名、数据库最新RFC3339 auth_time、来源是否已知及仅name/kind的身份摘要，数组稳定排序。来源未知为false与[]，客户端保守提示并用完整name匹配，重新认证保存新access后重查。详情可含initial_client_info、client_info（最近）与client_info_update_time，两面的会话列表只有最近摘要和观察时间，管理面不增加身份来源详情。
+
+新详情在数据库会话缺失、归属错误、撤销或refresh期限已到时返回401 TOKEN_INVALID并带Bearer挑战；依赖不可用503、内部错误固定500，缺可选宿主能力503 SESSION_QUERY_NOT_CONFIGURED，所有响应no-store。普通Authenticate/内省保留JWT/Redis判定，无额外数据库热路径；旧JWT不会因查询而取得新auth_time。解绑仍204、换绑仍200且不发token，成功也可能让当前会话退出。
+
+九个显式客户端头只在验证码/IdP登录、completeSignIn、reauthenticate与新一轮refresh解析；UA和Client Hints可补充，自动解析失败放行，显式非法值凭证消费前400 INVALID_CLIENT_INFO（token为OAuth invalid_request）。请求体不变，token、JWT、内省和身份列表不增加来源/描述。描述可缺省且不构成设备证明；采集/快照/清理边界见[README](../README.md#当前会话与客户端描述开发中)，代理/CORS见[网关说明](gateway-integration.md#客户端描述透传与-cors)。
 
 ## 管理查询
 
@@ -52,7 +60,7 @@ JSON 文档直接维护，修改路由、DTO、scope、状态码或错误时同�
 node scripts/check-openapi.cjs
 ```
 
-此检查从现有 Router 提取方法与路径，核对覆盖、引用、路径参数及主要响应 DTO 字段与必填/可空规则；它不是完整 OpenAPI schema 校验，也不代替真实 HTTP 测试。提取器只处理当前 handler.go 中直接使用字符串字面量的 Get/Post 等注册；发现 Route/Mount/Method/Handle 或非字面量路径会要求更新提取器。若将注册逻辑移到其他文件或自定义辅助函数，也须同步调整检查范围，不能把它当作通用 Go 路由分析器。
+此检查从现有 Router 提取方法与路径，核对覆盖、引用、路径参数及主要响应DTO字段与必填/可空规则（明确读取response.go及消费者current_session.go）；同时检查新查询状态码/scope/no-store、恰好五个采集入口的可选头、登录oneOf和token/身份列表字段边界；它不是完整 OpenAPI schema 校验，也不代替真实 HTTP 测试。提取器只处理当前 handler.go 中直接使用字符串字面量的 Get/Post 等注册；发现 Route/Mount/Method/Handle 或非字面量路径会要求更新提取器。若将注册逻辑移到其他文件或自定义辅助函数，也须同步调整检查范围，不能把它当作通用 Go 路由分析器。
 
 正式结构校验可将工具安装到仓库忽略目录，不修改 Go module 或全局工具：
 
@@ -63,4 +71,6 @@ node -e "const p=require('./.test-output/contract-tools/node_modules/@apidevtool
 
 随后按改动范围运行 `GOWORK=off go test -count=1 ./httpapi/...` 与相关领域测试。标准工具通过只证明文档结构与引用合法；生成客户端、Mock、产品网关和真实业务链路仍需按宿主环境验收。
 
-本次验证记录见 [document-go-integration-and-http-contracts](../openspec/changes/archive/2026-10-18-document-go-integration-and-http-contracts/verification.md)。
+v0.3.0基础文档验收记录见 [document-go-integration-and-http-contracts](../openspec/changes/archive/2026-10-18-document-go-integration-and-http-contracts/verification.md)。
+
+当前开发会话变更的整体验证与未验证项由[本变更验收记录](../openspec/changes/archive/2026-10-20-add-session-authentication-context/verification.md)汇总；不能用历史验收代替当前检查。

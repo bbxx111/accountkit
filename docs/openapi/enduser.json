@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "accountkit 消费者 HTTP API",
-    "version": "v0.3.0",
-    "description": "依据已发布 v0.3.0 的内置 HTTP 契约；不适用于 v0.2.0 的全部接口。只描述现有 HTTP 行为，宿主配置实际挂载地址。请求体为单个 JSON 对象，默认上限 64 KiB，拒绝未知字段与尾随内容。领域状态、事务、故障策略以仓库规格与 README 为准。"
+    "version": "v0.3.0+dev.session-context",
+    "description": "当前开发分支的内置 HTTP 契约，包含已发布 v0.3.0 之后的会话认证依据和可选客户端描述；v0.3.0 尚不含这些新增能力，此标识不是发布 tag。宿主配置实际挂载地址。请求体为单个 JSON 对象，默认上限 64 KiB，拒绝未知字段与尾随内容。领域状态、事务、故障策略以规格与 README 为准。"
   },
   "servers": [
     {
@@ -82,7 +82,7 @@
       "post": {
         "operationId": "signInWithCode",
         "summary": "验证码登录或进入补全",
-        "description": "验证码用途为 SIGN_IN；已存在账号按状态返回 user、user:bind 或 user:undelete。",
+        "description": "验证码用途为 SIGN_IN；已存在账号按状态返回 user、user:bind 或 user:undelete。 可选客户端描述只在成功认证时观察：登录保存INITIAL/LATEST，重新认证及新轮刷新仅更新LATEST；宽限刷新和补全重放不更新。非法显式描述在凭证消费前拒绝。",
         "responses": {
           "200": {
             "description": "成功。",
@@ -148,6 +148,54 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoclient_type"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoos_name"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoos_version"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfobrowser_name"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfobrowser_version"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoapp_name"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoapp_version"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfodevice_type"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfodevice_model"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo0"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo1"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo2"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo3"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo4"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo5"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo6"
           }
         ],
         "security": [],
@@ -167,7 +215,7 @@
       "post": {
         "operationId": "signInWithIdp",
         "summary": "微信或 Apple 登录",
-        "description": "第三方提示邮箱不证明本地邮箱归属；冷静期账号返回 403 USER_PENDING_DELETION，不提供第三方恢复认证。",
+        "description": "第三方提示邮箱不证明本地邮箱归属；冷静期账号返回 403 USER_PENDING_DELETION，不提供第三方恢复认证。 可选客户端描述只在成功认证时观察：登录保存INITIAL/LATEST，重新认证及新轮刷新仅更新LATEST；宽限刷新和补全重放不更新。非法显式描述在凭证消费前拒绝。",
         "responses": {
           "200": {
             "description": "成功。",
@@ -230,6 +278,54 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoclient_type"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoos_name"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoos_version"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfobrowser_name"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfobrowser_version"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoapp_name"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoapp_version"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfodevice_type"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfodevice_model"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo0"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo1"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo2"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo3"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo4"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo5"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo6"
           }
         ],
         "security": [],
@@ -327,7 +423,7 @@
       "post": {
         "operationId": "completeSignIn",
         "summary": "验证并继续登录补全",
-        "description": "可能继续 pending，也可能返回已有账号的 user:bind。原票据最长五分钟且不续期；同一完成请求只在原期限、账号/会话/refresh 有效时返回原 pair，refresh 已轮换则 400 SIGN_IN_ALREADY_COMPLETED。验证会关联尚未占用身份或注册，不合并两个已有账号。",
+        "description": "可能继续 pending，也可能返回已有账号的 user:bind。原票据最长五分钟且不续期；同一完成请求只在原期限、账号/会话/refresh 有效时返回原 pair，refresh 已轮换则 400 SIGN_IN_ALREADY_COMPLETED。验证会关联尚未占用身份或注册，不合并两个已有账号。 可选客户端描述只在成功认证时观察：登录保存INITIAL/LATEST，重新认证及新轮刷新仅更新LATEST；宽限刷新和补全重放不更新。非法显式描述在凭证消费前拒绝。",
         "responses": {
           "200": {
             "description": "成功。",
@@ -396,6 +492,54 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoclient_type"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoos_name"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoos_version"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfobrowser_name"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfobrowser_version"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoapp_name"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoapp_version"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfodevice_type"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfodevice_model"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo0"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo1"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo2"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo3"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo4"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo5"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo6"
           }
         ],
         "security": [],
@@ -415,7 +559,7 @@
       "post": {
         "operationId": "refreshToken",
         "summary": "刷新并轮换令牌",
-        "description": "仅接受 JSON refresh_token grant，不是完整 OAuth 授权服务器。默认宽限内重复返回同一 pair；客户端协调并发与原子保存，宽限外按重放规则处理。",
+        "description": "仅接受 JSON refresh_token grant，不是完整 OAuth 授权服务器。默认宽限内重复返回同一 pair；客户端协调并发与原子保存，宽限外按重放规则处理。 可选客户端描述只在成功认证时观察：登录保存INITIAL/LATEST，重新认证及新轮刷新仅更新LATEST；宽限刷新和补全重放不更新。非法显式描述在凭证消费前拒绝。",
         "responses": {
           "200": {
             "description": "成功。",
@@ -557,6 +701,54 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoclient_type"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoos_name"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoos_version"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfobrowser_name"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfobrowser_version"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoapp_name"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoapp_version"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfodevice_type"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfodevice_model"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo0"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo1"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo2"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo3"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo4"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo5"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo6"
           }
         ],
         "security": [],
@@ -969,7 +1161,7 @@
       "post": {
         "operationId": "reauthenticate",
         "summary": "完成近期认证",
-        "description": "只返回新 access，原 refresh 和绝对期限保持。会话到期返回 401 TOKEN_INVALID。 允许的消费者 scope：user。",
+        "description": "只返回新 access，原 refresh 和绝对期限保持。会话到期返回 401 TOKEN_INVALID。 允许的消费者 scope：user。 可选客户端描述只在成功认证时观察：登录保存INITIAL/LATEST，重新认证及新轮刷新仅更新LATEST；宽限刷新和补全重放不更新。非法显式描述在凭证消费前拒绝。",
         "responses": {
           "200": {
             "description": "成功。",
@@ -1019,6 +1211,54 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoclient_type"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoos_name"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoos_version"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfobrowser_name"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfobrowser_version"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoapp_name"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfoapp_version"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfodevice_type"
+          },
+          {
+            "$ref": "#/components/parameters/ClientInfodevice_model"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo0"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo1"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo2"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo3"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo4"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo5"
+          },
+          {
+            "$ref": "#/components/parameters/AutomaticClientInfo6"
           }
         ],
         "x-allowed-scopes": [
@@ -1347,7 +1587,7 @@
       "delete": {
         "operationId": "unbindIdentity",
         "summary": "解绑身份",
-        "description": "须保留至少一个可用身份并满足 Required 身份策略。 允许的消费者 scope：user。 启用敏感操作验证时要求近期认证（默认 5 分钟），过期返回 400 REAUTHENTICATION_REQUIRED。",
+        "description": "须保留至少一个可用身份并满足 Required 身份策略。 允许的消费者 scope：user。 启用敏感操作验证时要求近期认证（默认 5 分钟），过期返回 400 REAUTHENTICATION_REQUIRED。 成功在同事务撤销来源命中该具体身份及来源未知的未吊销会话，包括当前和已到刷新期限的会话；仍返回204，客户端可能需要退出。",
         "responses": {
           "204": {
             "description": "成功，无响应体。"
@@ -1394,7 +1634,7 @@
       "post": {
         "operationId": "replaceIdentity",
         "summary": "换绑同类手机或邮箱",
-        "description": "凭证必须与路径身份同类型并使用 BIND 轮次。保留当前会话、撤销其他会话；返回新的身份资源。未实现可选能力返回 503 IDENTITY_REPLACEMENT_NOT_CONFIGURED。 允许的消费者 scope：user。 启用敏感操作验证时要求近期认证（默认 5 分钟），过期返回 400 REAUTHENTICATION_REQUIRED。",
+        "description": "凭证必须与路径身份同类型并使用 BIND 轮次。未实现可选能力返回 503 IDENTITY_REPLACEMENT_NOT_CONFIGURED。 允许的消费者 scope：user。 启用敏感操作验证时要求近期认证（默认 5 分钟），过期返回 400 REAUTHENTICATION_REQUIRED。 其他会话仍撤销；当前会话仅来源已知且不含被替换身份时保留，命中或未知也撤销。BIND证明不替换来源，200成功可能同时需要退出。",
         "responses": {
           "200": {
             "description": "成功。",
@@ -1460,6 +1700,127 @@
           }
         }
       }
+    },
+    "/users/me/sessions/current": {
+      "get": {
+        "operationId": "getCurrentSession",
+        "summary": "查询当前有效会话及认证依据",
+        "description": "按已认证 user_id/sid 一致读取数据库。会话缺失、归属不符、已撤销或 refresh 期限已到返回401 TOKEN_INVALID和Bearer挑战；可识别依赖不可用返回503，内部错误固定500。旧来源未知为false和[]；自定义宿主缺能力503 SESSION_QUERY_NOT_CONFIGURED。查询仅为当前快照，解绑影响仍以提交时状态为准。普通 Authenticate/内省保持JWT与Redis验证，不增加数据库热路径。所有响应 no-store。",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "x-allowed-scopes": [
+          "user",
+          "user:bind"
+        ],
+        "responses": {
+          "200": {
+            "description": "成功。name 使用实际 s_ ID。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentSession"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Bearer 缺失、格式错误或凭证失效。",
+            "headers": {
+              "WWW-Authenticate": {
+                "description": "消费者 Bearer 401 的认证 challenge。",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "作用域不足或账号状态拒绝。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "固定 internal error，不暴露内部诊断。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "依赖或可选能力未配置/不可用；不降级绕过验证。",
+            "headers": {
+              "Retry-After": {
+                "description": "存在时为等待秒数。",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[0-9]+$"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1476,6 +1837,170 @@
         "in": "header",
         "required": false,
         "description": "默认接受 1–64 位字母、数字、点、下划线、连字符，缺失或非法时生成；宿主可覆盖关联 ID 策略。",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "ClientInfoclient_type": {
+        "name": "X-Client-Type",
+        "in": "header",
+        "required": false,
+        "description": "可选自报描述；显式值优先于 Client Hints 和 UA。有效 UTF-8、无控制字符，文本去除首尾空白，整体规范化描述不超过2048字节；重复显式头拒绝。非法值在凭证消费前400 INVALID_CLIENT_INFO，token端点OAuth invalid_request。",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "",
+            "WEB",
+            "NATIVE"
+          ],
+          "description": "空值等同未提供。"
+        }
+      },
+      "ClientInfoos_name": {
+        "name": "X-Client-OS-Name",
+        "in": "header",
+        "required": false,
+        "description": "可选自报描述；显式值优先于 Client Hints 和 UA。有效 UTF-8、无控制字符，文本去除首尾空白，整体规范化描述不超过2048字节；重复显式头拒绝。非法值在凭证消费前400 INVALID_CLIENT_INFO，token端点OAuth invalid_request。",
+        "schema": {
+          "type": "string",
+          "maxLength": 64
+        }
+      },
+      "ClientInfoos_version": {
+        "name": "X-Client-OS-Version",
+        "in": "header",
+        "required": false,
+        "description": "可选自报描述；显式值优先于 Client Hints 和 UA。有效 UTF-8、无控制字符，文本去除首尾空白，整体规范化描述不超过2048字节；重复显式头拒绝。非法值在凭证消费前400 INVALID_CLIENT_INFO，token端点OAuth invalid_request。",
+        "schema": {
+          "type": "string",
+          "maxLength": 32
+        }
+      },
+      "ClientInfobrowser_name": {
+        "name": "X-Client-Browser-Name",
+        "in": "header",
+        "required": false,
+        "description": "可选自报描述；显式值优先于 Client Hints 和 UA。有效 UTF-8、无控制字符，文本去除首尾空白，整体规范化描述不超过2048字节；重复显式头拒绝。非法值在凭证消费前400 INVALID_CLIENT_INFO，token端点OAuth invalid_request。",
+        "schema": {
+          "type": "string",
+          "maxLength": 64
+        }
+      },
+      "ClientInfobrowser_version": {
+        "name": "X-Client-Browser-Version",
+        "in": "header",
+        "required": false,
+        "description": "可选自报描述；显式值优先于 Client Hints 和 UA。有效 UTF-8、无控制字符，文本去除首尾空白，整体规范化描述不超过2048字节；重复显式头拒绝。非法值在凭证消费前400 INVALID_CLIENT_INFO，token端点OAuth invalid_request。",
+        "schema": {
+          "type": "string",
+          "maxLength": 32
+        }
+      },
+      "ClientInfoapp_name": {
+        "name": "X-Client-App-Name",
+        "in": "header",
+        "required": false,
+        "description": "可选自报描述；显式值优先于 Client Hints 和 UA。有效 UTF-8、无控制字符，文本去除首尾空白，整体规范化描述不超过2048字节；重复显式头拒绝。非法值在凭证消费前400 INVALID_CLIENT_INFO，token端点OAuth invalid_request。",
+        "schema": {
+          "type": "string",
+          "maxLength": 64
+        }
+      },
+      "ClientInfoapp_version": {
+        "name": "X-Client-App-Version",
+        "in": "header",
+        "required": false,
+        "description": "可选自报描述；显式值优先于 Client Hints 和 UA。有效 UTF-8、无控制字符，文本去除首尾空白，整体规范化描述不超过2048字节；重复显式头拒绝。非法值在凭证消费前400 INVALID_CLIENT_INFO，token端点OAuth invalid_request。",
+        "schema": {
+          "type": "string",
+          "maxLength": 32
+        }
+      },
+      "ClientInfodevice_type": {
+        "name": "X-Device-Type",
+        "in": "header",
+        "required": false,
+        "description": "可选自报描述；显式值优先于 Client Hints 和 UA。有效 UTF-8、无控制字符，文本去除首尾空白，整体规范化描述不超过2048字节；重复显式头拒绝。非法值在凭证消费前400 INVALID_CLIENT_INFO，token端点OAuth invalid_request。",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "",
+            "DESKTOP",
+            "PHONE",
+            "TABLET"
+          ],
+          "description": "空值等同未提供。"
+        }
+      },
+      "ClientInfodevice_model": {
+        "name": "X-Device-Model",
+        "in": "header",
+        "required": false,
+        "description": "可选自报描述；显式值优先于 Client Hints 和 UA。有效 UTF-8、无控制字符，文本去除首尾空白，整体规范化描述不超过2048字节；重复显式头拒绝。非法值在凭证消费前400 INVALID_CLIENT_INFO，token端点OAuth invalid_request。",
+        "schema": {
+          "type": "string",
+          "maxLength": 64
+        }
+      },
+      "AutomaticClientInfo0": {
+        "name": "User-Agent",
+        "in": "header",
+        "required": false,
+        "description": "可用时本地解析；UA及全部Sec-CH-UA*值各自合计至多2048字节，畸形/超限忽略相应自动输入，合法显式值保留。不保存原始值，不主动请求额外高熵提示。",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "AutomaticClientInfo1": {
+        "name": "Sec-CH-UA",
+        "in": "header",
+        "required": false,
+        "description": "可用时本地解析；UA及全部Sec-CH-UA*值各自合计至多2048字节，畸形/超限忽略相应自动输入，合法显式值保留。不保存原始值，不主动请求额外高熵提示。",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "AutomaticClientInfo2": {
+        "name": "Sec-CH-UA-Full-Version-List",
+        "in": "header",
+        "required": false,
+        "description": "可用时本地解析；UA及全部Sec-CH-UA*值各自合计至多2048字节，畸形/超限忽略相应自动输入，合法显式值保留。不保存原始值，不主动请求额外高熵提示。",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "AutomaticClientInfo3": {
+        "name": "Sec-CH-UA-Platform",
+        "in": "header",
+        "required": false,
+        "description": "可用时本地解析；UA及全部Sec-CH-UA*值各自合计至多2048字节，畸形/超限忽略相应自动输入，合法显式值保留。不保存原始值，不主动请求额外高熵提示。",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "AutomaticClientInfo4": {
+        "name": "Sec-CH-UA-Platform-Version",
+        "in": "header",
+        "required": false,
+        "description": "可用时本地解析；UA及全部Sec-CH-UA*值各自合计至多2048字节，畸形/超限忽略相应自动输入，合法显式值保留。不保存原始值，不主动请求额外高熵提示。",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "AutomaticClientInfo5": {
+        "name": "Sec-CH-UA-Model",
+        "in": "header",
+        "required": false,
+        "description": "可用时本地解析；UA及全部Sec-CH-UA*值各自合计至多2048字节，畸形/超限忽略相应自动输入，合法显式值保留。不保存原始值，不主动请求额外高熵提示。",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "AutomaticClientInfo6": {
+        "name": "Sec-CH-UA-Mobile",
+        "in": "header",
+        "required": false,
+        "description": "可用时本地解析；UA及全部Sec-CH-UA*值各自合计至多2048字节，畸形/超限忽略相应自动输入，合法显式值保留。不保存原始值，不主动请求额外高熵提示。",
         "schema": {
           "type": "string"
         }
@@ -1868,6 +2393,14 @@
           },
           "is_current": {
             "type": "boolean"
+          },
+          "client_info": {
+            "$ref": "#/components/schemas/ClientInfo"
+          },
+          "client_info_update_time": {
+            "type": "string",
+            "format": "date-time",
+            "description": "最近成功认证观察的服务器时间，不代表所有业务请求的最后活动。"
           }
         },
         "required": [
@@ -2424,6 +2957,138 @@
         },
         "required": [
           "display_name"
+        ],
+        "additionalProperties": false
+      },
+      "ClientInfo": {
+        "type": "object",
+        "description": "可选、自报的结构化描述，未知属性省略；不含原始 UA、IP、位置或凭证，不能作为可信设备证明。",
+        "properties": {
+          "client_type": {
+            "type": "string",
+            "enum": [
+              "WEB",
+              "NATIVE"
+            ]
+          },
+          "os_name": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "os_version": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "browser_name": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "browser_version": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "app_name": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "app_version": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "device_type": {
+            "type": "string",
+            "enum": [
+              "DESKTOP",
+              "PHONE",
+              "TABLET"
+            ]
+          },
+          "device_model": {
+            "type": "string",
+            "maxLength": 64
+          }
+        },
+        "additionalProperties": false
+      },
+      "AuthenticationIdentity": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^users/u_[0-9a-hjkmnp-tv-z]{13}/identities/i_[0-9a-hjkmnp-tv-z]{13}$"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IdentityKind"
+          }
+        },
+        "required": [
+          "name",
+          "kind"
+        ],
+        "additionalProperties": false
+      },
+      "CurrentSession": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^users/u_[0-9a-hjkmnp-tv-z]{13}/sessions/s_[0-9a-hjkmnp-tv-z]{13}$"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "device_name": {
+            "type": "string"
+          },
+          "create_time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_used_time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "is_current": {
+            "type": "boolean",
+            "const": true
+          },
+          "client_info": {
+            "$ref": "#/components/schemas/ClientInfo"
+          },
+          "client_info_update_time": {
+            "type": "string",
+            "format": "date-time",
+            "description": "最近成功认证观察的服务器时间，不代表所有业务请求的最后活动。"
+          },
+          "auth_time": {
+            "type": "string",
+            "format": "date-time",
+            "description": "数据库最新认证时间；旧 JWT 不随查询改写。"
+          },
+          "authentication_identities_known": {
+            "type": "boolean"
+          },
+          "authentication_identities": {
+            "type": "array",
+            "description": "按具体身份 ID 稳定排序，仅用 name 精确匹配；未知来源返回 []，不能据此判断解绑安全。",
+            "items": {
+              "$ref": "#/components/schemas/AuthenticationIdentity"
+            }
+          },
+          "initial_client_info": {
+            "$ref": "#/components/schemas/ClientInfo"
+          }
+        },
+        "required": [
+          "name",
+          "device_id",
+          "device_name",
+          "create_time",
+          "last_used_time",
+          "is_current",
+          "auth_time",
+          "authentication_identities_known",
+          "authentication_identities"
         ],
         "additionalProperties": false
       }

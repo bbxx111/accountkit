@@ -153,6 +153,7 @@ r.Route("/v1", func(r chi.Router) {
 | `POST /users/me:undelete` | `user:undelete` | 200 账号资源（`state=ACTIVE`） | 400 `INVALID_ACCOUNT_STATE`；403 `USER_FROZEN` |
 | `POST /users/me:sendReauthenticationCode` `{channel, target}` | `user` | 200 `{code_id, expire_time}` | 400 `TARGET_NOT_ANCHOR` |
 | `POST /users/me:reauthenticate` 凭证 oneof | `user` | 200 token（无 refresh） | 400 `CODE_*`；401 会话已吊销 |
+| `GET /users/me/sessions/current` | `user` / `user:bind` | 200 当前会话（no-store） | 401 `TOKEN_INVALID`；403 scope不足；503 `SESSION_QUERY_NOT_CONFIGURED` / 依赖不可用 |
 | `GET /users/me/sessions` | `user` | 200 `{sessions:[…]}` | |
 | `DELETE /users/me/sessions/{session}` | `user` | 204 | 400 `INVALID_ID`；404 |
 | `POST /users/me/sessions:revokeOthers` | `user` | 200 `{}` | |
@@ -193,15 +194,39 @@ r.Route("/v1", func(r chi.Router) {
 
 规则：一个 subject 全局只属于一个账号（冲突 409，不合并不迁移）；每 kind 最多 `MaxIdentitiesPerKind`（默认 1）个活动身份；同一 subject 重复绑定到本账号为幂等；解绑是软删除，解绑后同一 subject 可绑到任一账号；解绑或换绑后的最终身份集合必须仍有至少一个已启用身份并满足当前 R；绑定不改变已签发 token 的 scope，客户端新一轮刷新后生效。`masked_subject` 由检索提示拼出（`+86 138****1234`、`ba***@example.com`），第三方身份为空串。
 
+## 当前会话与客户端描述（开发中）
+
+以下为 v0.3.0 之后的当前开发变更，尚未发布；已发布 v0.3.0 不含此查询、来源撤销或客户端快照。迁移和部署须按[会话升级说明](docs/migrations.md#会话认证依据递增升级开发中)协调切换。
+
+GET /users/me/sessions/current 返回真实会话 name（末段是 s_ ID）、原设备/时间字段、is_current=true、数据库最新 RFC3339 auth_time、authentication_identities_known 和 authentication_identities。身份摘要只有 name/kind，按具体 ID 排序；客户端按完整 name 匹配拟解绑身份，不能只比较 kind。来源未知明确返回 false 和 []，应提示解绑可能退出。查询是快照，最终影响以提交时状态为准。重新认证成功后保存新 access、保留原 refresh，再重查详情；旧 JWT 不被改写，查询也不赋予旧 token 新的近期认证证明。
+
+普通登录来源只有本次验证的身份，补全包含该次最终成功验证的具体身份；重新认证用本次手机/邮箱身份替换整个集合，同时更新 auth_time。刷新、普通绑定和换绑 BIND 证明不改来源。成功解绑在同事务撤销同账号来源命中或来源未知的所有未吊销会话，包括当前及 refresh 已到期但未清理的会话；原204仍表示成功。查询或后续认证失效时客户端清理凭据并重新登录，不能将成功解绑重试成失败。
+
+查询支持 user/user:bind，user:undelete 返回403；缺少可选 CurrentSessionService 的自定义 HTTP 宿主返回503 SESSION_QUERY_NOT_CONFIGURED。数据库会话缺失、归属不符、撤销或 refresh 到期返回401 TOKEN_INVALID与Bearer挑战；可识别依赖不可用503、内部错误固定500，所有响应 no-store。普通 Authenticate/内省仍为JWT和Redis校验，不增加数据库查询；Redis吊销失败仍保留原fail-open与告警，数据库会拒绝已撤销会话的refresh/详情查询。
+
+客户端描述只在成功验证码登录、IdP登录、补全、重新认证及新一轮刷新观察；发码、绑定、换绑、普通GET/业务请求、Authenticate和内省不采集。原 X-Device-Id / X-Device-Name 和请求体不变，下列头全部可选：
+
+| 请求头 | 值/限制 |
+|---|---|
+| X-Client-Type | WEB / NATIVE |
+| X-Client-OS-Name、X-Client-Browser-Name、X-Client-App-Name | 名称最多64字符 |
+| X-Client-OS-Version、X-Client-Browser-Version、X-Client-App-Version | 版本最多32字符 |
+| X-Device-Type | DESKTOP / PHONE / TABLET |
+| X-Device-Model | 最多64字符 |
+
+文本有效UTF-8、无控制字符、去除首尾空白，整体规范化描述至多2048字节；重复显式头拒绝。非法显式值在凭证消费前400 INVALID_ARGUMENT / INVALID_CLIENT_INFO，token端点为OAuth invalid_request。合法显式值优先，其次可用Client Hints，最后UA；自动输入失败不阻断认证。UA与全部Sec-CH-UA*值各自合计至多2048字节，超限/畸形忽略相应自动输入。不主动要求额外高熵提示；具体支持字段与CORS见[网关说明](docs/gateway-integration.md#客户端描述透传与-cors)。宿主可注入 Deps.ClientInfo，直接Go调用传 Meta.ClientInfo，采用字段名初始化，见[Go指南](docs/go-integration.md#当前会话解绑与客户端描述开发中)。
+
+普通成功登录有描述时保存INITIAL/LATEST；pending保留首次证明的INITIAL，完成请求可更新LATEST。首次证明缺描述（含旧payload）而补全时才获得描述只建LATEST。成功重新认证和新轮刷新仅合并LATEST，缺字段保留、类型切换清除不适用字段、新名称无版本清除旧版本；宽限刷新、补全重放及失败不写观察时间。旧会话后续仅补LATEST，不伪造INITIAL。详情可含 initial_client_info、client_info、client_info_update_time，两个面的列表只含最近摘要与观察时间；last_used_time与描述观察时间均不表示每次业务活动。描述不能作为授权、限流身份或可信设备证明，客户端快照不持久化原始UA/IP/位置，不进入日志、审计正文或指标标签；随会话清理和同事务匿名化删除。
+
 ## 手机号与邮箱换绑
 
 `POST /v1/users/me/identities/{identity}:replace` 将指定的旧活动手机/邮箱身份替换为同类新身份。请求使用既有凭证结构，例如 `{"email":{"target":"new@example.test","code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`；成功返回200及新身份的掩码资源，身份 ID 更新、账号 ID 保持，不返回 token pair。
 
 调用前须有 `user` scope 和有效当前会话，近期认证沿用 `REAUTH_MAX_AGE`（默认5分钟）及 `SENSITIVE_OP_VERIFICATION`（默认true）。需要时先走既有重新认证流程，再通过 `users/me:sendBindCode` 获取新地址 BIND 码。近期登录也满足现有新鲜度语义，不保证本次专门向旧地址发送验证码；首版不提供失去全部既有凭据的账号找回。
 
-身份替换和撤销其他会话在一个数据库事务内完成，当前会话及其 refresh token 保留。正常 Redis 下其他会话的 access/内省无效，refresh 由数据库拒绝；Redis 吊销故障仍按原 fail-open 规则处理。旧地址不再进入原账号，但新的独立登录仍可能按原规则自动注册另一个账号。
+身份替换和会话撤销在一个数据库事务内完成。其他会话继续撤销；当前会话仅在认证来源已知且不含被替换身份时保留，命中或未知则一并撤销。新目标 BIND 证明不替换来源；200 成功不发 token，当前会话也可能需要退出。正常 Redis 下被撤销会话的 access/内省无效，refresh 由数据库拒绝；Redis 吊销故障仍按原 fail-open 规则处理。旧地址不再进入原账号，但新的独立登录仍可能按原规则自动注册另一个账号。
 
-只支持 PHONE→PHONE、EMAIL→EMAIL，原绑定/解绑接口不变。同目标返回400 `IDENTITY_UNCHANGED`；旧资源不存在/已删除/归属其他用户返回404；新目标已经绑定返回409 `IDENTITY_ALREADY_BOUND`。已消费的验证码不随数据库回滚退还，重取码仍受冷却/额度限制。成功后重试旧 identity 路径返回404；响应丢失时先列出身份确认状态，不盲目自动重发。新旧摘要版本、密文格式与冻结迁移保持兼容。
+只支持 PHONE→PHONE、EMAIL→EMAIL，原绑定/解绑接口不变。同目标返回400 `IDENTITY_UNCHANGED`；旧资源不存在/已删除/归属其他用户返回404；新目标已经绑定返回409 `IDENTITY_ALREADY_BOUND`。已消费的验证码不随数据库回滚退还，重取码仍受冷却/额度限制。成功后仍有效会话重试旧 identity 路径返回404，原会话已撤销则按认证失效拒绝；响应丢失时用仍有效会话或重新登录后列出身份确认状态，不盲目自动重发。新旧摘要版本、密文格式与冻结迁移保持兼容。
 
 直接库调用使用 `Auth.Users().ReplaceIdentity(...)` 并传入已认证 Principal。领域层同样检查 scope、新鲜度、账号/会话和身份归属。自定义 `enduser.Service` 无需增加必需方法；实现可选 `enduser.IdentityReplacer` 即可启用新端点，否则认证后的调用返回503 `IDENTITY_REPLACEMENT_NOT_CONFIGURED`。实际检查与验收边界见[换绑验收记录](openspec/changes/archive/2026-10-03-add-identity-replacement/verification.md)。
 
@@ -334,6 +359,6 @@ Go module：github.com/bbxx111/accountkit。`v0.3.0` 已发布，使用 `go get 
 
 库版本发布与各产品生产上线分别验收。产品实际环境接入、真实服务商与预发布升级/恢复仍待完成；产品各自配置 schema、Redis 前缀、issuer/audience 和密钥，并承担自己的匿名化与网关接入责任。当前未附开源 LICENSE，本次版本供自有产品接入，尚未向外部使用方定义复用许可。
 
-此前按用户明确授权，在 v0.3.0 发布前直接修改当时未发布的 `migrations/0001_init.up.sql`，以 `sign_in_completion_flow` 定义登录补全流程表，同步主键、格式 CHECK、五个独立索引、配套 down 和当前固定校验；列与索引定义保持。当时新增的 0002 已撤回，新空库直接安装为 version=1、dirty=false，后续真实增量从 0002 开始。旧表名的同号 v1、双表并存及任何已撤回旧 v2（包括此前新表名 v2）均拒绝且保留数据、结构和版本；重复 Up 不自动改名或接管。采用新定义须人工核验后使用新空资源，需要保留旧数据时另行制定并验证迁移方案，不 Force、不修改版本、不自动清库。公共 `Down` 仍拒绝执行。操作与恢复边界见[迁移手册](docs/migrations.md#登录补全流程命名调整)。已发布标签和固定源快照保持，发布后不再适用当时修改未发布基线的有限授权。
+此前按用户明确授权，在 v0.3.0 发布前直接修改当时未发布的 `migrations/0001_init.up.sql`，以 `sign_in_completion_flow` 定义登录补全流程表，同步主键、格式 CHECK、五个独立索引、配套 down 和当前固定校验；列与索引定义保持。当时新增的重命名 0002 已撤回，v0.3.0 空库安装为 version=1、dirty=false；当前开发分支新增真实 0002 会话迁移，安装目标为 version=2，见[迁移手册](docs/migrations.md#会话认证依据递增升级开发中)。旧表名的同号 v1、双表并存及任何已撤回旧 v2（包括此前新表名 v2）均拒绝且保留数据、结构和版本；重复 Up 不自动改名或接管。采用新定义须人工核验后使用新空资源，需要保留旧数据时另行制定并验证迁移方案，不 Force、不修改版本、不自动清库。公共 `Down` 仍拒绝执行。操作与恢复边界见[迁移手册](docs/migrations.md#登录补全流程命名调整)。已发布标签和固定源快照保持，发布后不再适用当时修改未发布基线的有限授权。
 
 原 migrations.Down 保留签名但默认拒绝执行；新基线的一次性测试清库使用显式 UnsafeReset。升级、故障处理与恢复步骤见 [迁移手册](docs/migrations.md)，本次边界见[兼容说明](docs/compatibility.md#初始数据库基线整合)。

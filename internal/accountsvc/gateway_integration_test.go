@@ -63,7 +63,8 @@ func newTestGateway(t *testing.T, upstream string, cert tls.Certificate, interna
 		"/v1/users:sendSignInCode": true, "/v1/users:signInWithCode": true,
 		"/v1/users:sendSignInCompletionCode": true, "/v1/users:completeSignIn": true,
 		"/v1/users/me": true, "/v1/users/me/sessions": true,
-		"/v1/token": true, "/v1/revoke": true,
+		"/v1/users/me/sessions/current": true,
+		"/v1/token":                     true, "/v1/revoke": true,
 	}
 	g.server = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		allowed := public[r.URL.Path]
@@ -319,5 +320,50 @@ func gatewayCancellation(t *testing.T, stopProxy bool) {
 	}
 	if g.transport.calls.Load() != 1 {
 		t.Fatal("proxy retried interrupted request")
+	}
+}
+
+func TestGatewayCurrentSessionAndOptionalHeaders(t *testing.T) {
+	seen := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen++
+		if r.Header.Get("Authorization") != "Bearer consumer" || r.Header.Get("X-Device-Id") != "legacy-device" || r.Header.Get("X-Request-Id") != "context-request" {
+			t.Error("original headers lost")
+		}
+		if seen == 1 && (r.Header.Get("X-Client-Type") != "WEB" || r.Header.Get("X-Client-Browser-Name") != "Firefox" || r.Header.Get("Sec-CH-UA-Platform") != `"Linux"` || r.Header.Get("User-Agent") != "private-UA") {
+			t.Error("optional hints lost")
+		}
+		if seen == 2 && r.Header.Get("X-Client-Type") != "" {
+			t.Error("legacy headers invented")
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
+		w.WriteHeader(401)
+	}))
+	defer upstream.Close()
+	cert, _, _ := integrationCertificate(t)
+	g := newTestGateway(t, upstream.URL, cert, false)
+	for i := 0; i < 2; i++ {
+		r, _ := http.NewRequest("GET", g.server.URL+"/v1/users/me/sessions/current", nil)
+		r.Header.Set("Authorization", "Bearer consumer")
+		r.Header.Set("X-Device-Id", "legacy-device")
+		r.Header.Set("X-Request-Id", "context-request")
+		if i == 0 {
+			r.Header.Set("X-Client-Type", "WEB")
+			r.Header.Set("X-Client-Browser-Name", "Firefox")
+			r.Header.Set("Sec-CH-UA-Platform", `"Linux"`)
+			r.Header.Set("User-Agent", "private-UA")
+		}
+		resp, e := g.server.Client().Do(r)
+		if e != nil {
+			t.Fatal(e)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != 401 || resp.Header.Get("Cache-Control") != "no-store" || resp.Header.Get("WWW-Authenticate") == "" {
+			t.Fatalf("current forwarding: %d", resp.StatusCode)
+		}
+	}
+	if seen != 2 || strings.Contains(g.logs.String(), "private-UA") {
+		t.Fatal("forward count or private log")
 	}
 }

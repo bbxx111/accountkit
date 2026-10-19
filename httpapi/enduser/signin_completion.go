@@ -99,7 +99,12 @@ func (h *Handler) completeSignIn(w http.ResponseWriter, r *http.Request) {
 		completionNotConfigured(w)
 		return
 	}
-	res, err := svc.CompleteSignIn(r.Context(), req.SignInCompletionToken, user.CodeCredential{Channel: kind, Target: cc.Target, CodeID: cc.CodeID, Code: cc.Code}, dev, h.meta(r))
+	meta, err := h.authMeta(r)
+	if err != nil {
+		h.writeServiceError(w, r, err)
+		return
+	}
+	res, err := svc.CompleteSignIn(r.Context(), req.SignInCompletionToken, user.CodeCredential{Channel: kind, Target: cc.Target, CodeID: cc.CodeID, Code: cc.Code}, dev, meta)
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return

@@ -303,8 +303,17 @@ func (s *Service) UnbindIdentity(ctx context.Context, p Principal, identityID st
 	if !ids.Valid(ids.Identity, identityID) {
 		return fmt.Errorf("%w: malformed identity id", ErrInvalidArgument)
 	}
-	now := s.now()
+	if !ids.Valid(ids.User, p.UserID) || !ids.Valid(ids.Session, p.SessionID) {
+		return ErrInvalidToken
+	}
+	if p.Scope != ScopeUser {
+		return ErrInsufficientScope
+	}
+	if err := s.sensitiveRecentAuth(p, s.now()); err != nil {
+		return err
+	}
 	var target db.Identity
+	var revoked []string
 	err := s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
 		u, err := lockUser(ctx, q, p.UserID)
 		if err != nil {
@@ -312,6 +321,16 @@ func (s *Service) UnbindIdentity(ctx context.Context, p Principal, identityID st
 		}
 		if err := accountMayAct(u); err != nil {
 			return err
+		}
+		sess, err := q.LockSessionByID(ctx, p.SessionID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrInvalidToken
+		}
+		if err != nil {
+			return fmt.Errorf("user: lock unbind session: %w", err)
+		}
+		if sess.UserID != p.UserID || !sessionActiveAt(sess, sessionTime(s.now())) {
+			return ErrInvalidToken
 		}
 		row, err := q.GetActiveIdentityByIDAndUser(ctx, db.GetActiveIdentityByIDAndUserParams{ID: identityID, UserID: p.UserID})
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -334,6 +353,14 @@ func (s *Service) UnbindIdentity(ctx context.Context, p Principal, identityID st
 		if !s.identitiesComplete(idents) || !s.identitiesComplete(remaining) {
 			return ErrLastAnchor
 		}
+		decisionTime := s.now()
+		now := sessionTime(decisionTime)
+		if !sessionActiveAt(sess, now) {
+			return ErrInvalidToken
+		}
+		if err := s.sensitiveRecentAuth(p, decisionTime); err != nil {
+			return err
+		}
 		n, err := q.SoftDeleteIdentity(ctx, db.SoftDeleteIdentityParams{ID: identityID, UserID: p.UserID, Now: now})
 		if err != nil {
 			return fmt.Errorf("user: soft delete identity: %w", err)
@@ -341,11 +368,17 @@ func (s *Service) UnbindIdentity(ctx context.Context, p Principal, identityID st
 		if n == 0 {
 			return ErrNotFound // 并发解绑
 		}
+		reason := enum.RevokeIdentityUnbound
+		revoked, err = q.RevokeSessionsByIdentity(ctx, db.RevokeSessionsByIdentityParams{UserID: p.UserID, IdentityID: identityID, Now: now, Reason: &reason})
+		if err != nil {
+			return fmt.Errorf("user: revoke identity sessions: %w", err)
+		}
 		return nil
 	})
 	if err != nil {
 		return err
 	}
+	s.afterRevokeAll(ctx, revoked, enum.RevokeIdentityUnbound, userEvent(p, meta))
 	hint := ""
 	switch {
 	case target.SubjectDigest != nil:

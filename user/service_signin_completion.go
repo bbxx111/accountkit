@@ -53,6 +53,7 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 		replaced = nil
 		found, err := s.findProof(ctx, q, proof)
 		var u db.UserAccount
+		var authenticationIdentityID string
 		isNew := false
 		switch {
 		case err == nil:
@@ -73,6 +74,7 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 			}
 			ev.VerifiedSubject = true
 			ev.IdentityID = current.ID
+			authenticationIdentityID = current.ID
 			if !proof.Kind.IsChannel() {
 				if u.State == enum.UserPendingDeletion {
 					return ErrUserPendingDeletion
@@ -83,7 +85,7 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 			}
 		case errors.Is(err, pgx.ErrNoRows):
 			if !s.policy.Complete([]enum.IdentityKind{proof.Kind}) {
-				result, ev.FlowID, err = s.createPending(ctx, q, proof, expiry, dev)
+				result, ev.FlowID, err = s.createPending(ctx, q, proof, expiry, dev, meta.ClientInfo)
 				return err
 			}
 			uid, e := ids.New(ids.User)
@@ -94,9 +96,11 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 			if err != nil {
 				return err
 			}
-			if _, err = s.createProofIdentity(ctx, q, uid, proof); err != nil {
-				return err
+			created, e := s.createProofIdentity(ctx, q, uid, proof)
+			if e != nil {
+				return e
 			}
+			authenticationIdentityID = created.ID
 			isNew = true
 		default:
 			return err
@@ -105,8 +109,12 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 		if err != nil {
 			return err
 		}
-		sess, pair, rep, err := s.establishSession(ctx, q, u, complete, dev, s.now())
+		now := s.now()
+		sess, pair, rep, err := s.establishSession(ctx, q, u, complete, []string{authenticationIdentityID}, dev, now)
 		if err != nil {
+			return err
+		}
+		if err := s.initializeSessionClientInfo(ctx, q, sess, meta.ClientInfo, now, now); err != nil {
 			return err
 		}
 		pair.IsNewUser = isNew
@@ -170,6 +178,11 @@ func (s *Service) sendSignInCompletionCode(ctx context.Context, token string, ch
 
 // completeSignIn 先持久化成功证明，再由独立事务完成账号、身份与会话。
 func (s *Service) completeSignIn(ctx context.Context, token string, cred CodeCredential, dev Device, meta Meta) (result SignInResult, err error) {
+	normalizedClientInfo, clientInfoErr := NormalizeClientInfo(meta.ClientInfo)
+	if clientInfoErr != nil {
+		return SignInResult{}, clientInfoErr
+	}
+	meta.ClientInfo = normalizedClientInfo
 	var flowID string
 	defer func() {
 		err = flowStorageError(err)
@@ -487,8 +500,10 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.SignI
 		if err != nil {
 			return err
 		}
+		var authenticationIdentityIDs []string
 		for _, proof := range fp.Proofs {
 			if proof.UserID != "" {
+				authenticationIdentityIDs = append(authenticationIdentityIDs, proof.IdentityID)
 				if proof.Provider != nil {
 					existing, e := s.findProof(ctx, q, proof)
 					if e != nil {
@@ -508,11 +523,20 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.SignI
 				return e
 			}
 			idents = append(idents, created)
+			authenticationIdentityIDs = append(authenticationIdentityIDs, created.ID)
 			bound = append(bound, created)
 		}
 		now := s.now()
-		sess, pair, rep, err := s.establishSession(ctx, q, u, s.identitiesComplete(idents), fp.Device, now)
+		sess, pair, rep, err := s.establishSession(ctx, q, u, s.identitiesComplete(idents), authenticationIdentityIDs, fp.Device, now)
 		if err != nil {
+			return err
+		}
+		if fp.InitialClientInfo != nil && fp.InitialClientInfoObserveTime != nil {
+			if err := s.initializeSessionClientInfo(ctx, q, sess, fp.InitialClientInfo, *fp.InitialClientInfoObserveTime, now); err != nil {
+				return err
+			}
+		}
+		if err := s.updateSessionClientInfo(ctx, q, sess, meta.ClientInfo, now); err != nil {
 			return err
 		}
 		pair.IsNewUser = isNew

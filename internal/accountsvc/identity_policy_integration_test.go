@@ -315,7 +315,7 @@ func serviceMigrationLock(t *testing.T, kind string) {
 	}
 	var version int
 	var dirty bool
-	if err := f.pool.QueryRow(ctx, "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil || version != 1 || dirty {
+	if err := f.pool.QueryRow(ctx, "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil || version != 2 || dirty {
 		t.Fatal("migration retry did not finish cleanly")
 	}
 }

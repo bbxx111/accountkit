@@ -90,11 +90,13 @@ type revealResource struct {
 }
 
 type sessionResource struct {
-	Name         string `json:"name"`
-	DeviceID     string `json:"device_id"`
-	DeviceName   string `json:"device_name"`
-	CreateTime   string `json:"create_time"`
-	LastUsedTime string `json:"last_used_time"`
+	ClientInfo           *clientInfoResource `json:"client_info,omitempty"`
+	ClientInfoUpdateTime *string             `json:"client_info_update_time,omitempty"`
+	Name                 string              `json:"name"`
+	DeviceID             string              `json:"device_id"`
+	DeviceName           string              `json:"device_name"`
+	CreateTime           string              `json:"create_time"`
+	LastUsedTime         string              `json:"last_used_time"`
 }
 
 type sessionList struct {
@@ -173,4 +175,31 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, r *http.Request, err 
 	default:
 		apierror.WriteInternal(w, h.d.Logger, reqid.From(r.Context()), err)
 	}
+}
+
+// clientInfoResource 仅输出可选结构化描述，未知字段省略。
+type clientInfoResource struct {
+	ClientType     string `json:"client_type,omitempty"`
+	OSName         string `json:"os_name,omitempty"`
+	OSVersion      string `json:"os_version,omitempty"`
+	BrowserName    string `json:"browser_name,omitempty"`
+	BrowserVersion string `json:"browser_version,omitempty"`
+	AppName        string `json:"app_name,omitempty"`
+	AppVersion     string `json:"app_version,omitempty"`
+	DeviceType     string `json:"device_type,omitempty"`
+	DeviceModel    string `json:"device_model,omitempty"`
+}
+
+func newClientInfoResource(info *user.ClientInfo) *clientInfoResource {
+	if info == nil {
+		return nil
+	}
+	out := &clientInfoResource{OSName: info.OSName, OSVersion: info.OSVersion, BrowserName: info.BrowserName, BrowserVersion: info.BrowserVersion, AppName: info.AppName, AppVersion: info.AppVersion, DeviceModel: info.DeviceModel}
+	if info.ClientType.Valid() {
+		out.ClientType = info.ClientType.String()
+	}
+	if info.DeviceType.Valid() {
+		out.DeviceType = info.DeviceType.String()
+	}
+	return out
 }

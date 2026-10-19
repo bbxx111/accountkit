@@ -55,7 +55,12 @@ func (h *Handler) signInWithCode(w http.ResponseWriter, r *http.Request) {
 		apierror.Write(w, e)
 		return
 	}
-	res, err := h.d.Users.SignInWithCode(r.Context(), user.CodeCredential{Channel: kind, Target: cc.Target, CodeID: cc.CodeID, Code: cc.Code}, dev, h.meta(r))
+	meta, err := h.authMeta(r)
+	if err != nil {
+		h.writeServiceError(w, r, err)
+		return
+	}
+	res, err := h.d.Users.SignInWithCode(r.Context(), user.CodeCredential{Channel: kind, Target: cc.Target, CodeID: cc.CodeID, Code: cc.Code}, dev, meta)
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return
@@ -80,7 +85,12 @@ func (h *Handler) signInWithIdp(w http.ResponseWriter, r *http.Request) {
 		apierror.Write(w, e)
 		return
 	}
-	res, err := h.d.Users.SignInWithIdp(r.Context(), ic, dev, h.meta(r))
+	meta, err := h.authMeta(r)
+	if err != nil {
+		h.writeServiceError(w, r, err)
+		return
+	}
+	res, err := h.d.Users.SignInWithIdp(r.Context(), ic, dev, meta)
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return

@@ -48,6 +48,19 @@ func TestReplaceIdentity(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f, p, iid, current := replacementSetup(t, tc.kind, tc.old)
 			ctx := context.Background()
+			var retainedID string
+			if tc.kind == enum.IdentityPhone {
+				retainedID = contextBindEmail(t, f, p, email1)
+				p = contextReauthenticate(t, f, p, enum.IdentityEmail, email1)
+			} else {
+				plain := replacementCode(t, f, p, enum.IdentityPhone, phone1)
+				retained, _, err := f.svc.BindWithCode(ctx, p, f.credential(enum.PurposeBind, enum.IdentityPhone, phone1, plain), meta1)
+				if err != nil {
+					t.Fatal(err)
+				}
+				retainedID = retained.ID
+				p = contextReauthenticate(t, f, p, enum.IdentityPhone, phone1)
+			}
 			other := f.signIn(t, tc.kind, tc.old, user.Device{ID: "replacement-other"})
 			rotated, err := f.svc.Refresh(ctx, other.RefreshToken, meta1)
 			if err != nil {
@@ -59,7 +72,7 @@ func TestReplaceIdentity(t *testing.T) {
 				t.Fatalf("replacement: %+v %v", out, err)
 			}
 			list, err := f.svc.ListIdentities(ctx, p.UserID)
-			if err != nil || len(list) != 1 || list[0].ID != out.ID {
+			if err != nil || len(list) != 2 || list[0].ID != retainedID && list[1].ID != retainedID || list[0].ID != out.ID && list[1].ID != out.ID {
 				t.Fatalf("final identities: %+v %v", list, err)
 			}
 			var deleted bool

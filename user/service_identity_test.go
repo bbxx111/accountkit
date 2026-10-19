@@ -313,6 +313,13 @@ func TestUnbindIdentityGuardsLastAnchorAndOwnership(t *testing.T) {
 		t.Fatalf("after unbind: %+v", list)
 	}
 	// 再解绑同一 id → 404；剩下的邮箱是最后锚点 → 拒绝
+	// Re-enter through a remaining identity after the old source was revoked.
+	if _, err := f.svc.Authenticate(ctx, res.AccessToken); !errors.Is(err, user.ErrInvalidToken) {
+		t.Fatalf("old source not revoked: %v", err)
+	}
+	f.advance(61 * time.Second)
+	res = f.signIn(t, enum.IdentityEmail, email1, dev1)
+	p = principalOf(t, f, res)
 	if err := f.svc.UnbindIdentity(ctx, p, phoneID, meta1); !errors.Is(err, user.ErrNotFound) {
 		t.Fatalf("double unbind: %v", err)
 	}
@@ -345,13 +352,15 @@ func TestUnbindIdentityGuardsLastAnchorAndOwnership(t *testing.T) {
 	if err := f.svc.UnbindIdentity(ctx, p, emailInfo.ID, meta1); !errors.Is(err, user.ErrLastAnchor) {
 		t.Fatalf("still last anchor for A: %v", err)
 	}
+	f.advance(61 * time.Second)
+	pB = principalOf(t, f, f.signIn(t, enum.IdentityPhone, phone1, user.Device{ID: "ownership-full-scope"}))
 	if err := f.svc.UnbindIdentity(ctx, pB, emailInfo.ID, meta1); !errors.Is(err, user.ErrNotFound) {
 		t.Fatalf("foreign identity: %v", err)
 	}
 	if err := f.svc.UnbindIdentity(ctx, pB, "not-an-id", meta1); !errors.Is(err, user.ErrInvalidArgument) {
 		t.Fatalf("malformed id: %v", err)
 	}
-	// 解绑不吊销会话：A 的 access 仍有效
+	// Removing unrelated identities preserves this newly authenticated email session.
 	if _, err := f.svc.Authenticate(ctx, res.AccessToken); err != nil {
 		t.Fatalf("session must survive unbind: %v", err)
 	}
@@ -458,6 +467,15 @@ func TestUnbindLastTwoAnchorsConcurrently(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Independent provider source lets the losing request reach last-anchor protection.
+	if _, _, err := f.svc.BindWithIdp(ctx, p, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:last-anchors@o"}, meta1); err != nil {
+		t.Fatal(err)
+	}
+	login, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:last-anchors@o"}, user.Device{ID: "independent-anchors"}, meta1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p = principalOf(t, f, requireSignInTokens(t, login))
 	targets := [2]string{phoneID, emailInfo.ID}
 	errs := [2]error{}
 	var ready, start sync.WaitGroup
@@ -488,8 +506,15 @@ func TestUnbindLastTwoAnchorsConcurrently(t *testing.T) {
 	if nilCount != 1 || lastAnchorCount != 1 {
 		t.Fatalf("want exactly one success and one ErrLastAnchor, got errs=%v", errs)
 	}
-	if list, _ := f.svc.ListIdentities(ctx, res.UserID); len(list) != 1 {
-		t.Fatalf("exactly one anchor must remain: %+v", list)
+	list, _ = f.svc.ListIdentities(ctx, res.UserID)
+	anchors := 0
+	for _, id := range list {
+		if id.Kind.IsAnchor() {
+			anchors++
+		}
+	}
+	if len(list) != 2 || anchors != 1 {
+		t.Fatalf("exactly one anchor plus independent provider must remain: %+v", list)
 	}
 }
 

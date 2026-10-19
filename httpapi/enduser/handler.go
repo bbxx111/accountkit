@@ -15,6 +15,7 @@ import (
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/httpapi/authn"
+	"github.com/bbxx111/accountkit/httpapi/clientinfo"
 	"github.com/bbxx111/accountkit/httpapi/reqid"
 	"github.com/bbxx111/accountkit/user"
 )
@@ -45,9 +46,11 @@ type Service interface {
 
 // Deps 是 handler 的依赖。
 type Deps struct {
-	Users                   Service
-	Logger                  *slog.Logger
-	ClientIP                func(*http.Request) string
+	Users    Service
+	Logger   *slog.Logger
+	ClientIP func(*http.Request) string
+	// ClientInfo 可选替换本地解析器；返回值会被规范化，回调错误文本不会记录或输出。
+	ClientInfo              func(*http.Request) (*user.ClientInfo, error)
 	RequestID               func(*http.Request) string
 	Now                     func() time.Time
 	ReauthMaxAge            time.Duration
@@ -81,6 +84,9 @@ func New(d Deps) (*Handler, error) {
 	}
 	if d.MaxBodyBytes <= 0 {
 		d.MaxBodyBytes = defaultMaxBodyBytes
+	}
+	if d.ClientInfo == nil {
+		d.ClientInfo = clientinfo.Parse
 	}
 	return &Handler{d: d}, nil
 }
@@ -131,6 +137,7 @@ func (h *Handler) Router() http.Handler {
 
 	// 认证端点（Task 6、7）
 	r.With(anyScope).Get("/users/me", h.getMe)
+	r.With(currentSessionNoStore, bindScope).Get("/users/me/sessions/current", h.currentSession)
 	r.Group(func(r chi.Router) {
 		r.Use(fullScope)
 		r.Patch("/users/me", h.updateMe)
@@ -157,4 +164,24 @@ func (h *Handler) Router() http.Handler {
 	r.With(fullScope, h.RequireRecentAuth()).Delete("/users/me/identities/{identity}", h.unbindIdentity)
 	r.With(fullScope, h.RequireRecentAuth()).Post("/users/me/identities/{identity}:replace", h.replaceIdentity)
 	return r
+}
+
+// 回调错误可能包含原始 UA 或私密描述，只保留安全分类。
+var errClientInfoParser = errors.New("enduser: client information parser failed")
+
+func (h *Handler) authMeta(r *http.Request) (user.Meta, error) {
+	meta := h.meta(r)
+	info, err := h.d.ClientInfo(r)
+	if err != nil {
+		if errors.Is(err, user.ErrInvalidClientInfo) {
+			return user.Meta{}, user.ErrInvalidClientInfo
+		}
+		return user.Meta{}, errClientInfoParser
+	}
+	info, err = user.NormalizeClientInfo(info)
+	if err != nil {
+		return user.Meta{}, user.ErrInvalidClientInfo
+	}
+	meta.ClientInfo = info
+	return meta, nil
 }

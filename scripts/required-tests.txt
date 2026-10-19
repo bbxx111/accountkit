@@ -673,3 +673,13 @@ github.com/bbxx111/accountkit/user/TestSessionContextCleanupBoundedAndAtomic
 github.com/bbxx111/accountkit/user/TestSessionClientInfoCurrentAtomicRead
 github.com/bbxx111/accountkit/user/TestSessionContextPurgeRefreshConcurrency
 github.com/bbxx111/accountkit/user/TestSessionClientInfoSparseObservations
+github.com/bbxx111/accountkit/TestCurrentSessionHTTPAgainstRealDB
+github.com/bbxx111/accountkit/TestSessionQueriesStayBoundedAndAuthenticationHasNoDB
+github.com/bbxx111/accountkit/httpapi/enduser/TestCurrentSessionEndpoint
+github.com/bbxx111/accountkit/httpapi/enduser/TestAuthenticationClientInfoHeaders
+github.com/bbxx111/accountkit/httpapi/enduser/TestClientInfoCallbackPrivacy
+github.com/bbxx111/accountkit/httpapi/enduser/TestNonAuthenticationRoutesIgnoreClientInfo
+github.com/bbxx111/accountkit/httpapi/enduser/TestSessionClientInfoDTO
+github.com/bbxx111/accountkit/httpapi/admin/TestAdminSessionClientInfoDTO
+github.com/bbxx111/accountkit/internal/accountsvc/TestGatewayCurrentSessionAndOptionalHeaders
+github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationCurrentSessionContext

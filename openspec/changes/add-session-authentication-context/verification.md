@@ -89,3 +89,19 @@
 - 独立review_snapshots判定规格符合、质量Approved。Minor锁前置条件注释已在c45b065补齐并重新生成，差异仅注释；未为注释重跑全套。当前快照Linux user race通过，日志.test-output/linux-source/.test-output/linux-snapshots.jsonl。
 - 审查指出全套WARN，已比对3639424的linux-baseline.jsonl确认同一TestMigrateStartCloseAgainstRealDB的audit dropped、TestBeforeDeleteSharedTransaction/admin=true/success的audit validation rejected已存在；其他WARN属于维护取消/故障、IdP失败/重定向测试。测试通过不等于日志无警告，没有以关闭日志或删测试掩盖问题。
 - 交接Task6：只在SignInWithCode/Idp、CompleteSignIn、Reauthenticate、Refresh五条路径解析元数据；binding/send/revoke不扩展。宿主回调错误不得把原始描述写日志；当前/两面列表必须独立DTO并保留原协议错误格式。
+
+## 实施阶段：HTTP与宿主接线（Task 6）
+
+- 检查点bf86d52：可选CurrentSessionService、当前会话GET与专用DTO、根/HTTP Deps.ClientInfo、五条认证路径的有界解析、安全callback错误处理。既有Service必需方法集不变，消费者/管理员各自明确DTO。
+- 实现前新GET为405、元数据丢失/非法描述仍消费、代理新路径404均实际RED；接入后GREEN。隐私及两个DTO移除变体证明测试能捕获回归，已恢复。
+- Windows完整go test -json -count=1 ./...退出0，42个测试包通过、8个无测试包、0失败；scoped vet和diff通过。新增10个顶层测试登记必需清单；9个实际通过，新增真实服务用例Windows跳过，Linux由控制器单独执行，不能用Windows结果代替。
+- 真实PG根HTTP流程覆盖登录、重新认证更新来源、解绑当前来源后401；查询计数证明消费者列表固定2次SQL、管理员3次，普通Authenticate及内省0 SQL且关闭PG池仍可用，当前会话GET池关闭503。
+- 独立review_http_context对2c8e7fb..bf86d52判定Spec compliant、Quality Approved，无发现。Linux固定提交验证结果另行记录。
+
+## 查询执行计划核验（2026-10-20）
+
+- PostgreSQL17，本任务一次性库内建立事务隔离schema；1000账号、2000身份、10000会话（每账号10条、10%来源未知）、18000来源关联、20000快照。使用0001+0002原文建表，ANALYZE后执行实际查询的EXPLAIN (ANALYZE,BUFFERS)，最后ROLLBACK，不留下schema或数据。
+- 当前行共享锁命中idx_session_user_id_id；来源查询命中关联主键和账号身份索引；INITIAL/LATEST命中session_client_info_pkey和账号会话索引。四条执行时间分别0.037/0.081/0.055/0.043ms，均无全表扫描，仅为本地合成样本观察，不是生产延迟承诺。
+- 四会话批量快照通过单条SQL读取，内部索引loop=4不是HTTP/Go逐条查询；0.052ms。应用层固定读取次数由Task6真实PG计数测试另行证明。
+- 反向身份查询命中idx_session_authentication_identity_identity_id_session_id，9行；真实撤销CTE使用该反向索引及账号会话部分索引，按id排序加锁，更新9条命中+1条未知会话，0.394ms。撤销写入随事务回滚。
+- 原始SQL与输出：.test-output/session-context/final-explain.sql、final-explain.log；此快照SQL后续未改变时可复用该证据。

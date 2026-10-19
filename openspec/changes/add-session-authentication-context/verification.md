@@ -41,3 +41,14 @@
 默认UA解析库的具体选型留给任务1.2，在既定输入/输出契约内完成许可、维护性、体积和样本评估；尚未增加依赖。真实浏览器Client Hints、原生SDK、产品网关/CORS、微信/Apple提供方和生产升级窗口未验收。
 
 未提交、推送、归档或发布。后续审阅入口：[提案](proposal.md)、[设计](design.md)、[实施任务](tasks.md)。
+
+## 实施阶段：公共类型与解析（Task 1）
+
+用户后续明确授权commit、merge back、apply。提案提交ae71fdf以--no-ff合入develop为8190167；实施位于原生隔离工作区C:/Users/bbxx1/.codex/worktrees/80fd/accountkit，分支feat/session-authentication-context，计划检查点cd8d14b。以下为新增实施证据，前文“未实施”仅描述提案阶段。
+
+- Task1检查点：3639424；新增公共enum、ClientInfo校验/合并、CurrentSessionInfo及本地HTTP解析器，尚未接入处理器或存储。
+- 选型：mileusna/useragent v1.3.5（MIT）及dunglas/httpsfv v1.1.2（BSD-3-Clause），均无传递依赖；比较mssola/useragent v1.0.0后，前者的系统版本、设备及类别结构更适合此契约。Windows Chrome、iOS Safari、Android Chrome、原生头、GREASE/畸形/超限/重复头和BFF样本已测试，自动识别为尽力描述。
+- RED：新增Normalize/ClientInfo、Parse未定义时各运行目标测试并确认失败。GREEN：go test ./enum ./user ./httpapi/clientinfo -count=1和对应go vet通过。
+- 完整测试：GOWORK=off、一次性PG17/Redis，go test -json -count=1 ./...退出0；42包通过、0失败、8无测试包；19测试项skip（18项Windows不执行的Linux服务测试、正常跳过的TestRecoveryFixture）。原始日志.test-output/session-context/task-1-suite.json；不能据此声称Linux/race/恢复通过。
+- 独立审查：review_client_model对cd8d14b..3639424判定规格符合、代码质量Approved，无Critical/Important/Minor。后续接线须以MergeClientInfo(nil, observation)初始化快照，孤立版本不得写观察时间。
+- 总量2048字节按规范化文本计；单字段rune上限使合法数据最大1408字节，整体保护保留，超大输入测试不声称独立覆盖不可达总量分支。

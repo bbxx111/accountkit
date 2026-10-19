@@ -9,6 +9,14 @@ github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationCodeKeyR
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceRotationQuotaWindow
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationTransportModes
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationGatewayBoundary
+github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationMetrics
+github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationMetricsGateway
+github.com/bbxx111/accountkit/internal/accountsvc/TestConfigMetrics
+github.com/bbxx111/accountkit/internal/accountsvc/TestMetricsHTTP
+github.com/bbxx111/accountkit/internal/accountsvc/TestMetricsIsolation
+github.com/bbxx111/accountkit/internal/accountsvc/TestApplicationMetrics
+github.com/bbxx111/accountkit/internal/accountsvc/TestMetricsGatherFailure
+github.com/bbxx111/accountkit/internal/accountsvc/TestMetricsConcurrencyLimit
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigTLSMode
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigRejectsInternalAddress
 github.com/bbxx111/accountkit/internal/accountsvc/TestRuntimeSingleListener

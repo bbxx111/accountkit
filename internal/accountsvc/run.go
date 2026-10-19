@@ -39,6 +39,7 @@ type application struct {
 	start                      func(context.Context)
 	close                      func()
 	endUser, admin, introspect http.Handler
+	metrics                    http.Handler
 }
 type runtimeFactory struct {
 	open   func(context.Context, Config, *slog.Logger) (*dependencies, error)
@@ -122,6 +123,10 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 	if cfg.command == "migrate" {
 		return newMigrationApplication(cfg, d)
 	}
+	observer, metrics, err := newMetrics(cfg)
+	if err != nil {
+		return nil, err
+	}
 	var sms sender.SMSCodeSender
 	var email sender.EmailCodeSender
 	if cfg.Library.EnabledIdentityKinds == nil {
@@ -136,7 +141,7 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 	}
 	// 服务使用默认本地审计读写；Auth 拥有审计 worker，服务拥有 Pool/Redis。
 	// 外部审计装配属于嵌入宿主扩展，见 examples/audit，不在此创建远端适配器。
-	deps := accountkit.Deps{Pool: d.pool, Redis: d.redis, SMSSender: sms, EmailSender: email, Logger: logger, ClientIP: clientIP, RequestID: requestID}
+	deps := accountkit.Deps{Pool: d.pool, Redis: d.redis, SMSSender: sms, EmailSender: email, Logger: logger, ClientIP: clientIP, RequestID: requestID, Observer: observer}
 	bridge := &adminBridge{}
 	if cfg.command == "serve" && cfg.AdminEnabled {
 		deps.AdminVerifier = bridge
@@ -146,7 +151,7 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 	if err != nil {
 		return nil, errors.New("accountsvc: accountkit construction failed")
 	}
-	app := &application{migrate: auth.Migrate, start: auth.Start, close: auth.Close, endUser: auth.EndUserHandler(), admin: auth.AdminHandler()}
+	app := &application{migrate: auth.Migrate, start: auth.Start, close: auth.Close, endUser: auth.EndUserHandler(), admin: auth.AdminHandler(), metrics: metrics}
 	if cfg.command == "serve" {
 		app.introspect, err = introspection.New(cfg.IntrospectionClients, auth.Users().Authenticate)
 		if err != nil {
@@ -262,7 +267,7 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 	defer cancelRequests()
 	tracker := newRequestTracker()
 	state := &healthState{database: d.databasePing, redis: d.redisPing}
-	handler := serviceHandler(cfg, app.endUser, app.admin, app.introspect, state)
+	handler := serviceHandler(cfg, app.endUser, app.admin, app.introspect, state, app.metrics)
 	server := newHTTPServer(cfg.HTTPAddr, requestMetadata(cfg.TrustedProxyCIDRs, tracker.wrap(handler)), requestCtx)
 	if cfg.TLSEnabled {
 		server.TLSConfig = cfg.tlsConfig.Clone()

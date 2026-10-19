@@ -89,12 +89,12 @@
 
 ### Task 4: 解绑、换绑及撤销并发
 
-**Files:** Modify user/service_identity.go、service_identity_replacement.go、enum/enum.go、审计/观测原因映射；Create user/service_session_context_revocation_test.go及必要根HTTP集成测试，更新原测试中被新语义取代的期望。
+**Files:** Modify user/service_identity.go、service_identity_replacement.go、enum/enum.go、审计/观测原因映射、httpapi/enduser/response.go及对应错误映射测试；Create user/service_session_context_revocation_test.go及必要根HTTP集成测试，更新原测试中被新语义取代的期望。
 
 **Interfaces:** Consume任务3来源关联和任务2撤销查询；新增enum.RevokeIdentityUnbound只追加。复用afterRevokeAll/revokeInSet。
 
 - [ ] **Step 1:** TestIdentityUnbindRevokesAuthenticationSessions先RED，覆盖命中任一来源、未知旧会话、保留不命中已知会话、当前会话、到期会话、其他账号隔离。
-- [ ] **Step 2:** 实现直接Go/HTTP一致的scope/近期认证配置/有效当前会话验证，以及用户锁后同事务软删除/撤销；不绕过剩余身份完整性。
+- [ ] **Step 2:** 实现直接Go/HTTP一致的scope/近期认证配置/有效当前会话验证，以及用户锁后同事务软删除/撤销；不绕过剩余身份完整性；把锁后领域层的ErrReauthenticationRequired映射到既有400/REAUTHENTICATION_REQUIRED，ErrInsufficientScope映射403，避免通用错误映射回落500。
 - [ ] **Step 3:** TestReplacementCurrentAuthenticationSource先RED，覆盖当前未知/命中退出、先通过另一身份reauth后保留、其他会话仍撤销、BIND不迁移来源；实现并调整重试401/404契约。
 - [ ] **Step 4:** TestSessionContextConcurrentRevocation用真实PostgreSQL屏障覆盖reauth先/后、普通登录/pending、refresh和换绑竞争；测试事务回滚、Redis故障、宽限及完成重放不复活。
 - [ ] **Step 5:** 更新脱敏审计与有界指标原因映射，运行完整user及相关根HTTP测试，提交并报告锁序和每个并发结果。

@@ -62,3 +62,12 @@
 - 10,000条合成来源关联的EXPLAIN ANALYZE命中反向identity_id/session_id索引；当前会话完整读取执行计划留待全局门禁。
 - 独立review_storage对bac0040..c958ca9判定规格符合、质量Approved，无发现；运行时必须继续落实用户→会话锁序、上下文同事务及清理接线。
 - 另外，在已审查的Task1快照3639424上运行Linux go test -race -json -count=1 ./...通过42包，0失败，仅TestRecoveryFixture按普通套件预期跳过；库和服务必需清单检查均通过。日志在.test-output/linux-source/.test-output/linux-baseline.jsonl。这是平台基线，不替代最终实现的Linux/race/恢复验证。
+
+## 实施阶段：来源事务和当前会话领域查询（Task 3）
+
+- 检查点144b96d及修复868c95e：普通登录精确身份、pending全部证明、重新认证同事务替换来源和auth_time、FOR SHARE当前会话一致读。未知false/[]、已知空集与非法持久化kind、归属/期限/撤销和依赖错误均有测试。客户端快照接线仍属Task5。
+- 新增真实PG引用、回滚与锁屏障测试，pg_blocking_pids确认共享锁等待；来源写入失败不会部分创建账号/身份/会话或完成flow。原refresh和sid保持。
+- go test ./...、build、vet通过；一次全仓误设SERVER_TEST_REDIS_URL，随后正确设置ACCOUNTSVC_TEST_REDIS_URL补跑./user/code ./internal/accountsvc及根TestCodeKeyRotationIntegration。实际Redis轮换通过；Windows服务与正常RecoveryFixture仍按原规则skip。原始日志.test-output/session-context-task3/。
+- 独立review_sources发现连接中途EOF未归503；精确direct/wrapped EOF四项RED后修复，42703/42P01编程错误保持内部。首次/重试的pending回滚直接断言无结果、flow=VERIFIED、user_id/session_id=NULL。修复定向测试3.078s、vet/diff通过，复审两项均ADDRESSED、质量Approved。
+- 144b96d固定快照的来源/重新认证/当前会话定向Linux race通过；EOF修复后的完整Linux/race仍由最终门禁覆盖。迁移快照c958ca9的Linux迁移及accountsvc四个包race通过，无测试skip。
+- 计划补齐Task4的HTTP错误映射：领域锁后新鲜度不足应沿用400，scope不足沿用403，不能落入通用500；该接线维持已批准协议。

@@ -224,6 +224,19 @@ func (s *Service) reauthenticate(ctx context.Context, p Principal, cred CodeCred
 		if !sessionActiveAt(sess, now) {
 			return errSessionExpired
 		}
+		identity, err := s.findProof(ctx, q, completionProof{Kind: channel, Target: norm})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotAnchor
+		}
+		if err != nil {
+			return fmt.Errorf("user: find reauthentication identity: %w", err)
+		}
+		if identity.UserID != p.UserID {
+			return ErrNotAnchor
+		}
+		if err := s.setSessionAuthenticationIdentities(ctx, q, sess, []string{identity.ID}); err != nil {
+			return err
+		}
 		n, err := q.UpdateSessionAuthTime(ctx, db.UpdateSessionAuthTimeParams{ID: p.SessionID, AuthTime: now})
 		if err != nil {
 			return fmt.Errorf("user: update auth_time: %w", err)

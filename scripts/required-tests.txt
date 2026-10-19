@@ -638,3 +638,13 @@ github.com/bbxx111/accountkit/user/TestMaintenanceObservationsObserverPanic
 github.com/bbxx111/accountkit/user/TestMaintenanceObservationsDurationExcludesCallback
 github.com/bbxx111/accountkit/user/idp/TestAppleCachedKeyObservation
 github.com/bbxx111/accountkit/user/TestMaintenanceObservationsCASMissNoItems
+github.com/bbxx111/accountkit/user/TestSessionAuthenticationSources
+github.com/bbxx111/accountkit/user/TestReauthenticationReplacesSources
+github.com/bbxx111/accountkit/user/TestSessionAuthenticationSourceWriteRollback
+github.com/bbxx111/accountkit/user/TestCurrentSessionContextDomain
+github.com/bbxx111/accountkit/user/TestCurrentSessionContextLatestAtomicRead
+github.com/bbxx111/accountkit/user/TestCurrentSessionContextDependencyFailure
+github.com/bbxx111/accountkit/user/TestReauthenticationSourceRollback
+github.com/bbxx111/accountkit/user/TestUnknownSessionAuthenticationSourcesRefresh
+github.com/bbxx111/accountkit/user/TestSessionAuthenticationPendingExistingAccount
+github.com/bbxx111/accountkit/user/TestSessionAuthenticationReferences

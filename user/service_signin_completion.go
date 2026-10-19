@@ -53,6 +53,7 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 		replaced = nil
 		found, err := s.findProof(ctx, q, proof)
 		var u db.UserAccount
+		var authenticationIdentityID string
 		isNew := false
 		switch {
 		case err == nil:
@@ -73,6 +74,7 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 			}
 			ev.VerifiedSubject = true
 			ev.IdentityID = current.ID
+			authenticationIdentityID = current.ID
 			if !proof.Kind.IsChannel() {
 				if u.State == enum.UserPendingDeletion {
 					return ErrUserPendingDeletion
@@ -94,9 +96,11 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 			if err != nil {
 				return err
 			}
-			if _, err = s.createProofIdentity(ctx, q, uid, proof); err != nil {
-				return err
+			created, e := s.createProofIdentity(ctx, q, uid, proof)
+			if e != nil {
+				return e
 			}
+			authenticationIdentityID = created.ID
 			isNew = true
 		default:
 			return err
@@ -105,7 +109,7 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 		if err != nil {
 			return err
 		}
-		sess, pair, rep, err := s.establishSession(ctx, q, u, complete, dev, s.now())
+		sess, pair, rep, err := s.establishSession(ctx, q, u, complete, []string{authenticationIdentityID}, dev, s.now())
 		if err != nil {
 			return err
 		}
@@ -487,8 +491,10 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.SignI
 		if err != nil {
 			return err
 		}
+		var authenticationIdentityIDs []string
 		for _, proof := range fp.Proofs {
 			if proof.UserID != "" {
+				authenticationIdentityIDs = append(authenticationIdentityIDs, proof.IdentityID)
 				if proof.Provider != nil {
 					existing, e := s.findProof(ctx, q, proof)
 					if e != nil {
@@ -508,10 +514,11 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.SignI
 				return e
 			}
 			idents = append(idents, created)
+			authenticationIdentityIDs = append(authenticationIdentityIDs, created.ID)
 			bound = append(bound, created)
 		}
 		now := s.now()
-		sess, pair, rep, err := s.establishSession(ctx, q, u, s.identitiesComplete(idents), fp.Device, now)
+		sess, pair, rep, err := s.establishSession(ctx, q, u, s.identitiesComplete(idents), authenticationIdentityIDs, fp.Device, now)
 		if err != nil {
 			return err
 		}

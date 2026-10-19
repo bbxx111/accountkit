@@ -52,3 +52,13 @@
 - 完整测试：GOWORK=off、一次性PG17/Redis，go test -json -count=1 ./...退出0；42包通过、0失败、8无测试包；19测试项skip（18项Windows不执行的Linux服务测试、正常跳过的TestRecoveryFixture）。原始日志.test-output/session-context/task-1-suite.json；不能据此声称Linux/race/恢复通过。
 - 独立审查：review_client_model对cd8d14b..3639424判定规格符合、代码质量Approved，无Critical/Important/Minor。后续接线须以MergeClientInfo(nil, observation)初始化快照，孤立版本不得写观察时间。
 - 总量2048字节按规范化文本计；单字段rune上限使合法数据最大1408字节，整体保护保留，超大输入测试不声称独立覆盖不可达总量分支。
+
+## 实施阶段：迁移与sqlc（Task 2）
+
+- 检查点c958ca9：新增0002、来源关联/客户端快照、版本结构预检、10个按账号限定查询及sqlc结果；旧会话默认来源未知，冻结0001/source-baseline未改。测试下一版本推进到0003，七项新增必需测试已登记。
+- RED：先运行新升级/查询用例，确认新列/查询缺失；加入0002后历史v2_new_name曾被错误接受，增强结构识别后拒绝回归通过。
+- 首次全仓回归发现跨schema目录反解析与其他测试删除schema的竞态（XX000 OID消失）；通过先MATERIALIZED目标目录再反解析修复。新增并发其他schema DDL回归与原并发迁移/单连接检查通过。独立新用例未稳定重现旧故障，真实RED证据为首次全套失败，不夸大确定性。
+- 修复后完整go test -count=1 ./...退出0（根36.477s、migrations29.139s、user69.189s），go build/go vet、sqlc一致性、check-migrations及diff检查通过；Windows仍不执行Linux专用服务测试，恢复演练尚未执行。
+- 10,000条合成来源关联的EXPLAIN ANALYZE命中反向identity_id/session_id索引；当前会话完整读取执行计划留待全局门禁。
+- 独立review_storage对bac0040..c958ca9判定规格符合、质量Approved，无发现；运行时必须继续落实用户→会话锁序、上下文同事务及清理接线。
+- 另外，在已审查的Task1快照3639424上运行Linux go test -race -json -count=1 ./...通过42包，0失败，仅TestRecoveryFixture按普通套件预期跳过；库和服务必需清单检查均通过。日志在.test-output/linux-source/.test-output/linux-baseline.jsonl。这是平台基线，不替代最终实现的Linux/race/恢复验证。

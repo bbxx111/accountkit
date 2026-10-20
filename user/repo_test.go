@@ -496,6 +496,87 @@ func TestRepoScrubAuditEventsAndDeleteStaleSessions(t *testing.T) {
 	}
 }
 
+// 同一用户同一设备至多一条未吊销会话由数据库兜底；吊销后可再建，其他用户不受影响。
+func TestRepoUnrevokedSessionUniquePerUserDevice(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	q := user.NewRepo(pool).Q()
+	uid, _ := ids.New(ids.User)
+	other, _ := ids.New(ids.User)
+	for _, id := range []string{uid, other} {
+		if _, err := q.CreateUser(ctx, db.CreateUserParams{ID: id, State: enum.UserActive}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Now()
+	mk := func(owner, device string) (string, error) {
+		sid, _ := ids.New(ids.Session)
+		_, err := q.CreateSession(ctx, db.CreateSessionParams{ID: sid, UserID: owner, DeviceID: device, AuthTime: now, RefreshTokenHash: sha("rt-" + sid), RefreshExpireTime: now.Add(time.Hour)})
+		return sid, err
+	}
+	first, err := mk(uid, "dev-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mk(uid, "dev-a"); !user.IsUniqueViolation(err) {
+		t.Fatalf("second unrevoked session on same device: %v, want unique violation", err)
+	}
+	if _, err := mk(uid, "dev-b"); err != nil {
+		t.Fatal("other device:", err)
+	}
+	if _, err := mk(other, "dev-a"); err != nil {
+		t.Fatal("other user same device:", err)
+	}
+	reason := enum.RevokeReplacedByRelogin
+	if n, err := q.RevokeSession(ctx, db.RevokeSessionParams{ID: first, Reason: &reason, Now: now}); err != nil || n != 1 {
+		t.Fatalf("revoke: %d %v", n, err)
+	}
+	if _, err := mk(uid, "dev-a"); err != nil {
+		t.Fatal("after revocation:", err)
+	}
+}
+
+// 清理任务跳过被在途事务锁住的过期会话，不阻塞，之后的轮次再删除。
+func TestRepoDeleteStaleSessionsSkipsLockedRows(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	q := user.NewRepo(pool).Q()
+	uid, _ := ids.New(ids.User)
+	if _, err := q.CreateUser(ctx, db.CreateUserParams{ID: uid, State: enum.UserActive}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	d := 24 * time.Hour
+	var stale []string
+	for i := range 3 {
+		sid, _ := ids.New(ids.Session)
+		if _, err := q.CreateSession(ctx, db.CreateSessionParams{ID: sid, UserID: uid, DeviceID: fmt.Sprintf("stale-%d", i), AuthTime: now, RefreshTokenHash: sha("rt-" + sid), RefreshExpireTime: now.Add(-31 * d)}); err != nil {
+			t.Fatal(err)
+		}
+		stale = append(stale, sid)
+	}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := db.New(tx).LockSessionByID(ctx, stale[1]); err != nil {
+		t.Fatal(err)
+	}
+	wait, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	before := now.Add(-30 * d)
+	if n, err := q.DeleteStaleSessions(wait, db.DeleteStaleSessionsParams{Before: before, BatchSize: 100}); err != nil || n != 2 {
+		t.Fatalf("cleanup with a locked row: %d %v, want 2 without blocking", n, err)
+	}
+	if err := tx.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := q.DeleteStaleSessions(ctx, db.DeleteStaleSessionsParams{Before: before, BatchSize: 100}); err != nil || n != 1 {
+		t.Fatalf("next round: %d %v", n, err)
+	}
+}
+
 func TestRepoKeyVersionQueries(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()

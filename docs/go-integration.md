@@ -43,7 +43,7 @@ Go保留ClientInfo平坦字段，新增DeviceManufacturer、AppBuild及`Extensio
 完整开发宿主位于 [examples/embedded/main.go](../examples/embedded/main.go)，直接 Go 调用片段位于 [examples/gointegration/example_test.go](../examples/gointegration/example_test.go)。后者无 `Output` 的函数只参与编译，不实际连接依赖；变量声明处需替换为宿主真实对象。带 `Output` 的示例使用合成数据验证分支和错误判定。
 
 1. 使用 `ConfigFromEnv("ACCOUNTKIT_")` 或显式 `Config` 加载配置。前缀由宿主决定；数据库 DSN、Redis 地址和发送器配置由宿主读取，不属于核心 `ConfigFromEnv` 的连接配置。
-2. 用 `PoolConfig(dsn, cfg.Schema)` 创建 pgx 连接配置，再创建池。显式构造 `Config` 时先填入所需 schema（默认名称为 `account`）；不能向 `PoolConfig` 传空 schema。查询与迁移依赖 search_path 首项为该 schema。
+2. 用 `PoolConfig(dsn, cfg.Schema)` 创建 pgx 连接配置，再创建池。显式构造 `Config` 时先填入所需 schema（默认名称为 `account`）；不能向 `PoolConfig` 传空 schema。查询与迁移依赖 search_path 首项为该 schema。建议同时在该配置上设置 `RuntimeParams["jit"] = "off"`，原因与范围见 [README](../README.md#数据库与-redis-隔离)。
 3. 创建 Redis 客户端和发送器，注入 `Deps`。按部署设置独立 schema、以冒号结尾的 Redis 前缀、issuer、audience 和密钥。
 4. 调用 `New(cfg, deps)`，完成默认值与依赖校验；此步不做 I/O。使用独立启动超时调用 `Migrate`，它检查 PostgreSQL、Redis、迁移状态及历史密钥；失败时停止启动。
 5. 调用 `Start`，使用服务存活期间的 context，随后才接受请求。不能传一次 HTTP 请求的 context，也不能传马上会取消的迁移超时 context。

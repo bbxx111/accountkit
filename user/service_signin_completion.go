@@ -28,6 +28,17 @@ func (s *Service) findProof(ctx context.Context, q *db.Queries, p completionProo
 	return q.FindActiveIdentityByProviderSubject(ctx, db.FindActiveIdentityByProviderSubjectParams{Kind: p.Kind, ProviderSubject: &p.Provider.Subject})
 }
 
+// lockProofSubjects 对证明中的 PHONE/EMAIL subject 加互斥锁，第三方证明不参与。
+func (s *Service) lockProofSubjects(ctx context.Context, q *db.Queries, proofs ...completionProof) error {
+	subjects := make([]anchorSubject, 0, len(proofs))
+	for _, p := range proofs {
+		if p.Kind.IsChannel() {
+			subjects = append(subjects, anchorSubject{p.Kind, p.Target})
+		}
+	}
+	return s.lockAnchorSubjects(ctx, q, subjects...)
+}
+
 func (s *Service) createProofIdentity(ctx context.Context, q *db.Queries, uid string, p completionProof) (db.Identity, error) {
 	if p.Kind.IsChannel() {
 		norm, prefix, suffix, err := s.normalizeTarget(p.Kind, p.Target)
@@ -51,6 +62,9 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 	err := s.withRetryOnUnique(ctx, func(q *db.Queries) error {
 		result = SignInResult{}
 		replaced = nil
+		if err := s.lockProofSubjects(ctx, q, proof); err != nil {
+			return err
+		}
 		found, err := s.findProof(ctx, q, proof)
 		var u db.UserAccount
 		var authenticationIdentityID string
@@ -434,6 +448,11 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.SignI
 	var event audit.AuthenticationEvent
 	committed := false
 	err := s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+		// Anchor subjects precede owner and flow row locks; the revision check below
+		// rejects any proof set that differs from the one locked here.
+		if err := s.lockProofSubjects(ctx, q, p.Proofs...); err != nil {
+			return err
+		}
 		owners, err := s.lockProofOwners(ctx, q, p)
 		if err != nil {
 			return err

@@ -74,6 +74,9 @@ func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID s
 	}
 	var revoked []string
 	err = s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+		if lockErr := s.lockAnchorSubjects(ctx, q, anchorSubject{channel, norm}); lockErr != nil {
+			return lockErr
+		}
 		u, lockErr := lockUser(ctx, q, p.UserID)
 		if lockErr != nil {
 			return lockErr

@@ -33,6 +33,8 @@ Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史�
 
 此前审计校验职责调整同样经用户明确要求直接修改未发布 0001：移除五个自定义审计校验函数及业务 CHECK，保留 UUIDv7、JSON 基本形状、非空与唯一性等基础结构；业务内容、数量、64 KiB 上限和时间范围统一由 Go 校验。当时同步更新 up/down 固定哈希，初始版本仍为 1，其他表 CHECK、索引和历史源快照未改。该次调整没有为同号实例自动移除旧审计函数或 CHECK；此前仍使用 identity_flow 的完整十列同号库现在也明确拒绝，不会自动升级。采用当前定义须由操作者核验后准备新空资源，不修改版本或自动清库。直接 SQL 的导入与修数须复用 Go 校验，细节见[兼容说明](compatibility.md#事件生产与写侧)，实际验证见[当次记录](../openspec/changes/archive/2026-10-18-audit-validation-in-go/verification.md)。
 
+数据库设计评审的索引调整同样经用户明确要求不新增 change、直接修改未发布 0001，范围仅限索引：密钥回填索引改为 `idx_identity_digest_key_version_create_time_id` / `idx_identity_cipher_key_version_create_time_id`（版本、create_time、id 复合并排除 NULL 版本）；新增部分唯一索引 `uk_session_user_id_device_id`（`WHERE revoke_time IS NULL`）作为同设备单一未吊销会话的数据库兜底，并取代 `idx_session_user_id`；移除包内无查询使用的 `idx_audit_event_occur_time_id`、`idx_audit_event_request_id`、`idx_audit_event_flow_id` 与 `idx_sign_in_completion_flow_session_id`。表、列、约束、down 与初始版本 1 保持，同步更新当前固定哈希；历史 SQL、v0.3.0 标签和源快照未改。基线预检不检查这些索引，已有同号数据库不会重放 0001，因此仍保留旧索引、也不会得到新唯一兜底；新查询在旧索引下语义不变，仅缺少相应性能与唯一兜底。需要新定义时由操作者核验后使用新空资源，或另行设计并验证 0002 增量，不 Force、改版本或自动清库。此授权不构成日常改写初始 SQL 的开关。
+
 审计 ID、公开 Event/Reader 和旧分页游标同时升级，见[审计兼容说明](compatibility.md#通用审计公开接口与协议迁移)。旧结构库的备份应先恢复到独立空库核验，恢复本身不会把十七列审计变成当前十列；需要保留旧数据时须单独评估并验证转换，不能将备份直接覆盖当前库或修改版本号绕过拒绝。历史合成数据的 UUIDv7 映射及 legacy_event_id 仅证明指定格式可保留，不是生产库转换工具或原地升级保证。
 
 ## 升级前

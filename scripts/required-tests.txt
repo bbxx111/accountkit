@@ -710,3 +710,8 @@ github.com/bbxx111/accountkit/user/TestClientInfoJSONNormalizesNumbers
 github.com/bbxx111/accountkit/user/TestClientInfoJSONRejectsExpandedNumbers
 github.com/bbxx111/accountkit/user/TestClientInfoJSONRawInputLimit
 github.com/bbxx111/accountkit/user/TestClientInfoNumbersSurviveJSONBRoundTrip
+github.com/bbxx111/accountkit/user/TestAnchorSubjectLockSpansDigestVersions
+github.com/bbxx111/accountkit/user/TestRepoUnrevokedSessionUniquePerUserDevice
+github.com/bbxx111/accountkit/user/TestRepoDeleteStaleSessionsSkipsLockedRows
+github.com/bbxx111/accountkit/user/TestLockAnchorSubjectsLocksAfterSort
+github.com/bbxx111/accountkit/user/TestImportAccountsReverseOrderBatchesConflictWithoutDeadlock

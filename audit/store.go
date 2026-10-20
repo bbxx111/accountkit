@@ -8,6 +8,7 @@ import (
 	"github.com/bbxx111/accountkit/audit/authentication"
 	"github.com/bbxx111/accountkit/audit/db"
 	"github.com/bbxx111/accountkit/audit/event"
+	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/internal/auditconfig"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -214,19 +215,22 @@ func (s *Store) ListByResource(ctx context.Context, query Query) (Page, error) {
 	r := query.Resource
 	r.Name = ""
 	resource, _ := json.Marshal([]Resource{r})
-	actor, _ := json.Marshal(Actor{Type: ActorUser, Namespace: r.Namespace, ID: r.ID})
 	page := Page{Records: []RecordView{}}
-	flows := []string{}
+	flows := [][]byte{}
+	addFlow := func(id string) {
+		flow, _ := json.Marshal([]Resource{{Type: "IDENTITY_FLOW", Namespace: r.Namespace, ID: id}})
+		flows = append(flows, flow)
+	}
 	if r.Type == "USER" {
 		live, err := s.q.ListLiveAuditFlows(ctx, r.ID)
 		if err != nil {
 			return Page{}, err
 		}
 		for _, id := range live {
-			flows = append(flows, id)
+			addFlow(id)
 			page.FlowLinks = append(page.FlowLinks, FlowLink{Flow: Resource{Type: "IDENTITY_FLOW", Namespace: r.Namespace, ID: id}, User: r, Live: true})
 		}
-		evidence, err := s.q.ListAuditFlowEvidence(ctx, db.ListAuditFlowEvidenceParams{Source: query.Source, Actor: actor, Resource: resource})
+		evidence, err := s.q.ListAuditFlowEvidence(ctx, db.ListAuditFlowEvidenceParams{Source: query.Source, Namespace: r.Namespace, UserID: r.ID, Resource: resource})
 		if err != nil {
 			return Page{}, err
 		}
@@ -237,13 +241,13 @@ func (s *Store) ListByResource(ctx context.Context, query Query) (Page, error) {
 			}
 			for _, f := range append(append([]Resource{}, record.Targets...), record.Context.RelatedResources...) {
 				if f.Type == "IDENTITY_FLOW" && f.Namespace == r.Namespace {
-					flows = append(flows, f.ID)
+					addFlow(f.ID)
 					page.FlowLinks = append(page.FlowLinks, FlowLink{Flow: f, User: r, Evidence: record})
 				}
 			}
 		}
 	}
-	p := db.ListAuditEventsByResourceParams{Source: query.Source, Actions: actions, ResourceType: r.Type, Actor: actor, Resource: resource, Namespace: r.Namespace, FlowIds: flows, PageLimit: int32(query.Limit)}
+	p := db.ListAuditEventsByResourceParams{Source: query.Source, Actions: actions, ResourceType: r.Type, Namespace: r.Namespace, ResourceID: r.ID, Resource: resource, FlowResources: flows, PageLimit: int32(query.Limit)}
 	if query.After != nil {
 		p.AfterTime = &query.After.Time
 		p.AfterID = &query.After.ID
@@ -253,13 +257,24 @@ func (s *Store) ListByResource(ctx context.Context, query Query) (Page, error) {
 		return Page{}, err
 	}
 	for _, row := range rows {
-		record, err := recordView(row)
+		record, err := recordView(resourceEventRow(row))
 		if err != nil {
 			return Page{}, err
 		}
 		page.Records = append(page.Records, record)
 	}
 	return page, nil
+}
+
+// resourceEventRow restores the model type: column overrides do not apply through
+// the query's CTE, so sqlc emits the plain smallint for result.
+func resourceEventRow(r db.ListAuditEventsByResourceRow) db.AuditEvent {
+	var result *enum.Result
+	if r.Result != nil {
+		v := enum.Result(*r.Result)
+		result = &v
+	}
+	return db.AuditEvent{ID: r.ID, Source: r.Source, Action: r.Action, Result: result, Actor: r.Actor, Targets: r.Targets, Context: r.Context, Data: r.Data, OccurTime: r.OccurTime, CreateTime: r.CreateTime}
 }
 
 // ListByUser is a local convenience; integrations should use the explicit Reader scope.

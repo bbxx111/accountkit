@@ -193,12 +193,28 @@ BEGIN
 END $$`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := old.Exec(ctx, databaseReviewIndexSQL); err != nil {
+		t.Fatal(err)
+	}
 	initialUp(t, cfg, newSchema)
 	current := migrationTestConn(t, cfg, newSchema)
 	if before, after := strings.ReplaceAll(sessionContextUnchangedCatalog(t, migrationCatalogForTables(t, old, oldSchema, true)), "identity_flow", "sign_in_completion_flow"), sessionContextUnchangedCatalog(t, migrationCatalogForTables(t, current, newSchema, true)); sortedRenameCatalog(t, before) != sortedRenameCatalog(t, after) {
 		t.Fatalf("catalog mismatch\nprevious: %s\ninitial: %s", before, after)
 	}
 }
+
+// databaseReviewIndexSQL applies only the separately authorized database review
+// index adjustments to a historical test schema, so catalog comparisons still
+// prove that nothing else in the initial definition changed. Frozen SQL is untouched.
+const databaseReviewIndexSQL = `
+DROP INDEX IF EXISTS idx_identity_digest_key_version, idx_identity_cipher_key_version, idx_session_user_id,
+ idx_audit_event_occur_time_id, idx_audit_event_request_id, idx_audit_event_flow_id,
+ idx_sign_in_completion_flow_session_id, idx_identity_flow_session_id;
+CREATE INDEX idx_identity_digest_key_version_create_time_id ON identity (digest_key_version, create_time, id)
+ WHERE delete_time IS NULL AND digest_key_version IS NOT NULL;
+CREATE INDEX idx_identity_cipher_key_version_create_time_id ON identity (cipher_key_version, create_time, id)
+ WHERE delete_time IS NULL AND cipher_key_version IS NOT NULL;
+CREATE UNIQUE INDEX uk_session_user_id_device_id ON session (user_id, device_id) WHERE revoke_time IS NULL;`
 
 func historicalFlowSQL(t *testing.T) string {
 	t.Helper()

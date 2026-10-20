@@ -275,6 +275,8 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 
 `audit.Query.Actions` 是可选动作集合，空集合保留通用全部动作查询。宿主 Reader 须校验、排序去重并在分页 Limit 前执行过滤，可复用 `Query.NormalizedActions()`。管理时间线固定传入 `authentication.Actions()` 导出的认证动作集合，同表业务事件不占用认证页；外部结果仍逐条复核，含 lookahead。流程归属证据独立于此动作过滤。审计 v2 游标绑定 source、完整资源及规范动作集合，旧 v1 UUID/旧 `e_` 游标或动作范围改变均返回 400，客户端清空 token 重新开始；用户列表游标不变。
 
+本地 Reader 按各匹配分支取时间/ID 候选，去重取页后仅读取最终页的完整事件；`Page.FlowLinks` 只提供当前页关联所需的去重流程归属，不能用它枚举账号全部历史流程。历史归属在数据库内匹配，证明查找不受页面动作或游标范围限制。资源候选和流程历史仍可能随历史量增长而增加扫描，分页不承诺恒定查询时间。
+
 `Config.AuditSource`、`Config.AuditNamespace` 的本地默认分别是 `accountkit/<schema>`、`accountkit/<schema>/resources`，只承诺当前数据库实例内一致；外部写侧必须显式设置二者，并让生产方、存储和查询适配器复用相同配置。source 标识事件来源，namespace 标识稳定身份体系，不是角色、展示名称或租户授权；同一消费者的不同登录方式沿用本地用户映射。跨数据库汇聚时须可区分独立账号体系，持久化后更改 namespace/source 要单独迁移历史关联。三个 To C 案例见[设计说明](openspec/changes/archive/2026-10-17-generalize-audit-events/design.md#to-c-案例一单个-app-使用自建账号体系)。
 
 [examples/embedded](examples/embedded/main.go) 演示默认模式；[examples/audit](examples/audit/main.go) 演示全部三种装配。后者使用同库 Store 演示宿主组件所有权；配置与 embedded 相同，`ACCOUNTKIT_AUDIT_MODE` 可设 `local`（默认）、`host` 或 `write-only`，后两种另需显式的 `ACCOUNTKIT_AUDIT_SOURCE` 和 `ACCOUNTKIT_AUDIT_NAMESPACE`。两个示例都只使用本地开发日志发送器，要求 `ACCOUNTKIT_DEMO=1`，实际管理查询还需装配管理员验证。宿主组件由宿主 Start/Close；先排空业务请求，再 `auth.Close()` 停止库维护，最后关闭宿主审计组件及连接。真实远端接入需宿主实现 Recorder/Reader；Record 不得阻塞业务，示例不提供可靠网络投递或跨库原子性。
@@ -311,6 +313,8 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 - 表：`user_account`、`identity`、`session`、`audit_event`、`sign_in_completion_flow`，无外键；账号/身份/会话/流程 id 使用 `u_`、`i_`、`s_`、`f_` + 13 字符 TSID，审计使用原生 UUIDv7，对外为标准小写带连字符 UUID。
 - 所有 Redis 键以 `Config.KeyPrefix`（默认 `auth:`）开头。
 - `Deps.Pool` 的连接 `search_path` 首位必须是 `Config.Schema`；`Migrate` 会校验并返回 `ErrSearchPath`。宿主业务表建议通过明确的 schema 限定名访问，避免 search_path 名称冲突。
+- `Deps.Pool` 的 `MaxConns` 必须至少为 2；`New` 在不连接数据库的情况下拒绝更小容量。维护轮次持有一条池连接用于 advisory lock，任务查询还需要连接容量。pgx v5.10 默认上限为 `max(4, runtime.NumCPU())`，本包不覆盖该默认值；显式 `pool_max_conns=1` 的宿主须调整配置，连接池仍由宿主管理。
+- 库自行开启的账号、身份和会话领域事务显式使用 `READ COMMITTED`，在既有账号/会话锁之后通过后续语句复核最新状态；宿主默认设置为 `REPEATABLE READ` 或 `SERIALIZABLE` 不改变这一内部保证。公开 `user.Repo.WithTx` / `WithTxRaw` 仍遵循宿主默认隔离；`ImportAccounts` 使用宿主传入的事务，仍要求停写导入。
 - 建议对认证连接关闭 PostgreSQL JIT（`jit=off`）。本包查询均为按索引读写少量行的短事务，JIT 无法摊销其编译成本；pgx 缓存的预编译语句改用通用计划后估算代价可能偏高而触发 JIT，每次执行额外付出约数百毫秒编译时间（实测审计资源查询约 10 ms 变为约 380 ms）。范围限定在认证连接：在 `PoolConfig` 返回的配置上设置 `cfg.ConnConfig.RuntimeParams["jit"] = "off"`，或对认证专用角色执行 `ALTER ROLE <role> SET jit = off`；不要为此修改共享实例的全局配置，以免影响同实例上的分析型查询。不便关闭时可调高 `jit_above_cost`。本包不自动修改该参数；未编译 LLVM 的 PostgreSQL 不受影响。
 
 ## 配置（环境变量，前缀由宿主传给 ConfigFromEnv）

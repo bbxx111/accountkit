@@ -46,13 +46,13 @@ func TestAuditExternalConfigurationMatrix(t *testing.T) {
 	}
 }
 
-// A single host connection must be returned on success and baseline rejection.
-func TestMigrateAuditConfigurationSingleConnection(t *testing.T) {
+// Host connections must be returned on success and baseline rejection at minimum capacity.
+func TestMigrateAuditConfigurationMinimumPoolCapacity(t *testing.T) {
 	for _, mode := range []string{"fresh_repeat", "old_v1_empty", "old_v1_nonempty"} {
 		t.Run(mode, func(t *testing.T) {
 			a, base, _ := integrationInstance(t, minimal(), testRedis(t))
 			cfg := base.Config()
-			cfg.MaxConns = 1
+			cfg.MaxConns = 2
 			pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
 			if err != nil {
 				t.Fatal(err)
@@ -112,7 +112,7 @@ func TestMigrateAuditConfigurationSingleConnection(t *testing.T) {
 				defer second.Close()
 				for range 2 {
 					if err := second.Migrate(ctx); err != nil {
-						t.Fatalf("one connection migration blocked: %v", err)
+						t.Fatalf("minimum-capacity migration blocked: %v", err)
 					}
 				}
 				if snapshotSource(t, pool) != before {

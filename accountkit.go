@@ -130,6 +130,9 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 	if deps.Pool == nil {
 		return nil, errors.New("accountkit: Deps.Pool is required")
 	}
+	if deps.Pool.Config().MaxConns < 2 {
+		return nil, errors.New("accountkit: Deps.Pool requires at least 2 connections")
+	}
 	if deps.Redis == nil {
 		return nil, errors.New("accountkit: Deps.Redis is required")
 	}

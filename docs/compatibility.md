@@ -2,6 +2,16 @@
 
 固定兼容基线包含 130 个文件，原始文件清单与 SHA-256 见 `tests/testdata/source-baseline/manifest.json`；该清单用于追溯冻结快照，不表示当前文件名和内容必须与历史快照相同。当前根包名为 `accountkit`，导入路径为 `github.com/bbxx111/accountkit`。
 
+## 数据库运行契约修复（开发中）
+
+本节对应 `harden-database-runtime`，尚未发布，不改数据库结构、迁移版本、HTTP 或令牌格式。
+
+- **连接池最低容量：** `New` 现在无 I/O 拒绝 `Deps.Pool.Config().MaxConns < 2`。原来显式设置 `pool_max_conns=1` 或 `MaxConns=1` 的宿主，升级前须改为至少 2；pgx 默认容量不受影响。失败不会关闭宿主池，也不新增独立维护连接。
+- **内部事务隔离：** 库自行开启的领域事务使用 `READ COMMITTED`，配合既有锁和锁后复核，避免宿主较高默认隔离导致旧证明登录、绑定数量失控或并发刷新异常。`BeforeDelete`、`Anonymizer`、`WithActiveUsers` 的回调随库事务使用该隔离级别；回调仍必须使用传入的同一事务。公开 `Repo.WithTx` / `WithTxRaw` 继续继承宿主默认；调用方已开启并传给 `ImportAccounts` 的事务不被修改。
+- **审计分页：** 本地 Reader 只为最终页读取完整事件，`Page.FlowLinks` 提供当前页需要的去重流程归属，不应当作账号全部历史流程清单使用。公开类型、排序游标、动作范围、source/namespace 及管理面独立复核保持；证明查找独立于页面动作和游标范围。外部 Reader 的契约不变。
+
+当前测试、执行计划和未验证项见[验收记录](../openspec/changes/harden-database-runtime/verification.md)。
+
 ## 会话认证依据与客户端描述（开发中）
 
 本节对应当前开发变更，已发布 v0.3.0 尚不包含。新查询 GET /users/me/sessions/current 是可选 enduser.CurrentSessionService 能力，签名 GetCurrentSession(context.Context, user.Principal) (user.CurrentSessionInfo, error)，不扩大既有 enduser.Service 方法集；缺能力返回503 SESSION_QUERY_NOT_CONFIGURED。查询允许user/user:bind，拒绝user:undelete，按数据库检查会话，不改变普通Authenticate/内省热路径。token、JWT、refresh、身份列表、scope、设备头和认证请求体保持原形状。

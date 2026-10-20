@@ -77,7 +77,7 @@ func (s *Service) GetCurrentSession(ctx context.Context, p Principal) (CurrentSe
 		return CurrentSessionInfo{}, ErrInsufficientScope
 	}
 	var result CurrentSessionInfo
-	err := s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+	err := s.d.Repo.withDomainTx(ctx, func(q *db.Queries) error {
 		sess, err := q.LockCurrentSessionForRead(ctx, db.LockCurrentSessionForReadParams{UserID: p.UserID, SessionID: p.SessionID})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrInvalidToken

@@ -53,7 +53,7 @@ func (s *Service) Freeze(ctx context.Context, a Admin, userID, reason string, me
 		row     db.UserAccount
 		revoked []string
 	)
-	err = s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+	err = s.d.Repo.withDomainTx(ctx, func(q *db.Queries) error {
 		u, err := lockUserAs(ctx, q, userID, ErrNotFound)
 		if err != nil {
 			return err
@@ -87,7 +87,7 @@ func (s *Service) Unfreeze(ctx context.Context, a Admin, userID, reason string, 
 	}
 	now := s.now()
 	var row db.UserAccount
-	err = s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+	err = s.d.Repo.withDomainTx(ctx, func(q *db.Queries) error {
 		u, err := lockUserAs(ctx, q, userID, ErrNotFound)
 		if err != nil {
 			return err
@@ -143,7 +143,7 @@ func (s *Service) AdminRevokeSession(ctx context.Context, a Admin, userID, sid s
 func (s *Service) AdminRevokeAllSessions(ctx context.Context, a Admin, userID string, meta Meta) (int, error) {
 	now := s.now()
 	var revoked []string
-	err := s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+	err := s.d.Repo.withDomainTx(ctx, func(q *db.Queries) error {
 		if _, err := lockUserAs(ctx, q, userID, ErrNotFound); err != nil {
 			return err
 		}

@@ -387,10 +387,10 @@ func (s *Service) tokensFor(sess db.Session, refreshPlain, scope string, now tim
 
 // withRetryOnUnique 在唯一冲突（TSID 碰撞、并发首次登录同一 subject）时整体重试一次。
 func (s *Service) withRetryOnUnique(ctx context.Context, fn func(q *db.Queries) error) error {
-	err := s.d.Repo.WithTx(ctx, fn)
+	err := s.d.Repo.withDomainTx(ctx, fn)
 	if IsUniqueViolation(err) {
 		s.d.Logger.Info("user: unique violation, retrying transaction once")
-		err = s.d.Repo.WithTx(ctx, fn)
+		err = s.d.Repo.withDomainTx(ctx, fn)
 	}
 	return err
 }

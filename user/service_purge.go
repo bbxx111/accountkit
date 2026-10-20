@@ -88,7 +88,7 @@ func (s *Service) purgeOne(ctx context.Context, userID string) (bool, error) {
 	now := s.now()
 	var revoked []string
 	purged := false
-	err := s.d.Repo.withTxRawOptions(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx, q *db.Queries) error {
+	err := s.d.Repo.withDomainTxRaw(ctx, func(tx pgx.Tx, q *db.Queries) error {
 		u, err := q.LockUserByID(ctx, userID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil // 库内没有硬删路径；防御性跳过

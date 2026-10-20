@@ -50,7 +50,7 @@ func (s *Service) softDelete(ctx context.Context, userID string, missing error, 
 		row     db.UserAccount
 		revoked []string
 	)
-	err := s.d.Repo.withTxRawOptions(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx, q *db.Queries) error {
+	err := s.d.Repo.withDomainTxRaw(ctx, func(tx pgx.Tx, q *db.Queries) error {
 		u, err := lockUserAs(ctx, q, userID, missing)
 		if err != nil {
 			return err
@@ -120,7 +120,7 @@ func (s *Service) AdminUndeleteUser(ctx context.Context, a Admin, userID string,
 func (s *Service) undelete(ctx context.Context, userID string, missing error, tmpl audit.AuthenticationEvent) (db.UserAccount, error) {
 	now := s.now()
 	var row db.UserAccount
-	err := s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+	err := s.d.Repo.withDomainTx(ctx, func(q *db.Queries) error {
 		u, err := lockUserAs(ctx, q, userID, missing)
 		if err != nil {
 			return err

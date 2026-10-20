@@ -337,7 +337,7 @@ func (s *Service) persistCompletionProof(ctx context.Context, row db.SignInCompl
 	locks := p
 	locks.Proofs = append(slices.Clone(p.Proofs), proof)
 	persisted := false
-	err = s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+	err = s.d.Repo.withDomainTx(ctx, func(q *db.Queries) error {
 		owners, e := s.lockProofOwners(ctx, q, locks)
 		if e != nil {
 			return e
@@ -447,7 +447,7 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.SignI
 	var bound []db.Identity
 	var event audit.AuthenticationEvent
 	committed := false
-	err := s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+	err := s.d.Repo.withDomainTx(ctx, func(q *db.Queries) error {
 		// Anchor subjects precede owner and flow row locks; the revision check below
 		// rejects any proof set that differs from the one locked here.
 		if err := s.lockProofSubjects(ctx, q, p.Proofs...); err != nil {

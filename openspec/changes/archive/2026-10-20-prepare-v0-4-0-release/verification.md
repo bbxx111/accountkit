@@ -1,6 +1,6 @@
 # v0.4.0 发布准备验收
 
-日期：2026-10-20。状态：v0.4.0 已发布，固定版本远端消费通过；本变更尚未归档。下文“未完成与边界”记录准备阶段结束时的状态，正式发布结果见末节。[发布说明](../../../docs/releases/v0.4.0.md)、[发布门禁](../../../docs/release-checklist.md#v040-发布门禁)。
+日期：2026-10-20。状态：v0.4.0 已发布，固定版本远端消费通过，本变更已于 2026-10-20 归档。下文“未完成与边界”记录准备阶段结束时的状态，正式发布结果见末节。[发布说明](../../../../docs/releases/v0.4.0.md)、[发布门禁](../../../../docs/release-checklist.md#v040-发布门禁)。
 
 ## 范围与快照
 
@@ -55,14 +55,14 @@ v0.3.0 之后的运行时变更为会话认证来源与客户端描述（三个�
 6. Minor：点名被取代或移除的五个索引，提示自行按 request_id、flow_id 查询审计的影响。
 7. Minor：检查表门禁第 4 项改为先 `--no-ff` 合入 develop 并推送，再合入 main。
 
-审查确认路由、scope、错误码、请求头、管理面会话 DTO、连接池校验、READ COMMITTED 范围、advisory lock、导入加锁与按来源撤销均与代码一致，accountsvc 无配置变化；开发期中间态未被描述为已发布内容；链接和锚点全部可解析；检查表和任务没有夸大完成度。报告保存在[审查记录](../../../.test-output/prepare-v0.4-release/review.md)。审查只读执行，不替代测试。
+审查确认路由、scope、错误码、请求头、管理面会话 DTO、连接池校验、READ COMMITTED 范围、advisory lock、导入加锁与按来源撤销均与代码一致，accountsvc 无配置变化；开发期中间态未被描述为已发布内容；链接和锚点全部可解析；检查表和任务没有夸大完成度。报告保存在[审查记录](../../../../.test-output/prepare-v0.4-release/review.md)。审查只读执行，不替代测试。
 
 ## 原始证据与资源清理
 
-- [环境](../../../.test-output/prepare-v0.4-release/raw/environment.txt)、[受测提交](../../../.test-output/prepare-v0.4-release/verified-commit.txt)、[远端 tag](../../../.test-output/prepare-v0.4-release/remote-tags.txt)、[生成检查](../../../.test-output/prepare-v0.4-release/generated.log)、[OpenSpec 检查](../../../.test-output/prepare-v0.4-release/openspec.log)。
-- [库完整日志](../../../.test-output/prepare-v0.4-release/raw/library.log)、[库测试事件](../../../.test-output/prepare-v0.4-release/raw/tests.jsonl)、[服务完整日志](../../../.test-output/prepare-v0.4-release/raw/accountsvc.log)、[服务测试事件](../../../.test-output/prepare-v0.4-release/raw/accountsvc-tests.jsonl)、[恢复材料](../../../.test-output/prepare-v0.4-release/raw/recovery.s4zcO1/)。
+- [环境](../../../../.test-output/prepare-v0.4-release/raw/environment.txt)、[受测提交](../../../../.test-output/prepare-v0.4-release/verified-commit.txt)、[远端 tag](../../../../.test-output/prepare-v0.4-release/remote-tags.txt)、[生成检查](../../../../.test-output/prepare-v0.4-release/generated.log)、[OpenSpec 检查](../../../../.test-output/prepare-v0.4-release/openspec.log)。
+- [库完整日志](../../../../.test-output/prepare-v0.4-release/raw/library.log)、[库测试事件](../../../../.test-output/prepare-v0.4-release/raw/tests.jsonl)、[服务完整日志](../../../../.test-output/prepare-v0.4-release/raw/accountsvc.log)、[服务测试事件](../../../../.test-output/prepare-v0.4-release/raw/accountsvc-tests.jsonl)、[恢复材料](../../../../.test-output/prepare-v0.4-release/raw/recovery.s4zcO1/)。
 
-清理前按任务标签列出资源，确认 runner 退出 0、证据文件存在后，仅删除本次的三个容器（runner、PostgreSQL、Redis）及其匿名卷、隔离网络和模块缓存卷；既有 postgres/redis 容器保持运行。清单见[资源记录](../../../.test-output/prepare-v0.4-release/cleaned-resources.txt)。
+清理前按任务标签列出资源，确认 runner 退出 0、证据文件存在后，仅删除本次的三个容器（runner、PostgreSQL、Redis）及其匿名卷、隔离网络和模块缓存卷；既有 postgres/redis 容器保持运行。清单见[资源记录](../../../../.test-output/prepare-v0.4-release/cleaned-resources.txt)。
 
 ## 未完成与边界
 
@@ -88,10 +88,14 @@ v0.3.0 之后的运行时变更为会话认证来源与客户端描述（三个�
 
 根宿主涉及数据库和认证的方法只做编译契约核验，运行检查仅覆盖本地组件，不表示真实服务商或产品环境联调通过。
 
-原始材料：[最终 CI](../../../.test-output/prepare-v0.4-release/main-ci-final.json)、[CI 步骤](../../../.test-output/prepare-v0.4-release/main-ci-jobs.txt)、[远端 tag](../../../.test-output/prepare-v0.4-release/remote-tag.txt)、[标签后迁移检查](../../../.test-output/prepare-v0.4-release/tag-migrationcheck.log)、[Release 正文](../../../.test-output/prepare-v0.4-release/release-body.md)、[Release 结果](../../../.test-output/prepare-v0.4-release/release-result.json)、[独立宿主源码和日志](../../../.test-output/prepare-v0.4-release/hosts/)、[模块下载来源](../../../.test-output/prepare-v0.4-release/download.json)。材料保持 ignored，不提交缓存、二进制或合成数据。
+原始材料：[最终 CI](../../../../.test-output/prepare-v0.4-release/main-ci-final.json)、[CI 步骤](../../../../.test-output/prepare-v0.4-release/main-ci-jobs.txt)、[远端 tag](../../../../.test-output/prepare-v0.4-release/remote-tag.txt)、[标签后迁移检查](../../../../.test-output/prepare-v0.4-release/tag-migrationcheck.log)、[Release 正文](../../../../.test-output/prepare-v0.4-release/release-body.md)、[Release 结果](../../../../.test-output/prepare-v0.4-release/release-result.json)、[独立宿主源码和日志](../../../../.test-output/prepare-v0.4-release/hosts/)、[模块下载来源](../../../../.test-output/prepare-v0.4-release/download.json)。材料保持 ignored，不提交缓存、二进制或合成数据。
 
 ### 发布记录维护
 
 在 `docs/record-v0.4.0-publication` 分支补记上述事实：发布说明状态改为已发布；README、兼容、迁移、Go/网关集成、accountsvc 与 OpenAPI 说明去掉“开发中”标记及“尚未发布”表述，相应锚点同步更新；两份 OpenAPI 的 `info.version` 改为 `v0.4.0`，路径与请求/响应结构不变；AGENTS 与迁移手册明确当前 0001 已随 v0.4.0 发布，此前直接修改 0001 的有限授权不再适用。未改 SQL、固定哈希、源快照或 tag。本记录维护仅涉及文档。
 
 本轮记录检查：变更文档中 251 个本地链接及锚点全部可解析，verification 的 20 个证据链接在主工作区存在；`node scripts/check-openapi.cjs` 通过（消费者 22、管理员 11 个操作及会话上下文边界）；两份 OpenAPI JSON 可解析且 `info.version` 为 v0.4.0；`openspec validate --all --strict` 25 项通过；`git diff --check` 通过。记录维护未改运行时代码，未重复运行全库测试，发布依据仍为上表最终候选 CI 与远端消费证据。
+
+## 归档（2026-10-20）
+
+用户在 main 发布记录合并后明确要求“归档变更并清理 worktree 和分支”。归档前 `openspec status` 显示 proposal/design/tasks 为 done、specs 按 skip_specs 跳过，tasks 8/8 完成，无 delta specs 需要同步；`openspec instructions archive` 仅返回中文工件语言约束。在 `docs/archive-v0.4.0-release` 分支将变更移至 `openspec/changes/archive/2026-10-20-prepare-v0-4-0-release/`，原 .openspec.yaml 与全部工件保留；本记录内相对链接按新深度修复，README、发布说明与发布检查表中的引用改指归档路径。主规格未改。

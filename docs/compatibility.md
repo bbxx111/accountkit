@@ -18,6 +18,8 @@
 
 **行为升级：** 每个会话必须有经事务校验的非空具体身份来源；当前详情、重新认证和换绑使用来源时检查有效性，缺失或失效报内部错误，不作为正常未知态返回，也不从身份列表或尽力审计推算。解绑在同事务撤销命中具体身份的同账号未吊销会话，包括当前和自然过期未清理的会话；同账号任一未吊销会话缺少有效来源则整事务拒绝。204成功仍可能退出；换绑仍撤销其他会话，当前会话仅非空来源不含旧身份时保留。BIND证明和refresh不改变来源。客户端用详情中的完整身份name判断，重新认证后保存新access再重查；预览不保证提交前没有并发变化。普通Authenticate/内省不增加数据库查询。
 
+撤销原因追加 `IDENTITY_UNBOUND`（`enum.RevokeIdentityUnbound`，存储值9），解绑撤销的每个会话以该原因记录 `SESSION_REVOKED` 审计；既有枚举值不重编号。审计与会话展示的消费方须处理新值，回退旧二进制前须确认其对存量值9的表现。
+
 直接Go UnbindIdentity 现在也验证完整user scope、配置要求的近期认证、ACTIVE账号和所属有效当前会话。仅给UserID的旧调用须迁移为Authenticate取得的可信完整Principal；关闭新鲜度检查仍必须scope和会话有效。ReplaceIdentity同样复核；DeleteMe的直接Go入口仍按[Go指南](go-integration.md#认证刷新与敏感操作)要求由宿主做入口保护。
 
 Meta、SessionInfo、accountkit.Deps和enduser.Deps等公开结构新增字段，字段名初始化继续适用，位置式复合字面量须修改并重新编译，不能宣称全部Go源码兼容：

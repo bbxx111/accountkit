@@ -58,6 +58,19 @@ type Session struct {
 	UpdateTime               time.Time
 }
 
+type SessionAuthenticationIdentity struct {
+	SessionID  string
+	IdentityID string
+}
+
+type SessionClientInfo struct {
+	SessionID   string
+	ClientInfo  []byte
+	ObserveTime time.Time
+	CreateTime  time.Time
+	UpdateTime  time.Time
+}
+
 type SignInCompletionFlow struct {
 	ID                string
 	TokenDigest       string

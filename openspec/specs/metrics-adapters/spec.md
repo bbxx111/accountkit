@@ -18,27 +18,102 @@
 - **THEN** 构造返回配置错误，不回退全局 Provider 或 Registry，不产生网络 I/O
 
 ### Requirement: 公共指标契约
-系统 SHALL 提供下表所列指标并保持名称映射、单位及允许标签。所有指标 SHALL 附带固定 accountkit_instance 标签；表中仅列额外标签。计数器 SHALL 累计真实观测数量，耗时直方图 SHALL 不复制计数器的细分 reason 标签。未出现的标签组合不要求预创建；零与未产生序列的区别 SHALL 在文档说明。
+
+系统 SHALL 提供以下分组指标表所列全部指标，并保持名称映射、类型、单位及允许标签。所有指标 SHALL 附带固定 accountkit_instance 标签；表中只列额外标签。计数器 SHALL 累计真实观测数量，耗时直方图 SHALL 不复制计数器的细分 reason 标签。未出现的标签组合不要求预创建；零与未产生序列的区别 SHALL 在文档说明。
+
+#### Scenario: 指标描述一致
+- **WHEN** 宿主分别使用两个默认适配器采集覆盖全部事件类别的合成输入
+- **THEN** 指标名称、单位与标签符合以下分组指标表，平台特有格式转换按明确映射解释，不增加包含请求数据的动态标签
+
+### Requirement: 认证指标名称与标签
+
+以下指标 SHALL 遵守公共指标契约，并保持表中名称映射、类型、单位及额外标签。
 
 | OTel 名称 | Prometheus 名称 | 类型／单位 | 额外标签 |
 |---|---|---|---|
 | accountkit.auth.operations | accountkit_auth_operations_total | Counter / {operation} | operation, method, result, grant, mode, reason |
 | accountkit.auth.operation.duration | accountkit_auth_operation_duration_seconds | Histogram / s | operation, method, result |
+
+#### Scenario: 认证操作及耗时的采集契约
+- **WHEN** 宿主通过任一默认适配器采集合成认证操作及耗时
+- **THEN** 输出指标符合本表，并附带固定 accountkit_instance；标签不得扩展为请求数据，计数及耗时遵守公共指标契约
+
+### Requirement: 验证码指标名称与标签
+
+以下指标 SHALL 遵守公共指标契约，并保持表中名称映射、类型、单位及额外标签。
+
+| OTel 名称 | Prometheus 名称 | 类型／单位 | 额外标签 |
+|---|---|---|---|
 | accountkit.code.operations | accountkit_code_operations_total | Counter / {operation} | operation, channel, purpose, result, reason |
 | accountkit.code.operation.duration | accountkit_code_operation_duration_seconds | Histogram / s | operation, channel, purpose, result |
+
+#### Scenario: 验证码操作及耗时的采集契约
+- **WHEN** 宿主通过任一默认适配器采集合成验证码操作及耗时
+- **THEN** 输出指标符合本表，并附带固定 accountkit_instance；标签不得扩展为请求数据，计数及耗时遵守公共指标契约
+
+### Requirement: 依赖指标名称与标签
+
+以下指标 SHALL 遵守公共指标契约，并保持表中名称映射、类型、单位及额外标签。
+
+| OTel 名称 | Prometheus 名称 | 类型／单位 | 额外标签 |
+|---|---|---|---|
 | accountkit.dependency.operations | accountkit_dependency_operations_total | Counter / {operation} | component, operation, result |
 | accountkit.dependency.operation.duration | accountkit_dependency_operation_duration_seconds | Histogram / s | component, operation, result |
+
+#### Scenario: 依赖操作及耗时的采集契约
+- **WHEN** 宿主通过任一默认适配器采集合成依赖操作及耗时
+- **THEN** 输出指标符合本表，并附带固定 accountkit_instance；标签不得扩展为请求数据，计数及耗时遵守公共指标契约
+
+### Requirement: 降级指标名称与标签
+
+以下指标 SHALL 遵守公共指标契约，并保持表中名称映射、类型、单位及额外标签。
+
+| OTel 名称 | Prometheus 名称 | 类型／单位 | 额外标签 |
+|---|---|---|---|
 | accountkit.degradations | accountkit_degradations_total | Counter / {event} | scenario |
+
+#### Scenario: 降级事件的采集契约
+- **WHEN** 宿主通过任一默认适配器采集合成降级事件
+- **THEN** 输出指标符合本表，并附带固定 accountkit_instance；标签不得扩展为请求数据，计数及耗时遵守公共指标契约
+
+### Requirement: 审计指标名称与标签
+
+以下指标 SHALL 遵守公共指标契约，并保持表中名称映射、类型、单位及额外标签。
+
+| OTel 名称 | Prometheus 名称 | 类型／单位 | 额外标签 |
+|---|---|---|---|
 | accountkit.audit.events | accountkit_audit_events_total | Counter / {event} | stage, result |
 | accountkit.audit.omitted.fields | accountkit_audit_omitted_fields_total | Counter / {field} | field |
+
+#### Scenario: 审计事件及省略字段的采集契约
+- **WHEN** 宿主通过任一默认适配器采集合成审计事件及省略字段
+- **THEN** 输出指标符合本表，并附带固定 accountkit_instance；标签不得扩展为请求数据，计数及耗时遵守公共指标契约
+
+### Requirement: 维护轮次与执行次数指标
+
+以下指标 SHALL 遵守公共指标契约，并保持表中名称映射、类型、单位及额外标签。
+
+| OTel 名称 | Prometheus 名称 | 类型／单位 | 额外标签 |
+|---|---|---|---|
 | accountkit.maintenance.rounds | accountkit_maintenance_rounds_total | Counter / {round} | result |
 | accountkit.maintenance.runs | accountkit_maintenance_runs_total | Counter / {run} | task, result |
+
+#### Scenario: 维护轮次及任务执行的采集契约
+- **WHEN** 宿主通过任一默认适配器采集合成维护轮次及任务执行
+- **THEN** 输出指标符合本表，并附带固定 accountkit_instance；标签不得扩展为请求数据，计数及耗时遵守公共指标契约
+
+### Requirement: 维护耗时与处理条目指标
+
+以下指标 SHALL 遵守公共指标契约，并保持表中名称映射、类型、单位及额外标签。
+
+| OTel 名称 | Prometheus 名称 | 类型／单位 | 额外标签 |
+|---|---|---|---|
 | accountkit.maintenance.run.duration | accountkit_maintenance_run_duration_seconds | Histogram / s | task, result |
 | accountkit.maintenance.items | accountkit_maintenance_items_total | Counter / {item} | task |
 
-#### Scenario: 指标描述一致
-- **WHEN** 宿主分别使用两个默认适配器采集覆盖全部事件类别的合成输入
-- **THEN** 指标名称、单位与标签符合本表，平台特有格式转换按明确映射解释，不增加包含请求数据的动态标签
+#### Scenario: 维护耗时及处理条目的采集契约
+- **WHEN** 宿主通过任一默认适配器采集合成维护耗时及处理条目
+- **THEN** 输出指标符合本表，并附带固定 accountkit_instance；标签不得扩展为请求数据，计数及耗时遵守公共指标契约
 
 ### Requirement: 统一描述与适配器一致性
 两个适配器 SHALL 使用共同的指标描述和分类投影，固定单位、允许标签、累计计数含义及默认显式直方图桶。默认桶 SHALL 为 0.001、0.005、0.01、0.025、0.05、0.1、0.25、0.5、1、2.5、5、10、30、60 秒，超范围值仍被统计。平台特有名称和直方图表达形式 SHALL 有明确映射；在相同默认聚合条件下，归一化后的次数、标签、耗时数量／总和及桶分布 SHALL 一致。

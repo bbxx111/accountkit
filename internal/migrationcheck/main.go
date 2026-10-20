@@ -21,15 +21,32 @@ var frozen = map[string]string{
 }
 
 // The user-authorized current initial definition has its own immutable baseline. The source
-// snapshot remains independently pinned for the two exact historical releases.
+// snapshot and the published v0.3.0 initial definition remain independently pinned.
 var initialFrozen = map[string]string{
-	"0001_init.up.sql":   "5480fd1b7183b43cfc09792683627c9c41dfd691c3626c1b4ae3905b6b8cffa8",
-	"0001_init.down.sql": "53613c379dacd01f9739ce2824570f833060aca26548ff13b3ae8c42c49e63d6",
+	"0001_init.up.sql":   "e1c5f1232136ed655e4963411f972e64493290998c5de27f88e511b94dde710e",
+	"0001_init.down.sql": "2f26c7dc5f5c5cfe2ee5a9967884fc70c7f213418a602fb2535621904f251f9b",
 }
 
 var legacyReleases = map[string]string{
 	"refs/tags/v0.1.0": "48603d6d349c57910328d393d5e17decec934f11",
 	"refs/tags/v0.2.0": "e19af8542f099f14103627140c0fe23f14c99b7e",
+}
+
+type pinnedInitialRelease struct {
+	Commit string
+	Hashes map[string]string
+}
+
+// This exact published baseline predates the separately authorized session
+// consolidation. Neither moving the tag nor reusing its SQL in new releases is allowed.
+var publishedInitialReleases = map[string]pinnedInitialRelease{
+	"refs/tags/v0.3.0": {
+		Commit: "ba2d0412764c659beabdbd0d3f0f0f9bb9007657",
+		Hashes: map[string]string{
+			"0001_init.up.sql":   "5480fd1b7183b43cfc09792683627c9c41dfd691c3626c1b4ae3905b6b8cffa8",
+			"0001_init.down.sql": "53613c379dacd01f9739ce2824570f833060aca26548ff13b3ae8c42c49e63d6",
+		},
+	},
 }
 var migrationName = regexp.MustCompile(`^([0-9]+)_(.+)\.(up|down)\.sql$`)
 var releaseTag = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`)
@@ -113,10 +130,14 @@ func releaseMigrations(root, ref string) (map[string][]byte, error) {
 	return out, nil
 }
 func check(root string) error {
-	return checkWithBaselines(root, initialFrozen, legacyReleases)
+	return checkWithReleaseBaselines(root, initialFrozen, legacyReleases, publishedInitialReleases)
 }
 
 func checkWithBaselines(root string, initialHashes, legacyCommits map[string]string) error {
+	return checkWithReleaseBaselines(root, initialHashes, legacyCommits, nil)
+}
+
+func checkWithReleaseBaselines(root string, initialHashes, legacyCommits map[string]string, published map[string]pinnedInitialRelease) error {
 	legacy, err := sourceBaseline(root)
 	if err != nil {
 		return err
@@ -124,6 +145,18 @@ func checkWithBaselines(root string, initialHashes, legacyCommits map[string]str
 	releases, err := releasedHistory(root)
 	if err != nil {
 		return err
+	}
+	// A deleted tag or a tag moved outside HEAD's ancestry must not silently
+	// disappear from --merged HEAD and thereby escape its exact historical pin.
+	for ref, want := range legacyCommits {
+		if err := checkPinnedRelease(root, ref, want); err != nil {
+			return err
+		}
+	}
+	for ref, pinned := range published {
+		if err := checkPinnedRelease(root, ref, pinned.Commit); err != nil {
+			return err
+		}
 	}
 	baseline := map[string][]byte{}
 	for name, want := range initialHashes {
@@ -146,14 +179,8 @@ func checkWithBaselines(root string, initialHashes, legacyCommits map[string]str
 	// Conflicting published contents are errors, regardless of tag ordering.
 	for _, ref := range releases {
 		initial := baseline
-		if wantCommit, ok := legacyCommits[ref]; ok {
-			commit, err := git(root, "rev-parse", ref+"^{commit}")
-			if err != nil {
-				return err
-			}
-			if strings.TrimSpace(string(commit)) != wantCommit {
-				return fmt.Errorf("historical release tag moved: %s", ref)
-			}
+		pinned, hasPinned := published[ref]
+		if _, ok := legacyCommits[ref]; ok {
 			initial = legacy
 		}
 		files, err := releaseMigrations(root, ref)
@@ -161,7 +188,12 @@ func checkWithBaselines(root string, initialHashes, legacyCommits map[string]str
 			return err
 		}
 		for name := range initialHashes {
-			if !bytes.Equal(files[name], initial[name]) {
+			if hasPinned {
+				sum := sha256.Sum256(files[name])
+				if hex.EncodeToString(sum[:]) != pinned.Hashes[name] {
+					return fmt.Errorf("release initial migration changed or missing: %s: %s", ref, name)
+				}
+			} else if !bytes.Equal(files[name], initial[name]) {
 				return fmt.Errorf("release initial migration changed or missing: %s: %s", ref, name)
 			}
 		}
@@ -252,6 +284,17 @@ func checkWithBaselines(root string, initialHashes, legacyCommits map[string]str
 		if _, old := baseline[name]; !old && version <= maxVersion {
 			return fmt.Errorf("new migration version must exceed %d: %s", maxVersion, name)
 		}
+	}
+	return nil
+}
+
+func checkPinnedRelease(root, ref, wantCommit string) error {
+	commit, err := git(root, "rev-parse", ref+"^{commit}")
+	if err != nil {
+		return fmt.Errorf("historical release tag missing: %s: %w", ref, err)
+	}
+	if strings.TrimSpace(string(commit)) != wantCommit {
+		return fmt.Errorf("historical release tag moved: %s", ref)
 	}
 	return nil
 }

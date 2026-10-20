@@ -21,3 +21,5 @@ github.com/bbxx111/accountkit/internal/accountsvc/TestConfigTLSMode
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigRejectsInternalAddress
 github.com/bbxx111/accountkit/internal/accountsvc/TestRuntimeSingleListener
 github.com/bbxx111/accountkit/internal/accountsvc/TestHTTPIntrospectionBoundary
+github.com/bbxx111/accountkit/internal/accountsvc/TestGatewayCurrentSessionAndOptionalHeaders
+github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationCurrentSessionContext

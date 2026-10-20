@@ -24,7 +24,7 @@ func TestExpiredSessionsRemainRevocable(t *testing.T) {
 		{"same-device-relogin", enum.RevokeReplacedByRelogin, false},
 		{"freeze", enum.RevokeUserFrozen, true},
 		{"delete", enum.RevokeUserDeleted, true},
-		{"identity-replacement", enum.RevokeIdentityReplaced, false},
+		{"identity-replacement", enum.RevokeIdentityReplaced, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFixture(t)

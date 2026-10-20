@@ -3,6 +3,9 @@
 -- SMALLINT 枚举无 CHECK（值由 Go 定义），全部表不设外键（一致性由 service 层与测试保证）。
 --
 -- User-authorized generic audit definition is included in this initial version.
+-- User-authorized session context consolidation is also included directly here.
+-- User-authorized database review index adjustments are likewise included directly here.
+-- Published release SQL remains independently pinned in Git history.
 -- Future changes must use version 0002 or higher; historical source snapshots remain frozen.
 
 -- 用户（表名 user_account：user 是 PG 关键字）
@@ -56,9 +59,12 @@ CREATE INDEX idx_identity_user_id ON identity (user_id);
 CREATE INDEX idx_identity_kind_hint_suffix ON identity (kind, hint_suffix) WHERE delete_time IS NULL;
 -- 管理端 filter：identity.phone_prefix / email_prefix
 CREATE INDEX idx_identity_kind_hint_prefix ON identity (kind, hint_prefix) WHERE delete_time IS NULL;
--- 维护任务 rekey_digests / reencrypt_subjects：按旧密钥版本取活跃锚点行；Migrate 的 CheckKeyVersions 取 DISTINCT 版本
-CREATE INDEX idx_identity_digest_key_version ON identity (digest_key_version) WHERE delete_time IS NULL;
-CREATE INDEX idx_identity_cipher_key_version ON identity (cipher_key_version) WHERE delete_time IS NULL;
+-- 维护任务 rekey_digests / reencrypt_subjects：按旧密钥版本取活跃锚点行并按 create_time, id 取批，
+-- 复合列使每批直接按索引序读取，避免轮换中途每批全量排序；Migrate 的 CheckKeyVersions 取 DISTINCT 版本
+CREATE INDEX idx_identity_digest_key_version_create_time_id ON identity (digest_key_version, create_time, id)
+    WHERE delete_time IS NULL AND digest_key_version IS NOT NULL;
+CREATE INDEX idx_identity_cipher_key_version_create_time_id ON identity (cipher_key_version, create_time, id)
+    WHERE delete_time IS NULL AND cipher_key_version IS NOT NULL;
 
 -- 设备会话。id 即 JWT sid。
 CREATE TABLE session (
@@ -82,12 +88,33 @@ CREATE TABLE session (
 CREATE UNIQUE INDEX uk_session_refresh_token_hash ON session (refresh_token_hash);
 -- 宽限外重放检测：按旧哈希命中
 CREATE INDEX idx_session_previous_refresh_token_hash ON session (previous_refresh_token_hash) WHERE previous_refresh_token_hash IS NOT NULL;
--- users/me/sessions 列表、revokeOthers、冻结/删除时吊销全部
-CREATE INDEX idx_session_user_id ON session (user_id) WHERE revoke_time IS NULL;
+-- 同一用户同一设备至多一条未吊销会话（含刷新期限已到但尚未清理的行）：登录在用户行锁下先吊销旧会话再建新会话，
+-- 本索引是数据库兜底；首列 user_id 同时服务 users/me/sessions 列表、revokeOthers、冻结/删除时吊销全部
+CREATE UNIQUE INDEX uk_session_user_id_device_id ON session (user_id, device_id) WHERE revoke_time IS NULL;
 -- 维护任务 cleanup_sessions：清理吊销 30 天以上的会话（§3.2、§5.6 #2）
 CREATE INDEX idx_session_revoke_time ON session (revoke_time) WHERE revoke_time IS NOT NULL;
 -- 维护任务 cleanup_sessions：清理 refresh 过期 30 天以上且从未被吊销的会话
 CREATE INDEX idx_session_refresh_expire_time ON session (refresh_expire_time) WHERE revoke_time IS NULL;
+-- Anonymization visits revoked sessions too; also supports scoped lock order.
+CREATE INDEX idx_session_user_id_id ON session(user_id, id);
+
+CREATE TABLE session_authentication_identity (
+ session_id TEXT COLLATE "C" NOT NULL CONSTRAINT session_authentication_identity_session_id_format CHECK (session_id ~ '^s_[0-9a-hjkmnp-tv-z]{13}$'),
+ identity_id TEXT COLLATE "C" NOT NULL CONSTRAINT session_authentication_identity_identity_id_format CHECK (identity_id ~ '^i_[0-9a-hjkmnp-tv-z]{13}$'),
+ CONSTRAINT session_authentication_identity_pkey PRIMARY KEY (session_id, identity_id)
+);
+-- Identity removal locates dependent sessions, including refresh-expired rows.
+CREATE INDEX idx_session_authentication_identity_identity_id_session_id ON session_authentication_identity(identity_id, session_id);
+
+CREATE TABLE session_client_info (
+ session_id TEXT COLLATE "C" NOT NULL CONSTRAINT session_client_info_session_id_format CHECK (session_id ~ '^s_[0-9a-hjkmnp-tv-z]{13}$'),
+ -- The service validates structured content and limits; storage only enforces basics.
+ client_info JSONB NOT NULL,
+ observe_time TIMESTAMPTZ NOT NULL,
+ create_time TIMESTAMPTZ NOT NULL DEFAULT now(),
+ update_time TIMESTAMPTZ NOT NULL DEFAULT now(),
+ CONSTRAINT session_client_info_pkey PRIMARY KEY (session_id)
+);
 
 -- Generic audit events; append-only and independent of resource lifecycle.
 -- Go validates business content; storage preserves basic JSON shapes and UUIDv7.
@@ -105,15 +132,12 @@ CREATE TABLE audit_event (
  occur_time timestamptz(6) NOT NULL,
  create_time timestamptz(6) NOT NULL DEFAULT clock_timestamp()
 );
--- Stable timeline, source-bound retention, and exact resource membership.
-CREATE INDEX idx_audit_event_occur_time_id ON audit_event(occur_time,id);
+-- Source-bound timeline and retention, plus exact actor/resource membership.
+-- Every package query is source-scoped; membership arms stay index-backed for BitmapOr.
 CREATE INDEX idx_audit_event_source_occur_time_id ON audit_event(source,occur_time,id);
 CREATE INDEX idx_audit_event_actor ON audit_event(source,(actor->>'namespace'),(actor->>'id'),occur_time,id);
 CREATE INDEX idx_audit_event_targets ON audit_event USING gin(targets jsonb_path_ops);
 CREATE INDEX idx_audit_event_related_resources ON audit_event USING gin((context->'related_resources') jsonb_path_ops);
-CREATE INDEX idx_audit_event_request_id ON audit_event(source,(context->>'request_id'));
--- Historical flow closure remains queryable after sign_in_completion_flow cleanup.
-CREATE INDEX idx_audit_event_flow_id ON audit_event(source,(data#>>'{accountkit,flow_id}'));
 
 -- Short-lived sign-in completion; only token digests and context-bound encrypted payloads are stored.
 CREATE TABLE sign_in_completion_flow (
@@ -138,4 +162,3 @@ CREATE INDEX idx_sign_in_completion_flow_expire_time_id ON sign_in_completion_fl
 -- Account deletion/anonymization removes every proof owner and completed result reference.
 CREATE INDEX idx_sign_in_completion_flow_proof_user_ids ON sign_in_completion_flow USING GIN(proof_user_ids);
 CREATE INDEX idx_sign_in_completion_flow_user_id ON sign_in_completion_flow(user_id);
-CREATE INDEX idx_sign_in_completion_flow_session_id ON sign_in_completion_flow(session_id);

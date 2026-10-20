@@ -46,12 +46,16 @@ func (s *Service) ImportAccounts(ctx context.Context, tx pgx.Tx, accounts []Impo
 		return fmt.Errorf("%w: import transaction is required", ErrInvalidArgument)
 	}
 	q := db.New(tx)
+	// 先校验并归一化整批，再对全部锚点 subject 一次性排序加锁：并行误用的两个导入
+	// 无论账号顺序如何都按同一锁序等待，后到者干净地得到身份冲突而非死锁。
+	type normalizedAnchor struct{ target, prefix, suffix string }
+	normalized := make([][]normalizedAnchor, len(accounts))
+	var subjects []anchorSubject
 	for index, account := range accounts {
 		if err := validateImportAccount(account); err != nil {
 			return fmt.Errorf("user: import account %d: %w", index, err)
 		}
-		type normalizedAnchor struct{ target, prefix, suffix string }
-		normalizedAnchors := make([]normalizedAnchor, len(account.Anchors))
+		normalized[index] = make([]normalizedAnchor, len(account.Anchors))
 		for anchorIndex, anchor := range account.Anchors {
 			if anchor.Kind != enum.IdentityPhone && anchor.Kind != enum.IdentityEmail {
 				return fmt.Errorf("%w: import account %d anchor %d must be PHONE or EMAIL", ErrInvalidArgument, index, anchorIndex)
@@ -59,13 +63,19 @@ func (s *Service) ImportAccounts(ctx context.Context, tx pgx.Tx, accounts []Impo
 			if anchor.CreateTime.IsZero() || anchor.UpdateTime.IsZero() {
 				return fmt.Errorf("%w: import account %d anchor %d times are required", ErrInvalidArgument, index, anchorIndex)
 			}
-			normalized, prefix, suffix, err := s.normalizeTarget(anchor.Kind, anchor.Target)
+			target, prefix, suffix, err := s.normalizeTarget(anchor.Kind, anchor.Target)
 			if err != nil {
 				// 底层解析错误可能携带输入，不向导入错误透传。
 				return fmt.Errorf("%w: import account %d anchor %d", ErrInvalidTarget, index, anchorIndex)
 			}
-			normalizedAnchors[anchorIndex] = normalizedAnchor{normalized, prefix, suffix}
+			normalized[index][anchorIndex] = normalizedAnchor{target, prefix, suffix}
+			subjects = append(subjects, anchorSubject{anchor.Kind, target})
 		}
+	}
+	if err := s.lockAnchorSubjects(ctx, q, subjects...); err != nil {
+		return importDatabaseError(importBatch, "identity lock", err)
+	}
+	for index, account := range accounts {
 		name := account.DisplayName
 		var displayName *string
 		if name != "" {
@@ -79,10 +89,10 @@ func (s *Service) ImportAccounts(ctx context.Context, tx pgx.Tx, accounts []Impo
 			return importDatabaseError(index, "account insert", err)
 		}
 		for anchorIndex, anchor := range account.Anchors {
-			n := normalizedAnchors[anchorIndex]
-			normalized, prefix, suffix := n.target, n.prefix, n.suffix
+			n := normalized[index][anchorIndex]
+			target, prefix, suffix := n.target, n.prefix, n.suffix
 			_, err := q.FindActiveIdentityByDigests(ctx, db.FindActiveIdentityByDigestsParams{
-				Kind: anchor.Kind, Digests: s.d.Digester.AllDigests(normalized),
+				Kind: anchor.Kind, Digests: s.d.Digester.AllDigests(target),
 			})
 			if err == nil {
 				return fmt.Errorf("%w: import account %d anchor %d", ErrIdentityConflict, index, anchorIndex)
@@ -90,8 +100,8 @@ func (s *Service) ImportAccounts(ctx context.Context, tx pgx.Tx, accounts []Impo
 			if !errors.Is(err, pgx.ErrNoRows) {
 				return importDatabaseError(index, "identity lookup", err)
 			}
-			digest, digestVersion := s.d.Digester.Digest(normalized)
-			ciphertext, cipherVersion, err := s.d.Cipher.Encrypt(normalized)
+			digest, digestVersion := s.d.Digester.Digest(target)
+			ciphertext, cipherVersion, err := s.d.Cipher.Encrypt(target)
 			if err != nil {
 				return &importFailure{operation: "identity encryption", index: index, cause: err}
 			}
@@ -141,7 +151,13 @@ type importFailure struct {
 	cause     error
 }
 
+// importBatch 标记不属于单个账号的整批操作（如批次锁）。
+const importBatch = -1
+
 func (e *importFailure) Error() string {
+	if e.index == importBatch {
+		return fmt.Sprintf("user: import batch: %s failed", e.operation)
+	}
 	return fmt.Sprintf("user: import account %d: %s failed", e.index, e.operation)
 }
 func (e *importFailure) Unwrap() error { return e.cause }

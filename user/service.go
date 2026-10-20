@@ -217,10 +217,12 @@ type Device struct {
 	Name string
 }
 
-// Meta 是请求元数据，用于审计与限流。
+// Meta 是请求元数据，用于审计、限流和可选客户端描述观察。
+// ClientInfo 不进入审计正文，也不作为凭证、限流身份或可信设备证明。
 type Meta struct {
-	IP        string
-	RequestID string
+	ClientInfo *ClientInfo
+	IP         string
+	RequestID  string
 }
 
 // Principal 是已通过校验的 access token 主体。
@@ -385,17 +387,17 @@ func (s *Service) tokensFor(sess db.Session, refreshPlain, scope string, now tim
 
 // withRetryOnUnique 在唯一冲突（TSID 碰撞、并发首次登录同一 subject）时整体重试一次。
 func (s *Service) withRetryOnUnique(ctx context.Context, fn func(q *db.Queries) error) error {
-	err := s.d.Repo.WithTx(ctx, fn)
+	err := s.d.Repo.withDomainTx(ctx, fn)
 	if IsUniqueViolation(err) {
 		s.d.Logger.Info("user: unique violation, retrying transaction once")
-		err = s.d.Repo.WithTx(ctx, fn)
+		err = s.d.Repo.withDomainTx(ctx, fn)
 	}
 	return err
 }
 
 // establishSession 是所有登录路径的公共尾部（须在 withRetryOnUnique 的事务内调用）：
 // 账号状态检查 → 吊销同设备旧会话 → 建会话 → 签发。replaced 为被替换的会话 id（事务提交后由调用方写吊销集与审计）。
-func (s *Service) establishSession(ctx context.Context, q *db.Queries, u db.UserAccount, hasAnchor bool, dev Device, now time.Time) (db.Session, TokenResult, []string, error) {
+func (s *Service) establishSession(ctx context.Context, q *db.Queries, u db.UserAccount, hasAnchor bool, identityIDs []string, dev Device, now time.Time) (db.Session, TokenResult, []string, error) {
 	switch u.State {
 	case enum.UserFrozen:
 		return db.Session{}, TokenResult{}, nil, ErrUserFrozen
@@ -416,6 +418,9 @@ func (s *Service) establishSession(ctx context.Context, q *db.Queries, u db.User
 	}
 	sess, refreshPlain, err := s.createSession(ctx, q, u.ID, dev, now)
 	if err != nil {
+		return db.Session{}, TokenResult{}, nil, err
+	}
+	if err := s.setSessionAuthenticationIdentities(ctx, q, sess, identityIDs); err != nil {
 		return db.Session{}, TokenResult{}, nil, err
 	}
 	res, err := s.tokensFor(sess, refreshPlain, deriveScope(u.State, hasAnchor), now)

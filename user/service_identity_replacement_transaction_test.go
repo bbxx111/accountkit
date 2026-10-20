@@ -310,7 +310,7 @@ func TestReplaceIdentityConcurrent(t *testing.T) {
 			for _, err := range errs {
 				if err == nil {
 					successes++
-				} else if sameUser && !errors.Is(err, user.ErrNotFound) {
+				} else if sameUser && !errors.Is(err, user.ErrInvalidToken) {
 					t.Fatalf("same identity loser: %v", err)
 				} else if !sameUser && !errors.Is(err, user.ErrIdentityConflict) {
 					t.Fatalf("same target loser: %v", err)
@@ -421,6 +421,8 @@ func TestReplaceIdentityUniqueInsertConflict(t *testing.T) {
 func TestReplaceIdentityRedisRevocationFailure(t *testing.T) {
 	f, p, id, current := replacementSetup(t, enum.IdentityPhone, phone1)
 	ctx := context.Background()
+	contextBindEmail(t, f, p, email1)
+	p = contextReauthenticate(t, f, p, enum.IdentityEmail, email1)
 	other := f.signIn(t, enum.IdentityPhone, phone1, user.Device{ID: "redis-failure-other"})
 	var logs bytes.Buffer
 	deps := f.deps

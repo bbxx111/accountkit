@@ -104,7 +104,12 @@ func (h *Handler) reauthenticate(w http.ResponseWriter, r *http.Request) {
 		apierror.Write(w, e)
 		return
 	}
-	res, err := h.d.Users.Reauthenticate(r.Context(), p, user.CodeCredential{Channel: kind, Target: cc.Target, CodeID: cc.CodeID, Code: cc.Code}, h.meta(r))
+	meta, err := h.authMeta(r)
+	if err != nil {
+		h.writeServiceError(w, r, err)
+		return
+	}
+	res, err := h.d.Users.Reauthenticate(r.Context(), p, user.CodeCredential{Channel: kind, Target: cc.Target, CodeID: cc.CodeID, Code: cc.Code}, meta)
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return

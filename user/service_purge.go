@@ -88,7 +88,7 @@ func (s *Service) purgeOne(ctx context.Context, userID string) (bool, error) {
 	now := s.now()
 	var revoked []string
 	purged := false
-	err := s.d.Repo.withTxRawOptions(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx, q *db.Queries) error {
+	err := s.d.Repo.withDomainTxRaw(ctx, func(tx pgx.Tx, q *db.Queries) error {
 		u, err := q.LockUserByID(ctx, userID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil // 库内没有硬删路径；防御性跳过
@@ -131,8 +131,14 @@ func (s *Service) purgeOne(ctx context.Context, userID string) (bool, error) {
 		if n != 1 {
 			return fmt.Errorf("user: purge user row %s: expected 1 row, got %d", userID, n)
 		}
+		if _, err := q.LockSessionsForUserContextCleanup(ctx, userID); err != nil {
+			return fmt.Errorf("user: lock sessions for context purge: %w", err)
+		}
 		if revoked, err = s.revokeAllForUser(ctx, q, userID, nil, enum.RevokeUserDeleted, now); err != nil {
 			return err
+		}
+		if _, err := q.DeleteSessionContextByUser(ctx, userID); err != nil {
+			return fmt.Errorf("user: purge session context: %w", err)
 		}
 		if _, err := q.ScrubAuditEventsByUser(ctx, db.ScrubAuditEventsByUserParams{UserID: userID, Source: s.d.AuditSource, Namespace: s.d.AuditNamespace, AuthenticationActions: authenticationAuditActions()}); err != nil {
 			return fmt.Errorf("user: scrub audit events: %w", err)

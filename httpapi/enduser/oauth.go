@@ -26,7 +26,12 @@ func (h *Handler) token(w http.ResponseWriter, r *http.Request) {
 		apierror.WriteOAuth(w, http.StatusBadRequest, "unsupported_grant_type", "only grant_type=refresh_token is supported", nil)
 		return
 	}
-	res, err := h.d.Users.Refresh(r.Context(), req.RefreshToken, h.meta(r))
+	meta, err := h.authMeta(r)
+	if err != nil {
+		h.writeOAuthError(w, r, err)
+		return
+	}
+	res, err := h.d.Users.Refresh(r.Context(), req.RefreshToken, meta)
 	if err != nil {
 		h.writeOAuthError(w, r, err)
 		return

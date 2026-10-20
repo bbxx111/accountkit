@@ -17,7 +17,7 @@ import (
 
 // ReplaceIdentity 使用新目标的 BIND 证明原子替换同类锚点身份。宿主传入已认证的
 // Principal；此方法继续复核账号、作用域、近期认证和数据库当前会话。
-// 当前会话及 auth_time 保留，其他会话与身份变更一并撤销。已消费的码不随回滚恢复。
+// Current session is retained only for nonempty sources independent of the replaced identity.
 func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID string, cred CodeCredential, meta Meta) (info IdentityInfo, err error) {
 	if err := validateCodeCredential(cred); err != nil {
 		return IdentityInfo{}, err
@@ -47,7 +47,7 @@ func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID s
 	if p.Scope != ScopeUser {
 		return IdentityInfo{}, ErrInsufficientScope
 	}
-	if err = s.replacementRecentAuth(p, s.now()); err != nil {
+	if err = s.sensitiveRecentAuth(p, s.now()); err != nil {
 		return IdentityInfo{}, err
 	}
 	if !ids.Valid(ids.Identity, identityID) {
@@ -73,7 +73,10 @@ func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID s
 		return IdentityInfo{}, verifyErr
 	}
 	var revoked []string
-	err = s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+	err = s.d.Repo.withDomainTx(ctx, func(q *db.Queries) error {
+		if lockErr := s.lockAnchorSubjects(ctx, q, anchorSubject{channel, norm}); lockErr != nil {
+			return lockErr
+		}
 		u, lockErr := lockUser(ctx, q, p.UserID)
 		if lockErr != nil {
 			return lockErr
@@ -108,12 +111,26 @@ func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID s
 			return ErrIdentityKindLimit
 		}
 		// 等锁和必要身份读取都可能跨过有效期，写入前以同一微秒时刻复核。
+		var except *string
+		sources, sourceErr := s.requireSessionAuthenticationIdentities(ctx, q, sess)
+		if sourceErr != nil {
+			return sourceErr
+		}
+		independent := true
+		for _, source := range sources {
+			if source.IdentityID == old.ID {
+				independent = false
+			}
+		}
+		if independent {
+			except = &p.SessionID
+		}
 		decisionTime := s.now()
 		now := sessionTime(decisionTime)
 		if !sessionActiveAt(sess, now) {
 			return ErrInvalidToken
 		}
-		if authErr := s.replacementRecentAuth(p, decisionTime); authErr != nil {
+		if authErr := s.sensitiveRecentAuth(p, decisionTime); authErr != nil {
 			return authErr
 		}
 		n, deleteErr := q.SoftDeleteIdentity(ctx, db.SoftDeleteIdentityParams{ID: identityID, UserID: p.UserID, Now: now})
@@ -131,7 +148,7 @@ func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID s
 			return fmt.Errorf("user: create replacement identity: %w", createErr)
 		}
 		info = identityInfoFrom(row)
-		revoked, lockErr = s.revokeAllForUser(ctx, q, p.UserID, &p.SessionID, enum.RevokeIdentityReplaced, now)
+		revoked, lockErr = s.revokeAllForUser(ctx, q, p.UserID, except, enum.RevokeIdentityReplaced, now)
 		return lockErr
 	})
 	if err != nil {
@@ -149,7 +166,7 @@ func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID s
 	return info, nil
 }
 
-func (s *Service) replacementRecentAuth(p Principal, now time.Time) error {
+func (s *Service) sensitiveRecentAuth(p Principal, now time.Time) error {
 	if *s.d.SensitiveOpVerification && (p.AuthTime.IsZero() || now.Sub(p.AuthTime) > s.d.ReauthMaxAge) {
 		return ErrReauthenticationRequired
 	}

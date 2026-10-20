@@ -69,7 +69,39 @@ func (s *Service) sendBindCode(ctx context.Context, p Principal, channel enum.Id
 	return s.sendCode(ctx, channel, enum.PurposeBind, norm, code.Binding{UserID: p.UserID}, meta)
 }
 
+// anchorSubject 是一次锚点 subject 互斥所需的类型与归一化值。
+type anchorSubject struct {
+	kind enum.IdentityKind
+	norm string
+}
+
+// lockAnchorSubjects 在事务内对锚点 subject 的全部摘要版本加事务级 advisory lock，
+// 使可能新建该 subject 身份的事务串行化：唯一索引只约束单个摘要值，密钥轮换的混合
+// active 期间不同进程会写入不同版本的摘要。锁序：subject 锁在任何行锁之前取得，
+// 全部键在同一条语句内按升序加锁；之后才是用户行 → 身份/会话行。
+func (s *Service) lockAnchorSubjects(ctx context.Context, q *db.Queries, subjects ...anchorSubject) error {
+	var kinds []int16
+	var digests []string
+	for _, subject := range subjects {
+		if !subject.kind.IsChannel() {
+			continue
+		}
+		for _, digest := range s.d.Digester.AllDigests(subject.norm) {
+			kinds = append(kinds, int16(subject.kind))
+			digests = append(digests, digest)
+		}
+	}
+	if len(digests) == 0 {
+		return nil
+	}
+	if err := q.LockAnchorSubjects(ctx, db.LockAnchorSubjectsParams{Kinds: kinds, Digests: digests}); err != nil {
+		return fmt.Errorf("user: lock anchor subjects: %w", err)
+	}
+	return nil
+}
+
 // createAnchorIdentity 创建 PHONE/EMAIL 身份行：digest + 密文 + hint，均带密钥版本。
+// 调用方须已在同一事务内对该 subject 调用 lockAnchorSubjects。
 func (s *Service) createAnchorIdentity(ctx context.Context, q *db.Queries, userID string, kind enum.IdentityKind, norm, hintPrefix, hintSuffix string) (db.Identity, error) {
 	iid, err := ids.New(ids.Identity)
 	if err != nil {
@@ -154,7 +186,10 @@ func (s *Service) BindWithCode(ctx context.Context, p Principal, cred CodeCreden
 	}
 	var info IdentityInfo
 	var created bool
-	err = s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+	err = s.d.Repo.withDomainTx(ctx, func(q *db.Queries) error {
+		if err := s.lockAnchorSubjects(ctx, q, anchorSubject{channel, norm}); err != nil {
+			return err
+		}
 		_, idents, err := s.bindGuard(ctx, q, p.UserID)
 		if err != nil {
 			return err
@@ -250,7 +285,7 @@ func (s *Service) BindWithIdp(ctx context.Context, p Principal, cred IdpCredenti
 	now := s.now()
 	var info IdentityInfo
 	var created bool
-	err = s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+	err = s.d.Repo.withDomainTx(ctx, func(q *db.Queries) error {
 		_, idents, err := s.bindGuard(ctx, q, p.UserID)
 		if err != nil {
 			return err
@@ -303,15 +338,44 @@ func (s *Service) UnbindIdentity(ctx context.Context, p Principal, identityID st
 	if !ids.Valid(ids.Identity, identityID) {
 		return fmt.Errorf("%w: malformed identity id", ErrInvalidArgument)
 	}
-	now := s.now()
+	if !ids.Valid(ids.User, p.UserID) || !ids.Valid(ids.Session, p.SessionID) {
+		return ErrInvalidToken
+	}
+	if p.Scope != ScopeUser {
+		return ErrInsufficientScope
+	}
+	if err := s.sensitiveRecentAuth(p, s.now()); err != nil {
+		return err
+	}
 	var target db.Identity
-	err := s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+	var revoked []string
+	err := s.d.Repo.withDomainTx(ctx, func(q *db.Queries) error {
 		u, err := lockUser(ctx, q, p.UserID)
 		if err != nil {
 			return err
 		}
 		if err := accountMayAct(u); err != nil {
 			return err
+		}
+		sess, err := q.LockSessionByID(ctx, p.SessionID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrInvalidToken
+		}
+		if err != nil {
+			return fmt.Errorf("user: lock unbind session: %w", err)
+		}
+		if sess.UserID != p.UserID || !sessionActiveAt(sess, sessionTime(s.now())) {
+			return ErrInvalidToken
+		}
+		if _, err := s.requireSessionAuthenticationIdentities(ctx, q, sess); err != nil {
+			return err
+		}
+		missingSources, err := q.HasSessionsWithoutAuthenticationIdentities(ctx, p.UserID)
+		if err != nil {
+			return fmt.Errorf("user: check authentication source integrity: %w", err)
+		}
+		if missingSources {
+			return fmt.Errorf("user: invariant violated: unrevoked session has empty authentication identities")
 		}
 		row, err := q.GetActiveIdentityByIDAndUser(ctx, db.GetActiveIdentityByIDAndUserParams{ID: identityID, UserID: p.UserID})
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -334,6 +398,14 @@ func (s *Service) UnbindIdentity(ctx context.Context, p Principal, identityID st
 		if !s.identitiesComplete(idents) || !s.identitiesComplete(remaining) {
 			return ErrLastAnchor
 		}
+		decisionTime := s.now()
+		now := sessionTime(decisionTime)
+		if !sessionActiveAt(sess, now) {
+			return ErrInvalidToken
+		}
+		if err := s.sensitiveRecentAuth(p, decisionTime); err != nil {
+			return err
+		}
 		n, err := q.SoftDeleteIdentity(ctx, db.SoftDeleteIdentityParams{ID: identityID, UserID: p.UserID, Now: now})
 		if err != nil {
 			return fmt.Errorf("user: soft delete identity: %w", err)
@@ -341,11 +413,17 @@ func (s *Service) UnbindIdentity(ctx context.Context, p Principal, identityID st
 		if n == 0 {
 			return ErrNotFound // 并发解绑
 		}
+		reason := enum.RevokeIdentityUnbound
+		revoked, err = q.RevokeSessionsByIdentity(ctx, db.RevokeSessionsByIdentityParams{UserID: p.UserID, IdentityID: identityID, Now: now, Reason: &reason})
+		if err != nil {
+			return fmt.Errorf("user: revoke identity sessions: %w", err)
+		}
 		return nil
 	})
 	if err != nil {
 		return err
 	}
+	s.afterRevokeAll(ctx, revoked, enum.RevokeIdentityUnbound, userEvent(p, meta))
 	hint := ""
 	switch {
 	case target.SubjectDigest != nil:

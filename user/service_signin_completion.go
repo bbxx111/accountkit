@@ -28,6 +28,17 @@ func (s *Service) findProof(ctx context.Context, q *db.Queries, p completionProo
 	return q.FindActiveIdentityByProviderSubject(ctx, db.FindActiveIdentityByProviderSubjectParams{Kind: p.Kind, ProviderSubject: &p.Provider.Subject})
 }
 
+// lockProofSubjects 对证明中的 PHONE/EMAIL subject 加互斥锁，第三方证明不参与。
+func (s *Service) lockProofSubjects(ctx context.Context, q *db.Queries, proofs ...completionProof) error {
+	subjects := make([]anchorSubject, 0, len(proofs))
+	for _, p := range proofs {
+		if p.Kind.IsChannel() {
+			subjects = append(subjects, anchorSubject{p.Kind, p.Target})
+		}
+	}
+	return s.lockAnchorSubjects(ctx, q, subjects...)
+}
+
 func (s *Service) createProofIdentity(ctx context.Context, q *db.Queries, uid string, p completionProof) (db.Identity, error) {
 	if p.Kind.IsChannel() {
 		norm, prefix, suffix, err := s.normalizeTarget(p.Kind, p.Target)
@@ -51,8 +62,12 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 	err := s.withRetryOnUnique(ctx, func(q *db.Queries) error {
 		result = SignInResult{}
 		replaced = nil
+		if err := s.lockProofSubjects(ctx, q, proof); err != nil {
+			return err
+		}
 		found, err := s.findProof(ctx, q, proof)
 		var u db.UserAccount
+		var authenticationIdentityID string
 		isNew := false
 		switch {
 		case err == nil:
@@ -73,6 +88,7 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 			}
 			ev.VerifiedSubject = true
 			ev.IdentityID = current.ID
+			authenticationIdentityID = current.ID
 			if !proof.Kind.IsChannel() {
 				if u.State == enum.UserPendingDeletion {
 					return ErrUserPendingDeletion
@@ -83,7 +99,7 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 			}
 		case errors.Is(err, pgx.ErrNoRows):
 			if !s.policy.Complete([]enum.IdentityKind{proof.Kind}) {
-				result, ev.FlowID, err = s.createPending(ctx, q, proof, expiry, dev)
+				result, ev.FlowID, err = s.createPending(ctx, q, proof, expiry, dev, meta.ClientInfo)
 				return err
 			}
 			uid, e := ids.New(ids.User)
@@ -94,9 +110,11 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 			if err != nil {
 				return err
 			}
-			if _, err = s.createProofIdentity(ctx, q, uid, proof); err != nil {
-				return err
+			created, e := s.createProofIdentity(ctx, q, uid, proof)
+			if e != nil {
+				return e
 			}
+			authenticationIdentityID = created.ID
 			isNew = true
 		default:
 			return err
@@ -105,8 +123,12 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 		if err != nil {
 			return err
 		}
-		sess, pair, rep, err := s.establishSession(ctx, q, u, complete, dev, s.now())
+		now := s.now()
+		sess, pair, rep, err := s.establishSession(ctx, q, u, complete, []string{authenticationIdentityID}, dev, now)
 		if err != nil {
+			return err
+		}
+		if err := s.initializeSessionClientInfo(ctx, q, sess, meta.ClientInfo, now, now); err != nil {
 			return err
 		}
 		pair.IsNewUser = isNew
@@ -170,6 +192,11 @@ func (s *Service) sendSignInCompletionCode(ctx context.Context, token string, ch
 
 // completeSignIn 先持久化成功证明，再由独立事务完成账号、身份与会话。
 func (s *Service) completeSignIn(ctx context.Context, token string, cred CodeCredential, dev Device, meta Meta) (result SignInResult, err error) {
+	normalizedClientInfo, clientInfoErr := NormalizeClientInfo(meta.ClientInfo)
+	if clientInfoErr != nil {
+		return SignInResult{}, clientInfoErr
+	}
+	meta.ClientInfo = normalizedClientInfo
 	var flowID string
 	defer func() {
 		err = flowStorageError(err)
@@ -310,7 +337,7 @@ func (s *Service) persistCompletionProof(ctx context.Context, row db.SignInCompl
 	locks := p
 	locks.Proofs = append(slices.Clone(p.Proofs), proof)
 	persisted := false
-	err = s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+	err = s.d.Repo.withDomainTx(ctx, func(q *db.Queries) error {
 		owners, e := s.lockProofOwners(ctx, q, locks)
 		if e != nil {
 			return e
@@ -420,7 +447,12 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.SignI
 	var bound []db.Identity
 	var event audit.AuthenticationEvent
 	committed := false
-	err := s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+	err := s.d.Repo.withDomainTx(ctx, func(q *db.Queries) error {
+		// Anchor subjects precede owner and flow row locks; the revision check below
+		// rejects any proof set that differs from the one locked here.
+		if err := s.lockProofSubjects(ctx, q, p.Proofs...); err != nil {
+			return err
+		}
 		owners, err := s.lockProofOwners(ctx, q, p)
 		if err != nil {
 			return err
@@ -487,8 +519,10 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.SignI
 		if err != nil {
 			return err
 		}
+		var authenticationIdentityIDs []string
 		for _, proof := range fp.Proofs {
 			if proof.UserID != "" {
+				authenticationIdentityIDs = append(authenticationIdentityIDs, proof.IdentityID)
 				if proof.Provider != nil {
 					existing, e := s.findProof(ctx, q, proof)
 					if e != nil {
@@ -508,12 +542,22 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.SignI
 				return e
 			}
 			idents = append(idents, created)
+			authenticationIdentityIDs = append(authenticationIdentityIDs, created.ID)
 			bound = append(bound, created)
 		}
 		now := s.now()
-		sess, pair, rep, err := s.establishSession(ctx, q, u, s.identitiesComplete(idents), fp.Device, now)
+		sess, pair, rep, err := s.establishSession(ctx, q, u, s.identitiesComplete(idents), authenticationIdentityIDs, fp.Device, now)
 		if err != nil {
 			return err
+		}
+		if meta.ClientInfo != nil {
+			if err := s.updateSessionClientInfo(ctx, q, sess, meta.ClientInfo, now); err != nil {
+				return err
+			}
+		} else if fp.InitialClientInfo != nil && fp.InitialClientInfoObserveTime != nil {
+			if err := s.initializeSessionClientInfo(ctx, q, sess, fp.InitialClientInfo, *fp.InitialClientInfoObserveTime, now); err != nil {
+				return err
+			}
 		}
 		pair.IsNewUser = isNew
 		if fp.Proofs[0].Provider != nil {

@@ -108,6 +108,20 @@ SELECT * FROM identity
 WHERE kind = @kind AND subject_digest = ANY(@digests::text[]) AND delete_time IS NULL
 LIMIT 1;
 
+-- name: LockAnchorSubjects :exec
+-- 锚点 subject 的事务级互斥：唯一索引只约束单个摘要值，密钥轮换的混合 active 期间
+-- 不同进程会为同一 subject 写入不同版本的摘要。调用方按 (kind, digest) 平行数组传入
+-- 每个 subject 的 AllDigests 全部版本；所有进程持有相同完整密钥集合，因此锁键集合一致。
+-- 键绑定到实际解析的 identity 关系，不依赖 search_path 首位 schema 名；哈希碰撞只会多串行化。
+-- 一次往返内按键升序加锁：目标列含易变函数时，规划器在 Sort 之后才求值目标列
+-- （TestLockAnchorSubjectsLocksAfterSort 固定这一计划形状）。
+WITH keys AS (
+ SELECT DISTINCT hashtextextended(jsonb_build_array(
+  'accountkit.identity.subject', 'identity'::regclass::oid, (@kinds::smallint[])[d.n], d.digest)::text, 0)::bigint AS lock_key
+ FROM unnest(@digests::text[]) WITH ORDINALITY AS d(digest, n)
+)
+SELECT pg_advisory_xact_lock(lock_key) FROM keys ORDER BY lock_key;
+
 -- name: ListActiveIdentitiesByUser :many
 SELECT * FROM identity WHERE user_id = $1 AND delete_time IS NULL ORDER BY create_time, id;
 
@@ -140,7 +154,7 @@ SET subject_digest     = CASE WHEN subject_digest   IS NULL THEN NULL ELSE @repl
 WHERE id = @id AND user_id = @user_id;
 
 -- name: ListIdentitiesByDigestKeyVersion :many
--- 维护任务 rekey_digests：仍用旧 HMAC 版本的活跃锚点身份；命中 idx_identity_digest_key_version。
+-- 维护任务 rekey_digests：仍用旧 HMAC 版本的活跃锚点身份；按 idx_identity_digest_key_version_create_time_id 索引序取批。
 SELECT * FROM identity
 WHERE delete_time IS NULL AND digest_key_version = @version::smallint
 ORDER BY create_time, id
@@ -153,7 +167,7 @@ SET subject_digest = @digest::text, digest_key_version = @version::smallint, upd
 WHERE id = @id AND digest_key_version = @old_version::smallint AND delete_time IS NULL;
 
 -- name: ListIdentitiesByCipherKeyVersion :many
--- 维护任务 reencrypt_subjects：仍用旧加密版本的活跃锚点身份；命中 idx_identity_cipher_key_version。
+-- 维护任务 reencrypt_subjects：仍用旧加密版本的活跃锚点身份；按 idx_identity_cipher_key_version_create_time_id 索引序取批。
 SELECT * FROM identity
 WHERE delete_time IS NULL AND cipher_key_version = @version::smallint
 ORDER BY create_time, id
@@ -232,18 +246,34 @@ UPDATE session SET auth_time = @auth_time, update_time = @auth_time
 WHERE id = @id AND revoke_time IS NULL AND refresh_expire_time > @auth_time::timestamptz;
 
 -- name: DeleteStaleSessions :execrows
--- 维护任务 cleanup_sessions：物理删除吊销/过期超过保留期的会话；子查询限批，避免单事务锁太多行。
--- 两个 OR 分支分别命中 idx_session_revoke_time / idx_session_refresh_expire_time。
-DELETE FROM session
-WHERE id IN (
-    SELECT id FROM session
-    WHERE (revoke_time IS NOT NULL AND revoke_time < @before::timestamptz)
-       OR (revoke_time IS NULL AND refresh_expire_time < @before::timestamptz)
-    LIMIT @batch_size::int
-);
+-- Lock a bounded batch before deleting context and parents atomically. Retention
+-- is based on the original revoke/expiry time, never on snapshot observations.
+-- Candidates come from the two retention partial indexes, so sparse stale rows do not
+-- force a primary-key walk. Rows held by an in-flight refresh or revocation are skipped
+-- for a later round; the locked re-read rechecks the retention condition.
+WITH candidates AS MATERIALIZED (
+ (SELECT id FROM session WHERE revoke_time IS NOT NULL AND revoke_time < @before::timestamptz
+  ORDER BY revoke_time LIMIT @batch_size::int)
+ UNION
+ (SELECT id FROM session WHERE revoke_time IS NULL AND refresh_expire_time < @before::timestamptz
+  ORDER BY refresh_expire_time LIMIT @batch_size::int)
+), targets AS MATERIALIZED (
+ SELECT s.id FROM session s
+ WHERE s.id IN (SELECT id FROM candidates)
+   AND ((s.revoke_time IS NOT NULL AND s.revoke_time < @before::timestamptz)
+     OR (s.revoke_time IS NULL AND s.refresh_expire_time < @before::timestamptz))
+ ORDER BY s.id LIMIT @batch_size::int FOR UPDATE OF s SKIP LOCKED
+), removed_identities AS (
+ DELETE FROM session_authentication_identity WHERE session_id IN (SELECT id FROM targets)
+ RETURNING session_id
+), removed_snapshots AS (
+ DELETE FROM session_client_info WHERE session_id IN (SELECT id FROM targets)
+ RETURNING session_id
+)
+DELETE FROM session WHERE id IN (SELECT id FROM targets);
 
 -- name: CountActiveSessionsByUser :one
--- 管理端用户详情：活跃会话数；命中 idx_session_user_id。
+-- 管理端用户详情：活跃会话数；命中 uk_session_user_id_device_id（首列 user_id，谓词 revoke_time IS NULL）。
 SELECT count(*) FROM session
 WHERE user_id = @user_id AND revoke_time IS NULL AND refresh_expire_time > @now::timestamptz;
 
@@ -411,3 +441,88 @@ WITH user_events AS MATERIALIZED (
 )
 SELECT e.id FROM audit_event e JOIN cleanup_ids c ON c.id = e.id
 ORDER BY e.id FOR UPDATE OF e;
+
+-- session authentication context
+
+-- name: LockCurrentSessionForRead :one
+-- Pair with the session row lock used by all context writers in one transaction.
+SELECT * FROM session WHERE user_id = @user_id AND id = @session_id FOR SHARE;
+
+-- name: ListSessionAuthenticationIdentities :many
+SELECT a.identity_id, i.kind
+FROM session_authentication_identity a
+JOIN session s ON s.id = a.session_id
+JOIN identity i ON i.id = a.identity_id AND i.user_id = s.user_id
+WHERE s.user_id = @user_id AND s.id = @session_id
+ORDER BY a.identity_id;
+
+-- name: AddSessionAuthenticationIdentity :execrows
+-- The service holds the user/session locks and validates enabled identity kinds.
+INSERT INTO session_authentication_identity(session_id, identity_id)
+SELECT s.id, i.id FROM session s
+JOIN identity i ON i.user_id = s.user_id
+WHERE s.user_id = @user_id AND s.id = @session_id AND s.revoke_time IS NULL
+ AND i.id = @identity_id AND i.delete_time IS NULL
+ON CONFLICT (session_id, identity_id) DO NOTHING;
+
+-- name: DeleteSessionAuthenticationIdentities :execrows
+DELETE FROM session_authentication_identity a USING session s
+WHERE a.session_id = s.id AND s.user_id = @user_id AND s.id = @session_id;
+
+-- name: RevokeSessionsByIdentity :many
+-- Include refresh-expired sessions with this exact source; lock in stable ID order.
+WITH targets AS MATERIALIZED (
+ SELECT s.id FROM session s
+ WHERE s.user_id = @user_id AND s.revoke_time IS NULL
+ AND EXISTS (
+  SELECT 1 FROM session_authentication_identity a WHERE a.session_id = s.id AND a.identity_id = @identity_id)
+ ORDER BY s.id FOR UPDATE
+)
+UPDATE session s SET revoke_time = @now::timestamptz, revoke_reason = @reason, update_time = @now::timestamptz
+FROM targets t WHERE s.id = t.id AND s.user_id = @user_id AND s.revoke_time IS NULL
+RETURNING s.id;
+
+-- name: HasSessionsWithoutAuthenticationIdentities :one
+-- Caller holds the user lock; source writers use the same user-before-session order.
+SELECT EXISTS (
+ SELECT 1 FROM session s WHERE s.user_id = $1 AND s.revoke_time IS NULL
+ AND NOT EXISTS (
+  SELECT 1 FROM session_authentication_identity a
+  JOIN identity i ON i.id = a.identity_id AND i.user_id = s.user_id AND i.delete_time IS NULL
+  WHERE a.session_id = s.id
+ )
+);
+
+-- name: UpsertSessionClientInfo :execrows
+-- Supply one validated observation; replace the full document, retaining create_time.
+INSERT INTO session_client_info(session_id, client_info, observe_time, create_time, update_time)
+SELECT s.id, @client_info::jsonb, @observe_time::timestamptz, @now::timestamptz, @now::timestamptz
+FROM session s WHERE s.user_id = @user_id AND s.id = @session_id AND s.revoke_time IS NULL
+ON CONFLICT (session_id) DO UPDATE SET client_info = EXCLUDED.client_info,
+ observe_time = EXCLUDED.observe_time, update_time = EXCLUDED.update_time;
+
+-- name: GetSessionClientInfo :one
+SELECT c.* FROM session_client_info c JOIN session s ON s.id = c.session_id
+WHERE s.user_id = @user_id AND s.id = @session_id;
+
+-- name: ListSessionClientInfosByUser :many
+-- Limit batch enrichment to the session IDs already selected by the caller.
+SELECT c.* FROM session_client_info c JOIN session s ON s.id = c.session_id
+WHERE s.user_id = @user_id AND s.id = ANY(@session_ids::text[])
+ORDER BY c.session_id;
+
+-- name: DeleteSessionContextByUser :execrows
+-- Caller must hold the user lock AND locks on ALL associated sessions, including
+-- historical sessions, in the same transaction before deleting context. Refresh
+-- locks only its session, so a user lock alone cannot prevent context recreation.
+WITH removed_identities AS (
+ DELETE FROM session_authentication_identity a USING session s
+ WHERE a.session_id = s.id AND s.user_id = @user_id RETURNING a.session_id
+)
+DELETE FROM session_client_info c USING session s
+WHERE c.session_id = s.id AND s.user_id = @user_id;
+
+-- name: LockSessionsForUserContextCleanup :many
+-- Lock historical and current sessions in the same order as revocation, before
+-- removing context. Refresh holds a session lock without acquiring a user lock.
+SELECT id FROM session WHERE user_id = @user_id ORDER BY id FOR UPDATE;

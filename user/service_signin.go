@@ -122,6 +122,11 @@ func codeFailure(err error) (string, error) {
 
 // signInWithCode 验证码登录；未知身份按策略直接注册或返回待补全结果。
 func (s *Service) signInWithCode(ctx context.Context, cred CodeCredential, dev Device, meta Meta) (SignInResult, error) {
+	normalizedClientInfo, clientInfoErr := NormalizeClientInfo(meta.ClientInfo)
+	if clientInfoErr != nil {
+		return SignInResult{}, clientInfoErr
+	}
+	meta.ClientInfo = normalizedClientInfo
 	if err := validateCodeCredential(cred); err != nil {
 		return SignInResult{}, err
 	}

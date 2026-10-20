@@ -414,3 +414,16 @@ func TestAuthenticationLegacyAdminForbiddenPreservesResources(t *testing.T) {
 		})
 	}
 }
+
+func TestIdentityUnboundRevocationReasonRoundtrip(t *testing.T) {
+	in := fixture(enum.EventSessionRevoked)
+	in.Reason = enum.RevokeIdentityUnbound.String()
+	mapped, err := Map(in, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected, err := Projection(mapped)
+	if err != nil || projected.Reason != "IDENTITY_UNBOUND" || projected.SessionID != in.SessionID || projected.UserID != in.UserID || projected.Type != in.Type {
+		t.Fatalf("unbind revoke mapping %+v %v", projected, err)
+	}
+}

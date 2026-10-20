@@ -47,12 +47,14 @@ type completionProof struct {
 }
 
 type completionPayload struct {
-	Device           Device
-	Proofs           []completionProof
-	Requests         []string
-	FinalRequest     string
-	Result           *TokenResult
-	AccessExpireTime time.Time
+	InitialClientInfo            *ClientInfo `json:",omitempty"`
+	InitialClientInfoObserveTime *time.Time  `json:",omitempty"`
+	Device                       Device
+	Proofs                       []completionProof
+	Requests                     []string
+	FinalRequest                 string
+	Result                       *TokenResult
+	AccessExpireTime             time.Time
 }
 
 func fingerprintJSON(v any) string {
@@ -148,7 +150,7 @@ func (s *Service) pendingResult(token string, expiry time.Time) SignInResult {
 	return SignInResult{Pending: &PendingSignIn{SignInCompletionToken: token, ExpireTime: expiry, EnabledIdentityKinds: s.policy.EnabledKinds(), RequiredIdentityKinds: s.policy.RequiredKinds()}}
 }
 
-func (s *Service) createPending(ctx context.Context, q *db.Queries, proof completionProof, expiry time.Time, dev Device) (SignInResult, string, error) {
+func (s *Service) createPending(ctx context.Context, q *db.Queries, proof completionProof, expiry time.Time, dev Device, info *ClientInfo) (SignInResult, string, error) {
 	now := s.now()
 	deadline := now.Add(signInCompletionTTL)
 	if !expiry.IsZero() && expiry.Before(deadline) {
@@ -166,6 +168,14 @@ func (s *Service) createPending(ctx context.Context, q *db.Queries, proof comple
 		return SignInResult{}, "", err
 	}
 	p := completionPayload{Device: dev, Proofs: []completionProof{proof}}
+	snapshot, err := NormalizeClientInfo(info)
+	if err != nil {
+		return SignInResult{}, "", err
+	}
+	if snapshot != nil {
+		p.InitialClientInfo = snapshot
+		p.InitialClientInfoObserveTime = &now
+	}
 	ct, version, err := s.encodeFlow(id, p)
 	if err != nil {
 		return SignInResult{}, "", err

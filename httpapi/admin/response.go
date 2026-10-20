@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -90,11 +91,13 @@ type revealResource struct {
 }
 
 type sessionResource struct {
-	Name         string `json:"name"`
-	DeviceID     string `json:"device_id"`
-	DeviceName   string `json:"device_name"`
-	CreateTime   string `json:"create_time"`
-	LastUsedTime string `json:"last_used_time"`
+	ClientInfo           *clientInfoResource `json:"client_info,omitempty"`
+	ClientInfoUpdateTime *string             `json:"client_info_update_time,omitempty"`
+	Name                 string              `json:"name"`
+	DeviceID             string              `json:"device_id"`
+	DeviceName           string              `json:"device_name"`
+	CreateTime           string              `json:"create_time"`
+	LastUsedTime         string              `json:"last_used_time"`
 }
 
 type sessionList struct {
@@ -173,4 +176,61 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, r *http.Request, err 
 	default:
 		apierror.WriteInternal(w, h.d.Logger, reqid.From(r.Context()), err)
 	}
+}
+
+// clientInfoResource 显式定义嵌套客户端描述；两面各自维护 DTO。
+type clientInfoResource struct {
+	Type       string                     `json:"type,omitempty"`
+	OS         *clientSoftwareResource    `json:"os,omitempty"`
+	Device     *clientDeviceResource      `json:"device,omitempty"`
+	App        *clientAppResource         `json:"app,omitempty"`
+	Browser    *clientSoftwareResource    `json:"browser,omitempty"`
+	Extensions map[string]json.RawMessage `json:"extensions,omitempty"`
+}
+
+type clientSoftwareResource struct {
+	Name    string `json:"name,omitempty"`
+	Version string `json:"version,omitempty"`
+}
+type clientAppResource struct {
+	Name    string `json:"name,omitempty"`
+	Version string `json:"version,omitempty"`
+	Build   string `json:"build,omitempty"`
+}
+type clientDeviceResource struct {
+	Type         string `json:"type,omitempty"`
+	Manufacturer string `json:"manufacturer,omitempty"`
+	Model        string `json:"model,omitempty"`
+}
+
+func newClientInfoResource(info *user.ClientInfo) *clientInfoResource {
+	if info == nil {
+		return nil
+	}
+	out := &clientInfoResource{}
+	if info.ClientType.Valid() {
+		out.Type = info.ClientType.String()
+	}
+	if info.OSName != "" || info.OSVersion != "" {
+		out.OS = &clientSoftwareResource{Name: info.OSName, Version: info.OSVersion}
+	}
+	if info.BrowserName != "" || info.BrowserVersion != "" {
+		out.Browser = &clientSoftwareResource{Name: info.BrowserName, Version: info.BrowserVersion}
+	}
+	if info.AppName != "" || info.AppVersion != "" || info.AppBuild != "" {
+		out.App = &clientAppResource{Name: info.AppName, Version: info.AppVersion, Build: info.AppBuild}
+	}
+	if info.DeviceType.Valid() || info.DeviceManufacturer != "" || info.DeviceModel != "" {
+		out.Device = &clientDeviceResource{Manufacturer: info.DeviceManufacturer, Model: info.DeviceModel}
+		if info.DeviceType.Valid() {
+			out.Device.Type = info.DeviceType.String()
+		}
+	}
+	if len(info.Extensions) > 0 {
+		out.Extensions = make(map[string]json.RawMessage, len(info.Extensions))
+		for k, v := range info.Extensions {
+			out.Extensions[k] = append(json.RawMessage(nil), v...)
+		}
+	}
+	return out
 }

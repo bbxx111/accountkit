@@ -148,6 +148,11 @@ func TestIdentityPolicyUnbindPreservesCurrentRequirements(t *testing.T) {
 				setIdentityPolicy(t, f, []enum.IdentityKind{enum.IdentityPhone, enum.IdentityEmail, enum.IdentityWeChat}, []enum.IdentityKind{enum.IdentityEmail})
 			case "last-provider":
 				setIdentityPolicy(t, f, []enum.IdentityKind{enum.IdentityWeChat}, []enum.IdentityKind{})
+				provider, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:policy@o"}, user.Device{ID: "policy-provider"}, meta1)
+				if err != nil {
+					t.Fatal(err)
+				}
+				p = principalOf(t, f, requireSignInTokens(t, provider))
 				if err := f.svc.UnbindIdentity(ctx, p, phoneID, meta1); err != nil {
 					t.Fatalf("remove disabled history: %v", err)
 				}
@@ -198,6 +203,7 @@ func TestIdentityPolicyReplacementAllowsEnabledNonRequiredKind(t *testing.T) {
 	f, p, iid, _ := replacementSetup(t, enum.IdentityPhone, phone1)
 	ctx := context.Background()
 	em := bindPolicyIdentity(t, f, p, enum.IdentityEmail, email1)
+	p = contextReauthenticate(t, f, p, enum.IdentityEmail, email1)
 	setIdentityPolicy(t, f, []enum.IdentityKind{enum.IdentityPhone, enum.IdentityEmail, enum.IdentityWeChat}, []enum.IdentityKind{enum.IdentityEmail})
 	plain := replacementCode(t, f, p, enum.IdentityPhone, phone2)
 	out, err := f.svc.ReplaceIdentity(ctx, p, iid, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, plain), meta1)

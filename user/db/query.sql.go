@@ -13,6 +13,30 @@ import (
 	"github.com/google/uuid"
 )
 
+const addSessionAuthenticationIdentity = `-- name: AddSessionAuthenticationIdentity :execrows
+INSERT INTO session_authentication_identity(session_id, identity_id)
+SELECT s.id, i.id FROM session s
+JOIN identity i ON i.user_id = s.user_id
+WHERE s.user_id = $1 AND s.id = $2 AND s.revoke_time IS NULL
+ AND i.id = $3 AND i.delete_time IS NULL
+ON CONFLICT (session_id, identity_id) DO NOTHING
+`
+
+type AddSessionAuthenticationIdentityParams struct {
+	UserID     string
+	SessionID  string
+	IdentityID string
+}
+
+// The service holds the user/session locks and validates enabled identity kinds.
+func (q *Queries) AddSessionAuthenticationIdentity(ctx context.Context, arg AddSessionAuthenticationIdentityParams) (int64, error) {
+	result, err := q.db.Exec(ctx, addSessionAuthenticationIdentity, arg.UserID, arg.SessionID, arg.IdentityID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const anonymizeIdentity = `-- name: AnonymizeIdentity :execrows
 UPDATE identity
 SET subject_digest     = CASE WHEN subject_digest   IS NULL THEN NULL ELSE $1::text END,
@@ -154,7 +178,7 @@ type CountActiveSessionsByUserParams struct {
 	Now    time.Time
 }
 
-// 管理端用户详情：活跃会话数；命中 idx_session_user_id。
+// 管理端用户详情：活跃会话数；命中 uk_session_user_id_device_id（首列 user_id，谓词 revoke_time IS NULL）。
 func (q *Queries) CountActiveSessionsByUser(ctx context.Context, arg CountActiveSessionsByUserParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countActiveSessionsByUser, arg.UserID, arg.Now)
 	var count int64
@@ -378,6 +402,44 @@ func (q *Queries) DeleteExpiredSignInCompletionFlows(ctx context.Context, arg De
 	return result.RowsAffected(), nil
 }
 
+const deleteSessionAuthenticationIdentities = `-- name: DeleteSessionAuthenticationIdentities :execrows
+DELETE FROM session_authentication_identity a USING session s
+WHERE a.session_id = s.id AND s.user_id = $1 AND s.id = $2
+`
+
+type DeleteSessionAuthenticationIdentitiesParams struct {
+	UserID    string
+	SessionID string
+}
+
+func (q *Queries) DeleteSessionAuthenticationIdentities(ctx context.Context, arg DeleteSessionAuthenticationIdentitiesParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteSessionAuthenticationIdentities, arg.UserID, arg.SessionID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteSessionContextByUser = `-- name: DeleteSessionContextByUser :execrows
+WITH removed_identities AS (
+ DELETE FROM session_authentication_identity a USING session s
+ WHERE a.session_id = s.id AND s.user_id = $1 RETURNING a.session_id
+)
+DELETE FROM session_client_info c USING session s
+WHERE c.session_id = s.id AND s.user_id = $1
+`
+
+// Caller must hold the user lock AND locks on ALL associated sessions, including
+// historical sessions, in the same transaction before deleting context. Refresh
+// locks only its session, so a user lock alone cannot prevent context recreation.
+func (q *Queries) DeleteSessionContextByUser(ctx context.Context, userID string) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteSessionContextByUser, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteSignInCompletionFlowsForUser = `-- name: DeleteSignInCompletionFlowsForUser :execrows
 WITH locked AS (
     SELECT id FROM sign_in_completion_flow
@@ -396,13 +458,26 @@ func (q *Queries) DeleteSignInCompletionFlowsForUser(ctx context.Context, userID
 }
 
 const deleteStaleSessions = `-- name: DeleteStaleSessions :execrows
-DELETE FROM session
-WHERE id IN (
-    SELECT id FROM session
-    WHERE (revoke_time IS NOT NULL AND revoke_time < $1::timestamptz)
-       OR (revoke_time IS NULL AND refresh_expire_time < $1::timestamptz)
-    LIMIT $2::int
+WITH candidates AS MATERIALIZED (
+ (SELECT id FROM session WHERE revoke_time IS NOT NULL AND revoke_time < $1::timestamptz
+  ORDER BY revoke_time LIMIT $2::int)
+ UNION
+ (SELECT id FROM session WHERE revoke_time IS NULL AND refresh_expire_time < $1::timestamptz
+  ORDER BY refresh_expire_time LIMIT $2::int)
+), targets AS MATERIALIZED (
+ SELECT s.id FROM session s
+ WHERE s.id IN (SELECT id FROM candidates)
+   AND ((s.revoke_time IS NOT NULL AND s.revoke_time < $1::timestamptz)
+     OR (s.revoke_time IS NULL AND s.refresh_expire_time < $1::timestamptz))
+ ORDER BY s.id LIMIT $2::int FOR UPDATE OF s SKIP LOCKED
+), removed_identities AS (
+ DELETE FROM session_authentication_identity WHERE session_id IN (SELECT id FROM targets)
+ RETURNING session_id
+), removed_snapshots AS (
+ DELETE FROM session_client_info WHERE session_id IN (SELECT id FROM targets)
+ RETURNING session_id
 )
+DELETE FROM session WHERE id IN (SELECT id FROM targets)
 `
 
 type DeleteStaleSessionsParams struct {
@@ -410,8 +485,11 @@ type DeleteStaleSessionsParams struct {
 	BatchSize int32
 }
 
-// 维护任务 cleanup_sessions：物理删除吊销/过期超过保留期的会话；子查询限批，避免单事务锁太多行。
-// 两个 OR 分支分别命中 idx_session_revoke_time / idx_session_refresh_expire_time。
+// Lock a bounded batch before deleting context and parents atomically. Retention
+// is based on the original revoke/expiry time, never on snapshot observations.
+// Candidates come from the two retention partial indexes, so sparse stale rows do not
+// force a primary-key walk. Rows held by an in-flight refresh or revocation are skipped
+// for a later round; the locked re-read rechecks the retention condition.
 func (q *Queries) DeleteStaleSessions(ctx context.Context, arg DeleteStaleSessionsParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteStaleSessions, arg.Before, arg.BatchSize)
 	if err != nil {
@@ -680,6 +758,29 @@ func (q *Queries) GetSessionByRefreshHash(ctx context.Context, refreshTokenHash 
 	return i, err
 }
 
+const getSessionClientInfo = `-- name: GetSessionClientInfo :one
+SELECT c.session_id, c.client_info, c.observe_time, c.create_time, c.update_time FROM session_client_info c JOIN session s ON s.id = c.session_id
+WHERE s.user_id = $1 AND s.id = $2
+`
+
+type GetSessionClientInfoParams struct {
+	UserID    string
+	SessionID string
+}
+
+func (q *Queries) GetSessionClientInfo(ctx context.Context, arg GetSessionClientInfoParams) (SessionClientInfo, error) {
+	row := q.db.QueryRow(ctx, getSessionClientInfo, arg.UserID, arg.SessionID)
+	var i SessionClientInfo
+	err := row.Scan(
+		&i.SessionID,
+		&i.ClientInfo,
+		&i.ObserveTime,
+		&i.CreateTime,
+		&i.UpdateTime,
+	)
+	return i, err
+}
+
 const getSignInCompletionFlowByTokenDigest = `-- name: GetSignInCompletionFlowByTokenDigest :one
 SELECT id, token_digest, state, policy_fingerprint, payload, cipher_version, revision, proof_user_ids, user_id, session_id, create_time, update_time, expire_time FROM sign_in_completion_flow WHERE token_digest = $1
 `
@@ -726,6 +827,25 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (UserAccount, erro
 		&i.UpdateTime,
 	)
 	return i, err
+}
+
+const hasSessionsWithoutAuthenticationIdentities = `-- name: HasSessionsWithoutAuthenticationIdentities :one
+SELECT EXISTS (
+ SELECT 1 FROM session s WHERE s.user_id = $1 AND s.revoke_time IS NULL
+ AND NOT EXISTS (
+  SELECT 1 FROM session_authentication_identity a
+  JOIN identity i ON i.id = a.identity_id AND i.user_id = s.user_id AND i.delete_time IS NULL
+  WHERE a.session_id = s.id
+ )
+)
+`
+
+// Caller holds the user lock; source writers use the same user-before-session order.
+func (q *Queries) HasSessionsWithoutAuthenticationIdentities(ctx context.Context, userID string) (bool, error) {
+	row := q.db.QueryRow(ctx, hasSessionsWithoutAuthenticationIdentities, userID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const importIdentity = `-- name: ImportIdentity :exec
@@ -949,7 +1069,7 @@ type ListIdentitiesByCipherKeyVersionParams struct {
 	BatchSize int32
 }
 
-// 维护任务 reencrypt_subjects：仍用旧加密版本的活跃锚点身份；命中 idx_identity_cipher_key_version。
+// 维护任务 reencrypt_subjects：仍用旧加密版本的活跃锚点身份；按 idx_identity_cipher_key_version_create_time_id 索引序取批。
 func (q *Queries) ListIdentitiesByCipherKeyVersion(ctx context.Context, arg ListIdentitiesByCipherKeyVersionParams) ([]Identity, error) {
 	rows, err := q.db.Query(ctx, listIdentitiesByCipherKeyVersion, arg.Version, arg.BatchSize)
 	if err != nil {
@@ -997,7 +1117,7 @@ type ListIdentitiesByDigestKeyVersionParams struct {
 	BatchSize int32
 }
 
-// 维护任务 rekey_digests：仍用旧 HMAC 版本的活跃锚点身份；命中 idx_identity_digest_key_version。
+// 维护任务 rekey_digests：仍用旧 HMAC 版本的活跃锚点身份；按 idx_identity_digest_key_version_create_time_id 索引序取批。
 func (q *Queries) ListIdentitiesByDigestKeyVersion(ctx context.Context, arg ListIdentitiesByDigestKeyVersionParams) ([]Identity, error) {
 	rows, err := q.db.Query(ctx, listIdentitiesByDigestKeyVersion, arg.Version, arg.BatchSize)
 	if err != nil {
@@ -1062,6 +1182,83 @@ func (q *Queries) ListIdentitiesByUserIncludingDeleted(ctx context.Context, user
 			&i.CreateTime,
 			&i.UpdateTime,
 			&i.DeleteTime,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSessionAuthenticationIdentities = `-- name: ListSessionAuthenticationIdentities :many
+SELECT a.identity_id, i.kind
+FROM session_authentication_identity a
+JOIN session s ON s.id = a.session_id
+JOIN identity i ON i.id = a.identity_id AND i.user_id = s.user_id
+WHERE s.user_id = $1 AND s.id = $2
+ORDER BY a.identity_id
+`
+
+type ListSessionAuthenticationIdentitiesParams struct {
+	UserID    string
+	SessionID string
+}
+
+type ListSessionAuthenticationIdentitiesRow struct {
+	IdentityID string
+	Kind       enum.IdentityKind
+}
+
+func (q *Queries) ListSessionAuthenticationIdentities(ctx context.Context, arg ListSessionAuthenticationIdentitiesParams) ([]ListSessionAuthenticationIdentitiesRow, error) {
+	rows, err := q.db.Query(ctx, listSessionAuthenticationIdentities, arg.UserID, arg.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSessionAuthenticationIdentitiesRow
+	for rows.Next() {
+		var i ListSessionAuthenticationIdentitiesRow
+		if err := rows.Scan(&i.IdentityID, &i.Kind); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSessionClientInfosByUser = `-- name: ListSessionClientInfosByUser :many
+SELECT c.session_id, c.client_info, c.observe_time, c.create_time, c.update_time FROM session_client_info c JOIN session s ON s.id = c.session_id
+WHERE s.user_id = $1 AND s.id = ANY($2::text[])
+ORDER BY c.session_id
+`
+
+type ListSessionClientInfosByUserParams struct {
+	UserID     string
+	SessionIds []string
+}
+
+// Limit batch enrichment to the session IDs already selected by the caller.
+func (q *Queries) ListSessionClientInfosByUser(ctx context.Context, arg ListSessionClientInfosByUserParams) ([]SessionClientInfo, error) {
+	rows, err := q.db.Query(ctx, listSessionClientInfosByUser, arg.UserID, arg.SessionIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SessionClientInfo
+	for rows.Next() {
+		var i SessionClientInfo
+		if err := rows.Scan(
+			&i.SessionID,
+			&i.ClientInfo,
+			&i.ObserveTime,
+			&i.CreateTime,
+			&i.UpdateTime,
 		); err != nil {
 			return nil, err
 		}
@@ -1193,6 +1390,31 @@ func (q *Queries) ListUsersDueForPurge(ctx context.Context, arg ListUsersDueForP
 	return items, nil
 }
 
+const lockAnchorSubjects = `-- name: LockAnchorSubjects :exec
+WITH keys AS (
+ SELECT DISTINCT hashtextextended(jsonb_build_array(
+  'accountkit.identity.subject', 'identity'::regclass::oid, ($1::smallint[])[d.n], d.digest)::text, 0)::bigint AS lock_key
+ FROM unnest($2::text[]) WITH ORDINALITY AS d(digest, n)
+)
+SELECT pg_advisory_xact_lock(lock_key) FROM keys ORDER BY lock_key
+`
+
+type LockAnchorSubjectsParams struct {
+	Kinds   []int16
+	Digests []string
+}
+
+// 锚点 subject 的事务级互斥：唯一索引只约束单个摘要值，密钥轮换的混合 active 期间
+// 不同进程会为同一 subject 写入不同版本的摘要。调用方按 (kind, digest) 平行数组传入
+// 每个 subject 的 AllDigests 全部版本；所有进程持有相同完整密钥集合，因此锁键集合一致。
+// 键绑定到实际解析的 identity 关系，不依赖 search_path 首位 schema 名；哈希碰撞只会多串行化。
+// 一次往返内按键升序加锁：目标列含易变函数时，规划器在 Sort 之后才求值目标列
+// （TestLockAnchorSubjectsLocksAfterSort 固定这一计划形状）。
+func (q *Queries) LockAnchorSubjects(ctx context.Context, arg LockAnchorSubjectsParams) error {
+	_, err := q.db.Exec(ctx, lockAnchorSubjects, arg.Kinds, arg.Digests)
+	return err
+}
+
 const lockAuditEventsForUserCleanup = `-- name: LockAuditEventsForUserCleanup :many
 WITH user_events AS MATERIALIZED (
  SELECT id, targets, context FROM audit_event
@@ -1255,6 +1477,40 @@ func (q *Queries) LockAuditEventsForUserCleanup(ctx context.Context, arg LockAud
 	return items, nil
 }
 
+const lockCurrentSessionForRead = `-- name: LockCurrentSessionForRead :one
+
+SELECT id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time FROM session WHERE user_id = $1 AND id = $2 FOR SHARE
+`
+
+type LockCurrentSessionForReadParams struct {
+	UserID    string
+	SessionID string
+}
+
+// session authentication context
+// Pair with the session row lock used by all context writers in one transaction.
+func (q *Queries) LockCurrentSessionForRead(ctx context.Context, arg LockCurrentSessionForReadParams) (Session, error) {
+	row := q.db.QueryRow(ctx, lockCurrentSessionForRead, arg.UserID, arg.SessionID)
+	var i Session
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.DeviceID,
+		&i.DeviceName,
+		&i.AuthTime,
+		&i.RefreshTokenHash,
+		&i.PreviousRefreshTokenHash,
+		&i.RotateTime,
+		&i.RefreshExpireTime,
+		&i.LastUsedTime,
+		&i.RevokeTime,
+		&i.RevokeReason,
+		&i.CreateTime,
+		&i.UpdateTime,
+	)
+	return i, err
+}
+
 const lockSessionByID = `-- name: LockSessionByID :one
 SELECT id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time FROM session WHERE id = $1 FOR UPDATE
 `
@@ -1280,6 +1536,32 @@ func (q *Queries) LockSessionByID(ctx context.Context, id string) (Session, erro
 		&i.UpdateTime,
 	)
 	return i, err
+}
+
+const lockSessionsForUserContextCleanup = `-- name: LockSessionsForUserContextCleanup :many
+SELECT id FROM session WHERE user_id = $1 ORDER BY id FOR UPDATE
+`
+
+// Lock historical and current sessions in the same order as revocation, before
+// removing context. Refresh holds a session lock without acquiring a user lock.
+func (q *Queries) LockSessionsForUserContextCleanup(ctx context.Context, userID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, lockSessionsForUserContextCleanup, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockSignInCompletionFlow = `-- name: LockSignInCompletionFlow :one
@@ -1430,6 +1712,52 @@ func (q *Queries) RevokeSession(ctx context.Context, arg RevokeSessionParams) (i
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const revokeSessionsByIdentity = `-- name: RevokeSessionsByIdentity :many
+WITH targets AS MATERIALIZED (
+ SELECT s.id FROM session s
+ WHERE s.user_id = $3 AND s.revoke_time IS NULL
+ AND EXISTS (
+  SELECT 1 FROM session_authentication_identity a WHERE a.session_id = s.id AND a.identity_id = $4)
+ ORDER BY s.id FOR UPDATE
+)
+UPDATE session s SET revoke_time = $1::timestamptz, revoke_reason = $2, update_time = $1::timestamptz
+FROM targets t WHERE s.id = t.id AND s.user_id = $3 AND s.revoke_time IS NULL
+RETURNING s.id
+`
+
+type RevokeSessionsByIdentityParams struct {
+	Now        time.Time
+	Reason     *enum.RevokeReason
+	UserID     string
+	IdentityID string
+}
+
+// Include refresh-expired sessions with this exact source; lock in stable ID order.
+func (q *Queries) RevokeSessionsByIdentity(ctx context.Context, arg RevokeSessionsByIdentityParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, revokeSessionsByIdentity,
+		arg.Now,
+		arg.Reason,
+		arg.UserID,
+		arg.IdentityID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const revokeSessionsByUser = `-- name: RevokeSessionsByUser :many
@@ -1895,4 +2223,35 @@ func (q *Queries) UpdateUserDisplayName(ctx context.Context, arg UpdateUserDispl
 		&i.UpdateTime,
 	)
 	return i, err
+}
+
+const upsertSessionClientInfo = `-- name: UpsertSessionClientInfo :execrows
+INSERT INTO session_client_info(session_id, client_info, observe_time, create_time, update_time)
+SELECT s.id, $1::jsonb, $2::timestamptz, $3::timestamptz, $3::timestamptz
+FROM session s WHERE s.user_id = $4 AND s.id = $5 AND s.revoke_time IS NULL
+ON CONFLICT (session_id) DO UPDATE SET client_info = EXCLUDED.client_info,
+ observe_time = EXCLUDED.observe_time, update_time = EXCLUDED.update_time
+`
+
+type UpsertSessionClientInfoParams struct {
+	ClientInfo  []byte
+	ObserveTime time.Time
+	Now         time.Time
+	UserID      string
+	SessionID   string
+}
+
+// Supply one validated observation; replace the full document, retaining create_time.
+func (q *Queries) UpsertSessionClientInfo(ctx context.Context, arg UpsertSessionClientInfoParams) (int64, error) {
+	result, err := q.db.Exec(ctx, upsertSessionClientInfo,
+		arg.ClientInfo,
+		arg.ObserveTime,
+		arg.Now,
+		arg.UserID,
+		arg.SessionID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

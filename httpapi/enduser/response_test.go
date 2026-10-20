@@ -18,6 +18,19 @@ import (
 	"github.com/bbxx111/accountkit/user/idp"
 )
 
+func TestClientInfoResourceNestedAndCopied(t *testing.T) {
+	in := &user.ClientInfo{ClientType: enum.ClientNative, DeviceManufacturer: "Example", AppBuild: "200", AppName: "App", BrowserName: "Chrome", Extensions: map[string]json.RawMessage{"engine": json.RawMessage(`{"revision":9007199254740993}`)}}
+	out := newClientInfoResource(in)
+	in.AppName = "Changed"
+	in.Extensions["engine"][12] = '1'
+	in.Extensions["new"] = json.RawMessage(`true`)
+	raw, err := json.Marshal(out)
+	want := `{"type":"NATIVE","device":{"manufacturer":"Example"},"app":{"name":"App","build":"200"},"browser":{"name":"Chrome"},"extensions":{"engine":{"revision":9007199254740993}}}`
+	if err != nil || string(raw) != want {
+		t.Fatalf("DTO=%s err=%v", raw, err)
+	}
+}
+
 // testHandler 直接构造 Handler（内部测试包可访问私有字段）；映射测试不调用领域方法，Users 留空。
 func testHandler(t *testing.T) *Handler {
 	t.Helper()
@@ -47,6 +60,8 @@ func TestWriteServiceErrorMapping(t *testing.T) {
 		{code.ErrExhausted, 400, "INVALID_ARGUMENT/CODE_ATTEMPTS_EXHAUSTED", ""},
 		{user.ErrInvalidTarget, 400, "INVALID_ARGUMENT/INVALID_TARGET", ""},
 		{fmt.Errorf("%w: device id required", user.ErrInvalidArgument), 400, "INVALID_ARGUMENT/INVALID_ARGUMENT", ""},
+		{user.ErrReauthenticationRequired, 400, "FAILED_PRECONDITION/REAUTHENTICATION_REQUIRED", ""},
+		{user.ErrInsufficientScope, 403, "PERMISSION_DENIED/INSUFFICIENT_SCOPE", ""},
 		{user.ErrNotAnchor, 400, "FAILED_PRECONDITION/TARGET_NOT_ANCHOR", ""},
 		{user.ErrUserFrozen, 403, "PERMISSION_DENIED/USER_FROZEN", ""},
 		{user.ErrNotFound, 404, "NOT_FOUND/NOT_FOUND", ""},

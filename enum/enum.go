@@ -71,12 +71,13 @@ const (
 	RevokeReplacedByRelogin              // 6
 	RevokeAdmin                          // 7
 	RevokeIdentityReplaced               // 8
+	RevokeIdentityUnbound                // 9
 )
 
-var revokeReasonNames = [...]string{"UNSPECIFIED", "USER_LOGOUT", "USER_REVOKED_DEVICE", "REUSE_DETECTED", "USER_FROZEN", "USER_DELETED", "REPLACED_BY_RELOGIN", "ADMIN", "IDENTITY_REPLACED"}
+var revokeReasonNames = [...]string{"UNSPECIFIED", "USER_LOGOUT", "USER_REVOKED_DEVICE", "REUSE_DETECTED", "USER_FROZEN", "USER_DELETED", "REPLACED_BY_RELOGIN", "ADMIN", "IDENTITY_REPLACED", "IDENTITY_UNBOUND"}
 
 func (r RevokeReason) String() string { return name(revokeReasonNames[:], int(r)) }
-func (r RevokeReason) Valid() bool    { return r >= RevokeUserLogout && r <= RevokeIdentityReplaced }
+func (r RevokeReason) Valid() bool    { return r >= RevokeUserLogout && r <= RevokeIdentityUnbound }
 
 func ParseRevokeReason(v string) (RevokeReason, error) {
 	i, err := parse(revokeReasonNames[:], v, "RevokeReason")

@@ -18,6 +18,7 @@ type BeforeDelete func(ctx context.Context, tx pgx.Tx, userID string) error
 // WithActiveUsers 在同一事务中锁定并确认全部账号 ACTIVE 后执行宿主回调。
 // userIDs 必须非空、fn 必须非 nil。账号去重并按 ID 排序锁定；宿主须先取得这些账号锁，
 // 再锁业务资源。库负责提交和回滚，fn 不得自行提交或回滚事务。panic 回滚后向上传递。
+// 库开启 READ COMMITTED 事务，fn 与账号锁及状态校验使用该同一事务。
 func (s *Service) WithActiveUsers(ctx context.Context, userIDs []string, fn func(pgx.Tx) error) error {
 	if len(userIDs) == 0 || fn == nil {
 		return fmt.Errorf("%w: user IDs and callback are required", ErrInvalidArgument)
@@ -34,7 +35,7 @@ func (s *Service) WithActiveUsers(ctx context.Context, userIDs []string, fn func
 		}
 	}
 	slices.Sort(unique)
-	return s.d.Repo.WithTxRaw(ctx, func(tx pgx.Tx, q *db.Queries) error {
+	return s.d.Repo.withDomainTxRaw(ctx, func(tx pgx.Tx, q *db.Queries) error {
 		for _, id := range unique {
 			u, err := lockUserAs(ctx, q, id, ErrNotFound)
 			if err != nil {

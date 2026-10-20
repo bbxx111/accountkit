@@ -22,7 +22,7 @@ func (h *Handler) listSessions(w http.ResponseWriter, r *http.Request) {
 	}
 	out := sessionList{Sessions: make([]sessionResource, 0, len(items))}
 	for _, s := range items {
-		out.Sessions = append(out.Sessions, sessionResource{Name: "users/" + uid + "/sessions/" + s.ID, DeviceID: s.DeviceID, DeviceName: s.DeviceName, CreateTime: fmtTime(s.CreateTime), LastUsedTime: fmtTime(s.LastUsedTime)})
+		out.Sessions = append(out.Sessions, sessionResource{ClientInfo: newClientInfoResource(s.ClientInfo), ClientInfoUpdateTime: fmtTimePtr(s.ClientInfoUpdateTime), Name: "users/" + uid + "/sessions/" + s.ID, DeviceID: s.DeviceID, DeviceName: s.DeviceName, CreateTime: fmtTime(s.CreateTime), LastUsedTime: fmtTime(s.LastUsedTime)})
 	}
 	apierror.WriteJSON(w, http.StatusOK, out)
 }

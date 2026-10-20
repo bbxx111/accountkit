@@ -61,6 +61,9 @@ type Deps struct {
 	// ClientIP 从请求解析来源 IP（限流用）。默认取 RemoteAddr 的 host；
 	// 部署在代理后时宿主应注入按可信跳数解析 X-Forwarded-For 的实现。
 	ClientIP func(*http.Request) string
+
+	// ClientInfo 可选替换本地客户端描述解析器；nil 使用内置解析，不进行网络 I/O。
+	ClientInfo func(*http.Request) (*user.ClientInfo, error)
 	// RequestID 从请求取关联 id。默认读 X-Request-Id（须匹配 ^[A-Za-z0-9._-]{1,64}$），缺失或非法则生成。
 	RequestID func(*http.Request) string
 	// SMSSender / EmailSender 投递验证码。必填；开发环境可用 sender.NewLog(logger)，生产必须换成服务商实现。
@@ -126,6 +129,9 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 	}
 	if deps.Pool == nil {
 		return nil, errors.New("accountkit: Deps.Pool is required")
+	}
+	if deps.Pool.Config().MaxConns < 2 {
+		return nil, errors.New("accountkit: Deps.Pool requires at least 2 connections")
 	}
 	if deps.Redis == nil {
 		return nil, errors.New("accountkit: Deps.Redis is required")
@@ -225,7 +231,7 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 	}
 	a.users = users
 	h, err := enduser.New(enduser.Deps{
-		Users: users, Logger: deps.Logger, ClientIP: deps.ClientIP, RequestID: deps.RequestID,
+		Users: users, Logger: deps.Logger, ClientIP: deps.ClientIP, ClientInfo: deps.ClientInfo, RequestID: deps.RequestID,
 		ReauthMaxAge: cfg.ReauthMaxAge, SensitiveOpVerification: *cfg.SensitiveOpVerification,
 	})
 	if err != nil {

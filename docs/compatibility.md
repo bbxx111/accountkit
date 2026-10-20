@@ -2,9 +2,9 @@
 
 固定兼容基线包含 130 个文件，原始文件清单与 SHA-256 见 `tests/testdata/source-baseline/manifest.json`；该清单用于追溯冻结快照，不表示当前文件名和内容必须与历史快照相同。当前根包名为 `accountkit`，导入路径为 `github.com/bbxx111/accountkit`。
 
-## 数据库运行契约修复（开发中）
+## 数据库运行契约修复
 
-本节对应 `harden-database-runtime`，尚未发布，不改数据库结构、迁移版本、HTTP 或令牌格式。
+本节对应 `harden-database-runtime`，随 v0.4.0 发布，不改数据库结构、迁移版本、HTTP 或令牌格式。
 
 - **连接池最低容量：** `New` 现在无 I/O 拒绝 `Deps.Pool.Config().MaxConns < 2`。原来显式设置 `pool_max_conns=1` 或 `MaxConns=1` 的宿主，升级前须改为至少 2；pgx 默认容量不受影响。失败不会关闭宿主池，也不新增独立维护连接。
 - **内部事务隔离：** 库自行开启的领域事务使用 `READ COMMITTED`，配合既有锁和锁后复核，避免宿主较高默认隔离导致旧证明登录、绑定数量失控或并发刷新异常。`BeforeDelete`、`Anonymizer`、`WithActiveUsers` 的回调随库事务使用该隔离级别；回调仍必须使用传入的同一事务。公开 `Repo.WithTx` / `WithTxRaw` 继续继承宿主默认；调用方已开启并传给 `ImportAccounts` 的事务不被修改。
@@ -12,9 +12,9 @@
 
 当前测试、执行计划和未验证项见[验收记录](../openspec/changes/archive/2026-10-20-harden-database-runtime/verification.md)。
 
-## 会话认证依据与客户端描述（开发中）
+## 会话认证依据与客户端描述
 
-本节对应当前开发变更，已发布 v0.3.0 尚不包含。新查询 GET /users/me/sessions/current 是可选 enduser.CurrentSessionService 能力，签名 GetCurrentSession(context.Context, user.Principal) (user.CurrentSessionInfo, error)，不扩大既有 enduser.Service 方法集；缺能力返回503 SESSION_QUERY_NOT_CONFIGURED。查询允许user/user:bind，拒绝user:undelete，按数据库检查会话，不改变普通Authenticate/内省热路径。token、JWT、refresh、身份列表、scope、设备头和认证请求体保持原形状。
+本节能力随 v0.4.0 发布，v0.3.0 不包含。新查询 GET /users/me/sessions/current 是可选 enduser.CurrentSessionService 能力，签名 GetCurrentSession(context.Context, user.Principal) (user.CurrentSessionInfo, error)，不扩大既有 enduser.Service 方法集；缺能力返回503 SESSION_QUERY_NOT_CONFIGURED。查询允许user/user:bind，拒绝user:undelete，按数据库检查会话，不改变普通Authenticate/内省热路径。token、JWT、refresh、身份列表、scope、设备头和认证请求体保持原形状。
 
 **行为升级：** 每个会话必须有经事务校验的非空具体身份来源；当前详情、重新认证和换绑使用来源时检查有效性，缺失或失效报内部错误，不作为正常未知态返回，也不从身份列表或尽力审计推算。解绑在同事务撤销命中具体身份的同账号未吊销会话，包括当前和自然过期未清理的会话；同账号任一未吊销会话缺少有效来源则整事务拒绝。204成功仍可能退出；换绑仍撤销其他会话，当前会话仅非空来源不含旧身份时保留。BIND证明和refresh不改变来源。客户端用详情中的完整身份name判断，重新认证后保存新access再重查；预览不保证提交前没有并发变化。普通Authenticate/内省不增加数据库查询。
 
@@ -29,11 +29,11 @@ meta := user.Meta{IP: trustedIP, ClientInfo: &user.ClientInfo{ClientType: enum.C
 deps := accountkit.Deps{Pool: pool, Redis: redisClient, ClientInfo: parseClientInfo}
 ```
 
-开发中的公开`AuthenticationIdentitiesKnown`、`InitialClientInfo`及`enum.ClientInfoSnapshotKind`（含INITIAL/LATEST常量）已删除；HTTP移除`authentication_identities_known`和`initial_client_info`。已有开发调用者须删去这些字段/枚举引用，改读非空`AuthenticationIdentities`和唯一的`ClientInfo`。`client_info`从平坦HTTP字段调整为`{type,os:{name,version},device:{type,manufacturer,model},app:{name,version,build},browser:{name,version},extensions:{...}}`，缺失成员省略；客户端须更新DTO与解析。此调整限于尚未发布能力，不改变已发布v0.3.0的历史契约。
+开发分支曾出现的公开`AuthenticationIdentitiesKnown`、`InitialClientInfo`及`enum.ClientInfoSnapshotKind`（含INITIAL/LATEST常量）已删除；HTTP移除`authentication_identities_known`和`initial_client_info`。已有开发调用者须删去这些字段/枚举引用，改读非空`AuthenticationIdentities`和唯一的`ClientInfo`。`client_info`从平坦HTTP字段调整为`{type,os:{name,version},device:{type,manufacturer,model},app:{name,version,build},browser:{name,version},extensions:{...}}`，缺失成员省略；客户端须更新DTO与解析。此调整限于尚未发布能力，不改变已发布v0.3.0的历史契约。
 
-Go的ClientInfo保留平坦字段并新增DeviceManufacturer、AppBuild和`Extensions map[string]json.RawMessage`；字段名初始化仍适用。规范化非空描述整体替换单行JSONB，不跨请求补字段；nil/空观察保持原值和时间，孤立version/build合法，app/browser并存。pending最终本次描述优先，否则整体沿用加密首次描述及原观察时间；失败、回滚和重放不更新。客户端描述可缺省，不能识别不阻断认证，显式非法值在凭证消费前400（token为OAuth invalid_request）。业务读写统一验证，无数据库JSON对象/业务CHECK；扩展仅经Go/宿主回调，宿主负责来源及隐私白名单，不新增任意JSON HTTP输入。字段边界、nested示例与可选头见[README](../README.md#当前会话与客户端描述开发中)，当前证据见[简化验收](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)。
+Go的ClientInfo保留平坦字段并新增DeviceManufacturer、AppBuild和`Extensions map[string]json.RawMessage`；字段名初始化仍适用。规范化非空描述整体替换单行JSONB，不跨请求补字段；nil/空观察保持原值和时间，孤立version/build合法，app/browser并存。pending最终本次描述优先，否则整体沿用加密首次描述及原观察时间；失败、回滚和重放不更新。客户端描述可缺省，不能识别不阻断认证，显式非法值在凭证消费前400（token为OAuth invalid_request）。业务读写统一验证，无数据库JSON对象/业务CHECK；扩展仅经Go/宿主回调，宿主负责来源及隐私白名单，不新增任意JSON HTTP输入。字段边界、nested示例与可选头见[README](../README.md#当前会话与客户端描述)，当前证据见[简化验收](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)。
 
-用户先明确要求将未发布会话0002合入当前0001，又批准本轮在该未发布定义内简化必有来源和单份JSONB；初始化保持version=1，无生产0002。历史tag/SQL和固定源保持。**旧v0.3.0 v1、前一`b414fef`双快照v1及撤回会话v2均拒绝直接接管**，保留数据/结构/version/dirty，需保留数据时另行制定迁移方案。新部署须人工核验新空目标并统一切换认证副本，避免旧来源/撤销行为混跑。旧v0.3.0的Migrate不检查会话上下文，可能接受同号新结构，部署必须人工阻止混跑及未经核验的回退；DDL可读不等于安全回退。回退优先前向修复，不能Down、Force、改版本或清Redis，见[迁移步骤](migrations.md#会话认证依据初始整合开发中)。
+v0.4.0 发布前，用户先明确要求将未发布会话0002合入当时的0001，又批准在该未发布定义内简化必有来源和单份JSONB；初始化保持version=1，无生产0002。历史tag/SQL和固定源保持。**旧v0.3.0 v1、前一`b414fef`双快照v1及撤回会话v2均拒绝直接接管**，保留数据/结构/version/dirty，需保留数据时另行制定迁移方案。新部署须人工核验新空目标并统一切换认证副本，避免旧来源/撤销行为混跑。旧v0.3.0的Migrate不检查会话上下文，可能接受同号新结构，部署必须人工阻止混跑及未经核验的回退；DDL可读不等于安全回退。回退优先前向修复，不能Down、Force、改版本或清Redis，见[迁移步骤](migrations.md#会话认证依据初始整合)。
 
 ## 可选标准化指标
 
@@ -47,7 +47,7 @@ v0.3.0 新增 `accountkit.Deps.Observer`、`user.Deps.Observer` 及相关审计/
 
 在尚无实际产品接入的前提下，项目曾执行初始结构整合：当时 `0001_init.up.sql` 定义 user_account、identity、session、audit_event、identity_flow 及字段、索引与约束。十列 UUIDv7 通用审计按用户授权纳入原始定义并更新固定校验，撤回当时独立的 `0002_identity_flow` 和通用审计 0002，也不提供 staging/Prepare 转换工具；初始版本为 1，配套 down 覆盖五个表，公开 Down 拒绝执行。后续审计校验职责调整经另行授权修改未发布 0001，移除五个审计校验函数并同步固定校验，其他表 CHECK 保持。在v0.3.0发布前另经用户明确授权，直接将 0001 的流程对象命名调整为 sign_in_completion_flow 并更新当前固定校验，撤回本分支新增的重命名 0002；初始化仍为 1，后续真实增量从 0002 开始。
 
-会话0002先经明确授权合入当前0001，本轮又经用户批准简化该未发布初始定义；七张业务表、配套down和version=1保持，当前来源无known标记，客户端描述按session_id保存单行JSONB。旧流程/审计结构、双表并存、缺少会话上下文的已发布v0.3.0 v1、前一`b414fef`双快照v1，以及所有撤回v2（含原会话v2）均明确拒绝，保留数据、结构和版本；不重放、改名、改版本、Force或自动清库。采用当前定义须人工核验新空资源；包含需保留数据的旧库先备份并单独制定和验证迁移方案。
+v0.4.0 发布前，会话0002先经明确授权合入当时的0001，又经用户批准简化该未发布初始定义，随后随 v0.4.0 发布；七张业务表、配套down和version=1保持，当前来源无known标记，客户端描述按session_id保存单行JSONB。旧流程/审计结构、双表并存、缺少会话上下文的已发布v0.3.0 v1、前一`b414fef`双快照v1，以及所有撤回v2（含原会话v2）均明确拒绝，保留数据、结构和版本；不重放、改名、改版本、Force或自动清库。采用当前定义须人工核验新空资源；包含需保留数据的旧库先备份并单独制定和验证迁移方案。
 
 历史v0.1.0/v0.2.0/v0.3.0标签及source-baseline原始字节保持。历史检查固定三个旧发布的精确提交，分别核验源快照、v0.3.0初始SQL、当前简化定义三代哈希；新发布不能复用历史基线例外。历史合成数据直接装入完整新结构只验证非审计ID、摘要、密文和有效access/refresh格式兼容，审计映射保留legacy_event_id；测试须显式建立有效来源或验证缺失来源被使用时拒绝，不代表生产自动补造来源或旧schema原地接管。操作与恢复边界见[迁移手册](migrations.md)。
 

@@ -4,7 +4,7 @@
 
 ## 客户端描述透传与 CORS
 
-以下为v0.3.0之后的当前开发能力。旧客户端只带X-Device-Id/Name仍可认证。新描述只用于成功验证码/IdP登录、completeSignIn、reauthenticate和新轮POST /token；发码、绑定、换绑、当前GET、普通业务、Authenticate/内省不解析或写入它们。显式非法描述在消费凭证前400 INVALID_CLIENT_INFO，token为OAuth invalid_request；自动输入缺失/无法识别不阻断认证。
+以下能力随v0.4.0发布。旧客户端只带X-Device-Id/Name仍可认证。新描述只用于成功验证码/IdP登录、completeSignIn、reauthenticate和新轮POST /token；发码、绑定、换绑、当前GET、普通业务、Authenticate/内省不解析或写入它们。显式非法描述在消费凭证前400 INVALID_CLIENT_INFO，token为OAuth invalid_request；自动输入缺失/无法识别不阻断认证。
 
 按使用场景将下列可选头加入代理透传与跨域Access-Control-Allow-Headers，并保留原Authorization、Content-Type、X-Device-Id、X-Device-Name、X-Request-Id：
 
@@ -18,7 +18,7 @@
 
 优先级为合法显式值、Client Hints、UA。全部描述均自报，不能用于授权、限流身份或可信设备判断，也不代替可信ClientIP。默认不信任X-Forwarded-User-Agent等任意转发头；BFF由宿主Deps.ClientInfo明确适配原客户端信息，不能将BFF客户端库UA称为终端浏览器。原始UA、hints与完整描述不得进入日志/追踪/审计正文或指标标签；仅持久化有界结构化摘要，不保存原始UA、IP或位置。
 
-这些输入只在同一请求内overlay；规范化非空描述作为单份观察整体替换，nil/空不写入，没有跨请求补字段。app/browser可并存，孤立version/build合法。制造商、build和extensions可由Go/宿主回调提供，本次没有新增对应显式头、任意JSON请求体或JSON头；网关不应自行引入此类透传协议。宿主仍须确定扩展允许来源、语义与隐私白名单，固定敏感键检查不能识别任意值中的隐私。nested响应与扩展限制见[README](../README.md#当前会话与客户端描述开发中)及[Go指南](go-integration.md#当前会话解绑与客户端描述开发中)，当前验收见[简化记录](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)。
+这些输入只在同一请求内overlay；规范化非空描述作为单份观察整体替换，nil/空不写入，没有跨请求补字段。app/browser可并存，孤立version/build合法。制造商、build和extensions可由Go/宿主回调提供，本次没有新增对应显式头、任意JSON请求体或JSON头；网关不应自行引入此类透传协议。宿主仍须确定扩展允许来源、语义与隐私白名单，固定敏感键检查不能识别任意值中的隐私。nested响应与扩展限制见[README](../README.md#当前会话与客户端描述)及[Go指南](go-integration.md#当前会话解绑与客户端描述)，当前验收见[简化记录](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)。
 
 ## 入口与直连边界
 
@@ -34,7 +34,7 @@
 
 账号资源沿用 `/v1/users` 及其子资源和自定义动作；管理账号资源沿用 `/admin/v1/users`，响应 name 使用 users 前缀。公网清单须明确包含 `POST /v1/users:sendSignInCompletionCode` 与 `POST /v1/users:completeSignIn`，并分别配置匿名请求频率、突发与在途并发。此前未发布的 `/accounts` 路径不映射、不重定向；`/token`、`/revoke` 和内部内省规则保持。客户端须适配[登录联合结果](compatibility.md#身份策略与登录补全协议升级)。
 
-当前开发变更还须明确增加 GET /v1/users/me/sessions/current（嵌入宿主替换实际前缀），保留消费者Bearer与user/user:bind scope检查；新GET不扩大内部内省/管理/探针开放范围。
+v0.4.0 起还须明确增加 GET /v1/users/me/sessions/current（嵌入宿主替换实际前缀），保留消费者Bearer与user/user:bind scope检查；新GET不扩大内部内省/管理/探针开放范围。
 
 网关认证不替代服务认证，也不把消费者 token 转换成管理员或内省身份。直接嵌入库的宿主依原契约注入管理员验证和可信请求元信息，不应仅因请求经过代理就注入未经验证的 Principal。
 

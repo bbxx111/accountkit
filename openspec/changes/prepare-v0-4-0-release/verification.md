@@ -1,6 +1,6 @@
 # v0.4.0 发布准备验收
 
-日期：2026-10-20。状态：准备阶段，尚未提交、合并、推送或发布。[发布说明](../../../docs/releases/v0.4.0.md)、[发布门禁](../../../docs/release-checklist.md#v040-发布门禁)。
+日期：2026-10-20。状态：v0.4.0 已发布，固定版本远端消费通过；本变更尚未归档。下文“未完成与边界”记录准备阶段结束时的状态，正式发布结果见末节。[发布说明](../../../docs/releases/v0.4.0.md)、[发布门禁](../../../docs/release-checklist.md#v040-发布门禁)。
 
 ## 范围与快照
 
@@ -69,3 +69,29 @@ v0.3.0 之后的运行时变更为会话认证来源与客户端描述（三个�
 材料尚未提交、合并或推送，本地 develop 的三个提交也未推送；尚未确定 main 最终候选，未核验在线 CI。未创建 v0.4.0 tag/Release，未验证远端固定版本消费。长期文档中的“开发中”标记、README 发布入口和 OpenAPI `info.version` 留待正式发布记录阶段更新。未发布镜像/二进制，未部署产品，本变更未归档。
 
 真实服务商、产品网关、监控平台及目标环境恢复由集成方另行验收；微信/Apple 任务 8.5 仍未验证。旧数据库需要保留数据时仍须单独制定和验证迁移方案，本轮恢复演练不等于提供旧库原地升级能力。
+
+## 正式发布阶段（2026-10-20）
+
+用户在准备结果后先回复“继续”，随后明确要求“CI 通过后打 tag 并发布 Release”，并要求通过浏览器发布、继续补记。各步骤按此执行；合并 main 与推送 main 被权限检查拦截后，由用户在终端手动执行。
+
+| 项目 | 实际结果 |
+|---|---|
+| 准备提交与 develop 集成 | 97381f9；以 `--no-ff` 合入 develop 为 508b03c，合并树与准备分支相同；合并后迁移历史检查与 OpenSpec 严格检查通过，相对受测 2d55d8e 无 Go/SQL/依赖/脚本差异；develop 推送 924c4f0..508b03c |
+| 最终 main 候选 | 62f0799b6c6ef1603b33f81834d39033dd0d0c4d，由用户执行 `git merge --no-ff develop` 与 `git push origin main`；父提交为 0e78b0e 与 508b03c，文件树与 develop 完全相同，工作区干净 |
+| 最终候选 CI | [verify #39408975386](https://github.com/bbxx111/accountkit/actions/runs/39408975386)，head_sha 精确匹配，status=completed、conclusion=success；sqlc 生成检查、完整库与恢复、accountsvc 真实依赖与进程信号步骤全部 success |
+| 固定版本 | 发布前远端无 v0.4.0；annotated v0.4.0，tag 对象 c95ba4301a1d37de30e97d82ad8e3538318d93f1，远端解引用为最终候选 SHA |
+| 标签后迁移历史 | `GOWORK=off go run ./internal/migrationcheck` 退出 0，新 tag 纳入检查；v0.1.0/v0.2.0/v0.3.0 远端 tag 对象与发布前一致 |
+| GitHub Release | 经 Claude in Chrome 在用户已登录的浏览器中创建。[v0.4.0](https://github.com/bbxx111/accountkit/releases/tag/v0.4.0)，非 draft、非 prerelease，API 确认为 latest；正文为本版本说明，状态行改为已发布，相对链接转为固定提交链接。发布前在页面内校验正文 SHA-256 与本地生成正文一致，发布后经 API 复核哈希一致 |
+| 根门面独立宿主 | 远端 go get @v0.4.0、tidy、vet、build 均退出 0；编译根门面、Deps.ClientInfo 回调（clientinfo.Parse 加 Extensions）、GetCurrentSession、Principal 版 UnbindIdentity、审计 Recorder 及两个指标适配器；本地运行 NormalizeClientInfo/MergeClientInfo、非法描述拒绝、clientinfo.Parse、IDENTITY_UNBOUND 枚举及指标构造/关闭成功 |
+| 直接 enduser 独立宿主 | 远端 go get、tidy、vet、build 均退出 0；Service、IdentityReplacer、SignInCompletionService、CurrentSessionService、clientinfo.Parse 与 New/Router 契约编译，运行退出 0 |
+| 消费来源 | 两个 `go list -m -json` 均为 Version=v0.4.0、无 Replace，GOWORK=off，使用本轮独立模块缓存，GOSUMDB=sum.golang.org 校验通过；模块哈希 h1:pTOtCJLxcCMbUC4B4FqHBNzxIfGIbkT/3gDF6V/GeNU=；下载模块中的 0001 SHA-256 与当前固定哈希及 62f0799 中的文件一致 |
+
+根宿主涉及数据库和认证的方法只做编译契约核验，运行检查仅覆盖本地组件，不表示真实服务商或产品环境联调通过。
+
+原始材料：[最终 CI](../../../.test-output/prepare-v0.4-release/main-ci-final.json)、[CI 步骤](../../../.test-output/prepare-v0.4-release/main-ci-jobs.txt)、[远端 tag](../../../.test-output/prepare-v0.4-release/remote-tag.txt)、[标签后迁移检查](../../../.test-output/prepare-v0.4-release/tag-migrationcheck.log)、[Release 正文](../../../.test-output/prepare-v0.4-release/release-body.md)、[Release 结果](../../../.test-output/prepare-v0.4-release/release-result.json)、[独立宿主源码和日志](../../../.test-output/prepare-v0.4-release/hosts/)、[模块下载来源](../../../.test-output/prepare-v0.4-release/download.json)。材料保持 ignored，不提交缓存、二进制或合成数据。
+
+### 发布记录维护
+
+在 `docs/record-v0.4.0-publication` 分支补记上述事实：发布说明状态改为已发布；README、兼容、迁移、Go/网关集成、accountsvc 与 OpenAPI 说明去掉“开发中”标记及“尚未发布”表述，相应锚点同步更新；两份 OpenAPI 的 `info.version` 改为 `v0.4.0`，路径与请求/响应结构不变；AGENTS 与迁移手册明确当前 0001 已随 v0.4.0 发布，此前直接修改 0001 的有限授权不再适用。未改 SQL、固定哈希、源快照或 tag。本记录维护仅涉及文档。
+
+本轮记录检查：变更文档中 251 个本地链接及锚点全部可解析，verification 的 20 个证据链接在主工作区存在；`node scripts/check-openapi.cjs` 通过（消费者 22、管理员 11 个操作及会话上下文边界）；两份 OpenAPI JSON 可解析且 `info.version` 为 v0.4.0；`openspec validate --all --strict` 25 项通过；`git diff --check` 通过。记录维护未改运行时代码，未重复运行全库测试，发布依据仍为上表最终候选 CI 与远端消费证据。

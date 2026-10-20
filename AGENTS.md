@@ -109,6 +109,8 @@
 
 操作步骤以 [docs/migrations.md](docs/migrations.md) 为准。以下规则不能因版本尚处开发阶段而放宽：
 
+- v0.4.0 已发布，tag 固定到 62f0799b6c6ef1603b33f81834d39033dd0d0c4d，当前 0001 即其中的已发布定义，不可再改写。下列 `simplify-session-context`、数据库设计评审和 `consolidate-session-context-initial-schema` 等直接修改 0001 的有限授权仅适用于 v0.4.0 发布前，不再适用；后续结构从 0002 递增。发布证据见 [v0.4.0 说明](docs/releases/v0.4.0.md)。
+
 - `simplify-session-context` 经用户本轮明确批准，在前一 `b414fef` 未发布会话初始定义上继续直接修改当前0001：移除known标记和INITIAL/LATEST双快照，来源为必有非空领域不变量，客户端描述以session_id为唯一主键保存单行JSONB及observe/create/update时间；同步down、baseline、当前固定哈希和sqlc，无生产0002，初始化仍为version=1。客户端JSON的对象、核心字段、扩展边界及敏感键均由业务读写验证，数据库只保留主键、ID格式和非空等基础约束，不增加JSON对象/业务CHECK。旧v0.3.0 v1、前一b414fef双快照v1及撤回会话v2均无写拒绝，保留catalog、数据、version/dirty且dirty优先，不自动转换或补来源、不Force、改版本或清库；保留数据需求另行设计迁移。所有历史tag、已发布SQL及冻结source-baseline不变，三代历史保护保持；旧v0.3.0预检可能接受同号新结构，部署须人工阻止混跑和未验证回退。此授权仅覆盖本次简化，不覆盖或改写下列历史授权，也不允许日常改写初始SQL。当前证据统一见[简化验收](openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)。
 
 - 数据库设计评审经用户本轮明确要求“不建新 change、直接修改 0001”，限定为当前未发布 0001 的索引调整：密钥回填复合索引、同用户同设备未吊销会话部分唯一索引 `uk_session_user_id_device_id`（取代 `idx_session_user_id`），以及移除包内无查询使用的四个审计/流程索引；表、列、约束、down 与 version=1 保持，同步当前固定哈希。旧同号数据库不重放 0001，保留旧索引且无新唯一兜底；不 Force、改版本或自动清库。配套查询与锚点 subject 跨摘要版本 advisory lock 属代码改动。此授权不扩展为日常改写初始 SQL，细节见 [迁移手册](docs/migrations.md#当前初始基线)。

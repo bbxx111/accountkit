@@ -11,7 +11,7 @@
 
 挂载内置 HTTP handler 的宿主可使用[消费者与管理面 OpenAPI 契约](docs/openapi.md)，按实际地址调整挂载前缀。
 
-本文描述 v0.3.0 已交付的身份策略、登录补全、通用审计及指标能力，版本状态见[发布说明](docs/releases/v0.3.0.md)。账号资源沿用 `/users`，升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
+本文描述 v0.4.0 已交付的能力，包括身份策略、登录补全、通用审计、指标，以及会话认证来源与客户端描述，版本状态见[发布说明](docs/releases/v0.4.0.md)。账号资源沿用 `/users`，升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
 
 accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可选服务实现，使用同一套库能力；选择库集成不需要部署或调用 accountsvc。服务入口是 `cmd/accountsvc`，包含 SMTP 邮件投递、消费者远程鉴权和默认关闭的外部管理员 JWT 验证，运行与配置见 [accountsvc 服务手册](docs/accountsvc.md)。`examples/embedded` 保留为库集成开发示例。
 
@@ -194,9 +194,9 @@ r.Route("/v1", func(r chi.Router) {
 
 规则：一个 subject 全局只属于一个账号（冲突 409，不合并不迁移）；每 kind 最多 `MaxIdentitiesPerKind`（默认 1）个活动身份；同一 subject 重复绑定到本账号为幂等；解绑是软删除，解绑后同一 subject 可绑到任一账号；解绑或换绑后的最终身份集合必须仍有至少一个已启用身份并满足当前 R；绑定不改变已签发 token 的 scope，客户端新一轮刷新后生效。`masked_subject` 由检索提示拼出（`+86 138****1234`、`ba***@example.com`），第三方身份为空串。
 
-## 当前会话与客户端描述（开发中）
+## 当前会话与客户端描述
 
-以下为 v0.3.0 之后的当前开发变更，尚未发布；已发布 v0.3.0 不含此查询、来源撤销或客户端描述。本轮简化了开发中的来源与描述契约，已有开发调用者须按[兼容说明](docs/compatibility.md#会话认证依据与客户端描述开发中)调整；迁移和部署须按[会话升级说明](docs/migrations.md#会话认证依据初始整合开发中)协调切换。
+以下能力随 v0.4.0 发布，v0.3.0 不含此查询、来源撤销或客户端描述。曾跟随开发分支接入的调用者须按[兼容说明](docs/compatibility.md#会话认证依据与客户端描述)调整；迁移和部署须按[会话升级说明](docs/migrations.md#会话认证依据初始整合)协调切换。
 
 GET /users/me/sessions/current 返回真实会话 name（末段是 s_ ID）、原设备/时间字段、is_current=true、数据库最新 RFC3339 auth_time 和非空 authentication_identities。身份摘要只有 name/kind，按具体 ID 排序；客户端按完整 name 匹配拟解绑身份，不能只比较 kind。来源缺失或失效是内部不变量错误，返回固定500，不返回正常空集合，也不从身份列表或审计补造来源。查询是快照，最终影响以提交时状态为准。重新认证成功后保存新 access、保留原 refresh，再重查详情；旧 JWT 不被改写，查询也不赋予旧 token 新的近期认证证明。
 
@@ -214,7 +214,7 @@ GET /users/me/sessions/current 返回真实会话 name（末段是 s_ ID）、�
 | X-Device-Type | DESKTOP / PHONE / TABLET |
 | X-Device-Model | 最多64字符 |
 
-文本先拒绝非法UTF-8/控制字符，再去除首尾空白；名称、制造商、型号最多64个Unicode字符，版本32、build64。规范化后的完整JSON（包括键、结构与转义）至多2048字节；重复显式头拒绝。非法显式值在凭证消费前400 INVALID_ARGUMENT / INVALID_CLIENT_INFO，token端点为OAuth invalid_request。合法显式值优先，其次可用Client Hints，最后UA；自动输入失败不阻断认证。UA与全部Sec-CH-UA*值各自合计至多2048字节，超限/畸形忽略相应自动输入。不主动要求额外高熵提示；具体支持字段与CORS见[网关说明](docs/gateway-integration.md#客户端描述透传与-cors)。宿主可注入 Deps.ClientInfo，直接Go调用传 Meta.ClientInfo，采用字段名初始化，见[Go指南](docs/go-integration.md#当前会话解绑与客户端描述开发中)。
+文本先拒绝非法UTF-8/控制字符，再去除首尾空白；名称、制造商、型号最多64个Unicode字符，版本32、build64。规范化后的完整JSON（包括键、结构与转义）至多2048字节；重复显式头拒绝。非法显式值在凭证消费前400 INVALID_ARGUMENT / INVALID_CLIENT_INFO，token端点为OAuth invalid_request。合法显式值优先，其次可用Client Hints，最后UA；自动输入失败不阻断认证。UA与全部Sec-CH-UA*值各自合计至多2048字节，超限/畸形忽略相应自动输入。不主动要求额外高熵提示；具体支持字段与CORS见[网关说明](docs/gateway-integration.md#客户端描述透传与-cors)。宿主可注入 Deps.ClientInfo，直接Go调用传 Meta.ClientInfo，采用字段名初始化，见[Go指南](docs/go-integration.md#当前会话解绑与客户端描述)。
 
 客户端描述按会话只存一行 `client_info JSONB`，主键为 session_id，保留 observe_time/create_time/update_time；没有描述则没有行。业务读写统一校验，数据库保留主键、ID格式及非空约束，不定义JSON对象或业务CHECK。读取非法描述返回内部错误。HTTP详情和两个面的会话列表只可含 `client_info` 与 `client_info_update_time`，缺失成员省略，使用同一嵌套形状：
 
@@ -224,7 +224,7 @@ GET /users/me/sessions/current 返回真实会话 name（末段是 s_ ID）、�
 
 Go模型保留平坦字段并新增 DeviceManufacturer、AppBuild 和 Extensions；app/browser 可以并存，WEB/NATIVE 不清除另一组信息，单独的版本/build也是合法本次观察。成功登录、最终补全、重新认证和新轮refresh有规范化非空描述时整体替换并记录本次服务器观察时间；nil/空描述不写入，保留已有值与时间，不跨请求拼接字段。pending首次描述与观察时间放在加密payload；最终本次非空描述优先，否则整体沿用首次描述及其原观察时间。首次没有描述而完成时才提供描述，只写该次一行。失败、事务回滚、宽限刷新及补全结果重放均不更新描述或观察时间。
 
-extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/object/array，不新增任意JSON请求体、请求头或制造商/build显式头。所有层级键匹配 `[a-z][a-z0-9_]{0,63}`；根扩展对象不计深度和节点，直接值深度1，每个值（含容器和数组元素）计一节点；最多64节点、4层、每数组16项、每字符串256个Unicode字符。完整原始JSON与每个RawMessage在解析前分别限16KiB，扩展根map超过64项在分配规范化副本前拒绝；规范化完整JSON仍限2048字节。核心对象拒绝未知键、重复键和错误类型；扩展也拒绝重复键、非法UTF-8/控制字符及非法JSON数字。合法指数数值精确规范化为十进制，先计算展开长度再有界分配，展开后的JSON仍受2048字节限制，不通过浮点转换损失整数精度。固定敏感词段和组合键清单见[Go指南](docs/go-integration.md#当前会话解绑与客户端描述开发中)，规范化、解码和DTO均深拷贝扩展。宿主仍须确定允许的来源、扩展语义和隐私白名单，不能依赖敏感键检查识别任意值中的隐私。
+extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/object/array，不新增任意JSON请求体、请求头或制造商/build显式头。所有层级键匹配 `[a-z][a-z0-9_]{0,63}`；根扩展对象不计深度和节点，直接值深度1，每个值（含容器和数组元素）计一节点；最多64节点、4层、每数组16项、每字符串256个Unicode字符。完整原始JSON与每个RawMessage在解析前分别限16KiB，扩展根map超过64项在分配规范化副本前拒绝；规范化完整JSON仍限2048字节。核心对象拒绝未知键、重复键和错误类型；扩展也拒绝重复键、非法UTF-8/控制字符及非法JSON数字。合法指数数值精确规范化为十进制，先计算展开长度再有界分配，展开后的JSON仍受2048字节限制，不通过浮点转换损失整数精度。固定敏感词段和组合键清单见[Go指南](docs/go-integration.md#当前会话解绑与客户端描述)，规范化、解码和DTO均深拷贝扩展。宿主仍须确定允许的来源、扩展语义和隐私白名单，不能依赖敏感键检查识别任意值中的隐私。
 
 描述不能作为授权、限流身份或可信设备证明；不保存原始UA/IP/位置，不进入日志、审计正文或指标标签，随会话清理和同事务匿名化删除。last_used_time和描述观察时间均不表示每次业务活动。当前变更验收状态见[简化会话上下文记录](openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)。
 
@@ -372,10 +372,10 @@ HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额
 
 远程仓库：https://github.com/bbxx111/accountkit.git
 
-Go module：github.com/bbxx111/accountkit。`v0.3.0` 已发布，使用 `go get github.com/bbxx111/accountkit@v0.3.0` 接入；登录返回、通用审计及旧库不能直接接管等升级边界见[发布说明](docs/releases/v0.3.0.md)。固定提交 `ba2d041` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/39203841497)已通过。[发布验收](openspec/changes/archive/2026-10-20-prepare-v0-3-0-release/verification.md)记录候选、tag/Release 与独立宿主远端消费结果；发布及上线要求见[检查表](docs/release-checklist.md)。`v0.1.0`、`v0.2.0` 历史说明和 tag 保持。
+Go module：github.com/bbxx111/accountkit。`v0.4.0` 已发布，使用 `go get github.com/bbxx111/accountkit@v0.4.0` 接入；旧库不能直接接管、解绑/换绑撤销、直接 Go 解绑调用及连接池容量等升级边界见[发布说明](docs/releases/v0.4.0.md)。固定提交 `62f0799` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/39408975386)已通过。[发布验收](openspec/changes/prepare-v0-4-0-release/verification.md)记录候选、tag/Release 与独立宿主远端消费结果；发布及上线要求见[检查表](docs/release-checklist.md)。`v0.1.0`、`v0.2.0`、`v0.3.0` 历史说明和 tag 保持。
 
 库版本发布与各产品生产上线分别验收。产品实际环境接入、真实服务商与预发布升级/恢复仍待完成；产品各自配置 schema、Redis 前缀、issuer/audience 和密钥，并承担自己的匿名化与网关接入责任。当前未附开源 LICENSE，本次版本供自有产品接入，尚未向外部使用方定义复用许可。
 
-此前流程改名已纳入 v0.3.0 的初始定义。会话0002先经明确授权合入当前0001，本轮又经用户明确批准在该未发布定义内简化为必有来源与单行JSONB描述；同步down、baseline、固定哈希和sqlc，不新增生产0002，新安装仍为version=1/dirty=false。**旧v0.3.0 v1、前一`b414fef`双快照v1及撤回会话v2均不能直接接管**，返回不兼容错误并保留数据、结构和版本。新部署须人工核验新空资源，需保留旧数据时另行制定并验证迁移方案，不Force、改版本或自动清库。公共`Down`仍拒绝；详见[迁移手册](docs/migrations.md#会话认证依据初始整合开发中)。所有已发布标签、其中的历史SQL和固定源快照保持，历史与当前定义分别校验，两次有限授权均不允许日常改写初始SQL。
+此前流程改名已纳入 v0.3.0 的初始定义。v0.4.0 发布前，会话0002先经明确授权合入当时未发布的0001，又经用户明确批准简化为必有来源与单行JSONB描述；当前0001已随 v0.4.0 发布，此前的有限授权不再适用于修改它；同步down、baseline、固定哈希和sqlc，不新增生产0002，新安装仍为version=1/dirty=false。**旧v0.3.0 v1、前一`b414fef`双快照v1及撤回会话v2均不能直接接管**，返回不兼容错误并保留数据、结构和版本。新部署须人工核验新空资源，需保留旧数据时另行制定并验证迁移方案，不Force、改版本或自动清库。公共`Down`仍拒绝；详见[迁移手册](docs/migrations.md#会话认证依据初始整合)。所有已发布标签、其中的历史SQL和固定源快照保持，历史与当前定义分别校验，两次有限授权均不允许日常改写初始SQL。
 
 原 migrations.Down 保留签名但默认拒绝执行；新基线的一次性测试清库使用显式 UnsafeReset。升级、故障处理与恢复步骤见 [迁移手册](docs/migrations.md)，本次边界见[兼容说明](docs/compatibility.md#初始数据库基线整合)。

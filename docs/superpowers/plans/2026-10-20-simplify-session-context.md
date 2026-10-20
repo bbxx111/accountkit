@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、PostgreSQL 17、pgx/v5、sqlc 1.31.1、Chi、Redis/miniredis、OpenSpec。
 
-**Spec:** [已批准设计](../../../openspec/changes/simplify-session-context/design.md)、[proposal](../../../openspec/changes/simplify-session-context/proposal.md) 及其中六份 delta；前一 [整合设计](../../../openspec/changes/consolidate-session-context-initial-schema/design.md) 保留历史。
+**Spec:** [已批准设计](../../../openspec/changes/archive/2026-10-20-simplify-session-context/design.md)、[proposal](../../../openspec/changes/archive/2026-10-20-simplify-session-context/proposal.md) 及其中六份 delta；前一 [整合设计](../../../openspec/changes/archive/2026-10-20-consolidate-session-context-initial-schema/design.md) 保留历史。
 
 ## Global Constraints
 
@@ -19,7 +19,7 @@
 - JSON 总量2048字节；名称/型号/制造商64字符、版本32、build64；扩展key规则 `[a-z][a-z0-9_]{0,63}`、节点64、深度4、数组16、字符串256。
 - 原生 app/browser 可并存；持久化整体替换、无描述保持；重放不更新；pending本次优先，否则首次描述与首次观察时间整体沿用。
 - HTTP 不新增任意 JSON 输入；保留原错误协议、设备头、scope、JWT、refresh、异步脱敏审计和Redis故障边界。
-- 验证结果统一写 `openspec/changes/simplify-session-context/verification.md`；缺真实数据库不能报告集成通过，全量 strict 的既有六项长段落失败单独记录。
+- 验证结果统一写 `openspec/changes/archive/2026-10-20-simplify-session-context/verification.md`；缺真实数据库不能报告集成通过，全量 strict 的既有六项长段落失败单独记录。
 
 ## Review Focus
 
@@ -33,7 +33,7 @@
 
 ### Task 1: 固定已批准工件与执行接口
 
-**Files:** 创建 `openspec/changes/simplify-session-context/{proposal,design,tasks,verification}.md`、六份 `specs/*/spec.md` 及本计划；不改主规格或前一变更。
+**Files:** 创建 `openspec/changes/archive/2026-10-20-simplify-session-context/{proposal,design,tasks,verification}.md`、六份 `specs/*/spec.md` 及本计划；不改主规格或前一变更。
 
 **Interfaces:** 消费已批准设计；产出完整 OpenSpec apply-ready 工件及下述任务所有权。详细决定以 design 为准。
 

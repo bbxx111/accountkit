@@ -2,7 +2,7 @@
 
 ## Context
 
-设计已由用户连续明确批准，动机见 [proposal](proposal.md)。工作基线为 `b414fef`，分支 `refactor/simplify-session-context`。前一活跃变更 [consolidate-session-context-initial-schema](../consolidate-session-context-initial-schema/design.md) 保持历史，本次 delta 覆盖其当前结构决定；不改已发布 v0.3.0 或冻结源。
+设计已由用户连续明确批准，动机见 [proposal](proposal.md)。工作基线为 `b414fef`，分支 `refactor/simplify-session-context`。前一活跃变更 [consolidate-session-context-initial-schema](../2026-10-20-consolidate-session-context-initial-schema/design.md) 保持历史，本次 delta 覆盖其当前结构决定；不改已发布 v0.3.0 或冻结源。
 
 ## Goals / Non-Goals
 

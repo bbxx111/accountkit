@@ -109,7 +109,7 @@
 
 操作步骤以 [docs/migrations.md](docs/migrations.md) 为准。以下规则不能因版本尚处开发阶段而放宽：
 
-- `simplify-session-context` 经用户本轮明确批准，在前一 `b414fef` 未发布会话初始定义上继续直接修改当前0001：移除known标记和INITIAL/LATEST双快照，来源为必有非空领域不变量，客户端描述以session_id为唯一主键保存单行JSONB及observe/create/update时间；同步down、baseline、当前固定哈希和sqlc，无生产0002，初始化仍为version=1。客户端JSON的对象、核心字段、扩展边界及敏感键均由业务读写验证，数据库只保留主键、ID格式和非空等基础约束，不增加JSON对象/业务CHECK。旧v0.3.0 v1、前一b414fef双快照v1及撤回会话v2均无写拒绝，保留catalog、数据、version/dirty且dirty优先，不自动转换或补来源、不Force、改版本或清库；保留数据需求另行设计迁移。所有历史tag、已发布SQL及冻结source-baseline不变，三代历史保护保持；旧v0.3.0预检可能接受同号新结构，部署须人工阻止混跑和未验证回退。此授权仅覆盖本次简化，不覆盖或改写下列历史授权，也不允许日常改写初始SQL。当前证据统一见[简化验收](openspec/changes/simplify-session-context/verification.md)。
+- `simplify-session-context` 经用户本轮明确批准，在前一 `b414fef` 未发布会话初始定义上继续直接修改当前0001：移除known标记和INITIAL/LATEST双快照，来源为必有非空领域不变量，客户端描述以session_id为唯一主键保存单行JSONB及observe/create/update时间；同步down、baseline、当前固定哈希和sqlc，无生产0002，初始化仍为version=1。客户端JSON的对象、核心字段、扩展边界及敏感键均由业务读写验证，数据库只保留主键、ID格式和非空等基础约束，不增加JSON对象/业务CHECK。旧v0.3.0 v1、前一b414fef双快照v1及撤回会话v2均无写拒绝，保留catalog、数据、version/dirty且dirty优先，不自动转换或补来源、不Force、改版本或清库；保留数据需求另行设计迁移。所有历史tag、已发布SQL及冻结source-baseline不变，三代历史保护保持；旧v0.3.0预检可能接受同号新结构，部署须人工阻止混跑和未验证回退。此授权仅覆盖本次简化，不覆盖或改写下列历史授权，也不允许日常改写初始SQL。当前证据统一见[简化验收](openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)。
 
 - v0.3.0 已发布，tag 固定到 ba2d0412764c659beabdbd0d3f0f0f9bb9007657，其中的 0001 是不可改写的已发布历史。用户本轮明确要求“把 0002 直接并入 0001”：`consolidate-session-context-initial-schema` 仅将未发布会话 0002 的字段、两表及索引整合进当前工作树 0001，同步 down 和当前固定哈希，初始化保持 version=1，生产 0002 撤回。当前 v1 须包含完整会话上下文；旧 v0.3.0 v1 及撤回会话 v2 均无写拒绝，不自动转换、改版本或清库；有保留数据需求时另行设计迁移。v0.1.0/v0.2.0/v0.3.0 标签、其中的已发布 SQL 和固定源快照保持，历史检查分三代独立固定。后续结构仍从 0002 递增，此授权不构成日常改写初始 SQL 或跳过门禁的开关。发布证据见 [v0.3.0 说明](docs/releases/v0.3.0.md)。
 

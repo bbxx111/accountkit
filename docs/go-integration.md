@@ -25,7 +25,7 @@ Go保留ClientInfo平坦字段，新增DeviceManufacturer、AppBuild及`Extensio
 
 扩展允许JSON primitive/null/object/array；所有层级键匹配`[a-z][a-z0-9_]{0,63}`。根扩展对象不计节点/深度，直接值深度1，值、容器和数组元素各计一节点，最多64节点、4层、每数组16项、每字符串256个Unicode字符；根map超过64项在分配规范化副本前拒绝。固定拒绝的下划线分隔词段为`password`、`passwd`、`secret`、`token`、`credential`、`credentials`、`authorization`、`cookie`、`cookies`、`captcha`、`otp`、`ip`、`address`、`location`、`latitude`、`longitude`、`imei`、`mac`、`ua`；同时拒绝完整组合键或以`_`为边界出现的`user_agent`、`device_id`、`hardware_id`、`verification_code`、`sms_code`、`email_code`、`one_time_code`、`security_code`。这些固定规则不识别普通值中夹带的任意隐私；宿主须管理来源、扩展语义和隐私白名单，不记录私密回调输入。默认HTTP不接收扩展JSON，也不新增制造商/build显式头。
 
-只有成功登录（含补全）、重新认证和新轮刷新采集描述。有非空观察时整体替换唯一一份描述；nil/空观察不写入且保留旧值和时间。版本/build单独出现合法，app/browser可并存；`MergeClientInfo`仅供同一请求UA→Hints→显式值overlay，不用于跨请求持久化合并。pending完成本次非空描述优先，否则整体沿用加密首次描述和原观察时间；失败、事务回滚及结果重放不更新。旧客户端可缺省，描述不作为授权或可信设备证明。完整字段和时间边界见[README](../README.md#当前会话与客户端描述开发中)，上线和回退见[迁移手册](migrations.md#会话认证依据初始整合开发中)，当前验收状态见[简化记录](../openspec/changes/simplify-session-context/verification.md)。
+只有成功登录（含补全）、重新认证和新轮刷新采集描述。有非空观察时整体替换唯一一份描述；nil/空观察不写入且保留旧值和时间。版本/build单独出现合法，app/browser可并存；`MergeClientInfo`仅供同一请求UA→Hints→显式值overlay，不用于跨请求持久化合并。pending完成本次非空描述优先，否则整体沿用加密首次描述和原观察时间；失败、事务回滚及结果重放不更新。旧客户端可缺省，描述不作为授权或可信设备证明。完整字段和时间边界见[README](../README.md#当前会话与客户端描述开发中)，上线和回退见[迁移手册](migrations.md#会话认证依据初始整合开发中)，当前验收状态见[简化记录](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)。
 
 ## 选择入口
 

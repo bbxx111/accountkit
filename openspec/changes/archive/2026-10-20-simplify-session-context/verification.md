@@ -4,7 +4,7 @@
 
 ## 规划工件
 
-用户已明确批准设计与实施，规划未重复索取确认。已创建 proposal、design、tasks、六份能力 delta 和[详细实施计划](../../../docs/superpowers/plans/2026-10-20-simplify-session-context.md)。规划代理只编辑本变更及计划；未改产品代码、分支、提交或派生代理。后续实现并行进行，其结果由根代理追加，不以规划通过代替实现验收。
+用户已明确批准设计与实施，规划未重复索取确认。已创建 proposal、design、tasks、六份能力 delta 和[详细实施计划](../../../../docs/superpowers/plans/2026-10-20-simplify-session-context.md)。规划代理只编辑本变更及计划；未改产品代码、分支、提交或派生代理。后续实现并行进行，其结果由根代理追加，不以规划通过代替实现验收。
 
 - `openspec validate simplify-session-context --strict --json`：退出0，valid=true、issues=[]。
 - `openspec status --change simplify-session-context --json`：所有四类工件done，isPlanningComplete=true。此状态只代表规划完整。
@@ -62,3 +62,12 @@ review_simplification 使用独立上下文审查当前工作树，首次发现1
 - 两个change的所有MODIFIED/ADDED条目与最终主规格逐块一致，重叠条目不再互相回写；已有主规格Purpose保留为主来源，仅将两份会话Purpose的旧未知/双快照摘要更新为已经实现的模型。
 - openspec validate --specs --strict：24/24通过。openspec validate --all --strict：26/26通过、issues=[]，包括两个仍活跃change；未关闭strict或放宽规则。git diff --check及本地引用检查通过。
 - 原始同步统计、场景/指标核对、同步中间失败和最终JSON结果保留在ignored `.test-output/spec-normalize/`。本次只修改OpenSpec Markdown，没有改动Go、SQL、生成代码、固定源、tag或发布说明；未重跑数据库/Go套件，上一节代码验证结果没有被冒用为本次文档验证。未归档、提交、推送、合并或发布。
+
+## 2026-10-20 归档与本地合并
+
+用户随后明确要求“提交，归档，合并”。规格整理先提交为56c78fc；归档时两个变更均为spec-driven、全部工件done、7/7任务完成，所有delta与主规格逐块一致。读取各自当前archive上下文后，按consolidate-session-context-initial-schema在先、本变更在后的依赖顺序移动，没有并行同步或跳过检查。
+
+本变更归档到`openspec/changes/archive/2026-10-20-simplify-session-context/`，原.openspec.yaml、proposal/design/tasks/specs及本记录完整保留；两变更的18处Markdown相对/外部引用已按归档路径修复。历史命令中的active路径保留当时语义。归档后核对与合并检查结果将记在本节，运行时代码不因本次归档改变。
+
+- 归档后openspec validate --all --strict：24项主规格全部通过、无警告/错误；openspec list为空，两份变更均不再位于active目录。
+- 独立内容核对：两份.openspec.yaml与56c78fc的原字节相同，tasks均7/7；20个delta块与主规格逐块一致，184个本地Markdown文件目标存在。主规格在归档过程中无差异，Go/SQL/生成结果及模块配置未变。原始结果保留`.test-output/spec-normalize/post-archive-validation.json`。

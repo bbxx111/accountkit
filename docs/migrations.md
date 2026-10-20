@@ -6,7 +6,7 @@ Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史�
 
 ## 会话认证依据初始整合（开发中）
 
-此变更在已发布v0.3.0之后开发，尚未发布新版本。会话0002先按用户明确要求合入0001，本轮又经明确批准在该未发布定义内简化：session不再包含known标记，`session_authentication_identity`保存必有的具体来源，`session_client_info`以session_id为单列主键保存一份`client_info JSONB NOT NULL`及服务器observe_time/create_time/update_time。没有来源未知正常态或双快照类型，没有外键；数据库保留主键、ID格式及非空约束，不增加JSON对象/业务CHECK，内容由业务读写统一校验。同步up/down、baseline、固定哈希和sqlc，无生产0002，新空库安装仍为version=1/dirty=false。已发布tag/SQL及冻结源快照不变，当前验收状态见[简化记录](../openspec/changes/simplify-session-context/verification.md)。
+此变更在已发布v0.3.0之后开发，尚未发布新版本。会话0002先按用户明确要求合入0001，本轮又经明确批准在该未发布定义内简化：session不再包含known标记，`session_authentication_identity`保存必有的具体来源，`session_client_info`以session_id为单列主键保存一份`client_info JSONB NOT NULL`及服务器observe_time/create_time/update_time。没有来源未知正常态或双快照类型，没有外键；数据库保留主键、ID格式及非空约束，不增加JSON对象/业务CHECK，内容由业务读写统一校验。同步up/down、baseline、固定哈希和sqlc，无生产0002，新空库安装仍为version=1/dirty=false。已发布tag/SQL及冻结源快照不变，当前验收状态见[简化记录](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)。
 
 **当前代码不能直接升级旧数据库。** 已发布v0.3.0的v1缺少会话上下文；前一`b414fef`的v1仍含known标记、snapshot_kind和平坦双快照，原会话v2也已撤回。三者均返回ErrIncompatibleBaseline，保留catalog、数据、version/dirty，不自动补表、转换、重放0001、降版本或清库。新部署使用人工核验的新空数据库/schema；需要保留数据时必须另行制定并验证迁移方案，不能只因版本号都是1就直接接管。
 
@@ -95,4 +95,4 @@ Redis 验证码状态不在数据库备份中；恢复后的 PENDING 流程缺�
 
 bash scripts/check-migrations.sh 校验固定源快照、v0.1.0/v0.2.0 的精确提交与原 SQL、v0.3.0 的精确提交与旧初始 SQL，以及当前整合基线和全部可达新正式 vX.Y.Z tag，包括合并分支及 HEAD。三代基线使用独立固定 LF 字节哈希；发布过的增量不能被后续 tag 覆盖或删除，新标签不能借用历史基线例外。浅克隆须获取完整历史和 tags。
 
-bash scripts/verify-recovery.sh需要psql/pg_dump/pg_restore 17、Go和两个明确指定的独立空测试库。脚本通过集群system_identifier和实际数据库名称判断同库，要求具备读取pg_control_system的测试权限，并拒绝非空库。只生成合成数据，不删除或覆盖既有库。恢复后检查七个业务表、版本、解密和旧访问/刷新令牌；核对每个会话有效非空来源、双身份来源、单份nested客户端描述的app/browser并存、制造商/build、extensions及原观察时间。完整备份包含两个上下文子表，并在source-unchanged阶段验证源库未改变。普通TestRecoveryFixture仍预期skip，只有脚本三阶段强制运行才是恢复演练证据。历史凭证夹具须显式建立有效来源，不能将测试补关联描述成生产自动迁移。证据保留在被Git忽略的.test-output/recovery.*下；重跑需提供新的空库。当前简化版本的实际门禁结果见[验收记录](../openspec/changes/simplify-session-context/verification.md)，历史记录不代表当前验证通过。
+bash scripts/verify-recovery.sh需要psql/pg_dump/pg_restore 17、Go和两个明确指定的独立空测试库。脚本通过集群system_identifier和实际数据库名称判断同库，要求具备读取pg_control_system的测试权限，并拒绝非空库。只生成合成数据，不删除或覆盖既有库。恢复后检查七个业务表、版本、解密和旧访问/刷新令牌；核对每个会话有效非空来源、双身份来源、单份nested客户端描述的app/browser并存、制造商/build、extensions及原观察时间。完整备份包含两个上下文子表，并在source-unchanged阶段验证源库未改变。普通TestRecoveryFixture仍预期skip，只有脚本三阶段强制运行才是恢复演练证据。历史凭证夹具须显式建立有效来源，不能将测试补关联描述成生产自动迁移。证据保留在被Git忽略的.test-output/recovery.*下；重跑需提供新的空库。当前简化版本的实际门禁结果见[验收记录](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)，历史记录不代表当前验证通过。

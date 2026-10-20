@@ -2,7 +2,7 @@
 
 **Goal:** 按用户明确要求将未发布 0002 合入当前 0001，并保持历史证据和拒绝旧库的完整性。
 
-**Spec:** [本次设计](../../../openspec/changes/consolidate-session-context-initial-schema/design.md)及其 versioned-auth-storage delta。
+**Spec:** [本次设计](../../../openspec/changes/archive/2026-10-20-consolidate-session-context-initial-schema/design.md)及其 versioned-auth-storage delta。
 
 **Execution:** 当前会话顺序实施，各步骤共享迁移和测试文件；完成后由独立代理审查。不自动提交、合并、发布或归档。
 

@@ -226,7 +226,7 @@ Go模型保留平坦字段并新增 DeviceManufacturer、AppBuild 和 Extensions
 
 extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/object/array，不新增任意JSON请求体、请求头或制造商/build显式头。所有层级键匹配 `[a-z][a-z0-9_]{0,63}`；根扩展对象不计深度和节点，直接值深度1，每个值（含容器和数组元素）计一节点；最多64节点、4层、每数组16项、每字符串256个Unicode字符。完整原始JSON与每个RawMessage在解析前分别限16KiB，扩展根map超过64项在分配规范化副本前拒绝；规范化完整JSON仍限2048字节。核心对象拒绝未知键、重复键和错误类型；扩展也拒绝重复键、非法UTF-8/控制字符及非法JSON数字。合法指数数值精确规范化为十进制，先计算展开长度再有界分配，展开后的JSON仍受2048字节限制，不通过浮点转换损失整数精度。固定敏感词段和组合键清单见[Go指南](docs/go-integration.md#当前会话解绑与客户端描述开发中)，规范化、解码和DTO均深拷贝扩展。宿主仍须确定允许的来源、扩展语义和隐私白名单，不能依赖敏感键检查识别任意值中的隐私。
 
-描述不能作为授权、限流身份或可信设备证明；不保存原始UA/IP/位置，不进入日志、审计正文或指标标签，随会话清理和同事务匿名化删除。last_used_time和描述观察时间均不表示每次业务活动。当前变更验收状态见[简化会话上下文记录](openspec/changes/simplify-session-context/verification.md)。
+描述不能作为授权、限流身份或可信设备证明；不保存原始UA/IP/位置，不进入日志、审计正文或指标标签，随会话清理和同事务匿名化删除。last_used_time和描述观察时间均不表示每次业务活动。当前变更验收状态见[简化会话上下文记录](openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)。
 
 ## 手机号与邮箱换绑
 

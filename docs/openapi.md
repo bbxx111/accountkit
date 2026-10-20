@@ -37,7 +37,7 @@ client_info采用`{type,os:{name,version},device:{type,manufacturer,model},app:{
 
 新详情在数据库会话缺失、归属错误、撤销或refresh期限已到时返回401 TOKEN_INVALID并带Bearer挑战；依赖不可用503、内部错误固定500，缺可选宿主能力503 SESSION_QUERY_NOT_CONFIGURED，所有响应no-store。当前详情、重新认证、换绑均检查有效非空来源；解绑时同账号任一未吊销会话缺少有效来源则内部错误并整事务回滚，包含自然过期但未清理者。普通Authenticate/内省保留JWT/Redis判定，无额外数据库热路径；旧JWT不会因查询而取得新auth_time。解绑仍204、换绑仍200且不发token，成功也可能让当前会话退出。
 
-九个显式客户端头只在验证码/IdP登录、completeSignIn、reauthenticate与新一轮refresh解析；UA和Client Hints可补充，自动解析失败放行，显式非法值凭证消费前400 INVALID_CLIENT_INFO（token为OAuth invalid_request）。没有新增制造商/build显式头或任意JSON HTTP输入；扩展仅来自直接Go或宿主回调。请求体不变，token、JWT、内省和身份列表不增加来源/描述。非空观察整体替换描述，nil/空不写；pending完成本次优先，否则整体沿用加密首次描述及原观察时间，失败、回滚和重放不更新。描述可缺省且不构成设备证明；采集/替换/清理边界见[README](../README.md#当前会话与客户端描述开发中)，代理/CORS见[网关说明](gateway-integration.md#客户端描述透传与-cors)，当前验证状态见[简化验收](../openspec/changes/simplify-session-context/verification.md)。
+九个显式客户端头只在验证码/IdP登录、completeSignIn、reauthenticate与新一轮refresh解析；UA和Client Hints可补充，自动解析失败放行，显式非法值凭证消费前400 INVALID_CLIENT_INFO（token为OAuth invalid_request）。没有新增制造商/build显式头或任意JSON HTTP输入；扩展仅来自直接Go或宿主回调。请求体不变，token、JWT、内省和身份列表不增加来源/描述。非空观察整体替换描述，nil/空不写；pending完成本次优先，否则整体沿用加密首次描述及原观察时间，失败、回滚和重放不更新。描述可缺省且不构成设备证明；采集/替换/清理边界见[README](../README.md#当前会话与客户端描述开发中)，代理/CORS见[网关说明](gateway-integration.md#客户端描述透传与-cors)，当前验证状态见[简化验收](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)。
 
 ## 管理查询
 

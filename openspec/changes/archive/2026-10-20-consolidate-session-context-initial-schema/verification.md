@@ -52,7 +52,13 @@ review_schema_consolidation 完成只读审查，发现两项 Important 并已�
 
 同步后发现旧delta的兼容边界缺少后继新增的“前一整合基线拒绝”场景，导致全量校验报错，且单独重放旧delta可能回写旧存储定义。使用现有工件的后继对齐方式，将本变更versioned-auth-storage两条重叠delta重基到已实现的后继定义，并在proposal/design追加阶段说明。原b414fef提交、设计决定及上述实施证据保持可追溯，不将后继代码行为称为原始实现。
 
-最终两个delta对重叠主规格逐条一致，重复同步内容等价；全量openspec validate --all --strict为26/26通过、0警告、0错误。上节CLI升级后的六份旧警告已由后继同步与职责拆分消除，原失败结果仅保留为当时历史。详细拆分和内容核验见[后继验收记录](../simplify-session-context/verification.md#2026-10-20-规格同步与警告优化)。本次未修改代码、SQL、生成结果、已发布tag或冻结源，也未提交、推送、合并或发布。
+最终两个delta对重叠主规格逐条一致，重复同步内容等价；全量openspec validate --all --strict为26/26通过、0警告、0错误。上节CLI升级后的六份旧警告已由后继同步与职责拆分消除，原失败结果仅保留为当时历史。详细拆分和内容核验见[后继验收记录](../2026-10-20-simplify-session-context/verification.md#2026-10-20-规格同步与警告优化)。本次未修改代码、SQL、生成结果、已发布tag或冻结源，也未提交、推送、合并或发布。
+
+## 2026-10-20 归档
+
+用户随后明确要求“提交，归档，合并”。规格整理先以56c78fc提交；本变更与后继变更均为spec-driven、全部工件done、7/7任务完成。归档前核对所有delta与主规格逐块一致，无待同步内容；未跳过规格或任务检查。
+
+按依赖顺序先归档本变更，目录为`openspec/changes/archive/2026-10-20-consolidate-session-context-initial-schema/`，原.openspec.yaml、全部工件及本记录一起保留。相对链接按新深度修复，与后继记录使用带日期的归档目录互引；历史命令中的原active路径只记录当时操作。归档不改变SQL、代码、固定源、tag或已完成测试的源码；未执行产品部署或版本发布。归档后统一规格/链接检查及本地合并结果见[后继记录](../2026-10-20-simplify-session-context/verification.md#2026-10-20-归档与本地合并)。
 
 ## 未验证项
 

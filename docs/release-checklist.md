@@ -4,7 +4,7 @@
 
 ## 当前待办与责任归属
 
-当前开发版本先经明确授权将会话0002合入0001，本轮又经批准在未发布初始定义内简化为必有来源和单行JSONB描述，初始化仍为version=1，与已发布v0.3.0及前一`b414fef`双快照v1结构不同。下一版本发布说明必须明确旧v0.3.0 v1、前一开发v1和撤回会话v2均不可直接接管，保留数据/结构/version/dirty；公开known/initial字段及快照枚举删除、nested HTTP DTO变化须给开发调用者迁移说明。历史tag/SQL和source-baseline保持。新基线验证与限制见[本次简化记录](../openspec/changes/simplify-session-context/verification.md)，正式发布仍须重新核验最终候选提交，旧版CI或历史验收不代表当前完整验证通过。
+当前开发版本先经明确授权将会话0002合入0001，本轮又经批准在未发布初始定义内简化为必有来源和单行JSONB描述，初始化仍为version=1，与已发布v0.3.0及前一`b414fef`双快照v1结构不同。下一版本发布说明必须明确旧v0.3.0 v1、前一开发v1和撤回会话v2均不可直接接管，保留数据/结构/version/dirty；公开known/initial字段及快照枚举删除、nested HTTP DTO变化须给开发调用者迁移说明。历史tag/SQL和source-baseline保持。新基线验证与限制见[本次简化记录](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)，正式发布仍须重新核验最终候选提交，旧版CI或历史验收不代表当前完整验证通过。
 
 当前发布门禁须覆盖来源缺失/失效时的事务拒绝、普通JWT不加数据库热路径、客户端非空观察整体替换与无描述不写、pending本次优先/首次原时间回退及重放不更新、单份nested JSON含extensions的pg_dump/pg_restore核验。JSON业务校验、深拷贝与宿主扩展隐私责任按[Go指南](go-integration.md#当前会话解绑与客户端描述开发中)复核；数据库无JSON对象/业务CHECK。完整Linux/race和恢复结果以本次验收实际记录为准，不能提前勾选。
 

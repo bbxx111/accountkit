@@ -30,4 +30,4 @@
 
 ## Impact
 
-涉及 migrations、user/query.sql、sqlc 配置与生成代码、客户端解析/领域/DTO、公开枚举、OpenAPI、恢复夹具、迁移检查和长期文档。不增加依赖、生产迁移、JWT 数据库热路径或任意 JSON HTTP 输入。前一 `consolidate-session-context-initial-schema` 工件保留历史，本变更 delta 在其上覆盖。具体实施见 [详细计划](../../../docs/superpowers/plans/2026-10-20-simplify-session-context.md)。
+涉及 migrations、user/query.sql、sqlc 配置与生成代码、客户端解析/领域/DTO、公开枚举、OpenAPI、恢复夹具、迁移检查和长期文档。不增加依赖、生产迁移、JWT 数据库热路径或任意 JSON HTTP 输入。前一 `consolidate-session-context-initial-schema` 工件保留历史，本变更 delta 在其上覆盖。具体实施见 [详细计划](../../../../docs/superpowers/plans/2026-10-20-simplify-session-context.md)。

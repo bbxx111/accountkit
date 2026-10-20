@@ -10,7 +10,7 @@
 - **内部事务隔离：** 库自行开启的领域事务使用 `READ COMMITTED`，配合既有锁和锁后复核，避免宿主较高默认隔离导致旧证明登录、绑定数量失控或并发刷新异常。`BeforeDelete`、`Anonymizer`、`WithActiveUsers` 的回调随库事务使用该隔离级别；回调仍必须使用传入的同一事务。公开 `Repo.WithTx` / `WithTxRaw` 继续继承宿主默认；调用方已开启并传给 `ImportAccounts` 的事务不被修改。
 - **审计分页：** 本地 Reader 只为最终页读取完整事件，`Page.FlowLinks` 提供当前页需要的去重流程归属，不应当作账号全部历史流程清单使用。公开类型、排序游标、动作范围、source/namespace 及管理面独立复核保持；证明查找独立于页面动作和游标范围。外部 Reader 的契约不变。
 
-当前测试、执行计划和未验证项见[验收记录](../openspec/changes/harden-database-runtime/verification.md)。
+当前测试、执行计划和未验证项见[验收记录](../openspec/changes/archive/2026-10-20-harden-database-runtime/verification.md)。
 
 ## 会话认证依据与客户端描述（开发中）
 

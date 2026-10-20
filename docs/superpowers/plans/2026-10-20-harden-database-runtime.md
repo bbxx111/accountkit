@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、pgx/v5 5.10.0、PostgreSQL 17、sqlc 1.31.1。
 
-**Spec:** [OpenSpec design](../../../openspec/changes/harden-database-runtime/design.md)、该变更下全部 specs、proposal.md、tasks.md。
+**Spec:** [OpenSpec design](../../../openspec/changes/archive/2026-10-20-harden-database-runtime/design.md)、该变更下全部 specs、proposal.md、tasks.md。
 
 ## Global Constraints
 
@@ -17,7 +17,7 @@
 - `New` 无 I/O 拒绝 `MaxConns < 2`，不创建独立维护连接、不关闭宿主池。
 - SQL 只改 `audit/query.sql`，生成代码仅由 `sqlc generate` 产生。
 - 保留现有锁序、验证码消费、刷新宽限、授权、异步审计及隐私规则。
-- 不提交、推送、合并或归档；原始日志放 `.test-output/harden-database-runtime/`，验收结论放变更的 verification.md。
+- 实施阶段先保留任务分支供审阅；用户后续已明确授权提交、归档及本地合并。原始日志放 `.test-output/harden-database-runtime/`，验收结论随变更归档；推送须另行授权。
 
 ## Review Focus
 
@@ -73,4 +73,4 @@
 - [x] 同步隔离级别边界、池最低容量及审计按页证据说明，登记新增必需顶层测试。
 - [x] GOWORK=off 下运行 build/vet/真实数据库全套测试，使用 Linux 镜像运行 race；核对 generated 和 migrations 检查。
 - [x] 运行 `openspec validate --all --strict`，记录 verification.md（含未执行的发布恢复项，不把历史记录当当前结果）。
-- [x] 检查 git diff、迁移无变化，清理仅本任务建立的容器，交付未提交的任务分支供用户审阅。
+- [x] 检查 git diff、迁移无变化，清理仅本任务建立的容器，交付已验证的任务分支；提交、归档和本地集成按用户后续指令执行。

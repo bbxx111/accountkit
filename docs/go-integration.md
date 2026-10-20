@@ -2,9 +2,9 @@
 
 本指南面向在自己的 Go 进程中嵌入 `github.com/bbxx111/accountkit` 的宿主。可以挂载内置 HTTP handler，也可以直接调用 `auth.Users()`；两者使用同一个领域服务，不需要启动 accountsvc。
 
-基础内容依据 v0.3.0 公开契约，包含 v0.2.0 未提供的登录补全和通用审计 API；标注“开发中”的会话功能是 v0.3.0 之后的变更，尚未发布。实际集成应固定包含所需接口的已验证版本；不要把本指南的新签名直接套到 v0.2.0。升级边界见[兼容指南](compatibility.md)。
+内容依据 v0.4.0 公开契约，包含 v0.2.0 未提供的登录补全和通用审计 API，以及 v0.3.0 未提供的当前会话、按来源撤销和客户端描述。实际集成应固定包含所需接口的已验证版本；不要把本指南的新签名直接套到 v0.2.0。升级边界见[兼容指南](compatibility.md)。
 
-## 当前会话、解绑与客户端描述（开发中）
+## 当前会话、解绑与客户端描述
 
 使用Authenticate获取完整可信Principal，再调用auth.Users().GetCurrentSession(ctx,p)。user/user:bind可查询，user:undelete不允许。结果提供数据库最新AuthTime和非空AuthenticationIdentities；HTTP转换的name是users/{user}/identities/{identity}。与拟解绑身份的完整资源名精确匹配，不能只比较Kind。来源缺失或失效是内部错误，不返回正常空集合，不从其他身份或审计补造。重新认证成功后用新access重新Authenticate并重查；查询不会改写旧JWT或自动给它新的近期认证证明。
 
@@ -25,7 +25,7 @@ Go保留ClientInfo平坦字段，新增DeviceManufacturer、AppBuild及`Extensio
 
 扩展允许JSON primitive/null/object/array；所有层级键匹配`[a-z][a-z0-9_]{0,63}`。根扩展对象不计节点/深度，直接值深度1，值、容器和数组元素各计一节点，最多64节点、4层、每数组16项、每字符串256个Unicode字符；根map超过64项在分配规范化副本前拒绝。固定拒绝的下划线分隔词段为`password`、`passwd`、`secret`、`token`、`credential`、`credentials`、`authorization`、`cookie`、`cookies`、`captcha`、`otp`、`ip`、`address`、`location`、`latitude`、`longitude`、`imei`、`mac`、`ua`；同时拒绝完整组合键或以`_`为边界出现的`user_agent`、`device_id`、`hardware_id`、`verification_code`、`sms_code`、`email_code`、`one_time_code`、`security_code`。这些固定规则不识别普通值中夹带的任意隐私；宿主须管理来源、扩展语义和隐私白名单，不记录私密回调输入。默认HTTP不接收扩展JSON，也不新增制造商/build显式头。
 
-只有成功登录（含补全）、重新认证和新轮刷新采集描述。有非空观察时整体替换唯一一份描述；nil/空观察不写入且保留旧值和时间。版本/build单独出现合法，app/browser可并存；`MergeClientInfo`仅供同一请求UA→Hints→显式值overlay，不用于跨请求持久化合并。pending完成本次非空描述优先，否则整体沿用加密首次描述和原观察时间；失败、事务回滚及结果重放不更新。旧客户端可缺省，描述不作为授权或可信设备证明。完整字段和时间边界见[README](../README.md#当前会话与客户端描述开发中)，上线和回退见[迁移手册](migrations.md#会话认证依据初始整合开发中)，当前验收状态见[简化记录](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)。
+只有成功登录（含补全）、重新认证和新轮刷新采集描述。有非空观察时整体替换唯一一份描述；nil/空观察不写入且保留旧值和时间。版本/build单独出现合法，app/browser可并存；`MergeClientInfo`仅供同一请求UA→Hints→显式值overlay，不用于跨请求持久化合并。pending完成本次非空描述优先，否则整体沿用加密首次描述和原观察时间；失败、事务回滚及结果重放不更新。旧客户端可缺省，描述不作为授权或可信设备证明。完整字段和时间边界见[README](../README.md#当前会话与客户端描述)，上线和回退见[迁移手册](migrations.md#会话认证依据初始整合)，当前验收状态见[简化记录](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)。
 
 ## 选择入口
 
@@ -100,7 +100,7 @@ pending 与 `user:bind` 是不同状态。补全先调用 `SendSignInCompletionC
 
 手机/邮箱近期认证先使用 `SendReauthenticationCode` 获取绑定用户与会话的轮次，再调用 `Reauthenticate`。它只返回新 access，不返回新 refresh，也不延长原 refresh 的绝对有效期。只更新 access、其期限与 scope，保留现存 refresh。
 
-直接调用 Go 方法不会执行 HTTP 中间件。`DeleteMe` 的 scope/近期认证保护位于内置 HTTP 路由，直接调用前宿主必须检查 `ScopeUser`，并按 `auth.Config()` 中的 `SensitiveOpVerification` / `ReauthMaxAge` 校验可信 `Principal.AuthTime`；不能等待它自动返回 `ErrReauthenticationRequired`。开启近期认证时，AuthTime 为零或距当前时间超过窗口均应拒绝并引导重新认证。`Undelete` 必须先检查专用 `ScopeUndelete`，普通 user 凭据不能替代。当前开发变更的 `UnbindIdentity` 与 `ReplaceIdentity` 在领域层也复核 scope、近期认证和所属有效当前会话；仅UserID的Principal不能解绑。自有敏感业务同样需要这些入口检查；HTTP 宿主可组合 `RequireScope` 和 `RequireRecentAuth`。
+直接调用 Go 方法不会执行 HTTP 中间件。`DeleteMe` 的 scope/近期认证保护位于内置 HTTP 路由，直接调用前宿主必须检查 `ScopeUser`，并按 `auth.Config()` 中的 `SensitiveOpVerification` / `ReauthMaxAge` 校验可信 `Principal.AuthTime`；不能等待它自动返回 `ErrReauthenticationRequired`。开启近期认证时，AuthTime 为零或距当前时间超过窗口均应拒绝并引导重新认证。`Undelete` 必须先检查专用 `ScopeUndelete`，普通 user 凭据不能替代。v0.4.0 起 `UnbindIdentity` 与 `ReplaceIdentity` 在领域层也复核 scope、近期认证和所属有效当前会话；仅UserID的Principal不能解绑。自有敏感业务同样需要这些入口检查；HTTP 宿主可组合 `RequireScope` 和 `RequireRecentAuth`。
 
 纯第三方账号当前通过普通 IdP 重登获得新的认证状态：核对返回的账号仍是原账号，再更新完整 pair；这会替换同设备会话，且不保证提供方强制输入密码或 MFA。纯第三方冷静期账号没有第三方自助恢复入口。
 

@@ -178,7 +178,7 @@ type CountActiveSessionsByUserParams struct {
 	Now    time.Time
 }
 
-// 管理端用户详情：活跃会话数；命中 idx_session_user_id。
+// 管理端用户详情：活跃会话数；命中 uk_session_user_id_device_id（首列 user_id，谓词 revoke_time IS NULL）。
 func (q *Queries) CountActiveSessionsByUser(ctx context.Context, arg CountActiveSessionsByUserParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countActiveSessionsByUser, arg.UserID, arg.Now)
 	var count int64
@@ -458,11 +458,18 @@ func (q *Queries) DeleteSignInCompletionFlowsForUser(ctx context.Context, userID
 }
 
 const deleteStaleSessions = `-- name: DeleteStaleSessions :execrows
-WITH targets AS MATERIALIZED (
- SELECT id FROM session
- WHERE (revoke_time IS NOT NULL AND revoke_time < $1::timestamptz)
-    OR (revoke_time IS NULL AND refresh_expire_time < $1::timestamptz)
- ORDER BY id LIMIT $2::int FOR UPDATE
+WITH candidates AS MATERIALIZED (
+ (SELECT id FROM session WHERE revoke_time IS NOT NULL AND revoke_time < $1::timestamptz
+  ORDER BY revoke_time LIMIT $2::int)
+ UNION
+ (SELECT id FROM session WHERE revoke_time IS NULL AND refresh_expire_time < $1::timestamptz
+  ORDER BY refresh_expire_time LIMIT $2::int)
+), targets AS MATERIALIZED (
+ SELECT s.id FROM session s
+ WHERE s.id IN (SELECT id FROM candidates)
+   AND ((s.revoke_time IS NOT NULL AND s.revoke_time < $1::timestamptz)
+     OR (s.revoke_time IS NULL AND s.refresh_expire_time < $1::timestamptz))
+ ORDER BY s.id LIMIT $2::int FOR UPDATE OF s SKIP LOCKED
 ), removed_identities AS (
  DELETE FROM session_authentication_identity WHERE session_id IN (SELECT id FROM targets)
  RETURNING session_id
@@ -480,6 +487,9 @@ type DeleteStaleSessionsParams struct {
 
 // Lock a bounded batch before deleting context and parents atomically. Retention
 // is based on the original revoke/expiry time, never on snapshot observations.
+// Candidates come from the two retention partial indexes, so sparse stale rows do not
+// force a primary-key walk. Rows held by an in-flight refresh or revocation are skipped
+// for a later round; the locked re-read rechecks the retention condition.
 func (q *Queries) DeleteStaleSessions(ctx context.Context, arg DeleteStaleSessionsParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteStaleSessions, arg.Before, arg.BatchSize)
 	if err != nil {
@@ -1059,7 +1069,7 @@ type ListIdentitiesByCipherKeyVersionParams struct {
 	BatchSize int32
 }
 
-// 维护任务 reencrypt_subjects：仍用旧加密版本的活跃锚点身份；命中 idx_identity_cipher_key_version。
+// 维护任务 reencrypt_subjects：仍用旧加密版本的活跃锚点身份；按 idx_identity_cipher_key_version_create_time_id 索引序取批。
 func (q *Queries) ListIdentitiesByCipherKeyVersion(ctx context.Context, arg ListIdentitiesByCipherKeyVersionParams) ([]Identity, error) {
 	rows, err := q.db.Query(ctx, listIdentitiesByCipherKeyVersion, arg.Version, arg.BatchSize)
 	if err != nil {
@@ -1107,7 +1117,7 @@ type ListIdentitiesByDigestKeyVersionParams struct {
 	BatchSize int32
 }
 
-// 维护任务 rekey_digests：仍用旧 HMAC 版本的活跃锚点身份；命中 idx_identity_digest_key_version。
+// 维护任务 rekey_digests：仍用旧 HMAC 版本的活跃锚点身份；按 idx_identity_digest_key_version_create_time_id 索引序取批。
 func (q *Queries) ListIdentitiesByDigestKeyVersion(ctx context.Context, arg ListIdentitiesByDigestKeyVersionParams) ([]Identity, error) {
 	rows, err := q.db.Query(ctx, listIdentitiesByDigestKeyVersion, arg.Version, arg.BatchSize)
 	if err != nil {
@@ -1378,6 +1388,31 @@ func (q *Queries) ListUsersDueForPurge(ctx context.Context, arg ListUsersDueForP
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockAnchorSubjects = `-- name: LockAnchorSubjects :exec
+WITH keys AS (
+ SELECT DISTINCT hashtextextended(jsonb_build_array(
+  'accountkit.identity.subject', 'identity'::regclass::oid, ($1::smallint[])[d.n], d.digest)::text, 0)::bigint AS lock_key
+ FROM unnest($2::text[]) WITH ORDINALITY AS d(digest, n)
+)
+SELECT pg_advisory_xact_lock(lock_key) FROM keys ORDER BY lock_key
+`
+
+type LockAnchorSubjectsParams struct {
+	Kinds   []int16
+	Digests []string
+}
+
+// 锚点 subject 的事务级互斥：唯一索引只约束单个摘要值，密钥轮换的混合 active 期间
+// 不同进程会为同一 subject 写入不同版本的摘要。调用方按 (kind, digest) 平行数组传入
+// 每个 subject 的 AllDigests 全部版本；所有进程持有相同完整密钥集合，因此锁键集合一致。
+// 键绑定到实际解析的 identity 关系，不依赖 search_path 首位 schema 名；哈希碰撞只会多串行化。
+// 一次往返内按键升序加锁：目标列含易变函数时，规划器在 Sort 之后才求值目标列
+// （TestLockAnchorSubjectsLocksAfterSort 固定这一计划形状）。
+func (q *Queries) LockAnchorSubjects(ctx context.Context, arg LockAnchorSubjectsParams) error {
+	_, err := q.db.Exec(ctx, lockAnchorSubjects, arg.Kinds, arg.Digests)
+	return err
 }
 
 const lockAuditEventsForUserCleanup = `-- name: LockAuditEventsForUserCleanup :many

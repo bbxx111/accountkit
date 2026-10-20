@@ -108,6 +108,20 @@ SELECT * FROM identity
 WHERE kind = @kind AND subject_digest = ANY(@digests::text[]) AND delete_time IS NULL
 LIMIT 1;
 
+-- name: LockAnchorSubjects :exec
+-- 锚点 subject 的事务级互斥：唯一索引只约束单个摘要值，密钥轮换的混合 active 期间
+-- 不同进程会为同一 subject 写入不同版本的摘要。调用方按 (kind, digest) 平行数组传入
+-- 每个 subject 的 AllDigests 全部版本；所有进程持有相同完整密钥集合，因此锁键集合一致。
+-- 键绑定到实际解析的 identity 关系，不依赖 search_path 首位 schema 名；哈希碰撞只会多串行化。
+-- 一次往返内按键升序加锁：目标列含易变函数时，规划器在 Sort 之后才求值目标列
+-- （TestLockAnchorSubjectsLocksAfterSort 固定这一计划形状）。
+WITH keys AS (
+ SELECT DISTINCT hashtextextended(jsonb_build_array(
+  'accountkit.identity.subject', 'identity'::regclass::oid, (@kinds::smallint[])[d.n], d.digest)::text, 0)::bigint AS lock_key
+ FROM unnest(@digests::text[]) WITH ORDINALITY AS d(digest, n)
+)
+SELECT pg_advisory_xact_lock(lock_key) FROM keys ORDER BY lock_key;
+
 -- name: ListActiveIdentitiesByUser :many
 SELECT * FROM identity WHERE user_id = $1 AND delete_time IS NULL ORDER BY create_time, id;
 
@@ -140,7 +154,7 @@ SET subject_digest     = CASE WHEN subject_digest   IS NULL THEN NULL ELSE @repl
 WHERE id = @id AND user_id = @user_id;
 
 -- name: ListIdentitiesByDigestKeyVersion :many
--- 维护任务 rekey_digests：仍用旧 HMAC 版本的活跃锚点身份；命中 idx_identity_digest_key_version。
+-- 维护任务 rekey_digests：仍用旧 HMAC 版本的活跃锚点身份；按 idx_identity_digest_key_version_create_time_id 索引序取批。
 SELECT * FROM identity
 WHERE delete_time IS NULL AND digest_key_version = @version::smallint
 ORDER BY create_time, id
@@ -153,7 +167,7 @@ SET subject_digest = @digest::text, digest_key_version = @version::smallint, upd
 WHERE id = @id AND digest_key_version = @old_version::smallint AND delete_time IS NULL;
 
 -- name: ListIdentitiesByCipherKeyVersion :many
--- 维护任务 reencrypt_subjects：仍用旧加密版本的活跃锚点身份；命中 idx_identity_cipher_key_version。
+-- 维护任务 reencrypt_subjects：仍用旧加密版本的活跃锚点身份；按 idx_identity_cipher_key_version_create_time_id 索引序取批。
 SELECT * FROM identity
 WHERE delete_time IS NULL AND cipher_key_version = @version::smallint
 ORDER BY create_time, id
@@ -234,11 +248,21 @@ WHERE id = @id AND revoke_time IS NULL AND refresh_expire_time > @auth_time::tim
 -- name: DeleteStaleSessions :execrows
 -- Lock a bounded batch before deleting context and parents atomically. Retention
 -- is based on the original revoke/expiry time, never on snapshot observations.
-WITH targets AS MATERIALIZED (
- SELECT id FROM session
- WHERE (revoke_time IS NOT NULL AND revoke_time < @before::timestamptz)
-    OR (revoke_time IS NULL AND refresh_expire_time < @before::timestamptz)
- ORDER BY id LIMIT @batch_size::int FOR UPDATE
+-- Candidates come from the two retention partial indexes, so sparse stale rows do not
+-- force a primary-key walk. Rows held by an in-flight refresh or revocation are skipped
+-- for a later round; the locked re-read rechecks the retention condition.
+WITH candidates AS MATERIALIZED (
+ (SELECT id FROM session WHERE revoke_time IS NOT NULL AND revoke_time < @before::timestamptz
+  ORDER BY revoke_time LIMIT @batch_size::int)
+ UNION
+ (SELECT id FROM session WHERE revoke_time IS NULL AND refresh_expire_time < @before::timestamptz
+  ORDER BY refresh_expire_time LIMIT @batch_size::int)
+), targets AS MATERIALIZED (
+ SELECT s.id FROM session s
+ WHERE s.id IN (SELECT id FROM candidates)
+   AND ((s.revoke_time IS NOT NULL AND s.revoke_time < @before::timestamptz)
+     OR (s.revoke_time IS NULL AND s.refresh_expire_time < @before::timestamptz))
+ ORDER BY s.id LIMIT @batch_size::int FOR UPDATE OF s SKIP LOCKED
 ), removed_identities AS (
  DELETE FROM session_authentication_identity WHERE session_id IN (SELECT id FROM targets)
  RETURNING session_id
@@ -249,7 +273,7 @@ WITH targets AS MATERIALIZED (
 DELETE FROM session WHERE id IN (SELECT id FROM targets);
 
 -- name: CountActiveSessionsByUser :one
--- 管理端用户详情：活跃会话数；命中 idx_session_user_id。
+-- 管理端用户详情：活跃会话数；命中 uk_session_user_id_device_id（首列 user_id，谓词 revoke_time IS NULL）。
 SELECT count(*) FROM session
 WHERE user_id = @user_id AND revoke_time IS NULL AND refresh_expire_time > @now::timestamptz;
 

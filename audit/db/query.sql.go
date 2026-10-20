@@ -96,58 +96,85 @@ func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventPara
 }
 
 const listAuditEventsByResource = `-- name: ListAuditEventsByResource :many
-SELECT id, source, action, result, actor, targets, context, data, occur_time, create_time FROM audit_event e
-WHERE e.source = $1::text
- AND (COALESCE(cardinality($2::text[]),0) = 0 OR e.action = ANY($2::text[]))
- AND (
-  ( $3::text = 'USER' AND e.actor @> $4::jsonb)
-  OR e.targets @> $5::jsonb OR e.context->'related_resources' @> $5::jsonb
-  OR (
-   $3::text = 'USER'
-   AND NOT (e.actor->>'type' = 'USER' AND e.actor->>'namespace' = $6::text)
-   AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) r
-                   WHERE r->>'type' = 'USER' AND r->>'namespace' = $6::text)
-   AND EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) r
-               WHERE r->>'type' = 'IDENTITY_FLOW' AND r->>'namespace' = $6::text AND r->>'id' = ANY($7::text[]))
-  )
- )
- AND ($8::timestamptz IS NULL OR (e.occur_time,e.id) > ($8::timestamptz,$9::uuid))
-ORDER BY occur_time,id LIMIT $10::int
+WITH matched AS MATERIALIZED (
+ (SELECT a.id, a.source, a.action, a.result, a.actor, a.targets, a.context, a.data, a.occur_time, a.create_time FROM audit_event a
+  WHERE a.source = $2::text AND $3::text = 'USER'
+   AND a.actor->>'type' = 'USER' AND a.actor->>'namespace' = $4::text AND a.actor->>'id' = $5::text
+   AND (COALESCE(cardinality($6::text[]),0) = 0 OR a.action = ANY($6::text[]))
+   AND ($7::timestamptz IS NULL OR (a.occur_time,a.id) > ($7::timestamptz,$8::uuid))
+  ORDER BY a.occur_time, a.id LIMIT $1::int)
+ UNION
+ SELECT a.id, a.source, a.action, a.result, a.actor, a.targets, a.context, a.data, a.occur_time, a.create_time FROM audit_event a
+ WHERE a.source = $2::text
+  AND (a.targets @> $9::jsonb OR a.context->'related_resources' @> $9::jsonb)
+  AND (COALESCE(cardinality($6::text[]),0) = 0 OR a.action = ANY($6::text[]))
+  AND ($7::timestamptz IS NULL OR (a.occur_time,a.id) > ($7::timestamptz,$8::uuid))
+ UNION
+ SELECT a.id, a.source, a.action, a.result, a.actor, a.targets, a.context, a.data, a.occur_time, a.create_time FROM audit_event a
+ WHERE a.source = $2::text AND $3::text = 'USER'
+  AND (a.targets @> ANY($10::jsonb[]) OR a.context->'related_resources' @> ANY($10::jsonb[]))
+  AND NOT (a.actor->>'type' = 'USER' AND a.actor->>'namespace' = $4::text)
+  AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(a.targets || COALESCE(a.context->'related_resources','[]'::jsonb)) r
+                  WHERE r->>'type' = 'USER' AND r->>'namespace' = $4::text)
+  AND (COALESCE(cardinality($6::text[]),0) = 0 OR a.action = ANY($6::text[]))
+  AND ($7::timestamptz IS NULL OR (a.occur_time,a.id) > ($7::timestamptz,$8::uuid))
+)
+SELECT id, source, action, result, actor, targets, context, data, occur_time, create_time FROM matched
+ORDER BY occur_time, id LIMIT $1::int
 `
 
 type ListAuditEventsByResourceParams struct {
-	Source       string
-	Actions      []string
-	ResourceType string
-	Actor        []byte
-	Resource     []byte
-	Namespace    string
-	FlowIds      []string
-	AfterTime    *time.Time
-	AfterID      *uuid.UUID
-	PageLimit    int32
+	PageLimit     int32
+	Source        string
+	ResourceType  string
+	Namespace     string
+	ResourceID    string
+	Actions       []string
+	AfterTime     *time.Time
+	AfterID       *uuid.UUID
+	Resource      []byte
+	FlowResources [][]byte
 }
 
-func (q *Queries) ListAuditEventsByResource(ctx context.Context, arg ListAuditEventsByResourceParams) ([]AuditEvent, error) {
+type ListAuditEventsByResourceRow struct {
+	ID         uuid.UUID
+	Source     string
+	Action     string
+	Result     *int16
+	Actor      []byte
+	Targets    []byte
+	Context    []byte
+	Data       []byte
+	OccurTime  time.Time
+	CreateTime time.Time
+}
+
+// Each membership arm is fenced in a materialized CTE so the outer ORDER BY/LIMIT
+// cannot turn it into a walk of the source timeline, including under generic plans.
+// The actor arm reads idx_audit_event_actor in (occur_time, id) order and stops at the
+// page size; resource arms use the GIN indexes and hold only rows naming the resource.
+// Arms return whole rows so no join back to audit_event is planned. @flow_resources
+// holds one single-element IDENTITY_FLOW resource array per flow; empty outside USER.
+func (q *Queries) ListAuditEventsByResource(ctx context.Context, arg ListAuditEventsByResourceParams) ([]ListAuditEventsByResourceRow, error) {
 	rows, err := q.db.Query(ctx, listAuditEventsByResource,
+		arg.PageLimit,
 		arg.Source,
-		arg.Actions,
 		arg.ResourceType,
-		arg.Actor,
-		arg.Resource,
 		arg.Namespace,
-		arg.FlowIds,
+		arg.ResourceID,
+		arg.Actions,
 		arg.AfterTime,
 		arg.AfterID,
-		arg.PageLimit,
+		arg.Resource,
+		arg.FlowResources,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []AuditEvent
+	var items []ListAuditEventsByResourceRow
 	for rows.Next() {
-		var i AuditEvent
+		var i ListAuditEventsByResourceRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Source,
@@ -174,18 +201,28 @@ const listAuditFlowEvidence = `-- name: ListAuditFlowEvidence :many
 SELECT id, source, action, result, actor, targets, context, data, occur_time, create_time FROM audit_event e
 WHERE e.source = $1::text AND e.result = 1
  AND e.action IN ('SIGN_IN_COMPLETION_PROOF_VERIFIED','SIGN_IN_COMPLETION_COMPLETED')
- AND (e.actor @> $2::jsonb OR e.targets @> $3::jsonb OR e.context->'related_resources' @> $3::jsonb)
+ AND ((e.actor->>'type' = 'USER' AND e.actor->>'namespace' = $2::text AND e.actor->>'id' = $3::text)
+  OR e.targets @> $4::jsonb OR e.context->'related_resources' @> $4::jsonb)
 ORDER BY occur_time, id
 `
 
 type ListAuditFlowEvidenceParams struct {
-	Source   string
-	Actor    []byte
-	Resource []byte
+	Source    string
+	Namespace string
+	UserID    string
+	Resource  []byte
 }
 
+// Every OR arm must be index-backed (actor expression index, resource GIN indexes) so
+// the planner can combine them with BitmapOr. Actor membership uses expression
+// equality because idx_audit_event_actor cannot serve jsonb containment.
 func (q *Queries) ListAuditFlowEvidence(ctx context.Context, arg ListAuditFlowEvidenceParams) ([]AuditEvent, error) {
-	rows, err := q.db.Query(ctx, listAuditFlowEvidence, arg.Source, arg.Actor, arg.Resource)
+	rows, err := q.db.Query(ctx, listAuditFlowEvidence,
+		arg.Source,
+		arg.Namespace,
+		arg.UserID,
+		arg.Resource,
+	)
 	if err != nil {
 		return nil, err
 	}

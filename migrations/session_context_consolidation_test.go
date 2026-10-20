@@ -68,6 +68,7 @@ func TestSessionContextConsolidatedCatalog(t *testing.T) {
 		"CREATE SCHEMA " + oldSchema,
 		sessionContextHistoricalSQL(t, "0001_init.up.sql"),
 		sessionContextHistoricalSQL(t, "0002_session_authentication_context.up.sql"),
+		databaseReviewIndexSQL,
 	} {
 		if _, err := old.Exec(ctx, statement); err != nil {
 			t.Fatal(err)

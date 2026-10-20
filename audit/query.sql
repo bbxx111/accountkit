@@ -20,30 +20,48 @@ DELETE FROM audit_event WHERE id IN (SELECT id FROM locked);
 SELECT id FROM sign_in_completion_flow WHERE user_id = @user_id::text OR proof_user_ids @> ARRAY[@user_id::text];
 
 -- name: ListAuditFlowEvidence :many
+-- Every OR arm must be index-backed (actor expression index, resource GIN indexes) so
+-- the planner can combine them with BitmapOr. Actor membership uses expression
+-- equality because idx_audit_event_actor cannot serve jsonb containment.
 SELECT * FROM audit_event e
 WHERE e.source = @source::text AND e.result = 1
  AND e.action IN ('SIGN_IN_COMPLETION_PROOF_VERIFIED','SIGN_IN_COMPLETION_COMPLETED')
- AND (e.actor @> @actor::jsonb OR e.targets @> @resource::jsonb OR e.context->'related_resources' @> @resource::jsonb)
+ AND ((e.actor->>'type' = 'USER' AND e.actor->>'namespace' = @namespace::text AND e.actor->>'id' = @user_id::text)
+  OR e.targets @> @resource::jsonb OR e.context->'related_resources' @> @resource::jsonb)
 ORDER BY occur_time, id;
 
 -- name: ListAuditEventsByResource :many
-SELECT * FROM audit_event e
-WHERE e.source = @source::text
- AND (COALESCE(cardinality(@actions::text[]),0) = 0 OR e.action = ANY(@actions::text[]))
- AND (
-  ( @resource_type::text = 'USER' AND e.actor @> @actor::jsonb)
-  OR e.targets @> @resource::jsonb OR e.context->'related_resources' @> @resource::jsonb
-  OR (
-   @resource_type::text = 'USER'
-   AND NOT (e.actor->>'type' = 'USER' AND e.actor->>'namespace' = @namespace::text)
-   AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) r
-                   WHERE r->>'type' = 'USER' AND r->>'namespace' = @namespace::text)
-   AND EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) r
-               WHERE r->>'type' = 'IDENTITY_FLOW' AND r->>'namespace' = @namespace::text AND r->>'id' = ANY(@flow_ids::text[]))
-  )
- )
- AND (sqlc.narg('after_time')::timestamptz IS NULL OR (e.occur_time,e.id) > (sqlc.narg('after_time')::timestamptz,sqlc.narg('after_id')::uuid))
-ORDER BY occur_time,id LIMIT @page_limit::int;
+-- Each membership arm is fenced in a materialized CTE so the outer ORDER BY/LIMIT
+-- cannot turn it into a walk of the source timeline, including under generic plans.
+-- The actor arm reads idx_audit_event_actor in (occur_time, id) order and stops at the
+-- page size; resource arms use the GIN indexes and hold only rows naming the resource.
+-- Arms return whole rows so no join back to audit_event is planned. @flow_resources
+-- holds one single-element IDENTITY_FLOW resource array per flow; empty outside USER.
+WITH matched AS MATERIALIZED (
+ (SELECT a.* FROM audit_event a
+  WHERE a.source = @source::text AND @resource_type::text = 'USER'
+   AND a.actor->>'type' = 'USER' AND a.actor->>'namespace' = @namespace::text AND a.actor->>'id' = @resource_id::text
+   AND (COALESCE(cardinality(@actions::text[]),0) = 0 OR a.action = ANY(@actions::text[]))
+   AND (sqlc.narg('after_time')::timestamptz IS NULL OR (a.occur_time,a.id) > (sqlc.narg('after_time')::timestamptz,sqlc.narg('after_id')::uuid))
+  ORDER BY a.occur_time, a.id LIMIT @page_limit::int)
+ UNION
+ SELECT a.* FROM audit_event a
+ WHERE a.source = @source::text
+  AND (a.targets @> @resource::jsonb OR a.context->'related_resources' @> @resource::jsonb)
+  AND (COALESCE(cardinality(@actions::text[]),0) = 0 OR a.action = ANY(@actions::text[]))
+  AND (sqlc.narg('after_time')::timestamptz IS NULL OR (a.occur_time,a.id) > (sqlc.narg('after_time')::timestamptz,sqlc.narg('after_id')::uuid))
+ UNION
+ SELECT a.* FROM audit_event a
+ WHERE a.source = @source::text AND @resource_type::text = 'USER'
+  AND (a.targets @> ANY(@flow_resources::jsonb[]) OR a.context->'related_resources' @> ANY(@flow_resources::jsonb[]))
+  AND NOT (a.actor->>'type' = 'USER' AND a.actor->>'namespace' = @namespace::text)
+  AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(a.targets || COALESCE(a.context->'related_resources','[]'::jsonb)) r
+                  WHERE r->>'type' = 'USER' AND r->>'namespace' = @namespace::text)
+  AND (COALESCE(cardinality(@actions::text[]),0) = 0 OR a.action = ANY(@actions::text[]))
+  AND (sqlc.narg('after_time')::timestamptz IS NULL OR (a.occur_time,a.id) > (sqlc.narg('after_time')::timestamptz,sqlc.narg('after_id')::uuid))
+)
+SELECT id, source, action, result, actor, targets, context, data, occur_time, create_time FROM matched
+ORDER BY occur_time, id LIMIT @page_limit::int;
 -- name: SnapshotAuditFlows :many
 SELECT id, user_id, proof_user_ids FROM sign_in_completion_flow
 WHERE id = ANY(@flow_ids::text[]) ORDER BY id;

@@ -113,7 +113,7 @@ func TestSessionContextQueriesIsolation(t *testing.T) {
 		for _, sql := range []string{
 			`INSERT INTO user_account(id,state) VALUES('u_0000000000001',1),('u_0000000000002',1)`,
 			`INSERT INTO identity(id,user_id,kind,provider_subject) VALUES('i_0000000000001','u_0000000000001',3,'synthetic-a'),('i_0000000000002','u_0000000000001',4,'synthetic-b'),('i_0000000000003','u_0000000000002',3,'synthetic-c')`,
-			`INSERT INTO session(id,user_id,device_id,auth_time,refresh_token_hash,refresh_expire_time) SELECT 's_000000000000'||n,CASE WHEN n=5 THEN 'u_0000000000002' ELSE 'u_0000000000001' END,'device',now(),decode('000'||n,'hex'),CASE WHEN n=3 THEN now()-interval '1 day' ELSE now()+interval '1 day' END FROM generate_series(1,5) n`,
+			`INSERT INTO session(id,user_id,device_id,auth_time,refresh_token_hash,refresh_expire_time) SELECT 's_000000000000'||n,CASE WHEN n=5 THEN 'u_0000000000002' ELSE 'u_0000000000001' END,'device-'||n,now(),decode('000'||n,'hex'),CASE WHEN n=3 THEN now()-interval '1 day' ELSE now()+interval '1 day' END FROM generate_series(1,5) n`,
 		} {
 			if _, err := conn.Exec(ctx, sql); err != nil {
 				t.Fatal(err)

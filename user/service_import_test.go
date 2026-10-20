@@ -60,9 +60,17 @@ func newImportFixture(t *testing.T) *importFixture {
 	t.Helper()
 	pool := testPool(t)
 	mr := miniredis.RunT(t)
+	logs := &bytes.Buffer{}
+	svc, dig, ciph := newImportService(t, pool, mr, logs, 2)
+	return &importFixture{svc: svc, pool: pool, dig: dig, ciph: ciph, mr: mr, logs: logs}
+}
+
+// newImportService 以给定 HMAC active 版本装配服务；密钥集合固定，便于构造混合 active 进程。
+func newImportService(t *testing.T, pool *pgxpool.Pool, mr *miniredis.Miniredis, logs *bytes.Buffer, digestActive uint16) (*user.Service, *pii.Digester, *pii.Cipher) {
+	t.Helper()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
-	dig, err := pii.NewDigester(map[uint16][]byte{1: bytes.Repeat([]byte{1}, 32), 2: bytes.Repeat([]byte{4}, 32)}, 2)
+	dig, err := pii.NewDigester(map[uint16][]byte{1: bytes.Repeat([]byte{1}, 32), 2: bytes.Repeat([]byte{4}, 32)}, digestActive)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +82,6 @@ func newImportFixture(t *testing.T) *importFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	logs := &bytes.Buffer{}
 	guard := importExternalGuard{t}
 	svc, err := user.NewService(user.Deps{
 		Repo: user.NewRepo(pool), Codes: code.NewStore(rdb, "import-test:", dig, code.Options{FailureLimitPerTarget: 10, FailureWindow: 15 * time.Minute, TTL: 5 * time.Minute, Cooldown: time.Minute, MaxAttempts: 5, DailyLimitPerTarget: 10, DailyLimitPerIP: 100}),
@@ -87,7 +94,7 @@ func newImportFixture(t *testing.T) *importFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &importFixture{svc: svc, pool: pool, dig: dig, ciph: ciph, mr: mr, logs: logs}
+	return svc, dig, ciph
 }
 func importAccount(t *testing.T, target string) user.ImportAccount {
 	t.Helper()
@@ -364,59 +371,155 @@ func TestImportAccountsRollback(t *testing.T) {
 	}
 }
 
-// 两个停写工具误并行时，相同 active 版本的索引冲突仍必须显式失败，不能合并账号。
+// 两个停写工具误并行时，冲突必须显式失败，不能合并账号。加锁的写入方在 subject
+// advisory lock 上串行化，即使处于 HMAC 混合 active 期（两边摘要不同、唯一索引无法互拦）；
+// 不加锁的写入方（如滚动升级中的旧进程）仍由唯一索引兜底，并保留数据库冲突原因。
 func TestImportAccountsConcurrentConflict(t *testing.T) {
+	for _, mode := range []string{"same_active", "mixed_active", "unlocked_writer"} {
+		t.Run(mode, func(t *testing.T) {
+			f := newImportFixture(t)
+			ctx := context.Background()
+			first := importAccount(t, "race@example.com")
+			second := importAccount(t, " RACE@EXAMPLE.COM ")
+			firstTx := importTx(t, f.pool)
+			secondTx := importTx(t, f.pool)
+			switch mode {
+			case "same_active":
+				if err := f.svc.ImportAccounts(ctx, firstTx, []user.ImportAccount{first}); err != nil {
+					t.Fatal(err)
+				}
+			case "mixed_active":
+				oldActive, _, _ := newImportService(t, f.pool, f.mr, f.logs, 1)
+				if err := oldActive.ImportAccounts(ctx, firstTx, []user.ImportAccount{first}); err != nil {
+					t.Fatal(err)
+				}
+			case "unlocked_writer":
+				q := db.New(firstTx)
+				if err := q.ImportUser(ctx, db.ImportUserParams{ID: first.ID, State: first.State, CreateTime: first.CreateTime, UpdateTime: first.UpdateTime}); err != nil {
+					t.Fatal(err)
+				}
+				iid, _ := ids.New(ids.Identity)
+				digest, dv := f.dig.Digest("race@example.com")
+				ct, cv, err := f.ciph.Encrypt("race@example.com")
+				if err != nil {
+					t.Fatal(err)
+				}
+				d, c := int16(dv), int16(cv)
+				if err := q.ImportIdentity(ctx, db.ImportIdentityParams{ID: iid, UserID: first.ID, Kind: enum.IdentityEmail, SubjectDigest: &digest, DigestKeyVersion: &d, SubjectCiphertext: ct, CipherKeyVersion: &c, CreateTime: first.CreateTime, UpdateTime: first.UpdateTime}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			secondCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			done := make(chan error, 1)
+			go func() { done <- f.svc.ImportAccounts(secondCtx, secondTx, []user.ImportAccount{second}) }()
+			// 观察真实 PostgreSQL 锁等待（加锁写入方为 advisory，不加锁写入方为唯一索引），再提交第一批，不靠睡眠推断并发时序。
+			wantWait := "advisory"
+			if mode == "unlocked_writer" {
+				wantWait = "transactionid"
+			}
+			deadline := time.NewTimer(2 * time.Second)
+			defer deadline.Stop()
+			tick := time.NewTicker(10 * time.Millisecond)
+			defer tick.Stop()
+		waitForLock:
+			for {
+				var waiting bool
+				if err := f.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid = $1 AND wait_event_type = 'Lock' AND wait_event = $2)`, secondTx.Conn().PgConn().PID(), wantWait).Scan(&waiting); err != nil {
+					t.Fatal(err)
+				}
+				if waiting {
+					break waitForLock
+				}
+				select {
+				case err := <-done:
+					t.Fatalf("concurrent import did not await the %s lock: %v", wantWait, err)
+				case <-deadline.C:
+					t.Fatalf("concurrent import did not reach the %s lock", wantWait)
+				case <-tick.C:
+				}
+			}
+			if err := firstTx.Commit(ctx); err != nil {
+				t.Fatal(err)
+			}
+			err := <-done
+			if !errors.Is(err, user.ErrIdentityConflict) {
+				t.Fatalf("concurrent conflict lost its class: %v", err)
+			}
+			if mode == "unlocked_writer" && !user.IsUniqueViolation(err) {
+				t.Fatalf("unique index backstop lost its cause: %v", err)
+			}
+			if err := secondTx.Rollback(ctx); err != nil {
+				t.Fatal(err)
+			}
+			var count int
+			if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM user_account`).Scan(&count); err != nil || count != 1 {
+				t.Fatal("concurrent conflict left account behind", err)
+			}
+			if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM identity WHERE delete_time IS NULL`).Scan(&count); err != nil || count != 1 {
+				t.Fatal("concurrent conflict left a duplicate active identity", count, err)
+			}
+			if strings.Contains(err.Error(), "race@example.com") {
+				t.Fatal("concurrent error leaked target")
+			}
+		})
+	}
+}
+
+// 两个误并行的批次以相反顺序包含相同身份时，整批预先排序加锁使后到者得到身份冲突，
+// 而不是逐账号加锁时的交叉等待死锁。触发器在 A 写完第一个身份后暂停，留出 B 抢先的窗口。
+func TestImportAccountsReverseOrderBatchesConflictWithoutDeadlock(t *testing.T) {
 	f := newImportFixture(t)
 	ctx := context.Background()
-	first := importAccount(t, "race@example.com")
-	second := importAccount(t, " RACE@EXAMPLE.COM ")
-	firstTx := importTx(t, f.pool)
-	secondTx := importTx(t, f.pool)
-	if err := f.svc.ImportAccounts(ctx, firstTx, []user.ImportAccount{first}); err != nil {
+	a1, a2 := importAccount(t, "first@example.com"), importAccount(t, "second@example.com")
+	b1, b2 := importAccount(t, "second@example.com"), importAccount(t, "first@example.com")
+	if _, err := f.pool.Exec(ctx, `CREATE FUNCTION import_pause() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN IF NEW.user_id = '`+a1.ID+`' THEN PERFORM pg_sleep(1); END IF; RETURN NEW; END $$;
+CREATE TRIGGER import_pause AFTER INSERT ON identity FOR EACH ROW EXECUTE FUNCTION import_pause()`); err != nil {
 		t.Fatal(err)
 	}
-	secondCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	done := make(chan error, 1)
-	go func() { done <- f.svc.ImportAccounts(secondCtx, secondTx, []user.ImportAccount{second}) }()
-	// 观察真实 PostgreSQL 等待唯一索引锁，再提交第一批，不靠睡眠推断并发时序。
-	deadline := time.NewTimer(2 * time.Second)
-	defer deadline.Stop()
-	tick := time.NewTicker(10 * time.Millisecond)
-	defer tick.Stop()
-waitForLock:
+	aTx, bTx := importTx(t, f.pool), importTx(t, f.pool)
+	aDone := make(chan error, 1)
+	go func() { aDone <- f.svc.ImportAccounts(ctx, aTx, []user.ImportAccount{a1, a2}) }()
+	// 等 A 进入暂停（已持有其锁并写入第一个身份）后再启动 B。
+	deadline := time.Now().Add(2 * time.Second)
 	for {
-		var waiting bool
-		if err := f.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid = $1 AND wait_event_type = 'Lock')`, secondTx.Conn().PgConn().PID()).Scan(&waiting); err != nil {
+		var sleeping bool
+		if err := f.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid = $1 AND wait_event = 'PgSleep')`, aTx.Conn().PgConn().PID()).Scan(&sleeping); err != nil {
 			t.Fatal(err)
 		}
-		if waiting {
-			break waitForLock
+		if sleeping {
+			break
 		}
-		select {
-		case err := <-done:
-			t.Fatalf("concurrent import did not await the unique index: %v", err)
-		case <-deadline.C:
-			t.Fatal("concurrent import did not reach unique index lock")
-		case <-tick.C:
+		if time.Now().After(deadline) {
+			t.Fatal("first batch never reached the pause")
 		}
+		time.Sleep(5 * time.Millisecond)
 	}
-	if err := firstTx.Commit(ctx); err != nil {
+	bCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	bDone := make(chan error, 1)
+	go func() { bDone <- f.svc.ImportAccounts(bCtx, bTx, []user.ImportAccount{b1, b2}) }()
+	if err := <-aDone; err != nil {
+		t.Fatal("first batch:", err)
+	}
+	if err := aTx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	err := <-done
-	if !errors.Is(err, user.ErrIdentityConflict) || !user.IsUniqueViolation(err) {
-		t.Fatalf("concurrent conflict lost its class/cause: %v", err)
+	err := <-bDone
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "40P01" {
+		t.Fatalf("reverse-order batches deadlocked: %v", err)
 	}
-	if err := secondTx.Rollback(ctx); err != nil {
+	if !errors.Is(err, user.ErrIdentityConflict) {
+		t.Fatalf("second batch error = %v, want identity conflict", err)
+	}
+	if err := bTx.Rollback(ctx); err != nil {
 		t.Fatal(err)
 	}
-	var count int
-	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM user_account`).Scan(&count); err != nil || count != 1 {
-		t.Fatal("concurrent conflict left account behind", err)
-	}
-	if strings.Contains(err.Error(), "race@example.com") {
-		t.Fatal("concurrent error leaked target")
+	var users int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM user_account`).Scan(&users); err != nil || users != 2 {
+		t.Fatalf("users = %d (%v), want only the first batch", users, err)
 	}
 }
 

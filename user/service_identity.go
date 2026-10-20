@@ -69,7 +69,39 @@ func (s *Service) sendBindCode(ctx context.Context, p Principal, channel enum.Id
 	return s.sendCode(ctx, channel, enum.PurposeBind, norm, code.Binding{UserID: p.UserID}, meta)
 }
 
+// anchorSubject 是一次锚点 subject 互斥所需的类型与归一化值。
+type anchorSubject struct {
+	kind enum.IdentityKind
+	norm string
+}
+
+// lockAnchorSubjects 在事务内对锚点 subject 的全部摘要版本加事务级 advisory lock，
+// 使可能新建该 subject 身份的事务串行化：唯一索引只约束单个摘要值，密钥轮换的混合
+// active 期间不同进程会写入不同版本的摘要。锁序：subject 锁在任何行锁之前取得，
+// 全部键在同一条语句内按升序加锁；之后才是用户行 → 身份/会话行。
+func (s *Service) lockAnchorSubjects(ctx context.Context, q *db.Queries, subjects ...anchorSubject) error {
+	var kinds []int16
+	var digests []string
+	for _, subject := range subjects {
+		if !subject.kind.IsChannel() {
+			continue
+		}
+		for _, digest := range s.d.Digester.AllDigests(subject.norm) {
+			kinds = append(kinds, int16(subject.kind))
+			digests = append(digests, digest)
+		}
+	}
+	if len(digests) == 0 {
+		return nil
+	}
+	if err := q.LockAnchorSubjects(ctx, db.LockAnchorSubjectsParams{Kinds: kinds, Digests: digests}); err != nil {
+		return fmt.Errorf("user: lock anchor subjects: %w", err)
+	}
+	return nil
+}
+
 // createAnchorIdentity 创建 PHONE/EMAIL 身份行：digest + 密文 + hint，均带密钥版本。
+// 调用方须已在同一事务内对该 subject 调用 lockAnchorSubjects。
 func (s *Service) createAnchorIdentity(ctx context.Context, q *db.Queries, userID string, kind enum.IdentityKind, norm, hintPrefix, hintSuffix string) (db.Identity, error) {
 	iid, err := ids.New(ids.Identity)
 	if err != nil {
@@ -155,6 +187,9 @@ func (s *Service) BindWithCode(ctx context.Context, p Principal, cred CodeCreden
 	var info IdentityInfo
 	var created bool
 	err = s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+		if err := s.lockAnchorSubjects(ctx, q, anchorSubject{channel, norm}); err != nil {
+			return err
+		}
 		_, idents, err := s.bindGuard(ctx, q, p.UserID)
 		if err != nil {
 			return err

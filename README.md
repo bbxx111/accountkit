@@ -251,7 +251,7 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 - **冷静期**：用手机/邮箱验证码登录得到 `user:undelete`（只能读 `users/me`、调用 `:undelete`、`/token`、`/revoke`）；用微信/Apple 登录 → 403 `USER_PENDING_DELETION`；冷静期内会话不可刷新（`invalid_grant` 并吊销）。`:undelete` 不吊销当前会话，客户端新一轮刷新按当前 R 取得 `user` 或 `user:bind`。`:undelete` 只接受 `user:undelete` 凭证；`user` 凭证 → 403 `INSUFFICIENT_SCOPE`。
 - **purge**（维护任务 `purge_users`）：`purge_time` 到期后单事务匿名化：身份行（含已解绑的）软删并把 subject 摘要/第三方 subject 换成随机值，清空密文、hint、`provider_meta` 与密钥版本；账号行清空 `display_name` 与冻结快照、`state = DELETED`、`purge_time` 改为实际执行时刻；兜底吊销会话；清理本来源、本 namespace 下账号及关联流程审计的 actor/resource `name`、`context.client_ip/user_agent/device_id` 和 `data.accountkit.subject_hint`，保留事件事实、稳定标识和追踪关联；最后按注册顺序调用宿主 `anonymize.Anonymizer`。任一步失败整事务回滚，账号留在 `PENDING_DELETION`，下一轮重试。purge 后原手机号/微信可重新注册为新账号；已 purge 的账号不可 undelete。远端审计副本由宿主持久化清理流程处理，见下节。
 - **宿主匿名化器**：实现 `anonymize.Anonymizer{Name() string; Tables() []string; Anonymize(ctx, tx pgx.Tx, userID string) error}` 并通过 `Deps.Anonymizers` 注册（`Name` 唯一；业务表须与库表同库）。宿主应仿照库内 `TestPurgeCoversEveryTableWithUserID` 写覆盖性测试：每张含 `user_id` 的业务表要么被某个 `Anonymizer.Tables()` 覆盖，要么逐表写明豁免理由。
-- **维护任务**（`auth.Start` 的 ticker，多副本用 advisory lock 互斥；`auth.RunMaintenanceOnce(ctx)` 供一次性作业/测试手动跑一轮）：`purge_users`（每批 100 个账号，逐账号独立事务，批内失败记日志继续、下一轮重试）→ `cleanup_sessions`（物理删除吊销或 refresh 过期 30 天以上的会话行，每批 1000）。完整任务列表见下节。
+- **维护任务**（`auth.Start` 的 ticker，多副本用 advisory lock 互斥；`auth.RunMaintenanceOnce(ctx)` 供一次性作业/测试手动跑一轮）：`purge_users`（每批 100 个账号，逐账号独立事务，批内失败记日志继续、下一轮重试）→ `cleanup_sessions`（物理删除吊销或 refresh 过期 30 天以上的会话行，每批 1000；正被刷新/吊销事务锁住的行本轮跳过，下一轮再删）。完整任务列表见下节。
 
 ## 审计落库与密钥回填（阶段 5b）
 
@@ -311,6 +311,7 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 - 表：`user_account`、`identity`、`session`、`audit_event`、`sign_in_completion_flow`，无外键；账号/身份/会话/流程 id 使用 `u_`、`i_`、`s_`、`f_` + 13 字符 TSID，审计使用原生 UUIDv7，对外为标准小写带连字符 UUID。
 - 所有 Redis 键以 `Config.KeyPrefix`（默认 `auth:`）开头。
 - `Deps.Pool` 的连接 `search_path` 首位必须是 `Config.Schema`；`Migrate` 会校验并返回 `ErrSearchPath`。宿主业务表建议通过明确的 schema 限定名访问，避免 search_path 名称冲突。
+- 建议对认证连接关闭 PostgreSQL JIT（`jit=off`）。本包查询均为按索引读写少量行的短事务，JIT 无法摊销其编译成本；pgx 缓存的预编译语句改用通用计划后估算代价可能偏高而触发 JIT，每次执行额外付出约数百毫秒编译时间（实测审计资源查询约 10 ms 变为约 380 ms）。范围限定在认证连接：在 `PoolConfig` 返回的配置上设置 `cfg.ConnConfig.RuntimeParams["jit"] = "off"`，或对认证专用角色执行 `ALTER ROLE <role> SET jit = off`；不要为此修改共享实例的全局配置，以免影响同实例上的分析型查询。不便关闭时可调高 `jit_above_cost`。本包不自动修改该参数；未编译 LLVM 的 PostgreSQL 不受影响。
 
 ## 配置（环境变量，前缀由宿主传给 ConfigFromEnv）
 
@@ -348,6 +349,8 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 2. 向全部进程分发相同的完整 K1、K2 密钥集合，仍使用 K1；确认验证码有效期、次数、冷却和额度策略一致，再滚动切换 active=K2。配置在重新装配或服务重启后生效，不提供热加载；实例 Redis 前缀保持不变。
 3. 全部已配置 HMAC 版本共同定位轮次、目标失败预算、目标冷却和目标 UTC 日额度。同一新协议内的旧 active 轮次保留标识、绑定、原到期时间、错误次数和一次性消费语义；无 code_id 的旧协议轮次不接管，新发码替换全部版本的同用途旧码；目标冷却跨用途共享，日额度合计不同物理键的实际计数。IP 日额度原本就不依赖 HMAC，每次占额仍只增加一次 IP 计数。投递失败不退还冷却或额度。
 4. 记录最后一个 K1 active 进程及其在途请求、维护操作全部结束的时刻 T0，然后按下述条件退役 K1。
+
+混合 active 期间同一手机/邮箱在不同进程下会得到不同摘要，摘要唯一索引无法互相拦截；可能新建该 subject 身份的事务（首次登录、补全、绑定、换绑、导入）因此先对 AllDigests 全部版本取事务级 advisory lock，再加任何行锁。该互斥依赖所有进程持有相同完整密钥集合，即上面第 2 步。
 
 周期性 `rekey_digests` / `reencrypt_subjects` 回填及默认5分钟维护间隔保持原状。混合 active 期间，不同进程可能把数据库回填到各自的 active，方向仍可能变化；应在 T0 后确认实际回填结果，不能以等待一个维护周期或重启成功代替检查。HMAC 退役要求实际 `Config.Schema` 下未删除的手机/邮箱 `identity` 不再引用 K1 的 `digest_key_version`。若同时独立轮换 AES，另行确认旧 AES 的 `cipher_key_version` 引用归零；只轮换 HMAC 不要求密文也切到相同版本编号。
 

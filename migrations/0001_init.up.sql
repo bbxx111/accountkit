@@ -78,8 +78,7 @@ CREATE TABLE session (
     revoke_time                 TIMESTAMPTZ,
     revoke_reason               SMALLINT,               -- Go 定义
     create_time                 TIMESTAMPTZ NOT NULL DEFAULT now(),
-    update_time                 TIMESTAMPTZ NOT NULL DEFAULT now(),
-    authentication_identities_known BOOLEAN NOT NULL DEFAULT false
+    update_time                 TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 -- /token 刷新：按当前 refresh 哈希精确命中
 CREATE UNIQUE INDEX uk_session_refresh_token_hash ON session (refresh_token_hash);
@@ -104,20 +103,12 @@ CREATE INDEX idx_session_authentication_identity_identity_id_session_id ON sessi
 
 CREATE TABLE session_client_info (
  session_id TEXT COLLATE "C" NOT NULL CONSTRAINT session_client_info_session_id_format CHECK (session_id ~ '^s_[0-9a-hjkmnp-tv-z]{13}$'),
- snapshot_kind SMALLINT NOT NULL,
- client_type SMALLINT,
- device_type SMALLINT,
- os_name VARCHAR(64),
- os_version VARCHAR(32),
- browser_name VARCHAR(64),
- browser_version VARCHAR(32),
- app_name VARCHAR(64),
- app_version VARCHAR(32),
- device_model VARCHAR(64),
+ -- The service validates structured content and limits; storage only enforces basics.
+ client_info JSONB NOT NULL,
  observe_time TIMESTAMPTZ NOT NULL,
  create_time TIMESTAMPTZ NOT NULL DEFAULT now(),
  update_time TIMESTAMPTZ NOT NULL DEFAULT now(),
- CONSTRAINT session_client_info_pkey PRIMARY KEY (session_id, snapshot_kind)
+ CONSTRAINT session_client_info_pkey PRIMARY KEY (session_id)
 );
 
 -- Generic audit events; append-only and independent of resource lifecycle.

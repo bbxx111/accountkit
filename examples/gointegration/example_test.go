@@ -239,12 +239,9 @@ func Example_errors() {
 	// COOLDOWN 1m0s
 }
 
-// 具体name比较可区分同类型的不同身份；未知来源不能解释为安全。
+// 具体name比较可区分同类型的不同身份；调用前须处理详情查询错误。
 func Example_currentSessionImpact() {
 	affected := func(current user.CurrentSessionInfo, userID, targetName string) bool {
-		if !current.AuthenticationIdentitiesKnown {
-			return true
-		}
 		for _, identity := range current.AuthenticationIdentities {
 			if "users/"+userID+"/identities/"+identity.ID == targetName {
 				return true
@@ -254,13 +251,11 @@ func Example_currentSessionImpact() {
 	}
 	const uid = "u_0000000000001"
 	const target = "users/" + uid + "/identities/i_0000000000001"
-	fmt.Println(affected(user.CurrentSessionInfo{}, uid, target))
-	current := user.CurrentSessionInfo{AuthenticationIdentitiesKnown: true, AuthenticationIdentities: []user.AuthenticationIdentity{{ID: "i_0000000000002", Kind: enum.IdentityEmail}}}
+	current := user.CurrentSessionInfo{AuthenticationIdentities: []user.AuthenticationIdentity{{ID: "i_0000000000002", Kind: enum.IdentityEmail}}}
 	fmt.Println(affected(current, uid, target)) // 同为EMAIL，具体身份不同。
 	current.AuthenticationIdentities = append(current.AuthenticationIdentities, user.AuthenticationIdentity{ID: "i_0000000000001", Kind: enum.IdentityEmail})
 	fmt.Println(affected(current, uid, target))
 	// Output:
-	// true
 	// false
 	// true
 }
@@ -293,7 +288,7 @@ func Example_unbindIdentity() {
 		return
 	}
 	targetName := "users/" + p.UserID + "/identities/" + targetIdentityID
-	mayExit := !details.AuthenticationIdentitiesKnown
+	mayExit := false
 	for _, identity := range details.AuthenticationIdentities {
 		if "users/"+p.UserID+"/identities/"+identity.ID == targetName {
 			mayExit = true
@@ -301,7 +296,7 @@ func Example_unbindIdentity() {
 	}
 	if mayExit {
 		showExitWarning()
-	} // unknown也保守提示，不能只按Kind比较。
+	} // 不能只按Kind比较。
 	if err := auth.Users().UnbindIdentity(ctx, p, targetIdentityID, meta); err != nil {
 		if errors.Is(err, user.ErrInvalidToken) {
 			clearCredentials()

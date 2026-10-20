@@ -18,6 +18,7 @@ import (
 	ob "github.com/bbxx111/accountkit/observability"
 	"github.com/bbxx111/accountkit/user"
 	"github.com/bbxx111/accountkit/user/code"
+	"github.com/bbxx111/accountkit/user/db"
 )
 
 func assertContextRevoked(t *testing.T, f *fixture, pair user.TokenResult, revoked bool, reason string) {
@@ -45,20 +46,14 @@ func TestIdentityUnbindRevokesAuthenticationSessions(t *testing.T) {
 	ctx := context.Background()
 	emailID := contextBindEmail(t, f, p, email1)
 	f.advance(61 * time.Second)
-	known := f.signIn(t, enum.IdentityEmail, email1, user.Device{ID: "known-other-source"})
+	independent := f.signIn(t, enum.IdentityEmail, email1, user.Device{ID: "independent-other-source"})
 	matched := f.signIn(t, enum.IdentityPhone, phone1, user.Device{ID: "matched-multiple"})
 	mp := principalOf(t, f, matched)
 	mustExec(t, f, `INSERT INTO session_authentication_identity(session_id,identity_id) VALUES ($1,$2)`, mp.SessionID, emailID)
 	expired := f.signIn(t, enum.IdentityPhone, phone1, user.Device{ID: "expired-matched"})
 	ep := principalOf(t, f, expired)
 	mustExec(t, f, `UPDATE session SET refresh_expire_time=$2 WHERE id=$1`, ep.SessionID, *f.clock)
-	unknown := f.signIn(t, enum.IdentityEmail, email1, user.Device{ID: "unknown"})
-	up := principalOf(t, f, unknown)
-	mustExec(t, f, `UPDATE session SET authentication_identities_known=false WHERE id=$1`, up.SessionID)
-	mustExec(t, f, `DELETE FROM session_authentication_identity WHERE session_id=$1`, up.SessionID)
-	foreign := f.signIn(t, enum.IdentityEmail, "foreign-context@example.test", user.Device{ID: "foreign-unknown"})
-	fp := principalOf(t, f, foreign)
-	mustExec(t, f, `UPDATE session SET authentication_identities_known=false WHERE id=$1`, fp.SessionID)
+	foreign := f.signIn(t, enum.IdentityEmail, "foreign-context@example.test", user.Device{ID: "foreign-source"})
 	// Fixture setup takes several minutes; refresh the proof without changing its source.
 	p.AuthTime = *f.clock
 	rotated, err := f.svc.Refresh(ctx, matched.RefreshToken, meta1)
@@ -68,15 +63,15 @@ func TestIdentityUnbindRevokesAuthenticationSessions(t *testing.T) {
 	if err := f.svc.UnbindIdentity(ctx, p, phoneID, meta1); err != nil {
 		t.Fatal(err)
 	}
-	for _, pair := range []user.TokenResult{current, rotated, expired, unknown} {
+	for _, pair := range []user.TokenResult{current, rotated, expired} {
 		assertContextRevoked(t, f, pair, true, "IDENTITY_UNBOUND")
 	}
 	if _, err := f.svc.Refresh(ctx, matched.RefreshToken, meta1); !errors.Is(err, user.ErrInvalidGrant) {
 		t.Fatalf("cached grace revived: %v", err)
 	}
-	assertContextRevoked(t, f, known, false, "")
+	assertContextRevoked(t, f, independent, false, "")
 	assertContextRevoked(t, f, foreign, false, "")
-	authenticationSources(t, f, p, true, phoneID)
+	authenticationSources(t, f, p, phoneID)
 	if !hasEventReason(f.audit, enum.EventSessionRevoked, enum.ResultSuccess, "IDENTITY_UNBOUND") {
 		t.Fatal("missing revocation audit")
 	}
@@ -152,16 +147,12 @@ func TestIdentityUnbindDomainGuards(t *testing.T) {
 }
 
 func TestReplacementCurrentAuthenticationSource(t *testing.T) {
-	for _, source := range []string{"matched", "unknown", "reauthenticated"} {
+	for _, source := range []string{"matched", "reauthenticated"} {
 		t.Run(source, func(t *testing.T) {
 			f, p, id, current := replacementSetup(t, enum.IdentityPhone, phone1)
 			ctx := context.Background()
 			emailID := contextBindEmail(t, f, p, email1)
 			f.advance(61 * time.Second)
-			if source == "unknown" {
-				mustExec(t, f, `UPDATE session SET authentication_identities_known=false WHERE id=$1`, p.SessionID)
-				mustExec(t, f, `DELETE FROM session_authentication_identity WHERE session_id=$1`, p.SessionID)
-			}
 			if source == "reauthenticated" {
 				if err := f.sendReauthenticationCode(ctx, p, enum.IdentityEmail, email1, meta1); err != nil {
 					t.Fatal(err)
@@ -183,11 +174,9 @@ func TestReplacementCurrentAuthenticationSource(t *testing.T) {
 			assertContextRevoked(t, f, other, true, "IDENTITY_REPLACED")
 			switch source {
 			case "matched":
-				authenticationSources(t, f, p, true, id)
-			case "unknown":
-				authenticationSources(t, f, p, false)
+				authenticationSources(t, f, p, id)
 			default:
-				authenticationSources(t, f, p, true, emailID)
+				authenticationSources(t, f, p, emailID)
 				out, err := f.svc.Refresh(ctx, current.RefreshToken, meta1)
 				if err != nil {
 					t.Fatalf("independent source refresh: %v", err)
@@ -343,7 +332,7 @@ func TestSessionContextConcurrentRevocation(t *testing.T) {
 				t.Fatalf("final revocation=%v want=%v err=%v", sess.RevokeTime, revoked, err)
 			}
 			if !revoked {
-				authenticationSources(t, f, p, true, emailID)
+				authenticationSources(t, f, p, emailID)
 			}
 			if revoked {
 				if _, err := f.svc.Refresh(ctx, current.RefreshToken, meta1); !errors.Is(err, user.ErrInvalidGrant) {
@@ -440,7 +429,7 @@ func TestIdentityUnbindRejectsCompletedFlowReplay(t *testing.T) {
 	if !errors.Is(err, user.ErrSignInAlreadyCompleted) || replay.Tokens != nil {
 		t.Fatalf("completion revived: token_present=%v err=%v", replay.Tokens != nil, err)
 	}
-	authenticationSources(t, f, p, true, rows[0].ID, rows[1].ID)
+	authenticationSources(t, f, p, rows[0].ID, rows[1].ID)
 }
 
 func contextReauthenticate(t *testing.T, f *fixture, p user.Principal, kind enum.IdentityKind, target string) user.Principal {
@@ -605,5 +594,45 @@ func TestIdentityUnbindSameKindSources(t *testing.T) {
 	}
 	assertContextRevoked(t, f, current, true, "IDENTITY_UNBOUND")
 	assertContextRevoked(t, f, other, false, "")
-	authenticationSources(t, f, principalOf(t, f, other), true, otherID)
+	authenticationSources(t, f, principalOf(t, f, other), otherID)
+}
+
+func TestIdentityUnbindChecksUnrevokedSourceInvariants(t *testing.T) {
+	for _, state := range []string{"active", "expired", "revoked", "foreign"} {
+		t.Run(state, func(t *testing.T) {
+			f, p, phoneID, current := replacementSetup(t, enum.IdentityPhone, phone1)
+			ctx := context.Background()
+			contextBindEmail(t, f, p, email1)
+			f.advance(61 * time.Second)
+			target := email1
+			if state == "foreign" {
+				target = "foreign-missing-source@example.test"
+			}
+			other := f.signIn(t, enum.IdentityEmail, target, user.Device{ID: "missing-source-other"})
+			op := principalOf(t, f, other)
+			mustExec(t, f, `DELETE FROM session_authentication_identity WHERE session_id=$1`, op.SessionID)
+			if state == "expired" {
+				mustExec(t, f, `UPDATE session SET refresh_expire_time=$2 WHERE id=$1`, op.SessionID, *f.clock)
+			}
+			if state == "revoked" {
+				mustExec(t, f, `UPDATE session SET revoke_time=$2 WHERE id=$1`, op.SessionID, *f.clock)
+			}
+			p.AuthTime = *f.clock
+			err := f.svc.UnbindIdentity(ctx, p, phoneID, meta1)
+			if state == "active" || state == "expired" {
+				if err == nil || errors.Is(err, user.ErrInvalidToken) || errors.Is(err, user.ErrUnavailable) {
+					t.Fatalf("other unrevoked session missing sources must reject as internal invariant: %v", err)
+				}
+				if _, err := f.repo.Q().GetActiveIdentityByIDAndUser(ctx, db.GetActiveIdentityByIDAndUserParams{ID: phoneID, UserID: p.UserID}); err != nil {
+					t.Fatalf("rejected unbind changed identity: %v", err)
+				}
+				assertContextRevoked(t, f, current, false, "")
+			} else {
+				if err != nil {
+					t.Fatalf("irrelevant missing sources blocked unbind: %v", err)
+				}
+				assertContextRevoked(t, f, current, true, "IDENTITY_UNBOUND")
+			}
+		})
+	}
 }

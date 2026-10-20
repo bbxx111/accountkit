@@ -335,7 +335,7 @@ func (s *Service) ListSessions(ctx context.Context, userID, currentSID string) (
 	}
 	snapshots := map[string]db.SessionClientInfo{}
 	if len(sessionIDs) > 0 {
-		infos, err := s.d.Repo.Q().ListSessionClientInfosByUser(ctx, db.ListSessionClientInfosByUserParams{UserID: userID, SessionIds: sessionIDs, SnapshotKind: enum.ClientSnapshotLatest})
+		infos, err := s.d.Repo.Q().ListSessionClientInfosByUser(ctx, db.ListSessionClientInfosByUserParams{UserID: userID, SessionIds: sessionIDs})
 		if err != nil {
 			return nil, fmt.Errorf("user: list session client snapshots: %w", err)
 		}
@@ -350,7 +350,10 @@ func (s *Service) ListSessions(ctx context.Context, userID, currentSID string) (
 			info.DeviceName = *r.DeviceName
 		}
 		if snapshot, ok := snapshots[r.ID]; ok {
-			info.ClientInfo = clientInfoFrom(snapshot)
+			info.ClientInfo, err = clientInfoFrom(snapshot)
+			if err != nil {
+				return nil, err
+			}
 			info.ClientInfoUpdateTime = &snapshot.ObserveTime
 		}
 		out = append(out, info)

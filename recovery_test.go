@@ -72,6 +72,12 @@ func TestRecoveryFixture(t *testing.T) {
 		if err := a.Migrate(ctx); err != nil {
 			t.Fatal(err)
 		}
+		// This synthetic format fixture has no source association by design. Add its
+		// actual fixture identity explicitly for this recovery scenario; this is not
+		// automatic adoption or conversion of a historical production session.
+		if _, err := pool.Exec(ctx, "INSERT INTO session_authentication_identity(session_id,identity_id) VALUES($1,$2)", f.SessionID, f.IdentityID); err != nil {
+			t.Fatal(err)
+		}
 		state := recoveryState{Fixture: f, Access: access}
 		meta := user.Meta{IP: "127.0.0.1", ClientInfo: &user.ClientInfo{ClientType: enum.ClientNative, AppName: "Recovery App", AppVersion: "1.0", OSName: "Android", DeviceType: enum.DevicePhone}}
 		createPending := func(phone, device string) user.PendingSignIn {
@@ -101,7 +107,7 @@ func TestRecoveryFixture(t *testing.T) {
 		}
 		state.CompletedCode = user.CodeCredential{Channel: enum.IdentityEmail, Target: "completed-recovery@example.test", CodeID: challenge.CodeID, Code: captured.code("completed-recovery@example.test")}
 		completionMeta := meta
-		completionMeta.ClientInfo = &user.ClientInfo{ClientType: enum.ClientNative, AppName: "Recovery App", AppVersion: "2.0"}
+		completionMeta.ClientInfo = &user.ClientInfo{ClientType: enum.ClientNative, AppName: "Recovery App", AppVersion: "2.0", AppBuild: "recovery-build", DeviceManufacturer: "Recovery", Extensions: map[string]json.RawMessage{"release": json.RawMessage(`{"channel":"stable","revision":9007199254740993}`)}}
 		result, err := a.Users().CompleteSignIn(ctx, state.CompletedToken, state.CompletedCode, user.Device{}, completionMeta)
 		if err != nil || result.Tokens == nil {
 			t.Fatalf("recovery completed fixture: %v", err)
@@ -210,7 +216,7 @@ func snapshotRecovery(t *testing.T, pool *pgxpool.Pool) string {
 	var contextSnapshot string
 	if err := pool.QueryRow(context.Background(), `SELECT jsonb_build_object(
       'sources',(SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY session_id,identity_id),'[]'::jsonb) FROM session_authentication_identity t),
-      'client_info',(SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY session_id,snapshot_kind),'[]'::jsonb) FROM session_client_info t))::text`).Scan(&contextSnapshot); err != nil {
+      'client_info',(SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY session_id),'[]'::jsonb) FROM session_client_info t))::text`).Scan(&contextSnapshot); err != nil {
 		t.Fatal(err)
 	}
 	return snapshotSource(t, pool) + "\n" + flows + "\n" + contextSnapshot
@@ -270,40 +276,55 @@ func TestRecoverySessionContextSnapshot(t *testing.T) {
 	if afterSource == before {
 		t.Fatal("recovery snapshot omitted authentication identity associations")
 	}
-	if _, err := pool.Exec(ctx, "INSERT INTO session_client_info(session_id,snapshot_kind,client_type,app_name,app_version,observe_time,update_time) VALUES($1,$2,$3,'Recovery App','1.0',now(),now())", f.SessionID, enum.ClientSnapshotInitial, enum.ClientNative); err != nil {
+	info := &user.ClientInfo{ClientType: enum.ClientNative, AppName: "Recovery App", AppVersion: "1.0", Extensions: map[string]json.RawMessage{"release": json.RawMessage(`{"channel":"stable","revision":9007199254740993}`)}}
+	wire, err := user.MarshalClientInfo(info)
+	if err != nil {
 		t.Fatal(err)
 	}
-	afterInitial := snapshotRecovery(t, pool)
-	if afterInitial == afterSource {
-		t.Fatal("recovery snapshot omitted INITIAL client info")
-	}
-	if _, err := pool.Exec(ctx, "INSERT INTO session_client_info(session_id,snapshot_kind,client_type,app_name,app_version,observe_time,update_time) VALUES($1,$2,$3,'Recovery App','2.0',now(),now())", f.SessionID, enum.ClientSnapshotLatest, enum.ClientNative); err != nil {
+	if _, err = pool.Exec(ctx, "INSERT INTO session_client_info(session_id,client_info,observe_time) VALUES($1,$2,now())", f.SessionID, wire); err != nil {
 		t.Fatal(err)
 	}
-	afterLatest := snapshotRecovery(t, pool)
-	if afterLatest == afterInitial {
-		t.Fatal("recovery snapshot omitted LATEST client info")
+	afterInfo := snapshotRecovery(t, pool)
+	if afterInfo == afterSource {
+		t.Fatal("recovery snapshot omitted client info")
 	}
-	if _, err := pool.Exec(ctx, "UPDATE session_client_info SET app_version='3.0' WHERE session_id=$1 AND snapshot_kind=$2", f.SessionID, enum.ClientSnapshotLatest); err != nil {
+	info.AppVersion = "2.0"
+	wire, err = user.MarshalClientInfo(info)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshotRecovery(t, pool) == afterLatest {
+	if _, err = pool.Exec(ctx, "UPDATE session_client_info SET client_info=$2 WHERE session_id=$1", f.SessionID, wire); err != nil {
+		t.Fatal(err)
+	}
+	afterVersion := snapshotRecovery(t, pool)
+	if afterVersion == afterInfo {
 		t.Fatal("source-unchanged snapshot missed changed client info")
+	}
+	info.Extensions["release"] = json.RawMessage(`{"channel":"beta","revision":9007199254740993}`)
+	wire, err = user.MarshalClientInfo(info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, "UPDATE session_client_info SET client_info=$2 WHERE session_id=$1", f.SessionID, wire); err != nil {
+		t.Fatal(err)
+	}
+	if snapshotRecovery(t, pool) == afterVersion {
+		t.Fatal("source-unchanged snapshot omitted extensions")
 	}
 }
 
 func assertRecoverySessionContext(t *testing.T, a *accountkit.Auth, state recoveryState) {
 	t.Helper()
 	ctx := context.Background()
-	known, err := a.Users().GetCurrentSession(ctx, user.Principal{UserID: state.CompletedPair.UserID, SessionID: state.CompletedSessionID, Scope: user.ScopeUser})
+	current, err := a.Users().GetCurrentSession(ctx, user.Principal{UserID: state.CompletedPair.UserID, SessionID: state.CompletedSessionID, Scope: user.ScopeUser})
 	if err != nil {
-		t.Fatalf("restored known session context: %v", err)
+		t.Fatalf("restored session context: %v", err)
 	}
-	if !known.AuthenticationIdentitiesKnown || len(known.AuthenticationIdentities) != 2 || len(state.CompletedIdentityIDs) != 2 {
-		t.Fatal("completed session lost known two-identity authentication context")
+	if len(current.AuthenticationIdentities) != 2 || len(state.CompletedIdentityIDs) != 2 {
+		t.Fatal("completed session lost two-identity authentication context")
 	}
 	kinds := map[enum.IdentityKind]bool{}
-	for n, identity := range known.AuthenticationIdentities {
+	for n, identity := range current.AuthenticationIdentities {
 		if identity.ID != state.CompletedIdentityIDs[n] {
 			t.Fatal("restored authentication identity differs from source")
 		}
@@ -312,18 +333,26 @@ func assertRecoverySessionContext(t *testing.T, a *accountkit.Auth, state recove
 	if !kinds[enum.IdentityPhone] || !kinds[enum.IdentityEmail] {
 		t.Fatal("restored completed session lost PHONE/EMAIL source")
 	}
-	if known.InitialClientInfo == nil || known.ClientInfo == nil || known.ClientInfoUpdateTime == nil || known.ClientInfoUpdateTime.IsZero() {
-		t.Fatal("restored session lost client snapshots/observation time")
+	expected := &user.ClientInfo{ClientType: enum.ClientNative, AppName: "Recovery App", AppVersion: "2.0", AppBuild: "recovery-build", DeviceManufacturer: "Recovery", Extensions: map[string]json.RawMessage{"release": json.RawMessage(`{"channel":"stable","revision":9007199254740993}`)}}
+	if current.ClientInfo == nil || current.ClientInfoUpdateTime == nil || current.ClientInfoUpdateTime.IsZero() {
+		t.Fatal("restored session lost observation/time")
 	}
-	initial, latest := known.InitialClientInfo, known.ClientInfo
-	if initial.ClientType != enum.ClientNative || initial.AppName != "Recovery App" || initial.AppVersion != "1.0" || initial.OSName != "Android" || initial.DeviceType != enum.DevicePhone || latest.ClientType != enum.ClientNative || latest.AppName != "Recovery App" || latest.AppVersion != "2.0" || latest.OSName != "Android" || latest.DeviceType != enum.DevicePhone {
-		t.Fatal("restored INITIAL/LATEST client info differs")
+	want, e := user.MarshalClientInfo(expected)
+	if e != nil {
+		t.Fatal(e)
 	}
-	unknown, err := a.Users().GetCurrentSession(ctx, user.Principal{UserID: state.Fixture.UserID, SessionID: state.Fixture.SessionID, Scope: user.ScopeUser})
+	got, e := user.MarshalClientInfo(current.ClientInfo)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("restored whole client observation differs: %s", got)
+	}
+	historical, err := a.Users().GetCurrentSession(ctx, user.Principal{UserID: state.Fixture.UserID, SessionID: state.Fixture.SessionID, Scope: user.ScopeUser})
 	if err != nil {
-		t.Fatalf("restored legacy session context: %v", err)
+		t.Fatalf("restored synthetic format session context: %v", err)
 	}
-	if unknown.AuthenticationIdentitiesKnown || len(unknown.AuthenticationIdentities) != 0 || unknown.InitialClientInfo != nil || unknown.ClientInfo != nil || unknown.ClientInfoUpdateTime != nil {
-		t.Fatal("legacy unknown session acquired fabricated sources or snapshots")
+	if len(historical.AuthenticationIdentities) != 1 || historical.AuthenticationIdentities[0].ID != state.Fixture.IdentityID || historical.ClientInfo != nil || historical.ClientInfoUpdateTime != nil {
+		t.Fatal("synthetic format session lost actual source or acquired fabricated client info")
 	}
 }

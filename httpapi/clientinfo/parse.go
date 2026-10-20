@@ -18,8 +18,7 @@ const automaticInputLimit = 2048
 
 // Parse 校验显式描述，按显式值 > Client Hints > UA 补充缺失字段。
 // 显式非法值返回 user.ErrInvalidClientInfo；自动输入失败只忽略该输入。
-// 返回规范化的观察值，版本可单独出现；持久化快照前应调用
-// user.MergeClientInfo(previous, observed)，首次快照的 previous 为 nil。
+// 返回本次请求的完整规范化观察值，版本可单独出现；持久化时整体替换。
 // 不读取任意转发头，不修改请求，不保存原始 UA，也不请求额外高熵提示。
 func Parse(r *http.Request) (*user.ClientInfo, error) {
 	if r == nil {
@@ -74,27 +73,9 @@ func parseExplicit(h http.Header) (*user.ClientInfo, error) {
 	return user.NormalizeClientInfo(out)
 }
 
-// overlay 使用领域合并的名称/版本和类型切换规则，但保留版本单独出现的观察值。
+// overlay 只合并同一请求的不同来源；类型不限制 app/browser 共存。
 func overlay(lower, higher *user.ClientInfo) *user.ClientInfo {
-	out := user.MergeClientInfo(lower, higher)
-	if out == nil {
-		out = &user.ClientInfo{}
-	}
-	for _, in := range []*user.ClientInfo{lower, higher} {
-		if in == nil {
-			continue
-		}
-		if out.OSName == "" && in.OSVersion != "" {
-			out.OSVersion = in.OSVersion
-		}
-		if out.BrowserName == "" && out.ClientType != enum.ClientNative && in.BrowserVersion != "" {
-			out.BrowserVersion = in.BrowserVersion
-		}
-		if out.AppName == "" && out.ClientType != enum.ClientWeb && in.AppVersion != "" {
-			out.AppVersion = in.AppVersion
-		}
-	}
-	return out
+	return user.MergeClientInfo(lower, higher)
 }
 
 func parseUA(h http.Header) *user.ClientInfo {

@@ -247,7 +247,7 @@ const createSession = `-- name: CreateSession :one
 
 INSERT INTO session (id, user_id, device_id, device_name, auth_time, refresh_token_hash, refresh_expire_time, last_used_time)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $5)
-RETURNING id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time, authentication_identities_known
+RETURNING id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time
 `
 
 type CreateSessionParams struct {
@@ -287,7 +287,6 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		&i.RevokeReason,
 		&i.CreateTime,
 		&i.UpdateTime,
-		&i.AuthenticationIdentitiesKnown,
 	)
 	return i, err
 }
@@ -632,7 +631,7 @@ func (q *Queries) GetActiveIdentityByIDAndUser(ctx context.Context, arg GetActiv
 }
 
 const getActiveSessionByIDAndUser = `-- name: GetActiveSessionByIDAndUser :one
-SELECT id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time, authentication_identities_known FROM session WHERE id = $1 AND user_id = $2 AND revoke_time IS NULL
+SELECT id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time FROM session WHERE id = $1 AND user_id = $2 AND revoke_time IS NULL
 `
 
 type GetActiveSessionByIDAndUserParams struct {
@@ -659,13 +658,12 @@ func (q *Queries) GetActiveSessionByIDAndUser(ctx context.Context, arg GetActive
 		&i.RevokeReason,
 		&i.CreateTime,
 		&i.UpdateTime,
-		&i.AuthenticationIdentitiesKnown,
 	)
 	return i, err
 }
 
 const getActiveSessionByUserDevice = `-- name: GetActiveSessionByUserDevice :one
-SELECT id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time, authentication_identities_known FROM session WHERE user_id = $1 AND device_id = $2 AND revoke_time IS NULL
+SELECT id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time FROM session WHERE user_id = $1 AND device_id = $2 AND revoke_time IS NULL
 ORDER BY create_time DESC, id DESC LIMIT 1
 `
 
@@ -694,13 +692,12 @@ func (q *Queries) GetActiveSessionByUserDevice(ctx context.Context, arg GetActiv
 		&i.RevokeReason,
 		&i.CreateTime,
 		&i.UpdateTime,
-		&i.AuthenticationIdentitiesKnown,
 	)
 	return i, err
 }
 
 const getSessionByPreviousRefreshHash = `-- name: GetSessionByPreviousRefreshHash :one
-SELECT id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time, authentication_identities_known FROM session WHERE previous_refresh_token_hash = $1
+SELECT id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time FROM session WHERE previous_refresh_token_hash = $1
 `
 
 func (q *Queries) GetSessionByPreviousRefreshHash(ctx context.Context, previousRefreshTokenHash []byte) (Session, error) {
@@ -721,13 +718,12 @@ func (q *Queries) GetSessionByPreviousRefreshHash(ctx context.Context, previousR
 		&i.RevokeReason,
 		&i.CreateTime,
 		&i.UpdateTime,
-		&i.AuthenticationIdentitiesKnown,
 	)
 	return i, err
 }
 
 const getSessionByRefreshHash = `-- name: GetSessionByRefreshHash :one
-SELECT id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time, authentication_identities_known FROM session WHERE refresh_token_hash = $1
+SELECT id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time FROM session WHERE refresh_token_hash = $1
 `
 
 func (q *Queries) GetSessionByRefreshHash(ctx context.Context, refreshTokenHash []byte) (Session, error) {
@@ -748,37 +744,26 @@ func (q *Queries) GetSessionByRefreshHash(ctx context.Context, refreshTokenHash 
 		&i.RevokeReason,
 		&i.CreateTime,
 		&i.UpdateTime,
-		&i.AuthenticationIdentitiesKnown,
 	)
 	return i, err
 }
 
 const getSessionClientInfo = `-- name: GetSessionClientInfo :one
-SELECT c.session_id, c.snapshot_kind, c.client_type, c.device_type, c.os_name, c.os_version, c.browser_name, c.browser_version, c.app_name, c.app_version, c.device_model, c.observe_time, c.create_time, c.update_time FROM session_client_info c JOIN session s ON s.id = c.session_id
-WHERE s.user_id = $1 AND s.id = $2 AND c.snapshot_kind = $3
+SELECT c.session_id, c.client_info, c.observe_time, c.create_time, c.update_time FROM session_client_info c JOIN session s ON s.id = c.session_id
+WHERE s.user_id = $1 AND s.id = $2
 `
 
 type GetSessionClientInfoParams struct {
-	UserID       string
-	SessionID    string
-	SnapshotKind enum.ClientInfoSnapshotKind
+	UserID    string
+	SessionID string
 }
 
 func (q *Queries) GetSessionClientInfo(ctx context.Context, arg GetSessionClientInfoParams) (SessionClientInfo, error) {
-	row := q.db.QueryRow(ctx, getSessionClientInfo, arg.UserID, arg.SessionID, arg.SnapshotKind)
+	row := q.db.QueryRow(ctx, getSessionClientInfo, arg.UserID, arg.SessionID)
 	var i SessionClientInfo
 	err := row.Scan(
 		&i.SessionID,
-		&i.SnapshotKind,
-		&i.ClientType,
-		&i.DeviceType,
-		&i.OsName,
-		&i.OsVersion,
-		&i.BrowserName,
-		&i.BrowserVersion,
-		&i.AppName,
-		&i.AppVersion,
-		&i.DeviceModel,
+		&i.ClientInfo,
 		&i.ObserveTime,
 		&i.CreateTime,
 		&i.UpdateTime,
@@ -832,6 +817,25 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (UserAccount, erro
 		&i.UpdateTime,
 	)
 	return i, err
+}
+
+const hasSessionsWithoutAuthenticationIdentities = `-- name: HasSessionsWithoutAuthenticationIdentities :one
+SELECT EXISTS (
+ SELECT 1 FROM session s WHERE s.user_id = $1 AND s.revoke_time IS NULL
+ AND NOT EXISTS (
+  SELECT 1 FROM session_authentication_identity a
+  JOIN identity i ON i.id = a.identity_id AND i.user_id = s.user_id AND i.delete_time IS NULL
+  WHERE a.session_id = s.id
+ )
+)
+`
+
+// Caller holds the user lock; source writers use the same user-before-session order.
+func (q *Queries) HasSessionsWithoutAuthenticationIdentities(ctx context.Context, userID string) (bool, error) {
+	row := q.db.QueryRow(ctx, hasSessionsWithoutAuthenticationIdentities, userID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const importIdentity = `-- name: ImportIdentity :exec
@@ -998,7 +1002,7 @@ func (q *Queries) ListActiveIdentitiesByUser(ctx context.Context, userID string)
 }
 
 const listActiveSessionsByUser = `-- name: ListActiveSessionsByUser :many
-SELECT id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time, authentication_identities_known FROM session
+SELECT id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time FROM session
 WHERE user_id = $1 AND revoke_time IS NULL AND refresh_expire_time > $2::timestamptz
 ORDER BY create_time, id
 `
@@ -1032,7 +1036,6 @@ func (q *Queries) ListActiveSessionsByUser(ctx context.Context, arg ListActiveSe
 			&i.RevokeReason,
 			&i.CreateTime,
 			&i.UpdateTime,
-			&i.AuthenticationIdentitiesKnown,
 		); err != nil {
 			return nil, err
 		}
@@ -1220,20 +1223,19 @@ func (q *Queries) ListSessionAuthenticationIdentities(ctx context.Context, arg L
 }
 
 const listSessionClientInfosByUser = `-- name: ListSessionClientInfosByUser :many
-SELECT c.session_id, c.snapshot_kind, c.client_type, c.device_type, c.os_name, c.os_version, c.browser_name, c.browser_version, c.app_name, c.app_version, c.device_model, c.observe_time, c.create_time, c.update_time FROM session_client_info c JOIN session s ON s.id = c.session_id
-WHERE s.user_id = $1 AND s.id = ANY($2::text[]) AND c.snapshot_kind = $3
+SELECT c.session_id, c.client_info, c.observe_time, c.create_time, c.update_time FROM session_client_info c JOIN session s ON s.id = c.session_id
+WHERE s.user_id = $1 AND s.id = ANY($2::text[])
 ORDER BY c.session_id
 `
 
 type ListSessionClientInfosByUserParams struct {
-	UserID       string
-	SessionIds   []string
-	SnapshotKind enum.ClientInfoSnapshotKind
+	UserID     string
+	SessionIds []string
 }
 
 // Limit batch enrichment to the session IDs already selected by the caller.
 func (q *Queries) ListSessionClientInfosByUser(ctx context.Context, arg ListSessionClientInfosByUserParams) ([]SessionClientInfo, error) {
-	rows, err := q.db.Query(ctx, listSessionClientInfosByUser, arg.UserID, arg.SessionIds, arg.SnapshotKind)
+	rows, err := q.db.Query(ctx, listSessionClientInfosByUser, arg.UserID, arg.SessionIds)
 	if err != nil {
 		return nil, err
 	}
@@ -1243,16 +1245,7 @@ func (q *Queries) ListSessionClientInfosByUser(ctx context.Context, arg ListSess
 		var i SessionClientInfo
 		if err := rows.Scan(
 			&i.SessionID,
-			&i.SnapshotKind,
-			&i.ClientType,
-			&i.DeviceType,
-			&i.OsName,
-			&i.OsVersion,
-			&i.BrowserName,
-			&i.BrowserVersion,
-			&i.AppName,
-			&i.AppVersion,
-			&i.DeviceModel,
+			&i.ClientInfo,
 			&i.ObserveTime,
 			&i.CreateTime,
 			&i.UpdateTime,
@@ -1451,7 +1444,7 @@ func (q *Queries) LockAuditEventsForUserCleanup(ctx context.Context, arg LockAud
 
 const lockCurrentSessionForRead = `-- name: LockCurrentSessionForRead :one
 
-SELECT id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time, authentication_identities_known FROM session WHERE user_id = $1 AND id = $2 FOR SHARE
+SELECT id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time FROM session WHERE user_id = $1 AND id = $2 FOR SHARE
 `
 
 type LockCurrentSessionForReadParams struct {
@@ -1479,13 +1472,12 @@ func (q *Queries) LockCurrentSessionForRead(ctx context.Context, arg LockCurrent
 		&i.RevokeReason,
 		&i.CreateTime,
 		&i.UpdateTime,
-		&i.AuthenticationIdentitiesKnown,
 	)
 	return i, err
 }
 
 const lockSessionByID = `-- name: LockSessionByID :one
-SELECT id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time, authentication_identities_known FROM session WHERE id = $1 FOR UPDATE
+SELECT id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time FROM session WHERE id = $1 FOR UPDATE
 `
 
 // 轮换前对会话行加锁：并发刷新在此串行化，CAS 失败者等到胜者提交（含宽限缓存写入）后再走宽限路径。
@@ -1507,7 +1499,6 @@ func (q *Queries) LockSessionByID(ctx context.Context, id string) (Session, erro
 		&i.RevokeReason,
 		&i.CreateTime,
 		&i.UpdateTime,
-		&i.AuthenticationIdentitiesKnown,
 	)
 	return i, err
 }
@@ -1614,26 +1605,6 @@ func (q *Queries) LockUserByID(ctx context.Context, id string) (UserAccount, err
 	return i, err
 }
 
-const markSessionAuthenticationIdentitiesKnown = `-- name: MarkSessionAuthenticationIdentitiesKnown :execrows
-UPDATE session SET authentication_identities_known = true, update_time = $1::timestamptz
-WHERE user_id = $2 AND id = $3 AND revoke_time IS NULL
- AND EXISTS (SELECT 1 FROM session_authentication_identity a WHERE a.session_id = session.id)
-`
-
-type MarkSessionAuthenticationIdentitiesKnownParams struct {
-	Now       time.Time
-	UserID    string
-	SessionID string
-}
-
-func (q *Queries) MarkSessionAuthenticationIdentitiesKnown(ctx context.Context, arg MarkSessionAuthenticationIdentitiesKnownParams) (int64, error) {
-	result, err := q.db.Exec(ctx, markSessionAuthenticationIdentitiesKnown, arg.Now, arg.UserID, arg.SessionID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const purgeUser = `-- name: PurgeUser :execrows
 UPDATE user_account
 SET state = $1, display_name = NULL, freeze_time = NULL, freeze_reason = NULL,
@@ -1712,8 +1683,8 @@ const revokeSessionsByIdentity = `-- name: RevokeSessionsByIdentity :many
 WITH targets AS MATERIALIZED (
  SELECT s.id FROM session s
  WHERE s.user_id = $3 AND s.revoke_time IS NULL
- AND (NOT s.authentication_identities_known OR EXISTS (
-  SELECT 1 FROM session_authentication_identity a WHERE a.session_id = s.id AND a.identity_id = $4))
+ AND EXISTS (
+  SELECT 1 FROM session_authentication_identity a WHERE a.session_id = s.id AND a.identity_id = $4)
  ORDER BY s.id FOR UPDATE
 )
 UPDATE session s SET revoke_time = $1::timestamptz, revoke_reason = $2, update_time = $1::timestamptz
@@ -1728,7 +1699,7 @@ type RevokeSessionsByIdentityParams struct {
 	IdentityID string
 }
 
-// Include unknown and refresh-expired sessions; lock targets in stable ID order.
+// Include refresh-expired sessions with this exact source; lock in stable ID order.
 func (q *Queries) RevokeSessionsByIdentity(ctx context.Context, arg RevokeSessionsByIdentityParams) ([]string, error) {
 	rows, err := q.db.Query(ctx, revokeSessionsByIdentity,
 		arg.Now,
@@ -2220,53 +2191,25 @@ func (q *Queries) UpdateUserDisplayName(ctx context.Context, arg UpdateUserDispl
 }
 
 const upsertSessionClientInfo = `-- name: UpsertSessionClientInfo :execrows
-INSERT INTO session_client_info(session_id, snapshot_kind, client_type, device_type,
- os_name, os_version, browser_name, browser_version, app_name, app_version, device_model,
- observe_time, create_time, update_time)
-SELECT s.id, $1, $2, $3,
- $4, $5, $6, $7,
- $8, $9, $10,
- $11::timestamptz, $12::timestamptz, $12::timestamptz
-FROM session s WHERE s.user_id = $13 AND s.id = $14 AND s.revoke_time IS NULL
-ON CONFLICT (session_id, snapshot_kind) DO UPDATE SET
- client_type = EXCLUDED.client_type, device_type = EXCLUDED.device_type,
- os_name = EXCLUDED.os_name, os_version = EXCLUDED.os_version,
- browser_name = EXCLUDED.browser_name, browser_version = EXCLUDED.browser_version,
- app_name = EXCLUDED.app_name, app_version = EXCLUDED.app_version, device_model = EXCLUDED.device_model,
+INSERT INTO session_client_info(session_id, client_info, observe_time, create_time, update_time)
+SELECT s.id, $1::jsonb, $2::timestamptz, $3::timestamptz, $3::timestamptz
+FROM session s WHERE s.user_id = $4 AND s.id = $5 AND s.revoke_time IS NULL
+ON CONFLICT (session_id) DO UPDATE SET client_info = EXCLUDED.client_info,
  observe_time = EXCLUDED.observe_time, update_time = EXCLUDED.update_time
-WHERE session_client_info.snapshot_kind <> 1
 `
 
 type UpsertSessionClientInfoParams struct {
-	SnapshotKind   enum.ClientInfoSnapshotKind
-	ClientType     *enum.ClientType
-	DeviceType     *enum.DeviceType
-	OsName         *string
-	OsVersion      *string
-	BrowserName    *string
-	BrowserVersion *string
-	AppName        *string
-	AppVersion     *string
-	DeviceModel    *string
-	ObserveTime    time.Time
-	Now            time.Time
-	UserID         string
-	SessionID      string
+	ClientInfo  []byte
+	ObserveTime time.Time
+	Now         time.Time
+	UserID      string
+	SessionID   string
 }
 
-// Supply the fully merged normalized snapshot. INITIAL is immutable on conflict.
+// Supply one validated observation; replace the full document, retaining create_time.
 func (q *Queries) UpsertSessionClientInfo(ctx context.Context, arg UpsertSessionClientInfoParams) (int64, error) {
 	result, err := q.db.Exec(ctx, upsertSessionClientInfo,
-		arg.SnapshotKind,
-		arg.ClientType,
-		arg.DeviceType,
-		arg.OsName,
-		arg.OsVersion,
-		arg.BrowserName,
-		arg.BrowserVersion,
-		arg.AppName,
-		arg.AppVersion,
-		arg.DeviceModel,
+		arg.ClientInfo,
 		arg.ObserveTime,
 		arg.Now,
 		arg.UserID,

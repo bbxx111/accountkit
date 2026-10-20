@@ -18,6 +18,8 @@
 
 优先级为合法显式值、Client Hints、UA。全部描述均自报，不能用于授权、限流身份或可信设备判断，也不代替可信ClientIP。默认不信任X-Forwarded-User-Agent等任意转发头；BFF由宿主Deps.ClientInfo明确适配原客户端信息，不能将BFF客户端库UA称为终端浏览器。原始UA、hints与完整描述不得进入日志/追踪/审计正文或指标标签；仅持久化有界结构化摘要，不保存原始UA、IP或位置。
 
+这些输入只在同一请求内overlay；规范化非空描述作为单份观察整体替换，nil/空不写入，没有跨请求补字段。app/browser可并存，孤立version/build合法。制造商、build和extensions可由Go/宿主回调提供，本次没有新增对应显式头、任意JSON请求体或JSON头；网关不应自行引入此类透传协议。宿主仍须确定扩展允许来源、语义与隐私白名单，固定敏感键检查不能识别任意值中的隐私。nested响应与扩展限制见[README](../README.md#当前会话与客户端描述开发中)及[Go指南](go-integration.md#当前会话解绑与客户端描述开发中)，当前验收见[简化记录](../openspec/changes/simplify-session-context/verification.md)。
+
 ## 入口与直连边界
 
 | 入口 | accountsvc 路径 | 部署策略 |

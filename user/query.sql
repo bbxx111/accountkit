@@ -445,50 +445,46 @@ ON CONFLICT (session_id, identity_id) DO NOTHING;
 DELETE FROM session_authentication_identity a USING session s
 WHERE a.session_id = s.id AND s.user_id = @user_id AND s.id = @session_id;
 
--- name: MarkSessionAuthenticationIdentitiesKnown :execrows
-UPDATE session SET authentication_identities_known = true, update_time = @now::timestamptz
-WHERE user_id = @user_id AND id = @session_id AND revoke_time IS NULL
- AND EXISTS (SELECT 1 FROM session_authentication_identity a WHERE a.session_id = session.id);
-
 -- name: RevokeSessionsByIdentity :many
--- Include unknown and refresh-expired sessions; lock targets in stable ID order.
+-- Include refresh-expired sessions with this exact source; lock in stable ID order.
 WITH targets AS MATERIALIZED (
  SELECT s.id FROM session s
  WHERE s.user_id = @user_id AND s.revoke_time IS NULL
- AND (NOT s.authentication_identities_known OR EXISTS (
-  SELECT 1 FROM session_authentication_identity a WHERE a.session_id = s.id AND a.identity_id = @identity_id))
+ AND EXISTS (
+  SELECT 1 FROM session_authentication_identity a WHERE a.session_id = s.id AND a.identity_id = @identity_id)
  ORDER BY s.id FOR UPDATE
 )
 UPDATE session s SET revoke_time = @now::timestamptz, revoke_reason = @reason, update_time = @now::timestamptz
 FROM targets t WHERE s.id = t.id AND s.user_id = @user_id AND s.revoke_time IS NULL
 RETURNING s.id;
 
+-- name: HasSessionsWithoutAuthenticationIdentities :one
+-- Caller holds the user lock; source writers use the same user-before-session order.
+SELECT EXISTS (
+ SELECT 1 FROM session s WHERE s.user_id = $1 AND s.revoke_time IS NULL
+ AND NOT EXISTS (
+  SELECT 1 FROM session_authentication_identity a
+  JOIN identity i ON i.id = a.identity_id AND i.user_id = s.user_id AND i.delete_time IS NULL
+  WHERE a.session_id = s.id
+ )
+);
+
 -- name: UpsertSessionClientInfo :execrows
--- Supply the fully merged normalized snapshot. INITIAL is immutable on conflict.
-INSERT INTO session_client_info(session_id, snapshot_kind, client_type, device_type,
- os_name, os_version, browser_name, browser_version, app_name, app_version, device_model,
- observe_time, create_time, update_time)
-SELECT s.id, @snapshot_kind, sqlc.narg('client_type'), sqlc.narg('device_type'),
- sqlc.narg('os_name'), sqlc.narg('os_version'), sqlc.narg('browser_name'), sqlc.narg('browser_version'),
- sqlc.narg('app_name'), sqlc.narg('app_version'), sqlc.narg('device_model'),
- @observe_time::timestamptz, @now::timestamptz, @now::timestamptz
+-- Supply one validated observation; replace the full document, retaining create_time.
+INSERT INTO session_client_info(session_id, client_info, observe_time, create_time, update_time)
+SELECT s.id, @client_info::jsonb, @observe_time::timestamptz, @now::timestamptz, @now::timestamptz
 FROM session s WHERE s.user_id = @user_id AND s.id = @session_id AND s.revoke_time IS NULL
-ON CONFLICT (session_id, snapshot_kind) DO UPDATE SET
- client_type = EXCLUDED.client_type, device_type = EXCLUDED.device_type,
- os_name = EXCLUDED.os_name, os_version = EXCLUDED.os_version,
- browser_name = EXCLUDED.browser_name, browser_version = EXCLUDED.browser_version,
- app_name = EXCLUDED.app_name, app_version = EXCLUDED.app_version, device_model = EXCLUDED.device_model,
- observe_time = EXCLUDED.observe_time, update_time = EXCLUDED.update_time
-WHERE session_client_info.snapshot_kind <> 1;
+ON CONFLICT (session_id) DO UPDATE SET client_info = EXCLUDED.client_info,
+ observe_time = EXCLUDED.observe_time, update_time = EXCLUDED.update_time;
 
 -- name: GetSessionClientInfo :one
 SELECT c.* FROM session_client_info c JOIN session s ON s.id = c.session_id
-WHERE s.user_id = @user_id AND s.id = @session_id AND c.snapshot_kind = @snapshot_kind;
+WHERE s.user_id = @user_id AND s.id = @session_id;
 
 -- name: ListSessionClientInfosByUser :many
 -- Limit batch enrichment to the session IDs already selected by the caller.
 SELECT c.* FROM session_client_info c JOIN session s ON s.id = c.session_id
-WHERE s.user_id = @user_id AND s.id = ANY(@session_ids::text[]) AND c.snapshot_kind = @snapshot_kind
+WHERE s.user_id = @user_id AND s.id = ANY(@session_ids::text[])
 ORDER BY c.session_id;
 
 -- name: DeleteSessionContextByUser :execrows

@@ -2,6 +2,7 @@ package migrations
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os/exec"
 	"testing"
@@ -17,6 +18,41 @@ const sessionContextBeforeConsolidation = "b34810a567c2dd2b2da6bef9f7b226b4eed59
 func sessionContextHistoricalSQL(t *testing.T, name string) string {
 	t.Helper()
 	b, err := exec.Command("git", "show", sessionContextBeforeConsolidation+":migrations/"+name).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// Only these two locations were authorized to change in this simplification.
+// Preserve every other catalog row and its column ordinal, constraint and index
+// definition, including all other session columns and all authentication links.
+func sessionContextUnchangedCatalog(t *testing.T, catalog string) string {
+	t.Helper()
+	var groups map[string][]json.RawMessage
+	if err := json.Unmarshal([]byte(catalog), &groups); err != nil {
+		t.Fatal(err)
+	}
+	for group, rows := range groups {
+		kept := make([]json.RawMessage, 0, len(rows))
+		for _, row := range rows {
+			var object struct {
+				TableName  string `json:"table_name"`
+				IndexTable string `json:"tablename"`
+				ColumnName string `json:"column_name"`
+			}
+			if err := json.Unmarshal(row, &object); err != nil {
+				t.Fatal(err)
+			}
+			if object.TableName == "session_client_info" || object.IndexTable == "session_client_info" ||
+				(group == "columns" && object.TableName == "session" && object.ColumnName == "authentication_identities_known") {
+				continue
+			}
+			kept = append(kept, row)
+		}
+		groups[group] = kept
+	}
+	b, err := json.Marshal(groups)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,8 +76,10 @@ func TestSessionContextConsolidatedCatalog(t *testing.T) {
 	initialUp(t, cfg, schema)
 	current := migrationTestConn(t, cfg, schema)
 	assertVersion(t, cfg, schema, 1, false)
-	if want, got := migrationCatalog(t, old, oldSchema), migrationCatalog(t, current, schema); want != got {
-		t.Fatalf("consolidation changed catalog, including column order\nwant: %s\ngot: %s", want, got)
+	// TestSimplifiedSessionClientStorage checks the new table itself. This
+	// comparison ensures the authorized rewrite did not alter anything else.
+	if want, got := sessionContextUnchangedCatalog(t, migrationCatalog(t, old, oldSchema)), sessionContextUnchangedCatalog(t, migrationCatalog(t, current, schema)); want != got {
+		t.Fatalf("simplification changed catalog beyond authorized fields, including column order\nwant: %s\ngot: %s", want, got)
 	}
 }
 

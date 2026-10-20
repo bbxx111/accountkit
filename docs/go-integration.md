@@ -6,21 +6,26 @@
 
 ## 当前会话、解绑与客户端描述（开发中）
 
-使用Authenticate获取完整可信Principal，再调用auth.Users().GetCurrentSession(ctx,p)。user/user:bind可查询，user:undelete不允许。结果提供数据库最新AuthTime、AuthenticationIdentitiesKnown和具体AuthenticationIdentities；HTTP转换的name是users/{user}/identities/{identity}。与拟解绑身份的完整资源名精确匹配，不能只比较Kind。未知来源应提示可能退出，重新认证成功后用新access重新Authenticate并重查；查询不会改写旧JWT或自动给它新的近期认证证明。
+使用Authenticate获取完整可信Principal，再调用auth.Users().GetCurrentSession(ctx,p)。user/user:bind可查询，user:undelete不允许。结果提供数据库最新AuthTime和非空AuthenticationIdentities；HTTP转换的name是users/{user}/identities/{identity}。与拟解绑身份的完整资源名精确匹配，不能只比较Kind。来源缺失或失效是内部错误，不返回正常空集合，不从其他身份或审计补造。重新认证成功后用新access重新Authenticate并重查；查询不会改写旧JWT或自动给它新的近期认证证明。
 
-[可编译示例](../examples/gointegration/example_test.go)展示重新认证后重查、来源未知保守提示及成功解绑后的凭据清理。UnbindIdentity要求可信Principal包含UserID、SessionID、ScopeUser和AuthTime，并在领域层复核账号与会话及按配置的近期认证；仅填写UserID的旧调用须迁移。204成功语义不变，当前会话可能同时撤销；命中任一来源或未知时退出，后续实际认证失效也应清理凭据。来源不命中只是快照，提交时可能并发变化。换绑当前保留也受来源条件约束，新BIND证明不替换来源。
+[可编译示例](../examples/gointegration/example_test.go)展示重新认证后重查及成功解绑后的凭据清理。UnbindIdentity要求可信Principal包含UserID、SessionID、ScopeUser和AuthTime，并在领域层复核账号、会话和按配置的近期认证；仅填写UserID的旧调用须迁移。204成功语义不变，命中任一来源的同账号未吊销会话会撤销，包含当前和自然过期但未清理的会话；同账号任一未吊销会话缺少有效来源时整事务报内部错误并回滚。后续实际认证失效应清理凭据。来源不命中只是快照，提交时可能并发变化。重新认证和换绑也检查当前来源；换绑只在来源非空且不含旧身份时保留当前会话，新BIND证明不替换来源。
 
 直接Go请求元数据由宿主显式传入，HTTP回调不会自动用于Go调用：
 
 ```go
 meta := user.Meta{IP: trustedIP, RequestID: requestID, ClientInfo: &user.ClientInfo{
     ClientType: enum.ClientNative, AppName: "Example App", AppVersion: "1.0",
+    DeviceManufacturer: "Example", AppBuild: "100",
 }}
 ```
 
 新增公开结构字段可能使位置式初始化无法编译，请使用上述字段名写法。内置HTTP默认解析显式头、Client Hints和UA，宿主可通过accountkit.Deps.ClientInfo / enduser.Deps.ClientInfo的func(*http.Request) (*user.ClientInfo,error)替代；回调结果仍规范化校验，ErrInvalidClientInfo为400，任意其他回调错误固定500且不保留原文本。宿主回调也不得记录私密输入。不无条件信任转发UA；BFF明确适配原客户端描述，可信IP仍由ClientIP提供。
 
-只有成功登录（含补全）、重新认证和新轮刷新采集描述。旧客户端可缺省；描述不作为授权或可信设备证明。INITIAL/LATEST与观察时间边界见[README](../README.md#当前会话与客户端描述开发中)，上线和回退见[迁移手册](migrations.md#会话认证依据初始整合开发中)。
+Go保留ClientInfo平坦字段，新增DeviceManufacturer、AppBuild及`Extensions map[string]json.RawMessage`（使用扩展时导入`encoding/json`）。`NormalizeClientInfo`规范化本次观察并深拷贝，nil/空描述返回nil；`MarshalClientInfo`和`UnmarshalClientInfo`采用README中的nested JSON，供业务存储读写校验，拒绝未知核心字段、重复键、非法类型/枚举、UTF-8和控制字符。完整原始JSON和每个RawMessage解析前各限16KiB，完整规范化JSON至多2048字节。合法指数数值精确展开为十进制，先核算长度再有界分配；展开后的完整JSON仍须满足2048字节，不使用浮点转换。空描述不写存储；读取非法已存描述应报内部错误。不要直接JSON序列化平坦Go模型充当公开DTO。
+
+扩展允许JSON primitive/null/object/array；所有层级键匹配`[a-z][a-z0-9_]{0,63}`。根扩展对象不计节点/深度，直接值深度1，值、容器和数组元素各计一节点，最多64节点、4层、每数组16项、每字符串256个Unicode字符；根map超过64项在分配规范化副本前拒绝。固定拒绝的下划线分隔词段为`password`、`passwd`、`secret`、`token`、`credential`、`credentials`、`authorization`、`cookie`、`cookies`、`captcha`、`otp`、`ip`、`address`、`location`、`latitude`、`longitude`、`imei`、`mac`、`ua`；同时拒绝完整组合键或以`_`为边界出现的`user_agent`、`device_id`、`hardware_id`、`verification_code`、`sms_code`、`email_code`、`one_time_code`、`security_code`。这些固定规则不识别普通值中夹带的任意隐私；宿主须管理来源、扩展语义和隐私白名单，不记录私密回调输入。默认HTTP不接收扩展JSON，也不新增制造商/build显式头。
+
+只有成功登录（含补全）、重新认证和新轮刷新采集描述。有非空观察时整体替换唯一一份描述；nil/空观察不写入且保留旧值和时间。版本/build单独出现合法，app/browser可并存；`MergeClientInfo`仅供同一请求UA→Hints→显式值overlay，不用于跨请求持久化合并。pending完成本次非空描述优先，否则整体沿用加密首次描述和原观察时间；失败、事务回滚及结果重放不更新。旧客户端可缺省，描述不作为授权或可信设备证明。完整字段和时间边界见[README](../README.md#当前会话与客户端描述开发中)，上线和回退见[迁移手册](migrations.md#会话认证依据初始整合开发中)，当前验收状态见[简化记录](../openspec/changes/simplify-session-context/verification.md)。
 
 ## 选择入口
 

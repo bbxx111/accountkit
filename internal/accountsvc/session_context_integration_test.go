@@ -61,7 +61,10 @@ func TestServiceIntegrationCurrentSessionContext(t *testing.T) {
 	access := pair["access_token"].(string)
 	f.secrets = append(f.secrets, original, retained, mail.code, access, pair["refresh_token"].(string))
 	initial := call("GET", "/users/me/sessions/current", access, nil, nil, 200)
-	if initial["authentication_identities_known"] != true || initial["initial_client_info"].(map[string]any)["browser_name"] != "Firefox" {
+	if _, exists := initial["authentication_identities_known"]; exists {
+		t.Fatal("removed known flag exposed")
+	}
+	if initial["client_info"].(map[string]any)["browser"].(map[string]any)["name"] != "Firefox" {
 		t.Fatal("missing initial context")
 	}
 	f.call("POST", p.baseURL+"/v1/users/me:sendBindCode", access, map[string]string{"channel": "EMAIL", "target": retained}, 200)
@@ -71,14 +74,14 @@ func TestServiceIntegrationCurrentSessionContext(t *testing.T) {
 	rotated := call("POST", "/token", "", map[string]string{"grant_type": "refresh_token", "refresh_token": pair["refresh_token"].(string)}, map[string]string{"X-Client-Type": "NATIVE", "X-Client-App-Name": "Service App"}, 200)
 	f.secrets = append(f.secrets, rotated["access_token"].(string), rotated["refresh_token"].(string))
 	latest := call("GET", "/users/me/sessions/current", access, nil, nil, 200)
-	if latest["initial_client_info"].(map[string]any)["client_type"] != "WEB" || latest["client_info"].(map[string]any)["app_name"] != "Service App" {
+	if latest["client_info"].(map[string]any)["app"].(map[string]any)["name"] != "Service App" {
 		t.Fatal("proxy optional refresh headers not observed")
 	}
 	// Legacy clients retain their unchanged login flow and omit the new structured fields.
 	legacy := f.login(p, "svc-context-legacy@example.test")
 	legacyAccess := legacy["access_token"].(string)
 	old := call("GET", "/users/me/sessions/current", legacyAccess, nil, nil, 200)
-	if _, ok := old["initial_client_info"]; ok {
+	if _, ok := old["client_info"]; ok {
 		t.Fatal("legacy snapshot invented")
 	}
 	time.Sleep(1100 * time.Millisecond)

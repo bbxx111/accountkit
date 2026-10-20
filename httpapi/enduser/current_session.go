@@ -29,10 +29,8 @@ type authenticationIdentityResource struct {
 }
 type currentSessionResource struct {
 	sessionResource
-	AuthTime                      string                           `json:"auth_time"`
-	AuthenticationIdentitiesKnown bool                             `json:"authentication_identities_known"`
-	AuthenticationIdentities      []authenticationIdentityResource `json:"authentication_identities"`
-	InitialClientInfo             *clientInfoResource              `json:"initial_client_info,omitempty"`
+	AuthTime                 string                           `json:"auth_time"`
+	AuthenticationIdentities []authenticationIdentityResource `json:"authentication_identities"`
 }
 
 func (h *Handler) currentSession(w http.ResponseWriter, r *http.Request) {
@@ -50,12 +48,10 @@ func (h *Handler) currentSession(w http.ResponseWriter, r *http.Request) {
 		h.writeServiceError(w, r, err)
 		return
 	}
-	out := currentSessionResource{sessionResource: newSessionResource(p.UserID, result.SessionInfo), AuthTime: fmtTime(result.AuthTime), AuthenticationIdentitiesKnown: result.AuthenticationIdentitiesKnown, AuthenticationIdentities: make([]authenticationIdentityResource, 0), InitialClientInfo: newClientInfoResource(result.InitialClientInfo)}
+	out := currentSessionResource{sessionResource: newSessionResource(p.UserID, result.SessionInfo), AuthTime: fmtTime(result.AuthTime), AuthenticationIdentities: make([]authenticationIdentityResource, 0)}
 	out.IsCurrent = true
-	if result.AuthenticationIdentitiesKnown {
-		for _, i := range result.AuthenticationIdentities {
-			out.AuthenticationIdentities = append(out.AuthenticationIdentities, authenticationIdentityResource{Name: "users/" + p.UserID + "/identities/" + i.ID, Kind: i.Kind.String()})
-		}
+	for _, i := range result.AuthenticationIdentities {
+		out.AuthenticationIdentities = append(out.AuthenticationIdentities, authenticationIdentityResource{Name: "users/" + p.UserID + "/identities/" + i.ID, Kind: i.Kind.String()})
 	}
 	sort.Slice(out.AuthenticationIdentities, func(i, j int) bool {
 		return out.AuthenticationIdentities[i].Name < out.AuthenticationIdentities[j].Name

@@ -49,14 +49,25 @@ func (s *Service) setSessionAuthenticationIdentities(ctx context.Context, q *db.
 			return fmt.Errorf("user: invariant violated: authentication identity write rejected")
 		}
 	}
-	n, err := q.MarkSessionAuthenticationIdentitiesKnown(ctx, db.MarkSessionAuthenticationIdentitiesKnownParams{UserID: sess.UserID, SessionID: sess.ID, Now: sessionTime(s.now())})
-	if err != nil {
-		return fmt.Errorf("user: mark authentication identities known: %w", err)
-	}
-	if n != 1 {
-		return fmt.Errorf("user: invariant violated: authentication identities not marked known")
-	}
 	return nil
+}
+
+// requireSessionAuthenticationIdentities reads current sources under the caller's
+// session lock. A missing set is corrupt state, never an unknown compatibility state.
+func (s *Service) requireSessionAuthenticationIdentities(ctx context.Context, q *db.Queries, sess db.Session) ([]db.ListSessionAuthenticationIdentitiesRow, error) {
+	rows, err := q.ListSessionAuthenticationIdentities(ctx, db.ListSessionAuthenticationIdentitiesParams{UserID: sess.UserID, SessionID: sess.ID})
+	if err != nil {
+		return nil, fmt.Errorf("user: read current authentication identities: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("user: invariant violated: empty authentication identities")
+	}
+	for _, row := range rows {
+		if !row.Kind.Valid() {
+			return nil, fmt.Errorf("user: invariant violated: invalid authentication identity kind")
+		}
+	}
+	return rows, nil
 }
 
 // GetCurrentSession reads the latest database context while holding FOR SHARE
@@ -78,8 +89,8 @@ func (s *Service) GetCurrentSession(ctx context.Context, p Principal) (CurrentSe
 			return ErrInvalidToken
 		}
 		result = CurrentSessionInfo{
-			SessionInfo: SessionInfo{ID: sess.ID, DeviceID: sess.DeviceID, CreateTime: sess.CreateTime, LastUsedTime: sess.LastUsedTime, IsCurrent: true},
-			AuthTime:    sess.AuthTime, AuthenticationIdentitiesKnown: sess.AuthenticationIdentitiesKnown,
+			SessionInfo:              SessionInfo{ID: sess.ID, DeviceID: sess.DeviceID, CreateTime: sess.CreateTime, LastUsedTime: sess.LastUsedTime, IsCurrent: true},
+			AuthTime:                 sess.AuthTime,
 			AuthenticationIdentities: make([]AuthenticationIdentity, 0),
 		}
 		if sess.DeviceName != nil {
@@ -88,20 +99,11 @@ func (s *Service) GetCurrentSession(ctx context.Context, p Principal) (CurrentSe
 		if err := s.loadCurrentSessionClientInfo(ctx, q, p.UserID, &result); err != nil {
 			return err
 		}
-		if !sess.AuthenticationIdentitiesKnown {
-			return nil
-		}
-		rows, err := q.ListSessionAuthenticationIdentities(ctx, db.ListSessionAuthenticationIdentitiesParams{UserID: p.UserID, SessionID: p.SessionID})
+		rows, err := s.requireSessionAuthenticationIdentities(ctx, q, sess)
 		if err != nil {
-			return fmt.Errorf("user: read current authentication identities: %w", err)
-		}
-		if len(rows) == 0 {
-			return fmt.Errorf("user: invariant violated: known authentication identities empty")
+			return err
 		}
 		for _, row := range rows {
-			if !row.Kind.Valid() {
-				return fmt.Errorf("user: invariant violated: invalid authentication identity kind")
-			}
 			result.AuthenticationIdentities = append(result.AuthenticationIdentities, AuthenticationIdentity{ID: row.IdentityID, Kind: row.Kind})
 		}
 		return nil

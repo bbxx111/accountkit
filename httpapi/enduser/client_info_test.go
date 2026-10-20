@@ -106,7 +106,7 @@ func TestClientInfoCallbackPrivacy(t *testing.T) {
 				calls := 0
 				check := func(m user.Meta) {
 					calls++
-					if m.ClientInfo == nil || m.ClientInfo.AppName != "Host App" || m.ClientInfo.BrowserName != "" {
+					if m.ClientInfo == nil || m.ClientInfo.AppName != "Host App" || m.ClientInfo.BrowserName != "excluded" {
 						t.Fatalf("not normalized: %+v", m.ClientInfo)
 					}
 				}
@@ -212,7 +212,7 @@ func TestSessionClientInfoDTO(t *testing.T) {
 	decode(t, rec, &list)
 	first := list.Sessions[0]
 	ci, ok := first["client_info"].(map[string]any)
-	if !ok || len(ci) != 4 || ci["client_type"] != "WEB" || ci["device_type"] != "DESKTOP" || first["client_info_update_time"] != "2026-09-10T12:00:00Z" {
+	if !ok || len(ci) != 4 || ci["type"] != "WEB" || ci["device"].(map[string]any)["type"] != "DESKTOP" || first["client_info_update_time"] != "2026-09-10T12:00:00Z" {
 		t.Fatalf("DTO: %v", first)
 	}
 	if _, ok := first["initial_client_info"]; ok {
@@ -222,7 +222,7 @@ func TestSessionClientInfoDTO(t *testing.T) {
 		t.Fatal("missing metadata must be omitted")
 	}
 	svc := &currentSessionService{fakeService: f, current: func(context.Context, user.Principal) (user.CurrentSessionInfo, error) {
-		return user.CurrentSessionInfo{SessionInfo: user.SessionInfo{ID: principal.SessionID, ClientInfo: info, ClientInfoUpdateTime: &testNow}, InitialClientInfo: &user.ClientInfo{OSName: "Initial OS"}}, nil
+		return user.CurrentSessionInfo{SessionInfo: user.SessionInfo{ID: principal.SessionID, ClientInfo: info, ClientInfoUpdateTime: &testNow}}, nil
 	}}
 	h, e := enduser.New(enduser.Deps{Users: svc, ClientIP: func(*http.Request) string { return "203.0.113.9" }, RequestID: func(*http.Request) string { return "test" }, ReauthMaxAge: time.Minute})
 	if e != nil {
@@ -231,7 +231,10 @@ func TestSessionClientInfoDTO(t *testing.T) {
 	rec = do(t, h.Router(), call{method: "GET", path: "/users/me/sessions/current", bearer: "good"})
 	var out map[string]any
 	decode(t, rec, &out)
-	if out["initial_client_info"].(map[string]any)["os_name"] != "Initial OS" || out["client_info"].(map[string]any)["os_name"] != "Linux" {
+	if out["client_info"].(map[string]any)["os"].(map[string]any)["name"] != "Linux" {
 		t.Fatal(out)
+	}
+	if _, ok := out["initial_client_info"]; ok {
+		t.Fatal("initial descriptor must be absent")
 	}
 }

@@ -26,13 +26,12 @@ func TestCurrentSessionOpenAPIContract(t *testing.T) {
 	}
 	schemas := doc["components"].(map[string]any)["schemas"].(map[string]any)
 	for _, rich := range []bool{false, true} {
-		t.Run(map[bool]string{false: "unknown legacy", true: "known with both snapshots"}[rich], func(t *testing.T) {
+		t.Run(map[bool]string{false: "without description", true: "with description"}[rich], func(t *testing.T) {
 			svc := &currentSessionService{fakeService: withAuth(&fakeService{}, principal), current: func(context.Context, user.Principal) (user.CurrentSessionInfo, error) {
 				out := user.CurrentSessionInfo{SessionInfo: user.SessionInfo{ID: principal.SessionID, DeviceID: "browser", CreateTime: testNow, LastUsedTime: testNow}, AuthTime: testNow}
+				out.AuthenticationIdentities = []user.AuthenticationIdentity{{ID: "i_0k3f9c2m1xq8z", Kind: enum.IdentityEmail}}
 				if rich {
-					out.AuthenticationIdentitiesKnown = true
 					out.AuthenticationIdentities = []user.AuthenticationIdentity{{ID: "i_0k3f9c2m1xq8z", Kind: enum.IdentityEmail}}
-					out.InitialClientInfo = &user.ClientInfo{ClientType: enum.ClientWeb, BrowserName: "Chrome", BrowserVersion: "130", OSName: "Windows", OSVersion: "11", DeviceType: enum.DeviceDesktop, DeviceModel: "Desktop"}
 					out.ClientInfo = &user.ClientInfo{ClientType: enum.ClientNative, AppName: "Example App", AppVersion: "2.0", OSName: "Android", OSVersion: "15", DeviceType: enum.DevicePhone, DeviceModel: "Example Phone"}
 					out.ClientInfoUpdateTime = &testNow
 				}

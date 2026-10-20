@@ -72,7 +72,13 @@ func TestCurrentSessionHTTPAgainstRealDB(t *testing.T) {
 	pair := request("POST", "/users:signInWithCode", "", cred, map[string]string{"X-Device-Id": "http-context", "X-Device-Name": "Original Device", "X-Client-Type": "WEB", "X-Client-OS-Name": "Initial OS", "X-Client-Browser-Name": "Firefox"}, 200)
 	access := pair["access_token"].(string)
 	initial := request("GET", "/users/me/sessions/current", access, nil, nil, 200)
-	if initial["authentication_identities_known"] != true || len(initial["authentication_identities"].([]any)) != 1 || initial["initial_client_info"].(map[string]any)["os_name"] != "Initial OS" {
+	if _, exists := initial["authentication_identities_known"]; exists {
+		t.Fatal("removed known flag exposed")
+	}
+	if _, exists := initial["initial_client_info"]; exists {
+		t.Fatal("removed initial snapshot exposed")
+	}
+	if len(initial["authentication_identities"].([]any)) != 1 || initial["client_info"].(map[string]any)["os"].(map[string]any)["name"] != "Initial OS" {
 		t.Fatal("missing initial source or snapshot")
 	}
 	if _, e := time.Parse(time.RFC3339, initial["auth_time"].(string)); e != nil {
@@ -89,8 +95,8 @@ func TestCurrentSessionHTTPAgainstRealDB(t *testing.T) {
 	if len(sources) != 1 || sources[0].(map[string]any)["name"] != bound["name"] || sources[0].(map[string]any)["kind"] != "PHONE" || current["auth_time"] == initial["auth_time"] {
 		t.Fatal("current proof not replaced")
 	}
-	if current["device_name"] != "Original Device" || current["initial_client_info"].(map[string]any)["client_type"] != "WEB" || current["client_info"].(map[string]any)["client_type"] != "NATIVE" {
-		t.Fatal("client snapshots/device changed incorrectly")
+	if current["device_name"] != "Original Device" || current["client_info"].(map[string]any)["type"] != "NATIVE" {
+		t.Fatal("client information/device changed incorrectly")
 	}
 	request("DELETE", "/users/me/identities/"+strings.Split(bound["name"].(string), "/")[3], access, nil, nil, 204)
 	request("GET", "/users/me/sessions/current", access, nil, nil, 401)

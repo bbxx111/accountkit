@@ -2962,53 +2962,93 @@
       },
       "ClientInfo": {
         "type": "object",
-        "description": "可选、自报的结构化描述，未知属性省略；不含原始 UA、IP、位置或凭证，不能作为可信设备证明。",
+        "additionalProperties": false,
         "properties": {
-          "client_type": {
+          "type": {
             "type": "string",
             "enum": [
               "WEB",
               "NATIVE"
             ]
           },
-          "os_name": {
-            "type": "string",
-            "maxLength": 64
+          "os": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "version": {
+                "type": "string",
+                "maxLength": 32
+              }
+            }
           },
-          "os_version": {
-            "type": "string",
-            "maxLength": 32
+          "device": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "DESKTOP",
+                  "PHONE",
+                  "TABLET"
+                ]
+              },
+              "manufacturer": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "model": {
+                "type": "string",
+                "maxLength": 64
+              }
+            }
           },
-          "browser_name": {
-            "type": "string",
-            "maxLength": 64
+          "app": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "version": {
+                "type": "string",
+                "maxLength": 32
+              },
+              "build": {
+                "type": "string",
+                "maxLength": 64
+              }
+            }
           },
-          "browser_version": {
-            "type": "string",
-            "maxLength": 32
+          "browser": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "version": {
+                "type": "string",
+                "maxLength": 32
+              }
+            }
           },
-          "app_name": {
-            "type": "string",
-            "maxLength": 64
-          },
-          "app_version": {
-            "type": "string",
-            "maxLength": 32
-          },
-          "device_type": {
-            "type": "string",
-            "enum": [
-              "DESKTOP",
-              "PHONE",
-              "TABLET"
-            ]
-          },
-          "device_model": {
-            "type": "string",
-            "maxLength": 64
+          "extensions": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": true,
+            "propertyNames": {
+              "pattern": "^[a-z][a-z0-9_]{0,63}$"
+            },
+            "description": "宿主提供的有界扩展。业务代码校验深度4、节点64、数组16、字符串256字符、敏感键；完整规范化描述最多2048字节。"
           }
-        },
-        "additionalProperties": false
+        }
       },
       "AuthenticationIdentity": {
         "type": "object",
@@ -3065,18 +3105,13 @@
             "format": "date-time",
             "description": "数据库最新认证时间；旧 JWT 不随查询改写。"
           },
-          "authentication_identities_known": {
-            "type": "boolean"
-          },
           "authentication_identities": {
             "type": "array",
             "description": "按具体身份 ID 稳定排序，仅用 name 精确匹配；未知来源返回 []，不能据此判断解绑安全。",
             "items": {
               "$ref": "#/components/schemas/AuthenticationIdentity"
-            }
-          },
-          "initial_client_info": {
-            "$ref": "#/components/schemas/ClientInfo"
+            },
+            "minItems": 1
           }
         },
         "required": [
@@ -3087,7 +3122,6 @@
           "last_used_time",
           "is_current",
           "auth_time",
-          "authentication_identities_known",
           "authentication_identities"
         ],
         "additionalProperties": false

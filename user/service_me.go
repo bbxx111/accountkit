@@ -192,7 +192,7 @@ func (s *Service) reauthenticate(ctx context.Context, p Principal, cred CodeCred
 	}
 
 	var res TokenResult
-	err = s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+	err = s.d.Repo.withDomainTx(ctx, func(q *db.Queries) error {
 		// 与身份写入一致，先锁用户再锁会话；锁后重新确认锚点。
 		u, err := q.LockUserByID(ctx, p.UserID)
 		if err != nil {

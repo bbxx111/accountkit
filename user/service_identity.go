@@ -186,7 +186,7 @@ func (s *Service) BindWithCode(ctx context.Context, p Principal, cred CodeCreden
 	}
 	var info IdentityInfo
 	var created bool
-	err = s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+	err = s.d.Repo.withDomainTx(ctx, func(q *db.Queries) error {
 		if err := s.lockAnchorSubjects(ctx, q, anchorSubject{channel, norm}); err != nil {
 			return err
 		}
@@ -285,7 +285,7 @@ func (s *Service) BindWithIdp(ctx context.Context, p Principal, cred IdpCredenti
 	now := s.now()
 	var info IdentityInfo
 	var created bool
-	err = s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+	err = s.d.Repo.withDomainTx(ctx, func(q *db.Queries) error {
 		_, idents, err := s.bindGuard(ctx, q, p.UserID)
 		if err != nil {
 			return err
@@ -349,7 +349,7 @@ func (s *Service) UnbindIdentity(ctx context.Context, p Principal, identityID st
 	}
 	var target db.Identity
 	var revoked []string
-	err := s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+	err := s.d.Repo.withDomainTx(ctx, func(q *db.Queries) error {
 		u, err := lockUser(ctx, q, p.UserID)
 		if err != nil {
 			return err

@@ -2,9 +2,11 @@ package accountkit_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -58,6 +60,63 @@ func TestNewIsPureAndAppliesDefaults(t *testing.T) {
 	}
 	if got := a.Config(); got.Schema != "account" || got.KeyPrefix != "auth:" || got.AccessTokenTTL != 15*time.Minute {
 		t.Fatalf("defaults not applied: %+v", got)
+	}
+}
+
+func TestNewRejectsInsufficientPoolCapacity(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		maxConns int32
+		wantErr  bool
+	}{
+		{name: "single", maxConns: 1, wantErr: true},
+		{name: "minimum", maxConns: 2},
+		{name: "default"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := pgxpool.ParseConfig("postgres://u:synthetic_secret@127.0.0.1:1/db?sslmode=disable")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.maxConns != 0 {
+				cfg.MaxConns = tc.maxConns
+			}
+			var attempts atomic.Int32
+			blocked := errors.New("database connection forbidden in New test")
+			cfg.BeforeConnect = func(context.Context, *pgx.ConnConfig) error {
+				attempts.Add(1)
+				return blocked
+			}
+			pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer pool.Close()
+			deps := accountkit.Deps{Pool: pool, Redis: testRedis(t), SMSSender: sender.NewLog(nil), EmailSender: sender.NewLog(nil)}
+			a, err := accountkit.New(minimal(), deps)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("New error = %v, wantErr = %v", err, tc.wantErr)
+			}
+			if tc.wantErr {
+				if a != nil {
+					t.Error("rejected pool must not produce Auth")
+				}
+				if err != nil && (!strings.Contains(err.Error(), "at least 2") || strings.Contains(err.Error(), "synthetic_secret")) {
+					t.Errorf("capacity error must explain minimum without credentials: %v", err)
+				}
+			}
+			if a != nil {
+				a.Close()
+			}
+			if got := attempts.Load(); got != 0 {
+				t.Errorf("New/Close attempted %d database connections", got)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			if _, err := pool.Acquire(ctx); !errors.Is(err, blocked) {
+				t.Fatalf("host pool no longer usable after New/Close: %v", err)
+			}
+		})
 	}
 }
 

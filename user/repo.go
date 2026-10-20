@@ -34,8 +34,17 @@ func (r *Repo) WithTxRaw(ctx context.Context, fn func(tx pgx.Tx, q *db.Queries) 
 	return r.withTxRawOptions(ctx, pgx.TxOptions{}, fn)
 }
 
-// Privacy cleanup needs a fresh statement snapshot after waiting for user locks.
-// Other callers keep the host's default isolation through WithTxRaw above.
+// withDomainTxRaw 显式使用 READ COMMITTED，使领域操作在等待既有锁后，
+// 下一条复核语句能看到最新提交状态，不受宿主默认隔离级别影响。
+// 原始事务回调与领域查询使用同一个事务。
+func (r *Repo) withDomainTxRaw(ctx context.Context, fn func(tx pgx.Tx, q *db.Queries) error) error {
+	return r.withTxRawOptions(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, fn)
+}
+
+func (r *Repo) withDomainTx(ctx context.Context, fn func(q *db.Queries) error) error {
+	return r.withDomainTxRaw(ctx, func(_ pgx.Tx, q *db.Queries) error { return fn(q) })
+}
+
 func (r *Repo) withTxRawOptions(ctx context.Context, options pgx.TxOptions, fn func(tx pgx.Tx, q *db.Queries) error) (err error) {
 	tx, err := r.pool.BeginTx(ctx, options)
 	if err != nil {

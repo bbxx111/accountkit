@@ -191,7 +191,7 @@ func (s *Service) rotate(ctx context.Context, sess db.Session, oldHash []byte, e
 	var res TokenResult
 	rotated := false
 	graceWriteFailed := false
-	err := s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+	err := s.d.Repo.withDomainTx(ctx, func(q *db.Queries) error {
 		locked, err := q.LockSessionByID(ctx, sess.ID)
 		if err != nil {
 			return fmt.Errorf("user: lock session: %w", err)
@@ -387,7 +387,7 @@ func (s *Service) RevokeSession(ctx context.Context, userID, sid string, meta Me
 func (s *Service) RevokeOtherSessions(ctx context.Context, userID, currentSID string, meta Meta) error {
 	now := s.now()
 	var revoked []string
-	err := s.d.Repo.WithTx(ctx, func(q *db.Queries) error {
+	err := s.d.Repo.withDomainTx(ctx, func(q *db.Queries) error {
 		// 多行会话写入遵循 user → session 锁序；不存在的用户仍是无操作成功。
 		if _, err := q.LockUserByID(ctx, userID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("user: lock user for session revocation: %w", err)

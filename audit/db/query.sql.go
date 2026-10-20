@@ -9,6 +9,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/bbxx111/accountkit/enum"
 	"github.com/google/uuid"
 )
 
@@ -96,85 +97,97 @@ func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventPara
 }
 
 const listAuditEventsByResource = `-- name: ListAuditEventsByResource :many
-WITH matched AS MATERIALIZED (
- (SELECT a.id, a.source, a.action, a.result, a.actor, a.targets, a.context, a.data, a.occur_time, a.create_time FROM audit_event a
-  WHERE a.source = $2::text AND $3::text = 'USER'
-   AND a.actor->>'type' = 'USER' AND a.actor->>'namespace' = $4::text AND a.actor->>'id' = $5::text
+WITH ownership_evidence AS MATERIALIZED (
+ SELECT e.targets, e.context->'related_resources' AS related_resources
+ FROM audit_event e
+ WHERE $1::text = 'USER' AND e.source = $2::text AND e.result = 1
+  AND e.action IN ('SIGN_IN_COMPLETION_PROOF_VERIFIED','SIGN_IN_COMPLETION_COMPLETED')
+  AND ((e.actor->>'type' = 'USER' AND e.actor->>'namespace' = $3::text AND e.actor->>'id' = $4::text)
+   OR e.targets @> $5::jsonb OR e.context->'related_resources' @> $5::jsonb)
+), owned_flows AS MATERIALIZED (
+ SELECT id FROM sign_in_completion_flow
+ WHERE $1::text = 'USER' AND (user_id = $4::text OR proof_user_ids @> ARRAY[$4::text])
+ UNION
+ SELECT f->>'id' FROM ownership_evidence e
+ CROSS JOIN LATERAL jsonb_array_elements(e.targets || COALESCE(e.related_resources,'[]'::jsonb)) f
+ WHERE f->>'type' = 'IDENTITY_FLOW' AND f->>'namespace' = $3::text
+), resource_matches AS MATERIALIZED (
+ SELECT a.id, a.occur_time FROM audit_event a
+ WHERE a.source = $2::text
+  AND (a.targets @> $5::jsonb OR a.context->'related_resources' @> $5::jsonb)
+  AND (COALESCE(cardinality($6::text[]),0) = 0 OR a.action = ANY($6::text[]))
+  AND ($7::timestamptz IS NULL OR (a.occur_time,a.id) > ($7::timestamptz,$8::uuid))
+), flow_matches AS MATERIALIZED (
+ SELECT DISTINCT a.id, a.occur_time FROM owned_flows f
+ CROSS JOIN LATERAL (
+  -- Fence membership before cursor/action predicates too: a same-time cursor
+  -- can be estimated as highly selective and otherwise choose a source-timeline
+  -- scan once per owned flow instead of the exact resource GIN lookup.
+  SELECT e.id, e.occur_time, e.action FROM audit_event e
+  WHERE e.source = $2::text
+   AND (e.targets @> jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',$3::text,'id',f.id))
+    OR e.context->'related_resources' @> jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',$3::text,'id',f.id)))
+   AND NOT (e.actor->>'type' = 'USER' AND e.actor->>'namespace' = $3::text)
+   AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(e.targets || COALESCE(e.context->'related_resources','[]'::jsonb)) r
+                   WHERE r->>'type' = 'USER' AND r->>'namespace' = $3::text)
+  OFFSET 0
+ ) a
+ WHERE (COALESCE(cardinality($6::text[]),0) = 0 OR a.action = ANY($6::text[]))
+  AND ($7::timestamptz IS NULL OR (a.occur_time,a.id) > ($7::timestamptz,$8::uuid))
+), candidates AS MATERIALIZED (
+ (SELECT a.id, a.occur_time FROM audit_event a
+  WHERE a.source = $2::text AND $1::text = 'USER'
+   AND a.actor->>'type' = 'USER' AND a.actor->>'namespace' = $3::text AND a.actor->>'id' = $4::text
    AND (COALESCE(cardinality($6::text[]),0) = 0 OR a.action = ANY($6::text[]))
    AND ($7::timestamptz IS NULL OR (a.occur_time,a.id) > ($7::timestamptz,$8::uuid))
-  ORDER BY a.occur_time, a.id LIMIT $1::int)
+  ORDER BY a.occur_time, a.id LIMIT $9::int)
  UNION
- SELECT a.id, a.source, a.action, a.result, a.actor, a.targets, a.context, a.data, a.occur_time, a.create_time FROM audit_event a
- WHERE a.source = $2::text
-  AND (a.targets @> $9::jsonb OR a.context->'related_resources' @> $9::jsonb)
-  AND (COALESCE(cardinality($6::text[]),0) = 0 OR a.action = ANY($6::text[]))
-  AND ($7::timestamptz IS NULL OR (a.occur_time,a.id) > ($7::timestamptz,$8::uuid))
+ (SELECT id, occur_time FROM resource_matches ORDER BY occur_time, id LIMIT $9::int)
  UNION
- SELECT a.id, a.source, a.action, a.result, a.actor, a.targets, a.context, a.data, a.occur_time, a.create_time FROM audit_event a
- WHERE a.source = $2::text AND $3::text = 'USER'
-  AND (a.targets @> ANY($10::jsonb[]) OR a.context->'related_resources' @> ANY($10::jsonb[]))
-  AND NOT (a.actor->>'type' = 'USER' AND a.actor->>'namespace' = $4::text)
-  AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(a.targets || COALESCE(a.context->'related_resources','[]'::jsonb)) r
-                  WHERE r->>'type' = 'USER' AND r->>'namespace' = $4::text)
-  AND (COALESCE(cardinality($6::text[]),0) = 0 OR a.action = ANY($6::text[]))
-  AND ($7::timestamptz IS NULL OR (a.occur_time,a.id) > ($7::timestamptz,$8::uuid))
+ (SELECT id, occur_time FROM flow_matches ORDER BY occur_time, id LIMIT $9::int)
+), page AS MATERIALIZED (
+ SELECT id, occur_time FROM candidates ORDER BY occur_time, id LIMIT $9::int
 )
-SELECT id, source, action, result, actor, targets, context, data, occur_time, create_time FROM matched
-ORDER BY occur_time, id LIMIT $1::int
+SELECT e.id, e.source, e.action, e.result, e.actor, e.targets, e.context, e.data, e.occur_time, e.create_time FROM page p
+CROSS JOIN LATERAL (SELECT a.id, a.source, a.action, a.result, a.actor, a.targets, a.context, a.data, a.occur_time, a.create_time FROM audit_event a WHERE a.id = p.id OFFSET 0) e
+ORDER BY p.occur_time, p.id
 `
 
 type ListAuditEventsByResourceParams struct {
-	PageLimit     int32
-	Source        string
-	ResourceType  string
-	Namespace     string
-	ResourceID    string
-	Actions       []string
-	AfterTime     *time.Time
-	AfterID       *uuid.UUID
-	Resource      []byte
-	FlowResources [][]byte
+	ResourceType string
+	Source       string
+	Namespace    string
+	ResourceID   string
+	Resource     []byte
+	Actions      []string
+	AfterTime    *time.Time
+	AfterID      *uuid.UUID
+	PageLimit    int32
 }
 
-type ListAuditEventsByResourceRow struct {
-	ID         uuid.UUID
-	Source     string
-	Action     string
-	Result     *int16
-	Actor      []byte
-	Targets    []byte
-	Context    []byte
-	Data       []byte
-	OccurTime  time.Time
-	CreateTime time.Time
-}
-
-// Each membership arm is fenced in a materialized CTE so the outer ORDER BY/LIMIT
-// cannot turn it into a walk of the source timeline, including under generic plans.
-// The actor arm reads idx_audit_event_actor in (occur_time, id) order and stops at the
-// page size; resource arms use the GIN indexes and hold only rows naming the resource.
-// Arms return whole rows so no join back to audit_event is planned. @flow_resources
-// holds one single-element IDENTITY_FLOW resource array per flow; empty outside USER.
-func (q *Queries) ListAuditEventsByResource(ctx context.Context, arg ListAuditEventsByResourceParams) ([]ListAuditEventsByResourceRow, error) {
+// Historical ownership stays inside the database and is never cursor/action-bound.
+// GIN membership is materialized BEFORE Top-N to fence off source-timeline walks.
+// Only (id,occur_time) candidates are merged; the final lateral lookup fetches at
+// most page_limit complete events even with a generic plan. History scans remain.
+func (q *Queries) ListAuditEventsByResource(ctx context.Context, arg ListAuditEventsByResourceParams) ([]AuditEvent, error) {
 	rows, err := q.db.Query(ctx, listAuditEventsByResource,
-		arg.PageLimit,
-		arg.Source,
 		arg.ResourceType,
+		arg.Source,
 		arg.Namespace,
 		arg.ResourceID,
+		arg.Resource,
 		arg.Actions,
 		arg.AfterTime,
 		arg.AfterID,
-		arg.Resource,
-		arg.FlowResources,
+		arg.PageLimit,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListAuditEventsByResourceRow
+	var items []AuditEvent
 	for rows.Next() {
-		var i ListAuditEventsByResourceRow
+		var i AuditEvent
 		if err := rows.Scan(
 			&i.ID,
 			&i.Source,
@@ -198,39 +211,68 @@ func (q *Queries) ListAuditEventsByResource(ctx context.Context, arg ListAuditEv
 }
 
 const listAuditFlowEvidence = `-- name: ListAuditFlowEvidence :many
-SELECT id, source, action, result, actor, targets, context, data, occur_time, create_time FROM audit_event e
-WHERE e.source = $1::text AND e.result = 1
- AND e.action IN ('SIGN_IN_COMPLETION_PROOF_VERIFIED','SIGN_IN_COMPLETION_COMPLETED')
- AND ((e.actor->>'type' = 'USER' AND e.actor->>'namespace' = $2::text AND e.actor->>'id' = $3::text)
-  OR e.targets @> $4::jsonb OR e.context->'related_resources' @> $4::jsonb)
-ORDER BY occur_time, id
+WITH requested AS MATERIALIZED (
+ SELECT f->>'id' AS flow_id, (f->>'after_id')::uuid AS after_id,
+ jsonb_build_array(jsonb_build_object('type','IDENTITY_FLOW','namespace',$2::text,'id',f->>'id')) AS resource
+ FROM jsonb_array_elements($5::jsonb) f
+)
+SELECT r.flow_id::text AS flow_id, e.id, e.source, e.action, e.result, e.actor, e.targets, e.context, e.data, e.occur_time, e.create_time FROM requested r
+CROSS JOIN LATERAL (
+ SELECT id FROM (
+  SELECT a.id FROM audit_event a
+  WHERE a.source = $1::text AND a.result = 1
+   AND a.action IN ('SIGN_IN_COMPLETION_PROOF_VERIFIED','SIGN_IN_COMPLETION_COMPLETED')
+   AND ((a.actor->>'type' = 'USER' AND a.actor->>'namespace' = $2::text AND a.actor->>'id' = $3::text)
+    OR a.targets @> $4::jsonb OR a.context->'related_resources' @> $4::jsonb)
+   AND (a.targets @> r.resource OR a.context->'related_resources' @> r.resource)
+   AND (r.after_id IS NULL OR a.id > r.after_id)
+  OFFSET 0
+ ) candidates ORDER BY id LIMIT 1
+) chosen
+CROSS JOIN LATERAL (SELECT a.id, a.source, a.action, a.result, a.actor, a.targets, a.context, a.data, a.occur_time, a.create_time FROM audit_event a WHERE a.id = chosen.id OFFSET 0) e
 `
 
 type ListAuditFlowEvidenceParams struct {
-	Source    string
-	Namespace string
-	UserID    string
-	Resource  []byte
+	Source      string
+	Namespace   string
+	UserID      string
+	Resource    []byte
+	FlowCursors []byte
 }
 
-// Every OR arm must be index-backed (actor expression index, resource GIN indexes) so
-// the planner can combine them with BitmapOr. Actor membership uses expression
-// equality because idx_audit_event_actor cannot serve jsonb containment.
-func (q *Queries) ListAuditFlowEvidence(ctx context.Context, arg ListAuditFlowEvidenceParams) ([]AuditEvent, error) {
+type ListAuditFlowEvidenceRow struct {
+	FlowID     string
+	ID         uuid.UUID
+	Source     string
+	Action     string
+	Result     *enum.Result
+	Actor      []byte
+	Targets    []byte
+	Context    []byte
+	Data       []byte
+	OccurTime  time.Time
+	CreateTime time.Time
+}
+
+// One candidate per unresolved page flow, independent of the page's action/time
+// range. Go validates authentication projections and advances only rejected flows.
+func (q *Queries) ListAuditFlowEvidence(ctx context.Context, arg ListAuditFlowEvidenceParams) ([]ListAuditFlowEvidenceRow, error) {
 	rows, err := q.db.Query(ctx, listAuditFlowEvidence,
 		arg.Source,
 		arg.Namespace,
 		arg.UserID,
 		arg.Resource,
+		arg.FlowCursors,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []AuditEvent
+	var items []ListAuditFlowEvidenceRow
 	for rows.Next() {
-		var i AuditEvent
+		var i ListAuditFlowEvidenceRow
 		if err := rows.Scan(
+			&i.FlowID,
 			&i.ID,
 			&i.Source,
 			&i.Action,
@@ -384,11 +426,18 @@ func (q *Queries) ListAuditPrivacyFlowUsers(ctx context.Context, arg ListAuditPr
 }
 
 const listLiveAuditFlows = `-- name: ListLiveAuditFlows :many
-SELECT id FROM sign_in_completion_flow WHERE user_id = $1::text OR proof_user_ids @> ARRAY[$1::text]
+SELECT id FROM sign_in_completion_flow
+WHERE id = ANY($1::text[])
+ AND (user_id = $2::text OR proof_user_ids @> ARRAY[$2::text])
 `
 
-func (q *Queries) ListLiveAuditFlows(ctx context.Context, userID string) ([]string, error) {
-	rows, err := q.db.Query(ctx, listLiveAuditFlows, userID)
+type ListLiveAuditFlowsParams struct {
+	FlowIds []string
+	UserID  string
+}
+
+func (q *Queries) ListLiveAuditFlows(ctx context.Context, arg ListLiveAuditFlowsParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, listLiveAuditFlows, arg.FlowIds, arg.UserID)
 	if err != nil {
 		return nil, err
 	}

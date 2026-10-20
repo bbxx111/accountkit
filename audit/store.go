@@ -8,7 +8,6 @@ import (
 	"github.com/bbxx111/accountkit/audit/authentication"
 	"github.com/bbxx111/accountkit/audit/db"
 	"github.com/bbxx111/accountkit/audit/event"
-	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/internal/auditconfig"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -216,38 +215,7 @@ func (s *Store) ListByResource(ctx context.Context, query Query) (Page, error) {
 	r.Name = ""
 	resource, _ := json.Marshal([]Resource{r})
 	page := Page{Records: []RecordView{}}
-	flows := [][]byte{}
-	addFlow := func(id string) {
-		flow, _ := json.Marshal([]Resource{{Type: "IDENTITY_FLOW", Namespace: r.Namespace, ID: id}})
-		flows = append(flows, flow)
-	}
-	if r.Type == "USER" {
-		live, err := s.q.ListLiveAuditFlows(ctx, r.ID)
-		if err != nil {
-			return Page{}, err
-		}
-		for _, id := range live {
-			addFlow(id)
-			page.FlowLinks = append(page.FlowLinks, FlowLink{Flow: Resource{Type: "IDENTITY_FLOW", Namespace: r.Namespace, ID: id}, User: r, Live: true})
-		}
-		evidence, err := s.q.ListAuditFlowEvidence(ctx, db.ListAuditFlowEvidenceParams{Source: query.Source, Namespace: r.Namespace, UserID: r.ID, Resource: resource})
-		if err != nil {
-			return Page{}, err
-		}
-		for _, row := range evidence {
-			record, err := recordView(row)
-			if err != nil {
-				return Page{}, err
-			}
-			for _, f := range append(append([]Resource{}, record.Targets...), record.Context.RelatedResources...) {
-				if f.Type == "IDENTITY_FLOW" && f.Namespace == r.Namespace {
-					addFlow(f.ID)
-					page.FlowLinks = append(page.FlowLinks, FlowLink{Flow: f, User: r, Evidence: record})
-				}
-			}
-		}
-	}
-	p := db.ListAuditEventsByResourceParams{Source: query.Source, Actions: actions, ResourceType: r.Type, Namespace: r.Namespace, ResourceID: r.ID, Resource: resource, FlowResources: flows, PageLimit: int32(query.Limit)}
+	p := db.ListAuditEventsByResourceParams{Source: query.Source, Actions: actions, ResourceType: r.Type, Namespace: r.Namespace, ResourceID: r.ID, Resource: resource, PageLimit: int32(query.Limit)}
 	if query.After != nil {
 		p.AfterTime = &query.After.Time
 		p.AfterID = &query.After.ID
@@ -257,24 +225,124 @@ func (s *Store) ListByResource(ctx context.Context, query Query) (Page, error) {
 		return Page{}, err
 	}
 	for _, row := range rows {
-		record, err := recordView(resourceEventRow(row))
+		record, err := recordView(row)
 		if err != nil {
 			return Page{}, err
 		}
 		page.Records = append(page.Records, record)
 	}
+	if r.Type == "USER" {
+		page.FlowLinks, err = s.pageFlowLinks(ctx, query.Source, r, resource, page.Records)
+		if err != nil {
+			return Page{}, err
+		}
+	}
 	return page, nil
 }
 
-// resourceEventRow restores the model type: column overrides do not apply through
-// the query's CTE, so sqlc emits the plain smallint for result.
-func resourceEventRow(r db.ListAuditEventsByResourceRow) db.AuditEvent {
-	var result *enum.Result
-	if r.Result != nil {
-		v := enum.Result(*r.Result)
-		result = &v
+// pageFlowLinks returns at most one independently checkable link per stable flow
+// reference. Failed authentication projections advance a UUID cursor, in batches
+// across the unresolved flows; page actions/times never constrain the evidence.
+func (s *Store) pageFlowLinks(ctx context.Context, source string, user Resource, resource []byte, records []RecordView) ([]FlowLink, error) {
+	type flowCursor struct {
+		ID      string     `json:"id"`
+		AfterID *uuid.UUID `json:"after_id,omitempty"`
 	}
-	return db.AuditEvent{ID: r.ID, Source: r.Source, Action: r.Action, Result: result, Actor: r.Actor, Targets: r.Targets, Context: r.Context, Data: r.Data, OccurTime: r.OccurTime, CreateTime: r.CreateTime}
+	seen := map[string]bool{}
+	var ids []string
+	for _, record := range records {
+		for _, refs := range [][]Resource{record.Targets, record.Context.RelatedResources} {
+			for _, ref := range refs {
+				if ref.Type == "IDENTITY_FLOW" && ref.Namespace == user.Namespace && !seen[ref.ID] {
+					seen[ref.ID] = true
+					ids = append(ids, ref.ID)
+				}
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	slices.Sort(ids)
+	pending := make([]flowCursor, len(ids))
+	for i, id := range ids {
+		pending[i].ID = id
+	}
+	links := map[string]FlowLink{}
+	for len(pending) > 0 {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		cursors, err := json.Marshal(pending)
+		if err != nil {
+			return nil, err
+		}
+		rows, err := s.q.ListAuditFlowEvidence(ctx, db.ListAuditFlowEvidenceParams{Source: source, Namespace: user.Namespace, UserID: user.ID, Resource: resource, FlowCursors: cursors})
+		if err != nil {
+			return nil, err
+		}
+		pending = nil
+		for _, row := range rows {
+			record, err := recordView(db.AuditEvent{ID: row.ID, Source: row.Source, Action: row.Action, Result: row.Result, Actor: row.Actor, Targets: row.Targets, Context: row.Context, Data: row.Data, OccurTime: row.OccurTime, CreateTime: row.CreateTime})
+			if err != nil {
+				return nil, err
+			}
+			if validFlowEvidence(record.Event, user.Namespace) {
+				links[row.FlowID] = FlowLink{Flow: Resource{Type: "IDENTITY_FLOW", Namespace: user.Namespace, ID: row.FlowID}, User: user, Evidence: record}
+			} else {
+				id := row.ID
+				pending = append(pending, flowCursor{ID: row.FlowID, AfterID: &id})
+			}
+		}
+	}
+	var missing []string
+	for _, id := range ids {
+		if _, ok := links[id]; !ok {
+			missing = append(missing, id)
+		}
+	}
+	if len(missing) > 0 {
+		live, err := s.q.ListLiveAuditFlows(ctx, db.ListLiveAuditFlowsParams{FlowIds: missing, UserID: user.ID})
+		if err != nil {
+			return nil, err
+		}
+		for _, id := range live {
+			links[id] = FlowLink{Flow: Resource{Type: "IDENTITY_FLOW", Namespace: user.Namespace, ID: id}, User: user, Live: true}
+		}
+	}
+	out := make([]FlowLink, 0, len(links))
+	for _, id := range ids {
+		if link, ok := links[id]; ok {
+			out = append(out, link)
+		}
+	}
+	return out, nil
+}
+
+// Keep the projection/namespace rules aligned with the admin adapter, which still
+// independently checks every returned link before exposing a flow-only record.
+func validFlowEvidence(e Event, namespace string) bool {
+	projection, err := authentication.Projection(e)
+	if err != nil {
+		return false
+	}
+	for _, ref := range []Resource{{Type: "SESSION", Namespace: namespace, ID: projection.SessionID}, {Type: "IDENTITY_FLOW", Namespace: namespace, ID: projection.FlowID}} {
+		if ref.ID == "" {
+			continue
+		}
+		found := false
+		for _, refs := range [][]Resource{e.Targets, e.Context.RelatedResources} {
+			for _, r := range refs {
+				if r.Type == ref.Type && r.Namespace == ref.Namespace && r.ID == ref.ID {
+					found = true
+				}
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 // ListByUser is a local convenience; integrations should use the explicit Reader scope.

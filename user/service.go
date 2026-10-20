@@ -423,7 +423,6 @@ func (s *Service) establishSession(ctx context.Context, q *db.Queries, u db.User
 	if err := s.setSessionAuthenticationIdentities(ctx, q, sess, identityIDs); err != nil {
 		return db.Session{}, TokenResult{}, nil, err
 	}
-	sess.AuthenticationIdentitiesKnown = true
 	res, err := s.tokensFor(sess, refreshPlain, deriveScope(u.State, hasAnchor), now)
 	if err != nil {
 		return db.Session{}, TokenResult{}, nil, err

@@ -31,11 +31,13 @@
 
 ## 当前会话和客户端摘要（开发中）
 
-GET /users/me/sessions/current支持user/user:bind；返回真实s_资源名、数据库最新RFC3339 auth_time、来源是否已知及仅name/kind的身份摘要，数组稳定排序。来源未知为false与[]，客户端保守提示并用完整name匹配，重新认证保存新access后重查。详情可含initial_client_info、client_info（最近）与client_info_update_time，两面的会话列表只有最近摘要和观察时间，管理面不增加身份来源详情。
+GET /users/me/sessions/current支持user/user:bind；返回真实s_资源名、数据库最新RFC3339 auth_time及非空authentication_identities，摘要只有name/kind且按具体ID稳定排序。客户端用完整name匹配，重新认证保存新access后重查。来源缺失或失效为内部错误，不返回正常空集合。开发中的authentication_identities_known/initial_client_info已移除；详情和两面的列表均只可含单份client_info与client_info_update_time，管理面不增加身份来源详情。开发调用者须更新解析，见[兼容说明](compatibility.md#会话认证依据与客户端描述开发中)。
 
-新详情在数据库会话缺失、归属错误、撤销或refresh期限已到时返回401 TOKEN_INVALID并带Bearer挑战；依赖不可用503、内部错误固定500，缺可选宿主能力503 SESSION_QUERY_NOT_CONFIGURED，所有响应no-store。普通Authenticate/内省保留JWT/Redis判定，无额外数据库热路径；旧JWT不会因查询而取得新auth_time。解绑仍204、换绑仍200且不发token，成功也可能让当前会话退出。
+client_info采用`{type,os:{name,version},device:{type,manufacturer,model},app:{name,version,build},browser:{name,version},extensions:{...}}`嵌套结构，缺失成员省略。app/browser可并存，version/build可单独出现；名称/制造商/型号64字符、版本32、build64，规范化完整JSON含转义最多2048字节。业务codec在解析前将完整原始JSON和每个RawMessage各限16KiB；合法指数数值精确规范化为有界十进制，展开后仍受完整2048字节限制。核心未知字段、重复键、非法类型/枚举及UTF-8/控制字符均由业务读写拒绝，存储非法描述为内部错误；数据库不定义JSON对象/业务CHECK。extensions的深度、节点、敏感键和宿主隐私职责见[Go指南](go-integration.md#当前会话解绑与客户端描述开发中)。
 
-九个显式客户端头只在验证码/IdP登录、completeSignIn、reauthenticate与新一轮refresh解析；UA和Client Hints可补充，自动解析失败放行，显式非法值凭证消费前400 INVALID_CLIENT_INFO（token为OAuth invalid_request）。请求体不变，token、JWT、内省和身份列表不增加来源/描述。描述可缺省且不构成设备证明；采集/快照/清理边界见[README](../README.md#当前会话与客户端描述开发中)，代理/CORS见[网关说明](gateway-integration.md#客户端描述透传与-cors)。
+新详情在数据库会话缺失、归属错误、撤销或refresh期限已到时返回401 TOKEN_INVALID并带Bearer挑战；依赖不可用503、内部错误固定500，缺可选宿主能力503 SESSION_QUERY_NOT_CONFIGURED，所有响应no-store。当前详情、重新认证、换绑均检查有效非空来源；解绑时同账号任一未吊销会话缺少有效来源则内部错误并整事务回滚，包含自然过期但未清理者。普通Authenticate/内省保留JWT/Redis判定，无额外数据库热路径；旧JWT不会因查询而取得新auth_time。解绑仍204、换绑仍200且不发token，成功也可能让当前会话退出。
+
+九个显式客户端头只在验证码/IdP登录、completeSignIn、reauthenticate与新一轮refresh解析；UA和Client Hints可补充，自动解析失败放行，显式非法值凭证消费前400 INVALID_CLIENT_INFO（token为OAuth invalid_request）。没有新增制造商/build显式头或任意JSON HTTP输入；扩展仅来自直接Go或宿主回调。请求体不变，token、JWT、内省和身份列表不增加来源/描述。非空观察整体替换描述，nil/空不写；pending完成本次优先，否则整体沿用加密首次描述及原观察时间，失败、回滚和重放不更新。描述可缺省且不构成设备证明；采集/替换/清理边界见[README](../README.md#当前会话与客户端描述开发中)，代理/CORS见[网关说明](gateway-integration.md#客户端描述透传与-cors)，当前验证状态见[简化验收](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)。
 
 ## 管理查询
 

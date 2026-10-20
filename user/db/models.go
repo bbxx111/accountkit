@@ -42,21 +42,20 @@ type Identity struct {
 }
 
 type Session struct {
-	ID                            string
-	UserID                        string
-	DeviceID                      string
-	DeviceName                    *string
-	AuthTime                      time.Time
-	RefreshTokenHash              []byte
-	PreviousRefreshTokenHash      []byte
-	RotateTime                    *time.Time
-	RefreshExpireTime             time.Time
-	LastUsedTime                  time.Time
-	RevokeTime                    *time.Time
-	RevokeReason                  *enum.RevokeReason
-	CreateTime                    time.Time
-	UpdateTime                    time.Time
-	AuthenticationIdentitiesKnown bool
+	ID                       string
+	UserID                   string
+	DeviceID                 string
+	DeviceName               *string
+	AuthTime                 time.Time
+	RefreshTokenHash         []byte
+	PreviousRefreshTokenHash []byte
+	RotateTime               *time.Time
+	RefreshExpireTime        time.Time
+	LastUsedTime             time.Time
+	RevokeTime               *time.Time
+	RevokeReason             *enum.RevokeReason
+	CreateTime               time.Time
+	UpdateTime               time.Time
 }
 
 type SessionAuthenticationIdentity struct {
@@ -65,20 +64,11 @@ type SessionAuthenticationIdentity struct {
 }
 
 type SessionClientInfo struct {
-	SessionID      string
-	SnapshotKind   enum.ClientInfoSnapshotKind
-	ClientType     *enum.ClientType
-	DeviceType     *enum.DeviceType
-	OsName         *string
-	OsVersion      *string
-	BrowserName    *string
-	BrowserVersion *string
-	AppName        *string
-	AppVersion     *string
-	DeviceModel    *string
-	ObserveTime    time.Time
-	CreateTime     time.Time
-	UpdateTime     time.Time
+	SessionID   string
+	ClientInfo  []byte
+	ObserveTime time.Time
+	CreateTime  time.Time
+	UpdateTime  time.Time
 }
 
 type SignInCompletionFlow struct {

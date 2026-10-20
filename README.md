@@ -196,11 +196,11 @@ r.Route("/v1", func(r chi.Router) {
 
 ## 当前会话与客户端描述（开发中）
 
-以下为 v0.3.0 之后的当前开发变更，尚未发布；已发布 v0.3.0 不含此查询、来源撤销或客户端快照。迁移和部署须按[会话升级说明](docs/migrations.md#会话认证依据递增升级开发中)协调切换。
+以下为 v0.3.0 之后的当前开发变更，尚未发布；已发布 v0.3.0 不含此查询、来源撤销或客户端描述。本轮简化了开发中的来源与描述契约，已有开发调用者须按[兼容说明](docs/compatibility.md#会话认证依据与客户端描述开发中)调整；迁移和部署须按[会话升级说明](docs/migrations.md#会话认证依据初始整合开发中)协调切换。
 
-GET /users/me/sessions/current 返回真实会话 name（末段是 s_ ID）、原设备/时间字段、is_current=true、数据库最新 RFC3339 auth_time、authentication_identities_known 和 authentication_identities。身份摘要只有 name/kind，按具体 ID 排序；客户端按完整 name 匹配拟解绑身份，不能只比较 kind。来源未知明确返回 false 和 []，应提示解绑可能退出。查询是快照，最终影响以提交时状态为准。重新认证成功后保存新 access、保留原 refresh，再重查详情；旧 JWT 不被改写，查询也不赋予旧 token 新的近期认证证明。
+GET /users/me/sessions/current 返回真实会话 name（末段是 s_ ID）、原设备/时间字段、is_current=true、数据库最新 RFC3339 auth_time 和非空 authentication_identities。身份摘要只有 name/kind，按具体 ID 排序；客户端按完整 name 匹配拟解绑身份，不能只比较 kind。来源缺失或失效是内部不变量错误，返回固定500，不返回正常空集合，也不从身份列表或审计补造来源。查询是快照，最终影响以提交时状态为准。重新认证成功后保存新 access、保留原 refresh，再重查详情；旧 JWT 不被改写，查询也不赋予旧 token 新的近期认证证明。
 
-普通登录来源只有本次验证的身份，补全包含该次最终成功验证的具体身份；重新认证用本次手机/邮箱身份替换整个集合，同时更新 auth_time。刷新、普通绑定和换绑 BIND 证明不改来源。成功解绑在同事务撤销同账号来源命中或来源未知的所有未吊销会话，包括当前及 refresh 已到期但未清理的会话；原204仍表示成功。查询或后续认证失效时客户端清理凭据并重新登录，不能将成功解绑重试成失败。
+普通登录来源只有本次验证的身份，补全包含该次最终成功验证的具体身份；新建会话在事务内校验身份归属和有效状态，写入非空去重集合。重新认证先检查当前来源，再用本次手机/邮箱身份替换整个集合，同时更新 auth_time。刷新、普通绑定和换绑 BIND 证明不改来源。成功解绑在同事务撤销同账号来源命中的所有未吊销会话，包括当前及 refresh 已到期但未清理的会话；同账号任一未吊销会话缺少有效来源时整事务拒绝，不能当作未命中放行。原204仍表示成功，后续认证失效时客户端清理凭据并重新登录，不能将成功解绑重试成失败。
 
 查询支持 user/user:bind，user:undelete 返回403；缺少可选 CurrentSessionService 的自定义 HTTP 宿主返回503 SESSION_QUERY_NOT_CONFIGURED。数据库会话缺失、归属不符、撤销或 refresh 到期返回401 TOKEN_INVALID与Bearer挑战；可识别依赖不可用503、内部错误固定500，所有响应 no-store。普通 Authenticate/内省仍为JWT和Redis校验，不增加数据库查询；Redis吊销失败仍保留原fail-open与告警，数据库会拒绝已撤销会话的refresh/详情查询。
 
@@ -214,9 +214,19 @@ GET /users/me/sessions/current 返回真实会话 name（末段是 s_ ID）、�
 | X-Device-Type | DESKTOP / PHONE / TABLET |
 | X-Device-Model | 最多64字符 |
 
-文本有效UTF-8、无控制字符、去除首尾空白，整体规范化描述至多2048字节；重复显式头拒绝。非法显式值在凭证消费前400 INVALID_ARGUMENT / INVALID_CLIENT_INFO，token端点为OAuth invalid_request。合法显式值优先，其次可用Client Hints，最后UA；自动输入失败不阻断认证。UA与全部Sec-CH-UA*值各自合计至多2048字节，超限/畸形忽略相应自动输入。不主动要求额外高熵提示；具体支持字段与CORS见[网关说明](docs/gateway-integration.md#客户端描述透传与-cors)。宿主可注入 Deps.ClientInfo，直接Go调用传 Meta.ClientInfo，采用字段名初始化，见[Go指南](docs/go-integration.md#当前会话解绑与客户端描述开发中)。
+文本先拒绝非法UTF-8/控制字符，再去除首尾空白；名称、制造商、型号最多64个Unicode字符，版本32、build64。规范化后的完整JSON（包括键、结构与转义）至多2048字节；重复显式头拒绝。非法显式值在凭证消费前400 INVALID_ARGUMENT / INVALID_CLIENT_INFO，token端点为OAuth invalid_request。合法显式值优先，其次可用Client Hints，最后UA；自动输入失败不阻断认证。UA与全部Sec-CH-UA*值各自合计至多2048字节，超限/畸形忽略相应自动输入。不主动要求额外高熵提示；具体支持字段与CORS见[网关说明](docs/gateway-integration.md#客户端描述透传与-cors)。宿主可注入 Deps.ClientInfo，直接Go调用传 Meta.ClientInfo，采用字段名初始化，见[Go指南](docs/go-integration.md#当前会话解绑与客户端描述开发中)。
 
-普通成功登录有描述时保存INITIAL/LATEST；pending保留首次证明的INITIAL，完成请求可更新LATEST。首次证明缺描述（含旧payload）而补全时才获得描述只建LATEST。成功重新认证和新轮刷新仅合并LATEST，缺字段保留、类型切换清除不适用字段、新名称无版本清除旧版本；宽限刷新、补全重放及失败不写观察时间。旧会话后续仅补LATEST，不伪造INITIAL。详情可含 initial_client_info、client_info、client_info_update_time，两个面的列表只含最近摘要与观察时间；last_used_time与描述观察时间均不表示每次业务活动。描述不能作为授权、限流身份或可信设备证明，客户端快照不持久化原始UA/IP/位置，不进入日志、审计正文或指标标签；随会话清理和同事务匿名化删除。
+客户端描述按会话只存一行 `client_info JSONB`，主键为 session_id，保留 observe_time/create_time/update_time；没有描述则没有行。业务读写统一校验，数据库保留主键、ID格式及非空约束，不定义JSON对象或业务CHECK。读取非法描述返回内部错误。HTTP详情和两个面的会话列表只可含 `client_info` 与 `client_info_update_time`，缺失成员省略，使用同一嵌套形状：
+
+```json
+{"type":"NATIVE","os":{"name":"Android","version":"14"},"device":{"type":"PHONE","manufacturer":"Example","model":"Model"},"app":{"name":"Example App","version":"1.0","build":"100"},"browser":{"name":"Chrome","version":"123"},"extensions":{"engine":{"channel":"stable"}}}
+```
+
+Go模型保留平坦字段并新增 DeviceManufacturer、AppBuild 和 Extensions；app/browser 可以并存，WEB/NATIVE 不清除另一组信息，单独的版本/build也是合法本次观察。成功登录、最终补全、重新认证和新轮refresh有规范化非空描述时整体替换并记录本次服务器观察时间；nil/空描述不写入，保留已有值与时间，不跨请求拼接字段。pending首次描述与观察时间放在加密payload；最终本次非空描述优先，否则整体沿用首次描述及其原观察时间。首次没有描述而完成时才提供描述，只写该次一行。失败、事务回滚、宽限刷新及补全结果重放均不更新描述或观察时间。
+
+extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/object/array，不新增任意JSON请求体、请求头或制造商/build显式头。所有层级键匹配 `[a-z][a-z0-9_]{0,63}`；根扩展对象不计深度和节点，直接值深度1，每个值（含容器和数组元素）计一节点；最多64节点、4层、每数组16项、每字符串256个Unicode字符。完整原始JSON与每个RawMessage在解析前分别限16KiB，扩展根map超过64项在分配规范化副本前拒绝；规范化完整JSON仍限2048字节。核心对象拒绝未知键、重复键和错误类型；扩展也拒绝重复键、非法UTF-8/控制字符及非法JSON数字。合法指数数值精确规范化为十进制，先计算展开长度再有界分配，展开后的JSON仍受2048字节限制，不通过浮点转换损失整数精度。固定敏感词段和组合键清单见[Go指南](docs/go-integration.md#当前会话解绑与客户端描述开发中)，规范化、解码和DTO均深拷贝扩展。宿主仍须确定允许的来源、扩展语义和隐私白名单，不能依赖敏感键检查识别任意值中的隐私。
+
+描述不能作为授权、限流身份或可信设备证明；不保存原始UA/IP/位置，不进入日志、审计正文或指标标签，随会话清理和同事务匿名化删除。last_used_time和描述观察时间均不表示每次业务活动。当前变更验收状态见[简化会话上下文记录](openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)。
 
 ## 手机号与邮箱换绑
 
@@ -224,7 +234,7 @@ GET /users/me/sessions/current 返回真实会话 name（末段是 s_ ID）、�
 
 调用前须有 `user` scope 和有效当前会话，近期认证沿用 `REAUTH_MAX_AGE`（默认5分钟）及 `SENSITIVE_OP_VERIFICATION`（默认true）。需要时先走既有重新认证流程，再通过 `users/me:sendBindCode` 获取新地址 BIND 码。近期登录也满足现有新鲜度语义，不保证本次专门向旧地址发送验证码；首版不提供失去全部既有凭据的账号找回。
 
-身份替换和会话撤销在一个数据库事务内完成。其他会话继续撤销；当前会话仅在认证来源已知且不含被替换身份时保留，命中或未知则一并撤销。新目标 BIND 证明不替换来源；200 成功不发 token，当前会话也可能需要退出。正常 Redis 下被撤销会话的 access/内省无效，refresh 由数据库拒绝；Redis 吊销故障仍按原 fail-open 规则处理。旧地址不再进入原账号，但新的独立登录仍可能按原规则自动注册另一个账号。
+身份替换和会话撤销在一个数据库事务内完成。其他会话继续撤销；当前会话先检查有效非空来源，仅在来源不含被替换身份时保留，命中则一并撤销，来源缺失或失效返回内部错误并回滚。新目标 BIND 证明不替换来源；200 成功不发 token，当前会话也可能需要退出。正常 Redis 下被撤销会话的 access/内省无效，refresh 由数据库拒绝；Redis 吊销故障仍按原 fail-open 规则处理。旧地址不再进入原账号，但新的独立登录仍可能按原规则自动注册另一个账号。
 
 只支持 PHONE→PHONE、EMAIL→EMAIL，原绑定/解绑接口不变。同目标返回400 `IDENTITY_UNCHANGED`；旧资源不存在/已删除/归属其他用户返回404；新目标已经绑定返回409 `IDENTITY_ALREADY_BOUND`。已消费的验证码不随数据库回滚退还，重取码仍受冷却/额度限制。成功后仍有效会话重试旧 identity 路径返回404，原会话已撤销则按认证失效拒绝；响应丢失时用仍有效会话或重新登录后列出身份确认状态，不盲目自动重发。新旧摘要版本、密文格式与冻结迁移保持兼容。
 
@@ -359,6 +369,6 @@ Go module：github.com/bbxx111/accountkit。`v0.3.0` 已发布，使用 `go get 
 
 库版本发布与各产品生产上线分别验收。产品实际环境接入、真实服务商与预发布升级/恢复仍待完成；产品各自配置 schema、Redis 前缀、issuer/audience 和密钥，并承担自己的匿名化与网关接入责任。当前未附开源 LICENSE，本次版本供自有产品接入，尚未向外部使用方定义复用许可。
 
-此前按用户明确授权，在 v0.3.0 发布前直接修改当时未发布的 `migrations/0001_init.up.sql`，以 `sign_in_completion_flow` 定义登录补全流程表，同步主键、格式 CHECK、五个独立索引、配套 down 和当前固定校验；列与索引定义保持。当时新增的重命名 0002 已撤回，v0.3.0 空库安装为 version=1、dirty=false；当前开发分支新增真实 0002 会话迁移，安装目标为 version=2，见[迁移手册](docs/migrations.md#会话认证依据递增升级开发中)。旧表名的同号 v1、双表并存及任何已撤回旧 v2（包括此前新表名 v2）均拒绝且保留数据、结构和版本；重复 Up 不自动改名或接管。采用新定义须人工核验后使用新空资源，需要保留旧数据时另行制定并验证迁移方案，不 Force、不修改版本、不自动清库。公共 `Down` 仍拒绝执行。操作与恢复边界见[迁移手册](docs/migrations.md#登录补全流程命名调整)。已发布标签和固定源快照保持，发布后不再适用当时修改未发布基线的有限授权。
+此前流程改名已纳入 v0.3.0 的初始定义。会话0002先经明确授权合入当前0001，本轮又经用户明确批准在该未发布定义内简化为必有来源与单行JSONB描述；同步down、baseline、固定哈希和sqlc，不新增生产0002，新安装仍为version=1/dirty=false。**旧v0.3.0 v1、前一`b414fef`双快照v1及撤回会话v2均不能直接接管**，返回不兼容错误并保留数据、结构和版本。新部署须人工核验新空资源，需保留旧数据时另行制定并验证迁移方案，不Force、改版本或自动清库。公共`Down`仍拒绝；详见[迁移手册](docs/migrations.md#会话认证依据初始整合开发中)。所有已发布标签、其中的历史SQL和固定源快照保持，历史与当前定义分别校验，两次有限授权均不允许日常改写初始SQL。
 
 原 migrations.Down 保留签名但默认拒绝执行；新基线的一次性测试清库使用显式 UnsafeReset。升级、故障处理与恢复步骤见 [迁移手册](docs/migrations.md)，本次边界见[兼容说明](docs/compatibility.md#初始数据库基线整合)。

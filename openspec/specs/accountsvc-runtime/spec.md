@@ -20,9 +20,7 @@
 
 ### Requirement: 配置校验与安全启动
 
-服务 SHALL 保留 `ACCOUNTKIT_` 库配置并使用 `ACCOUNTSVC_` 服务配置，默认 production。serve SHALL 支持 `ACCOUNTSVC_TLS_ENABLED`；未设置或为空时，production SHALL 要求服务端 HTTP TLS，development SHALL 保持未配证书使用 HTTP、配置任一证书项则要求完整有效证书对的既有行为。显式 true SHALL 在所有模式下要求完整有效证书对；显式 false SHALL 在所有模式下使用 HTTP，并在配置任一 HTTP 证书项时拒绝启动。非法布尔值 SHALL 被拒绝，不自动降级。生产 SHALL 在 EMAIL 启用时要求真实 SMTP 和 SMTP TLS，并始终要求内省调用凭据，不使用日志验证码、固定默认秘密或明文邮件降级。非法配置 SHALL 阻止监听且不在错误中泄露配置值。
-
-serve SHALL 读取 ACCOUNTKIT_ENABLED_IDENTITY_KINDS 和 ACCOUNTKIT_REQUIRED_IDENTITY_KINDS，并对显式策略执行子集与依赖校验；未设置新策略时保留原默认装配。EMAIL 显式禁用时 SHALL 不要求或解析 SMTP 设置。首版未提供短信服务商，显式启用 PHONE SHALL 拒绝启动，不使用日志发送器或伪发送器代替。migrate SHALL 只执行静态策略语法/集合校验及迁移必要检查，不要求发送器或第三方运行时依赖。
+服务 SHALL 保留 `ACCOUNTKIT_` 库配置并使用 `ACCOUNTSVC_` 服务配置，默认 production。serve SHALL 在监听前完成配置校验；非法配置 SHALL 非零退出并指出配置项名称，错误不得泄露配置值。服务 SHALL 分别遵守下述身份策略、HTTP TLS、生产依赖与 migrate 依赖边界。
 
 #### Scenario: 配置缺失
 - **WHEN** serve 缺少已启用 EMAIL 所需的 SMTP、数据库、Redis、内省客户端必填配置，或在有效 TLS 配置要求启用时缺少证书/私钥
@@ -56,6 +54,38 @@ serve SHALL 读取 ACCOUNTKIT_ENABLED_IDENTITY_KINDS 和 ACCOUNTKIT_REQUIRED_IDE
 - **WHEN** 执行 migrate，身份集合本身合法而 SMTP 或 IdP 运行配置未提供
 - **THEN** 不监听、不构造认证处理器、不要求这些运行依赖；迁移锁及密钥版本检查仍执行
 
+### Requirement: 服务身份策略与发送能力
+
+serve SHALL 读取 ACCOUNTKIT_ENABLED_IDENTITY_KINDS 和 ACCOUNTKIT_REQUIRED_IDENTITY_KINDS，对显式策略执行子集与依赖校验；未设置时保留原默认装配。EMAIL 显式禁用时 SHALL 不要求或解析 SMTP 设置。首版无短信服务商，显式启用 PHONE SHALL 拒绝启动，不使用日志或伪发送器替代。
+
+#### Scenario: 身份集合与服务发送能力一致
+- **WHEN** serve 读取显式身份策略
+- **THEN** 校验集合及运行依赖；EMAIL 禁用不解析 SMTP，PHONE 启用因服务缺少短信能力而拒绝，直接嵌入库仍可注入真实发送器
+
+### Requirement: 服务 HTTP TLS 配置决策
+
+serve SHALL 支持 ACCOUNTSVC_TLS_ENABLED。未设置或为空时，production SHALL 要求 HTTP TLS；development 无证书项时使用 HTTP，配置任一证书项则要求完整有效证书对。显式 true SHALL 在所有模式要求完整有效证书对；显式 false SHALL 在所有模式使用 HTTP，并在配置任一 HTTP 证书项时拒绝启动。非法布尔值 SHALL 拒绝，不自动降级。
+
+#### Scenario: TLS 模式与证书组合
+- **WHEN** 分别使用未设置、true、false 或非法 TLS 开关及不同证书组合
+- **THEN** 按模式和开关决定 HTTP/HTTPS；要求 TLS 时证书不完整或无效、关闭 TLS 却配置证书、或开关非法时均在监听前失败，不自动选择其他模式
+
+### Requirement: 生产发送与内省凭据要求
+
+production SHALL 在 EMAIL 启用时要求真实 SMTP 与 SMTP TLS，并始终要求内省调用凭据。production SHALL 不使用日志验证码、固定默认秘密或明文邮件降级；HTTP TLS 开关不得使生产 SMTP 降级。
+
+#### Scenario: 生产发送和内省依赖不可降级
+- **WHEN** production 缺少必需的真实 SMTP/TLS 或内省调用凭据
+- **THEN** 拒绝启动，不用日志验证码、默认秘密或明文 SMTP 替代；显式关闭 HTTP TLS 不豁免 SMTP TLS
+
+### Requirement: migrate 静态校验与依赖边界
+
+migrate SHALL 只执行静态身份策略语法/集合校验及迁移必要检查，不监听、不构造认证处理器，不要求发送器或第三方运行时依赖。migrate SHALL 不要求或解析服务监听地址、HTTP TLS 开关、证书、SMTP 或内省客户端配置；迁移锁与密钥版本检查仍执行。
+
+#### Scenario: 迁移独立于服务运行配置
+- **WHEN** migrate 的身份集合合法且迁移必要依赖有效，未提供服务运行配置
+- **THEN** 迁移可执行，不读取无关监听/TLS/发送/内省设置，仍核对迁移锁和存储引用密钥
+
 ### Requirement: 有界迁移与资源回收
 
 服务 SHALL 提供 serve 和 migrate 命令，无参数等同 serve；serve SHALL 在监听前执行有超时的幂等迁移、依赖连通性及密钥版本检查。migrate SHALL 不监听、不启动维护任务且不要求邮件或管理员配置。失败 SHALL 阻止服务就绪并回收已创建资源，不自动 Force、回滚清库或清除 dirty。
@@ -70,9 +100,7 @@ serve SHALL 读取 ACCOUNTKIT_ENABLED_IDENTITY_KINDS 和 ACCOUNTKIT_REQUIRED_IDE
 
 ### Requirement: HTTP 边界与可信请求元信息
 
-serve SHALL 仅使用 `ACCOUNTSVC_HTTP_ADDR` 创建一个监听器，默认绑定 `127.0.0.1:8080`，挂载消费者 `/v1`、管理员 `/admin/v1`、内省 `/v1/introspect` 与 `/healthz`、`/readyz`。不同身份体系和处理器 SHALL 保持独立。服务 SHALL 不再创建内部监听器；serve 遇到非空 `ACCOUNTSVC_INTERNAL_ADDR` SHALL 非零退出并明确提示迁移配置，旧内省路径 SHALL 返回404而非别名或重定向。网关和网络策略 SHALL 承担对公网暴露范围控制，不把路径名称视为网络隔离。服务 SHALL 保留有限 HTTP 超时、请求体上限并按显式 TLS 配置决定传输；来源 IP SHALL 只信任明确配置 CIDR 的代理链，请求 ID SHALL 校验或生成并回传。
-
-消费者和管理账号集合 SHALL 沿用 users，挂载后分别位于 /v1/users 和 /admin/v1/users；新增消费者补全端点 SHALL 为 /v1/users:sendSignInCompletionCode 与 /v1/users:completeSignIn。此前未发布的 accounts 路径 SHALL 返回 404，不注册别名或重定向；token/revoke、内省和探针路径 SHALL 保持。
+serve SHALL 仅使用 ACCOUNTSVC_HTTP_ADDR 创建一个监听器，默认绑定 127.0.0.1:8080，挂载消费者 /v1、管理员 /admin/v1、内省 /v1/introspect 与 /healthz、/readyz。不同身份体系和处理器 SHALL 独立。网关与网络策略 SHALL 控制公网暴露范围，不把路径名称视为网络隔离；单监听器不自动区分公网和内网来源。
 
 #### Scenario: 公网请求内部路径
 - **WHEN** 公网调用者通过按接入契约配置的网关请求 `/v1/introspect`、`/healthz` 或 `/readyz`
@@ -93,6 +121,38 @@ serve SHALL 仅使用 `ACCOUNTSVC_HTTP_ADDR` 创建一个监听器，默认绑�
 #### Scenario: 两个新增补全端点
 - **WHEN** 服务启用新版消费者协议
 - **THEN** 独立提供 users:sendSignInCompletionCode 和 users:completeSignIn，普通发码用途不通过补全票据切换，管理面不暴露未认证的补全操作
+
+### Requirement: 旧监听配置与内部路径拒绝
+
+服务 SHALL 不再创建内部监听器。serve 遇到非空 ACCOUNTSVC_INTERNAL_ADDR SHALL 非零退出并明确提示迁移配置，不静默忽略。旧内省路径 SHALL 返回404，不注册别名或重定向。
+
+#### Scenario: 废弃内部监听配置不能静默上线
+- **WHEN** serve 接收到非空 INTERNAL_ADDR，或调用者访问旧内省路径
+- **THEN** 前者拒绝启动并指出迁移项，后者返回404，不自动把旧边界映射到新监听器
+
+### Requirement: 服务账号资源与补全路由
+
+消费者和管理账号集合 SHALL 沿用 users，挂载后分别为 /v1/users 和 /admin/v1/users。消费者补全端点 SHALL 为 /v1/users:sendSignInCompletionCode 与 /v1/users:completeSignIn。此前未发布的 accounts 路径 SHALL 返回404，不注册别名或重定向；token/revoke、内省和探针路径 SHALL 保持。
+
+#### Scenario: 账号路径与既有协议保持一致
+- **WHEN** 服务挂载两面账号路由和登录补全端点
+- **THEN** 使用 users 及两个明确补全动作；accounts 返回404，token/revoke、内省与探针路径不变
+
+### Requirement: HTTP 资源上限
+
+服务 SHALL 保留有限的 HTTP 超时和请求体上限，并按显式 HTTP TLS 配置决定传输方式。
+
+#### Scenario: 监听器保留请求资源约束
+- **WHEN** 服务按有效 HTTP 或 HTTPS 配置监听
+- **THEN** 既有超时和请求体上限仍生效，不因传输方式切换而移除
+
+### Requirement: 可信代理与请求 ID
+
+来源 IP SHALL 只信任明确配置 CIDR 的代理链；不可信对端的转发头不能覆盖直接对端地址，可信链畸形时回退直接对端。请求 ID SHALL 校验或生成并回传，用于关联请求与审计。
+
+#### Scenario: 代理来源及请求关联可核对
+- **WHEN** 收到不可信或畸形代理链，或缺失/非法请求 ID
+- **THEN** 按可信代理契约取得来源 IP，并校验或生成可回传的请求 ID，不信任客户端任意转发值
 
 ### Requirement: 存活与就绪分离
 

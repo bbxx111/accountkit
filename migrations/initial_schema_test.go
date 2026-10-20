@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// The frozen initial definition remains first; fresh installations reach the latest version.
+// The authorized consolidation installs the complete schema at version one.
 func TestConsolidatedInitialSchema(t *testing.T) {
 	entries, err := fs.ReadDir(".")
 	if err != nil {
@@ -26,7 +26,7 @@ func TestConsolidatedInitialSchema(t *testing.T) {
 			names = append(names, entry.Name())
 		}
 	}
-	if !slices.Equal(names, []string{"0001_init.down.sql", "0001_init.up.sql", "0002_session_authentication_context.down.sql", "0002_session_authentication_context.up.sql"}) {
+	if !slices.Equal(names, []string{"0001_init.down.sql", "0001_init.up.sql"}) {
 		t.Errorf("unexpected production migrations: %v", names)
 	}
 	cfg, schema := safetyDB(t)
@@ -173,8 +173,13 @@ func TestInitialSchemaPreservesNonAuditCatalog(t *testing.T) {
 	if _, err := old.Exec(ctx, historicalFlowSQL(t)); err != nil {
 		t.Fatal(err)
 	}
+	// Compare the historical base plus the explicitly consolidated session DDL.
+	if _, err := old.Exec(ctx, sessionContextHistoricalSQL(t, "0002_session_authentication_context.up.sql")); err != nil {
+		t.Fatal(err)
+	}
 	// Apply only the authorized index naming change to the historical test
-	// database. Keep the frozen SQL and the full catalog comparison unchanged.
+	// database. Keep the frozen SQL unchanged; only the separately authorized
+	// session flag and client information table are excluded from comparison.
 	if _, err := old.Exec(ctx, `DO $$
 DECLARE old_index text;
 BEGIN
@@ -190,7 +195,7 @@ END $$`); err != nil {
 	}
 	initialUp(t, cfg, newSchema)
 	current := migrationTestConn(t, cfg, newSchema)
-	if before, after := strings.ReplaceAll(migrationCatalogForTables(t, old, oldSchema, true), "identity_flow", "sign_in_completion_flow"), migrationCatalogForTables(t, current, newSchema, true); sortedRenameCatalog(t, before) != sortedRenameCatalog(t, after) {
+	if before, after := strings.ReplaceAll(sessionContextUnchangedCatalog(t, migrationCatalogForTables(t, old, oldSchema, true)), "identity_flow", "sign_in_completion_flow"), sessionContextUnchangedCatalog(t, migrationCatalogForTables(t, current, newSchema, true)); sortedRenameCatalog(t, before) != sortedRenameCatalog(t, after) {
 		t.Fatalf("catalog mismatch\nprevious: %s\ninitial: %s", before, after)
 	}
 }
@@ -224,7 +229,7 @@ func migrationCatalogForTables(t *testing.T, c *pgx.Conn, schema string, nonAudi
 	err := c.QueryRow(context.Background(), `
  SELECT jsonb_build_object(
  'columns',(SELECT jsonb_agg(to_jsonb(x) ORDER BY x.table_name,x.ordinal_position) FROM (
- SELECT table_name,ordinal_position,column_name,data_type,udt_name,is_nullable,column_default,collation_name
+ SELECT table_name,ordinal_position,column_name,data_type,udt_name,is_nullable,column_default,collation_name,character_maximum_length,datetime_precision,numeric_precision,numeric_scale
  FROM information_schema.columns WHERE table_schema=$1 AND table_name <> 'schema_migrations' AND (NOT $2 OR table_name <> 'audit_event')) x),
  'constraints',(SELECT jsonb_agg(to_jsonb(x) ORDER BY x.table_name,x.name) FROM (
  SELECT r.relname AS table_name,c.conname AS name,c.contype,pg_get_constraintdef(c.oid) AS definition

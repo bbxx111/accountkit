@@ -3,6 +3,8 @@
 -- SMALLINT 枚举无 CHECK（值由 Go 定义），全部表不设外键（一致性由 service 层与测试保证）。
 --
 -- User-authorized generic audit definition is included in this initial version.
+-- User-authorized session context consolidation is also included directly here.
+-- Published release SQL remains independently pinned in Git history.
 -- Future changes must use version 0002 or higher; historical source snapshots remain frozen.
 
 -- 用户（表名 user_account：user 是 PG 关键字）
@@ -88,6 +90,26 @@ CREATE INDEX idx_session_user_id ON session (user_id) WHERE revoke_time IS NULL;
 CREATE INDEX idx_session_revoke_time ON session (revoke_time) WHERE revoke_time IS NOT NULL;
 -- 维护任务 cleanup_sessions：清理 refresh 过期 30 天以上且从未被吊销的会话
 CREATE INDEX idx_session_refresh_expire_time ON session (refresh_expire_time) WHERE revoke_time IS NULL;
+-- Anonymization visits revoked sessions too; also supports scoped lock order.
+CREATE INDEX idx_session_user_id_id ON session(user_id, id);
+
+CREATE TABLE session_authentication_identity (
+ session_id TEXT COLLATE "C" NOT NULL CONSTRAINT session_authentication_identity_session_id_format CHECK (session_id ~ '^s_[0-9a-hjkmnp-tv-z]{13}$'),
+ identity_id TEXT COLLATE "C" NOT NULL CONSTRAINT session_authentication_identity_identity_id_format CHECK (identity_id ~ '^i_[0-9a-hjkmnp-tv-z]{13}$'),
+ CONSTRAINT session_authentication_identity_pkey PRIMARY KEY (session_id, identity_id)
+);
+-- Identity removal locates dependent sessions, including refresh-expired rows.
+CREATE INDEX idx_session_authentication_identity_identity_id_session_id ON session_authentication_identity(identity_id, session_id);
+
+CREATE TABLE session_client_info (
+ session_id TEXT COLLATE "C" NOT NULL CONSTRAINT session_client_info_session_id_format CHECK (session_id ~ '^s_[0-9a-hjkmnp-tv-z]{13}$'),
+ -- The service validates structured content and limits; storage only enforces basics.
+ client_info JSONB NOT NULL,
+ observe_time TIMESTAMPTZ NOT NULL,
+ create_time TIMESTAMPTZ NOT NULL DEFAULT now(),
+ update_time TIMESTAMPTZ NOT NULL DEFAULT now(),
+ CONSTRAINT session_client_info_pkey PRIMARY KEY (session_id)
+);
 
 -- Generic audit events; append-only and independent of resource lifecycle.
 -- Go validates business content; storage preserves basic JSON shapes and UUIDv7.

@@ -11,11 +11,9 @@ type AuthenticationIdentity struct {
 	Kind enum.IdentityKind
 }
 
-// CurrentSessionInfo 是当前会话的详情；来源是否已知与客户端描述是否缺失相互独立。
+// CurrentSessionInfo 是当前会话的详情；认证来源始终非空，客户端描述可缺失。
 type CurrentSessionInfo struct {
 	SessionInfo
-	AuthTime                      time.Time
-	AuthenticationIdentitiesKnown bool
-	AuthenticationIdentities      []AuthenticationIdentity
-	InitialClientInfo             *ClientInfo
+	AuthTime                 time.Time
+	AuthenticationIdentities []AuthenticationIdentity
 }

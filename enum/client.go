@@ -36,23 +36,3 @@ func ParseDeviceType(v string) (DeviceType, error) {
 	i, err := parse(deviceTypeNames[:], v, "DeviceType")
 	return DeviceType(i), err
 }
-
-// ClientInfoSnapshotKind 区分首次环境与最近认证活动观察值。
-type ClientInfoSnapshotKind int16
-
-const (
-	ClientInfoSnapshotKindUnspecified ClientInfoSnapshotKind = iota
-	ClientSnapshotInitial
-	ClientSnapshotLatest
-)
-
-var clientInfoSnapshotKindNames = [...]string{"UNSPECIFIED", "INITIAL", "LATEST"}
-
-func (v ClientInfoSnapshotKind) String() string { return name(clientInfoSnapshotKindNames[:], int(v)) }
-func (v ClientInfoSnapshotKind) Valid() bool {
-	return v == ClientSnapshotInitial || v == ClientSnapshotLatest
-}
-func ParseClientInfoSnapshotKind(v string) (ClientInfoSnapshotKind, error) {
-	i, err := parse(clientInfoSnapshotKindNames[:], v, "ClientInfoSnapshotKind")
-	return ClientInfoSnapshotKind(i), err
-}

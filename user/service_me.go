@@ -213,6 +213,9 @@ func (s *Service) reauthenticate(ctx context.Context, p Principal, cred CodeCred
 		if u.State == enum.UserFrozen {
 			return ErrUserFrozen
 		}
+		if _, err := s.requireSessionAuthenticationIdentities(ctx, q, sess); err != nil {
+			return err
+		}
 		ok, err := s.anchorOfUser(ctx, q, p.UserID, channel, norm)
 		if err != nil {
 			return err

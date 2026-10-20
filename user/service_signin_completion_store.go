@@ -168,7 +168,11 @@ func (s *Service) createPending(ctx context.Context, q *db.Queries, proof comple
 		return SignInResult{}, "", err
 	}
 	p := completionPayload{Device: dev, Proofs: []completionProof{proof}}
-	if snapshot := MergeClientInfo(nil, info); snapshot != nil {
+	snapshot, err := NormalizeClientInfo(info)
+	if err != nil {
+		return SignInResult{}, "", err
+	}
+	if snapshot != nil {
 		p.InitialClientInfo = snapshot
 		p.InitialClientInfoObserveTime = &now
 	}

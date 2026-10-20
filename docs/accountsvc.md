@@ -4,11 +4,11 @@ accountsvc 是 accountkit 的可选官方宿主。同一个 Go module 同时支�
 
 ## 会话上下文部署（开发中）
 
-当前开发变更提供GET /v1/users/me/sessions/current，允许user/user:bind的Bearer，返回数据库最新来源与可选初始/最近客户端摘要；所有响应no-store。user:undelete不允许；数据库无效会话401 TOKEN_INVALID，依赖故障503，不能统一映射为401。普通access/内省仍只做JWT/Redis验证，不增加数据库热路径，Redis故障边界保持。
+当前开发变更提供GET /v1/users/me/sessions/current，允许user/user:bind的Bearer，返回数据库最新的非空具体身份来源，以及可选单份nested client_info和client_info_update_time；所有响应no-store。user:undelete不允许；数据库无效会话401 TOKEN_INVALID，依赖故障503；来源缺失或失效、已存客户端描述非法均为固定500内部错误，不能统一映射为401或正常空集合。普通access/内省仍只做JWT/Redis验证，不增加数据库热路径，Redis故障边界保持。
 
-默认HTTP解析已装配，无新增必需配置或请求体字段；显式可选头、UA与Client Hints由[网关/CORS清单](gateway-integration.md#客户端描述透传与-cors)按实际使用透传。只在成功登录、补全、重新认证和新轮refresh观察，不收集业务请求活动，客户端快照不保存原始UA/IP/位置。原设备头仍有独立设备合并与pending一致性语义，描述不构成可信设备证明。嵌入式宿主可通过Deps.ClientInfo覆盖解析，accountsvc不提供任意转发UA信任配置。
+默认HTTP解析已装配，无新增必需配置、任意JSON输入或制造商/build显式头；显式可选头、UA与Client Hints由[网关/CORS清单](gateway-integration.md#客户端描述透传与-cors)按实际使用透传。只在成功登录、补全、重新认证和新轮refresh观察；规范化非空描述整体替换单行JSONB，nil/空描述保留已有值与时间，孤立version/build合法，app/browser可以并存。pending完成本次非空描述优先，否则整体沿用加密首次描述及原观察时间；失败、回滚和重放不更新。业务读写校验而非数据库JSON对象/业务CHECK。不收集业务请求活动，不保存原始UA/IP/位置；原设备头仍有独立设备合并与pending一致性语义，描述不构成可信设备证明。嵌入式宿主可通过Deps.ClientInfo覆盖解析并提供Extensions，但须管理来源、语义和隐私白名单，详见[Go指南](go-integration.md#当前会话解绑与客户端描述开发中)；accountsvc不提供任意转发UA信任配置。
 
-部署须按[迁移手册](migrations.md#会话认证依据递增升级开发中)暂停并排空旧认证写入口/维护任务或统一切换所有认证副本，执行真实0002至version=2，全部新副本就绪后恢复。旧v0.3.0 Migrate拒绝新版本；即使绕过启动旧程序也不具备来源/撤销语义，不能直接作为安全应用回退。升级本身不退出旧会话，来源未知旧会话在解绑/换绑时可能退出；成功204/200仍为操作成功，客户端保存新access后重查并处理退出。数据库恢复先独立空库核验，完整恢复由产品维护流程执行，不能清Redis或Down代替。
+会话0002合入0001后，本轮又获明确授权在未发布0001内简化；部署须按[迁移手册](migrations.md#会话认证依据初始整合开发中)人工核验新空目标，安装完整七表且version=1/dirty=false，并协调切换全部认证副本。旧v0.3.0 v1、前一`b414fef`双快照v1与撤回会话v2均拒绝直接接管，需要保留数据时另行制定迁移方案。旧v0.3.0 Migrate可能接受同号新结构，不能依赖旧预检防止旧来源/撤销规则混跑，部署方须显式阻止。解绑命中任一来源仍会撤销相应会话；同账号任一未吊销会话缺少有效来源时整事务报内部错误并回滚。换绑检查当前来源，成功204/200仍为操作成功，客户端重查并处理退出。恢复先落独立空库核验，不能清Redis、改版本或Down代替。当前验证状态见[简化验收](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)。
 
 ## 两种集成方式
 
@@ -21,7 +21,7 @@ accountsvc 是 accountkit 的可选官方宿主。同一个 Go module 同时支�
 
 服务默认使用库管理的本地有界异步审计及本地管理查询，`Auth.Start/Close` 管理 worker，服务管理连接。`ACCOUNTKIT_AUDIT_SOURCE` / `ACCOUNTKIT_AUDIT_NAMESPACE` 可显式设置，默认分别为 `accountkit/<schema>` / `accountkit/<schema>/resources`；同库共享审计时保持实例范围稳定。服务未内置远端审计适配器或任意业务审计 HTTP 写入接口。嵌入宿主的读写接管与仅写入模式见 [examples/audit](../examples/audit/main.go) 和[库装配说明](../README.md#宿主审计装配与清理责任)。
 
-当前审计使用 UUIDv7 标准字符串，管理 HTTP 仍返回认证投影；result 未知时为 null。旧审计 page_token 返回 400，客户端清除后重新翻页。已发布v0.3.0的0001直接定义sign_in_completion_flow，初始化为version=1；当前开发分支新增真实会话0002，空库及合法完整v1经迁移到version=2，尚未发布此能力。旧表名 identity_flow 的同号 v1、旧十七列审计、双表并存和任何已撤回旧 v2（含此前新表名 v2）均拒绝接管；重复 migrate 不会自动改名。采用新定义须人工核验后使用新空资源，需保留旧数据时另行制定并验证迁移方案，见[迁移手册](migrations.md#登录补全流程命名调整)。外部清理须有持久化流程和完成核验，`USER_PURGED` 不能独立证明清理完成；切换后旧本地副本仍受保留和匿名化责任约束，详见[审计迁移说明](compatibility.md#通用审计公开接口与协议迁移)。
+当前审计使用UUIDv7标准字符串，管理HTTP仍返回认证投影；result未知时为null。旧审计page_token返回400，客户端清除后重新翻页。已发布v0.3.0和当前开发版本均安装为version=1，但当前0001额外包含简化后的完整会话上下文，不能根据版本号直接接管旧库。旧identity_flow、旧十七列审计、双表并存、缺少会话结构的v0.3.0 v1、前一`b414fef`双快照v1和撤回v2均拒绝；重复migrate不自动改名、转换或补表。新部署使用经人工核验的新空资源，保留数据需求另行制定迁移方案，见[迁移手册](migrations.md#会话认证依据初始整合开发中)。外部清理须有持久化流程和完成核验，`USER_PURGED`不能独立证明清理完成；切换后旧本地副本仍受保留和匿名化责任约束，详见[审计迁移说明](compatibility.md#通用审计公开接口与协议迁移)。
 
 ## 构建与运行
 

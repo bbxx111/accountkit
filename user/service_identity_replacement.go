@@ -17,7 +17,7 @@ import (
 
 // ReplaceIdentity 使用新目标的 BIND 证明原子替换同类锚点身份。宿主传入已认证的
 // Principal；此方法继续复核账号、作用域、近期认证和数据库当前会话。
-// Current session is retained only for known sources independent of the replaced identity.
+// Current session is retained only for nonempty sources independent of the replaced identity.
 func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID string, cred CodeCredential, meta Meta) (info IdentityInfo, err error) {
 	if err := validateCodeCredential(cred); err != nil {
 		return IdentityInfo{}, err
@@ -109,23 +109,18 @@ func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID s
 		}
 		// 等锁和必要身份读取都可能跨过有效期，写入前以同一微秒时刻复核。
 		var except *string
-		if sess.AuthenticationIdentitiesKnown {
-			sources, sourceErr := q.ListSessionAuthenticationIdentities(ctx, db.ListSessionAuthenticationIdentitiesParams{UserID: p.UserID, SessionID: p.SessionID})
-			if sourceErr != nil {
-				return fmt.Errorf("user: replacement authentication sources: %w", sourceErr)
+		sources, sourceErr := s.requireSessionAuthenticationIdentities(ctx, q, sess)
+		if sourceErr != nil {
+			return sourceErr
+		}
+		independent := true
+		for _, source := range sources {
+			if source.IdentityID == old.ID {
+				independent = false
 			}
-			if len(sources) == 0 {
-				return fmt.Errorf("user: invariant violated: known authentication identities empty")
-			}
-			independent := true
-			for _, source := range sources {
-				if source.IdentityID == old.ID {
-					independent = false
-				}
-			}
-			if independent {
-				except = &p.SessionID
-			}
+		}
+		if independent {
+			except = &p.SessionID
 		}
 		decisionTime := s.now()
 		now := sessionTime(decisionTime)

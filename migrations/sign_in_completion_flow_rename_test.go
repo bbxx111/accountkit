@@ -75,6 +75,9 @@ func TestSignInCompletionFlowInitialDefinition(t *testing.T) {
 	cfg, oldSchema := safetyDB(t)
 	_, schema := safetyDB(t)
 	old := historicalFlowInitial(t, cfg, oldSchema)
+	if _, err := old.Exec(context.Background(), sessionContextHistoricalSQL(t, "0002_session_authentication_context.up.sql")); err != nil {
+		t.Fatal(err)
+	}
 	initialUp(t, cfg, schema)
 	c := migrationTestConn(t, cfg, schema)
 	assertVersion(t, cfg, schema, 1, false)
@@ -82,9 +85,9 @@ func TestSignInCompletionFlowInitialDefinition(t *testing.T) {
 	if err := c.QueryRow(context.Background(), `SELECT to_regclass('sign_in_completion_flow') IS NOT NULL, to_regclass('identity_flow') IS NOT NULL`).Scan(&newExists, &oldExists); err != nil || !newExists || oldExists {
 		t.Fatalf("initial definition has new=%v old=%v err=%v", newExists, oldExists, err)
 	}
-	want := strings.ReplaceAll(migrationCatalog(t, old, oldSchema), "identity_flow", "sign_in_completion_flow")
-	if got := migrationCatalog(t, c, schema); sortedRenameCatalog(t, got) != sortedRenameCatalog(t, want) {
-		t.Fatalf("initial definition changed more than authorized names\nwant: %s\ngot: %s", want, got)
+	want := strings.ReplaceAll(sessionContextUnchangedCatalog(t, migrationCatalog(t, old, oldSchema)), "identity_flow", "sign_in_completion_flow")
+	if got := sessionContextUnchangedCatalog(t, migrationCatalog(t, c, schema)); sortedRenameCatalog(t, got) != sortedRenameCatalog(t, want) {
+		t.Fatalf("initial definition changed more than authorized names and session simplification\nwant: %s\ngot: %s", want, got)
 	}
 }
 

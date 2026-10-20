@@ -8,11 +8,7 @@
 
 ### Requirement: 入口策略与身份职责
 
-项目 SHALL 提供与具体网关产品无关的接入说明，区分消费者、管理员、内省和探针入口。公网网关 SHALL 使用明确的路由暴露策略，不因内省位于 `/v1` 下而直接透传全部 `/v1/*`。部署方 SHALL 限制服务端口的直接访问来源。网关认证 SHALL 不替代服务中的消费者/管理员身份验证、内省 Basic 或角色与资源归属检查。
-
-消费者与管理端的账号路由及引用 SHALL 沿用 users；两个新增消费者端点 /users:sendSignInCompletionCode 和 /users:completeSignIn SHALL 分别列入允许清单，不以 /v1/* 通配开放。两者使用请求体中的 sign_in_completion_token；已有 Bearer 路由的身份要求 SHALL 保留。此前未发布的 accounts 路径 SHALL 不被网关隐式映射或重定向为 users 接口。
-
-当前会话查询 SHALL 作为明确的消费者GET路径 /users/me/sessions/current 纳入允许清单，实际前缀由宿主决定；该查询仍要求消费者Bearer与允许scope，不因与内省同处/v1而开放内省。
+项目 SHALL 提供与具体网关产品无关的接入说明，区分消费者、管理员、内省和探针入口。公网网关 SHALL 明确控制路由暴露，不因内省位于 /v1 下而透传全部 /v1/*。网关认证 SHALL 不替代服务内消费者/管理员身份验证、内省 Basic 或角色及资源归属检查。
 
 #### Scenario: 内省与探针不经公网暴露
 - **WHEN** 部署方执行网关接入验收
@@ -25,6 +21,22 @@
 #### Scenario: 开放当前会话查询
 - **WHEN** 网关增加当前会话详情路由
 - **THEN** 仅新消费者GET路径被开放，内部内省、管理与探针访问边界保持
+
+### Requirement: 消费者路由允许清单
+
+消费者与管理账号路由及引用 SHALL 沿用 users。/users:sendSignInCompletionCode、/users:completeSignIn SHALL 分别列入允许清单，不用 /v1/* 通配开放；两者使用请求体 sign_in_completion_token，既有 Bearer 路由要求保持。GET /users/me/sessions/current SHALL 单独开放并要求消费者 Bearer 及允许 scope，前缀由宿主决定，不同时开放内省。accounts SHALL 不被隐式映射或重定向为 users。
+
+#### Scenario: 按消费者动作开放路由
+- **WHEN** 部署方增加登录补全或当前会话查询入口
+- **THEN** 分别列出两个补全 POST 和当前会话 GET，保留票据/Bearer要求，内省、管理、探针边界不变，accounts 不映射到 users
+
+### Requirement: 后端直连访问边界
+
+部署方 SHALL 限制服务端口的直接访问来源，使非授权来源不能通过直连绕过网关路由策略；内省和探针的授权内部访问仍按接入契约保持可用。
+
+#### Scenario: 直连不能绕过入口策略
+- **WHEN** 部署方验收公网路由拒绝与后端服务端口访问
+- **THEN** 非授权直连不能进入受保护后端，授权内部调用仍能按各自凭据和网络策略访问
 
 ### Requirement: 分层限流与错误处理
 

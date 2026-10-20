@@ -18,6 +18,19 @@ import (
 	"github.com/bbxx111/accountkit/user/idp"
 )
 
+func TestClientInfoResourceNestedAndCopied(t *testing.T) {
+	in := &user.ClientInfo{ClientType: enum.ClientNative, DeviceManufacturer: "Example", AppBuild: "200", AppName: "App", BrowserName: "Chrome", Extensions: map[string]json.RawMessage{"engine": json.RawMessage(`{"revision":9007199254740993}`)}}
+	out := newClientInfoResource(in)
+	in.AppName = "Changed"
+	in.Extensions["engine"][12] = '1'
+	in.Extensions["new"] = json.RawMessage(`true`)
+	raw, err := json.Marshal(out)
+	want := `{"type":"NATIVE","device":{"manufacturer":"Example"},"app":{"name":"App","build":"200"},"browser":{"name":"Chrome"},"extensions":{"engine":{"revision":9007199254740993}}}`
+	if err != nil || string(raw) != want {
+		t.Fatalf("DTO=%s err=%v", raw, err)
+	}
+}
+
 // testHandler 直接构造 Handler（内部测试包可访问私有字段）；映射测试不调用领域方法，Users 留空。
 func testHandler(t *testing.T) *Handler {
 	t.Helper()

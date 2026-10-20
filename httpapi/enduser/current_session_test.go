@@ -22,15 +22,14 @@ func (s *currentSessionService) GetCurrentSession(c context.Context, p user.Prin
 }
 func TestCurrentSessionEndpoint(t *testing.T) {
 	for _, tc := range []struct {
-		name, scope      string
-		err              error
-		missing, unknown bool
-		want             int
+		name, scope string
+		err         error
+		missing     bool
+		want        int
 	}{
 		{name: "user", scope: user.ScopeUser, want: 200}, {name: "bind", scope: user.ScopeBind, want: 200}, {name: "undelete", scope: user.ScopeUndelete, want: 403},
 		{name: "missing capability", scope: user.ScopeUser, missing: true, want: 503}, {name: "invalid session", scope: user.ScopeUser, err: user.ErrInvalidToken, want: 401},
 		{name: "unavailable", scope: user.ScopeUser, err: user.ErrUnavailable, want: 503}, {name: "internal", scope: user.ScopeUser, err: errors.New("private storage failure"), want: 500},
-		{name: "unknown", scope: user.ScopeUser, unknown: true, want: 200},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := principal
@@ -41,7 +40,7 @@ func TestCurrentSessionEndpoint(t *testing.T) {
 					if got != p {
 						t.Fatalf("principal: %+v", got)
 					}
-					return user.CurrentSessionInfo{SessionInfo: user.SessionInfo{ID: p.SessionID, DeviceID: "old-device", DeviceName: "Pixel", CreateTime: testNow.Add(-time.Hour), LastUsedTime: testNow}, AuthTime: testNow, AuthenticationIdentitiesKnown: !tc.unknown, AuthenticationIdentities: []user.AuthenticationIdentity{{ID: "i_0k3f9c2m1xq8z", Kind: enum.IdentityWeChat}, {ID: "i_0k3f9c2m1xq7z", Kind: enum.IdentityEmail}}}, tc.err
+					return user.CurrentSessionInfo{SessionInfo: user.SessionInfo{ID: p.SessionID, DeviceID: "old-device", DeviceName: "Pixel", CreateTime: testNow.Add(-time.Hour), LastUsedTime: testNow}, AuthTime: testNow, AuthenticationIdentities: []user.AuthenticationIdentity{{ID: "i_0k3f9c2m1xq8z", Kind: enum.IdentityWeChat}, {ID: "i_0k3f9c2m1xq7z", Kind: enum.IdentityEmail}}}, tc.err
 				}}
 			}
 			h, e := enduser.New(enduser.Deps{Users: svc, ClientIP: func(*http.Request) string { return "203.0.113.9" }, RequestID: func(*http.Request) string { return "test" }, ReauthMaxAge: time.Minute})
@@ -69,18 +68,18 @@ func TestCurrentSessionEndpoint(t *testing.T) {
 			if tc.want == 200 {
 				var out map[string]any
 				decode(t, rec, &out)
-				if out["name"] != "users/"+p.UserID+"/sessions/"+p.SessionID || out["is_current"] != true || out["auth_time"] != "2026-09-10T12:00:00Z" || out["authentication_identities_known"] != !tc.unknown {
+				if out["name"] != "users/"+p.UserID+"/sessions/"+p.SessionID || out["is_current"] != true || out["auth_time"] != "2026-09-10T12:00:00Z" {
 					t.Fatalf("dto: %v", out)
 				}
 				identities := out["authentication_identities"].([]any)
-				if tc.unknown {
-					if len(identities) != 0 {
-						t.Fatal(identities)
-					}
-				} else {
-					if len(identities) != 2 || len(identities[0].(map[string]any)) != 2 || identities[0].(map[string]any)["kind"] != "EMAIL" || identities[1].(map[string]any)["kind"] != "WECHAT" || identities[0].(map[string]any)["name"] != "users/"+p.UserID+"/identities/i_0k3f9c2m1xq7z" {
-						t.Fatal(identities)
-					}
+				if _, exists := out["authentication_identities_known"]; exists {
+					t.Fatal("obsolete known field exposed")
+				}
+				if _, exists := out["initial_client_info"]; exists {
+					t.Fatal("obsolete initial client info exposed")
+				}
+				if len(identities) != 2 || len(identities[0].(map[string]any)) != 2 || identities[0].(map[string]any)["kind"] != "EMAIL" || identities[1].(map[string]any)["kind"] != "WECHAT" || identities[0].(map[string]any)["name"] != "users/"+p.UserID+"/identities/i_0k3f9c2m1xq7z" {
+					t.Fatal(identities)
 				}
 			}
 		})

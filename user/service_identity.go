@@ -332,6 +332,16 @@ func (s *Service) UnbindIdentity(ctx context.Context, p Principal, identityID st
 		if sess.UserID != p.UserID || !sessionActiveAt(sess, sessionTime(s.now())) {
 			return ErrInvalidToken
 		}
+		if _, err := s.requireSessionAuthenticationIdentities(ctx, q, sess); err != nil {
+			return err
+		}
+		missingSources, err := q.HasSessionsWithoutAuthenticationIdentities(ctx, p.UserID)
+		if err != nil {
+			return fmt.Errorf("user: check authentication source integrity: %w", err)
+		}
+		if missingSources {
+			return fmt.Errorf("user: invariant violated: unrevoked session has empty authentication identities")
+		}
 		row, err := q.GetActiveIdentityByIDAndUser(ctx, db.GetActiveIdentityByIDAndUserParams{ID: identityID, UserID: p.UserID})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound

@@ -2,20 +2,22 @@ package migrations
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
+	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/user/db"
 	"github.com/jackc/pgx/v5"
 )
 
-func TestSessionContextMigrationUpgrade(t *testing.T) {
+func TestSessionContextInitialRepeat(t *testing.T) {
 	cfg, schema := safetyDB(t)
 	initialUp(t, cfg, schema)
 	c := migrationTestConn(t, cfg, schema)
@@ -24,50 +26,49 @@ func TestSessionContextMigrationUpgrade(t *testing.T) {
 	original := func() string {
 		t.Helper()
 		var data string
-		if err := c.QueryRow(ctx, `SELECT jsonb_build_array((SELECT jsonb_agg(t ORDER BY id) FROM user_account t),(SELECT jsonb_agg(t ORDER BY id) FROM identity t),(SELECT jsonb_agg(to_jsonb(t)-'authentication_identities_known' ORDER BY id) FROM session t),(SELECT jsonb_agg(t ORDER BY id) FROM sign_in_completion_flow t),(SELECT jsonb_agg(t ORDER BY id) FROM audit_event t))::text`).Scan(&data); err != nil {
+		if err := c.QueryRow(ctx, `SELECT jsonb_build_array((SELECT jsonb_agg(t ORDER BY id) FROM user_account t),(SELECT jsonb_agg(t ORDER BY id) FROM identity t),(SELECT jsonb_agg(t ORDER BY id) FROM session t),(SELECT jsonb_agg(t ORDER BY id) FROM sign_in_completion_flow t),(SELECT jsonb_agg(t ORDER BY id) FROM audit_event t),(SELECT jsonb_agg(t ORDER BY session_id,identity_id) FROM session_authentication_identity t),(SELECT jsonb_agg(t ORDER BY session_id) FROM session_client_info t))::text`).Scan(&data); err != nil {
 			t.Fatal(err)
 		}
 		return data
 	}
 	originalData := original()
-	var missing bool
-	if err := c.QueryRow(ctx, `SELECT to_regclass('session_authentication_identity') IS NULL AND to_regclass('session_client_info') IS NULL AND NOT EXISTS(SELECT FROM information_schema.columns WHERE table_schema=$1 AND table_name='session' AND column_name='authentication_identities_known')`, schema).Scan(&missing); err != nil || !missing {
-		t.Fatalf("v1 already has context: %v %v", missing, err)
+	var complete bool
+	if err := c.QueryRow(ctx, `SELECT to_regclass('session_authentication_identity') IS NOT NULL AND to_regclass('session_client_info') IS NOT NULL AND NOT EXISTS(SELECT FROM information_schema.columns WHERE table_schema=$1 AND table_name='session' AND column_name='authentication_identities_known')`, schema).Scan(&complete); err != nil || !complete {
+		t.Fatalf("v1 lacks context: %v %v", complete, err)
 	}
 	if err := Up(ctx, cfg, schema); err != nil {
 		t.Fatal(err)
 	}
-	var known bool
 	var hash string
-	if err := c.QueryRow(ctx, `SELECT authentication_identities_known,encode(refresh_token_hash,'hex') FROM session`).Scan(&known, &hash); err != nil {
+	if err := c.QueryRow(ctx, `SELECT encode(refresh_token_hash,'hex') FROM session`).Scan(&hash); err != nil {
 		t.Fatal(err)
 	}
-	if known || hash != "1234" {
-		t.Fatalf("upgrade changed credentials/context: %v %s", known, hash)
+	if hash != "1234" {
+		t.Fatalf("repeat changed credentials/context: %s", hash)
 	}
 	var rows int
 	if err := c.QueryRow(ctx, `SELECT (SELECT count(*) FROM session_authentication_identity)+(SELECT count(*) FROM session_client_info)`).Scan(&rows); err != nil || rows != 0 {
 		t.Fatalf("fabricated context: %d %v", rows, err)
 	}
 	if original() != originalData {
-		t.Fatal("upgrade changed preexisting rows, including credential bytes")
+		t.Fatal("repeat changed preexisting rows, including credential bytes")
 	}
-	assertVersion(t, cfg, schema, 2, false)
+	assertVersion(t, cfg, schema, 1, false)
 	for _, sql := range []string{
 		`INSERT INTO session_authentication_identity VALUES('s_0000000000001','i_0000000000001')`,
-		`INSERT INTO session_client_info(session_id,snapshot_kind,os_name,observe_time) VALUES('s_0000000000001',1,'Synthetic OS',now())`,
+		`INSERT INTO session_client_info(session_id,client_info,observe_time) VALUES('s_0000000000001','{"os":{"name":"Synthetic OS"}}',now())`,
 	} {
 		if _, err := c.Exec(ctx, sql); err != nil {
 			t.Fatal(err)
 		}
 	}
-	before, catalog := renameDataSnapshot(t, c, "sign_in_completion_flow"), migrationCatalog(t, c, schema)
+	before, catalog := original(), migrationCatalog(t, c, schema)
 	for range 2 {
 		if err := Up(ctx, cfg, schema); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if before != renameDataSnapshot(t, c, "sign_in_completion_flow") || catalog != migrationCatalog(t, c, schema) {
+	if before != original() || catalog != migrationCatalog(t, c, schema) {
 		t.Fatal("repeat Up changed existing data/catalog")
 	}
 	if err := c.QueryRow(ctx, `SELECT count(*) FROM session_authentication_identity`).Scan(&rows); err != nil || rows != 1 {
@@ -142,13 +143,12 @@ func TestSessionContextQueriesIsolation(t *testing.T) {
 	if exec("AddSessionAuthenticationIdentity", bad) != 0 {
 		t.Fatal("foreign identity added")
 	}
-	for _, sid := range []string{"s_0000000000001", "s_0000000000002", "s_0000000000003"} {
+	for _, sid := range []string{"s_0000000000001", "s_0000000000002", "s_0000000000003", "s_0000000000004"} {
 		iid := "i_0000000000001"
-		if sid == "s_0000000000002" {
+		if sid == "s_0000000000002" || sid == "s_0000000000004" {
 			iid = "i_0000000000002"
 		}
 		exec("AddSessionAuthenticationIdentity", pgx.NamedArgs{"user_id": "u_0000000000001", "session_id": sid, "identity_id": iid})
-		exec("MarkSessionAuthenticationIdentitiesKnown", pgx.NamedArgs{"user_id": "u_0000000000001", "session_id": sid, "now": now})
 	}
 	rows, err := c.Query(ctx, contextQuery(t, "ListSessionAuthenticationIdentities"), args)
 	if err != nil {
@@ -174,7 +174,7 @@ func TestSessionContextQueriesIsolation(t *testing.T) {
 	}
 	rows.Close()
 	// The caller's user scope also protects reads and writes for snapshots.
-	snapshot := pgx.NamedArgs{"user_id": "u_0000000000001", "session_id": "s_0000000000001", "snapshot_kind": int16(2), "client_type": int16(1), "device_type": nil, "os_name": "Synthetic OS", "os_version": nil, "browser_name": nil, "browser_version": nil, "app_name": nil, "app_version": nil, "device_model": nil, "observe_time": now, "now": now}
+	snapshot := pgx.NamedArgs{"user_id": "u_0000000000001", "session_id": "s_0000000000001", "client_info": []byte(`{"type":"WEB","os":{"name":"Synthetic OS"}}`), "observe_time": now, "now": now}
 	if exec("UpsertSessionClientInfo", snapshot) != 1 {
 		t.Fatal("snapshot not inserted")
 	}
@@ -183,11 +183,11 @@ func TestSessionContextQueriesIsolation(t *testing.T) {
 		t.Fatal("cross-user snapshot upsert")
 	}
 	var sid string
-	err = c.QueryRow(ctx, contextQuery(t, "GetSessionClientInfo"), snapshot).Scan(new(string), new(int16), new(*int16), new(*int16), new(*string), new(*string), new(*string), new(*string), new(*string), new(*string), new(*string), new(time.Time), new(time.Time), new(time.Time))
+	err = c.QueryRow(ctx, contextQuery(t, "GetSessionClientInfo"), snapshot).Scan(new(string), new([]byte), new(time.Time), new(time.Time), new(time.Time))
 	if !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("cross-user read: %v", err)
 	}
-	rows, err = c.Query(ctx, contextQuery(t, "ListSessionClientInfosByUser"), pgx.NamedArgs{"user_id": "u_0000000000001", "session_ids": []string{"s_0000000000001", "s_0000000000005"}, "snapshot_kind": int16(2)})
+	rows, err = c.Query(ctx, contextQuery(t, "ListSessionClientInfosByUser"), pgx.NamedArgs{"user_id": "u_0000000000001", "session_ids": []string{"s_0000000000001", "s_0000000000005"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,11 +204,15 @@ func TestSessionContextQueriesIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	revoked, err := pgx.CollectRows(rows, pgx.RowTo[string])
-	if err != nil || len(revoked) != 3 {
-		t.Fatalf("revoke must include match/expired/unknown only: %v %v", revoked, err)
+	slices.Sort(revoked)
+	if err != nil || !slices.Equal(revoked, []string{"s_0000000000001", "s_0000000000003"}) {
+		t.Fatalf("revoke must include only exact matches, including expired: %v %v", revoked, err)
 	}
 	if err := c.QueryRow(ctx, `SELECT id FROM session WHERE id='s_0000000000002' AND revoke_time IS NULL`).Scan(&sid); err != nil {
 		t.Fatal("unrelated source revoked", err)
+	}
+	if err := c.QueryRow(ctx, `SELECT id FROM session WHERE id='s_0000000000004' AND revoke_time IS NULL`).Scan(&sid); err != nil {
+		t.Fatal("second unrelated source revoked", err)
 	}
 	if err := c.QueryRow(ctx, `SELECT id FROM session WHERE id='s_0000000000005' AND revoke_time IS NULL`).Scan(&sid); err != nil {
 		t.Fatal("other user revoked", err)
@@ -239,22 +243,25 @@ func TestSessionContextStorageConstraints(t *testing.T) {
 	// service-scoped writer separately refuses absent/cross-user targets.
 	for _, sql := range []string{
 		`INSERT INTO session_authentication_identity VALUES('s_0000000000001','i_0000000000001')`,
-		`INSERT INTO session_client_info(session_id,snapshot_kind,client_type,device_type,observe_time) VALUES('s_0000000000001',99,99,99,now())`,
+		`INSERT INTO session_client_info(session_id,client_info,observe_time) VALUES('s_0000000000002','{"type":"UNKNOWN","os":{"version":"this version exceeds the business limit"}}',now())`,
 	} {
 		if _, err := c.Exec(ctx, sql); err != nil {
-			t.Fatal("unexpected FK or enum CHECK", err)
+			t.Fatal("unexpected FK or JSON business CHECK", err)
 		}
 	}
 	for _, sql := range []string{
 		`INSERT INTO session_authentication_identity VALUES('s_0000000000001','i_0000000000001')`,
 		`INSERT INTO session_authentication_identity VALUES('invalid','i_0000000000001')`,
 		`INSERT INTO session_authentication_identity VALUES('s_0000000000001','invalid')`,
-		`INSERT INTO session_client_info(session_id,snapshot_kind,observe_time) VALUES('invalid',1,now())`,
-		`INSERT INTO session_client_info(session_id,snapshot_kind,observe_time) VALUES('s_0000000000001',99,now())`,
-		`INSERT INTO session_client_info(session_id,snapshot_kind,os_version,observe_time) VALUES('s_0000000000001',1,repeat('x',33),now())`,
+		`INSERT INTO session_client_info(session_id,client_info,observe_time) VALUES('invalid','{}',now())`,
+		`INSERT INTO session_client_info(session_id,client_info,observe_time) VALUES('s_0000000000002','{}',now())`,
+		`INSERT INTO session_client_info(session_id,client_info,observe_time) VALUES('s_0000000000003',NULL,now())`,
+		`INSERT INTO session_client_info(session_id,client_info,observe_time) VALUES('s_0000000000003','{}',NULL)`,
+		`INSERT INTO session_client_info(session_id,client_info,observe_time,create_time) VALUES('s_0000000000003','{}',now(),NULL)`,
+		`INSERT INTO session_client_info(session_id,client_info,observe_time,update_time) VALUES('s_0000000000003','{}',now(),NULL)`,
 	} {
 		if _, err := c.Exec(ctx, sql); err == nil {
-			t.Fatal("missing format/unique/length constraint", sql)
+			t.Fatal("missing format/unique/not-null constraint", sql)
 		}
 	}
 	seedRenameFlow(t, c, "sign_in_completion_flow")
@@ -263,45 +270,73 @@ func TestSessionContextStorageConstraints(t *testing.T) {
 		t.Fatalf("generated duplicate write %d %v", n, err)
 	}
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	osName := "Synthetic OS"
-	arg := db.UpsertSessionClientInfoParams{UserID: "u_0000000000001", SessionID: "s_0000000000001", SnapshotKind: enum.ClientSnapshotInitial, OsName: &osName, ObserveTime: now, Now: now}
-	if n, err := q.UpsertSessionClientInfo(ctx, arg); err != nil || n != 1 {
-		t.Fatalf("generated snapshot insert %d %v", n, err)
+	arg := db.UpsertSessionClientInfoParams{UserID: "u_0000000000001", SessionID: "s_0000000000001", ClientInfo: []byte(`{"type":"NATIVE","os":{"name":"Synthetic OS"},"app":{"name":"Synthetic App","version":"1"},"browser":{"name":"Synthetic Browser"},"extensions":{"release":{"stable":true,"counter":9007199254740993,"values":[null,1,"sample"]}}}`), ObserveTime: now, Now: now}
+	assertJSON := func(got, want []byte) {
+		t.Helper()
+		decode := func(value []byte) any {
+			decoder := json.NewDecoder(strings.NewReader(string(value)))
+			decoder.UseNumber()
+			var decoded any
+			if err := decoder.Decode(&decoded); err != nil {
+				t.Fatal(err)
+			}
+			return decoded
+		}
+		if !reflect.DeepEqual(decode(got), decode(want)) {
+			t.Fatalf("JSON roundtrip changed content: got %s, want %s", got, want)
+		}
 	}
-	next := "Other OS"
-	arg.OsName = &next
+	// Generated writes cannot attach data to a missing or foreign session.
+	bad := arg
+	bad.SessionID = "s_0000000000003"
+	if n, err := q.UpsertSessionClientInfo(ctx, bad); err != nil || n != 0 {
+		t.Fatalf("absent session accepted: %d %v", n, err)
+	}
+	bad = arg
+	bad.UserID = "u_0000000000002"
+	if n, err := q.UpsertSessionClientInfo(ctx, bad); err != nil || n != 0 {
+		t.Fatalf("foreign session accepted: %d %v", n, err)
+	}
+	if n, err := q.UpsertSessionClientInfo(ctx, arg); err != nil || n != 1 {
+		t.Fatalf("generated description insert %d %v", n, err)
+	}
+	info, err := q.GetSessionClientInfo(ctx, db.GetSessionClientInfoParams{UserID: arg.UserID, SessionID: arg.SessionID})
+	if err != nil || info.SessionID != arg.SessionID || !info.ObserveTime.Equal(now) || !info.CreateTime.Equal(now) || !info.UpdateTime.Equal(now) {
+		t.Fatalf("description metadata roundtrip: %+v %v", info, err)
+	}
+	assertJSON(info.ClientInfo, arg.ClientInfo)
+	arg.ClientInfo = []byte(`{"browser":{"name":"Other Browser"}}`)
 	arg.Now = now.Add(time.Hour)
 	arg.ObserveTime = arg.Now
-	if n, err := q.UpsertSessionClientInfo(ctx, arg); err != nil || n != 0 {
-		t.Fatalf("INITIAL was mutable %d %v", n, err)
+	if n, err := q.UpsertSessionClientInfo(ctx, arg); err != nil || n != 1 {
+		t.Fatalf("single description replacement %d %v", n, err)
 	}
-	info, err := q.GetSessionClientInfo(ctx, db.GetSessionClientInfoParams{UserID: arg.UserID, SessionID: arg.SessionID, SnapshotKind: arg.SnapshotKind})
-	if err != nil || info.ClientType != nil || info.DeviceType != nil || info.OsName == nil || *info.OsName != osName || !info.ObserveTime.Equal(now) || !info.CreateTime.Equal(now) || !info.UpdateTime.Equal(now) {
-		t.Fatalf("nullable enum/initial snapshot roundtrip: %+v %v", info, err)
+	info, err = q.GetSessionClientInfo(ctx, db.GetSessionClientInfoParams{UserID: arg.UserID, SessionID: arg.SessionID})
+	if err != nil || !info.ObserveTime.Equal(arg.Now) || !info.CreateTime.Equal(now) || !info.UpdateTime.Equal(arg.Now) {
+		t.Fatalf("replacement metadata: %+v %v", info, err)
 	}
-	arg.SnapshotKind = enum.ClientSnapshotLatest
-	web := enum.ClientWeb
-	phone := enum.DevicePhone
-	arg.ClientType = &web
-	arg.DeviceType = &phone
-	if _, err := q.UpsertSessionClientInfo(ctx, arg); err != nil {
-		t.Fatal(err)
-	}
-	info, err = q.GetSessionClientInfo(ctx, db.GetSessionClientInfoParams{UserID: arg.UserID, SessionID: arg.SessionID, SnapshotKind: arg.SnapshotKind})
-	if err != nil || info.ClientType == nil || *info.ClientType != web || info.DeviceType == nil || *info.DeviceType != phone {
-		t.Fatalf("enum roundtrip: %+v %v", info, err)
+	assertJSON(info.ClientInfo, arg.ClientInfo)
+	var count int
+	if err := c.QueryRow(ctx, `SELECT count(*) FROM session_client_info WHERE session_id=$1`, arg.SessionID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("replacement created extra rows: %d %v", count, err)
 	}
 }
 
 func TestSessionContextBaselineRejectsPartialVersion(t *testing.T) {
 	for _, mutation := range []string{
-		`ALTER TABLE session DROP COLUMN authentication_identities_known`,
-		`ALTER TABLE session ALTER COLUMN authentication_identities_known SET DEFAULT true`,
+		`ALTER TABLE session ADD COLUMN authentication_identities_known boolean NOT NULL DEFAULT false`,
 		`DROP TABLE session_authentication_identity`,
-		`ALTER TABLE session_client_info DROP COLUMN device_type`,
-		`ALTER TABLE session_client_info ALTER COLUMN client_type SET NOT NULL`,
-		`ALTER TABLE session_client_info ALTER COLUMN os_version TYPE varchar(64)`,
+		`ALTER TABLE session_client_info DROP COLUMN client_info`,
+		`ALTER TABLE session_client_info ALTER COLUMN client_info DROP NOT NULL`,
+		`ALTER TABLE session_client_info ALTER COLUMN client_info TYPE json USING client_info::json`,
+		`ALTER TABLE session_client_info ALTER COLUMN observe_time DROP NOT NULL`,
+		`ALTER TABLE session_client_info ALTER COLUMN create_time DROP DEFAULT`,
+		`ALTER TABLE session_client_info ALTER COLUMN update_time DROP DEFAULT`,
+		`ALTER TABLE session_client_info ALTER COLUMN update_time SET DEFAULT clock_timestamp()`,
 		`ALTER TABLE session_client_info DROP CONSTRAINT session_client_info_pkey`,
+		`ALTER TABLE session_client_info DROP CONSTRAINT session_client_info_pkey, ADD PRIMARY KEY(session_id,observe_time)`,
+		`ALTER TABLE session_client_info DROP CONSTRAINT session_client_info_session_id_format`,
+		`ALTER TABLE session_client_info ADD COLUMN snapshot_kind smallint`,
 		`ALTER TABLE session_authentication_identity DROP CONSTRAINT session_authentication_identity_identity_id_format`,
 		`DROP INDEX idx_session_authentication_identity_identity_id_session_id`,
 		`DROP INDEX idx_session_user_id_id`,
@@ -319,9 +354,9 @@ func TestSessionContextBaselineRejectsPartialVersion(t *testing.T) {
 			}
 			before, catalog := renameDataSnapshot(t, c, "sign_in_completion_flow"), migrationCatalog(t, c, schema)
 			if err := Up(ctx, cfg, schema); !errors.Is(err, ErrIncompatibleBaseline) {
-				t.Fatalf("incomplete v2 accepted: %v", err)
+				t.Fatalf("incomplete v1 accepted: %v", err)
 			}
-			assertVersion(t, cfg, schema, 2, false)
+			assertVersion(t, cfg, schema, 1, false)
 			if before != renameDataSnapshot(t, c, "sign_in_completion_flow") || catalog != migrationCatalog(t, c, schema) {
 				t.Fatal("rejection changed data/catalog")
 			}

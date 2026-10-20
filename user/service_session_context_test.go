@@ -13,12 +13,8 @@ import (
 	"github.com/bbxx111/accountkit/user/db"
 )
 
-func authenticationSources(t *testing.T, f *fixture, p user.Principal, known bool, want ...string) {
+func authenticationSources(t *testing.T, f *fixture, p user.Principal, want ...string) {
 	t.Helper()
-	var gotKnown bool
-	if err := f.pool.QueryRow(context.Background(), `SELECT authentication_identities_known FROM session WHERE id=$1 AND user_id=$2`, p.SessionID, p.UserID).Scan(&gotKnown); err != nil {
-		t.Fatal(err)
-	}
 	rows, err := f.repo.Q().ListSessionAuthenticationIdentities(context.Background(), db.ListSessionAuthenticationIdentitiesParams{UserID: p.UserID, SessionID: p.SessionID})
 	if err != nil {
 		t.Fatal(err)
@@ -28,8 +24,8 @@ func authenticationSources(t *testing.T, f *fixture, p user.Principal, known boo
 		got = append(got, row.IdentityID)
 	}
 	sort.Strings(want)
-	if gotKnown != known || len(got) != len(want) || (len(want) > 0 && !reflect.DeepEqual(got, want)) {
-		t.Fatalf("authentication sources known=%v IDs=%v want known=%v IDs=%v", gotKnown, got, known, want)
+	if len(got) != len(want) || (len(want) > 0 && !reflect.DeepEqual(got, want)) {
+		t.Fatalf("authentication source IDs=%v want IDs=%v", got, want)
 	}
 }
 
@@ -56,9 +52,9 @@ func TestSessionAuthenticationSources(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		authenticationSources(t, f, p, true, ids[0].ID)
+		authenticationSources(t, f, p, ids[0].ID)
 		emailID := contextBindEmail(t, f, p, email1)
-		authenticationSources(t, f, p, true, ids[0].ID)
+		authenticationSources(t, f, p, ids[0].ID)
 		refreshed, err := f.svc.Refresh(ctx, first.RefreshToken, meta1)
 		if err != nil {
 			t.Fatal(err)
@@ -67,10 +63,10 @@ func TestSessionAuthenticationSources(t *testing.T) {
 		if err != nil || retry != refreshed {
 			t.Fatalf("grace: %v", err)
 		}
-		authenticationSources(t, f, p, true, ids[0].ID)
+		authenticationSources(t, f, p, ids[0].ID)
 		f.advance(61 * time.Second)
 		login := f.signIn(t, enum.IdentityEmail, email1, dev2)
-		authenticationSources(t, f, principalOf(t, f, login), true, emailID)
+		authenticationSources(t, f, principalOf(t, f, login), emailID)
 	})
 	t.Run("pending records all distinct concrete proofs including same kind", func(t *testing.T) {
 		f := newFixture(t)
@@ -104,13 +100,13 @@ func TestSessionAuthenticationSources(t *testing.T) {
 		for _, id := range ids {
 			want = append(want, id.ID)
 		}
-		authenticationSources(t, f, p, true, want...)
+		authenticationSources(t, f, p, want...)
 	})
 }
 
 func TestReauthenticationReplacesSources(t *testing.T) {
-	for _, unknown := range []bool{false, true} {
-		t.Run(map[bool]string{false: "multiple to one", true: "unknown to known"}[unknown], func(t *testing.T) {
+	for _, missing := range []bool{false, true} {
+		t.Run(map[bool]string{false: "multiple to one", true: "missing sources rejected"}[missing], func(t *testing.T) {
 			f := newFixture(t)
 			ctx := context.Background()
 			pending := pendingFlow(t, f, "reauth-source")
@@ -132,16 +128,22 @@ func TestReauthenticationReplacesSources(t *testing.T) {
 			for _, id := range ids {
 				want = append(want, id.ID)
 			}
-			authenticationSources(t, f, p, true, want...)
-			if unknown {
+			authenticationSources(t, f, p, want...)
+			if missing {
 				mustExec(t, f, `DELETE FROM session_authentication_identity WHERE session_id=$1`, p.SessionID)
-				mustExec(t, f, `UPDATE session SET authentication_identities_known=false WHERE id=$1`, p.SessionID)
 			}
 			f.advance(2 * time.Minute)
 			if err = f.sendReauthenticationCode(ctx, p, enum.IdentityEmail, email1, meta1); err != nil {
 				t.Fatal(err)
 			}
 			out, err := f.svc.Reauthenticate(ctx, p, f.credential(enum.PurposeReauth, enum.IdentityEmail, email1, f.sent.code(email1)), meta1)
+			if missing {
+				if err == nil || errors.Is(err, user.ErrInvalidToken) || errors.Is(err, user.ErrUnavailable) {
+					t.Fatalf("missing sources must reject reauthentication as invariant error: %v", err)
+				}
+				authenticationSources(t, f, p)
+				return
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -149,7 +151,7 @@ func TestReauthenticationReplacesSources(t *testing.T) {
 			if p2.SessionID != p.SessionID || !p2.AuthTime.After(p.AuthTime) || out.RefreshToken != "" {
 				t.Fatalf("reauth: %+v", out)
 			}
-			authenticationSources(t, f, p, true, emailID)
+			authenticationSources(t, f, p, emailID)
 			if _, err = f.svc.Refresh(ctx, pair.RefreshToken, meta1); err != nil {
 				t.Fatal("original refresh lost:", err)
 			}
@@ -223,7 +225,7 @@ func TestCurrentSessionContextDomain(t *testing.T) {
 	r := currentReader(t, f)
 	ids, _ := f.repo.Q().ListActiveIdentitiesByUser(ctx, p.UserID)
 	info, err := r.GetCurrentSession(ctx, p)
-	if err != nil || info.ID != p.SessionID || !info.IsCurrent || info.DeviceID != dev1.ID || info.DeviceName != dev1.Name || !info.AuthTime.Equal(p.AuthTime) || !info.AuthenticationIdentitiesKnown || len(info.AuthenticationIdentities) != 1 || info.AuthenticationIdentities[0].ID != ids[0].ID || info.AuthenticationIdentities[0].Kind != enum.IdentityPhone {
+	if err != nil || info.ID != p.SessionID || !info.IsCurrent || info.DeviceID != dev1.ID || info.DeviceName != dev1.Name || !info.AuthTime.Equal(p.AuthTime) || len(info.AuthenticationIdentities) != 1 || info.AuthenticationIdentities[0].ID != ids[0].ID || info.AuthenticationIdentities[0].Kind != enum.IdentityPhone {
 		t.Fatalf("current: %+v %v", info, err)
 	}
 	for _, scope := range []string{user.ScopeUser, user.ScopeBind} {
@@ -245,15 +247,9 @@ func TestCurrentSessionContextDomain(t *testing.T) {
 			t.Fatalf("ownership/missing: %v", err)
 		}
 	}
-	mustExec(t, f, `UPDATE session SET authentication_identities_known=false WHERE id=$1`, p.SessionID)
 	mustExec(t, f, `DELETE FROM session_authentication_identity WHERE session_id=$1`, p.SessionID)
-	info, err = r.GetCurrentSession(ctx, p)
-	if err != nil || info.AuthenticationIdentitiesKnown || info.AuthenticationIdentities == nil || len(info.AuthenticationIdentities) != 0 {
-		t.Fatalf("unknown: %+v %v", info, err)
-	}
-	mustExec(t, f, `UPDATE session SET authentication_identities_known=true WHERE id=$1`, p.SessionID)
 	if _, err := r.GetCurrentSession(ctx, p); err == nil || errors.Is(err, user.ErrInvalidToken) || errors.Is(err, user.ErrUnavailable) {
-		t.Fatalf("known empty is invariant error: %v", err)
+		t.Fatalf("missing authentication identities is invariant error: %v", err)
 	}
 	mustExec(t, f, `INSERT INTO session_authentication_identity(session_id,identity_id) VALUES ($1,$2)`, p.SessionID, ids[0].ID)
 	mustExec(t, f, `UPDATE identity SET kind=99 WHERE id=$1`, ids[0].ID)
@@ -344,7 +340,7 @@ func TestReauthenticationSourceRollback(t *testing.T) {
 	if _, err := f.svc.Reauthenticate(ctx, p, cred, meta1); err == nil {
 		t.Fatal("source failure ignored")
 	}
-	authenticationSources(t, f, p, true, ids[0].ID)
+	authenticationSources(t, f, p, ids[0].ID)
 	sess, err := f.repo.Q().GetSessionByRefreshHash(ctx, sha256Of(pair.RefreshToken))
 	if err != nil || !sess.AuthTime.Equal(p.AuthTime) {
 		t.Fatalf("partial reauth %v", err)
@@ -355,22 +351,24 @@ func TestReauthenticationSourceRollback(t *testing.T) {
 	}
 }
 
-func TestUnknownSessionAuthenticationSourcesRefresh(t *testing.T) {
+func TestMissingSessionAuthenticationSourcesRefreshDoesNotRepair(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
 	pair := f.signIn(t, enum.IdentityPhone, phone1, dev1)
 	p := principalOf(t, f, pair)
 	mustExec(t, f, `DELETE FROM session_authentication_identity WHERE session_id=$1`, p.SessionID)
-	mustExec(t, f, `UPDATE session SET authentication_identities_known=false WHERE id=$1`, p.SessionID)
 	first, err := f.svc.Refresh(ctx, pair.RefreshToken, meta1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	retry, err := f.svc.Refresh(ctx, pair.RefreshToken, meta1)
 	if err != nil || first != retry {
-		t.Fatalf("unknown grace %v", err)
+		t.Fatalf("refresh grace %v", err)
 	}
-	authenticationSources(t, f, p, false)
+	authenticationSources(t, f, p)
+	if _, err := f.svc.GetCurrentSession(ctx, p); err == nil {
+		t.Fatal("refresh silently repaired missing authentication sources")
+	}
 }
 
 func TestSessionAuthenticationPendingExistingAccount(t *testing.T) {
@@ -397,9 +395,65 @@ func TestSessionAuthenticationPendingExistingAccount(t *testing.T) {
 			wechatID = id.ID
 		}
 	}
-	authenticationSources(t, f, principalOf(t, f, pair), true, emailID, wechatID)
+	authenticationSources(t, f, principalOf(t, f, pair), emailID, wechatID)
 	info, err := currentReader(t, f).GetCurrentSession(ctx, principalOf(t, f, pair))
 	if err != nil || len(info.AuthenticationIdentities) != 2 || info.AuthenticationIdentities[0].ID >= info.AuthenticationIdentities[1].ID {
 		t.Fatalf("stable concrete summaries %+v %v", info, err)
+	}
+}
+
+// A missing current source set is corrupt state, never a replacement opportunity.
+func TestMissingAuthenticationSourcesRejectSensitiveActions(t *testing.T) {
+	for _, action := range []string{"reauthenticate", "unbind", "replace"} {
+		t.Run(action, func(t *testing.T) {
+			f := newFixture(t)
+			ctx := context.Background()
+			pair := f.signIn(t, enum.IdentityPhone, phone1, dev1)
+			p := principalOf(t, f, pair)
+			emailID := contextBindEmail(t, f, p, email1)
+			f.advance(61 * time.Second)
+			var cred user.CodeCredential
+			if action == "reauthenticate" {
+				if err := f.sendReauthenticationCode(ctx, p, enum.IdentityEmail, email1, meta1); err != nil {
+					t.Fatal(err)
+				}
+				cred = f.credential(enum.PurposeReauth, enum.IdentityEmail, email1, f.sent.code(email1))
+			}
+			if action == "replace" {
+				target := "replacement@example.test"
+				if err := f.sendBindCode(ctx, p, enum.IdentityEmail, target, meta1); err != nil {
+					t.Fatal(err)
+				}
+				cred = f.credential(enum.PurposeBind, enum.IdentityEmail, target, f.sent.code(target))
+			}
+			mustExec(t, f, `DELETE FROM session_authentication_identity WHERE session_id=$1`, p.SessionID)
+			var err error
+			switch action {
+			case "reauthenticate":
+				_, err = f.svc.Reauthenticate(ctx, p, cred, meta1)
+			case "unbind":
+				err = f.svc.UnbindIdentity(ctx, p, emailID, meta1)
+			case "replace":
+				_, err = f.svc.ReplaceIdentity(ctx, p, emailID, cred, meta1)
+			}
+			if err == nil || errors.Is(err, user.ErrInvalidToken) || errors.Is(err, user.ErrUnavailable) {
+				t.Fatalf("missing authentication sources must reject as internal invariant error: %v", err)
+			}
+			var sourceCount int
+			if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM session_authentication_identity WHERE session_id=$1`, p.SessionID).Scan(&sourceCount); err != nil {
+				t.Fatal(err)
+			}
+			if sourceCount != 0 {
+				t.Fatal("missing authentication sources silently repaired")
+			}
+			identity, err := f.repo.Q().GetActiveIdentityByIDAndUser(ctx, db.GetActiveIdentityByIDAndUserParams{ID: emailID, UserID: p.UserID})
+			if err != nil || identity.ID != emailID {
+				t.Fatalf("identity mutated after rejection: %v", err)
+			}
+			sess, err := f.repo.Q().GetSessionByRefreshHash(ctx, sha256Of(pair.RefreshToken))
+			if err != nil || sess.RevokeTime != nil || !sess.AuthTime.Equal(p.AuthTime) {
+				t.Fatalf("session mutated after rejection: %v", err)
+			}
+		})
 	}
 }

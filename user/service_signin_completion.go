@@ -531,13 +531,14 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.SignI
 		if err != nil {
 			return err
 		}
-		if fp.InitialClientInfo != nil && fp.InitialClientInfoObserveTime != nil {
+		if meta.ClientInfo != nil {
+			if err := s.updateSessionClientInfo(ctx, q, sess, meta.ClientInfo, now); err != nil {
+				return err
+			}
+		} else if fp.InitialClientInfo != nil && fp.InitialClientInfoObserveTime != nil {
 			if err := s.initializeSessionClientInfo(ctx, q, sess, fp.InitialClientInfo, *fp.InitialClientInfoObserveTime, now); err != nil {
 				return err
 			}
-		}
-		if err := s.updateSessionClientInfo(ctx, q, sess, meta.ClientInfo, now); err != nil {
-			return err
 		}
 		pair.IsNewUser = isNew
 		if fp.Proofs[0].Provider != nil {

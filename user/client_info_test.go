@@ -19,11 +19,11 @@ func TestNormalizeClientInfo(t *testing.T) {
 	input := ClientInfo{ClientType: enum.ClientWeb, OSName: " Android ", BrowserName: "Chrome", BrowserVersion: " 123 ", AppName: "ignored", AppVersion: "1"}
 	before := input
 	got, err := NormalizeClientInfo(&input)
-	want := &ClientInfo{ClientType: enum.ClientWeb, OSName: "Android", BrowserName: "Chrome", BrowserVersion: "123"}
+	want := &ClientInfo{ClientType: enum.ClientWeb, OSName: "Android", BrowserName: "Chrome", BrowserVersion: "123", AppName: "ignored", AppVersion: "1"}
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v, %v; want %+v", got, err, want)
 	}
-	if input != before || got == &input {
+	if !reflect.DeepEqual(input, before) || got == &input {
 		t.Fatal("normalization changed or aliased input")
 	}
 	for name, in := range map[string]ClientInfo{
@@ -39,7 +39,7 @@ func TestNormalizeClientInfo(t *testing.T) {
 			if !errors.Is(err, ErrInvalidClientInfo) || out != nil {
 				t.Fatalf("got %+v, %v", out, err)
 			}
-			if in != before {
+			if !reflect.DeepEqual(in, before) {
 				t.Fatal("input mutated")
 			}
 		})
@@ -52,7 +52,7 @@ func TestNormalizeClientInfo(t *testing.T) {
 		t.Fatalf("version observation: %+v %v", got, err)
 	}
 	native, err := NormalizeClientInfo(&ClientInfo{ClientType: enum.ClientNative, BrowserName: "Chrome", BrowserVersion: "1", AppName: "Sample"})
-	if err != nil || native.BrowserName != "" || native.BrowserVersion != "" || native.AppName != "Sample" {
+	if err != nil || native.BrowserName != "Chrome" || native.BrowserVersion != "1" || native.AppName != "Sample" {
 		t.Fatalf("native: %+v %v", native, err)
 	}
 }
@@ -71,7 +71,7 @@ func TestMergeClientInfo(t *testing.T) {
 		{"same name new version", &ClientInfo{BrowserVersion: "124"}, ClientInfo{ClientType: enum.ClientWeb, OSName: "Windows", OSVersion: "10", BrowserName: "Chrome", BrowserVersion: "124", DeviceType: enum.DeviceDesktop}},
 		{"browser switch clears version", &ClientInfo{BrowserName: "Safari"}, ClientInfo{ClientType: enum.ClientWeb, OSName: "Windows", OSVersion: "10", BrowserName: "Safari", DeviceType: enum.DeviceDesktop}},
 		{"os switch clears version", &ClientInfo{OSName: "Linux"}, ClientInfo{ClientType: enum.ClientWeb, OSName: "Linux", BrowserName: "Chrome", BrowserVersion: "123", DeviceType: enum.DeviceDesktop}},
-		{"native clears browser", &ClientInfo{ClientType: enum.ClientNative, AppName: "Sample", AppVersion: "2"}, ClientInfo{ClientType: enum.ClientNative, OSName: "Windows", OSVersion: "10", AppName: "Sample", AppVersion: "2", DeviceType: enum.DeviceDesktop}},
+		{"native preserves browser", &ClientInfo{ClientType: enum.ClientNative, AppName: "Sample", AppVersion: "2"}, ClientInfo{ClientType: enum.ClientNative, OSName: "Windows", OSVersion: "10", BrowserName: "Chrome", BrowserVersion: "123", AppName: "Sample", AppVersion: "2", DeviceType: enum.DeviceDesktop}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			before := previous
@@ -83,7 +83,7 @@ func TestMergeClientInfo(t *testing.T) {
 			if !reflect.DeepEqual(got, &tc.want) {
 				t.Fatalf("got %+v want %+v", got, tc.want)
 			}
-			if previous != before || got == &previous || (tc.observed != nil && *tc.observed != observedBefore) {
+			if !reflect.DeepEqual(previous, before) || got == &previous || (tc.observed != nil && !reflect.DeepEqual(*tc.observed, observedBefore)) {
 				t.Fatal("input mutation/alias")
 			}
 		})
@@ -92,10 +92,10 @@ func TestMergeClientInfo(t *testing.T) {
 	if got := MergeClientInfo(native, &ClientInfo{AppName: "B"}); got.AppVersion != "" {
 		t.Fatalf("app version mismatch: %+v", got)
 	}
-	if got := MergeClientInfo(native, &ClientInfo{ClientType: enum.ClientWeb, BrowserName: "Chrome"}); got.AppName != "" || got.AppVersion != "" {
+	if got := MergeClientInfo(native, &ClientInfo{ClientType: enum.ClientWeb, BrowserName: "Chrome"}); got.AppName != "A" || got.AppVersion != "1" {
 		t.Fatalf("web app fields: %+v", got)
 	}
-	if got := MergeClientInfo(nil, &ClientInfo{OSVersion: "1"}); got != nil {
+	if got := MergeClientInfo(nil, &ClientInfo{OSVersion: "1"}); got == nil || got.OSVersion != "1" {
 		t.Fatalf("orphan version: %+v", got)
 	}
 }

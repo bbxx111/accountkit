@@ -20,7 +20,7 @@ meta := user.Meta{IP: trustedIP, RequestID: requestID, ClientInfo: &user.ClientI
 
 新增公开结构字段可能使位置式初始化无法编译，请使用上述字段名写法。内置HTTP默认解析显式头、Client Hints和UA，宿主可通过accountkit.Deps.ClientInfo / enduser.Deps.ClientInfo的func(*http.Request) (*user.ClientInfo,error)替代；回调结果仍规范化校验，ErrInvalidClientInfo为400，任意其他回调错误固定500且不保留原文本。宿主回调也不得记录私密输入。不无条件信任转发UA；BFF明确适配原客户端描述，可信IP仍由ClientIP提供。
 
-只有成功登录（含补全）、重新认证和新轮刷新采集描述。旧客户端可缺省；描述不作为授权或可信设备证明。INITIAL/LATEST与观察时间边界见[README](../README.md#当前会话与客户端描述开发中)，上线和回退见[迁移手册](migrations.md#会话认证依据递增升级开发中)。
+只有成功登录（含补全）、重新认证和新轮刷新采集描述。旧客户端可缺省；描述不作为授权或可信设备证明。INITIAL/LATEST与观察时间边界见[README](../README.md#当前会话与客户端描述开发中)，上线和回退见[迁移手册](migrations.md#会话认证依据初始整合开发中)。
 
 ## 选择入口
 

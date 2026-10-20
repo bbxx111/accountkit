@@ -506,7 +506,7 @@ github.com/bbxx111/accountkit/migrations/TestGenericAuditResultStorageAllowsFutu
 github.com/bbxx111/accountkit/migrations/TestGenericAuditDatabaseTimeDomain
 github.com/bbxx111/accountkit/migrations/TestSessionContextBaselineRejectsPartialVersion
 github.com/bbxx111/accountkit/migrations/TestSessionContextIdentityLookupPlan
-github.com/bbxx111/accountkit/migrations/TestSessionContextMigrationUpgrade
+github.com/bbxx111/accountkit/migrations/TestSessionContextInitialRepeat
 github.com/bbxx111/accountkit/migrations/TestSessionContextPrecheckIgnoresConcurrentOtherSchemaDDL
 github.com/bbxx111/accountkit/migrations/TestSessionContextQueriesIsolation
 github.com/bbxx111/accountkit/migrations/TestSessionContextReadLock
@@ -688,3 +688,8 @@ github.com/bbxx111/accountkit/httpapi/enduser/TestCurrentSessionOpenAPIContract
 github.com/bbxx111/accountkit/user/TestNormalizeClientInfo
 github.com/bbxx111/accountkit/user/TestMergeClientInfo
 github.com/bbxx111/accountkit/httpapi/clientinfo/TestParseClientInfo
+
+github.com/bbxx111/accountkit/migrations/TestSessionContextConsolidatedCatalog
+github.com/bbxx111/accountkit/migrations/TestSessionContextRetiredBaselinesRejected
+github.com/bbxx111/accountkit/internal/migrationcheck/TestPinnedPublishedInitialBaseline
+github.com/bbxx111/accountkit/internal/migrationcheck/TestPinnedLegacyReleaseCannotDisappearFromHistory

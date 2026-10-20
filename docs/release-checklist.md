@@ -4,6 +4,8 @@
 
 ## 当前待办与责任归属
 
+当前开发版本已按用户另行明确要求将会话 0002 合入 0001，初始化仍为 version=1，与已发布 v0.3.0 的 v1 结构不同。下一版本发布说明必须明确旧 v0.3.0 v1 和原会话 v2 均不可直接接管；历史 tag/SQL 保持。新基线验证与限制见[本次整合记录](../openspec/changes/consolidate-session-context-initial-schema/verification.md)，正式发布仍须重新核验最终候选提交。
+
 2026-10-19 盘点时无活动 OpenSpec 变更；随后启动[v0.3.0 发布准备](../openspec/changes/archive/2026-10-20-prepare-v0-3-0-release/proposal.md)。归档任务中唯一未勾选的是[身份策略与登录补全任务 8.5](../openspec/changes/archive/2026-10-15-add-identity-policy-sign-in-completion/tasks.md)，属于集成方真实微信/Apple 联调，继续保留未验证状态。归档不代表产品上线验收完成。
 
 仓库侧 v0.3.0 已发布并完成远端固定版本消费确认；本轮证据见下方版本专属门禁。发布变更仍待单独明确归档：

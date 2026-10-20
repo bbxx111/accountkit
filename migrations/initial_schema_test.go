@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// The frozen initial definition remains first; fresh installations reach the latest version.
+// The authorized consolidation installs the complete schema at version one.
 func TestConsolidatedInitialSchema(t *testing.T) {
 	entries, err := fs.ReadDir(".")
 	if err != nil {
@@ -26,7 +26,7 @@ func TestConsolidatedInitialSchema(t *testing.T) {
 			names = append(names, entry.Name())
 		}
 	}
-	if !slices.Equal(names, []string{"0001_init.down.sql", "0001_init.up.sql", "0002_session_authentication_context.down.sql", "0002_session_authentication_context.up.sql"}) {
+	if !slices.Equal(names, []string{"0001_init.down.sql", "0001_init.up.sql"}) {
 		t.Errorf("unexpected production migrations: %v", names)
 	}
 	cfg, schema := safetyDB(t)
@@ -171,6 +171,10 @@ func TestInitialSchemaPreservesNonAuditCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := old.Exec(ctx, historicalFlowSQL(t)); err != nil {
+		t.Fatal(err)
+	}
+	// Compare the historical base plus the explicitly consolidated session DDL.
+	if _, err := old.Exec(ctx, sessionContextHistoricalSQL(t, "0002_session_authentication_context.up.sql")); err != nil {
 		t.Fatal(err)
 	}
 	// Apply only the authorized index naming change to the historical test

@@ -77,17 +77,13 @@ func checkBaseline(ctx context.Context, db *sql.DB, schema string, src source.Dr
 	return checkSessionContextBaseline(ctx, db, schema, version)
 }
 
-// Version 2 is deliberately not identified by its number alone: withdrawn v2
-// databases can have the current flow name while lacking this migration's DDL.
+// The consolidated version 1 requires the full session context. The previous
+// published v1 and withdrawn v2 are never automatically converted or renumbered.
 // Materialize target-schema catalogs before deparsing: planner reordering must
 // never inspect foreign relations that another instance can concurrently drop.
 func checkSessionContextBaseline(ctx context.Context, db *sql.DB, schema string, version int) error {
 	var complete bool
-	query := `SELECT
- NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=$1 AND table_name='session' AND column_name='authentication_identities_known')
- AND NOT EXISTS(SELECT 1 FROM pg_class r JOIN pg_namespace n ON n.oid=r.relnamespace WHERE n.nspname=$1 AND r.relname IN ('session_authentication_identity','session_client_info'))`
-	if version >= 2 {
-		query = `WITH expected(table_name,column_name,udt_name,is_nullable,max_length,collation_name) AS (VALUES
+	query := `WITH expected(table_name,column_name,udt_name,is_nullable,max_length,collation_name) AS (VALUES
  ('session_authentication_identity','session_id','text','NO',NULL::int,'C'),
  ('session_authentication_identity','identity_id','text','NO',NULL::int,'C'),
  ('session_client_info','session_id','text','NO',NULL::int,'C'),
@@ -131,7 +127,6 @@ func checkSessionContextBaseline(ctx context.Context, db *sql.DB, schema string,
  SELECT 1 FROM scoped_constraints c WHERE c.relname=e.table_name AND c.conname=e.conname AND pg_get_constraintdef(c.oid)=e.definition AND c.convalidated))
  AND EXISTS(SELECT 1 FROM scoped_indexes i WHERE i.table_name='session_authentication_identity' AND i.index_name='idx_session_authentication_identity_identity_id_session_id' AND i.indisvalid AND NOT i.indisunique AND i.indpred IS NULL AND i.indnatts=2 AND pg_get_indexdef(i.oid,1,true)='identity_id' AND pg_get_indexdef(i.oid,2,true)='session_id')
  AND EXISTS(SELECT 1 FROM scoped_indexes i WHERE i.table_name='session' AND i.index_name='idx_session_user_id_id' AND i.indisvalid AND NOT i.indisunique AND i.indpred IS NULL AND i.indnatts=2 AND pg_get_indexdef(i.oid,1,true)='user_id' AND pg_get_indexdef(i.oid,2,true)='id')`
-	}
 	if err := db.QueryRowContext(ctx, query, schema).Scan(&complete); err != nil {
 		return fmt.Errorf("migrations: inspect session context structure: %w", err)
 	}

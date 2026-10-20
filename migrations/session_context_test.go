@@ -15,7 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func TestSessionContextMigrationUpgrade(t *testing.T) {
+func TestSessionContextInitialRepeat(t *testing.T) {
 	cfg, schema := safetyDB(t)
 	initialUp(t, cfg, schema)
 	c := migrationTestConn(t, cfg, schema)
@@ -30,9 +30,9 @@ func TestSessionContextMigrationUpgrade(t *testing.T) {
 		return data
 	}
 	originalData := original()
-	var missing bool
-	if err := c.QueryRow(ctx, `SELECT to_regclass('session_authentication_identity') IS NULL AND to_regclass('session_client_info') IS NULL AND NOT EXISTS(SELECT FROM information_schema.columns WHERE table_schema=$1 AND table_name='session' AND column_name='authentication_identities_known')`, schema).Scan(&missing); err != nil || !missing {
-		t.Fatalf("v1 already has context: %v %v", missing, err)
+	var complete bool
+	if err := c.QueryRow(ctx, `SELECT to_regclass('session_authentication_identity') IS NOT NULL AND to_regclass('session_client_info') IS NOT NULL AND EXISTS(SELECT FROM information_schema.columns WHERE table_schema=$1 AND table_name='session' AND column_name='authentication_identities_known')`, schema).Scan(&complete); err != nil || !complete {
+		t.Fatalf("v1 lacks context: %v %v", complete, err)
 	}
 	if err := Up(ctx, cfg, schema); err != nil {
 		t.Fatal(err)
@@ -43,16 +43,16 @@ func TestSessionContextMigrationUpgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	if known || hash != "1234" {
-		t.Fatalf("upgrade changed credentials/context: %v %s", known, hash)
+		t.Fatalf("repeat changed credentials/context: %v %s", known, hash)
 	}
 	var rows int
 	if err := c.QueryRow(ctx, `SELECT (SELECT count(*) FROM session_authentication_identity)+(SELECT count(*) FROM session_client_info)`).Scan(&rows); err != nil || rows != 0 {
 		t.Fatalf("fabricated context: %d %v", rows, err)
 	}
 	if original() != originalData {
-		t.Fatal("upgrade changed preexisting rows, including credential bytes")
+		t.Fatal("repeat changed preexisting rows, including credential bytes")
 	}
-	assertVersion(t, cfg, schema, 2, false)
+	assertVersion(t, cfg, schema, 1, false)
 	for _, sql := range []string{
 		`INSERT INTO session_authentication_identity VALUES('s_0000000000001','i_0000000000001')`,
 		`INSERT INTO session_client_info(session_id,snapshot_kind,os_name,observe_time) VALUES('s_0000000000001',1,'Synthetic OS',now())`,
@@ -319,9 +319,9 @@ func TestSessionContextBaselineRejectsPartialVersion(t *testing.T) {
 			}
 			before, catalog := renameDataSnapshot(t, c, "sign_in_completion_flow"), migrationCatalog(t, c, schema)
 			if err := Up(ctx, cfg, schema); !errors.Is(err, ErrIncompatibleBaseline) {
-				t.Fatalf("incomplete v2 accepted: %v", err)
+				t.Fatalf("incomplete v1 accepted: %v", err)
 			}
-			assertVersion(t, cfg, schema, 2, false)
+			assertVersion(t, cfg, schema, 1, false)
 			if before != renameDataSnapshot(t, c, "sign_in_completion_flow") || catalog != migrationCatalog(t, c, schema) {
 				t.Fatal("rejection changed data/catalog")
 			}

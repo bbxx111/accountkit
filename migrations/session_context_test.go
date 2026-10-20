@@ -36,9 +36,7 @@ func TestSessionContextInitialRepeat(t *testing.T) {
 	if err := c.QueryRow(ctx, `SELECT to_regclass('session_authentication_identity') IS NOT NULL AND to_regclass('session_client_info') IS NOT NULL AND NOT EXISTS(SELECT FROM information_schema.columns WHERE table_schema=$1 AND table_name='session' AND column_name='authentication_identities_known')`, schema).Scan(&complete); err != nil || !complete {
 		t.Fatalf("v1 lacks context: %v %v", complete, err)
 	}
-	if err := Up(ctx, cfg, schema); err != nil {
-		t.Fatal(err)
-	}
+	initialUp(t, cfg, schema)
 	var hash string
 	if err := c.QueryRow(ctx, `SELECT encode(refresh_token_hash,'hex') FROM session`).Scan(&hash); err != nil {
 		t.Fatal(err)
@@ -64,9 +62,7 @@ func TestSessionContextInitialRepeat(t *testing.T) {
 	}
 	before, catalog := original(), migrationCatalog(t, c, schema)
 	for range 2 {
-		if err := Up(ctx, cfg, schema); err != nil {
-			t.Fatal(err)
-		}
+		initialUp(t, cfg, schema)
 	}
 	if before != original() || catalog != migrationCatalog(t, c, schema) {
 		t.Fatal("repeat Up changed existing data/catalog")
@@ -356,7 +352,7 @@ func TestSessionContextBaselineRejectsPartialVersion(t *testing.T) {
 			if err := Up(ctx, cfg, schema); !errors.Is(err, ErrIncompatibleBaseline) {
 				t.Fatalf("incomplete v1 accepted: %v", err)
 			}
-			assertVersion(t, cfg, schema, 1, false)
+			assertVersion(t, cfg, schema, latestVersion(t), false)
 			if before != renameDataSnapshot(t, c, "sign_in_completion_flow") || catalog != migrationCatalog(t, c, schema) {
 				t.Fatal("rejection changed data/catalog")
 			}

@@ -353,7 +353,7 @@ func (q *Queries) CreateSignInCompletionFlow(ctx context.Context, arg CreateSign
 const createUser = `-- name: CreateUser :one
 
 INSERT INTO user_account (id, state) VALUES ($1, $2)
-RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time
+RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time, extensions, extensions_schema_version, extensions_schema_fingerprint, extensions_revision, extensions_update_time
 `
 
 type CreateUserParams struct {
@@ -377,6 +377,11 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (UserAcc
 		&i.PurgeTime,
 		&i.CreateTime,
 		&i.UpdateTime,
+		&i.Extensions,
+		&i.ExtensionsSchemaVersion,
+		&i.ExtensionsSchemaFingerprint,
+		&i.ExtensionsRevision,
+		&i.ExtensionsUpdateTime,
 	)
 	return i, err
 }
@@ -570,7 +575,7 @@ SET state = $1, freeze_time = $2::timestamptz, freeze_reason = $3::text,
     freeze_actor_subject = $4::text, freeze_actor_username = $5::text,
     update_time = $2::timestamptz
 WHERE id = $6
-RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time
+RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time, extensions, extensions_schema_version, extensions_schema_fingerprint, extensions_revision, extensions_update_time
 `
 
 type FreezeUserParams struct {
@@ -605,6 +610,11 @@ func (q *Queries) FreezeUser(ctx context.Context, arg FreezeUserParams) (UserAcc
 		&i.PurgeTime,
 		&i.CreateTime,
 		&i.UpdateTime,
+		&i.Extensions,
+		&i.ExtensionsSchemaVersion,
+		&i.ExtensionsSchemaFingerprint,
+		&i.ExtensionsRevision,
+		&i.ExtensionsUpdateTime,
 	)
 	return i, err
 }
@@ -807,7 +817,7 @@ func (q *Queries) GetSignInCompletionFlowByTokenDigest(ctx context.Context, toke
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time FROM user_account WHERE id = $1
+SELECT id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time, extensions, extensions_schema_version, extensions_schema_fingerprint, extensions_revision, extensions_update_time FROM user_account WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id string) (UserAccount, error) {
@@ -825,6 +835,42 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (UserAccount, erro
 		&i.PurgeTime,
 		&i.CreateTime,
 		&i.UpdateTime,
+		&i.Extensions,
+		&i.ExtensionsSchemaVersion,
+		&i.ExtensionsSchemaFingerprint,
+		&i.ExtensionsRevision,
+		&i.ExtensionsUpdateTime,
+	)
+	return i, err
+}
+
+const getUserExtensions = `-- name: GetUserExtensions :one
+SELECT id, state, extensions, extensions_schema_version, extensions_schema_fingerprint,
+       extensions_revision, extensions_update_time
+FROM user_account WHERE id = $1
+`
+
+type GetUserExtensionsRow struct {
+	ID                          string
+	State                       enum.UserState
+	Extensions                  []byte
+	ExtensionsSchemaVersion     *string
+	ExtensionsSchemaFingerprint *string
+	ExtensionsRevision          int64
+	ExtensionsUpdateTime        *time.Time
+}
+
+func (q *Queries) GetUserExtensions(ctx context.Context, id string) (GetUserExtensionsRow, error) {
+	row := q.db.QueryRow(ctx, getUserExtensions, id)
+	var i GetUserExtensionsRow
+	err := row.Scan(
+		&i.ID,
+		&i.State,
+		&i.Extensions,
+		&i.ExtensionsSchemaVersion,
+		&i.ExtensionsSchemaFingerprint,
+		&i.ExtensionsRevision,
+		&i.ExtensionsUpdateTime,
 	)
 	return i, err
 }
@@ -1271,7 +1317,7 @@ func (q *Queries) ListSessionClientInfosByUser(ctx context.Context, arg ListSess
 }
 
 const listUsersAdmin = `-- name: ListUsersAdmin :many
-SELECT u.id, u.state, u.display_name, u.freeze_time, u.freeze_reason, u.freeze_actor_subject, u.freeze_actor_username, u.delete_time, u.purge_time, u.create_time, u.update_time FROM user_account u
+SELECT u.id, u.state, u.display_name, u.freeze_time, u.freeze_reason, u.freeze_actor_subject, u.freeze_actor_username, u.delete_time, u.purge_time, u.create_time, u.update_time, u.extensions, u.extensions_schema_version, u.extensions_schema_fingerprint, u.extensions_revision, u.extensions_update_time FROM user_account u
 WHERE ($1::smallint IS NULL OR u.state = $1::smallint)
   AND ($2::bool OR u.state NOT IN (3, 4))
   AND ($3::timestamptz IS NULL OR u.create_time >= $3::timestamptz)
@@ -1345,6 +1391,11 @@ func (q *Queries) ListUsersAdmin(ctx context.Context, arg ListUsersAdminParams) 
 			&i.PurgeTime,
 			&i.CreateTime,
 			&i.UpdateTime,
+			&i.Extensions,
+			&i.ExtensionsSchemaVersion,
+			&i.ExtensionsSchemaFingerprint,
+			&i.ExtensionsRevision,
+			&i.ExtensionsUpdateTime,
 		); err != nil {
 			return nil, err
 		}
@@ -1616,7 +1667,7 @@ func (q *Queries) LockSignInCompletionFlowsForUser(ctx context.Context, userID s
 }
 
 const lockUserByID = `-- name: LockUserByID :one
-SELECT id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time FROM user_account WHERE id = $1 FOR UPDATE
+SELECT id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time, extensions, extensions_schema_version, extensions_schema_fingerprint, extensions_revision, extensions_update_time FROM user_account WHERE id = $1 FOR UPDATE
 `
 
 // 同设备重登前对用户行加锁：并发登录在此串行化，第二个事务等到第一个提交（含会话吊销/新建）
@@ -1636,6 +1687,11 @@ func (q *Queries) LockUserByID(ctx context.Context, id string) (UserAccount, err
 		&i.PurgeTime,
 		&i.CreateTime,
 		&i.UpdateTime,
+		&i.Extensions,
+		&i.ExtensionsSchemaVersion,
+		&i.ExtensionsSchemaFingerprint,
+		&i.ExtensionsRevision,
+		&i.ExtensionsUpdateTime,
 	)
 	return i, err
 }
@@ -1644,6 +1700,12 @@ const purgeUser = `-- name: PurgeUser :execrows
 UPDATE user_account
 SET state = $1, display_name = NULL, freeze_time = NULL, freeze_reason = NULL,
     freeze_actor_subject = NULL, freeze_actor_username = NULL,
+    extensions = '{}'::jsonb, extensions_schema_version = NULL, extensions_schema_fingerprint = NULL,
+    extensions_revision = CASE
+        WHEN extensions_revision > 0 AND extensions_revision < 9223372036854775807
+        THEN extensions_revision + 1 ELSE extensions_revision END,
+    extensions_update_time = CASE
+        WHEN extensions_revision > 0 THEN $2::timestamptz ELSE extensions_update_time END,
     purge_time = $2::timestamptz, update_time = $2::timestamptz
 WHERE id = $3 AND state = $4
 `
@@ -1952,7 +2014,7 @@ const softDeleteUser = `-- name: SoftDeleteUser :one
 UPDATE user_account
 SET state = $1, delete_time = $2::timestamptz, purge_time = $3::timestamptz, update_time = $2::timestamptz
 WHERE id = $4
-RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time
+RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time, extensions, extensions_schema_version, extensions_schema_fingerprint, extensions_revision, extensions_update_time
 `
 
 type SoftDeleteUserParams struct {
@@ -1983,6 +2045,11 @@ func (q *Queries) SoftDeleteUser(ctx context.Context, arg SoftDeleteUserParams) 
 		&i.PurgeTime,
 		&i.CreateTime,
 		&i.UpdateTime,
+		&i.Extensions,
+		&i.ExtensionsSchemaVersion,
+		&i.ExtensionsSchemaFingerprint,
+		&i.ExtensionsRevision,
+		&i.ExtensionsUpdateTime,
 	)
 	return i, err
 }
@@ -1991,7 +2058,7 @@ const undeleteUser = `-- name: UndeleteUser :one
 UPDATE user_account
 SET state = $1, delete_time = NULL, purge_time = NULL, update_time = $2::timestamptz
 WHERE id = $3
-RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time
+RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time, extensions, extensions_schema_version, extensions_schema_fingerprint, extensions_revision, extensions_update_time
 `
 
 type UndeleteUserParams struct {
@@ -2016,6 +2083,11 @@ func (q *Queries) UndeleteUser(ctx context.Context, arg UndeleteUserParams) (Use
 		&i.PurgeTime,
 		&i.CreateTime,
 		&i.UpdateTime,
+		&i.Extensions,
+		&i.ExtensionsSchemaVersion,
+		&i.ExtensionsSchemaFingerprint,
+		&i.ExtensionsRevision,
+		&i.ExtensionsUpdateTime,
 	)
 	return i, err
 }
@@ -2025,7 +2097,7 @@ UPDATE user_account
 SET state = $1, freeze_time = NULL, freeze_reason = NULL, freeze_actor_subject = NULL, freeze_actor_username = NULL,
     update_time = $2::timestamptz
 WHERE id = $3
-RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time
+RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time, extensions, extensions_schema_version, extensions_schema_fingerprint, extensions_revision, extensions_update_time
 `
 
 type UnfreezeUserParams struct {
@@ -2050,6 +2122,11 @@ func (q *Queries) UnfreezeUser(ctx context.Context, arg UnfreezeUserParams) (Use
 		&i.PurgeTime,
 		&i.CreateTime,
 		&i.UpdateTime,
+		&i.Extensions,
+		&i.ExtensionsSchemaVersion,
+		&i.ExtensionsSchemaFingerprint,
+		&i.ExtensionsRevision,
+		&i.ExtensionsUpdateTime,
 	)
 	return i, err
 }
@@ -2198,7 +2275,7 @@ func (q *Queries) UpdateSignInCompletionFlow(ctx context.Context, arg UpdateSign
 
 const updateUserDisplayName = `-- name: UpdateUserDisplayName :one
 UPDATE user_account SET display_name = $2, update_time = now() WHERE id = $1
-RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time
+RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time, extensions, extensions_schema_version, extensions_schema_fingerprint, extensions_revision, extensions_update_time
 `
 
 type UpdateUserDisplayNameParams struct {
@@ -2221,6 +2298,66 @@ func (q *Queries) UpdateUserDisplayName(ctx context.Context, arg UpdateUserDispl
 		&i.PurgeTime,
 		&i.CreateTime,
 		&i.UpdateTime,
+		&i.Extensions,
+		&i.ExtensionsSchemaVersion,
+		&i.ExtensionsSchemaFingerprint,
+		&i.ExtensionsRevision,
+		&i.ExtensionsUpdateTime,
+	)
+	return i, err
+}
+
+const updateUserExtensions = `-- name: UpdateUserExtensions :one
+UPDATE user_account
+SET extensions = $1::jsonb,
+    extensions_schema_version = $2::text,
+    extensions_schema_fingerprint = $3::text,
+    extensions_revision = extensions_revision + 1,
+    extensions_update_time = $4::timestamptz, update_time = $4::timestamptz
+WHERE id = $5 AND extensions_revision = $6::bigint AND state = $7
+RETURNING id, state, extensions, extensions_schema_version, extensions_schema_fingerprint,
+          extensions_revision, extensions_update_time
+`
+
+type UpdateUserExtensionsParams struct {
+	Extensions                  []byte
+	ExtensionsSchemaVersion     string
+	ExtensionsSchemaFingerprint string
+	Now                         time.Time
+	ID                          string
+	ExpectedRevision            int64
+	ActiveState                 enum.UserState
+}
+
+type UpdateUserExtensionsRow struct {
+	ID                          string
+	State                       enum.UserState
+	Extensions                  []byte
+	ExtensionsSchemaVersion     *string
+	ExtensionsSchemaFingerprint *string
+	ExtensionsRevision          int64
+	ExtensionsUpdateTime        *time.Time
+}
+
+func (q *Queries) UpdateUserExtensions(ctx context.Context, arg UpdateUserExtensionsParams) (UpdateUserExtensionsRow, error) {
+	row := q.db.QueryRow(ctx, updateUserExtensions,
+		arg.Extensions,
+		arg.ExtensionsSchemaVersion,
+		arg.ExtensionsSchemaFingerprint,
+		arg.Now,
+		arg.ID,
+		arg.ExpectedRevision,
+		arg.ActiveState,
+	)
+	var i UpdateUserExtensionsRow
+	err := row.Scan(
+		&i.ID,
+		&i.State,
+		&i.Extensions,
+		&i.ExtensionsSchemaVersion,
+		&i.ExtensionsSchemaFingerprint,
+		&i.ExtensionsRevision,
+		&i.ExtensionsUpdateTime,
 	)
 	return i, err
 }

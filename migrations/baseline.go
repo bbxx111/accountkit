@@ -74,7 +74,10 @@ func checkBaseline(ctx context.Context, db *sql.DB, schema string, src source.Dr
 	if !complete {
 		return fmt.Errorf("%w: schema %s version %d has an incomplete or retired structure", ErrIncompatibleBaseline, schema, version)
 	}
-	return checkSessionContextBaseline(ctx, db, schema, version)
+	if err := checkSessionContextBaseline(ctx, db, schema, version); err != nil {
+		return err
+	}
+	return checkUserExtensionsBaseline(ctx, db, schema, version)
 }
 
 // The consolidated version 1 requires the full session context. The previous

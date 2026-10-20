@@ -1,5 +1,21 @@
 # 功能与兼容对照
 
+## 可选账号扩展资料的 Go 接口
+
+新增 `Config.UserExtensions`、`user.Deps.UserExtensions`、`user.ExtensionsConfig`、
+`user.ExtensionsView`、`user.ExtensionsPatch` 与 `Service.GetExtensions/PatchExtensions`。
+nil 默认保持旧行为；既有 enduser/admin DTO、适配器必需接口、JWT、内省及
+`BatchPublicProfiles` 不增加扩展字段。不要直接序列化新增列后的 sqlc 行。
+构造和 `Auth.Config()` 均复制 Schema 字节；服务只读复用其构造时编译的策略。
+
+新增错误为 `ErrExtensionsNotConfigured`、`ErrExtensionsConflict`、
+`ErrExtensionsSchemaMismatch`；参数/校验错误支持 `ErrInvalidArgument`，
+账号状态拒绝沿用 `ErrInvalidState`。结构化校验错误是
+`ExtensionsValidationError`，其 `Violations` 最多包含 16 条安全的 Path/Rule。
+未新增 HTTP 映射；宿主自行授权并将领域错误转换为自身协议。
+数据库错误使用固定安全消息，不保留可能含整行资料的 PostgreSQL 错误详情。
+提交结果不确定时重新读取核对；revision 冲突不得自动重试覆盖。
+
 固定兼容基线包含 130 个文件，原始文件清单与 SHA-256 见 `tests/testdata/source-baseline/manifest.json`；该清单用于追溯冻结快照，不表示当前文件名和内容必须与历史快照相同。当前根包名为 `accountkit`，导入路径为 `github.com/bbxx111/accountkit`。
 
 ## 数据库运行契约修复
@@ -11,6 +27,22 @@
 - **审计分页：** 本地 Reader 只为最终页读取完整事件，`Page.FlowLinks` 提供当前页需要的去重流程归属，不应当作账号全部历史流程清单使用。公开类型、排序游标、动作范围、source/namespace 及管理面独立复核保持；证明查找独立于页面动作和游标范围。外部 Reader 的契约不变。
 
 当前测试、执行计划和未验证项见[验收记录](../openspec/changes/archive/2026-10-20-harden-database-runtime/verification.md)。
+
+## Schema 约束的用户扩展资料补丁
+
+扩展资料由宿主通过 Go 接口显式使用，不自动进入既有账号或认证 HTTP 响应。宿主负责目标账号与字段授权，包含父对象删除和数组整体替换；Schema 的 `readOnly`、`writeOnly`、`default` 等仅是注解，不实施权限或填充值。
+
+补丁遵循 RFC 7396，顶层必须是对象。对象成员的 `null` 删除该成员；数组整体替换，其中及其对象成员不能保留 `null`。递归对象补丁保留未提及成员：对已有对象提交 `{}` 保留内容，对缺失对象提交 `{}` 则创建空对象并检查子字段 `required`。删除父对象可以删除整个子树；删除不存在但已经声明的属性无变化。未知属性即使以 `null` 删除也拒绝，数组内对象的字段同样检查声明目录。合并后始终验证完整资料，包括未改动部分和条件约束。
+
+Schema 固定为 Draft 2020-12 的受支持范围：主结构树每层对象声明固定 `properties` 与 `additionalProperties: false`，节点具有单一明确类型；数组声明单一 `items`。条件、组合及其本地复用定义可使用仅含约束或布尔的 Schema，但只约束主树已有字段，不引入新字段或改变结构类型。仅支持本文件 `$defs` 中无环引用，不加载远程或本地文件资源；未知关键字、未知 format、动态属性、类型联合和嵌套 `$id` 在初始化时拒绝。format 为 `date`、`date-time`、`email`、`uri`、`uuid`，均启用断言；pattern 使用 Go `regexp` 子集。
+
+Schema 原始输入限 64 KiB、32 层；展开后的主树属性声明限 128，验证节点限 1024。同一属性的条件约束不增加声明计数，主树不同位置复用的结构按各位置计数。补丁原始输入与规范化最终资料分别限 16 KiB、深度 8、512 个值节点（含根和容器）。重复键、尾随文档、非法 Unicode、NUL 和 PostgreSQL JSONB 无法存储的数字均拒绝；资料不保存 JSON `null`。数字精确处理，`1`、`1.0`、`1e0` 按相同值比较。
+
+Schema 指纹为包含注解的规范化定义 SHA-256；同一版本改定义也会改变指纹。内容无变化不推进扩展元数据。既有资料读取只检查通用存储边界；普通更新要求已绑定的版本与指纹一致，不自动转换历史资料。Schema 升级须协调停写并另行评审完整资料迁移。详细契约与本次实际验证见[变更设计](../openspec/changes/add-schema-validated-user-extensions/design.md)及[验收记录](../openspec/changes/add-schema-validated-user-extensions/verification.md)。
+
+冻结、解冻、注销冷静期与恢复均不改变扩展内容及元数据。最终匿名化在原事务中清空扩展和 Schema 标识，已使用资料推进 revision、记录清理时间；BIGINT 上限保持原值但不阻断清理，从未使用的空资料保留 revision 0 和 NULL 时间。撤掉配置或更换不兼容 Schema 均不阻断清理；宿主回调失败整体回滚，已 DELETED 重复维护不再推进。
+
+新增扩展路径的校验器及存储错误不会保留能恢复原始资料的底层错误链，审计只保存 Schema 标识和 revision 等受控事实，不保存资料值、补丁、属性名或 Schema 全文。既有导入和匿名化错误的诊断 cause 契约保持；宿主匿名化回调不得在 error 中拼接资料或隐私数据，维护日志可能记录该错误。
 
 ## 会话认证依据与客户端描述
 
@@ -168,6 +200,8 @@ E/R 环境键沿宿主前缀，R 仅 PHONE/EMAIL any-of；省略 R 默认二选�
 `ImportAccounts(ctx, tx, accounts)` 只用于受控停写工具，事务来自 schema 匹配的认证连接池。库不另开连接、不提交、不回滚；调用者负责空目标核验、批次记录、重复执行、业务引用迁移和最终提交。发生任何错误时必须回滚整个批次，不继续提交部分成功数据。
 
 `user.ImportAccount` 保留合法 `u_` ID 和原创建/更新时间；账号和锚点创建/更新时间必需非零，允许历史时钟回退，不强制更新时间晚于创建时间。ACTIVE 至少包含一个 `user.ImportAnchor` 的 PHONE/EMAIL 合法目标，删除/匿名化时间为空；DELETED 只允许无显示名、无锚点的匿名墓碑，可保留删除/匿名化时间，不重新抢占旧地址。FROZEN、PENDING_DELETION、第三方身份和非法目标拒绝。归一化和版本化加密/摘要沿用库配置；重复 ID 或归一化身份冲突失败，不合并、不静默跳过。
+
+普通创建和 ACTIVE/DELETED 导入均使用空扩展默认值：`{}`、revision 0、NULL Schema 标识与扩展更新时间。`ImportAccount` 不接收扩展资料；ACTIVE 导入提交后可另调 `PatchExtensions`，DELETED 墓碑拒绝写入。导入和补丁是两个独立调用，不提供同批事务原子性保证。
 
 导入先校验并归一化整批输入，再在写入前对整批 PHONE/EMAIL subject 按全部摘要版本一次性排序加事务级锁，因此任一账号的输入错误会先于任何数据库写入或冲突返回；误并行的批次即使身份顺序相反也只会排队，后到者得到身份冲突而不是死锁。锁持有到调用者事务结束，同一事务内的其他写入照常进行。
 

@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// The authorized consolidation installs the complete schema at version one.
+// The published initial schema and its production increments install seven business tables.
 func TestConsolidatedInitialSchema(t *testing.T) {
 	entries, err := fs.ReadDir(".")
 	if err != nil {
@@ -26,7 +26,7 @@ func TestConsolidatedInitialSchema(t *testing.T) {
 			names = append(names, entry.Name())
 		}
 	}
-	if !slices.Equal(names, []string{"0001_init.down.sql", "0001_init.up.sql"}) {
+	if !slices.Equal(names, []string{"0001_init.down.sql", "0001_init.up.sql", "0002_add_user_extensions.down.sql", "0002_add_user_extensions.up.sql"}) {
 		t.Errorf("unexpected production migrations: %v", names)
 	}
 	cfg, schema := safetyDB(t)

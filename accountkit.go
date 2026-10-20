@@ -124,7 +124,8 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 	cfg.EnabledIdentityKinds = slices.Clone(cfg.EnabledIdentityKinds)
 	cfg.RequiredIdentityKinds = slices.Clone(cfg.RequiredIdentityKinds)
 	cfg.applyDefaults()
-	if err := cfg.Validate(); err != nil {
+	cfg.UserExtensions = cloneUserExtensionsConfig(cfg.UserExtensions)
+	if err := cfg.validateBase(); err != nil {
 		return nil, err
 	}
 	if deps.Pool == nil {
@@ -210,6 +211,7 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 		})
 	}
 	users, err := user.NewService(user.Deps{
+		UserExtensions:              cfg.UserExtensions,
 		SignInCompletionFlowContext: cfg.Schema,
 		EnabledIdentityKinds:        cfg.EnabledIdentityKinds, RequiredIdentityKinds: cfg.RequiredIdentityKinds,
 		Repo: user.NewRepo(deps.Pool), Codes: a.codes, Revocation: a.revocation, Grace: a.grace,
@@ -337,6 +339,7 @@ func (a *Auth) Config() Config {
 	c := a.cfg
 	c.EnabledIdentityKinds = slices.Clone(c.EnabledIdentityKinds)
 	c.RequiredIdentityKinds = slices.Clone(c.RequiredIdentityKinds)
+	c.UserExtensions = cloneUserExtensionsConfig(c.UserExtensions)
 	return c
 }
 

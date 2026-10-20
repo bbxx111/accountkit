@@ -17,6 +17,7 @@ import (
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
 	"github.com/bbxx111/accountkit/internal/auditconfig"
+	"github.com/bbxx111/accountkit/internal/userextensions"
 	"github.com/bbxx111/accountkit/observability"
 	"github.com/bbxx111/accountkit/phone"
 	"github.com/bbxx111/accountkit/pii"
@@ -42,6 +43,7 @@ const maxDeviceField = 64
 
 // Deps 是 Service 的依赖。
 type Deps struct {
+	UserExtensions *ExtensionsConfig
 	// SignInCompletionFlowContext 可补充宿主稳定实例标识；内置数据库/Redis/JWT域仍自动绑定。
 	SignInCompletionFlowContext string
 	// Deprecated: use SignInCompletionFlowContext. Used only when that field is empty.
@@ -94,6 +96,7 @@ type Deps struct {
 
 // Service 持有用户域的全部业务规则。
 type Service struct {
+	extensions  *userextensions.Policy
 	observer    *observability.Recorder
 	authAudit   *audit.AuthenticationRecorder
 	d           Deps
@@ -113,6 +116,15 @@ func (s *Service) IdentityPolicy() *IdentityPolicy {
 // 和 accountkit/<schema>/resources；池为空或首项为空时回退到 account。
 // 这些默认值只承诺当前数据库内一致，跨数据库汇聚审计时须显式提供稳定且可区分的二者。
 func NewService(d Deps) (*Service, error) {
+	d.UserExtensions = cloneExtensionsConfig(d.UserExtensions)
+	var extensions *userextensions.Policy
+	if d.UserExtensions != nil {
+		var err error
+		extensions, err = userextensions.Compile(d.UserExtensions.SchemaVersion, d.UserExtensions.Schema)
+		if err != nil {
+			return nil, ErrInvalidArgument
+		}
+	}
 	var providers []enum.IdentityKind
 	if d.WeChat != nil {
 		providers = append(providers, enum.IdentityWeChat)
@@ -208,7 +220,7 @@ func NewService(d Deps) (*Service, error) {
 		return nil, err
 	}
 	flowContext, flowPolicy := signInCompletionFlowConfiguration(d, policy)
-	return &Service{observer: observer, authAudit: mapper, d: d, policy: policy, flowContext: flowContext, flowPolicy: flowPolicy}, nil
+	return &Service{extensions: extensions, observer: observer, authAudit: mapper, d: d, policy: policy, flowContext: flowContext, flowPolicy: flowPolicy}, nil
 }
 
 // Device 是客户端设备身份（X-Device-Id / X-Device-Name）。

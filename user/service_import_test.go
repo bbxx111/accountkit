@@ -176,6 +176,11 @@ func TestImportAccounts(t *testing.T) {
 	if err != nil || len(tombAnchors) != 0 {
 		t.Fatal("tombstone claimed login anchors", err)
 	}
+	for _, row := range []db.UserAccount{got, tomb} {
+		if string(row.Extensions) != "{}" || row.ExtensionsSchemaVersion != nil || row.ExtensionsSchemaFingerprint != nil || row.ExtensionsRevision != 0 || row.ExtensionsUpdateTime != nil {
+			t.Fatal("import must preserve uninitialized extension defaults")
+		}
+	}
 	// 调用者提交前新连接不可见，证明导入没有自行提交或另开连接。
 	var visible int
 	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM user_account`).Scan(&visible); err != nil || visible != 0 {
@@ -193,6 +198,34 @@ func TestImportAccounts(t *testing.T) {
 	}
 	if _, err := db.New(f.pool).GetUserByID(ctx, active.ID); err != nil {
 		t.Fatal("caller could not commit imported account", err)
+	}
+}
+
+func TestUserExtensionsImportPostCommit(t *testing.T) {
+	f, _ := extensionsFixture(t)
+	ctx := context.Background()
+	active := importAccount(t, "synthetic-import-active@example.com")
+	deleted := importAccount(t, "synthetic-import-deleted@example.com")
+	deleted.State, deleted.DisplayName, deleted.Anchors = enum.UserDeleted, "", nil
+	dt := active.CreateTime
+	deleted.DeleteTime, deleted.PurgeTime = &dt, &dt
+	tx := importTx(t, f.pool)
+	if err := f.svc.ImportAccounts(ctx, tx, []user.ImportAccount{active, deleted}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	z := int64(0)
+	if _, err := f.svc.PatchExtensions(ctx, active.ID, user.ExtensionsPatch{Document: []byte(`{"theme":"synthetic-import-private"}`), ExpectedRevision: &z}, meta1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.PatchExtensions(ctx, deleted.ID, user.ExtensionsPatch{Document: []byte(`{"theme":"synthetic-import-private"}`), ExpectedRevision: &z}, meta1); !errors.Is(err, user.ErrInvalidState) {
+		t.Fatal("deleted import must reject extension writes", err)
+	}
+	row, err := f.repo.Q().GetUserByID(ctx, deleted.ID)
+	if err != nil || string(row.Extensions) != "{}" || row.ExtensionsRevision != 0 || row.ExtensionsSchemaVersion != nil || row.ExtensionsUpdateTime != nil {
+		t.Fatal("deleted import changed defaults", err)
 	}
 }
 func TestImportAccountsValidation(t *testing.T) {

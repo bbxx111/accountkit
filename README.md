@@ -1,5 +1,71 @@
 # accountkit
 
+### 可选账号扩展资料（Go 接口）
+
+宿主可在 `New` 前设置 `Config.UserExtensions`；nil 关闭接口且不删除已有资料。
+Schema 由宿主读取或嵌入，没有文件路径环境变量或 accountsvc 自动加载。
+完整可编译示例见 [examples/embedded/extensions.go](examples/embedded/extensions.go)：
+
+```go
+cfg.UserExtensions = &user.ExtensionsConfig{
+    SchemaVersion: "profile-v1",
+    Schema: json.RawMessage(`{
+      "$schema":"https://json-schema.org/draft/2020-12/schema",
+      "type":"object",
+      "properties":{
+        "theme":{"type":"string","enum":["light","dark"]},
+        "preferences":{"type":"object","properties":{
+          "newsletter":{"type":"boolean"}
+        },"additionalProperties":false}
+      },
+      "additionalProperties":false
+    }`),
+}
+// 完成宿主授权后，读取最新 revision，再由宿主决定补丁。
+current, err := auth.Users().GetExtensions(ctx, userID)
+if err != nil { return err }
+updated, err := auth.Users().PatchExtensions(ctx, userID, user.ExtensionsPatch{
+    Document: json.RawMessage(`{"theme":"dark"}`),
+    ExpectedRevision: &current.Revision,
+}, user.Meta{RequestID: requestID})
+if errors.Is(err, user.ErrExtensionsConflict) {
+    // 重新读取并重新决定修改；不能自动覆盖或盲目重放。
+    return err
+}
+if err != nil { return err }
+_ = updated
+```
+
+`expected_revision` 必填，0 是合法初值；同 revision 的实际并发修改最多成功一次。
+补丁采用 RFC 7396：null 删除属性，数组整体替换，未知属性（包括 null 删除）拒绝。
+无变化保留原 revision、Schema 标识和时间，不产生修改审计。
+读取仅允许 ACTIVE/FROZEN，普通写入仅允许 ACTIVE；冷静期不可读取。
+首次实际修改绑定 Schema version 和规范化 SHA-256 指纹，随后不匹配时返回
+`ErrExtensionsSchemaMismatch`，空回 `{}` 也保留绑定。Schema 升级需协调停写并通过另行评审的数据迁移完成。
+提交错误可能有不确定结果，宿主须重新读取核对。
+
+冻结、解冻、注销冷静期及恢复均保留扩展内容、Schema 标识、revision 和扩展更新时间。
+最终 purge 在既有匿名化事务中清空资料与 Schema 标识，不依赖当前扩展配置或 Schema；
+已使用资料推进 revision 并记录清理时间，达到 BIGINT 上限时保持上限仍完成清理。
+从未写入的空资料保持 revision 0 与未初始化时间；重复维护已清理账号不再推进。
+宿主匿名化回调失败会一并回滚扩展清理。
+
+Schema 使用 Draft 2020-12，根必须接受 `{}`，每层对象固定 properties 和
+additionalProperties=false；支持受限本地 `$defs`/`$ref`、标准类型、条件组合和
+date/date-time/email/uri/uuid format。资源边界及关键字清单见
+[设计说明](openspec/changes/add-schema-validated-user-extensions/design.md)。Schema 原始上限
+64 KiB，补丁原始内容和规范化资料各限 16 KiB；资料最多 8 层、512 个值节点。
+数值精确处理且按数学值比较，拒绝重复键、非法 Unicode、NUL 及存储 null。
+
+宿主负责目标账号与属性授权，包括删除和父对象替换；readOnly/writeOnly 只作注解。
+扩展没有字段级加密，不得存放验证码、令牌、密钥或身份联系方式明文副本。
+现有 HTTP 响应、公开资料、JWT 和内省均不附带扩展，也不新增内置路由或认证查询。
+成功审计只记录目标、Schema 标识和 revision，actor 为 SERVICE/accountkit-host；
+`Meta` 仅取 request_id。参数错误支持 `errors.Is(err, user.ErrInvalidArgument)`，
+`ExtensionsValidationError` 最多提供 16 条受控路径/规则，不含原始值。
+新增扩展接口的存储错误不保留可能含资料内容的底层错误链；审计和日志不记录资料值、补丁、未知属性名或 Schema 全文。
+既有匿名化回调错误仍保留诊断原因并可能进入维护日志，宿主回调不得在错误中携带资料值或其他隐私数据。
+
 可嵌入宿主服务的 C 端账号体系（多身份账号、JWT + 轮换 refresh 会话、软删除与匿名化、管理面）。
 本 README 覆盖配置、密码学原语、迁移、生命周期、C 端 HTTP 面（登录、会话、IdP、身份绑定）、账号注销/恢复/purge、审计落库与密钥回填、管理面。模块路径为 `github.com/bbxx111/accountkit`，根包名为 `accountkit`。宿主装配示例见 `examples/embedded`。
 
@@ -73,6 +139,8 @@ HTTP 新增 `POST /users:sendSignInCompletionCode`（`{sign_in_completion_token,
 新建宿主关系时可调用 `auth.Users().WithActiveUsers(ctx, ids, func(tx pgx.Tx) error { ... })`，要求非空账号集合及非 nil 回调；宿主空批次直接跳过。先取得按 ID 排序的账号锁，再取得业务资源锁。回调只能用传入事务，不得自行提交或回滚；未知、非法或非 ACTIVE 账号在回调前拒绝。`BatchPublicProfiles` 和这些事务方法只提供 Go 契约，不新增任意账号资料或导入 HTTP 入口。
 
 离线导入须停写并核验目标库，使用 schema 匹配连接池创建的事务传入 `ImportAccounts`。`user.ImportAccount` 保留账号原 ID/时间，创建/更新时间必需非零且允许历史时钟回退。ACTIVE 必须有 PHONE/EMAIL 锚点，无删除/匿名化时间；DELETED 墓碑无锚点和显示名。库复用归一化、密文与摘要规则，重复账号或身份冲突直接失败，不合并、不发码、不创建会话、不签令牌、不调用 IdP。错误消息脱敏，调用者可用 `errors.Is`/`errors.As` 区分冲突和数据库原因，解包后的诊断也须脱敏。调用者负责批次记录、业务引用迁移和失败后的全事务回滚，详见[导入边界](docs/compatibility.md#离线账号导入)。
+
+普通创建和 ACTIVE/DELETED 导入均初始化为空扩展（`{}`、revision 0、NULL Schema 标识及扩展时间）。`ImportAccount` 不接收扩展；ACTIVE 导入提交后可另调 `PatchExtensions`，DELETED 拒绝写入。两个调用不承诺同批事务原子性。
 
 ### 会话过期语义
 

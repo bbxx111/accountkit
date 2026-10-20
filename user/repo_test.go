@@ -22,6 +22,53 @@ import (
 	"github.com/bbxx111/accountkit/user/db"
 )
 
+func TestRepoUserExtensions(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	q := user.NewRepo(pool).Q()
+	id, _ := ids.New(ids.User)
+	if _, err := q.CreateUser(ctx, db.CreateUserParams{ID: id, State: enum.UserActive}); err != nil {
+		t.Fatal(err)
+	}
+	initial, err := q.GetUserExtensions(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(initial.Extensions) != "{}" || initial.ExtensionsRevision != 0 || initial.ExtensionsSchemaVersion != nil || initial.ExtensionsSchemaFingerprint != nil || initial.ExtensionsUpdateTime != nil {
+		t.Fatal("new account extension metadata initialized")
+	}
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	args := db.UpdateUserExtensionsParams{ID: id, ActiveState: enum.UserActive, ExpectedRevision: 0, Extensions: []byte(`{"large":9007199254740993}`), ExtensionsSchemaVersion: "v1", ExtensionsSchemaFingerprint: strings.Repeat("a", 64), Now: now}
+	got, err := q.UpdateUserExtensions(ctx, args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != id || got.State != enum.UserActive || string(got.Extensions) != `{"large": 9007199254740993}` || got.ExtensionsRevision != 1 || got.ExtensionsSchemaVersion == nil || *got.ExtensionsSchemaVersion != "v1" || got.ExtensionsSchemaFingerprint == nil || *got.ExtensionsSchemaFingerprint != strings.Repeat("a", 64) || got.ExtensionsUpdateTime == nil || !got.ExtensionsUpdateTime.Equal(now) {
+		t.Fatalf("extension roundtrip: %+v", got)
+	}
+	var accountTime time.Time
+	if err := pool.QueryRow(ctx, "SELECT update_time FROM user_account WHERE id=$1", id).Scan(&accountTime); err != nil || !accountTime.Equal(now) {
+		t.Fatalf("account timestamp: %v", err)
+	}
+	if _, err := q.UpdateUserExtensions(ctx, args); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("stale CAS: %v", err)
+	}
+	args.ExpectedRevision = 1
+	if _, err := pool.Exec(ctx, "UPDATE user_account SET state=$2 WHERE id=$1", id, enum.UserFrozen); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.UpdateUserExtensions(ctx, args); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("frozen account updated: %v", err)
+	}
+	args.ID, _ = ids.New(ids.User)
+	if _, err := q.UpdateUserExtensions(ctx, args); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("missing account updated: %v", err)
+	}
+	if after, err := q.GetUserExtensions(ctx, id); err != nil || after.ExtensionsRevision != 1 || string(after.Extensions) != string(got.Extensions) || after.ExtensionsUpdateTime == nil || !after.ExtensionsUpdateTime.Equal(now) {
+		t.Fatalf("failed CAS changed data/metadata: %+v %v", after, err)
+	}
+}
+
 // testPool 返回连接到随机 schema、已迁移的池；无 DSN 则跳过。供本包所有集成测试复用。
 func testPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()

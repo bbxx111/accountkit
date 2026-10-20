@@ -90,23 +90,23 @@ HTTP 换绑 SHALL 使用相对路由 POST /users/me/identities/{identity}:replac
 
 ### Requirement: 保留当前会话并撤销其他会话
 
-成功换绑 SHALL 继续撤销同一账号其余会话并标记 IDENTITY_REPLACED 原因。当前会话 SHALL 仅在认证依据已知且不含被替换身份时保留，保留时其 refresh token、auth_time 和来源集合不变；来源包含旧身份或来源未知时 SHALL 同时撤销当前会话。新目标的 BIND 证明 SHALL 不自动替换认证依据，换绑成功仍返回原新身份资源且不发 token pair。正常依赖下，其余会话的后续 refresh（含宽限重试）、access 和内省 SHALL 受撤销限制。Redis 吊销写入/查询失败 SHALL 沿用既有 fail-open 与告警，不能宣称所有旧 access 立即失效，也不能将已提交换绑伪装为回滚。
+成功换绑 SHALL 继续撤销同账号其余会话并标记 IDENTITY_REPLACED。当前会话 SHALL 仅在非空认证来源不含旧身份时保留，其refresh、auth_time与来源不变；含旧身份则同时撤销。当前来源缺失 SHALL 在身份修改前作为内部不变量错误拒绝，不能解释为unknown、空集合安全或以新证明修补。BIND证明 SHALL 不改变来源，成功仍返回新身份资源而不发pair。被撤销会话的refresh含宽限重试 SHALL 受数据库限制；正常Redis下access/内省受吊销限制，Redis故障保持原fail-open/告警，不伪装已提交事务回滚。
 
 #### Scenario: 多设备换绑
-- **WHEN** 账号有多个会话并由其中一个完成换绑
-- **THEN** 其他会话不能继续刷新；当前会话仅在来源已知且不依赖旧身份时继续访问和刷新，来源未知或依赖旧身份时也被撤销；正常 Redis 下被撤销会话的 access 和内省无效
+- **WHEN** 账号多个会话中一个完成换绑
+- **THEN** 其他会话不能刷新；当前非空来源不含旧身份时保留，否则撤销；当前来源缺失则整个换绑拒绝并不改身份/会话
 
 #### Scenario: 提交后吊销缓存失败
-- **WHEN** 身份与会话事务已提交，随后 Redis 吊销集写入失败
-- **THEN** 换绑保持成功，其他 refresh 仍受数据库撤销约束，记录安全警告并保持现有 access fail-open 边界
+- **WHEN** 数据库事务提交后Redis吊销写入失败
+- **THEN** 换绑仍成功，refresh受数据库限制，记录告警并保持既有access故障边界
 
 #### Scenario: 用保留身份重新认证后换绑
-- **WHEN** 当前会话先通过邮箱 B 成功重新认证，来源替换为 B，随后成功换绑手机号 A
-- **THEN** 当前会话保持来源 B 和原 refresh，其他会话仍按原换绑规则撤销
+- **WHEN** 当前会话先通过邮箱B重新认证，随后换绑手机号A
+- **THEN** 当前来源B和refresh保持，其他会话仍撤销
 
 #### Scenario: BIND 证明不能保住旧来源会话
-- **WHEN** 当前来源为被替换的手机号 A，用户提交新手机号 C 的有效 BIND 码完成换绑
-- **THEN** 当前会话撤销，不将来源自动转移到 C；客户端通过新登录取得新会话
+- **WHEN** 当前来源为旧手机号A，用新手机号C的BIND码完成换绑
+- **THEN** 当前会话撤销，不把来源转移到C；需重新登录取得会话
 
 ### Requirement: 一次性码与重试边界明确
 

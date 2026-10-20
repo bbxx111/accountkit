@@ -23,3 +23,7 @@
 ## Migration Plan
 
 仅修改源码、测试与说明，不运行现有实例的 Up/Down 或清库。验证仅使用本任务创建的一次性 PostgreSQL/Redis。后续发布必须明确此次基线变更并重新执行最终候选门禁。
+
+## Successor reconciliation
+
+上述决定和 catalog 等价说明保留为原 b414fef 实施阶段的历史。后继 `simplify-session-context` 的单份 JSONB、无 known 标记和前一整合基线拒绝已实现。两变更均未归档，本轮按依赖顺序同步后，将本变更重叠的两条 delta 与后继定义对齐，防止后续同步遗漏新场景或反向覆盖；不改原提交、SQL、代码或原始验收结果。当前领域与存储契约以已同步主规格及后继设计为准。

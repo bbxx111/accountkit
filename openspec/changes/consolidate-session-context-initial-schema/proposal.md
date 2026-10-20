@@ -22,3 +22,7 @@
 ## Impact
 
 涉及 migrations、internal/migrationcheck、生成代码、默认 schema 集成测试、迁移/兼容/发布指南及 AGENTS.md。会话业务、HTTP、JWT、refresh、密文及身份撤销语义保持。此次不提交、推送、合并、发布或归档，不操作现有数据库。
+
+## Successor reconciliation
+
+以上描述本变更在 b414fef 的原始整合范围。随后已实现的 `simplify-session-context` 继续移除来源标记和双快照；本次规格同步按这两个变更的顺序完成。为使尚未归档的重叠 delta 不遗漏后继场景或回写旧定义，本变更的 versioned-auth-storage delta 已重基到后继的最终契约；原始设计、实施证据和提交保留，不将后继行为追记为原始实现。

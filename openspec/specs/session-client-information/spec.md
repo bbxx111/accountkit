@@ -2,69 +2,81 @@
 
 ## Purpose
 
-为会话提供可选、有界且可解释的浏览器、系统、App 和设备描述，允许宿主与不同版本客户端渐进接入，并区分登录时环境与最近认证活动观察值，不把自报描述转化为可信设备证明或普通业务请求的写入负担。
+为每个会话保留一份可选、有界且可扩展的客户端描述，表达最近一次有效认证活动观察到的系统、设备、App、浏览器及宿主扩展。规定整体替换、观察时间、业务校验与隐私责任，支持渐进接入，并保持自报信息仅用于描述及普通鉴权的数据库访问边界。
 
 ## Requirements
 
 ### Requirement: 可选结构化客户端描述
 
-系统 SHALL 支持 client_type、os_name/os_version、browser_name/browser_version、app_name/app_version、device_type、device_model。客户端类型 SHALL 区分 WEB/NATIVE，系统和设备类别 SHALL 独立表达；device_type 支持 DESKTOP/PHONE/TABLET。未知值 SHALL 缺省，不将枚举 0 作为有效输出。原 device_id/device_name 及其 X-Device-Id/X-Device-Name 输入和同设备登录规则 SHALL 保持。
+系统 SHALL 支持可选客户端类型、系统、设备、App、浏览器及有界扩展。JSON SHALL 使用 `type`、`os{name,version}`、`device{type,manufacturer,model}`、`app{name,version,build}`、`browser{name,version}`、`extensions`；客户端类型 WEB/NATIVE，设备类型 DESKTOP/PHONE/TABLET，未知值缺省且枚举0不输出。app与browser SHALL 可并存。Go模型 SHALL 保留现有平坦字段并新增制造商、build与扩展。原设备标识/名称、设备头及同设备登录规则 SHALL 保持。
 
 #### Scenario: 移动浏览器与原生 App
-- **WHEN** Android 上的 Chrome 与 Android 原生 App 分别提供客户端描述
-- **THEN** 前者可表达 WEB + Android + Chrome，后者可表达 NATIVE + Android + App 信息，不用单一平台值混合表达客户端类型和操作系统
+- **WHEN** Android Chrome 和含 WebView 的原生 App 分别提供描述
+- **THEN** 可分别表达 WEB+Android+Chrome、NATIVE+Android+App+browser，不以类型清除有效信息
 
 #### Scenario: 旧客户端
-- **WHEN** 客户端仅提供原设备头
-- **THEN** 原登录可正常执行；不能识别的新描述字段保持缺失，不伪造型号或版本
+- **WHEN** 客户端只提供原设备头
+- **THEN** 登录可正常完成，未知描述缺省，不伪造型号或版本
 
 ### Requirement: 有界采集及明确输入契约
 
-HTTP SHALL 从可选 X-Client-Type、X-Client-OS-Name、X-Client-OS-Version、X-Client-Browser-Name、X-Client-Browser-Version、X-Client-App-Name、X-Client-App-Version、X-Device-Type、X-Device-Model 接收描述，不向认证请求体添加这些字段。合法显式值 SHALL 优先，缺失项由可用的标准 UA Client Hints、再由 UA 解析补充；宿主 SHALL 可提供解析替代能力。解析 SHALL 无网络 I/O，不要求浏览器额外高熵数据。缺失或自动识别失败 SHALL 不阻断认证；自报值 SHALL 不成为授权、限流身份或可信设备证明。
-
-名称/型号 SHALL 最多 64 个字符，版本最多 32 个字符，文本有效 UTF-8、无控制字符，规范化描述合计最多 2048 字节。显式非法输入 SHALL 在凭证消费前拒绝：普通端点返回 400 INVALID_ARGUMENT、reason INVALID_CLIENT_INFO，token 端点使用 OAuth invalid_request。用于自动解析的 UA 和 Client Hints SHALL 分别受 2048 字节总量限制，畸形或超限只忽略该自动解析输入，不保存或输出原值。
+HTTP SHALL 保持既有九个可选描述头，合法显式值优先、缺失由有界标准 Client Hints 再由 UA 补充；宿主可替代解析。扩展 SHALL 只通过直接 Go 或宿主 ClientInfo 回调提供，不新增任意 JSON 请求体或头。解析 SHALL 无网络I/O、不索取额外高熵数据；缺失/自动失败不阻断认证，自报值不作授权或可信设备证明。名称、型号、制造商最多64字符，版本32，build64；有效UTF-8且无控制字符，规范化完整JSON最多2048字节。显式非法输入 SHALL 在凭证消费前按普通400 INVALID_ARGUMENT/reason INVALID_CLIENT_INFO或OAuth invalid_request拒绝；UA/Hints各自2048字节上限、异常忽略且不保存原值。
 
 #### Scenario: 自动识别不完整
-- **WHEN** UA 被精简或 Client Hints 缺失、畸形、超限
-- **THEN** 保留可用的合法字段，其余未知；不拒绝有效登录、不发起网络探测
+- **WHEN** UA 精简或 Hints 缺失、畸形、超限
+- **THEN** 保留可用合法字段，不拒绝有效登录，不发起网络探测，原始输入不存储/输出
 
 #### Scenario: 显式非法值
-- **WHEN** 客户端显式提交非法 client_type、超长版本或含控制字符的名称
-- **THEN** 按端点协议返回 400，不消费登录/重新认证凭证、不轮换 refresh、不写入描述
+- **WHEN** 显式类型非法、字段超长、控制字符或完整规范化JSON超过2048字节
+- **THEN** 按端点协议400拒绝，不消费凭证、不轮换refresh、不持久化描述
 
 #### Scenario: 元数据不能充当凭证
-- **WHEN** 调用者伪造 device_type、系统、浏览器或 App 名称
-- **THEN** 仍须通过原有凭证、scope、身份归属与近期认证检查，不获得额外权限或会话合并资格
+- **WHEN** 调用者伪造设备、系统、浏览器、App或扩展
+- **THEN** 仍执行原凭证、scope、归属和新鲜度检查，不增加权限或会话合并资格
 
 #### Scenario: BFF 代转
-- **WHEN** 请求由宿主 BFF 代转且默认解析只能看到 BFF 的客户端库
-- **THEN** 不声称已识别终端设备；宿主可通过明确适配提供原客户端描述，库不无条件信任任意转发头
+- **WHEN** 默认解析只能看见 BFF 客户端库
+- **THEN** 不声称识别终端设备，宿主可显式适配，不无条件信任转发头
+
+#### Scenario: 数字经过 JSONB 往返
+- **WHEN** 描述包含指数、小数或大整数
+- **THEN** 业务代码在写入前按精确十进制规范化并计算展开长度，完整JSON仍受2048字节上限；超限在凭证消费前拒绝，合法数值经JSONB往返可读且不丢精度
+
+#### Scenario: 原始 JSON 解析资源
+- **WHEN** 原始JSON或扩展RawMessage超过16KiB，或扩展根键数超过64
+- **THEN** 在解码或建立输出map前拒绝；最终规范化JSON仍最多2048字节，不能用巨大空白或容器绕过解析资源边界
 
 ### Requirement: 初始及最近快照
 
-普通成功登录有有效描述时 SHALL 保存初始和最近快照及服务器观察时间。pending SHALL 在加密流程中保存首次描述；最终完成时 SHALL 保留初始快照，并用本次合法描述更新最近快照，缺失则沿用首次描述。成功重新认证和新一轮刷新 SHALL 只更新最近快照，不改变已有初始快照、device_id 或认证来源。迁移来的旧会话只在后续观察时建立最近快照，不伪造初始环境。
-
-有值的新字段 SHALL 更新对应最近值，缺失字段保留；同一描述中类型显式切换为 NATIVE 时清除 browser 字段，切换为 WEB 时清除 app 字段。名称改变且未提供相应版本 SHALL 清除旧版本；仅提供版本而无已知对应名称 SHALL 不产生虚假组合。没有有效新字段 SHALL 不写入描述更新时间。失败或事务回滚 SHALL 不持久化描述。
+系统 SHALL 每会话至多保留一份完整客户端描述和服务器观察时间，不保留INITIAL或快照种类。成功登录有描述时保存一份；pending首次描述及时间 SHALL 加密保存，最终完成有本次有效描述时整体使用本次及本次观察时间，否则整体沿用首次描述和首次时间。成功重新认证和新一轮刷新 SHALL 有有效描述即整体替换，无描述保持值及时间；不改变device_id或来源。缺失字段 SHALL 不跨请求保留，名称与版本不跨请求拼接。失败/回滚 SHALL 不持久化。
 
 #### Scenario: pending 后续设备字段省略
-- **WHEN** 初次证明带浏览器描述，后续补全请求未重复提供
-- **THEN** 最终会话沿用已加密保存的初始描述，补全设备 ID/名称一致性保持原契约
+- **WHEN** 首次证明有浏览器描述，完成请求无有效描述
+- **THEN** 最终保存首次完整描述与原观察时间；设备ID/名称一致性仍按原契约
 
 #### Scenario: 刷新时 App 升级
-- **WHEN** 新一轮成功刷新提供同一 App 的新版本
-- **THEN** 最近描述与观察时间更新，初始描述、认证来源及原刷新轮换规则保持
+- **WHEN** 新一轮刷新提供包含新版本的完整观察
+- **THEN** 整体替换描述并更新观察时间，不保留旧观察缺失字段；来源与轮换规则保持
 
 #### Scenario: 旧会话首次观察
-- **WHEN** 旧会话缺少两类描述，成功重新认证提供客户端信息
-- **THEN** 新增最近快照，初始快照仍缺省，不将当前环境冒充登录时环境
+- **WHEN** 当前合法会话无描述，成功重新认证提供有效描述
+- **THEN** 新增唯一一条描述及本次观察时间，不创建初始快照
 
 #### Scenario: 补全时才获得描述
-- **WHEN** pending 首次证明未保存描述，包括升级前创建的流程，而完成时提供合法描述
-- **THEN** 完成可以成功，仅保存最近快照；不因 payload 缺少新增可选字段拒绝原票据，不伪造首次证明环境
+- **WHEN** pending首次无描述，完成提供合法描述
+- **THEN** 只保存本次描述和时间，payload缺少可选字段不拒绝票据，不伪造首次环境
 
 #### Scenario: 软件切换时版本清理
-- **WHEN** 最近浏览器为 Chrome 版本 X，新观察明确为 Safari 但没有版本
-- **THEN** 最近浏览器改为 Safari，版本未知，不能保留 Chrome 的版本 X
+- **WHEN** 旧观察为Chrome版本X，新观察为Safari且缺版本
+- **THEN** 新描述只有Safari且版本缺省，旧版本X不保留
+
+#### Scenario: 部分新观察整体替换
+- **WHEN** 旧观察含系统/设备/App，新观察仅含browser
+- **THEN** 唯一描述替换为本次browser，旧系统/设备/App不残留
+
+#### Scenario: 完成本次描述优先
+- **WHEN** pending首次含系统和App，完成本次仅含browser
+- **THEN** 最终仅保存本次browser与本次时间，不拼接首次字段
 
 ### Requirement: 重试不写入额外活动
 
@@ -80,16 +92,44 @@ HTTP SHALL 从可选 X-Client-Type、X-Client-OS-Name、X-Client-OS-Version、X-
 
 ### Requirement: 服务端查询和数据清理
 
-当前会话详情 SHALL 可返回 initial_client_info、client_info（最近描述）和 client_info_update_time；消费者和管理员会话列表 SHALL 可返回最近描述及其观察时间，使用各自明确 DTO。缺失字段 SHALL 省略，观察时间使用 RFC3339。描述 SHALL 不包含原始 UA、IP/位置、硬件标识、完整身份或凭证，不写入日志正文、审计详情或指标标签。新增数据 SHALL 随有界会话清理删除，账号匿名化覆盖全部历史会话且遵守同事务回滚。
+当前详情及两面会话列表 SHALL 可返回单份nested client_info和RFC3339 client_info_update_time，各面明确DTO；不再返回initial_client_info或known字段。缺失描述 SHALL 省略，存在描述的JSON必须经业务校验；存储中非法描述 SHALL 为内部错误而非静默丢失。描述 SHALL 不含原始UA、IP/位置、硬件ID、完整身份或凭据，不写日志正文/审计详情/指标标签。清理 SHALL 覆盖该会话唯一描述，匿名化覆盖全部历史并遵守同事务回滚。
 
 #### Scenario: 两面查询
-- **WHEN** 消费者查询本人会话或已授权管理员查询目标账号会话
-- **THEN** 返回可用的最近结构化描述；消费者不能看到其他账号数据，管理员沿用既有角色检查
+- **WHEN** 消费者查询本人会话或授权管理员查询目标账号会话
+- **THEN** 返回同结构nested描述和观察时间，保持用户隔离及管理员角色检查
 
 #### Scenario: 缺少描述
-- **WHEN** 旧会话或当前请求没有可识别信息
-- **THEN** 查询保留原设备字段，新描述可缺省；这不影响来源已知标记，也不自动触发退出
+- **WHEN** 合法会话没有可识别客户端信息
+- **THEN** 原设备字段保留，client_info缺省，不影响非空认证来源也不自动退出
 
 #### Scenario: 删除与回滚
-- **WHEN** 历史会话被清理或账号完成匿名化
-- **THEN** 初始和最近描述均被覆盖；匿名化失败则描述清理与其他认证数据变更一起回滚
+- **WHEN** 历史会话清理或账号匿名化
+- **THEN** 唯一描述被覆盖，匿名化失败则与其他变更一起回滚
+
+### Requirement: 扩展JSON有界且深拷贝
+
+扩展 SHALL 为对象，所有层级键匹配 `[a-z][a-z0-9_]{0,63}`，值支持JSON primitive/null/object/array。根扩展对象不计节点和深度，直接值深度1，每个值含容器/数组元素计节点；总节点最多64，深度4，每数组16项，每字符串256字符。规范化 SHALL 深拷贝map和原始字节，拒绝重复键、无效UTF-8、控制字符、非法数值及超限；完整JSON包含扩展的2048字节限制仍适用。核心对象 SHALL 拒绝未知键、重复键和错误类型。
+
+#### Scenario: 边界与精度
+- **WHEN** 合法扩展达到64节点、深度4、数组16项或字符串256字符且完整JSON未超限
+- **THEN** 可接受；超过任一上限即拒绝，合法大整数往返不因浮点转换损失精度
+
+#### Scenario: 输入引用变更
+- **WHEN** 调用方修改已传入扩展map或RawMessage底层字节
+- **THEN** 已规范化、持久化或输出结果不被改变，不共享可变引用
+
+#### Scenario: JSON隐藏覆盖
+- **WHEN** 原始扩展JSON存在重复键或核心JSON有未知字段
+- **THEN** 拒绝整个描述，不按最后一个值覆盖掩盖错误
+
+### Requirement: 扩展隐私由已知防线与宿主白名单共同承担
+
+系统 SHALL 在扩展各层拒绝已知敏感字段名，包括凭证/验证码、raw UA、IP/位置和硬件ID的明确字段或词段；非法值按客户端描述输入错误处理。库 SHALL 不声称能识别任意正常字段值中的隐私，宿主 SHALL 负责扩展语义、白名单及数据来源，并向调用者说明这些限制。
+
+#### Scenario: 嵌套敏感键
+- **WHEN** 扩展包含token、password、raw_user_agent、ip_address、location或hardware_id等已知敏感键
+- **THEN** 即使位于嵌套对象/数组也拒绝，不记录被拒绝的敏感内容
+
+#### Scenario: 普通字段夹带隐私
+- **WHEN** 宿主拟通过普通字符串扩展承载额外数据
+- **THEN** 宿主负责判断其隐私与业务语义，不能依赖库的结构验证作为自动匿名化保证

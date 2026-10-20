@@ -50,3 +50,15 @@ review_simplification 使用独立上下文审查当前工作树，首次发现1
 ## 未验证项与交付边界
 
 旧库生产数据转换、真实服务商/客户端、生产部署及回退不在本轮执行范围。只使用本任务专属测试容器/数据库；没有提交、推送、合并、发布或归档。
+
+## 2026-10-20 规格同步与警告优化
+
+用户随后要求按建议同步完成变更并消除六份既有规格的长度警告。本轮基线04b32a7、分支docs/sync-and-normalize-specs；前述代码实施已在04b32a7提交，本节单独记录其后的文档维护。
+
+- 已从两个change的status获取实际delta路径，各读取一次当前specs规则；按consolidate-session-context-initial-schema→simplify-session-context顺序合并。共6个能力更新，前一变更2次MODIFIED、后一变更16次MODIFIED/2次ADDED；主规格保留未涉及的要求和场景。
+- 同步后原embedded-auth-package、session-authentication-context、session-client-information三份规格的4处警告消失。将剩余accountsvc-runtime的配置与HTTP边界分别拆为独立职责、gateway-integration拆出路由允许清单与后端直连职责；metrics-adapters保留公共统计规则，并把13条指标分为认证、验证码、依赖、降级、审计、维护次数、维护耗时/条目7组。共新增17条职责要求，每条均有明确场景。
+- 早期重叠delta在同步后缺少后继新增场景；为避免校验缺失及日后回写旧定义，已将其2条重叠要求与后继最终定义对齐，并追加原proposal/design的后继阶段说明，原始实施记录保留。另把“自动识别不完整”场景的歧义措辞明确为“不发起网络探测”，与既有无网络I/O契约一致；同步更新主规格和当前delta。
+- 静态内容核对通过：原145条Requirement标题及381个Scenario标题全部保留；职责拆分的原场景正文完整保留，指标场景仅把“本表”引用更新为“以下分组指标表”。13条指标的名称、类型、单位、标签逐行完全相同，原直方图桶及其他未涉及指标要求完整保留。主规格共新增19条要求（同步2条、整理17条），本轮涉及能力的正文最长453个原始Markdown字符。
+- 两个change的所有MODIFIED/ADDED条目与最终主规格逐块一致，重叠条目不再互相回写；已有主规格Purpose保留为主来源，仅将两份会话Purpose的旧未知/双快照摘要更新为已经实现的模型。
+- openspec validate --specs --strict：24/24通过。openspec validate --all --strict：26/26通过、issues=[]，包括两个仍活跃change；未关闭strict或放宽规则。git diff --check及本地引用检查通过。
+- 原始同步统计、场景/指标核对、同步中间失败和最终JSON结果保留在ignored `.test-output/spec-normalize/`。本次只修改OpenSpec Markdown，没有改动Go、SQL、生成代码、固定源、tag或发布说明；未重跑数据库/Go套件，上一节代码验证结果没有被冒用为本次文档验证。未归档、提交、推送、合并或发布。

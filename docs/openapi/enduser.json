@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "accountkit 消费者 HTTP API",
-    "version": "v0.4.0+self-profile-http",
-    "description": "当前开发版内置 HTTP 契约，基于 v0.4.0 增加本人资料属性 GET/PATCH；已发布 v0.4.0 不含该新增能力。宿主配置实际挂载地址。请求体为单个 JSON 对象，默认上限 64 KiB，拒绝未知字段与尾随内容。领域状态、事务、故障策略以规格与 README 为准。"
+    "version": "v0.5.0",
+    "description": "v0.5.0 发布候选的内置消费者 HTTP 契约，在 v0.4.0 上增加本人资料属性 GET/PATCH 和 avatar_url；已发布 v0.4.0 不包含这些能力。宿主配置实际挂载地址。请求体为单个 JSON 对象，默认上限 64 KiB，拒绝未知字段与尾随内容。领域状态、事务、故障策略以规格与 README 为准。"
   },
   "servers": [
     {

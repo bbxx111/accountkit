@@ -14,7 +14,7 @@
 
 **Tech Stack:** Go 1.26.5、PostgreSQL 17、pgx/v5、sqlc 1.31.1、`github.com/santhosh-tekuri/jsonschema/v6` 候选、现有异步审计与 Linux race 验证。
 
-**Spec:** [设计](../../../openspec/changes/add-schema-validated-user-extensions/design.md)、[提案](../../../openspec/changes/add-schema-validated-user-extensions/proposal.md)、[扩展资料](../../../openspec/changes/add-schema-validated-user-extensions/specs/user-profile-extensions/spec.md)、[生命周期](../../../openspec/changes/add-schema-validated-user-extensions/specs/embedded-auth-package/spec.md)、[存储升级](../../../openspec/changes/add-schema-validated-user-extensions/specs/versioned-auth-storage/spec.md)、[迁移安全](../../../openspec/changes/add-schema-validated-user-extensions/specs/migration-safety/spec.md)。
+**Spec:** [设计](../../../openspec/changes/archive/2026-10-21-add-schema-validated-user-extensions/design.md)、[提案](../../../openspec/changes/archive/2026-10-21-add-schema-validated-user-extensions/proposal.md)、[扩展资料](../../../openspec/changes/archive/2026-10-21-add-schema-validated-user-extensions/specs/user-profile-extensions/spec.md)、[生命周期](../../../openspec/changes/archive/2026-10-21-add-schema-validated-user-extensions/specs/embedded-auth-package/spec.md)、[存储升级](../../../openspec/changes/archive/2026-10-21-add-schema-validated-user-extensions/specs/versioned-auth-storage/spec.md)、[迁移安全](../../../openspec/changes/archive/2026-10-21-add-schema-validated-user-extensions/specs/migration-safety/spec.md)。
 
 ## Global Constraints
 

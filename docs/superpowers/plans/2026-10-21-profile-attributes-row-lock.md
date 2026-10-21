@@ -12,7 +12,7 @@
 
 **Tech Stack:** Go 1.26.5、PostgreSQL 17、pgx/v5、sqlc 1.31.1、既有 Draft 2020-12 校验器。
 
-**Spec:** [变更设计](../../../openspec/changes/add-schema-validated-user-extensions/design.md) 及该变更全部增量规格；本计划修订前一实施计划的命名、资料边界及并发模型，前次验收仅证明旧提交。
+**Spec:** [变更设计](../../../openspec/changes/archive/2026-10-21-add-schema-validated-user-extensions/design.md) 及该变更全部增量规格；本计划修订前一实施计划的命名、资料边界及并发模型，前次验收仅证明旧提交。
 
 ## Global Constraints
 

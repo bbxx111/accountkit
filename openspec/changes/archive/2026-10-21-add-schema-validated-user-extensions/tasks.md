@@ -6,7 +6,7 @@
 
 ## 1. Schema 配置与编译
 
-- [x] 1.1 使用 writing-plans 生成引用本变更的详细实施计划，按可独立任务安排默认子代理执行与逐步审查；验证计划覆盖四份增量规格和本清单且无冲突需求。计划见 [实施计划](../../../docs/superpowers/plans/2026-10-21-schema-validated-user-extensions.md)。
+- [x] 1.1 使用 writing-plans 生成引用本变更的详细实施计划，按可独立任务安排默认子代理执行与逐步审查；验证计划覆盖四份增量规格和本清单且无冲突需求。计划见 [实施计划](../../../../docs/superpowers/plans/2026-10-21-schema-validated-user-extensions.md)。
 - [x] 1.2 先编写候选校验器行为测试，验证 Draft 2020-12、精确大整数和 multipleOf、并发只读复用、format 断言、禁止外部加载及 Go 正则子集；固定满足契约的依赖版本并记录结果，运行相关测试与依赖检查。
 - [x] 1.3 实现可选配置、Schema 解析与使用范围检查、无环本地引用、属性目录、限制及指纹；通过错误方言/未知关键字/动态属性/循环引用/展开上限/配置深拷贝/纯初始化测试。
 - [x] 1.4 接入 Config、New 和直接 user.NewService 构造路径，确保每个实例编译一次且 nil 禁用；通过无 I/O 构造和原认证兼容测试，更新 README 的支持清单及可直接使用的嵌套 Schema 示例。

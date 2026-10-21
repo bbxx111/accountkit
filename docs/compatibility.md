@@ -21,7 +21,7 @@ Go 直接调用仍由宿主授权。内置新增 GET/PATCH `/users/me/profile`�
 
 **本人访问契约变化：** 启用 Schema 并挂载内置消费者 handler，即允许本人完整读取和修改所有 profile_attributes。升级前须迁出本人不可见或不可改的内部字段；Schema 的 readOnly/writeOnly 不能当作权限。已有 enduser.Service 必需方法集不变，旧自定义适配器继续编译；需要新能力时实现可选 `enduser.ProfileAttributesService`，未实现的新路由返回 503。既有 `/users/me` 仍只更新 display_name，不接受混合资料更新。
 
-accountsvc 新增可选 `ACCOUNTSVC_PROFILE_ATTRIBUTES_SCHEMA_FILE`，仅 serve 读取；migrate 忽略。未设置不启用资料，文件非法则启动失败；库 ConfigFromEnv/New 仍不读文件。HTTP 启用过程不新增数据库迁移，见[协议](openapi.md#本人资料属性)及[当前验收](../openspec/changes/add-self-profile-http/verification.md)。
+accountsvc 新增可选 `ACCOUNTSVC_PROFILE_ATTRIBUTES_SCHEMA_FILE`，仅 serve 读取；migrate 忽略。未设置不启用资料，文件非法则启动失败；库 ConfigFromEnv/New 仍不读文件。HTTP 启用过程不新增数据库迁移，见[协议](openapi.md#本人资料属性)及[当前验收](../openspec/changes/archive/2026-10-21-add-self-profile-http/verification.md)。
 
 固定兼容基线包含 130 个文件，原始文件清单与 SHA-256 见 `tests/testdata/source-baseline/manifest.json`；该清单用于追溯冻结快照，不表示当前文件名和内容必须与历史快照相同。当前根包名为 `accountkit`，导入路径为 `github.com/bbxx111/accountkit`。
 
@@ -45,7 +45,7 @@ Schema 固定为 Draft 2020-12 的受支持范围：主结构树每层对象声�
 
 Schema 原始输入限 64 KiB、32 层；展开后的主树属性声明限 128，验证节点限 1024。同一属性的条件约束不增加声明计数，主树不同位置复用的结构按各位置计数。补丁原始输入与规范化最终资料分别限 16 KiB、深度 8、512 个值节点（含根和容器）。重复键、尾随文档、非法 Unicode、NUL 和 PostgreSQL JSONB 无法存储的数字均拒绝；资料不保存 JSON `null`。数字精确处理，`1`、`1.0`、`1e0` 按相同值比较。
 
-宿主保证同一数据库实例的 Schema 配置一致。库不保存逐行 Schema 身份，不提供 SchemaMismatch 错误。读取只检查通用存储边界；更新按当前 Schema 校验完整合并结果，无变化请求也不得绕过。新增可选属性、放宽约束、修改注解可直接更新配置。收紧规则可能使旧资料完整结果不合法，更新拒绝且原资料与账号 update_time 保持；同次补丁可修复后保存。移除声明属性后，遗留属性仍不能以未知属性 null 删除，须通过过渡 Schema 或专项迁移清理；库不自动丢弃字段。详细设计与实际验证见[变更设计](../openspec/changes/add-schema-validated-user-extensions/design.md)及[验收记录](../openspec/changes/add-schema-validated-user-extensions/verification.md)。
+宿主保证同一数据库实例的 Schema 配置一致。库不保存逐行 Schema 身份，不提供 SchemaMismatch 错误。读取只检查通用存储边界；更新按当前 Schema 校验完整合并结果，无变化请求也不得绕过。新增可选属性、放宽约束、修改注解可直接更新配置。收紧规则可能使旧资料完整结果不合法，更新拒绝且原资料与账号 update_time 保持；同次补丁可修复后保存。移除声明属性后，遗留属性仍不能以未知属性 null 删除，须通过过渡 Schema 或专项迁移清理；库不自动丢弃字段。详细设计与实际验证见[变更设计](../openspec/changes/archive/2026-10-21-add-schema-validated-user-extensions/design.md)及[验收记录](../openspec/changes/archive/2026-10-21-add-schema-validated-user-extensions/verification.md)。
 
 冻结、解冻、注销冷静期与恢复保留资料。最终匿名化在原事务中清空 JSON，复用账号原时间语义，不区分曾使用与未使用；配置移除或 Schema 不兼容不阻断清理，回调失败整体回滚。
 

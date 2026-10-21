@@ -10,7 +10,7 @@
 
 **Tech Stack:** Go 1.26.5、PostgreSQL 17、sqlc 1.31.1、既有 JSON Schema/精确 JSON 实现。
 
-**Spec:** openspec/changes/add-schema-validated-user-extensions/ 的当前 proposal/design/specs/tasks；本计划取代前一行锁计划中元数据相关要求，原验收保留为历史。
+**Spec:** openspec/changes/archive/2026-10-21-add-schema-validated-user-extensions/ 的当前 proposal/design/specs/tasks；本计划取代前一行锁计划中元数据相关要求，原验收保留为历史。
 
 ## Global Constraints
 

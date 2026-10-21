@@ -26,7 +26,7 @@
 
 用户要求提交并 apply 后，规划提交为 `e06ffdb`，HTTP/服务配置实现提交为 `22e7a28`，工作分支 `feat/self-profile-http` 基于已有资料存储实现。新增 GET/PATCH `/users/me/profile`、可选适配器、保真有界补丁解析、安全错误，以及 accountsvc 的 Schema 文件装配。既有 SQL、迁移、sqlc 结果、令牌格式与依赖文件无变化。
 
-实施按[详细计划](../../../docs/superpowers/plans/2026-10-21-self-profile-http.md)分为 HTTP、服务配置、真实集成、文档与验证。HTTP 和服务配置分别先运行新增行为测试观察缺失能力失败，再实现；真实 HTTP 集成也先在合法登录后观察 404，再验证通过。外层 null/缺字段为 MALFORMED_BODY，profile_attributes:null 按内层非对象归 INVALID_PROFILE_ATTRIBUTES；设计已明确这一区分。
+实施按[详细计划](../../../../docs/superpowers/plans/2026-10-21-self-profile-http.md)分为 HTTP、服务配置、真实集成、文档与验证。HTTP 和服务配置分别先运行新增行为测试观察缺失能力失败，再实现；真实 HTTP 集成也先在合法登录后观察 404，再验证通过。外层 null/缺字段为 MALFORMED_BODY，profile_attributes:null 按内层非对象归 INVALID_PROFILE_ATTRIBUTES；设计已明确这一区分。
 
 独立适配审查与最终全变更审查均通过。唯一 Minor 是 README 把开发版新增接口描述为 v0.4.0 已交付，已修复并复核；无遗留问题。审查原始记录保存在 `.test-output/self-profile-http/review-adapters.md` 和 `final-review.md`。
 
@@ -52,3 +52,9 @@ OpenSpec 全量严格检查 26 项通过；差异空白检查、两份 OpenAPI s
 本次不涉及数据库结构变化，未执行完整发布脚本中的 pg_dump/pg_restore 恢复演练；也未执行生产部署、真实邮件送达或外部身份提供方联调。未推送、合并或归档。
 
 收尾已核对任务标签并删除本次 PostgreSQL/Redis 容器及其匿名卷；验证容器以 --rm 退出，任务标签容器清单为空。既有容器未操作，测试日志保留于忽略目录。
+
+## 归档与本地集成
+
+用户随后明确要求“归档，提交，合并”。2026-10-21 按依赖顺序先归档资料基础 change，再归档本 change；12/12 实施任务保持完成。归档目录为 `openspec/changes/archive/2026-10-21-add-self-profile-http/`，两份增量规格已同步到主规格，基础资料访问说明继续明确本人全部可读写。
+
+归档同步合计核对 20 条要求，保留所有原场景，修复移动记录的相对链接及外部引用；严格检查 26 项通过，活动变更清单为空。本轮只调整规格/文档及归档位置，Go、SQL、模块依赖与固定源无变化，沿用前文当前实现验证证据，没有重跑数据库/race 或恢复演练。用户授权本地以 `--no-ff` 合入 develop；没有推送、tag 或发布。

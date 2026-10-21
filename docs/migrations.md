@@ -12,7 +12,7 @@ Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史�
 
 新部署仅用人工核验的新空资源，不承诺 v0.4.0、54afa4b 或旧单列增量实现混跑/回退。公共 Down 无 I/O 拒绝。宿主 Schema 配置兼容调整、收紧修复及未知 null 删除规则保持，配置演进不等于旧数据库转换。
 
-固定测试文件 testdata/0002_success.up.sql 和 0002_failure.up.sql 仅作 latest+1 测试源。真实恢复覆盖 version 1、资料值/精确数字、账号时间、认证/匿名化和源库不变。[本轮验收记录](../openspec/changes/add-schema-validated-user-extensions/verification.md)顶部列当前状态，下文旧日志仅证明原阶段。以下会话整合保留历史事实。
+固定测试文件 testdata/0002_success.up.sql 和 0002_failure.up.sql 仅作 latest+1 测试源。真实恢复覆盖 version 1、资料值/精确数字、账号时间、认证/匿名化和源库不变。[本轮验收记录](../openspec/changes/archive/2026-10-21-add-schema-validated-user-extensions/verification.md)顶部列当前状态，下文旧日志仅证明原阶段。以下会话整合保留历史事实。
 
 ## 会话认证依据初始整合（v0.4.0 发布历史）
 
@@ -35,7 +35,7 @@ Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史�
 
 基线预检要求完整 sign_in_completion_flow、十列 UUIDv7 审计、必有来源/单份描述及当前资料单列。旧 v0.4.0 v1、v0.3.0 v1、双快照/旧流程/审计、双表及各代撤回 v2 均返回可由 errors.Is 识别的 migrations.ErrIncompatibleBaseline，保持 catalog、数据和 version/dirty，dirty 优先。UnsafeReset 沿用相同预检，不接受旧基线；重复 Up 不补列或重放同号 SQL。
 
-冻结源、全部发布 tag/SQL、v0.4.0 旧定义与当前 initialFrozen 分别固定。实际当前哈希和校验结果记于[本轮验收](../openspec/changes/add-schema-validated-user-extensions/verification.md)。后续真实增量从 0002 递增；旧发布说明和归档保留原文，当前操作以本节为准。
+冻结源、全部发布 tag/SQL、v0.4.0 旧定义与当前 initialFrozen 分别固定。实际当前哈希和校验结果记于[本轮验收](../openspec/changes/archive/2026-10-21-add-schema-validated-user-extensions/verification.md)。后续真实增量从 0002 递增；旧发布说明和归档保留原文，当前操作以本节为准。
 
 此前索引命名维护按用户明确要求未新增迁移：直接将未发布 0001 的 22 个普通索引命名为 `idx_<表名>_<字段或用途>`、4 个独立唯一索引命名为 `uk_<表名>_<字段或用途>`；主键索引保留 `<表名>_pkey`，索引列、唯一性、谓词及访问方法保持。当时同步更新固定校验，初始版本仍为 1；历史 SQL 和源快照未改。已有同号数据库不会重放 0001，因此不会自动得到该次命名调整；不能靠修改版本或自动重建绕过基线检查。
 

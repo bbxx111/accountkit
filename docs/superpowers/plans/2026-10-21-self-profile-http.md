@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、Chi、pgx/v5、PostgreSQL 17，既有 boundedjson/profileattributes。
 
-**Spec:** [设计与契约](../../../openspec/changes/add-self-profile-http/design.md)，同目录 specs 为验收依据。
+**Spec:** [设计与契约](../../../openspec/changes/archive/2026-10-21-add-self-profile-http/design.md)，同目录 specs 为验收依据。
 
 ## Global Constraints
 

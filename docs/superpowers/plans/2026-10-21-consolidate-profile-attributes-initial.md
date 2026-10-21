@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、PostgreSQL 17、sqlc 1.31.1、既有 golang-migrate 与历史检查工具。
 
-**Spec:** openspec/changes/add-schema-validated-user-extensions/ 当前 proposal/design/specs/tasks；本计划覆盖本轮数据库定义整合，之前行为和验收仅为历史。
+**Spec:** openspec/changes/archive/2026-10-21-add-schema-validated-user-extensions/ 当前 proposal/design/specs/tasks；本计划覆盖本轮数据库定义整合，之前行为和验收仅为历史。
 
 ## Global Constraints
 

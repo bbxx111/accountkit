@@ -109,7 +109,7 @@
 
 操作步骤以 [docs/migrations.md](docs/migrations.md) 为准。以下规则不能因版本尚处开发阶段而放宽：
 
-- 本轮用户明确要求“0002 并入 0001，无需考虑旧数据迁移”，仅授权把 `profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb` 单列合入当前工作树 0001，撤回生产 0002；新空 schema 安装 version=1/dirty=false，其他列、索引和业务行为保持。当前 initialFrozen 新哈希与 v0.4.0 已发布旧定义分别固定；v0.4.0 精确 tag `62f0799b6c6ef1603b33f81834d39033dd0d0c4d`、其他发布 tag/SQL 和冻结源保持。旧 v0.4.0 v1 缺资料列、其他历史 v1 及各代撤回 v2（含单列、四列、五列及混合资料 v2）均无写拒绝，dirty 优先，保留 catalog、数据及 version/dirty；不转换旧数据、不重放同号 SQL、不 Force、改版本或清库。本轮不提供旧数据迁移工具或升级承诺；后续真实增量从 0002 递增，测试 probe 使用 latest+1（当前为 2）。 本轮见[整合计划](docs/superpowers/plans/2026-10-21-consolidate-profile-attributes-initial.md)和[验收记录](openspec/changes/add-schema-validated-user-extensions/verification.md)。此授权不扩大历史授权，不构成日常改写初始 SQL 的开关。
+- 本轮用户明确要求“0002 并入 0001，无需考虑旧数据迁移”，仅授权把 `profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb` 单列合入当前工作树 0001，撤回生产 0002；新空 schema 安装 version=1/dirty=false，其他列、索引和业务行为保持。当前 initialFrozen 新哈希与 v0.4.0 已发布旧定义分别固定；v0.4.0 精确 tag `62f0799b6c6ef1603b33f81834d39033dd0d0c4d`、其他发布 tag/SQL 和冻结源保持。旧 v0.4.0 v1 缺资料列、其他历史 v1 及各代撤回 v2（含单列、四列、五列及混合资料 v2）均无写拒绝，dirty 优先，保留 catalog、数据及 version/dirty；不转换旧数据、不重放同号 SQL、不 Force、改版本或清库。本轮不提供旧数据迁移工具或升级承诺；后续真实增量从 0002 递增，测试 probe 使用 latest+1（当前为 2）。 本轮见[整合计划](docs/superpowers/plans/2026-10-21-consolidate-profile-attributes-initial.md)和[验收记录](openspec/changes/archive/2026-10-21-add-schema-validated-user-extensions/verification.md)。此授权不扩大历史授权，不构成日常改写初始 SQL 的开关。
 
 - v0.4.0 已发布，tag 固定到 62f0799b6c6ef1603b33f81834d39033dd0d0c4d，其中的已发布 0001 原始字节不可改写；当前工作树仅按上述本轮单列整合授权调整并独立固定。下列 `simplify-session-context`、数据库设计评审和 `consolidate-session-context-initial-schema` 等直接修改 0001 的有限授权仅适用于 v0.4.0 发布前，不再适用；后续结构从 0002 递增。发布证据见 [v0.4.0 说明](docs/releases/v0.4.0.md)。
 

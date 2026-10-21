@@ -27,7 +27,7 @@
 - PHONE/EMAIL/WECHAT/APPLE 等枚举使用大写字符串。凭证 oneOf 恰好一个允许成员非 null；显式 null 等同缺失，未知字段拒绝。POST token/revoke 也使用 JSON，不使用表单编码。
 - nullable 字段和 optional 字段不同：例如 `delete_time` 必须出现但可以为 null；审计 `flow_id` 可以省略。管理 DTO 与消费者 DTO 独立，管理会话没有 `is_current`。
 
-示例 token、验证码和票据只能使用合成值，不应把真实响应导入公开文档。刷新重放、验证码失败预算、事务回滚、账号状态及外部审计治理仍以 [README](../README.md)、[主规格](../openspec/specs/)和对应实现为准，schema 不能表达或证明所有行为。
+示例 token、验证码和票据只能使用合成值，不应把真实响应导入公开文档。刷新重放、验证码失败预算、事务回滚、账号状态及外部审计治理仍以 [README](../README.md)、[主规格](../openspec/specs)和对应实现为准，schema 不能表达或证明所有行为。
 
 ## 本人资料属性
 

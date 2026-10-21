@@ -1,6 +1,6 @@
 # Design
 
-后续设计：[本人资料 HTTP](../add-self-profile-http/design.md) 明确启用 Schema 后内置接口允许本人完整读写，并增加 accountsvc 文件装配。本文“首版不增加 HTTP/文件设置”描述本次基础能力交付，后续范围由新变更覆盖；Go 直接调用仍由宿主授权，存储与生命周期规则保持。
+后续设计：[本人资料 HTTP](../2026-10-21-add-self-profile-http/design.md) 明确启用 Schema 后内置接口允许本人完整读写，并增加 accountsvc 文件装配。本文“首版不增加 HTTP/文件设置”描述本次基础能力交付，后续范围由新变更覆盖；Go 直接调用仍由宿主授权，存储与生命周期规则保持。
 
 ## Context
 
@@ -168,4 +168,4 @@ API 是宿主信任边界内的能力，不接受客户端自报“我是管理�
 
 ## 本轮单列修订裁定
 
-此前单列修订确定的 Config 仅 Schema、View 仅 Data、Patch/API、当前 Schema 校验与账号行锁语义保持。本轮数据库定义以[初始整合计划](../../../docs/superpowers/plans/2026-10-21-consolidate-profile-attributes-initial.md)为准。本轮用户明确要求“0002 并入 0001，无需考虑旧数据迁移”，仅授权把 `profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb` 单列合入当前工作树 0001，撤回生产 0002；新空 schema 安装 version=1/dirty=false，其他列、索引和业务行为保持。当前 initialFrozen 新哈希与 v0.4.0 已发布旧定义分别固定；v0.4.0 精确 tag `62f0799b6c6ef1603b33f81834d39033dd0d0c4d`、其他发布 tag/SQL 和冻结源保持。旧 v0.4.0 v1 缺资料列、其他历史 v1 及各代撤回 v2（含单列、四列、五列及混合资料 v2）均无写拒绝，dirty 优先，保留 catalog、数据及 version/dirty；不转换旧数据、不重放同号 SQL、不 Force、改版本或清库。本轮不提供旧数据迁移工具或升级承诺；后续真实增量从 0002 递增，测试 probe 使用 latest+1（当前为 2）。 旧验收保留为历史。
+此前单列修订确定的 Config 仅 Schema、View 仅 Data、Patch/API、当前 Schema 校验与账号行锁语义保持。本轮数据库定义以[初始整合计划](../../../../docs/superpowers/plans/2026-10-21-consolidate-profile-attributes-initial.md)为准。本轮用户明确要求“0002 并入 0001，无需考虑旧数据迁移”，仅授权把 `profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb` 单列合入当前工作树 0001，撤回生产 0002；新空 schema 安装 version=1/dirty=false，其他列、索引和业务行为保持。当前 initialFrozen 新哈希与 v0.4.0 已发布旧定义分别固定；v0.4.0 精确 tag `62f0799b6c6ef1603b33f81834d39033dd0d0c4d`、其他发布 tag/SQL 和冻结源保持。旧 v0.4.0 v1 缺资料列、其他历史 v1 及各代撤回 v2（含单列、四列、五列及混合资料 v2）均无写拒绝，dirty 优先，保留 catalog、数据及 version/dirty；不转换旧数据、不重放同号 SQL、不 Force、改版本或清库。本轮不提供旧数据迁移工具或升级承诺；后续真实增量从 0002 递增，测试 probe 使用 latest+1（当前为 2）。 旧验收保留为历史。

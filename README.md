@@ -47,7 +47,7 @@ _ = updated
 Schema 使用 Draft 2020-12，根必须接受 `{}`，每层对象固定 properties 和
 additionalProperties=false；支持受限本地 `$defs`/`$ref`、标准类型、条件组合和
 date/date-time/email/uri/uuid format。资源边界及关键字清单见
-[设计说明](openspec/changes/add-schema-validated-user-extensions/design.md)。Schema 原始上限
+[设计说明](openspec/changes/archive/2026-10-21-add-schema-validated-user-extensions/design.md)。Schema 原始上限
 64 KiB，补丁原始内容和规范化资料各限 16 KiB；资料最多 8 层、512 个值节点。
 数值精确处理且按数学值比较，拒绝重复键、非法 Unicode、NUL 及存储 null。
 

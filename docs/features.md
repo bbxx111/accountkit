@@ -4,7 +4,7 @@
 
 本文统一记录 v0.3.0 已支持能力、已实现但待真实环境验证的项目，以及尚未立项的候选功能。版本发布不表示产品环境已验收；v0.2.0 不包含本表全部能力。目前尚无实际产品接入，正式部署暂不安排。
 
-协议和配置细节以 [README](../README.md)、[主规格](../openspec/specs/)及公开 Go 类型为准；调用升级见[兼容指南](compatibility.md)，独立服务边界见[accountsvc 手册](accountsvc.md)。
+协议和配置细节以 [README](../README.md)、[主规格](../openspec/specs)及公开 Go 类型为准；调用升级见[兼容指南](compatibility.md)，独立服务边界见[accountsvc 手册](accountsvc.md)。
 
 ## 已支持功能
 

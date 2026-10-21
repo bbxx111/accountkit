@@ -1,6 +1,6 @@
 # Proposal
 
-后续范围更新：本变更的基础 Go/存储能力已经实施；[add-self-profile-http](../add-self-profile-http/proposal.md) 在其上提供内置本人资料 HTTP。以下“仅 Go、不新增路由”为本变更原交付范围，当前接口及本人全部访问契约以该后续变更为准，历史验收保持。
+后续范围更新：本变更的基础 Go/存储能力已经实施；[add-self-profile-http](../2026-10-21-add-self-profile-http/proposal.md) 在其上提供内置本人资料 HTTP。以下“仅 Go、不新增路由”为本变更原交付范围，当前接口及本人全部访问契约以该后续变更为准，历史验收保持。
 
 ## Why
 

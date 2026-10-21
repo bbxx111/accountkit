@@ -60,7 +60,7 @@ v0.3.0 之后的运行时变更为会话认证来源与客户端描述（三个�
 ## 原始证据与资源清理
 
 - [环境](../../../../.test-output/prepare-v0.4-release/raw/environment.txt)、[受测提交](../../../../.test-output/prepare-v0.4-release/verified-commit.txt)、[远端 tag](../../../../.test-output/prepare-v0.4-release/remote-tags.txt)、[生成检查](../../../../.test-output/prepare-v0.4-release/generated.log)、[OpenSpec 检查](../../../../.test-output/prepare-v0.4-release/openspec.log)。
-- [库完整日志](../../../../.test-output/prepare-v0.4-release/raw/library.log)、[库测试事件](../../../../.test-output/prepare-v0.4-release/raw/tests.jsonl)、[服务完整日志](../../../../.test-output/prepare-v0.4-release/raw/accountsvc.log)、[服务测试事件](../../../../.test-output/prepare-v0.4-release/raw/accountsvc-tests.jsonl)、[恢复材料](../../../../.test-output/prepare-v0.4-release/raw/recovery.s4zcO1/)。
+- [库完整日志](../../../../.test-output/prepare-v0.4-release/raw/library.log)、[库测试事件](../../../../.test-output/prepare-v0.4-release/raw/tests.jsonl)、[服务完整日志](../../../../.test-output/prepare-v0.4-release/raw/accountsvc.log)、[服务测试事件](../../../../.test-output/prepare-v0.4-release/raw/accountsvc-tests.jsonl)、[恢复材料](../../../../.test-output/prepare-v0.4-release/raw/recovery.s4zcO1)。
 
 清理前按任务标签列出资源，确认 runner 退出 0、证据文件存在后，仅删除本次的三个容器（runner、PostgreSQL、Redis）及其匿名卷、隔离网络和模块缓存卷；既有 postgres/redis 容器保持运行。清单见[资源记录](../../../../.test-output/prepare-v0.4-release/cleaned-resources.txt)。
 
@@ -88,7 +88,7 @@ v0.3.0 之后的运行时变更为会话认证来源与客户端描述（三个�
 
 根宿主涉及数据库和认证的方法只做编译契约核验，运行检查仅覆盖本地组件，不表示真实服务商或产品环境联调通过。
 
-原始材料：[最终 CI](../../../../.test-output/prepare-v0.4-release/main-ci-final.json)、[CI 步骤](../../../../.test-output/prepare-v0.4-release/main-ci-jobs.txt)、[远端 tag](../../../../.test-output/prepare-v0.4-release/remote-tag.txt)、[标签后迁移检查](../../../../.test-output/prepare-v0.4-release/tag-migrationcheck.log)、[Release 正文](../../../../.test-output/prepare-v0.4-release/release-body.md)、[Release 结果](../../../../.test-output/prepare-v0.4-release/release-result.json)、[独立宿主源码和日志](../../../../.test-output/prepare-v0.4-release/hosts/)、[模块下载来源](../../../../.test-output/prepare-v0.4-release/download.json)。材料保持 ignored，不提交缓存、二进制或合成数据。
+原始材料：[最终 CI](../../../../.test-output/prepare-v0.4-release/main-ci-final.json)、[CI 步骤](../../../../.test-output/prepare-v0.4-release/main-ci-jobs.txt)、[远端 tag](../../../../.test-output/prepare-v0.4-release/remote-tag.txt)、[标签后迁移检查](../../../../.test-output/prepare-v0.4-release/tag-migrationcheck.log)、[Release 正文](../../../../.test-output/prepare-v0.4-release/release-body.md)、[Release 结果](../../../../.test-output/prepare-v0.4-release/release-result.json)、[独立宿主源码和日志](../../../../.test-output/prepare-v0.4-release/hosts)、[模块下载来源](../../../../.test-output/prepare-v0.4-release/download.json)。材料保持 ignored，不提交缓存、二进制或合成数据。
 
 ### 发布记录维护
 

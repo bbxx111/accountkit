@@ -22,6 +22,6 @@
 
 ## Impact
 
-依赖当前已实施但未归档的 [add-schema-validated-user-extensions](../add-schema-validated-user-extensions/proposal.md)。本变更明确取代其“仅 Go、不新增内置路由”的范围限制；原 Go 调用仍由宿主授权，数据与事务规则继续生效。归档顺序为先基础能力、后本变更；归档时同步调整 user-profile-extensions 主规格的访问说明，不能丢失基础规格。
+依赖当前已实施但未归档的 [add-schema-validated-user-extensions](../2026-10-21-add-schema-validated-user-extensions/proposal.md)。本变更明确取代其“仅 Go、不新增内置路由”的范围限制；原 Go 调用仍由宿主授权，数据与事务规则继续生效。归档顺序为先基础能力、后本变更；归档时同步调整 user-profile-extensions 主规格的访问说明，不能丢失基础规格。
 
 影响 httpapi/enduser、internal/accountsvc、公开配置注释、README、docs/openapi.md、docs/accountsvc.md、兼容说明和无秘密部署模板。无 SQL、迁移、sqlc、令牌格式或第三方依赖变化。用户随后明确要求“提交，apply”，实施进度与实际验证以 tasks.md、verification.md 为准。

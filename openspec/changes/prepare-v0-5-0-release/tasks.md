@@ -15,9 +15,9 @@
 ## 3. 发布后消费与记录
 
 - [x] 3.1 两个独立宿主从远端无 replace 消费 v0.5.0，验证根门面/直接 enduser 新能力、模块版本、无 replace 与初始 SQL 哈希。
-- [ ] 3.2 按实际结果更新发布验收、README、发布说明和检查表，记录未验证范围，并以独立 merge commit 集成文档。
+- [x] 3.2 按实际结果更新发布验收、README、发布说明和检查表，记录未验证范围，并以独立 merge commit 集成文档。
 
-当前状态：3.1 已通过，两个宿主均返回 `v0.5.0`、无 `Replace`，初始 SQL SHA256 为 `491068d7577ca33a94dc9d3f74b02acdbc95662aa954c693b63a3fd7b196b12c`。发布验收与长期文档已更新；3.2 仍待提交与 `--no-ff` 集成，归档按 Workflow follow-up 单独执行。
+当前状态：3.1 已通过，两个宿主均返回 `v0.5.0`、无 `Replace`，初始 SQL SHA256 为 `491068d7577ca33a94dc9d3f74b02acdbc95662aa954c693b63a3fd7b196b12c`。发布验收与长期文档已更新；发布记录已提交并以独立 merge commit 集成到 `develop` 和 `main`，归档按 Workflow follow-up 单独执行。
 
 ## Workflow follow-up
 

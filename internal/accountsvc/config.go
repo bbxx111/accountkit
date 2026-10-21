@@ -99,6 +99,10 @@ func LoadConfig(command string) (Config, error) {
 	if command == "migrate" {
 		return c, nil
 	}
+	c.Library.ProfileAttributes, err = loadProfileAttributes(env("PROFILE_ATTRIBUTES_SCHEMA_FILE"))
+	if err != nil {
+		return Config{}, err
+	}
 	if raw := env("METRICS_ENABLED"); raw != "" {
 		c.MetricsEnabled, err = strconv.ParseBool(raw)
 		if err != nil {

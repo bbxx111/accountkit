@@ -1,8 +1,8 @@
 # 功能清单与候选功能
 
-更新日期：2026-10-19。Go 集成与 HTTP 文档基于 develop 的 `9b8d626`；标准化指标实现与验证状态见[库指标验收](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)，accountsvc 采集端点见[服务指标验收](../openspec/changes/archive/2026-10-19-add-accountsvc-prometheus/verification.md)。版本交付状态以[v0.4.0 发布说明](releases/v0.4.0.md)为准。
+更新日期：2026-10-21。Go 集成与 HTTP 文档面向已发布的 v0.5.0；标准化指标实现与验证状态见[库指标验收](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)，accountsvc 采集端点见[服务指标验收](../openspec/changes/archive/2026-10-19-add-accountsvc-prometheus/verification.md)。版本交付状态以[v0.5.0 发布说明](releases/v0.5.0.md)为准。
 
-本文统一记录 v0.3.0 已支持能力、已实现但待真实环境验证的项目，以及尚未立项的候选功能。版本发布不表示产品环境已验收；v0.2.0 不包含本表全部能力。目前尚无实际产品接入，正式部署暂不安排。
+本文统一记录 v0.5.0 已支持能力、已实现但待真实环境验证的项目，以及尚未立项的候选功能。版本发布不表示产品环境已验收；历史版本不包含本表全部能力。目前尚无实际产品接入，正式部署暂不安排。
 
 协议和配置细节以 [README](../README.md)、[主规格](../openspec/specs)及公开 Go 类型为准；调用升级见[兼容指南](compatibility.md)，独立服务边界见[accountsvc 手册](accountsvc.md)。
 
@@ -16,7 +16,7 @@
 | 身份管理 | 身份列表、手机/邮箱/第三方绑定、解绑、同类手机或邮箱换绑 | 解绑保护至少一个可用身份和 Required 条件；普通绑定拒绝占用身份；换绑保留当前会话并撤销其他会话 |
 | 令牌与会话 | JWT access、refresh 轮换、宽限重试、重放处理、同设备会话替换、会话列表和撤销 | 宽限内返回同一 token pair；可撤销单个、其他或管理端全部会话；业务仍需检查 scope 和资源归属 |
 | 敏感操作认证 | 手机/邮箱重新认证、近期认证检查；第三方通过正常重新登录取得新的认证状态 | 手机/邮箱重新认证不更新 refresh；第三方重新登录替换同设备会话，客户端须保存新 pair 并核对账号 |
-| 资料与生命周期 | 显示名更新、批量公开资料、冻结/解冻、注销冷静期、恢复、到期匿名化 | 手机/邮箱与管理员恢复保留；普通第三方登录不能恢复冷静期账号；最终匿名化后不可恢复 |
+| 资料与生命周期 | 显示名与头像更新、可配置资料属性及本人 `GET/PATCH /users/me/profile`、批量公开资料、冻结/解冻、注销冷静期、恢复、到期匿名化 | 手机/邮箱与管理员恢复保留；普通第三方登录不能恢复冷静期账号；资料属性按宿主 Schema，头像只保存 HTTPS 地址；最终匿名化后不可恢复 |
 | 管理接口 | 用户筛选与游标分页、账号状态操作、身份掩码/授权查看、会话撤销、审计查询 | 消费者与管理员身份体系独立；管理员验证由宿主提供，未配置时管理面返回 503 |
 | 安全与审计 | 验证码轮次和用途隔离、发送额度、跨轮次失败预算、身份加密/摘要、密钥轮换、异步脱敏审计 | Required 不是 MFA；不同依赖操作保留各自故障策略，详见 [Redis 契约](../README.md#redis-键与失败模式) |
 | 标准化指标 | 可选类型化 Observer、OTel/原生 Prometheus、认证/验证码/依赖/降级/审计/维护的 13 项指标；accountsvc 可选 Prometheus 采集端点 | 默认 no-op；嵌入宿主负责 Provider/Registry、导出与端点，见[指标指南](metrics.md)；accountsvc 默认关闭指标，启用后提供同址 GET /metrics，部署方落实采集访问控制，见[服务配置](accountsvc.md#prometheus-指标)；合成示例不替代真实联调 |
@@ -24,7 +24,7 @@
 | 存储与维护 | PostgreSQL + Redis、schema/键前缀/令牌域隔离、版本迁移、迁移锁、dirty 阻断、定期清理、备份恢复验证 | 新库由 0001 直接定义 sign_in_completion_flow，初始化版本为 1；旧表名 v1、双表和已撤回旧 v2 拒绝接管，见[迁移手册](migrations.md#当前初始基线)；公开 Down 拒绝执行 |
 | 集成与运行形式 | 嵌入式 Go 包；可选 accountsvc，提供 SMTP、TLS、远程令牌内省、外部管理员 OIDC 验证、探针和优雅关闭 | accountsvc 尚未装配短信服务商；网关、入口流量控制和实际网络隔离由部署方负责 |
 | Go 接入文档与示例 | 集成指南、生命周期、token/pending 分流、刷新与重新认证、调用层授权、事务回调和错误处理 | [指南](go-integration.md)及[可编译片段](../examples/gointegration/example_test.go)；无 Output 片段不执行依赖 I/O，合成输出不替代产品联调 |
-| HTTP 契约文档 | 消费者与管理面分别提供 OpenAPI 3.1，覆盖现有 21/11 个操作 | [契约与维护说明](openapi.md)；不包含 accountsvc 专属内省/探针，不代表已有完整客户端 SDK |
+| HTTP 契约文档 | 消费者与管理面分别提供 OpenAPI 3.1，覆盖现有 24/11 个操作 | [契约与维护说明](openapi.md)；不包含 accountsvc 专属内省/探针，不代表已有完整客户端 SDK |
 
 登录补全使用 `POST /users:sendSignInCompletionCode` 和 `POST /users:completeSignIn`。它可以将首次出现、尚无账号归属的第三方身份关联到已有账号；这不等于将两个已经存在的账号合并。
 

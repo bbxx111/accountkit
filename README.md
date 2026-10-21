@@ -92,7 +92,7 @@ GET 与 PATCH 成功均返回 200 和 `{"name":"users/u_0000000000001/profile","
 
 挂载内置 HTTP handler 的宿主可使用[消费者与管理面 OpenAPI 契约](docs/openapi.md)，按实际地址调整挂载前缀。
 
-本文描述当前开发版：基于 v0.4.0 的身份策略、登录补全、通用审计、指标及会话上下文，新增资料属性及本人 HTTP 读写、服务 Schema 文件配置；这些新增能力不在已发布 v0.4.0 中。历史版本状态见[发布说明](docs/releases/v0.4.0.md)。账号资源沿用 `/users`，升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
+本文描述 v0.5.0 已发布的公开契约：在 v0.4.0 的身份策略、登录补全、通用审计、指标及会话上下文之上，提供资料属性及本人 HTTP 读写、服务 Schema 文件配置和头像。版本范围与兼容边界见 [v0.5.0 发布说明](docs/releases/v0.5.0.md)；v0.4.0 及更早状态保留在各自发布说明。账号资源沿用 `/users`，升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
 
 accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可选服务实现，使用同一套库能力；选择库集成不需要部署或调用 accountsvc。服务入口是 `cmd/accountsvc`，包含 SMTP 邮件投递、消费者远程鉴权和默认关闭的外部管理员 JWT 验证，运行与配置见 [accountsvc 服务手册](docs/accountsvc.md)。`examples/embedded` 保留为库集成开发示例。
 
@@ -453,14 +453,14 @@ HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额
 
 ## 仓库与发布状态
 
-`v0.5.0` 发布候选包含资料属性、本人资料 HTTP 和头像；范围见[发布说明](docs/releases/v0.5.0.md)，最终发布进度见[验收记录](openspec/changes/prepare-v0-5-0-release/verification.md)。下列 v0.4.0 是当前已发布版本。
+当前最新版本为 [v0.5.0](https://github.com/bbxx111/accountkit/releases/tag/v0.5.0)，包含资料属性、本人资料 HTTP 和头像。使用 `go get github.com/bbxx111/accountkit@v0.5.0` 接入；范围见[发布说明](docs/releases/v0.5.0.md)，候选 `102315c` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/39587858534)已通过，实际证据见[发布验收](openspec/changes/prepare-v0-5-0-release/verification.md)。
 
 远程仓库：https://github.com/bbxx111/accountkit.git
 
-Go module：github.com/bbxx111/accountkit。`v0.4.0` 已发布，使用 `go get github.com/bbxx111/accountkit@v0.4.0` 接入；旧库不能直接接管、解绑/换绑撤销、直接 Go 解绑调用及连接池容量等升级边界见[发布说明](docs/releases/v0.4.0.md)。固定提交 `62f0799` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/39408975386)已通过。[发布验收](openspec/changes/archive/2026-10-20-prepare-v0-4-0-release/verification.md)记录候选、tag/Release 与独立宿主远端消费结果；发布及上线要求见[检查表](docs/release-checklist.md)。`v0.1.0`、`v0.2.0`、`v0.3.0` 历史说明和 tag 保持。
+Go module：github.com/bbxx111/accountkit。`v0.4.0` 的会话来源、客户端描述及数据库运行加固见其[历史发布说明](docs/releases/v0.4.0.md)和[验收记录](openspec/changes/archive/2026-10-20-prepare-v0-4-0-release/verification.md)；v0.1.0–v0.4.0 的说明和 tag 均保留。发布及产品上线要求见[检查表](docs/release-checklist.md)。
 
 库版本发布与各产品生产上线分别验收。产品实际环境接入、真实服务商与预发布升级/恢复仍待完成；产品各自配置 schema、Redis 前缀、issuer/audience 和密钥，并承担自己的匿名化与网关接入责任。当前未附开源 LICENSE，本次版本供自有产品接入，尚未向外部使用方定义复用许可。
 
-此前流程改名已纳入 v0.3.0 的初始定义。v0.4.0 发布前，会话0002先经明确授权合入当时未发布的0001，又经用户明确批准简化为必有来源与单行JSONB描述；该会话初始定义已随 v0.4.0 发布，此前有限授权不再适用于修改它；当前工作树仅按本轮新的资料单列授权调整，已发布 tag 内字节保持；同步down、baseline、固定哈希和sqlc，不新增生产0002，新安装仍为version=1/dirty=false。**旧v0.3.0 v1、前一`b414fef`双快照v1及撤回会话v2均不能直接接管**，返回不兼容错误并保留数据、结构和版本。新部署须人工核验新空资源，需保留旧数据时另行制定并验证迁移方案，不Force、改版本或自动清库。公共`Down`仍拒绝；详见[迁移手册](docs/migrations.md#会话认证依据初始整合)。所有已发布标签、其中的历史SQL和固定源快照保持，历史与当前定义分别校验，两次有限授权均不允许日常改写初始SQL。
+此前流程改名已纳入 v0.3.0 的初始定义。v0.4.0 发布前，会话0002先经明确授权合入当时未发布的0001，又经用户明确批准简化为必有来源与单行JSONB描述；该会话初始定义已随 v0.4.0 发布，此前有限授权不再适用于修改它；v0.5.0 发布前另经明确授权将资料单列和头像列纳入当前初始定义，该定义现已随 v0.5.0 固定，已发布 tag 内字节保持；同步down、baseline、固定哈希和sqlc，不新增生产0002，新安装仍为version=1/dirty=false。**旧v0.3.0 v1、前一`b414fef`双快照v1及撤回会话v2均不能直接接管**，返回不兼容错误并保留数据、结构和版本。新部署须人工核验新空资源，需保留旧数据时另行制定并验证迁移方案，不Force、改版本或自动清库。公共`Down`仍拒绝；详见[迁移手册](docs/migrations.md#会话认证依据初始整合)。所有已发布标签、其中的历史SQL和固定源快照保持，历史与当前定义分别校验，两次有限授权均不允许日常改写初始SQL。
 
 原 migrations.Down 保留签名但默认拒绝执行；新基线的一次性测试清库使用显式 UnsafeReset。升级、故障处理与恢复步骤见 [迁移手册](docs/migrations.md)，本次边界见[兼容说明](docs/compatibility.md#初始数据库基线整合)。

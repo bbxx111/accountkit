@@ -24,8 +24,8 @@
 
 - 发布材料准备阶段执行了 `openspec validate --all --strict` 28/28、`check-generated.sh`、`check-migrations.sh`、`git diff --check`、两份 OpenAPI 3.1.0/v0.5.0 解析、消费者 24/管理面 11 操作及 DTO 核对，并检查本地文件链接。
 - 收尾文档修改后再次执行 `openspec validate --all --strict`，结果为 28 项通过、0 失败；`git diff --check` 通过，变更文件的相对 Markdown 链接均存在。
-- 头像定版已运行完整库验证：44 包、894 个顶层测试、793 项必需门禁、race 和 pg_dump/pg_restore 均通过，权限文件用例有非 root 补验；见[头像验收](../archive/2026-10-21-add-user-avatar-url/verification.md)。
-- 本人资料 HTTP 阶段另有完整服务进程 race 及 29 项服务必需门禁证据，见[HTTP 验收](../archive/2026-10-21-add-self-profile-http/verification.md)。这些是发布准备证据，不替代最终候选在线 CI 或远端消费。
+- 头像定版已运行完整库验证：44 包、894 个顶层测试、793 项必需门禁、race 和 pg_dump/pg_restore 均通过，权限文件用例有非 root 补验；见[头像验收](../2026-10-21-add-user-avatar-url/verification.md)。
+- 本人资料 HTTP 阶段另有完整服务进程 race 及 29 项服务必需门禁证据，见[HTTP 验收](../2026-10-21-add-self-profile-http/verification.md)。这些是发布准备证据，不替代最终候选在线 CI 或远端消费。
 
 ## 未验证范围
 

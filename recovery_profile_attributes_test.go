@@ -12,7 +12,33 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+const recoveryAvatarURL = "https://example.test/recovery-avatar.png?version=1"
+
 const recoveryProfileAttributesData = `{"count":9007199254740993,"label":"recovery-final"}`
+
+func TestRecoveryAvatarFixture(t *testing.T) {
+	cfg := minimal()
+	cfg.ProfileAttributes = recoveryProfileAttributesConfig()
+	a, pool, _ := integrationInstance(t, cfg, testRedis(t))
+	f, _ := seedFormatFixture(t, pool, a.Config())
+	seedRecoveryProfileAttributes(t, a, f.UserID)
+	m, err := a.Users().GetMe(context.Background(), f.UserID)
+	if err != nil || m.AvatarURL != "https://example.test/recovery-avatar.png?version=1" {
+		t.Fatalf("recovery seed omitted avatar: %+v %v", m, err)
+	}
+	before := snapshotRecovery(t, pool)
+	if _, err := pool.Exec(context.Background(), `UPDATE user_account SET avatar_url='https://example.test/changed.png' WHERE id=$1`, f.UserID); err != nil {
+		t.Fatal(err)
+	}
+	if before == snapshotRecovery(t, pool) {
+		t.Fatal("source-unchanged snapshot omitted avatar")
+	}
+	assertRecoveryProfileAttributesCleanup(t, a, pool, f.UserID)
+	row, err := user.NewRepo(pool).Q().GetUserByID(context.Background(), f.UserID)
+	if err != nil || row.AvatarUrl != nil {
+		t.Fatal("recovered avatar purge", err)
+	}
+}
 
 func recoveryProfileAttributesConfig() *user.ProfileAttributesConfig {
 	return &user.ProfileAttributesConfig{Schema: json.RawMessage(`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{"count":{"type":"integer"},"label":{"type":"string"}},"additionalProperties":false}`)}
@@ -21,6 +47,10 @@ func recoveryProfileAttributesConfig() *user.ProfileAttributesConfig {
 func seedRecoveryProfileAttributes(t *testing.T, a *accountkit.Auth, id string) user.ProfileAttributesView {
 	t.Helper()
 	ctx := context.Background()
+	avatar := recoveryAvatarURL
+	if _, err := a.Users().UpdateProfile(ctx, id, user.ProfilePatch{AvatarURL: &avatar}); err != nil {
+		t.Fatalf("recovery avatar seed: %v", err)
+	}
 	v, err := a.Users().PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{"count":9007199254740993,"label":"recovery-first"}`)}, user.Meta{})
 	if err != nil {
 		t.Fatalf("first recovery extension write: %v", err)
@@ -35,6 +65,10 @@ func seedRecoveryProfileAttributes(t *testing.T, a *accountkit.Auth, id string) 
 func assertRecoveryProfileAttributes(t *testing.T, a *accountkit.Auth, state recoveryState) {
 	t.Helper()
 	got, err := a.Users().GetProfileAttributes(context.Background(), state.Fixture.UserID)
+	me, avatarErr := a.Users().GetMe(context.Background(), state.Fixture.UserID)
+	if avatarErr != nil || state.AvatarURL != recoveryAvatarURL || me.AvatarURL != state.AvatarURL {
+		t.Fatalf("recovery avatar differs: %+v %v", me, avatarErr)
+	}
 	want := state.ProfileAttributes
 	if err != nil || !bytes.Equal(got.Data, want.Data) || string(got.Data) != recoveryProfileAttributesData {
 		t.Fatalf("recovered profile_attributes data differs: %+v %v", got, err)
@@ -49,7 +83,7 @@ func TestRecoveryProfileAttributesSnapshot(t *testing.T) {
 	cfg.ProfileAttributes = recoveryProfileAttributesConfig()
 	a, pool, _ := integrationInstance(t, cfg, testRedis(t))
 	f, _ := seedFormatFixture(t, pool, a.Config())
-	state := recoveryState{Fixture: f, ProfileAttributes: seedRecoveryProfileAttributes(t, a, f.UserID)}
+	state := recoveryState{Fixture: f, ProfileAttributes: seedRecoveryProfileAttributes(t, a, f.UserID), AvatarURL: recoveryAvatarURL}
 	assertRecoveryProfileAttributes(t, a, state)
 	before := snapshotRecovery(t, pool)
 	for _, tc := range []struct{ name, sql string }{
@@ -87,7 +121,7 @@ func assertRecoveryProfileAttributesCleanup(t *testing.T, a *accountkit.Auth, po
 		t.Fatalf("recovery cleanup purge count=%d err=%v", n, err)
 	}
 	var clean bool
-	if err := pool.QueryRow(ctx, `SELECT state=$2 AND profile_attributes='{}'::jsonb FROM user_account WHERE id=$1`, id, enum.UserDeleted).Scan(&clean); err != nil || !clean {
+	if err := pool.QueryRow(ctx, `SELECT state=$2 AND profile_attributes='{}'::jsonb AND avatar_url IS NULL FROM user_account WHERE id=$1`, id, enum.UserDeleted).Scan(&clean); err != nil || !clean {
 		t.Fatalf("recovery cleanup retained profile_attributes: clean=%v err=%v", clean, err)
 	}
 }

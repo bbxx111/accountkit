@@ -66,7 +66,7 @@ func TestSessionContextConsolidatedCatalog(t *testing.T) {
 	old := migrationTestConn(t, cfg, oldSchema)
 	for _, statement := range []string{
 		"CREATE SCHEMA " + oldSchema,
-		sessionContextHistoricalSQL(t, "0001_init.up.sql"),
+		avatarInitialFixtureSQL(t, sessionContextHistoricalSQL(t, "0001_init.up.sql")),
 		sessionContextHistoricalSQL(t, "0002_session_authentication_context.up.sql"),
 		databaseReviewIndexSQL,
 	} {

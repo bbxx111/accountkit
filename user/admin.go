@@ -28,6 +28,7 @@ type AdminUser struct {
 	ID          string
 	State       enum.UserState
 	DisplayName string
+	AvatarURL   string
 	CreateTime  time.Time
 	UpdateTime  time.Time
 	DeleteTime  *time.Time
@@ -76,6 +77,9 @@ type RevealedIdentity struct {
 
 func adminUserFrom(u db.UserAccount) AdminUser {
 	out := AdminUser{ID: u.ID, State: u.State, CreateTime: u.CreateTime, UpdateTime: u.UpdateTime, DeleteTime: u.DeleteTime, PurgeTime: u.PurgeTime}
+	if u.AvatarUrl != nil {
+		out.AvatarURL = *u.AvatarUrl
+	}
 	if u.DisplayName != nil {
 		out.DisplayName = *u.DisplayName
 	}

@@ -25,6 +25,7 @@ type Me struct {
 	ID          string
 	State       enum.UserState
 	DisplayName string
+	AvatarURL   string
 	CreateTime  time.Time
 	DeleteTime  *time.Time
 	PurgeTime   *time.Time
@@ -32,6 +33,9 @@ type Me struct {
 
 func meFrom(u db.UserAccount) Me {
 	m := Me{ID: u.ID, State: u.State, CreateTime: u.CreateTime, DeleteTime: u.DeleteTime, PurgeTime: u.PurgeTime}
+	if u.AvatarUrl != nil {
+		m.AvatarURL = *u.AvatarUrl
+	}
 	if u.DisplayName != nil {
 		m.DisplayName = *u.DisplayName
 	}
@@ -78,8 +82,7 @@ func isForbiddenDisplayNameRune(r rune) bool {
 	}
 }
 
-// UpdateDisplayName 修改显示名：TrimSpace，rune 数 ≤ 32，空串清空。
-func (s *Service) UpdateDisplayName(ctx context.Context, userID, name string) (Me, error) {
+func normalizeDisplayName(name string) (string, error) {
 	name = strings.TrimSpace(name)
 	// 拒绝 Cc（真正的控制字符，如换行）以及一个明确列出的双向/格式控制符名单
 	// （见 isForbiddenDisplayNameRune）——两者都能让显示名在客户端渲染时冒充别的文本，
@@ -87,11 +90,20 @@ func (s *Service) UpdateDisplayName(ctx context.Context, userID, name string) (M
 	// 是合法输入（复合 emoji、波斯语/阿拉伯语连字等），故意放行。
 	for _, r := range name {
 		if unicode.IsControl(r) || isForbiddenDisplayNameRune(r) {
-			return Me{}, fmt.Errorf("%w: display_name must not contain control characters", ErrInvalidArgument)
+			return "", fmt.Errorf("%w: display_name must not contain control characters", ErrInvalidArgument)
 		}
 	}
 	if utf8.RuneCountInString(name) > maxDisplayNameRunes {
-		return Me{}, fmt.Errorf("%w: display_name longer than %d characters", ErrInvalidArgument, maxDisplayNameRunes)
+		return "", fmt.Errorf("%w: display_name longer than %d characters", ErrInvalidArgument, maxDisplayNameRunes)
+	}
+	return name, nil
+}
+
+// UpdateDisplayName 修改显示名：TrimSpace，rune 数 ≤ 32，空串清空。
+func (s *Service) UpdateDisplayName(ctx context.Context, userID, name string) (Me, error) {
+	name, err := normalizeDisplayName(name)
+	if err != nil {
+		return Me{}, err
 	}
 	var p *string
 	if name != "" {

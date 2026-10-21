@@ -91,6 +91,7 @@ type UserAccount struct {
 	ID                  string
 	State               int16
 	DisplayName         *string
+	AvatarUrl           *string
 	FreezeTime          *time.Time
 	FreezeReason        *string
 	FreezeActorSubject  *string

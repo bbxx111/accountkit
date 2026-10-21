@@ -94,7 +94,7 @@ func TestBatchPublicProfiles(t *testing.T) {
 	})
 	t.Run("public result excludes private fields", func(t *testing.T) {
 		typ := reflect.TypeOf(PublicProfile{})
-		allowed := map[string]reflect.Type{"ID": reflect.TypeOf(""), "DisplayName": reflect.TypeOf(""), "State": reflect.TypeOf(enum.UserActive)}
+		allowed := map[string]reflect.Type{"ID": reflect.TypeOf(""), "DisplayName": reflect.TypeOf(""), "AvatarURL": reflect.TypeOf(""), "State": reflect.TypeOf(enum.UserActive)}
 		if typ.NumField() != len(allowed) {
 			t.Fatalf("public profile includes extra fields: %v", typ)
 		}
@@ -123,7 +123,7 @@ func TestBatchPublicProfiles(t *testing.T) {
 			{"u_0000000000005", enum.UserActive, nil, ""},
 		}
 		for _, record := range records {
-			if _, err := pool.Exec(ctx, "INSERT INTO user_account (id, state, display_name) VALUES ($1, $2, $3)", record.id, record.state, record.name); err != nil {
+			if _, err := pool.Exec(ctx, "INSERT INTO user_account (id, state, display_name, avatar_url) VALUES ($1, $2, $3, 'https://example.com/a')", record.id, record.state, record.name); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -142,6 +142,13 @@ func TestBatchPublicProfiles(t *testing.T) {
 		}
 		for _, record := range records {
 			profile, exists := got[record.id]
+			wantAvatar := "https://example.com/a"
+			if record.state == enum.UserPendingDeletion || record.state == enum.UserDeleted {
+				wantAvatar = ""
+			}
+			if profile.AvatarURL != wantAvatar {
+				t.Fatalf("public avatar for %s: %q", record.id, profile.AvatarURL)
+			}
 			if !exists || profile.ID != record.id || profile.State != record.state || profile.DisplayName != record.wantName {
 				t.Fatalf("profile for %s: got=%+v exists=%v", record.id, profile, exists)
 			}

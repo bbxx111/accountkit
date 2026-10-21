@@ -1,6 +1,6 @@
 # HTTP OpenAPI 契约
 
-本契约描述当前开发版内置 HTTP handler，基于 v0.4.0 增加本人资料属性接口；已发布 v0.4.0 不包含这两个新操作。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
+本契约描述当前开发版内置 HTTP handler，基于 v0.4.0 增加本人资料属性接口及内置头像字段；已发布 v0.4.0 不包含这些能力。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
 
 ## 两个独立 HTTP 面
 
@@ -29,11 +29,19 @@
 
 示例 token、验证码和票据只能使用合成值，不应把真实响应导入公开文档。刷新重放、验证码失败预算、事务回滚、账号状态及外部审计治理仍以 [README](../README.md)、[主规格](../openspec/specs)和对应实现为准，schema 不能表达或证明所有行为。
 
+## 基础资料与头像
+
+`GET /users/me` 及消费者注销/恢复响应包含 `avatar_url` 字符串，未设置为空；管理列表、详情及状态操作资源也返回该字段。`PATCH /users/me` 接受 `display_name`、`avatar_url`，要求 `user` scope，不要求近期认证。内置领域服务在账号行锁内复核 ACTIVE；两字段一起提交原子保存，成功返回 200 和完整本人资源。
+
+省略或 `null` 保持原字段，`""` 清空；两个字段都没有非 null 值时为 `400 NO_FIELDS`。头像去除首尾空白后最长 2048 **字节**，必须是具有非空主机的绝对 HTTPS URL，无用户信息、fragment、反斜线、内部空白或控制字符且为合法 UTF-8；允许普通查询参数。库不请求该地址，上传和存储由宿主提供。
+
+地址错误为 `400 INVALID_ARGUMENT`，JSON 类型/格式错误为 `400 MALFORMED_BODY`，锁后非 ACTIVE 为 `400 FAILED_PRECONDITION / INVALID_ACCOUNT_STATE`，目标不存在为 404。自定义旧 Service 没有可选 `ProfileUpdater` 时，显示名请求仍可处理，含非 null 头像的请求返回 `503 PROFILE_UPDATE_NOT_CONFIGURED`，两字段都不写入。头像是内置公开资料，不依赖资料扩展 Schema，不能在 profile_attributes 顶层重复声明。
+
 ## 本人资料属性
 
 `GET /users/me/profile` 返回 `{"name":"users/{user_id}/profile","profile_attributes":{...}}`；`PATCH /users/me/profile` 只接受 `{"profile_attributes":{...}}`，成功同样返回完整资源和 200。目标只取 Bearer 主体，两个接口均要求 `user` scope，无需近期重新认证；不支持指定其他账号或管理端访问。所有响应包含 `Cache-Control: no-store`。
 
-所有属性对本人完整可读写。`readOnly/writeOnly` 注解不会隐藏或禁止属性；资料中不能存放仅供宿主读取或修改的字段。读取 ACTIVE/FROZEN，修改仅 ACTIVE，认证和吊销规则保持；状态错误为 `400 FAILED_PRECONDITION / INVALID_ACCOUNT_STATE`。旧 `/users/me`、管理详情、公开资料和令牌响应保持原字段。
+所有属性对本人完整可读写。`readOnly/writeOnly` 注解不会隐藏或禁止属性；资料中不能存放仅供宿主读取或修改的字段。读取 ACTIVE/FROZEN，修改仅 ACTIVE，认证和吊销规则保持；状态错误为 `400 FAILED_PRECONDITION / INVALID_ACCOUNT_STATE`。`/users/me`、管理详情、公开资料和令牌响应不混入 profile_attributes；内置头像按上节独立返回。
 
 请求使用 `application/json`。内层采用 RFC 7396：缺失保持、对象递归合并、数组整体替换、null 删除；`{"profile_attributes":{}}` 是无变化请求，外层 `{}` 或 profile_attributes=null 拒绝。未知属性（包括 null 删除）拒绝；结果须通过当前 Schema 完整校验。HTTP 外层默认总大小 64 KiB（可由宿主收紧），内层原始补丁和规范化资料各 16 KiB，深度 8、值节点 512，拒绝重复键与非法编码并保持数值精度。OpenAPI 的动态对象 schema 仅表达容器结构，实际属性和跨字段规则来自宿主 Schema。
 

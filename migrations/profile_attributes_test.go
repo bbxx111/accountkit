@@ -14,13 +14,16 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func publishedProfileAttributesInitial(t *testing.T) (*pgx.ConnConfig, string, *pgx.Conn) {
+func publishedProfileAttributesInitial(t *testing.T, withAvatar ...bool) (*pgx.ConnConfig, string, *pgx.Conn) {
 	t.Helper()
 	cfg, schema := safetyDB(t)
 	c := migrationTestConn(t, cfg, schema)
 	initial, err := exec.Command("git", "show", "62f0799b6c6ef1603b33f81834d39033dd0d0c4d:migrations/0001_init.up.sql").Output()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(withAvatar) > 0 && withAvatar[0] {
+		initial = []byte(avatarInitialFixtureSQL(t, string(initial)))
 	}
 	for _, q := range []string{"CREATE SCHEMA " + schema, string(initial), "CREATE TABLE schema_migrations(version bigint PRIMARY KEY,dirty boolean NOT NULL); INSERT INTO schema_migrations VALUES(1,false)"} {
 		if _, err := c.Exec(context.Background(), q); err != nil {
@@ -343,7 +346,7 @@ func TestProfileAttributesBaseline(t *testing.T) {
 
 // This fixture models the consolidated initial schema without a production upgrade.
 func TestProfileAttributesConsolidatedV1Repeat(t *testing.T) {
-	cfg, schema, c := publishedProfileAttributesInitial(t)
+	cfg, schema, c := publishedProfileAttributesInitial(t, true)
 	ctx := context.Background()
 	if _, err := c.Exec(ctx, `ALTER TABLE user_account ADD COLUMN profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb`); err != nil {
 		t.Fatal(err)
@@ -373,7 +376,7 @@ func consolidatedProfileAttributesInitial(t *testing.T) (*pgx.ConnConfig, string
 const profileAttributesInitialDDL = `ALTER TABLE user_account ADD COLUMN profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb`
 
 func TestProfileAttributesInitialCatalogEquivalent(t *testing.T) {
-	cfg, oldSchema, old := publishedProfileAttributesInitial(t)
+	cfg, oldSchema, old := publishedProfileAttributesInitial(t, true)
 	if _, err := old.Exec(context.Background(), profileAttributesInitialDDL); err != nil {
 		t.Fatal(err)
 	}

@@ -27,6 +27,7 @@ type recoveryState struct {
 	CompletedSessionID           string
 	CompletedIdentityIDs         []string
 	ProfileAttributes            user.ProfileAttributesView
+	AvatarURL                    string
 }
 
 // TestRecoveryFixture is an operational fixture, invoked in each phase by verify-recovery.sh.
@@ -82,6 +83,7 @@ func TestRecoveryFixture(t *testing.T) {
 		}
 		state := recoveryState{Fixture: f, Access: access}
 		state.ProfileAttributes = seedRecoveryProfileAttributes(t, a, f.UserID)
+		state.AvatarURL = recoveryAvatarURL
 		meta := user.Meta{IP: "127.0.0.1", ClientInfo: &user.ClientInfo{ClientType: enum.ClientNative, AppName: "Recovery App", AppVersion: "1.0", OSName: "Android", DeviceType: enum.DevicePhone}}
 		createPending := func(phone, device string) user.PendingSignIn {
 			challenge, err := a.Users().SendSignInCode(ctx, enum.IdentityPhone, phone, meta)

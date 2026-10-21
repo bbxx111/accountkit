@@ -13,7 +13,7 @@ import (
 )
 
 func meFixture() user.Me {
-	return user.Me{ID: principal.UserID, State: enum.UserActive, DisplayName: "白博", CreateTime: testNow.Add(-24 * time.Hour)}
+	return user.Me{ID: principal.UserID, State: enum.UserActive, DisplayName: "白博", AvatarURL: "https://example.com/avatar", CreateTime: testNow.Add(-24 * time.Hour)}
 }
 
 func TestGetMe(t *testing.T) {
@@ -28,12 +28,12 @@ func TestGetMe(t *testing.T) {
 	rec := do(t, h, call{method: "GET", path: "/users/me", bearer: "good"})
 	var me map[string]any
 	decode(t, rec, &me)
-	if rec.Code != 200 || me["name"] != "users/"+principal.UserID || me["state"] != "ACTIVE" || me["display_name"] != "白博" || me["create_time"] != "2026-09-09T12:00:00Z" || me["delete_time"] != nil || me["purge_time"] != nil {
+	if rec.Code != 200 || me["name"] != "users/"+principal.UserID || me["state"] != "ACTIVE" || me["display_name"] != "白博" || me["avatar_url"] != "https://example.com/avatar" || me["create_time"] != "2026-09-09T12:00:00Z" || me["delete_time"] != nil || me["purge_time"] != nil {
 		t.Fatalf("me: %d %v", rec.Code, me)
 	}
 	for k := range me {
 		switch k {
-		case "name", "state", "display_name", "create_time", "delete_time", "purge_time":
+		case "name", "state", "display_name", "avatar_url", "create_time", "delete_time", "purge_time":
 		default:
 			t.Fatalf("unexpected field on enduser DTO: %s", k)
 		}
@@ -100,6 +100,88 @@ func TestUpdateMe(t *testing.T) {
 	if status, _ := aipError(t, rec); rec.Code != 403 || status != "PERMISSION_DENIED/INSUFFICIENT_SCOPE" {
 		t.Fatalf("scope: %d %s", rec.Code, status)
 	}
+}
+
+func TestUpdateMeAvatarLegacyCapability(t *testing.T) {
+	called := false
+	f := withAuth(&fakeService{updateDisplayName: func(context.Context, string, string) (user.Me, error) { called = true; return meFixture(), nil }}, principal)
+	h := newHandler(t, f)
+	for _, body := range []map[string]any{{"avatar_url": "https://example.com/avatar"}, {"avatar_url": "", "display_name": "new"}} {
+		rec := do(t, h, call{method: "PATCH", path: "/users/me", bearer: "good", body: body})
+		if status, _ := aipError(t, rec); rec.Code != 503 || status != "UNAVAILABLE/PROFILE_UPDATE_NOT_CONFIGURED" || called {
+			t.Fatalf("avatar capability: %d %s called=%v", rec.Code, status, called)
+		}
+	}
+}
+
+type avatarProfileService struct {
+	*fakeService
+	update func(context.Context, string, user.ProfilePatch) (user.Me, error)
+}
+
+func (s *avatarProfileService) UpdateProfile(ctx context.Context, id string, p user.ProfilePatch) (user.Me, error) {
+	return s.update(ctx, id, p)
+}
+
+func TestUpdateMeAvatar(t *testing.T) {
+	t.Run("invalid value reasons", func(t *testing.T) {
+		svc := &avatarProfileService{fakeService: withAuth(&fakeService{}, principal), update: func(context.Context, string, user.ProfilePatch) (user.Me, error) {
+			t.Fatal("invalid value called service")
+			return user.Me{}, nil
+		}}
+		for _, tc := range []struct{ value, reason string }{
+			{`{}`, "MALFORMED_BODY"}, {`[]`, "MALFORMED_BODY"}, {`{"x":1}`, "MALFORMED_BODY"}, {`[1]`, "MALFORMED_BODY"}, {`true`, "MALFORMED_BODY"}, {`1`, "MALFORMED_BODY"},
+			{"\"https://example.com/\xff\"", "INVALID_ARGUMENT"}, {`"https://example.com/\ud800"`, "INVALID_ARGUMENT"},
+		} {
+			rec := do(t, profileHandler(t, svc, nil), call{method: "PATCH", path: "/users/me", bearer: "good", body: `{"avatar_url":` + tc.value + `}`})
+			if status, _ := aipError(t, rec); rec.Code != 400 || status != "INVALID_ARGUMENT/"+tc.reason {
+				t.Errorf("value %q: status=%d reason=%s", tc.value, rec.Code, status)
+			}
+		}
+	})
+	for _, tc := range []struct {
+		body         string
+		name, avatar *string
+		want         int
+	}{
+		{`{"display_name":"name","avatar_url":"https://example.com/a"}`, avatarString("name"), avatarString("https://example.com/a"), 200},
+		{`{"avatar_url":""}`, nil, avatarString(""), 200},
+		{"{\"avatar_url\":\"\u2028https://example.com/a\u2028\"}", nil, avatarString("\u2028https://example.com/a\u2028"), 200},
+		{`{"display_name":"name","avatar_url":null}`, avatarString("name"), nil, 200},
+		{`{"display_name":null,"avatar_url":"https://example.com/a"}`, nil, avatarString("https://example.com/a"), 200},
+		{`{"display_name":null,"avatar_url":null}`, nil, nil, 400},
+		{`{}`, nil, nil, 400},
+		{"{\"avatar_url\":\"https://example.com/\xff\"}", nil, nil, 400},
+		{`{"avatar_url":"https://example.com/\ud800"}`, nil, nil, 400},
+	} {
+		t.Run(tc.body, func(t *testing.T) {
+			called := false
+			svc := &avatarProfileService{fakeService: withAuth(&fakeService{}, principal), update: func(_ context.Context, id string, p user.ProfilePatch) (user.Me, error) {
+				called = true
+				if id != principal.UserID || !sameAvatarPointer(p.DisplayName, tc.name) || !sameAvatarPointer(p.AvatarURL, tc.avatar) {
+					t.Fatalf("patch %+v", p)
+				}
+				m := meFixture()
+				m.AvatarURL = "https://example.com/result"
+				return m, nil
+			}}
+			rec := do(t, profileHandler(t, svc, nil), call{method: "PATCH", path: "/users/me", bearer: "good", body: tc.body})
+			if rec.Code != tc.want || called != (tc.want == 200) {
+				t.Fatalf("status=%d called=%v body=%s", rec.Code, called, rec.Body.String())
+			}
+			if rec.Code == 200 {
+				var out map[string]any
+				decode(t, rec, &out)
+				if out["avatar_url"] != "https://example.com/result" {
+					t.Fatal(out)
+				}
+			}
+		})
+	}
+}
+func avatarString(s string) *string { return &s }
+func sameAvatarPointer(a, b *string) bool {
+	return a == nil && b == nil || a != nil && b != nil && *a == *b
 }
 
 func TestReauthentication(t *testing.T) {

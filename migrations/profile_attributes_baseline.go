@@ -11,7 +11,7 @@ import (
 func checkProfileAttributesBaseline(ctx context.Context, db *sql.DB, schema string, version int) error {
 	const query = `WITH base_columns(column_name,udt_name,is_nullable,column_default,collation_name) AS (VALUES
  ('id','text','NO',NULL::text,'C'),('state','int2','NO',NULL,NULL),
- ('display_name','text','YES',NULL,NULL),('freeze_time','timestamptz','YES',NULL,NULL),
+ ('avatar_url','text','YES',NULL,NULL),('display_name','text','YES',NULL,NULL),('freeze_time','timestamptz','YES',NULL,NULL),
  ('freeze_reason','text','YES',NULL,NULL),('freeze_actor_subject','text','YES',NULL,NULL),
  ('freeze_actor_username','text','YES',NULL,NULL),('delete_time','timestamptz','YES',NULL,NULL),
  ('purge_time','timestamptz','YES',NULL,NULL),('create_time','timestamptz','NO','now()',NULL),

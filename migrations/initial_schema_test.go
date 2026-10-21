@@ -167,7 +167,7 @@ func TestInitialSchemaPreservesNonAuditCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := old.Exec(ctx, string(initial)); err != nil {
+	if _, err := old.Exec(ctx, avatarInitialFixtureSQL(t, string(initial))); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := old.Exec(ctx, historicalFlowSQL(t)); err != nil {

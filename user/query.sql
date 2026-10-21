@@ -20,7 +20,7 @@ RETURNING id, state, profile_attributes;
 
 -- name: BatchPublicProfiles :many
 -- 宿主授权的业务页批量读取最小公开资料；包含注销状态，由领域层清空其显示名。
-SELECT id, display_name, state FROM user_account WHERE id = ANY(@ids::text[]);
+SELECT id, display_name, avatar_url, state FROM user_account WHERE id = ANY(@ids::text[]);
 
 -- name: LockUserByID :one
 -- 同设备重登前对用户行加锁：并发登录在此串行化，第二个事务等到第一个提交（含会话吊销/新建）
@@ -29,6 +29,15 @@ SELECT * FROM user_account WHERE id = $1 FOR UPDATE;
 
 -- name: UpdateUserDisplayName :one
 UPDATE user_account SET display_name = $2, update_time = now() WHERE id = $1
+RETURNING *;
+
+-- name: UpdateUserProfile :one
+-- Caller holds the account row lock and has checked ACTIVE.
+UPDATE user_account
+SET display_name = CASE WHEN @set_display_name::boolean THEN sqlc.narg('display_name')::text ELSE display_name END,
+    avatar_url = CASE WHEN @set_avatar_url::boolean THEN sqlc.narg('avatar_url')::text ELSE avatar_url END,
+    update_time = @now::timestamptz
+WHERE id = @id AND state = @active_state
 RETURNING *;
 
 -- name: SoftDeleteUser :one
@@ -57,7 +66,7 @@ LIMIT @batch_size::int;
 -- 匿名化账号行：展示名与冻结快照置 NULL，state → DELETED，purge_time 改写为实际执行时刻（delete_time 保留）。
 -- WHERE 带 state 做二次保险：调用方持锁并已复核状态，这里再钉一次避免把非 PENDING_DELETION 的行写成 DELETED。
 UPDATE user_account
-SET state = @deleted_state, display_name = NULL, freeze_time = NULL, freeze_reason = NULL,
+SET state = @deleted_state, display_name = NULL, avatar_url = NULL, freeze_time = NULL, freeze_reason = NULL,
     freeze_actor_subject = NULL, freeze_actor_username = NULL,
     profile_attributes = '{}'::jsonb,
     purge_time = @now::timestamptz, update_time = @now::timestamptz

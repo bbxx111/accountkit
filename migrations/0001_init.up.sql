@@ -14,6 +14,7 @@ CREATE TABLE user_account (
                           CONSTRAINT user_account_id_format CHECK (id ~ '^u_[0-9a-hjkmnp-tv-z]{13}$'),
     state                 SMALLINT NOT NULL,            -- ACTIVE / FROZEN / PENDING_DELETION / DELETED，Go 定义
     display_name          TEXT,
+    avatar_url            TEXT,
     freeze_time           TIMESTAMPTZ,
     freeze_reason         TEXT,
     freeze_actor_subject  TEXT,                         -- 管理员 OIDC sub 快照
@@ -21,7 +22,8 @@ CREATE TABLE user_account (
     delete_time           TIMESTAMPTZ,                  -- 软删除时刻（AIP-164）
     purge_time            TIMESTAMPTZ,                  -- 计划匿名化时刻；执行后为实际时刻
     create_time           TIMESTAMPTZ NOT NULL DEFAULT now(),
-    update_time           TIMESTAMPTZ NOT NULL DEFAULT now()
+    update_time           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    profile_attributes    JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 -- purge 维护任务：WHERE state = PENDING_DELETION AND purge_time <= now()
 -- 枚举值由 Go 定义并在此钉死：ACTIVE=1, FROZEN=2, PENDING_DELETION=3, DELETED=4（0 为 UNSPECIFIED，不存储）

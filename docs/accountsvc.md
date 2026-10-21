@@ -75,6 +75,7 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 | `TLS_CERT_FILE` / `TLS_KEY_FILE` | 有效 TLS 模式启用时要求完整有效证书对；false 与任一证书项冲突 |
 | `METRICS_ENABLED` | 未设置、空或 false 时关闭；true 启用 Prometheus；非法布尔在监听前拒绝 |
 | `METRICS_INSTANCE` | 指标启用时必填的固定非秘密标签，匹配 `[A-Za-z0-9][A-Za-z0-9._-]{0,63}`；关闭时忽略 |
+| `PROFILE_ATTRIBUTES_SCHEMA_FILE` | 可选本地普通文件，仅 serve 启动时读取；Schema 最大 64 KiB，空设置关闭资料能力 |
 | `TRUSTED_PROXY_CIDRS` | 空；逗号分隔可信代理网段 |
 | `STARTUP_TIMEOUT` / `SHUTDOWN_TIMEOUT` | 60s / 30s；关闭预算需给库收尾预留15秒 |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_FROM` | serve 在 EMAIL 启用时必填；一个发件地址 |
@@ -190,6 +191,25 @@ SMTP 认证使用 AUTH PLAIN，并在生产模式要求证书验证和加密；�
 accountsvc 只匿名化自己拥有的认证数据，不知道使用方的业务表。额外 user_id 关联数据需选择嵌入式同库回调，或独立制定业务清理方案。切换部署前，不得让 accountsvc 与依赖业务匿名化回调的宿主同时运行同一实例的维护任务，否则服务可能先取得锁并跳过业务清理责任。
 
 SIGINT/SIGTERM 触发撤销就绪、统一监听器 HTTP 排空、维护停止/审计刷新、连接关闭。进程管理器的终止宽限应大于 SHUTDOWN_TIMEOUT；超时非零退出，不能据此声称全部审计已落库。回退须成套恢复二进制、监听/证书配置、调用方和网关策略，步骤见[兼容迁移说明](compatibility.md#服务单监听与传输迁移)；不调用数据库 Down 或 UnsafeReset。
+
+## 本人资料属性
+
+serve 可设置 `ACCOUNTSVC_PROFILE_ATTRIBUTES_SCHEMA_FILE=/etc/accountsvc/profile-schema.json`。文件必须是本地普通文件，最大 64 KiB，使用[资料 Schema 规则](../README.md#可选用户资料属性go-与本人-http-接口)。启动时读取、离线校验后再创建运行依赖和监听；无效、空、不可读或超限文件会阻止启动，错误不输出路径或内容。省略或空设置保持关闭；migrate 忽略此项，库 ConfigFromEnv/New 仍不进行文件 I/O。
+
+启用后消费者通过 GET/PATCH `/v1/users/me/profile` 读写本人全部资料；必须持有 `user` scope 的 Bearer，无需近期重新认证。未启用时已认证的合法请求返回 `503 PROFILE_ATTRIBUTES_NOT_CONFIGURED`。GET 与 PATCH 示例及错误见 [HTTP 契约](openapi.md#本人资料属性)。
+
+使用 Compose 时在单独的 override 中显式添加环境变量和只读文件挂载（基础模板不默认启用）：
+
+```yaml
+services:
+  accountsvc:
+    environment:
+      ACCOUNTSVC_PROFILE_ATTRIBUTES_SCHEMA_FILE: /etc/accountsvc/profile-schema.json
+    volumes:
+      - ./profile-schema.json:/etc/accountsvc/profile-schema.json:ro
+```
+
+同一账号实例各副本必须使用一致 Schema；文件变更在重启后生效，不热更新、不自动修改旧资料。全部属性均对本人开放，不能依赖 readOnly/writeOnly 隐藏内部数据；收紧或删除声明前按[兼容说明](compatibility.md#可选用户资料属性的-go-与-http-接口)处理历史资料。
 
 ## 验证边界
 

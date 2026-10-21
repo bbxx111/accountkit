@@ -2,7 +2,26 @@
 
 本指南面向在自己的 Go 进程中嵌入 `github.com/bbxx111/accountkit` 的宿主。可以挂载内置 HTTP handler，也可以直接调用 `auth.Users()`；两者使用同一个领域服务，不需要启动 accountsvc。
 
-内容依据 v0.4.0 公开契约，包含 v0.2.0 未提供的登录补全和通用审计 API，以及 v0.3.0 未提供的当前会话、按来源撤销和客户端描述。实际集成应固定包含所需接口的已验证版本；不要把本指南的新签名直接套到 v0.2.0。升级边界见[兼容指南](compatibility.md)。
+内容依据当前开发版公开契约，包含 v0.2.0 未提供的登录补全和通用审计 API、v0.3.0 未提供的当前会话、按来源撤销和客户端描述，以及 v0.4.0 后新增的资料属性和头像。实际集成应固定包含所需接口的已验证版本；不要把新签名直接套到旧发布。升级边界见[兼容指南](compatibility.md)。
+
+## 基础资料与头像
+
+完成认证、scope 与业务授权后，调用 `auth.Users().GetMe(ctx, userID)` 读取 `DisplayName` 和 `AvatarURL`；头像未设置返回空字符串。修改示例：
+
+```go
+name := "新显示名"
+avatar := "https://cdn.example.com/avatar.png"
+me, err := auth.Users().UpdateProfile(ctx, userID, user.ProfilePatch{
+    DisplayName: &name,
+    AvatarURL:   &avatar,
+})
+```
+
+指针 nil 保持字段，指向空字符串清空；至少提供一个字段。更新在账号行锁内确认 ACTIVE 并原子保存，任一字段非法则整次拒绝。错误沿用 `ErrInvalidArgument`、`ErrNotFound`、`ErrInvalidState`；头像校验边界见 [HTTP 契约](openapi.md#基础资料与头像)。`UpdateDisplayName` 保留既有签名和行为，新代码需要原子更新或锁后状态检查时使用 `UpdateProfile`。
+
+`BatchPublicProfiles` 返回 ID、DisplayName、AvatarURL 和 State；宿主先按业务权限过滤 ID，待注销和已删除账号的显示名与头像均为空。图片文件的上传、公开访问、默认图及删除由宿主管理；头像清空只清除账号中的引用。
+
+自定义 `enduser.Service` 仍满足原必需方法集；实现可选 `enduser.ProfileUpdater` 的 `UpdateProfile` 方法即可支持头像。仅实现旧方法时，原显示名 PATCH 继续工作，含头像的 PATCH 返回 `503 PROFILE_UPDATE_NOT_CONFIGURED`，不会先修改显示名。
 
 ## 当前会话、解绑与客户端描述
 

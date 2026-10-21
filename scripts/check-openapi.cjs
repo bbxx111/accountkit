@@ -44,7 +44,7 @@ function fields(source, name) {
 const mappings = {
   enduser: {meResource:'Me', identityResource:'Identity', sessionResource:'Session', identityList:'IdentityList',
     pendingSignInResponse:'PendingSignIn', challengeResponse:'CodeChallenge', tokenResponse:'TokenPair',
-    currentSessionResource:'CurrentSession', authenticationIdentityResource:'AuthenticationIdentity', clientInfoResource:'ClientInfo'},
+    currentSessionResource:'CurrentSession', authenticationIdentityResource:'AuthenticationIdentity', clientInfoResource:'ClientInfo', profileResource:'Profile'},
   admin: {freezeResource:'Freeze', userResource:'AdminUser', identityResource:'AdminIdentity',
     userDetailResource:'AdminUserDetail', userList:'AdminUserList', revealResource:'RevealIdentity',
     sessionResource:'AdminSession', clientInfoResource:'AdminClientInfo', sessionList:'AdminSessionList', revokeAllResponse:'RevokeAllResult',
@@ -78,7 +78,7 @@ for (const surface of ['enduser', 'admin']) {
   }
   assert.deepEqual(declared.sort(), actual, `${surface} 路由与文档不一致`);
   // currentSessionResource 在独立文件，仍完整解析嵌入的 sessionResource。
-  const source = read(`httpapi/${surface}/response.go`) + (surface === 'enduser' ? '\n' + read('httpapi/enduser/current_session.go') : '');
+  const source = read(`httpapi/${surface}/response.go`) + (surface === 'enduser' ? '\n' + read('httpapi/enduser/current_session.go') + '\n' + read('httpapi/enduser/profile_attributes.go') : '');
   for (const [dto, schemaName] of Object.entries(mappings[surface])) {
     const dtoFields = fields(source, dto);
     const schema = doc.components.schemas[schemaName];

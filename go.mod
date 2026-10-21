@@ -16,6 +16,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/common v0.66.1
 	github.com/redis/go-redis/v9 v9.22.0
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	go.opentelemetry.io/otel v1.38.0
 	go.opentelemetry.io/otel/metric v1.38.0
 	go.opentelemetry.io/otel/sdk/metric v1.38.0

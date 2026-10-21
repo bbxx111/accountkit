@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// The authorized consolidation installs the complete schema at version one.
+// The published initial schema and its production increments install seven business tables.
 func TestConsolidatedInitialSchema(t *testing.T) {
 	entries, err := fs.ReadDir(".")
 	if err != nil {
@@ -167,7 +167,7 @@ func TestInitialSchemaPreservesNonAuditCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := old.Exec(ctx, string(initial)); err != nil {
+	if _, err := old.Exec(ctx, avatarInitialFixtureSQL(t, string(initial))); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := old.Exec(ctx, historicalFlowSQL(t)); err != nil {
@@ -194,6 +194,9 @@ END $$`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := old.Exec(ctx, databaseReviewIndexSQL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := old.Exec(ctx, profileAttributesInitialDDL); err != nil {
 		t.Fatal(err)
 	}
 	initialUp(t, cfg, newSchema)

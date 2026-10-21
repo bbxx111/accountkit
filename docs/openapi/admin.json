@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "accountkit 管理 HTTP API",
-    "version": "v0.4.0",
-    "description": "依据已发布 v0.4.0 的内置 HTTP 契约，包含 v0.4.0 新增的会话认证依据和可选客户端描述；v0.3.0 不含这些能力，不适用于 v0.2.0 的全部接口。宿主配置实际挂载地址。请求体为单个 JSON 对象，默认上限 64 KiB，拒绝未知字段与尾随内容。领域状态、事务、故障策略以规格与 README 为准。"
+    "version": "v0.5.0",
+    "description": "v0.5.0 发布候选的内置管理 HTTP 契约，在 v0.4.0 上为用户资源增加 avatar_url；已发布 v0.4.0 不包含该头像字段。宿主配置实际挂载地址。请求体为单个 JSON 对象，默认上限 64 KiB，拒绝未知字段与尾随内容。领域状态、事务、故障策略以规格与 README 为准。"
   },
   "servers": [
     {
@@ -888,6 +888,10 @@
           "display_name": {
             "type": "string"
           },
+          "avatar_url": {
+            "type": "string",
+            "description": "头像 HTTPS 地址；未设置或已匿名化时为空字符串。"
+          },
           "create_time": {
             "type": "string",
             "format": "date-time"
@@ -933,6 +937,7 @@
           "name",
           "state",
           "display_name",
+          "avatar_url",
           "create_time",
           "delete_time",
           "purge_time",
@@ -980,6 +985,10 @@
           },
           "display_name": {
             "type": "string"
+          },
+          "avatar_url": {
+            "type": "string",
+            "description": "头像 HTTPS 地址；未设置或已匿名化时为空字符串。"
           },
           "create_time": {
             "type": "string",
@@ -1036,6 +1045,7 @@
           "name",
           "state",
           "display_name",
+          "avatar_url",
           "create_time",
           "delete_time",
           "purge_time",

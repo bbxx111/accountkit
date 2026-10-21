@@ -4,30 +4,48 @@
 
 Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史身份密钥检查的顺序执行。最后的密钥检查失败不代表数据库迁移没有成功，排障时需同时检查当前版本和实际表结构。
 
-## 会话认证依据初始整合
+## 当前头像初始定义：version 1
+
+本轮用户明确要求“不新增 0002 迁移，改现有 0001”，范围仅为在当前 `user_account` 增加 `avatar_url TEXT NULL`，无默认值、业务 CHECK 或索引。同步 sqlc、当前 `initialFrozen` 与预检，新空 schema 安装仍为 version=1/dirty=false；0001 down 的整表删除定义已覆盖头像列，无需改动。此前资料单列整合与更早授权分别保留历史事实。
+
+预检要求完整头像列类型、可空性和无默认值。前一含 `profile_attributes` 但缺 `avatar_url` 的 v1（无论空或非空）、其他历史 v1 和撤回 v2 均无写拒绝，dirty 优先，保留 catalog、数据与 version/dirty。重复 Up 不补列、不重放同号 SQL；本轮不提供旧数据迁移或升级承诺，不 Force、改版本或清库。
+
+仅当前初始哈希更新；v0.4.0 精确 tag `62f0799b6c6ef1603b33f81834d39033dd0d0c4d`、其他已发布 tag/SQL 和冻结源保持。后续真实增量从 0002 开始，测试 probe 仍为 latest+1。新部署使用经核验的新空资源；有数据保留需求时另行制定并验证迁移，不能据此假定旧代码混跑或回退安全。本次实际检查与未验证项集中在[头像验收记录](../openspec/changes/archive/2026-10-21-add-user-avatar-url/verification.md)。
+
+## 当前用户资料属性初始整合：version 1
+
+本节保留头像变更之前的资料单列整合背景；当前完整初始定义另包含上一节的头像列。
+
+本轮用户明确要求“0002 并入 0001，无需考虑旧数据迁移”，仅授权把 `profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb` 单列合入当前工作树 0001，撤回生产 0002；新空 schema 安装 version=1/dirty=false，其他列、索引和业务行为保持。当前 initialFrozen 新哈希与 v0.4.0 已发布旧定义分别固定；v0.4.0 精确 tag `62f0799b6c6ef1603b33f81834d39033dd0d0c4d`、其他发布 tag/SQL 和冻结源保持。旧 v0.4.0 v1 缺资料列、其他历史 v1 及各代撤回 v2（含单列、四列、五列及混合资料 v2）均无写拒绝，dirty 优先，保留 catalog、数据及 version/dirty；不转换旧数据、不重放同号 SQL、不 Force、改版本或清库。本轮不提供旧数据迁移工具或升级承诺；后续真实增量从 0002 递增，测试 probe 使用 latest+1（当前为 2）。
+
+预检核对完整基础结构、资料单列类型/默认值/非空性、无旧资料元数据及账号原五个时间列精度。当前完整 v1 重复 Up 不改变 catalog、数据或时间；仅资料列整合，不新增 JSON 业务 CHECK、索引、外键或触发器。公共 API、账号行锁、Schema 演进和认证生命周期保持。
+
+新部署仅用人工核验的新空资源，不承诺 v0.4.0、54afa4b 或旧单列增量实现混跑/回退。公共 Down 无 I/O 拒绝。宿主 Schema 配置兼容调整、收紧修复及未知 null 删除规则保持，配置演进不等于旧数据库转换。
+
+固定测试文件 testdata/0002_success.up.sql 和 0002_failure.up.sql 仅作 latest+1 测试源。真实恢复覆盖 version 1、资料值/精确数字、账号时间、认证/匿名化和源库不变。[本轮验收记录](../openspec/changes/archive/2026-10-21-add-schema-validated-user-extensions/verification.md)顶部列当前状态，下文旧日志仅证明原阶段。以下会话整合保留历史事实。
+
+## 会话认证依据初始整合（v0.4.0 发布历史）
 
 此变更随 v0.4.0 发布。发布前，会话0002先按用户明确要求合入当时未发布的0001，又经明确批准简化：session不再包含known标记，`session_authentication_identity`保存必有的具体来源，`session_client_info`以session_id为单列主键保存一份`client_info JSONB NOT NULL`及服务器observe_time/create_time/update_time。没有来源未知正常态或双快照类型，没有外键；数据库保留主键、ID格式及非空约束，不增加JSON对象/业务CHECK，内容由业务读写统一校验。同步up/down、baseline、固定哈希和sqlc，无生产0002，新空库安装仍为version=1/dirty=false。已发布tag/SQL及冻结源快照不变，当前验收状态见[简化记录](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)。
 
-**当前代码不能直接升级旧数据库。** 已发布v0.3.0的v1缺少会话上下文；前一`b414fef`的v1仍含known标记、snapshot_kind和平坦双快照，原会话v2也已撤回。三者均返回ErrIncompatibleBaseline，保留catalog、数据、version/dirty，不自动补表、转换、重放0001、降版本或清库。新部署使用人工核验的新空数据库/schema；需要保留数据时必须另行制定并验证迁移方案，不能只因版本号都是1就直接接管。
+**下列历史数据库不能直接升级。** 已发布v0.3.0的v1缺少会话上下文；前一`b414fef`的v1仍含known标记、snapshot_kind和平坦双快照，原会话v2也已撤回。三者均返回ErrIncompatibleBaseline，保留catalog、数据、version/dirty，不自动补表、转换、重放0001、降版本或清库。新部署使用人工核验的新空数据库/schema；需要保留数据时必须另行制定并验证迁移方案，不能只因版本号都是1就直接接管。
 
 当前会话来源是非空领域不变量，不能用空集合表示安全，也不从身份列表或尽力审计推断。新建/重新认证在事务内验证来源身份归属和有效状态；当前详情、重新认证、换绑使用来源时检查有效性。解绑会检查同账号全部未吊销会话（含自然过期但未清理者），任一缺少有效来源则内部错误并整事务回滚；合法时只撤销命中来源的会话。普通JWT验证/内省不增加数据库查询。客户端描述为单份完整观察，有效非空观察整体替换，nil/空观察保持原值与时间，读取非法JSON为内部错误。
 
 1. 核对目标 schema、实际结构、版本、密钥、Redis 前缀和备份。新安装先确认目标为空；有旧数据时先完成独立迁移方案，不对旧库 Force 或改版本。
 2. 进入维护窗口，暂停并排空旧认证写请求和相关维护任务，或统一切换全部认证副本。旧副本不得继续建无来源会话、重新认证不替换来源或执行旧解绑/换绑撤销规则；不可让新旧副本混承接身份变更。
-3. 对核验后的新空目标使用匹配的新二进制执行 accountsvc migrate 或 Auth.Migrate，确认 version=1/dirty=false 和完整七表结构；全部新副本就绪后再恢复入口。网关明确放行当前详情 GET 和实际使用的可选头/CORS，验证旧客户端、解绑 204 可能退出与新客户端重查流程。
+3. 该次 v0.4.0 对核验后的新空目标执行迁移至 version=1/dirty=false 和完整七表；当前新安装使用本页资料初始整合 version 1 流程，不提供旧库升级。全部新副本就绪后再恢复入口。网关明确放行当前详情 GET 和实际使用的可选头/CORS，验证旧客户端、解绑 204 可能退出与新客户端重查流程。
 4. 观察查询与撤销行为，保持原JWT/refresh/Redis故障模式；Migrate重复执行不重建来源。保留密钥与Redis状态，数据库备份并不包括它们。
 
 回退优先前向修复。旧v0.3.0的预检只检查流程和审计，可能接受同为v1的新结构，不能依赖旧迁移器阻止启动；部署必须人工阻止混跑或未经核验的回退。旧sqlc使用显式列，读取可用也不证明具备新来源与撤销规则；前一开发版本的known/双快照写法同样不兼容。不能绕过Migrate将旧身份写路径重新上线。必要应用回退先停写/排空，另行证明结构、存量来源与安全行为兼容；公共Down无I/O拒绝，不能通过Force、改version、自动清库或清Redis回退。数据库恢复必须先落独立空库，核对两张上下文表、每个会话有效非空来源、单份nested客户端JSON及extensions/原观察时间、版本和源库未变，再按产品维护流程切换，不能承诺零数据损失。
 
 ## 当前初始基线
 
-当前初始结构是经明确授权的会话简化版本，已随 v0.4.0 发布，与v0.3.0 tag中的0001分别固定。此前合并会话0002、删除known/双快照、改为单份JSONB及数据库设计评审索引调整的授权各自限于发布前的指定范围，v0.4.0 发布后不再适用，也不构成日常改写开关。后续结构使用0002起的递增迁移，已发布SQL与tag不变。
+当前初始结构在 v0.4.0 七表会话定义之上，按各次限定授权合入资料单列和本轮头像列；生产目录只有 0001 up/down，version=1/dirty=false。0001 down 继续覆盖七表，公共 Down 拒绝；审计流程关联仍为 data.accountkit.flow_id。此前审计、流程改名、索引和会话简化授权各自限于当时范围。
 
-此前通用审计、流程改名和索引命名的初始整合已随 v0.3.0 发布；该版本包含五张业务表。随 v0.4.0 发布的 `0001_init.up.sql` 另按授权纳入会话上下文，共七张业务表及完整索引/约束；配套 down 覆盖七表，公共 Down 仍拒绝。审计流程关联仍存于 data.accountkit.flow_id。生产目录只有 0001 up/down，测试专用下一版本回到 testdata/0002，不混入生产目录。
+基线预检要求完整 sign_in_completion_flow、十列 UUIDv7 审计、必有来源/单份描述、当前资料单列和头像列。旧缺头像资料 v1、v0.4.0 v1、v0.3.0 v1、双快照/旧流程/审计、双表及各代撤回 v2 均返回可由 errors.Is 识别的 migrations.ErrIncompatibleBaseline，保持 catalog、数据和 version/dirty，dirty 优先。UnsafeReset 沿用相同预检，不接受旧基线；重复 Up 不补列或重放同号 SQL。
 
-基线预检要求完整sign_in_completion_flow且不存在identity_flow、十列UUIDv7审计，以及当前简化会话上下文的字段、约束和索引；明确拒绝known标记、snapshot_kind/平坦快照或非session_id单列主键。旧流程/审计结构、缺少会话上下文的v0.3.0 v1、前一`b414fef`双快照v1，以及所有撤回v2（含原会话v2）均返回可由errors.Is识别的`migrations.ErrIncompatibleBaseline`。拒绝保留原数据、结构和版本；dirty优先阻断。完整当前v1的非空实例重复Up不改变结构和记录，也不影响其他schema。UnsafeReset沿用相同预检，不接受旧基线；本包不自动改名、重放、转换或清库。
-
-固定 source-baseline 和 v0.1.0/v0.2.0/v0.3.0 历史标签保持。源快照、v0.3.0 初始 SQL、当前初始 SQL 使用三代独立固定校验；后续迁移仍不可改写。旧发布说明和归档中的 0002 记录描述当时版本，当前操作以本节为准。
+冻结源、全部发布 tag/SQL、v0.4.0 旧定义与当前 initialFrozen 分别固定。实际当前哈希和校验结果记于[本轮验收](../openspec/changes/archive/2026-10-21-add-user-avatar-url/verification.md)。后续真实增量从 0002 递增；旧发布说明和归档保留原文，当前操作以本节为准。
 
 此前索引命名维护按用户明确要求未新增迁移：直接将未发布 0001 的 22 个普通索引命名为 `idx_<表名>_<字段或用途>`、4 个独立唯一索引命名为 `uk_<表名>_<字段或用途>`；主键索引保留 `<表名>_pkey`，索引列、唯一性、谓词及访问方法保持。当时同步更新固定校验，初始版本仍为 1；历史 SQL 和源快照未改。已有同号数据库不会重放 0001，因此不会自动得到该次命名调整；不能靠修改版本或自动重建绕过基线检查。
 
@@ -41,7 +59,7 @@ Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史�
 
 1. 核对包版本、目标数据库/schema、旧版本、密钥版本、Redis 前缀及业务匿名化配置。
 2. 保留能够恢复的数据库备份与对应密钥，记录备份时间点；确认应用兼容窗口与停止写入安排。
-3. 在预发布环境验证新空库安装 version=1、当前非空 v1 重复 Up 与实例隔离，以及旧 v0.3.0 v1、撤回会话 v2、旧流程/审计、双表和 dirty 拒绝；不支持旧库直接接管。测试专用下一版本为 testdata/0002。
+3. 在预发布环境验证新空库安装 version=2、非空 v0.4.0 v1 升级、合法 v2 重复 Up 与实例隔离，以及旧 v0.3.0 v1、撤回会话 v2、旧流程/审计、双表和 dirty 拒绝；不支持历史旧库直接接管。测试 probe 使用 latest+1。
 4. 运行发布检查，确认固定历史发布和当前基线均通过；本次明确整合完成后迁移只追加，禁止重新编号或编辑已发布文件。
 
 ## 登录补全流程命名调整
@@ -91,10 +109,10 @@ err := migrations.UnsafeReset(ctx, connCfg, schema,
 
 ## 历史检查与恢复演练
 
-当前sign_in_completion_flow保存加密的短期登录证明和完成结果，含pending首次客户端描述及原观察时间。备份恢复须覆盖其密文、cipher_version、原expire_time、账号/会话引用和version/dirty，并保留相应旧密钥。旧流程、旧v0.3.0 v1、前一`b414fef`双快照v1或撤回v2的备份先恢复到独立库核验，需使用当前代码时另行制定并验证数据迁移方案，不能重复Up、改版本或清库接管。v0.4.0 备份应为完整七表、version=1，包含有效非空来源及单份nested客户端JSON和extensions；v0.3.0备份也标为1，但缺少会话上下文。恢复演练验证数据/凭证格式和流程记录保持，不是旧库原地升级。源库和目标库必须为两个独立一次性空库。
+当前sign_in_completion_flow保存加密的短期登录证明和完成结果，含pending首次客户端描述及原观察时间。备份恢复须覆盖其密文、cipher_version、原expire_time、账号/会话引用和version/dirty，并保留相应旧密钥。旧流程、旧v0.3.0 v1、前一`b414fef`双快照v1或撤回v2的备份先恢复到独立库核验，需使用当前代码时另行制定并验证数据迁移方案，不能重复Up、改版本或清库接管。v0.4.0 备份应为完整七表、version=1，包含有效非空来源及单份 nested 客户端 JSON（可含客户端描述 extensions）；当前 version 2 备份还包含账号资料 JSON 及账号原时间，不含 Schema/revision/独立时间元数据；v0.3.0备份也标为1，但缺少会话上下文。恢复演练验证数据/凭证格式和流程记录保持，不是旧库原地升级。源库和目标库必须为两个独立一次性空库。
 
 Redis 验证码状态不在数据库备份中；恢复后的 PENDING 流程缺少验证码轮次时必须拒绝，不能仅凭数据库票据放行。COMPLETED 的相同请求只有在原期限内、账号和会话有效且 refresh 未轮换时可读取原结果；期限自然经过后应拒绝票据，仍可验证已完成会话的 refresh。演练不延长5分钟流程期限，也不宣称数据库备份实现零数据损失。
 
-bash scripts/check-migrations.sh 校验固定源快照、v0.1.0/v0.2.0 的精确提交与原 SQL、v0.3.0 的精确提交与旧初始 SQL，以及当前整合基线和全部可达新正式 vX.Y.Z tag，包括合并分支及 HEAD。三代基线使用独立固定 LF 字节哈希；发布过的增量不能被后续 tag 覆盖或删除，新标签不能借用历史基线例外。浅克隆须获取完整历史和 tags。
+bash scripts/check-migrations.sh 校验固定源快照、v0.1.0/v0.2.0 的精确提交与原 SQL、v0.3.0 的精确提交与旧初始 SQL，v0.4.0 的精确提交与原始 SQL，以及当前整合基线和全部可达新正式 vX.Y.Z tag，包括合并分支及 HEAD。三代基线使用独立固定 LF 字节哈希；发布过的增量不能被后续 tag 覆盖或删除，新标签不能借用历史基线例外。浅克隆须获取完整历史和 tags。
 
 bash scripts/verify-recovery.sh需要psql/pg_dump/pg_restore 17、Go和两个明确指定的独立空测试库。脚本通过集群system_identifier和实际数据库名称判断同库，要求具备读取pg_control_system的测试权限，并拒绝非空库。只生成合成数据，不删除或覆盖既有库。恢复后检查七个业务表、版本、解密和旧访问/刷新令牌；核对每个会话有效非空来源、双身份来源、单份nested客户端描述的app/browser并存、制造商/build、extensions及原观察时间。完整备份包含两个上下文子表，并在source-unchanged阶段验证源库未改变。普通TestRecoveryFixture仍预期skip，只有脚本三阶段强制运行才是恢复演练证据。历史凭证夹具须显式建立有效来源，不能将测试补关联描述成生产自动迁移。证据保留在被Git忽略的.test-output/recovery.*下；重跑需提供新的空库。当前简化版本的实际门禁结果见[验收记录](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)，历史记录不代表当前验证通过。

@@ -1,11 +1,14 @@
 package enduser
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
 
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/httpapi/authn"
+	"github.com/bbxx111/accountkit/internal/boundedjson"
 	"github.com/bbxx111/accountkit/user"
 )
 
@@ -33,10 +36,11 @@ func (h *Handler) getMe(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateMeRequest struct {
-	DisplayName *string `json:"display_name"`
+	DisplayName *string         `json:"display_name"`
+	AvatarURL   json.RawMessage `json:"avatar_url"`
 }
 
-// PATCH /users/me — 首版只允许 display_name。
+// PATCH /users/me — 原子部分更新基础资料。
 func (h *Handler) updateMe(w http.ResponseWriter, r *http.Request) {
 	p, ok := principal(w, r)
 	if !ok {
@@ -47,11 +51,44 @@ func (h *Handler) updateMe(w http.ResponseWriter, r *http.Request) {
 		apierror.Write(w, malformed())
 		return
 	}
-	if req.DisplayName == nil {
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "NO_FIELDS", "no updatable fields present (display_name)"))
+	// Preserve the raw value until Unicode validation; encoding/json otherwise
+	// replaces invalid UTF-8 and lone surrogates before the domain can reject them.
+	var avatarURL *string
+	if len(req.AvatarURL) != 0 {
+		raw := bytes.TrimSpace(req.AvatarURL)
+		if len(raw) == 0 || raw[0] != '"' && !bytes.Equal(raw, []byte("null")) {
+			apierror.Write(w, malformed())
+			return
+		}
+		// U+2028/U+2029 use six canonical bytes for three input bytes.
+		value, err := boundedjson.Decode(req.AvatarURL, boundedjson.Limits{MaxBytes: 2 * len(req.AvatarURL), MaxDepth: 1, MaxNodes: 1})
+		if err != nil {
+			apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_ARGUMENT", "invalid avatar_url"))
+			return
+		}
+		if value != nil {
+			text, ok := value.(string)
+			if !ok {
+				apierror.Write(w, malformed())
+				return
+			}
+			avatarURL = &text
+		}
+	}
+	if req.DisplayName == nil && avatarURL == nil {
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "NO_FIELDS", "no updatable fields present (display_name, avatar_url)"))
 		return
 	}
-	me, err := h.d.Users.UpdateDisplayName(r.Context(), p.UserID, *req.DisplayName)
+	var me user.Me
+	var err error
+	if updater, ok := h.d.Users.(ProfileUpdater); ok {
+		me, err = updater.UpdateProfile(r.Context(), p.UserID, user.ProfilePatch{DisplayName: req.DisplayName, AvatarURL: avatarURL})
+	} else if avatarURL != nil {
+		apierror.Write(w, apierror.New(apierror.StatusUnavailable, "PROFILE_UPDATE_NOT_CONFIGURED", "profile update not configured"))
+		return
+	} else {
+		me, err = h.d.Users.UpdateDisplayName(r.Context(), p.UserID, *req.DisplayName)
+	}
 	if err != nil {
 		h.writeServiceError(w, r, err)
 		return

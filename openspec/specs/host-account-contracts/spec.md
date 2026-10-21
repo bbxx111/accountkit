@@ -7,7 +7,7 @@
 ## Requirements
 
 ### Requirement: 批量公开账号资料
-库 SHALL 提供内部 Go 批量资料查询，仅返回账号 ID、显示名和生命周期状态，不含联系方式、身份、会话和密钥，不新增任意用户公开 HTTP 查询。输入 SHALL 去重；空输入返回空结果，格式错误 ID 返回参数错误，合法未知 ID 不在结果中。PENDING_DELETION/DELETED 账号 SHALL 返回空显示名。
+库 SHALL 提供内部 Go 批量资料查询，仅返回账号 ID、显示名、头像地址和生命周期状态，不含联系方式、身份、会话和密钥，不新增任意用户公开 HTTP 查询。输入 SHALL 去重；空输入返回空结果，格式错误 ID 返回参数错误，合法未知 ID 不在结果中。PENDING_DELETION/DELETED 账号 SHALL 返回空显示名和空头像地址。
 
 #### Scenario: 一页一次资料查询
 - **WHEN** 宿主传入授权业务页涉及的重复账号 ID
@@ -15,7 +15,7 @@
 
 #### Scenario: 未知和注销资料
 - **WHEN** 输入包含未知、待注销或已匿名化账号
-- **THEN** 未知账号不返回，注销账号不返回原显示名，由宿主决定匿名文案
+- **THEN** 未知账号不返回，注销账号不返回原显示名及头像，由宿主决定匿名文案
 
 ### Requirement: 注销事务前置检查
 库 SHALL 允许宿主注入删除前置检查，消费者注销和管理员代办注销均 SHALL 在账号锁和状态校验后、改变状态前调用，传入同一数据库事务。宿主业务拒绝 SHALL 映射为 400 FAILED_PRECONDITION、reason DELETION_BLOCKED 和固定安全消息，非业务错误 SHALL 按内部错误处理。未配置检查 SHALL 保持原注销行为，库 SHALL 不内置业务表或团队规则。

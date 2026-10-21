@@ -12,6 +12,7 @@ import (
 type PublicProfile struct {
 	ID          string
 	DisplayName string
+	AvatarURL   string
 	State       enum.UserState
 }
 
@@ -41,6 +42,9 @@ func (s *Service) BatchPublicProfiles(ctx context.Context, userIDs []string) (ma
 		profile := PublicProfile{ID: row.ID, State: row.State}
 		if row.State != enum.UserPendingDeletion && row.State != enum.UserDeleted && row.DisplayName != nil {
 			profile.DisplayName = *row.DisplayName
+		}
+		if row.State != enum.UserPendingDeletion && row.State != enum.UserDeleted && row.AvatarUrl != nil {
+			profile.AvatarURL = *row.AvatarUrl
 		}
 		profiles[row.ID] = profile
 	}

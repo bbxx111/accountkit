@@ -37,8 +37,8 @@ Linux 验证使用 Go 1.26.5、CGO/race、PostgreSQL 17.5、Redis 7 和 PostgreS
 
 - [完整库日志](../../../../.test-output/linux-final/library-verification.log) 与 [测试事件](../../../../.test-output/linux-final/tests.jsonl)。
 - [服务日志](../../../../.test-output/linux-final/service-verification.log) 与 [服务测试事件](../../../../.test-output/linux-final/accountsvc-tests.jsonl)。
-- [最终恢复材料](../../../../.test-output/linux-final/recovery.yG8WC5/)。
-- [分步与审查协作材料](../../../../.test-output/delivery-review/)。
+- [最终恢复材料](../../../../.test-output/linux-final/recovery.yG8WC5)。
+- [分步与审查协作材料](../../../../.test-output/delivery-review)。
 - [控制器汇总状态](../../../../.test-output/linux-final/final-status.json)。该文件区分库与服务检查的提交；先前驱动脚本状态保留为历史文件，不代替本次汇总。
 - 上述本地原始材料不提交 Git，其他检出环境只会获得此验收记录。
 

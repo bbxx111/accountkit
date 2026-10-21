@@ -54,6 +54,7 @@ type meResource struct {
 	Name        string  `json:"name"`
 	State       string  `json:"state"`
 	DisplayName string  `json:"display_name"`
+	AvatarURL   string  `json:"avatar_url"`
 	CreateTime  string  `json:"create_time"`
 	DeleteTime  *string `json:"delete_time"`
 	PurgeTime   *string `json:"purge_time"`
@@ -61,7 +62,7 @@ type meResource struct {
 
 func newMeResource(m user.Me) meResource {
 	return meResource{
-		Name: "users/" + m.ID, State: m.State.String(), DisplayName: m.DisplayName,
+		Name: "users/" + m.ID, State: m.State.String(), DisplayName: m.DisplayName, AvatarURL: m.AvatarURL,
 		CreateTime: fmtTime(m.CreateTime), DeleteTime: fmtTimePtr(m.DeleteTime), PurgeTime: fmtTimePtr(m.PurgeTime),
 	}
 }

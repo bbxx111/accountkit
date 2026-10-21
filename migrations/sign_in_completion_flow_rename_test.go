@@ -55,12 +55,15 @@ func renameDataSnapshot(t *testing.T, c *pgx.Conn, flowTable string) string {
 	return result
 }
 
-func historicalFlowInitial(t *testing.T, cfg *pgx.ConnConfig, schema string) *pgx.Conn {
+func historicalFlowInitial(t *testing.T, cfg *pgx.ConnConfig, schema string, withAvatar ...bool) *pgx.Conn {
 	t.Helper()
 	// The exact pre-rename definition remains immutable in Git history.
 	initial, err := exec.Command("git", "show", "732639ccddd379552edb58c8b5b128ebb7bbf2a6:migrations/0001_init.up.sql").Output()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(withAvatar) > 0 && withAvatar[0] {
+		initial = []byte(avatarInitialFixtureSQL(t, string(initial)))
 	}
 	c := migrationTestConn(t, cfg, schema)
 	for _, statement := range []string{"CREATE SCHEMA " + schema, string(initial), "CREATE TABLE schema_migrations(version bigint PRIMARY KEY, dirty boolean NOT NULL); INSERT INTO schema_migrations VALUES(1,false)"} {
@@ -74,11 +77,14 @@ func historicalFlowInitial(t *testing.T, cfg *pgx.ConnConfig, schema string) *pg
 func TestSignInCompletionFlowInitialDefinition(t *testing.T) {
 	cfg, oldSchema := safetyDB(t)
 	_, schema := safetyDB(t)
-	old := historicalFlowInitial(t, cfg, oldSchema)
+	old := historicalFlowInitial(t, cfg, oldSchema, true)
 	if _, err := old.Exec(context.Background(), sessionContextHistoricalSQL(t, "0002_session_authentication_context.up.sql")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := old.Exec(context.Background(), databaseReviewIndexSQL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := old.Exec(context.Background(), profileAttributesInitialDDL); err != nil {
 		t.Fatal(err)
 	}
 	initialUp(t, cfg, schema)

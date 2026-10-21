@@ -38,7 +38,7 @@ proposal、design、相关 delta specs、README、兼容/服务/网关文档、A
 
 必需测试清单将 `TestAccountsProtocolMigrationAgainstRealDB` 一对一同步为 `TestUsersResourceProtocolAgainstRealDB`，总数保持 441，没有删减门禁或放宽断言。真实外部微信/Apple 环境仍未提供；本地提供方夹具不替代真实服务商联调。
 
-本轮原始日志和资源记录位于 [.test-output/restore-users/](../../../../.test-output/restore-users/) 与 [environment.txt](../../../../.test-output/restore-users/environment.txt)。仅本轮创建的容器、缓存卷和网络已回收，共享验证镜像保留；[回收记录](../../../../.test-output/restore-users/cleanup.log)。临时执行目录已归档后清理，[执行与审查材料](../../../../.test-output/restore-users/review-evidence-5d6892c.zip) 保留供核对。旧验收只证明相应历史版本，当前 users 契约以本节及最新工件为准。
+本轮原始日志和资源记录位于 [.test-output/restore-users/](../../../../.test-output/restore-users) 与 [environment.txt](../../../../.test-output/restore-users/environment.txt)。仅本轮创建的容器、缓存卷和网络已回收，共享验证镜像保留；[回收记录](../../../../.test-output/restore-users/cleanup.log)。临时执行目录已归档后清理，[执行与审查材料](../../../../.test-output/restore-users/review-evidence-5d6892c.zip) 保留供核对。旧验收只证明相应历史版本，当前 users 契约以本节及最新工件为准。
 
 ## Previous Implementation (2026-10-14)
 
@@ -104,4 +104,4 @@ OpenSpec 共 35 项任务，34 项完成；8.5 真实微信/Apple 联调按用�
 
 ### Resources
 
-仅使用本任务创建的 PostgreSQL、Redis、验证容器、网络和缓存卷；测试使用合成数据与隔离 schema。上述一次性资源已全部回收，共享验证镜像与工作区保留；[回收记录](../../../../.test-output/identity-policy/cleanup.log)。原始日志、JSON、备份及资源记录保留在被忽略的 [.test-output/identity-policy/](../../../../.test-output/identity-policy/) 与 [环境记录](../../../../.test-output/identity-policy/environment.txt)。本计划临时工作目录已单独清理，[原始审查与执行材料归档](../../../../.test-output/identity-policy/review-evidence-27d738b.zip) 保留供核对。
+仅使用本任务创建的 PostgreSQL、Redis、验证容器、网络和缓存卷；测试使用合成数据与隔离 schema。上述一次性资源已全部回收，共享验证镜像与工作区保留；[回收记录](../../../../.test-output/identity-policy/cleanup.log)。原始日志、JSON、备份及资源记录保留在被忽略的 [.test-output/identity-policy/](../../../../.test-output/identity-policy) 与 [环境记录](../../../../.test-output/identity-policy/environment.txt)。本计划临时工作目录已单独清理，[原始审查与执行材料归档](../../../../.test-output/identity-policy/review-evidence-27d738b.zip) 保留供核对。

@@ -38,6 +38,7 @@ type userResource struct {
 	Name        string          `json:"name"`
 	State       string          `json:"state"`
 	DisplayName string          `json:"display_name"`
+	AvatarURL   string          `json:"avatar_url"`
 	CreateTime  string          `json:"create_time"`
 	UpdateTime  string          `json:"update_time"`
 	DeleteTime  *string         `json:"delete_time"`
@@ -47,7 +48,7 @@ type userResource struct {
 
 func newUserResource(u user.AdminUser) userResource {
 	out := userResource{
-		Name: "users/" + u.ID, State: u.State.String(), DisplayName: u.DisplayName,
+		Name: "users/" + u.ID, State: u.State.String(), DisplayName: u.DisplayName, AvatarURL: u.AvatarURL,
 		CreateTime: fmtTime(u.CreateTime), UpdateTime: fmtTime(u.UpdateTime),
 		DeleteTime: fmtTimePtr(u.DeleteTime), PurgeTime: fmtTimePtr(u.PurgeTime),
 	}

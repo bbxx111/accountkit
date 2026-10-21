@@ -20,6 +20,11 @@ import (
 	"github.com/bbxx111/accountkit/user"
 )
 
+// ProfileUpdater 是可选的基础资料原子更新能力。
+type ProfileUpdater interface {
+	UpdateProfile(context.Context, string, user.ProfilePatch) (user.Me, error)
+}
+
 // Service 是 handler 依赖的领域面；*user.Service 满足它。
 type Service interface {
 	SendSignInCode(ctx context.Context, channel enum.IdentityKind, target string, meta user.Meta) (user.CodeChallenge, error)
@@ -138,6 +143,8 @@ func (h *Handler) Router() http.Handler {
 	// 认证端点（Task 6、7）
 	r.With(anyScope).Get("/users/me", h.getMe)
 	r.With(currentSessionNoStore, bindScope).Get("/users/me/sessions/current", h.currentSession)
+	r.With(currentSessionNoStore, fullScope).Get("/users/me/profile", h.getProfile)
+	r.With(currentSessionNoStore, fullScope).Patch("/users/me/profile", h.patchProfile)
 	r.Group(func(r chi.Router) {
 		r.Use(fullScope)
 		r.Patch("/users/me", h.updateMe)

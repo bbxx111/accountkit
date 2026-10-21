@@ -91,6 +91,7 @@ type UserAccount struct {
 	ID                  string
 	State               enum.UserState
 	DisplayName         *string
+	AvatarUrl           *string
 	FreezeTime          *time.Time
 	FreezeReason        *string
 	FreezeActorSubject  *string
@@ -99,4 +100,5 @@ type UserAccount struct {
 	PurgeTime           *time.Time
 	CreateTime          time.Time
 	UpdateTime          time.Time
+	ProfileAttributes   []byte
 }

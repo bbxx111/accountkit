@@ -1,5 +1,38 @@
 # 功能与兼容对照
 
+## 内置头像属性
+
+当前开发版新增 `user.Me`、`user.AdminUser`、`user.PublicProfile` 的 `AvatarURL string` 和对应两面 JSON `avatar_url`；未设置返回空字符串。使用结构体无字段名的位置字面量的 Go 调用者需改为带字段名的写法，HTTP 严格字段解析器需允许新字段。
+
+新增 `user.ProfilePatch` 与 `Service.UpdateProfile`，支持显示名/头像原子部分更新，nil 保持、空字符串清空，仅允许 ACTIVE。`UpdateDisplayName` 保留签名和原行为。消费者 `Service` 必需方法集不变，新增可选 `enduser.ProfileUpdater`；旧适配器的显示名更新仍可用，头像请求缺少能力时返回 503，避免部分写入。
+
+头像现在属于内置顶层保留字段，`profile_attributes` Schema 不得重复声明 `avatar_url`。宿主此前若自行声明同名扩展，应先设计并验证资料调整；库不会自动转移旧扩展值。图片文件仍由宿主管理。HTTP 细节见[基础资料与头像](openapi.md#基础资料与头像)。
+
+按本轮明确授权，当前 `0001` 增加 `avatar_url TEXT NULL`，仍安装 version 1。无头像列的前一资料 v1 及历史拒绝结构无写拒绝；新部署使用经核验的新空 schema，保留数据需求另行制定迁移。详见[头像迁移边界](migrations.md#当前头像初始定义version-1)。
+
+## 可选用户资料属性的 Go 与 HTTP 接口
+
+新增 `Config.ProfileAttributes`、`user.Deps.ProfileAttributes`、`user.ProfileAttributesConfig`、
+`user.ProfileAttributesView`、`user.ProfileAttributesPatch` 与 `Service.GetProfileAttributes/PatchProfileAttributes`。
+nil 默认保持旧行为；既有 enduser/admin DTO、适配器必需接口、JWT、内省及
+`BatchPublicProfiles` 不增加扩展字段。不要直接序列化新增列后的 sqlc 行。
+构造和 `Auth.Config()` 均复制 Schema 字节；服务只读复用其构造时编译的策略。
+
+新增错误为 `ErrProfileAttributesNotConfigured`；参数/校验错误支持 `ErrInvalidArgument`，
+账号状态拒绝沿用 `ErrInvalidState`。结构化校验错误是
+`ProfileAttributesValidationError`，其 `Violations` 最多包含 16 条安全的 Path/Rule。
+Go 直接调用仍由宿主授权。内置新增 GET/PATCH `/users/me/profile`，要求 `user` scope，不要求近期重新认证，返回全部资料；参数错误为 `400 INVALID_PROFILE_ATTRIBUTES`，未配置为 `503 PROFILE_ATTRIBUTES_NOT_CONFIGURED`，外层格式错误为 `400 MALFORMED_BODY`。HTTP 只返回固定安全消息，不直接序列化 Violations。
+数据库错误使用固定安全消息，不保留可能含整行资料的 PostgreSQL 错误详情。
+提交结果不确定时重新读取核对，不盲目重放。Patch 仅含 Document，View 不含 Revision；不再接收 expected_revision 或返回 Conflict。
+并发仅用数据库账号行锁：锁内读取最新资料→RFC 7396 合并→完整 Schema 校验→提交。不同不重叠属性保留彼此修改，同属性以后执行事务为准，数组整体替换及父对象删除仍遵循 RFC 7396；不使用 Redis 锁。
+
+这是相对未发布 54afa4b 的 Go 源码破坏性调整：调用者将 UserExtensions/Extensions* 和 GetExtensions/PatchExtensions 改为上述 ProfileAttributes 名称，删除 ExpectedRevision、Revision 及 Conflict 处理；不保留旧 API 别名。配置只保留 Schema，视图只保留 Data；调用者移除 SchemaVersion、SchemaFingerprint、UpdateTime 及 ErrProfileAttributesSchemaMismatch 处理。
+属性仅允许用户资料，禁止宿主业务状态、权益及权限。本轮授权将单列并入当前 0001、撤回生产 0002，新安装 version 1；旧 v0.4.0 v1 及各代撤回 v2 无写拒绝，无旧数据迁移，不重放同号 SQL、Force、改版本或清库。旧发布 tag/SQL 和冻结源独立固定，详见[迁移说明](migrations.md#当前用户资料属性初始整合version-1)。
+
+**本人访问契约变化：** 启用 Schema 并挂载内置消费者 handler，即允许本人完整读取和修改所有 profile_attributes。升级前须迁出本人不可见或不可改的内部字段；Schema 的 readOnly/writeOnly 不能当作权限。已有 enduser.Service 必需方法集不变，旧自定义适配器继续编译；需要新能力时实现可选 `enduser.ProfileAttributesService`，未实现的新路由返回 503。`/users/me` 支持内置 display_name 和 avatar_url，不接收 profile_attributes；扩展更新仍使用独立路由。
+
+accountsvc 新增可选 `ACCOUNTSVC_PROFILE_ATTRIBUTES_SCHEMA_FILE`，仅 serve 读取；migrate 忽略。未设置不启用资料，文件非法则启动失败；库 ConfigFromEnv/New 仍不读文件。HTTP 启用过程不新增数据库迁移，见[协议](openapi.md#本人资料属性)及[当前验收](../openspec/changes/archive/2026-10-21-add-self-profile-http/verification.md)。
+
 固定兼容基线包含 130 个文件，原始文件清单与 SHA-256 见 `tests/testdata/source-baseline/manifest.json`；该清单用于追溯冻结快照，不表示当前文件名和内容必须与历史快照相同。当前根包名为 `accountkit`，导入路径为 `github.com/bbxx111/accountkit`。
 
 ## 数据库运行契约修复
@@ -11,6 +44,22 @@
 - **审计分页：** 本地 Reader 只为最终页读取完整事件，`Page.FlowLinks` 提供当前页需要的去重流程归属，不应当作账号全部历史流程清单使用。公开类型、排序游标、动作范围、source/namespace 及管理面独立复核保持；证明查找独立于页面动作和游标范围。外部 Reader 的契约不变。
 
 当前测试、执行计划和未验证项见[验收记录](../openspec/changes/archive/2026-10-20-harden-database-runtime/verification.md)。
+
+## Schema 约束的用户资料属性补丁
+
+用户资料属性由宿主通过 Go 接口显式使用，不自动进入既有账号或认证 HTTP 响应。宿主负责目标账号与字段授权，包含父对象删除和数组整体替换；Schema 的 `readOnly`、`writeOnly`、`default` 等仅是注解，不实施权限或填充值。
+
+补丁遵循 RFC 7396，顶层必须是对象。对象成员的 `null` 删除该成员；数组整体替换，其中及其对象成员不能保留 `null`。递归对象补丁保留未提及成员：对已有对象提交 `{}` 保留内容，对缺失对象提交 `{}` 则创建空对象并检查子字段 `required`。删除父对象可以删除整个子树；删除不存在但已经声明的属性无变化。未知属性即使以 `null` 删除也拒绝，数组内对象的字段同样检查声明目录。合并后始终验证完整资料，包括未改动部分和条件约束。
+
+Schema 固定为 Draft 2020-12 的受支持范围：主结构树每层对象声明固定 `properties` 与 `additionalProperties: false`，节点具有单一明确类型；数组声明单一 `items`。条件、组合及其本地复用定义可使用仅含约束或布尔的 Schema，但只约束主树已有字段，不引入新字段或改变结构类型。仅支持本文件 `$defs` 中无环引用，不加载远程或本地文件资源；未知关键字、未知 format、动态属性、类型联合和嵌套 `$id` 在初始化时拒绝。format 为 `date`、`date-time`、`email`、`uri`、`uuid`，均启用断言；pattern 使用 Go `regexp` 子集。
+
+Schema 原始输入限 64 KiB、32 层；展开后的主树属性声明限 128，验证节点限 1024。同一属性的条件约束不增加声明计数，主树不同位置复用的结构按各位置计数。补丁原始输入与规范化最终资料分别限 16 KiB、深度 8、512 个值节点（含根和容器）。重复键、尾随文档、非法 Unicode、NUL 和 PostgreSQL JSONB 无法存储的数字均拒绝；资料不保存 JSON `null`。数字精确处理，`1`、`1.0`、`1e0` 按相同值比较。
+
+宿主保证同一数据库实例的 Schema 配置一致。库不保存逐行 Schema 身份，不提供 SchemaMismatch 错误。读取只检查通用存储边界；更新按当前 Schema 校验完整合并结果，无变化请求也不得绕过。新增可选属性、放宽约束、修改注解可直接更新配置。收紧规则可能使旧资料完整结果不合法，更新拒绝且原资料与账号 update_time 保持；同次补丁可修复后保存。移除声明属性后，遗留属性仍不能以未知属性 null 删除，须通过过渡 Schema 或专项迁移清理；库不自动丢弃字段。详细设计与实际验证见[变更设计](../openspec/changes/archive/2026-10-21-add-schema-validated-user-extensions/design.md)及[验收记录](../openspec/changes/archive/2026-10-21-add-schema-validated-user-extensions/verification.md)。
+
+冻结、解冻、注销冷静期与恢复保留资料。最终匿名化在原事务中清空 JSON，复用账号原时间语义，不区分曾使用与未使用；配置移除或 Schema 不兼容不阻断清理，回调失败整体回滚。
+
+新增资料路径的校验器及存储错误不会保留能恢复原始资料的底层错误链，审计动作 USER_PROFILE_ATTRIBUTES_UPDATED 只保存固定服务 actor、账号目标、请求 ID 等受控事实，不保存资料值、补丁、属性名、Schema 版本、指纹、资料时间元数据或 Schema 全文。既有导入和匿名化错误的诊断 cause 契约保持；宿主匿名化回调不得在 error 中拼接资料或隐私数据，维护日志可能记录该错误。
 
 ## 会话认证依据与客户端描述
 
@@ -44,6 +93,8 @@ v0.3.0 新增 `accountkit.Deps.Observer`、`user.Deps.Observer` 及相关审计/
 宿主拥有 Provider/Registry、导出与端点，先排空业务并关闭库，再最终采集与关闭观测设施。库不关闭或注销注入组件。标准化指标适配器的回退可移除 Observer 注入或回退宿主依赖版本，不涉及 SQL、Redis 键、HTTP、令牌、密文或既有审计 Stats 迁移。accountsvc 默认关闭指标；显式启用 Prometheus 的配置、采集边界与回退见[服务手册](accountsvc.md#prometheus-指标)，不需要数据库迁移。标准化适配器的实际证据与未验证项见[验收记录](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)。
 
 ## 初始数据库基线整合
+
+当前本轮仅将资料单列并入工作树 0001、撤回生产 0002，新安装 version 1；旧 v0.4.0 v1 及各代撤回 v2 无写拒绝，不提供旧数据迁移。已发布旧 SQL 与当前 initialFrozen 分别固定。以下保留此前整合历史，当前操作见[迁移手册](migrations.md#当前用户资料属性初始整合version-1)。
 
 在尚无实际产品接入的前提下，项目曾执行初始结构整合：当时 `0001_init.up.sql` 定义 user_account、identity、session、audit_event、identity_flow 及字段、索引与约束。十列 UUIDv7 通用审计按用户授权纳入原始定义并更新固定校验，撤回当时独立的 `0002_identity_flow` 和通用审计 0002，也不提供 staging/Prepare 转换工具；初始版本为 1，配套 down 覆盖五个表，公开 Down 拒绝执行。后续审计校验职责调整经另行授权修改未发布 0001，移除五个审计校验函数并同步固定校验，其他表 CHECK 保持。在v0.3.0发布前另经用户明确授权，直接将 0001 的流程对象命名调整为 sign_in_completion_flow 并更新当前固定校验，撤回本分支新增的重命名 0002；初始化仍为 1，后续真实增量从 0002 开始。
 
@@ -157,7 +208,7 @@ E/R 环境键沿宿主前缀，R 仅 PHONE/EMAIL any-of；省略 R 默认二选�
 
 ## 宿主账号契约
 
-`BatchPublicProfiles(ctx, ids)` 是 Go 批量查询，结果仅含 ID/DisplayName/State。输入去重，非法 ID 返回参数错误，未知账号略去，待注销及已删除账号清空显示名；宿主在调用前按业务权限过滤 ID。无任意用户资料 HTTP 端点。
+`BatchPublicProfiles(ctx, ids)` 是 Go 批量查询，结果仅含 ID/DisplayName/AvatarURL/State。输入去重，非法 ID 返回参数错误，未知账号略去，待注销及已删除账号清空显示名和头像；宿主在调用前按业务权限过滤 ID。无任意用户资料 HTTP 端点。
 
 `Deps.BeforeDelete` 在账号锁和状态检查后、改变状态前使用同一 `pgx.Tx`，消费者和管理员共享。返回 `user.ErrDeletionBlocked` 为 400 `FAILED_PRECONDITION`、reason `DELETION_BLOCKED` 和固定消息；其他错误为固定 500，同批账号、会话和业务写入回滚。其他回调错误不进入库的业务错误分类，不能通过返回旧 `ErrNotFound` 等哨兵变成 404；调用者不要依赖对这些底层错误的 `errors.Is`/`errors.As`，明确业务拒绝使用 `ErrDeletionBlocked`。
 
@@ -168,6 +219,8 @@ E/R 环境键沿宿主前缀，R 仅 PHONE/EMAIL any-of；省略 R 默认二选�
 `ImportAccounts(ctx, tx, accounts)` 只用于受控停写工具，事务来自 schema 匹配的认证连接池。库不另开连接、不提交、不回滚；调用者负责空目标核验、批次记录、重复执行、业务引用迁移和最终提交。发生任何错误时必须回滚整个批次，不继续提交部分成功数据。
 
 `user.ImportAccount` 保留合法 `u_` ID 和原创建/更新时间；账号和锚点创建/更新时间必需非零，允许历史时钟回退，不强制更新时间晚于创建时间。ACTIVE 至少包含一个 `user.ImportAnchor` 的 PHONE/EMAIL 合法目标，删除/匿名化时间为空；DELETED 只允许无显示名、无锚点的匿名墓碑，可保留删除/匿名化时间，不重新抢占旧地址。FROZEN、PENDING_DELETION、第三方身份和非法目标拒绝。归一化和版本化加密/摘要沿用库配置；重复 ID 或归一化身份冲突失败，不合并、不静默跳过。
+
+普通创建和 ACTIVE/DELETED 导入均使用空扩展默认值：`{}`，复用账号原时间。`ImportAccount` 不接收用户资料属性；ACTIVE 导入提交后可另调 `PatchProfileAttributes`，DELETED 墓碑拒绝写入。导入和补丁是两个独立调用，不提供同批事务原子性保证。
 
 导入先校验并归一化整批输入，再在写入前对整批 PHONE/EMAIL subject 按全部摘要版本一次性排序加事务级锁，因此任一账号的输入错误会先于任何数据库写入或冲突返回；误并行的批次即使身份顺序相反也只会排队，后到者得到身份冲突而不是死锁。锁持有到调用者事务结束，同一事务内的其他写入照常进行。
 

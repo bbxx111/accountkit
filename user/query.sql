@@ -7,6 +7,17 @@ RETURNING *;
 -- name: GetUserByID :one
 SELECT * FROM user_account WHERE id = $1;
 
+-- name: GetProfileAttributes :one
+SELECT id, state, profile_attributes
+FROM user_account WHERE id = @id;
+
+-- name: UpdateProfileAttributes :one
+UPDATE user_account
+SET profile_attributes = @profile_attributes::jsonb,
+    update_time = @now::timestamptz
+WHERE id = @id AND state = @active_state
+RETURNING id, state, profile_attributes;
+
 -- name: BatchPublicProfiles :many
 -- 宿主授权的业务页批量读取最小公开资料；包含注销状态，由领域层清空其显示名。
 SELECT id, display_name, state FROM user_account WHERE id = ANY(@ids::text[]);
@@ -48,6 +59,7 @@ LIMIT @batch_size::int;
 UPDATE user_account
 SET state = @deleted_state, display_name = NULL, freeze_time = NULL, freeze_reason = NULL,
     freeze_actor_subject = NULL, freeze_actor_username = NULL,
+    profile_attributes = '{}'::jsonb,
     purge_time = @now::timestamptz, update_time = @now::timestamptz
 WHERE id = @id AND state = @pending_state;
 

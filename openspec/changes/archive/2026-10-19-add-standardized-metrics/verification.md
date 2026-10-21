@@ -130,10 +130,10 @@ Linux amd64 基准运行于 Intel Core Ultra 7 155H：实际禁用 Recorder 2.70
 
 - [完整库日志](../../../../.test-output/standardized-metrics-linux/library.log)、[全库测试事件](../../../../.test-output/standardized-metrics-linux/tests.jsonl)、[630 项核对汇总](../../../../.test-output/standardized-metrics-linux/library-summary.json)。
 - [服务日志](../../../../.test-output/standardized-metrics-linux/accountsvc.log)、[服务测试事件](../../../../.test-output/standardized-metrics-linux/accountsvc-tests.jsonl)、[服务汇总](../../../../.test-output/standardized-metrics-linux/accountsvc-summary.json)。
-- [合成恢复材料](../../../../.test-output/standardized-metrics-linux/recovery.X24t9y/)、[Linux 环境](../../../../.test-output/standardized-metrics-linux/environment.txt)、[精确快照](../../../../.test-output/standardized-metrics-linux/verified-commit.txt)。
+- [合成恢复材料](../../../../.test-output/standardized-metrics-linux/recovery.X24t9y)、[Linux 环境](../../../../.test-output/standardized-metrics-linux/environment.txt)、[精确快照](../../../../.test-output/standardized-metrics-linux/verified-commit.txt)。
 - [Linux 基准](../../../../.test-output/standardized-metrics-linux/benchmarks-linux.txt)、[示例与适配器 race](../../../../.test-output/standardized-metrics-linux/examples-race.log)。
 - [Windows 构建日志](../../../../.test-output/standardized-metrics-windows/build.log)、[vet 日志](../../../../.test-output/standardized-metrics-windows/vet.log)、[快速测试事件](../../../../.test-output/standardized-metrics-windows/tests.jsonl)。Windows JSON 保留 PowerShell 重定向的 UTF-16LE 原始编码，按 BOM 解码统计；Linux JSON 为 UTF-8。
-- [阶段报告、TDD、审查与裁决 ledger](../../../../.test-output/standardized-metrics-sdd/)，含 task-1..7 报告、限定复审和 final-review.md。材料保留于忽略目录，不提交真实凭证或备份。
+- [阶段报告、TDD、审查与裁决 ledger](../../../../.test-output/standardized-metrics-sdd)，含 task-1..7 报告、限定复审和 final-review.md。材料保留于忽略目录，不提交真实凭证或备份。
 
 ### 交付与边界
 

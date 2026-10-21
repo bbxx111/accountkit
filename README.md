@@ -1,5 +1,78 @@
 # accountkit
 
+### 可选用户资料属性（Go 与本人 HTTP 接口）
+
+宿主可在 `New` 前设置 `Config.ProfileAttributes`；nil 关闭接口且不删除已有资料。
+`ProfileAttributesConfig` 仅含 `Schema`，`ProfileAttributesView` 仅含 `Data`。
+存储仅增加 `profile_attributes` JSONB，实际变化复用账号原 `update_time`。本轮授权将单列并入当前 0001、撤回生产 0002，新空 schema 安装 version 1；旧 v0.4.0 v1 及各代撤回 v2 无写拒绝，无旧数据迁移。已发布 tag/SQL 与冻结源独立固定，详见[迁移手册](docs/migrations.md#当前用户资料属性初始整合version-1)。
+嵌入库时 Schema 由宿主读取或嵌入；accountsvc 可通过 `ACCOUNTSVC_PROFILE_ATTRIBUTES_SCHEMA_FILE` 在启动时加载本地文件，见[服务配置](docs/accountsvc.md#本人资料属性)。
+宿主装配示例见 [examples/embedded/profile_attributes.go](examples/embedded/profile_attributes.go)：
+
+```go
+cfg.ProfileAttributes = &user.ProfileAttributesConfig{
+    Schema: json.RawMessage(`{
+      "$schema":"https://json-schema.org/draft/2020-12/schema",
+      "type":"object",
+      "properties":{
+        "bio":{"type":"string","maxLength":500},
+        "preferences":{"type":"object","properties":{
+          "locale":{"type":"string"},"timezone":{"type":"string"}
+        },"additionalProperties":false}
+      },
+      "additionalProperties":false
+    }`),
+}
+// 完成宿主授权后直接提交补丁，无需先读取或传入并发版本。
+updated, err := auth.Users().PatchProfileAttributes(ctx, userID, user.ProfileAttributesPatch{
+    Document: json.RawMessage(`{"bio":"Hello","preferences":{"locale":"zh-CN"}}`),
+}, user.Meta{RequestID: requestID})
+if err != nil { return err }
+_ = updated
+```
+
+并发仅由数据库账号行锁控制：锁内读取最新资料、应用 Merge Patch、完整 Schema 校验后提交。
+不需要 revision/expected_revision，不使用 Redis 锁，不返回版本冲突。
+不同且不重叠属性均可更新并保留彼此结果；同属性以后取得锁并执行的事务为准。
+数组整体替换、父对象删除按 RFC 7396，可能覆盖先写入的重叠子树；未知属性（包括 null 删除）拒绝。
+无变化不写入，不推进账号 update_time，不产生修改审计。
+读取仅允许 ACTIVE/FROZEN，普通写入仅允许 ACTIVE；冷静期不可读取。
+宿主保证同一数据库实例的 Schema 配置一致。库不保存逐行 Schema 身份，不提供 SchemaMismatch 错误。读取只检查通用存储边界；更新按当前 Schema 校验完整合并结果，无变化请求也不得绕过。新增可选属性、放宽约束、修改注解可直接更新配置。收紧规则可能使旧资料完整结果不合法，更新拒绝且原资料与账号 update_time 保持；同次补丁可修复后保存。移除声明属性后，遗留属性仍不能以未知属性 null 删除，须通过过渡 Schema 或专项迁移清理；库不自动丢弃字段。未配置返回 `ErrProfileAttributesNotConfigured`。
+需要转换旧资料时由宿主另行评审专项迁移。提交错误可能有不确定结果，宿主须重新读取核对。
+
+冻结、解冻、注销冷静期及恢复保留资料内容。
+最终 purge 在原匿名化事务中清空 JSON，复用账号时间语义，不依赖当前配置或 Schema；
+不区分曾使用与未使用资料；已清理账号的重复维护不再次修改账号时间。
+宿主匿名化回调失败会一并回滚清理。
+
+Schema 使用 Draft 2020-12，根必须接受 `{}`，每层对象固定 properties 和
+additionalProperties=false；支持受限本地 `$defs`/`$ref`、标准类型、条件组合和
+date/date-time/email/uri/uuid format。资源边界及关键字清单见
+[设计说明](openspec/changes/archive/2026-10-21-add-schema-validated-user-extensions/design.md)。Schema 原始上限
+64 KiB，补丁原始内容和规范化资料各限 16 KiB；资料最多 8 层、512 个值节点。
+数值精确处理且按数学值比较，拒绝重复键、非法 Unicode、NUL 及存储 null。
+
+profile_attributes 只承载 bio、locale、timezone、pronouns 等用户资料，禁止存放宿主业务状态、权益或权限。
+直接调用 Go 方法时宿主负责目标账号与属性授权，包括删除和父对象替换。挂载内置消费者 handler 并启用 Schema 后，全部资料属性允许本人读取、修改和删除；readOnly/writeOnly 只作注解，不隐藏字段、不禁止修改。不得在资料中保存本人不可见或不可修改的内部字段。
+资料没有字段级加密，不得存放验证码、令牌、密钥或身份联系方式明文副本。
+内置 `GET /users/me/profile` 与 `PATCH /users/me/profile` 提供本人完整资料读写；要求 `user` scope，无需近期重新认证。已有 `/users/me`、管理详情、公开资料、JWT 和内省不附带资料属性，普通认证不增加数据库查询。
+成功审计 `USER_PROFILE_ATTRIBUTES_UPDATED` 只记录账号目标，actor 为 SERVICE/accountkit-host；
+`Meta` 仅取 request_id。参数错误支持 `errors.Is(err, user.ErrInvalidArgument)`，
+`ProfileAttributesValidationError` 最多提供 16 条受控路径/规则，不含原始值。
+新增接口的存储错误不保留可能含资料内容的底层错误链；审计和日志不记录资料值、补丁、未知属性名或 Schema 全文。
+既有匿名化回调错误仍保留诊断原因并可能进入维护日志，宿主回调不得在错误中携带资料值或其他隐私数据。
+
+HTTP 示例（假设挂载 `/v1`）：
+
+```http
+PATCH /v1/users/me/profile
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{"profile_attributes":{"bio":"你好","preferences":{"locale":"zh-CN"}}}
+```
+
+GET 与 PATCH 成功均返回 200 和 `{"name":"users/u_0000000000001/profile","profile_attributes":{...}}`，无资料返回 `{}`。补丁只允许外层 `profile_attributes` 对象；内层 `null` 删除、对象递归合并、数组整体替换。`{"profile_attributes":{}}` 不清空资料，删除 `bio` 使用 `{"profile_attributes":{"bio":null}}`。所有响应 `Cache-Control: no-store`。能力或 Schema 未配置时，已认证的合法请求返回 `503 PROFILE_ATTRIBUTES_NOT_CONFIGURED`；未知属性或 Schema 校验失败为 `400 INVALID_PROFILE_ATTRIBUTES`。完整协议见 [HTTP 契约](docs/openapi.md#本人资料属性)。
+
 可嵌入宿主服务的 C 端账号体系（多身份账号、JWT + 轮换 refresh 会话、软删除与匿名化、管理面）。
 本 README 覆盖配置、密码学原语、迁移、生命周期、C 端 HTTP 面（登录、会话、IdP、身份绑定）、账号注销/恢复/purge、审计落库与密钥回填、管理面。模块路径为 `github.com/bbxx111/accountkit`，根包名为 `accountkit`。宿主装配示例见 `examples/embedded`。
 
@@ -11,7 +84,7 @@
 
 挂载内置 HTTP handler 的宿主可使用[消费者与管理面 OpenAPI 契约](docs/openapi.md)，按实际地址调整挂载前缀。
 
-本文描述 v0.4.0 已交付的能力，包括身份策略、登录补全、通用审计、指标，以及会话认证来源与客户端描述，版本状态见[发布说明](docs/releases/v0.4.0.md)。账号资源沿用 `/users`，升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
+本文描述当前开发版：基于 v0.4.0 的身份策略、登录补全、通用审计、指标及会话上下文，新增资料属性及本人 HTTP 读写、服务 Schema 文件配置；这些新增能力不在已发布 v0.4.0 中。历史版本状态见[发布说明](docs/releases/v0.4.0.md)。账号资源沿用 `/users`，升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
 
 accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可选服务实现，使用同一套库能力；选择库集成不需要部署或调用 accountsvc。服务入口是 `cmd/accountsvc`，包含 SMTP 邮件投递、消费者远程鉴权和默认关闭的外部管理员 JWT 验证，运行与配置见 [accountsvc 服务手册](docs/accountsvc.md)。`examples/embedded` 保留为库集成开发示例。
 
@@ -73,6 +146,8 @@ HTTP 新增 `POST /users:sendSignInCompletionCode`（`{sign_in_completion_token,
 新建宿主关系时可调用 `auth.Users().WithActiveUsers(ctx, ids, func(tx pgx.Tx) error { ... })`，要求非空账号集合及非 nil 回调；宿主空批次直接跳过。先取得按 ID 排序的账号锁，再取得业务资源锁。回调只能用传入事务，不得自行提交或回滚；未知、非法或非 ACTIVE 账号在回调前拒绝。`BatchPublicProfiles` 和这些事务方法只提供 Go 契约，不新增任意账号资料或导入 HTTP 入口。
 
 离线导入须停写并核验目标库，使用 schema 匹配连接池创建的事务传入 `ImportAccounts`。`user.ImportAccount` 保留账号原 ID/时间，创建/更新时间必需非零且允许历史时钟回退。ACTIVE 必须有 PHONE/EMAIL 锚点，无删除/匿名化时间；DELETED 墓碑无锚点和显示名。库复用归一化、密文与摘要规则，重复账号或身份冲突直接失败，不合并、不发码、不创建会话、不签令牌、不调用 IdP。错误消息脱敏，调用者可用 `errors.Is`/`errors.As` 区分冲突和数据库原因，解包后的诊断也须脱敏。调用者负责批次记录、业务引用迁移和失败后的全事务回滚，详见[导入边界](docs/compatibility.md#离线账号导入)。
+
+普通创建和 ACTIVE/DELETED 导入均初始化为空资料属性（`{}`，复用账号原时间）。`ImportAccount` 不接收扩展；ACTIVE 导入提交后可另调 `PatchProfileAttributes`，DELETED 拒绝写入。两个调用不承诺同批事务原子性。
 
 ### 会话过期语义
 
@@ -376,6 +451,6 @@ Go module：github.com/bbxx111/accountkit。`v0.4.0` 已发布，使用 `go get 
 
 库版本发布与各产品生产上线分别验收。产品实际环境接入、真实服务商与预发布升级/恢复仍待完成；产品各自配置 schema、Redis 前缀、issuer/audience 和密钥，并承担自己的匿名化与网关接入责任。当前未附开源 LICENSE，本次版本供自有产品接入，尚未向外部使用方定义复用许可。
 
-此前流程改名已纳入 v0.3.0 的初始定义。v0.4.0 发布前，会话0002先经明确授权合入当时未发布的0001，又经用户明确批准简化为必有来源与单行JSONB描述；当前0001已随 v0.4.0 发布，此前的有限授权不再适用于修改它；同步down、baseline、固定哈希和sqlc，不新增生产0002，新安装仍为version=1/dirty=false。**旧v0.3.0 v1、前一`b414fef`双快照v1及撤回会话v2均不能直接接管**，返回不兼容错误并保留数据、结构和版本。新部署须人工核验新空资源，需保留旧数据时另行制定并验证迁移方案，不Force、改版本或自动清库。公共`Down`仍拒绝；详见[迁移手册](docs/migrations.md#会话认证依据初始整合)。所有已发布标签、其中的历史SQL和固定源快照保持，历史与当前定义分别校验，两次有限授权均不允许日常改写初始SQL。
+此前流程改名已纳入 v0.3.0 的初始定义。v0.4.0 发布前，会话0002先经明确授权合入当时未发布的0001，又经用户明确批准简化为必有来源与单行JSONB描述；该会话初始定义已随 v0.4.0 发布，此前有限授权不再适用于修改它；当前工作树仅按本轮新的资料单列授权调整，已发布 tag 内字节保持；同步down、baseline、固定哈希和sqlc，不新增生产0002，新安装仍为version=1/dirty=false。**旧v0.3.0 v1、前一`b414fef`双快照v1及撤回会话v2均不能直接接管**，返回不兼容错误并保留数据、结构和版本。新部署须人工核验新空资源，需保留旧数据时另行制定并验证迁移方案，不Force、改版本或自动清库。公共`Down`仍拒绝；详见[迁移手册](docs/migrations.md#会话认证依据初始整合)。所有已发布标签、其中的历史SQL和固定源快照保持，历史与当前定义分别校验，两次有限授权均不允许日常改写初始SQL。
 
 原 migrations.Down 保留签名但默认拒绝执行；新基线的一次性测试清库使用显式 UnsafeReset。升级、故障处理与恢复步骤见 [迁移手册](docs/migrations.md)，本次边界见[兼容说明](docs/compatibility.md#初始数据库基线整合)。

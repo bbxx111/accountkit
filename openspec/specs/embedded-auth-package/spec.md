@@ -71,9 +71,12 @@
 - **THEN** 建新会话、替换旧会话、返回新pair，客户端核对账号更新凭据，不视作旧会话无感reauth
 
 ### Requirement: 生命周期和资料兼容
+
 包 SHALL 保留资料读取与显示名称更新、ACTIVE/FROZEN/PENDING_DELETION/DELETED 状态、冻结解冻、注销、恢复及最终匿名化。默认注销冷静期为 15 天。
 
 现有消费者手机/邮箱恢复、管理端代办恢复和 user:undelete SHALL 保留。普通第三方登录 SHALL 继续拒绝 PENDING_DELETION，不新增第三方恢复认证。恢复后的新令牌 SHALL 按当前 Required 决定 user 或 user:bind；Required=[] 的纯第三方账号 SHALL 不被描述为具备手机/邮箱自助恢复能力。
+
+可选宿主用户资料属性 SHALL 在冻结及冷静期保留，恢复不重置内容。最终匿名化 SHALL 在原事务中清空为 `{}`，复用账号原时间语义，不区分是否曾使用。清理不依赖当前 Schema 或配置；宿主回调失败 SHALL 回滚资料、账号时间及其他变更。
 
 #### Scenario: 冷静期恢复
 - **WHEN** 待注销用户在冷静期内使用恢复专用权限发起恢复
@@ -85,7 +88,27 @@
 
 #### Scenario: 恢复后仍需补全
 - **WHEN** 仅有 PHONE 的冷静期账号按原恢复流程恢复，但当前 Required 为 EMAIL
-- **THEN** 新一轮刷新返回 user:bind，账号继续使用原 user_id；普通 user 凭据仍不能替代 user:undelete
+- **THEN** 新一轮刷新返回 user:bind，账号继续使用原 user_id；普通 user 权限不能替代 user:undelete
+
+#### Scenario: 冷静期及恢复保留扩展
+- **WHEN** 含用户资料属性的账号注销后在冷静期内恢复
+- **THEN** 资料内容保持，账号时间沿用原生命周期语义，冷静期中普通扩展读写仍按状态契约拒绝
+
+#### Scenario: 无 Schema 仍可匿名化
+- **WHEN** 宿主撤掉扩展配置或改用不兼容 Schema，而账号进入到期匿名化
+- **THEN** 资料在原匿名化事务中清空，不调用普通资料更新校验；不区分曾使用与未使用，沿用账号时间语义
+
+#### Scenario: 匿名化失败保留扩展
+- **WHEN** 用户资料属性已在事务内清空但后续宿主回调失败
+- **THEN** 原内容、账号时间及账号状态全部回滚，后续维护可重试
+
+#### Scenario: 已清理账号不重现旧值
+- **WHEN** 匿名化成功后再次运行维护或查询公开资料
+- **THEN** 扩展内容不会从历史 Schema、审计或默认值恢复，也不重复修改已完成清理的账号时间
+
+#### Scenario: 临时结构无写拒绝
+- **WHEN** 旧 v0.4.0 v1 缺资料列、其他历史 v1 或各代撤回 v2（含单列、四列、五列和混合资料结构）连接当前生产源
+- **THEN** dirty 优先，无写拒绝并保持 catalog、数据、version/dirty，不自动转换、Force、改版本或清库
 
 ### Requirement: 管理接口及审计兼容
 包 SHALL 保留管理端用户查询、生命周期操作、身份敏感信息查看、会话和审计查询及角色限制。管理员身份由宿主注入，未配置管理认证时管理接口 SHALL 返回 503 ADMIN_NOT_CONFIGURED，消费者能力仍可独立使用。

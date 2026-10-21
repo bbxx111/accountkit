@@ -1,12 +1,12 @@
 # HTTP OpenAPI 契约
 
-本契约描述已发布 v0.4.0 的内置HTTP handler，包含 v0.4.0 新增的会话认证依据和可选客户端描述；v0.3.0不包含这些能力，v0.2.0也不包含全部基础能力。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
+本契约描述当前开发版内置 HTTP handler，基于 v0.4.0 增加本人资料属性接口；已发布 v0.4.0 不包含这两个新操作。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
 
 ## 两个独立 HTTP 面
 
 | 文档 | 范围 | 默认挂载示例 |
 |---|---|---|
-| [enduser.json](openapi/enduser.json) | 消费者 22 个操作：登录、补全、token/revoke、资料、身份、会话及注销/恢复 | `/v1` |
+| [enduser.json](openapi/enduser.json) | 消费者 24 个操作：登录、补全、token/revoke、资料、身份、会话及注销/恢复 | `/v1` |
 | [admin.json](openapi/admin.json) | 管理面 11 个操作：账号查询、状态操作、明文查看、会话及认证审计 | `/admin/v1` |
 
 两份文件各自独立，使用 [OpenAPI 3.1.0](https://spec.openapis.org/oas/v3.1.0.html) 与 JSON Schema 描述。所有 paths 均为相对 handler 路由，`servers[0].variables.basePath.default` 由宿主调整为实际挂载前缀或完整服务 URL。路径中的 `user` / `session` / `identity` 是原始 `u_` / `s_` / `i_` ID；响应 `name` 才是 `users/{id}` 等资源名。
@@ -27,7 +27,19 @@
 - PHONE/EMAIL/WECHAT/APPLE 等枚举使用大写字符串。凭证 oneOf 恰好一个允许成员非 null；显式 null 等同缺失，未知字段拒绝。POST token/revoke 也使用 JSON，不使用表单编码。
 - nullable 字段和 optional 字段不同：例如 `delete_time` 必须出现但可以为 null；审计 `flow_id` 可以省略。管理 DTO 与消费者 DTO 独立，管理会话没有 `is_current`。
 
-示例 token、验证码和票据只能使用合成值，不应把真实响应导入公开文档。刷新重放、验证码失败预算、事务回滚、账号状态及外部审计治理仍以 [README](../README.md)、[主规格](../openspec/specs/)和对应实现为准，schema 不能表达或证明所有行为。
+示例 token、验证码和票据只能使用合成值，不应把真实响应导入公开文档。刷新重放、验证码失败预算、事务回滚、账号状态及外部审计治理仍以 [README](../README.md)、[主规格](../openspec/specs)和对应实现为准，schema 不能表达或证明所有行为。
+
+## 本人资料属性
+
+`GET /users/me/profile` 返回 `{"name":"users/{user_id}/profile","profile_attributes":{...}}`；`PATCH /users/me/profile` 只接受 `{"profile_attributes":{...}}`，成功同样返回完整资源和 200。目标只取 Bearer 主体，两个接口均要求 `user` scope，无需近期重新认证；不支持指定其他账号或管理端访问。所有响应包含 `Cache-Control: no-store`。
+
+所有属性对本人完整可读写。`readOnly/writeOnly` 注解不会隐藏或禁止属性；资料中不能存放仅供宿主读取或修改的字段。读取 ACTIVE/FROZEN，修改仅 ACTIVE，认证和吊销规则保持；状态错误为 `400 FAILED_PRECONDITION / INVALID_ACCOUNT_STATE`。旧 `/users/me`、管理详情、公开资料和令牌响应保持原字段。
+
+请求使用 `application/json`。内层采用 RFC 7396：缺失保持、对象递归合并、数组整体替换、null 删除；`{"profile_attributes":{}}` 是无变化请求，外层 `{}` 或 profile_attributes=null 拒绝。未知属性（包括 null 删除）拒绝；结果须通过当前 Schema 完整校验。HTTP 外层默认总大小 64 KiB（可由宿主收紧），内层原始补丁和规范化资料各 16 KiB，深度 8、值节点 512，拒绝重复键与非法编码并保持数值精度。OpenAPI 的动态对象 schema 仅表达容器结构，实际属性和跨字段规则来自宿主 Schema。
+
+语法/外层字段/总大小错误为 `400 MALFORMED_BODY`；可解析的内层对象/编码/容量/Schema 错误为 `400 INVALID_PROFILE_ATTRIBUTES`。缺少可选能力或 Schema 时，已认证合法请求为 `503 PROFILE_ATTRIBUTES_NOT_CONFIGURED`；scope 不足 403，缺失/无效令牌 401 并带 Bearer challenge，账号不存在 404，内部错误固定 500。错误不返回资料值或原始校验信息。
+
+无需先 GET 或携带 revision/ETag；并发在账号行锁内合并最新数据，不重叠修改保留，重叠以后执行事务为准。无变化不更新时间或发修改审计；提交结果不确定时先 GET 核对再决定下一步。服务文件装配见 [accountsvc](accountsvc.md#本人资料属性)。
 
 ## 当前会话和客户端摘要
 

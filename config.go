@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -23,9 +24,12 @@ type WeChatApp struct {
 	Secret string
 }
 
-// Config 是 accountkit 的全部配置。零值字段由 applyDefaults 填默认；Validate 在 New 中调用。
+// Config 是 accountkit 的全部配置。New 应用默认值并校验；Validate 可独立提前校验。
 // 密钥只来自配置：JWT/HMAC/加密三组都是"版本 → 密钥"映射加一个 active 版本。
 type Config struct {
+	// ProfileAttributes 为 nil 时关闭用户资料属性；启用后内置 HTTP 允许本人完整读写。
+	// 宿主负责资料用途及 Go 直接调用授权，不应存放本人不可见或不可改的字段。
+	ProfileAttributes *user.ProfileAttributesConfig
 	// nil 使用默认策略，非 nil 空切片表示显式空列表。
 	EnabledIdentityKinds  []enum.IdentityKind
 	RequiredIdentityKinds []enum.IdentityKind
@@ -78,6 +82,15 @@ type Config struct {
 	AppleJWKSURL     string
 
 	MaintenanceInterval time.Duration // 默认 5m
+}
+
+func cloneProfileAttributesConfig(c *user.ProfileAttributesConfig) *user.ProfileAttributesConfig {
+	if c == nil {
+		return nil
+	}
+	snapshot := *c
+	snapshot.Schema = slices.Clone(c.Schema)
+	return &snapshot
 }
 
 func (c Config) identityPolicy() (*user.IdentityPolicy, error) {
@@ -149,6 +162,13 @@ func (c *Config) applyDefaults() {
 
 // Validate 应用默认值后校验配置。宿主可在启动早期调用以尽早失败。
 func (c Config) Validate() error {
+	if err := c.validateBase(); err != nil {
+		return err
+	}
+	return user.ValidateProfileAttributesConfig(c.ProfileAttributes)
+}
+
+func (c Config) validateBase() error {
 	c.applyDefaults()
 	if _, err := c.identityPolicy(); err != nil {
 		return err

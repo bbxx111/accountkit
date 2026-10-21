@@ -26,6 +26,7 @@ type recoveryState struct {
 	FlowDeadline                 time.Time
 	CompletedSessionID           string
 	CompletedIdentityIDs         []string
+	ProfileAttributes            user.ProfileAttributesView
 }
 
 // TestRecoveryFixture is an operational fixture, invoked in each phase by verify-recovery.sh.
@@ -47,6 +48,7 @@ func TestRecoveryFixture(t *testing.T) {
 	cfg.Schema = "accountkit_recovery"
 	cfg.EnabledIdentityKinds = []enum.IdentityKind{enum.IdentityPhone, enum.IdentityEmail}
 	cfg.RequiredIdentityKinds = []enum.IdentityKind{enum.IdentityEmail}
+	cfg.ProfileAttributes = recoveryProfileAttributesConfig()
 	cfg.SubjectCipherKeys[2] = k(4)
 	if mode != "seed" {
 		cfg.SubjectCipherActiveKey = 2
@@ -79,6 +81,7 @@ func TestRecoveryFixture(t *testing.T) {
 			t.Fatal(err)
 		}
 		state := recoveryState{Fixture: f, Access: access}
+		state.ProfileAttributes = seedRecoveryProfileAttributes(t, a, f.UserID)
 		meta := user.Meta{IP: "127.0.0.1", ClientInfo: &user.ClientInfo{ClientType: enum.ClientNative, AppName: "Recovery App", AppVersion: "1.0", OSName: "Android", DeviceType: enum.DevicePhone}}
 		createPending := func(phone, device string) user.PendingSignIn {
 			challenge, err := a.Users().SendSignInCode(ctx, enum.IdentityPhone, phone, meta)
@@ -134,6 +137,7 @@ func TestRecoveryFixture(t *testing.T) {
 			t.Fatal(err)
 		}
 		assertRecoverySessionContext(t, a, state)
+		assertRecoveryProfileAttributes(t, a, state)
 		assertRecoveryFlows(t, pool, state)
 		state.Snapshot = snapshotRecovery(t, pool)
 		b, err := json.Marshal(state)
@@ -157,6 +161,7 @@ func TestRecoveryFixture(t *testing.T) {
 		t.Fatal("restored data/version differs from the source snapshot")
 	}
 	assertRecoverySessionContext(t, a, state)
+	assertRecoveryProfileAttributes(t, a, state)
 	if mode == "source-unchanged" {
 		return
 	}
@@ -168,6 +173,7 @@ func TestRecoveryFixture(t *testing.T) {
 	if snapshotRecovery(t, pool) != state.Snapshot {
 		t.Fatal("Migrate changed restored data")
 	}
+	assertRecoveryProfileAttributes(t, a, state)
 	assertRecoveryFlows(t, pool, state)
 	meta := user.Meta{IP: "127.0.0.1"}
 	_, err = a.Users().CompleteSignIn(ctx, state.PendingToken, state.PendingCode, user.Device{}, meta)
@@ -205,6 +211,9 @@ func TestRecoveryFixture(t *testing.T) {
 	if err != nil || tok.UserID != state.Fixture.UserID || tok.Scope != "user:bind" || tok.RefreshToken == state.Fixture.RefreshToken {
 		t.Fatalf("restored refresh unusable: %v", err)
 	}
+	// Only the restored database is mutated. The final source-unchanged phase
+	// must still retain the original exact extension data and metadata.
+	assertRecoveryProfileAttributesCleanup(t, a, pool, state.Fixture.UserID)
 }
 
 func snapshotRecovery(t *testing.T, pool *pgxpool.Pool) string {

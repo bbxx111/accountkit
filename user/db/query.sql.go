@@ -353,7 +353,7 @@ func (q *Queries) CreateSignInCompletionFlow(ctx context.Context, arg CreateSign
 const createUser = `-- name: CreateUser :one
 
 INSERT INTO user_account (id, state) VALUES ($1, $2)
-RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time
+RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time, profile_attributes
 `
 
 type CreateUserParams struct {
@@ -377,6 +377,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (UserAcc
 		&i.PurgeTime,
 		&i.CreateTime,
 		&i.UpdateTime,
+		&i.ProfileAttributes,
 	)
 	return i, err
 }
@@ -570,7 +571,7 @@ SET state = $1, freeze_time = $2::timestamptz, freeze_reason = $3::text,
     freeze_actor_subject = $4::text, freeze_actor_username = $5::text,
     update_time = $2::timestamptz
 WHERE id = $6
-RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time
+RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time, profile_attributes
 `
 
 type FreezeUserParams struct {
@@ -605,6 +606,7 @@ func (q *Queries) FreezeUser(ctx context.Context, arg FreezeUserParams) (UserAcc
 		&i.PurgeTime,
 		&i.CreateTime,
 		&i.UpdateTime,
+		&i.ProfileAttributes,
 	)
 	return i, err
 }
@@ -703,6 +705,24 @@ func (q *Queries) GetActiveSessionByUserDevice(ctx context.Context, arg GetActiv
 		&i.CreateTime,
 		&i.UpdateTime,
 	)
+	return i, err
+}
+
+const getProfileAttributes = `-- name: GetProfileAttributes :one
+SELECT id, state, profile_attributes
+FROM user_account WHERE id = $1
+`
+
+type GetProfileAttributesRow struct {
+	ID                string
+	State             enum.UserState
+	ProfileAttributes []byte
+}
+
+func (q *Queries) GetProfileAttributes(ctx context.Context, id string) (GetProfileAttributesRow, error) {
+	row := q.db.QueryRow(ctx, getProfileAttributes, id)
+	var i GetProfileAttributesRow
+	err := row.Scan(&i.ID, &i.State, &i.ProfileAttributes)
 	return i, err
 }
 
@@ -807,7 +827,7 @@ func (q *Queries) GetSignInCompletionFlowByTokenDigest(ctx context.Context, toke
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time FROM user_account WHERE id = $1
+SELECT id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time, profile_attributes FROM user_account WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id string) (UserAccount, error) {
@@ -825,6 +845,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (UserAccount, erro
 		&i.PurgeTime,
 		&i.CreateTime,
 		&i.UpdateTime,
+		&i.ProfileAttributes,
 	)
 	return i, err
 }
@@ -1271,7 +1292,7 @@ func (q *Queries) ListSessionClientInfosByUser(ctx context.Context, arg ListSess
 }
 
 const listUsersAdmin = `-- name: ListUsersAdmin :many
-SELECT u.id, u.state, u.display_name, u.freeze_time, u.freeze_reason, u.freeze_actor_subject, u.freeze_actor_username, u.delete_time, u.purge_time, u.create_time, u.update_time FROM user_account u
+SELECT u.id, u.state, u.display_name, u.freeze_time, u.freeze_reason, u.freeze_actor_subject, u.freeze_actor_username, u.delete_time, u.purge_time, u.create_time, u.update_time, u.profile_attributes FROM user_account u
 WHERE ($1::smallint IS NULL OR u.state = $1::smallint)
   AND ($2::bool OR u.state NOT IN (3, 4))
   AND ($3::timestamptz IS NULL OR u.create_time >= $3::timestamptz)
@@ -1345,6 +1366,7 @@ func (q *Queries) ListUsersAdmin(ctx context.Context, arg ListUsersAdminParams) 
 			&i.PurgeTime,
 			&i.CreateTime,
 			&i.UpdateTime,
+			&i.ProfileAttributes,
 		); err != nil {
 			return nil, err
 		}
@@ -1616,7 +1638,7 @@ func (q *Queries) LockSignInCompletionFlowsForUser(ctx context.Context, userID s
 }
 
 const lockUserByID = `-- name: LockUserByID :one
-SELECT id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time FROM user_account WHERE id = $1 FOR UPDATE
+SELECT id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time, profile_attributes FROM user_account WHERE id = $1 FOR UPDATE
 `
 
 // 同设备重登前对用户行加锁：并发登录在此串行化，第二个事务等到第一个提交（含会话吊销/新建）
@@ -1636,6 +1658,7 @@ func (q *Queries) LockUserByID(ctx context.Context, id string) (UserAccount, err
 		&i.PurgeTime,
 		&i.CreateTime,
 		&i.UpdateTime,
+		&i.ProfileAttributes,
 	)
 	return i, err
 }
@@ -1644,6 +1667,7 @@ const purgeUser = `-- name: PurgeUser :execrows
 UPDATE user_account
 SET state = $1, display_name = NULL, freeze_time = NULL, freeze_reason = NULL,
     freeze_actor_subject = NULL, freeze_actor_username = NULL,
+    profile_attributes = '{}'::jsonb,
     purge_time = $2::timestamptz, update_time = $2::timestamptz
 WHERE id = $3 AND state = $4
 `
@@ -1952,7 +1976,7 @@ const softDeleteUser = `-- name: SoftDeleteUser :one
 UPDATE user_account
 SET state = $1, delete_time = $2::timestamptz, purge_time = $3::timestamptz, update_time = $2::timestamptz
 WHERE id = $4
-RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time
+RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time, profile_attributes
 `
 
 type SoftDeleteUserParams struct {
@@ -1983,6 +2007,7 @@ func (q *Queries) SoftDeleteUser(ctx context.Context, arg SoftDeleteUserParams) 
 		&i.PurgeTime,
 		&i.CreateTime,
 		&i.UpdateTime,
+		&i.ProfileAttributes,
 	)
 	return i, err
 }
@@ -1991,7 +2016,7 @@ const undeleteUser = `-- name: UndeleteUser :one
 UPDATE user_account
 SET state = $1, delete_time = NULL, purge_time = NULL, update_time = $2::timestamptz
 WHERE id = $3
-RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time
+RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time, profile_attributes
 `
 
 type UndeleteUserParams struct {
@@ -2016,6 +2041,7 @@ func (q *Queries) UndeleteUser(ctx context.Context, arg UndeleteUserParams) (Use
 		&i.PurgeTime,
 		&i.CreateTime,
 		&i.UpdateTime,
+		&i.ProfileAttributes,
 	)
 	return i, err
 }
@@ -2025,7 +2051,7 @@ UPDATE user_account
 SET state = $1, freeze_time = NULL, freeze_reason = NULL, freeze_actor_subject = NULL, freeze_actor_username = NULL,
     update_time = $2::timestamptz
 WHERE id = $3
-RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time
+RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time, profile_attributes
 `
 
 type UnfreezeUserParams struct {
@@ -2050,6 +2076,7 @@ func (q *Queries) UnfreezeUser(ctx context.Context, arg UnfreezeUserParams) (Use
 		&i.PurgeTime,
 		&i.CreateTime,
 		&i.UpdateTime,
+		&i.ProfileAttributes,
 	)
 	return i, err
 }
@@ -2129,6 +2156,39 @@ func (q *Queries) UpdateIdentityProviderMeta(ctx context.Context, arg UpdateIden
 	return result.RowsAffected(), nil
 }
 
+const updateProfileAttributes = `-- name: UpdateProfileAttributes :one
+UPDATE user_account
+SET profile_attributes = $1::jsonb,
+    update_time = $2::timestamptz
+WHERE id = $3 AND state = $4
+RETURNING id, state, profile_attributes
+`
+
+type UpdateProfileAttributesParams struct {
+	ProfileAttributes []byte
+	Now               time.Time
+	ID                string
+	ActiveState       enum.UserState
+}
+
+type UpdateProfileAttributesRow struct {
+	ID                string
+	State             enum.UserState
+	ProfileAttributes []byte
+}
+
+func (q *Queries) UpdateProfileAttributes(ctx context.Context, arg UpdateProfileAttributesParams) (UpdateProfileAttributesRow, error) {
+	row := q.db.QueryRow(ctx, updateProfileAttributes,
+		arg.ProfileAttributes,
+		arg.Now,
+		arg.ID,
+		arg.ActiveState,
+	)
+	var i UpdateProfileAttributesRow
+	err := row.Scan(&i.ID, &i.State, &i.ProfileAttributes)
+	return i, err
+}
+
 const updateSessionAuthTime = `-- name: UpdateSessionAuthTime :execrows
 UPDATE session SET auth_time = $1, update_time = $1
 WHERE id = $2 AND revoke_time IS NULL AND refresh_expire_time > $1::timestamptz
@@ -2198,7 +2258,7 @@ func (q *Queries) UpdateSignInCompletionFlow(ctx context.Context, arg UpdateSign
 
 const updateUserDisplayName = `-- name: UpdateUserDisplayName :one
 UPDATE user_account SET display_name = $2, update_time = now() WHERE id = $1
-RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time
+RETURNING id, state, display_name, freeze_time, freeze_reason, freeze_actor_subject, freeze_actor_username, delete_time, purge_time, create_time, update_time, profile_attributes
 `
 
 type UpdateUserDisplayNameParams struct {
@@ -2221,6 +2281,7 @@ func (q *Queries) UpdateUserDisplayName(ctx context.Context, arg UpdateUserDispl
 		&i.PurgeTime,
 		&i.CreateTime,
 		&i.UpdateTime,
+		&i.ProfileAttributes,
 	)
 	return i, err
 }

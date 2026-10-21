@@ -99,4 +99,5 @@ type UserAccount struct {
 	PurgeTime           *time.Time
 	CreateTime          time.Time
 	UpdateTime          time.Time
+	ProfileAttributes   []byte
 }

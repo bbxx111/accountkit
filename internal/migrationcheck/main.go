@@ -23,7 +23,7 @@ var frozen = map[string]string{
 // The user-authorized current initial definition has its own immutable baseline. The source
 // snapshot and the published v0.3.0 initial definition remain independently pinned.
 var initialFrozen = map[string]string{
-	"0001_init.up.sql":   "e1c5f1232136ed655e4963411f972e64493290998c5de27f88e511b94dde710e",
+	"0001_init.up.sql":   "ea3f0a0d376addf95e9bc1852b6b753a04b214293ac32714e351ce9b6262c940",
 	"0001_init.down.sql": "2f26c7dc5f5c5cfe2ee5a9967884fc70c7f213418a602fb2535621904f251f9b",
 }
 
@@ -37,9 +37,17 @@ type pinnedInitialRelease struct {
 	Hashes map[string]string
 }
 
-// This exact published baseline predates the separately authorized session
-// consolidation. Neither moving the tag nor reusing its SQL in new releases is allowed.
+// Published initial definitions remain pinned independently. v0.3.0 predates
+// session consolidation; v0.4.0 pins the current initial definition. Moving a
+// tag or rewriting its SQL never receives a historical-baseline exception.
 var publishedInitialReleases = map[string]pinnedInitialRelease{
+	"refs/tags/v0.4.0": {
+		Commit: "62f0799b6c6ef1603b33f81834d39033dd0d0c4d",
+		Hashes: map[string]string{
+			"0001_init.up.sql":   "e1c5f1232136ed655e4963411f972e64493290998c5de27f88e511b94dde710e",
+			"0001_init.down.sql": "2f26c7dc5f5c5cfe2ee5a9967884fc70c7f213418a602fb2535621904f251f9b",
+		},
+	},
 	"refs/tags/v0.3.0": {
 		Commit: "ba2d0412764c659beabdbd0d3f0f0f9bb9007657",
 		Hashes: map[string]string{

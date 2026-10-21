@@ -43,7 +43,7 @@ func TestSimplifiedSessionClientStorage(t *testing.T) {
 			t.Fatal("missing basic constraint", statement)
 		}
 	}
-	assertVersion(t, cfg, schema, 1, false)
+	assertVersion(t, cfg, schema, latestVersion(t), false)
 }
 
 func TestSimplifiedSessionRejectsPreviousSnapshotBaseline(t *testing.T) {

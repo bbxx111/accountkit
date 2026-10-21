@@ -4,6 +4,8 @@
 
 为嵌入式宿主提供结构可声明、修改可验证的账号用户资料属性能力。宿主使用 JSON Schema 定义属性，库负责离线校验、JSON Merge Patch、数据库账号行锁并发控制及隐私生命周期，使业务能够扩展用户资料而不绕开账号状态、事务和匿名化契约。
 
+当前资料单列按本轮限定授权合入工作树 0001，新安装 version 1；无旧数据迁移，旧发布与当前定义独立固定。此整合不改变下述公开 API、Schema、账号行锁、时间和隐私行为，见[存储规格](../versioned-auth-storage/spec.md)。
+
 ## ADDED Requirements
 
 ### Requirement: 可选且离线的 Schema 配置

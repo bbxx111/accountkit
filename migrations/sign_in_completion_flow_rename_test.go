@@ -81,6 +81,9 @@ func TestSignInCompletionFlowInitialDefinition(t *testing.T) {
 	if _, err := old.Exec(context.Background(), databaseReviewIndexSQL); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := old.Exec(context.Background(), profileAttributesInitialDDL); err != nil {
+		t.Fatal(err)
+	}
 	initialUp(t, cfg, schema)
 	c := migrationTestConn(t, cfg, schema)
 	assertVersion(t, cfg, schema, 1, false)

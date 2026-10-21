@@ -1,5 +1,7 @@
 # 单列用户资料属性 Implementation Plan
 
+> 历史计划：本轮数据库定义及验收以[初始整合计划](2026-10-21-consolidate-profile-attributes-initial.md)替代。当前资料单列并入 0001、撤回生产 0002、新安装 version 1；下文保留原阶段记录，不代表旧库升级承诺或本轮验收。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development。先行为测试、后实现，独立审查；本轮不提交、推送、合并或归档。
 
 **Goal:** 按用户已确认决定，只保留 `profile_attributes JSONB`，移除逐行 Schema 版本、指纹及独立更新时间。

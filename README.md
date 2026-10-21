@@ -4,7 +4,7 @@
 
 宿主可在 `New` 前设置 `Config.ProfileAttributes`；nil 关闭接口且不删除已有资料。
 `ProfileAttributesConfig` 仅含 `Schema`，`ProfileAttributesView` 仅含 `Data`。
-存储仅增加 `profile_attributes` JSONB，实际变化复用账号原 `update_time`。
+存储仅增加 `profile_attributes` JSONB，实际变化复用账号原 `update_time`。本轮授权将单列并入当前 0001、撤回生产 0002，新空 schema 安装 version 1；旧 v0.4.0 v1 及各代撤回 v2 无写拒绝，无旧数据迁移。已发布 tag/SQL 与冻结源独立固定，详见[迁移手册](docs/migrations.md#当前用户资料属性初始整合version-1)。
 Schema 由宿主读取或嵌入，没有文件路径环境变量或 accountsvc 自动加载。
 宿主装配示例见 [examples/embedded/profile_attributes.go](examples/embedded/profile_attributes.go)：
 
@@ -439,6 +439,6 @@ Go module：github.com/bbxx111/accountkit。`v0.4.0` 已发布，使用 `go get 
 
 库版本发布与各产品生产上线分别验收。产品实际环境接入、真实服务商与预发布升级/恢复仍待完成；产品各自配置 schema、Redis 前缀、issuer/audience 和密钥，并承担自己的匿名化与网关接入责任。当前未附开源 LICENSE，本次版本供自有产品接入，尚未向外部使用方定义复用许可。
 
-此前流程改名已纳入 v0.3.0 的初始定义。v0.4.0 发布前，会话0002先经明确授权合入当时未发布的0001，又经用户明确批准简化为必有来源与单行JSONB描述；当前0001已随 v0.4.0 发布，此前的有限授权不再适用于修改它；同步down、baseline、固定哈希和sqlc，不新增生产0002，新安装仍为version=1/dirty=false。**旧v0.3.0 v1、前一`b414fef`双快照v1及撤回会话v2均不能直接接管**，返回不兼容错误并保留数据、结构和版本。新部署须人工核验新空资源，需保留旧数据时另行制定并验证迁移方案，不Force、改版本或自动清库。公共`Down`仍拒绝；详见[迁移手册](docs/migrations.md#会话认证依据初始整合)。所有已发布标签、其中的历史SQL和固定源快照保持，历史与当前定义分别校验，两次有限授权均不允许日常改写初始SQL。
+此前流程改名已纳入 v0.3.0 的初始定义。v0.4.0 发布前，会话0002先经明确授权合入当时未发布的0001，又经用户明确批准简化为必有来源与单行JSONB描述；该会话初始定义已随 v0.4.0 发布，此前有限授权不再适用于修改它；当前工作树仅按本轮新的资料单列授权调整，已发布 tag 内字节保持；同步down、baseline、固定哈希和sqlc，不新增生产0002，新安装仍为version=1/dirty=false。**旧v0.3.0 v1、前一`b414fef`双快照v1及撤回会话v2均不能直接接管**，返回不兼容错误并保留数据、结构和版本。新部署须人工核验新空资源，需保留旧数据时另行制定并验证迁移方案，不Force、改版本或自动清库。公共`Down`仍拒绝；详见[迁移手册](docs/migrations.md#会话认证依据初始整合)。所有已发布标签、其中的历史SQL和固定源快照保持，历史与当前定义分别校验，两次有限授权均不允许日常改写初始SQL。
 
 原 migrations.Down 保留签名但默认拒绝执行；新基线的一次性测试清库使用显式 UnsafeReset。升级、故障处理与恢复步骤见 [迁移手册](docs/migrations.md)，本次边界见[兼容说明](docs/compatibility.md#初始数据库基线整合)。

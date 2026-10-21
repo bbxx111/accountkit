@@ -1,3 +1,50 @@
+## 2026-10-21 初始定义整合：本轮验收
+
+本轮用户明确要求“0002 并入 0001，无需考虑旧数据迁移”，仅授权把 `profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb` 单列合入当前工作树 0001，撤回生产 0002；新空 schema 安装 version=1/dirty=false，其他列、索引和业务行为保持。当前 initialFrozen 新哈希与 v0.4.0 已发布旧定义分别固定；v0.4.0 精确 tag `62f0799b6c6ef1603b33f81834d39033dd0d0c4d`、其他发布 tag/SQL 和冻结源保持。旧 v0.4.0 v1 缺资料列、其他历史 v1 及各代撤回 v2（含单列、四列、五列及混合资料 v2）均无写拒绝，dirty 优先，保留 catalog、数据及 version/dirty；不转换旧数据、不重放同号 SQL、不 Force、改版本或清库。本轮不提供旧数据迁移工具或升级承诺；后续真实增量从 0002 递增，测试 probe 使用 latest+1（当前为 2）。
+
+本轮依据[初始整合计划](../../../docs/superpowers/plans/2026-10-21-consolidate-profile-attributes-initial.md)完成 C1–C4，改动尚未提交、推送或归档。当前初始 up SHA-256 为 `ea3f0a0d376addf95e9bc1852b6b753a04b214293ac32714e351ce9b6262c940`；down 保持 `2f26c7dc5f5c5cfe2ee5a9967884fc70c7f213418a602fb2535621904f251f9b`。v0.4.0 tag 的旧 up 仍为 `e1c5f1232136ed655e4963411f972e64493290998c5de27f88e511b94dde710e`；冻结源和其他历史 pin 未改。
+
+### Behavior Evidence
+
+- RED：测试专用 fixture 构造完整含资料列的 version 1，旧逻辑仍因“v1 残留资料列”拒绝；更新后重复 Up 成功且 catalog、数据和 version/dirty 不变。fixture 仅构造测试结构，不是生产迁移转换路径。
+- 当前 0001 只在 user_account 原末尾追加资料列；原 0001 加原单列 0002 的完整 catalog 与新初始结构等价。0001 down 未变、生产 0002 up/down 撤回，sqlc 重新生成无产物差异。
+- 真实数据库验证安装、重复、并发、多 schema 隔离、默认值、基础约束及旧结构无写拒绝，dirty/取消/锁释放保持；旧 v0.4.0 有数据实例不会被修改。未来测试 probe 当前为 2，与生产无 source 的撤回 v2 区分。
+- 历史检查算法保持，旧 v0.4.0 精确 commit/hash 独立于当前 initialFrozen；新增测试证明 current 与发布定义不同且各自受保护，没有开关或历史绕过。
+
+### Final Checks
+
+| 检查 | 本轮实际结果 |
+|---|---|
+| `GOWORK=off go build ./...`、`go vet ./...` | 通过 |
+| 全量普通测试与 Linux race | 各 44 个有测试包、874 个顶层测试、2626 个含子测试条目通过；0 失败、0 race warning |
+| 普通及 race 必需门禁 | 各 773/773 通过；原 769 个入口保留，新增四个整合/历史保护入口，无重复 |
+| 定向迁移/history/库/可选服务测试 | 通过；最终迁移全套 65.768s，accountsvc 定向集成 256.032s 且后续 vet/命令退出 0 |
+| sqlc 1.31.1 与生成一致性 | 通过，user/db 与 audit/db 无差异 |
+| 历史迁移与独立 pin 核对 | 通过；生产仅 0001 pair，当前与 v0.4.0/frozen 源分别固定 |
+| `bash scripts/verify.sh` 与真实 PG 17.11 备份恢复 | 通过；seed/verify/source-unchanged 全通过，源库与恢复目标均另核对 version=1/dirty=false |
+| OpenSpec strict | 最终 25 项通过，0 失败 |
+| 独立审查 | 代码与文档整体 PASS；唯一文档修复波次限定复审 ADDRESSED，无新实质问题 |
+| 格式/差异/源哈希 | 12 个改动 Go 文件格式正确，差异空白通过；16 项源记录（含删除 SQL）验证前后完全一致 |
+
+普通/race 唯一测试级 skip 是预期的 TestRecoveryFixture，恢复脚本强制执行其三个阶段。真实恢复核验资料精确数字、账号时间、会话来源/客户端描述、认证、恢复后匿名化和源不变；材料保留在 `.test-output/recovery.FzjW59`。
+
+严格校验最初发现四个 MODIFIED 规格块遗漏主规格场景，结果为 24/25。唯一最终修复波次只补齐两份 delta spec 的完整场景标题和当前授权语义，不恢复旧 v0.4.0 升级承诺；最终 strict 25/25，独立限定复审通过。没有修改验证中的生产源码或重复整套测试。
+
+原始证据目录 `.test-output/profile-initial/`：
+
+- [全量状态](../../../.test-output/profile-initial/status.log)、[JSON 汇总](../../../.test-output/profile-initial/evidence-summary.json)、[完整验证与恢复输出](../../../.test-output/profile-initial/full-verify.log)、[恢复版本直接核对](../../../.test-output/profile-initial/recovery-versions.log)。
+- [RED](../../../.test-output/profile-initial/red.log)、[实施报告与测试映射](../../../.test-output/profile-initial/implementation-report.md)、[独立最终审查](../../../.test-output/profile-initial/final-review.md)。
+- [唯一文档修复](../../../.test-output/profile-initial/docs-fix-report.md)、[strict 输出](../../../.test-output/profile-initial/openspec-final.log)、[限定复审](../../../.test-output/profile-initial/re-review.md)。
+- [当前/发布/冻结源 pin 核对](../../../.test-output/profile-initial/pins.json)、[验证后源记录](../../../.test-output/profile-initial/source-after.json)、[资源清理](../../../.test-output/profile-initial/cleanup.log)。核对任务标签后仅删除本轮三个容器、专用网络和两个缓存卷，宿主日志与合成备份保留。
+
+实施裁定：本次授权仅修改工作树当前初始定义与其固定校验，不重写 Git 历史/旧发布；没有把“无需旧数据迁移”解释为放行不兼容结构，而保留无写拒绝。旧部署若需要保留数据不能直接使用此初始定义，须另行处理，不自动转换或清库。
+
+未验证：在线 CI、产品部署、旧应用与新初始定义混跑/回退、任何旧数据迁移。本轮没有迁移转换工具或相关支持承诺。
+
+以下全部原文保留对应历史阶段，旧增量日志不证明本轮整合通过。
+
+---
+
 ## 当前单列修订验收（2026-10-21）
 
 本轮相对 `9619ff5` 的修订只保留 `profile_attributes JSONB`，移除逐行 Schema 版本、指纹及独立更新时间。Config 仅 Schema、View 仅 Data，删除 SchemaMismatch；行锁内按当前 Schema 校验完整合并结果，实际变化复用账号 update_time，无变化不写入。以下旧验收原文全部保留，仅证明其对应旧实现。

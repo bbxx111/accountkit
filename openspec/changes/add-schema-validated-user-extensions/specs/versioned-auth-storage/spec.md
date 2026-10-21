@@ -4,104 +4,96 @@
 
 ### Requirement: 包内数据库定义
 
-包 SHALL 携带 v0.4.0 已发布的完整 `0001` 及后续递增迁移，schema 可配置。本次 SHALL 修订尚未发布的生产 `0002_add_profile_attributes`，SHALL 沿当前文件名修订为单列，version 2 保持，向 `user_account` 增加 profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb 单列，复用账号 update_time，新安装依次执行至 version 2。`0001`、其固定哈希、冻结源和全部已发布标签 SHALL 保持。新增存储 SHALL 不增加外键、级联、宿主业务列或通用 JSON 查询索引，JSON Schema 与属性业务校验在 Go 执行，数据库保留必要基础结构约束。
+包 SHALL 按本轮显式限定授权将资料单列并入当前 0001，撤回生产 0002 up/down。本轮用户明确要求“0002 并入 0001，无需考虑旧数据迁移”，仅授权把 `profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb` 单列合入当前工作树 0001，撤回生产 0002；新空 schema 安装 version=1/dirty=false，其他列、索引和业务行为保持。当前 initialFrozen 新哈希与 v0.4.0 已发布旧定义分别固定；v0.4.0 精确 tag `62f0799b6c6ef1603b33f81834d39033dd0d0c4d`、其他发布 tag/SQL 和冻结源保持。旧 v0.4.0 v1 缺资料列、其他历史 v1 及各代撤回 v2（含单列、四列、五列及混合资料 v2）均无写拒绝，dirty 优先，保留 catalog、数据及 version/dirty；不转换旧数据、不重放同号 SQL、不 Force、改版本或清库。本轮不提供旧数据迁移工具或升级承诺；后续真实增量从 0002 递增，测试 probe 使用 latest+1（当前为 2）。 JSON Schema/属性业务校验 SHALL 在 Go 执行，不新增外键、JSON 业务 CHECK、触发器、索引或逐行 Schema 元数据；公共 API、账号行锁、账号时间、认证和隐私行为保持。0001 down 仍删除整张账号表。
 
 #### Scenario: 空数据库安装
-- **WHEN** 对合法新空 schema 执行迁移
-- **THEN** 依次执行原样 `0001` 和用户资料属性 `0002`，仍为七张业务表，version=2/dirty=false；旧表、单份客户端描述及来源结构完整，不影响其他 schema
+- **WHEN** 对合法新空 schema 执行 Up
+- **THEN** 只执行当前 0001，得到完整七表及单列资料，version=1/dirty=false，不影响其他 schema
 
 #### Scenario: 非法 schema
 - **WHEN** schema 不符合 `^[a-z][a-z0-9_]{0,62}$`
 - **THEN** 返回配置错误，不执行数据库变更
 
 #### Scenario: 已发布初始定义保持
-- **WHEN** 检查 v0.3.0、v0.4.0 tag 与当前 `0001`
-- **THEN** 分别保持已发布提交及 SQL；当前 `0001` 与 v0.4.0 字节相同，不再引用发布前简化授权改写初始定义
+- **WHEN** 检查 v0.3.0、v0.4.0 及其他正式 tag 内初始定义与当前工作树 0001
+- **THEN** 已发布精确提交及原始 SQL 保持；当前仅按本轮明确授权纳入资料单列并固定新哈希，不把有限授权扩展为日常历史改写
 
 #### Scenario: 直接定义仅调整名称
 - **WHEN** 追溯 v0.3.0 发布前流程改名
-- **THEN** 历史名称映射和 catalog 等价证据保持，当前用户资料属性通过新迁移实现，不改写旧记录
+- **THEN** 历史名称映射和 catalog 等价证据保持；本轮资料整合另核对与原 0001+单列 0002 的等价性，不改写旧记录或其他流程结构
 
 #### Scenario: 整合结构等价
-- **WHEN** 对比 v0.4.0 version 1 与本次 version 2
-- **THEN** 仅新增本次用户资料属性结构及其基础约束，原表列、索引、来源和客户端描述结构保持；此前 b414fef 会话简化的历史差异仍单独追溯
+- **WHEN** 对比合并 0001 与原 0001+单列 0002 的结果
+- **THEN** catalog 和默认值/非空语义等价，其他列、索引、约束、来源和客户端描述保持
 
 #### Scenario: 历史与当前分别固定
-- **WHEN** 校验完整 Git 历史及全部可达正式 tag
-- **THEN** 固定源、v0.3.0、v0.4.0 及各已发布增量独立核验，移动标签或改写历史 SQL 均失败，不以本次新增迁移更新旧哈希
-
-#### Scenario: 既有账号的初始扩展
-- **WHEN** 非空 v0.4.0 数据库完成 `0002`
-- **THEN** 原账号、身份和会话数据及原创建/更新时间保持，资料属性为 `{}`，原账号时间不变
+- **WHEN** 校验完整历史、全部可达正式 tag 和当前初始定义
+- **THEN** 仅更新当前 initialFrozen，v0.4.0 及其他发布精确提交/旧 SQL 哈希、冻结源独立保持，移动标签或改写历史仍失败
 
 ### Requirement: 整合基线的兼容边界
 
-迁移 SHALL 接受完整 v0.4.0 初始结构及与当前生产迁移对应的合法后续结构。本次合法 version 2 SHALL 同时具备完整 v0.4.0 基础结构及用户资料属性列、默认值和基础约束；所有已撤回历史 version 2、旧 v0.3.0 v1、b414fef 双快照 v1、旧流程及审计结构继续拒绝。预检 SHALL 在任何写入前完成，dirty 优先；拒绝保留数据、catalog、version/dirty，不重放 `0001`、Force、自动转换、改版本或清库。
-
-#### Scenario: 旧已发布会话结构
-- **WHEN** 旧 v0.3.0 version 1 缺少完整会话上下文，无论是否非空
-- **THEN** Up 无写拒绝，不把当前新增 `0002` 当作旧库会话升级脚本
-
-#### Scenario: 旧初始库版本同为一
-- **WHEN** 旧 version 1 有旧流程名、审计或会话结构
-- **THEN** 明确拒绝并保留记录、结构和版本，不重放 `0001`
-
-#### Scenario: 旧开发增量库
-- **WHEN** 连接已撤回的历史 version 2，包括流程改名或原会话 `0002`
-- **THEN** 即使迁移源现在存在同号 `0002`，仍因结构不兼容拒绝，不降版本、清库或重放
-
-#### Scenario: 双表并存
-- **WHEN** sign_in_completion_flow 和 identity_flow 同时存在
-- **THEN** 拒绝并保留数据、结构及版本
-
-#### Scenario: 撤回会话增量
-- **WHEN** 原会话 `0002` 的 version 2 连接当前生产源
-- **THEN** 无写拒绝，不因同号版本或部分相似结构将其接管为本次用户资料属性 version 2
+预检 SHALL 在写入前要求 source 可达版本具有完整当前资料结构，包括单列类型、默认值、非空、无旧资料元数据和账号原五个时间列精度；dirty 优先。旧 v0.4.0 v1、其他旧 v1 和各代撤回 v2 SHALL 无写拒绝，不重放同号 SQL、自动转换、Force、改版本或清库。未来增量从 0002 开始，测试 probe 为 latest+1。
 
 #### Scenario: 完整新基线重复执行
-- **WHEN** 完整 v0.4.0 version 1 包含账号、身份、来源及单份描述，再次执行本次 Up
-- **THEN** 只执行未应用的用户资料属性迁移至 version 2，不重建基础结构或推断来源
+- **WHEN** 当前完整 version 1 已安装且含资料及认证数据，再次 Up
+- **THEN** catalog、数据、账号原时间、版本和资源 ID 保持，连接及锁释放
 
-#### Scenario: 新基线重复执行
-- **WHEN** 本次合法 version 2 已安装且非空
-- **THEN** 重复迁移保持结构、版本、数据和资源 ID，不影响其他 schema
+#### Scenario: 旧发布库同号
+- **WHEN** v0.4.0 version 1 缺资料列，无论空或非空
+- **THEN** 无写拒绝，保持 catalog、数据和 version/dirty，不补列或重放 0001
+
+#### Scenario: 撤回的资料与其他增量
+- **WHEN** 单列/四列/五列/混合资料 v2 或各代撤回流程/会话 v2 连接当前只有 0001 的生产源
+- **THEN** dirty 优先，无写拒绝并保留 catalog、数据及 version/dirty
+
+#### Scenario: 旧基线及不完整资料结构
+- **WHEN** 旧 v0.3.0 v1、b414fef 双快照 v1、旧流程/审计、双表并存，或 v1 缺资料/类型默认值非空漂移/旧元数据残留
+- **THEN** 无写拒绝，不推断来源、转换快照或靠 IF NOT EXISTS 和手改版本接管
+
+#### Scenario: 未来测试增量
+- **WHEN** 测试源对完整当前基线提供 latest+1（当前为 2）的成功或失败 probe
+- **THEN** 正常验证未来增量及失败/dirty 阻断，测试 SQL 不进入生产源
 
 #### Scenario: 历史数据格式验证
 - **WHEN** 固定历史合成凭据装载到当前结构并显式建立合法来源、映射旧审计
-- **THEN** 非审计 ID、密文/摘要和 token 格式保持，审计 legacy_event_id 可追溯；不把合成夹具补关联称为生产自动迁移，不改冻结源
+- **THEN** 非审计 ID、密文/摘要和 token 保持，legacy_event_id 可追溯，不将夹具称为生产转换，不改冻结源
+
+#### Scenario: 旧已发布会话结构
+- **WHEN** 旧 v0.3.0 version 1 缺少完整会话上下文，无论空或非空
+- **THEN** Up 无写拒绝并保留 catalog、数据及 version/dirty，不执行撤回会话 0002、不补造来源或重放当前 0001
+
+#### Scenario: 旧初始库版本同为一
+- **WHEN** 旧 version 1 有旧流程名、审计、会话结构，或 v0.4.0 v1 缺少资料列
+- **THEN** 明确无写拒绝并保留原记录、结构和版本；版本同号不代表当前完整结构，不自动补列或重放 0001
+
+#### Scenario: 旧开发增量库
+- **WHEN** 连接已撤回 version 2，包括流程改名、原会话或各代资料增量
+- **THEN** 当前生产源无对应 0002，拒绝并保留 catalog、数据及 version/dirty，不降版本、清库、转换或自动重放
+
+#### Scenario: 双表并存
+- **WHEN** sign_in_completion_flow 和 identity_flow 同时存在
+- **THEN** 无写拒绝并保留数据、结构和版本，不选择其一接管或自动删除旧表
+
+#### Scenario: 撤回会话增量
+- **WHEN** 完整原会话 0002 的 version 2 连接当前生产源
+- **THEN** 无写拒绝，不因会话结构相似接管为当前 version 1，也不添加资料列、降版本或重放
+
+#### Scenario: 新基线重复执行
+- **WHEN** 完整当前初始定义及迁移源中合法后续增量已安装且非空
+- **THEN** 重复迁移保持结构、版本、数据、账号时间和资源 ID，不影响其他 schema；当前生产安装仍为 version 1，测试未来增量不混入生产源
 
 #### Scenario: 正式会话结构递增升级
-- **WHEN** 旧 v0.3.0 v1 请求沿已撤回会话 `0002` 使用新结构
-- **THEN** 拒绝且保留旧库，保留数据需求仍须另行设计迁移
+- **WHEN** 旧 v0.3.0 v1 请求沿已撤回会话 0002 使用新结构
+- **THEN** 无写拒绝且保留旧库；本轮不提供旧数据迁移，也不重新引入会话增量或转换工具
 
 #### Scenario: 版本同号但结构不同
-- **WHEN** 对比旧 v0.3.0 v1、b414fef 双快照 v1、v0.4.0 v1 以及不同历史 version 2
-- **THEN** 仅 v0.4.0 v1 可进入本次升级，只有本次完整扩展 version 2 可重复执行，其他同号库拒绝且数据与版本保持
+- **WHEN** 对比旧 v0.3.0 v1、b414fef 双快照 v1、v0.4.0 缺资料 v1 与当前完整资料 v1
+- **THEN** 仅接受当前完整结构，其他同号库无写拒绝且数据/catalog/版本保持，不使用 Force 或补列接管
 
 #### Scenario: 历史格式与失败清理
 - **WHEN** 装载合成历史凭据或重复拒绝旧结构
-- **THEN** 正确区分格式验证和升级，连接及锁释放且 dirty 优先；来源缺失仍按既有契约拒绝
+- **THEN** 正确区分凭据格式验证与数据库升级，连接和锁释放，dirty 优先；来源缺失仍按既有不变量契约在使用时拒绝，不补造来源
 
 #### Scenario: 前一整合基线拒绝
-- **WHEN** b414fef v1 含 known 标记、snapshot_kind 或旧平坦快照列
-- **THEN** 空或非空均无写拒绝，重复拒绝仍保持 catalog、数据及 version/dirty，不静默删列或选 LATEST 转换
-
-#### Scenario: 不完整扩展结构不能冒充已升级
-- **WHEN** version 2 缺少扩展列或列类型、默认值、非空与基础约束不符合本次定义
-- **THEN** 预检无写拒绝，不把无待执行 SQL 当作升级成功
-
-#### Scenario: version 一存在手工扩展残留
-- **WHEN** version 1 已存在本次扩展的部分或全部列
-- **THEN** 预检拒绝不一致状态，不通过 IF NOT EXISTS 或手工改版本接管
-
-#### Scenario: 未发布临时五列结构
-- **WHEN** 连接 54afa4b 临时实现的五列 version 2（含 extensions_revision）
-- **THEN** 无写拒绝并保留 catalog、数据及 version/dirty，不自动转换、Force、清库或改版本；本轮只修订未发布 0002，文件名保持，0001 与历史不变
-
-#### Scenario: 单列资料属性结构
-- **WHEN** 核对合法 version 2
-- **THEN** 仅有 profile_attributes JSONB，复用账号 update_time，无 Schema 版本、指纹与独立更新时间
-
-#### Scenario: 临时结构无写拒绝
-- **WHEN** 旧四列、五列或混合临时 v2，或 v1 带资料残留连接迁移器
-- **THEN** dirty 优先，无写拒绝并保持 catalog、数据、version/dirty，不自动转换、Force、改版本或清库
+- **WHEN** 前一 b414fef v1 含 known 标记、snapshot_kind 或旧平坦快照列
+- **THEN** 空或非空均无写拒绝，重复拒绝仍保持 catalog、数据及 version/dirty，不静默删列或选择 LATEST 转换，不因本轮资料整合放宽保护

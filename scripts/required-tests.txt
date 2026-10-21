@@ -771,3 +771,7 @@ github.com/bbxx111/accountkit/user/TestProfileAttributesValidatorErrorPrivacy
 github.com/bbxx111/accountkit/user/TestProfileAttributesWriteBeforeLifecycle
 github.com/bbxx111/accountkit/user/TestProfileAttributesSerializedMerge
 github.com/bbxx111/accountkit/user/TestProfileAttributesPurgeBeforeWrite
+github.com/bbxx111/accountkit/migrations/TestProfileAttributesConsolidatedV1Repeat
+github.com/bbxx111/accountkit/migrations/TestProfileAttributesInitialCatalogEquivalent
+github.com/bbxx111/accountkit/migrations/TestProfileAttributesWithdrawnV2Rejected
+github.com/bbxx111/accountkit/internal/migrationcheck/TestCurrentInitialDiffersFromPublishedV040

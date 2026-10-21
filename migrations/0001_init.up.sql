@@ -21,7 +21,8 @@ CREATE TABLE user_account (
     delete_time           TIMESTAMPTZ,                  -- 软删除时刻（AIP-164）
     purge_time            TIMESTAMPTZ,                  -- 计划匿名化时刻；执行后为实际时刻
     create_time           TIMESTAMPTZ NOT NULL DEFAULT now(),
-    update_time           TIMESTAMPTZ NOT NULL DEFAULT now()
+    update_time           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    profile_attributes    JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 -- purge 维护任务：WHERE state = PENDING_DELETION AND purge_time <= now()
 -- 枚举值由 Go 定义并在此钉死：ACTIVE=1, FROZEN=2, PENDING_DELETION=3, DELETED=4（0 为 UNSPECIFIED，不存储）

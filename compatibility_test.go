@@ -158,7 +158,7 @@ func TestHistoricalFormatsOnInitialSchema(t *testing.T) {
 	}
 	var version, flows int
 	var dirty bool
-	if err := pool.QueryRow(ctx, "SELECT version,dirty,(SELECT count(*) FROM sign_in_completion_flow) FROM schema_migrations").Scan(&version, &dirty, &flows); err != nil || version != 2 || dirty || flows != 0 {
+	if err := pool.QueryRow(ctx, "SELECT version,dirty,(SELECT count(*) FROM sign_in_completion_flow) FROM schema_migrations").Scan(&version, &dirty, &flows); err != nil || version != 1 || dirty || flows != 0 {
 		t.Fatalf("current version=%d dirty=%v flows=%d: %v", version, dirty, flows, err)
 	}
 	var mappedID uuid.UUID

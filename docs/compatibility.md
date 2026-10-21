@@ -17,7 +17,7 @@ nil 默认保持旧行为；既有 enduser/admin DTO、适配器必需接口、J
 并发仅用数据库账号行锁：锁内读取最新资料→RFC 7396 合并→完整 Schema 校验→提交。不同不重叠属性保留彼此修改，同属性以后执行事务为准，数组整体替换及父对象删除仍遵循 RFC 7396；不使用 Redis 锁。
 
 这是相对未发布 54afa4b 的 Go 源码破坏性调整：调用者将 UserExtensions/Extensions* 和 GetExtensions/PatchExtensions 改为上述 ProfileAttributes 名称，删除 ExpectedRevision、Revision 及 Conflict 处理；不保留旧 API 别名。配置只保留 Schema，视图只保留 Data；调用者移除 SchemaVersion、SchemaFingerprint、UpdateTime 及 ErrProfileAttributesSchemaMismatch 处理。
-属性仅允许用户资料，禁止宿主业务状态、权益及权限。尚未发布的 0002 保留文件名并改为单列；旧临时四列、五列及混合 v2 无写拒绝，不能直接混跑、自动转换或清库，详见[迁移说明](migrations.md#当前用户资料属性增量version-2)。
+属性仅允许用户资料，禁止宿主业务状态、权益及权限。本轮授权将单列并入当前 0001、撤回生产 0002，新安装 version 1；旧 v0.4.0 v1 及各代撤回 v2 无写拒绝，无旧数据迁移，不重放同号 SQL、Force、改版本或清库。旧发布 tag/SQL 和冻结源独立固定，详见[迁移说明](migrations.md#当前用户资料属性初始整合version-1)。
 
 固定兼容基线包含 130 个文件，原始文件清单与 SHA-256 见 `tests/testdata/source-baseline/manifest.json`；该清单用于追溯冻结快照，不表示当前文件名和内容必须与历史快照相同。当前根包名为 `accountkit`，导入路径为 `github.com/bbxx111/accountkit`。
 
@@ -79,6 +79,8 @@ v0.3.0 新增 `accountkit.Deps.Observer`、`user.Deps.Observer` 及相关审计/
 宿主拥有 Provider/Registry、导出与端点，先排空业务并关闭库，再最终采集与关闭观测设施。库不关闭或注销注入组件。标准化指标适配器的回退可移除 Observer 注入或回退宿主依赖版本，不涉及 SQL、Redis 键、HTTP、令牌、密文或既有审计 Stats 迁移。accountsvc 默认关闭指标；显式启用 Prometheus 的配置、采集边界与回退见[服务手册](accountsvc.md#prometheus-指标)，不需要数据库迁移。标准化适配器的实际证据与未验证项见[验收记录](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)。
 
 ## 初始数据库基线整合
+
+当前本轮仅将资料单列并入工作树 0001、撤回生产 0002，新安装 version 1；旧 v0.4.0 v1 及各代撤回 v2 无写拒绝，不提供旧数据迁移。已发布旧 SQL 与当前 initialFrozen 分别固定。以下保留此前整合历史，当前操作见[迁移手册](migrations.md#当前用户资料属性初始整合version-1)。
 
 在尚无实际产品接入的前提下，项目曾执行初始结构整合：当时 `0001_init.up.sql` 定义 user_account、identity、session、audit_event、identity_flow 及字段、索引与约束。十列 UUIDv7 通用审计按用户授权纳入原始定义并更新固定校验，撤回当时独立的 `0002_identity_flow` 和通用审计 0002，也不提供 staging/Prepare 转换工具；初始版本为 1，配套 down 覆盖五个表，公开 Down 拒绝执行。后续审计校验职责调整经另行授权修改未发布 0001，移除五个审计校验函数并同步固定校验，其他表 CHECK 保持。在v0.3.0发布前另经用户明确授权，直接将 0001 的流程对象命名调整为 sign_in_completion_flow 并更新当前固定校验，撤回本分支新增的重命名 0002；初始化仍为 1，后续真实增量从 0002 开始。
 

@@ -1,5 +1,7 @@
 > 历史计划：已由[单列计划](2026-10-21-profile-attributes-single-column.md)替代；下文保留原文供追溯，不作为当前实现要求。
 
+> 历史计划：本轮数据库定义及验收以[初始整合计划](2026-10-21-consolidate-profile-attributes-initial.md)替代。当前资料单列并入 0001、撤回生产 0002、新安装 version 1；下文保留原阶段记录，不代表旧库升级承诺或本轮验收。
+
 # 用户资料属性与数据库行锁 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development。按任务实施并独立审查；本轮不自动提交、推送或归档。

@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-// Check the original account structure before accepting either version. Extension
+// Check the original account structure before accepting any reachable version. Extension
 // columns cannot make a damaged or retired base account table compatible.
 func checkProfileAttributesBaseline(ctx context.Context, db *sql.DB, schema string, version int) error {
 	const query = `WITH base_columns(column_name,udt_name,is_nullable,column_default,collation_name) AS (VALUES
@@ -32,13 +32,11 @@ func checkProfileAttributesBaseline(ctx context.Context, db *sql.DB, schema stri
  AND NOT EXISTS(SELECT 1 FROM base_constraints e WHERE NOT EXISTS(SELECT 1 FROM scoped_constraints c WHERE c.conname=e.conname AND c.convalidated AND pg_get_constraintdef(c.oid)=e.definition))
  AND NOT EXISTS(SELECT 1 FROM information_schema.columns c WHERE c.table_schema=$1 AND c.table_name='user_account' AND c.column_name IN ('extensions','extensions_schema_version','extensions_schema_fingerprint','extensions_revision','extensions_update_time','profile_attributes_revision','profile_attributes_schema_version','profile_attributes_schema_fingerprint','profile_attributes_update_time'))
  AND NOT EXISTS(SELECT 1 FROM scoped_constraints c WHERE c.conname IN ('user_account_extensions_revision_nonnegative','user_account_extensions_schema_pair','user_account_extensions_schema_version_format','user_account_extensions_schema_fingerprint_format','user_account_profile_attributes_revision_nonnegative','user_account_profile_attributes_schema_pair','user_account_profile_attributes_schema_version_format','user_account_profile_attributes_schema_fingerprint_format'))
- AND CASE WHEN $2=1 THEN
- NOT EXISTS(SELECT 1 FROM information_schema.columns c JOIN extension_columns e USING(column_name) WHERE c.table_schema=$1 AND c.table_name='user_account')
- ELSE
+ AND
  NOT EXISTS(SELECT 1 FROM extension_columns e LEFT JOIN information_schema.columns c ON c.table_schema=$1 AND c.table_name='user_account' AND c.column_name=e.column_name
- WHERE c.column_name IS NULL OR c.udt_name<>e.udt_name OR c.is_nullable<>e.is_nullable OR c.column_default IS DISTINCT FROM e.column_default OR (e.udt_name='timestamptz' AND c.datetime_precision IS DISTINCT FROM 6)) END`
+ WHERE c.column_name IS NULL OR c.udt_name<>e.udt_name OR c.is_nullable<>e.is_nullable OR c.column_default IS DISTINCT FROM e.column_default OR (e.udt_name='timestamptz' AND c.datetime_precision IS DISTINCT FROM 6))`
 	var complete bool
-	if err := db.QueryRowContext(ctx, query, schema, version).Scan(&complete); err != nil {
+	if err := db.QueryRowContext(ctx, query, schema).Scan(&complete); err != nil {
 		return fmt.Errorf("migrations: inspect account profile_attributes structure: %w", err)
 	}
 	if !complete {

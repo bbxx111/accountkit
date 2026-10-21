@@ -40,22 +40,22 @@ func profileAttributesOldData(t *testing.T, c *pgx.Conn) string {
 }
 
 func TestProfileAttributesMigration(t *testing.T) {
-	cfg, schema, c := publishedProfileAttributesInitial(t)
+	cfg, schema, c := consolidatedProfileAttributesInitial(t)
 	ctx := context.Background()
 	seedRenameFlow(t, c, "sign_in_completion_flow")
 	if _, err := c.Exec(ctx, `INSERT INTO session_authentication_identity VALUES('s_0000000000001','i_0000000000001'); INSERT INTO session_client_info(session_id,client_info,observe_time) VALUES('s_0000000000001','{"os":{"name":"synthetic"}}','2024-01-02T03:04:05Z')`); err != nil {
 		t.Fatal(err)
 	}
 	before := profileAttributesOldData(t, c)
-	// Keep a second independently configured instance at the published baseline.
-	_, otherSchema, other := publishedProfileAttributesInitial(t)
+	// Keep a second independently configured instance at the current baseline.
+	_, otherSchema, other := consolidatedProfileAttributesInitial(t)
 	seedRenameFlow(t, other, "sign_in_completion_flow")
 	otherCatalog, otherData := migrationCatalog(t, other, otherSchema), profileAttributesOldData(t, other)
 	assertVersion(t, cfg, schema, 1, false)
 	if err := Up(ctx, cfg, schema); err != nil {
 		t.Fatal(err)
 	}
-	assertVersion(t, cfg, schema, 2, false)
+	assertVersion(t, cfg, schema, 1, false)
 	if profileAttributesOldData(t, c) != before {
 		t.Fatal("upgrade changed old fields, times, credentials or context")
 	}
@@ -87,8 +87,8 @@ func TestProfileAttributesMigration(t *testing.T) {
 	if otherCatalog != migrationCatalog(t, other, otherSchema) || otherData != profileAttributesOldData(t, other) {
 		t.Fatal("upgrade altered another instance")
 	}
-	t.Run("concurrent_v1_upgrade", func(t *testing.T) {
-		cfg, schema, c := publishedProfileAttributesInitial(t)
+	t.Run("concurrent_v1_repeat", func(t *testing.T) {
+		cfg, schema, c := consolidatedProfileAttributesInitial(t)
 		seedRenameFlow(t, c, "sign_in_completion_flow")
 		before := profileAttributesOldData(t, c)
 		var wg sync.WaitGroup
@@ -109,7 +109,7 @@ func TestProfileAttributesMigration(t *testing.T) {
 				t.Error(err)
 			}
 		}
-		assertVersion(t, cfg, schema, 2, false)
+		assertVersion(t, cfg, schema, 1, false)
 		if profileAttributesOldData(t, c) != before {
 			t.Fatal("concurrent upgrade altered old data")
 		}
@@ -136,7 +136,7 @@ func TestProfileAttributesBaseline(t *testing.T) {
 					t.Fatal("retired metadata accepted", err)
 				}
 			}
-			assertVersion(t, cfg, schema, 2, false)
+			assertVersion(t, cfg, schema, 1, false)
 			if catalog != migrationCatalog(t, c, schema) || data != renameDataSnapshot(t, c, "sign_in_completion_flow") {
 				t.Fatal("rejection changed catalog/data")
 			}
@@ -144,7 +144,7 @@ func TestProfileAttributesBaseline(t *testing.T) {
 				t.Fatal(err)
 			}
 			var dirty migrate.ErrDirty
-			if err := Up(ctx, cfg, schema); !errors.As(err, &dirty) || dirty.Version != 2 {
+			if err := Up(ctx, cfg, schema); !errors.As(err, &dirty) || dirty.Version != 1 {
 				t.Fatal("dirty precedence", err)
 			}
 		}
@@ -154,18 +154,13 @@ func TestProfileAttributesBaseline(t *testing.T) {
 		for _, version := range []int{1, 2} {
 			for _, residue := range []string{old, "ALTER TABLE user_account ADD COLUMN extensions jsonb", "ALTER TABLE user_account ADD COLUMN extensions_schema_version text", "ALTER TABLE user_account ADD COLUMN extensions_schema_fingerprint text", "ALTER TABLE user_account ADD COLUMN extensions_revision bigint", "ALTER TABLE user_account ADD COLUMN extensions_update_time timestamptz", "ALTER TABLE user_account ADD COLUMN profile_attributes_revision bigint", "ALTER TABLE user_account ADD COLUMN profile_attributes_schema_version text", "ALTER TABLE user_account ADD COLUMN profile_attributes_schema_fingerprint text", "ALTER TABLE user_account ADD COLUMN profile_attributes_update_time timestamptz", "ALTER TABLE user_account ADD CONSTRAINT user_account_profile_attributes_schema_pair CHECK(true)", "ALTER TABLE user_account ADD CONSTRAINT user_account_extensions_schema_pair CHECK(true)"} {
 				t.Run(fmt.Sprintf("v%d/%s", version, residue), func(t *testing.T) {
-					cfg, schema, c := publishedProfileAttributesInitial(t)
+					cfg, schema, c := consolidatedProfileAttributesInitial(t)
 					ctx := context.Background()
 					seedRenameFlow(t, c, "sign_in_completion_flow")
-					if version == 2 && residue != old {
-						if err := Up(ctx, cfg, schema); err != nil {
-							t.Fatal(err)
-						}
-					}
 					if _, err := c.Exec(ctx, residue); err != nil {
 						t.Fatal(err)
 					}
-					if version == 2 && residue == old {
+					if version == 2 {
 						if _, err := c.Exec(ctx, "UPDATE schema_migrations SET version=2"); err != nil {
 							t.Fatal(err)
 						}
@@ -196,19 +191,14 @@ func TestProfileAttributesBaseline(t *testing.T) {
 		for _, baseline := range []struct {
 			name    string
 			version int
-		}{{"v1", 1}, {"v2", 2}} {
+		}{{"v1", 1}} {
 			columns := []string{"freeze_time", "delete_time", "purge_time", "create_time", "update_time"}
 
 			for _, column := range columns {
 				for _, precision := range []string{"0", "3", "6"} {
 					t.Run(baseline.name+"/"+column+"/precision_"+precision, func(t *testing.T) {
-						cfg, schema, c := publishedProfileAttributesInitial(t)
+						cfg, schema, c := consolidatedProfileAttributesInitial(t)
 						ctx := context.Background()
-						if baseline.version == 2 {
-							if err := Up(ctx, cfg, schema); err != nil {
-								t.Fatal(err)
-							}
-						}
 						seedRenameFlow(t, c, "sign_in_completion_flow")
 						if _, err := c.Exec(ctx, "UPDATE user_account SET "+column+"='2026-10-21T01:02:03.456789Z'"); err != nil {
 							t.Fatal(err)
@@ -222,11 +212,11 @@ func TestProfileAttributesBaseline(t *testing.T) {
 							if err := Up(ctx, cfg, schema); err != nil {
 								t.Fatalf("explicit microsecond precision rejected: %v", err)
 							}
-							assertVersion(t, cfg, schema, 2, false)
+							assertVersion(t, cfg, schema, 1, false)
 							if oldData != profileAttributesOldData(t, c) {
 								t.Fatal("accepted baseline changed old data")
 							}
-							if baseline.version == 2 && (catalog != migrationCatalog(t, c, schema) || data != renameDataSnapshot(t, c, "sign_in_completion_flow")) {
+							if catalog != migrationCatalog(t, c, schema) || data != renameDataSnapshot(t, c, "sign_in_completion_flow") {
 								t.Fatal("repeat changed catalog/data")
 							}
 							return
@@ -274,7 +264,7 @@ func TestProfileAttributesBaseline(t *testing.T) {
 			before, data := migrationCatalog(t, c, schema), renameDataSnapshot(t, c, "sign_in_completion_flow")
 			for range 2 {
 				if err := Up(ctx, cfg, schema); !errors.Is(err, ErrIncompatibleBaseline) {
-					t.Fatalf("incomplete version 2 accepted: %v", err)
+					t.Fatalf("incomplete current baseline accepted: %v", err)
 				}
 			}
 			release, err := lockMigration(ctx, cfg, schema)
@@ -282,7 +272,7 @@ func TestProfileAttributesBaseline(t *testing.T) {
 				t.Fatalf("rejected baseline leaked lock: %v", err)
 			}
 			release()
-			assertVersion(t, cfg, schema, 2, false)
+			assertVersion(t, cfg, schema, 1, false)
 			if migrationCatalog(t, c, schema) != before || renameDataSnapshot(t, c, "sign_in_completion_flow") != data {
 				t.Fatal("rejection changed catalog/data")
 			}
@@ -290,10 +280,10 @@ func TestProfileAttributesBaseline(t *testing.T) {
 				t.Fatal(err)
 			}
 			var dirty migrate.ErrDirty
-			if err := Up(ctx, cfg, schema); !errors.As(err, &dirty) || dirty.Version != 2 {
+			if err := Up(ctx, cfg, schema); !errors.As(err, &dirty) || dirty.Version != 1 {
 				t.Fatalf("dirty precedence: %v", err)
 			}
-			assertVersion(t, cfg, schema, 2, true)
+			assertVersion(t, cfg, schema, 1, true)
 			if migrationCatalog(t, c, schema) != before || renameDataSnapshot(t, c, "sign_in_completion_flow") != data {
 				t.Fatal("dirty rejection changed data/catalog")
 			}
@@ -317,26 +307,20 @@ func TestProfileAttributesBaseline(t *testing.T) {
 			}
 		})
 	}
-	t.Run("v1_all_profile_attributes_residual", func(t *testing.T) {
+	t.Run("published_v1_missing_profile_attributes", func(t *testing.T) {
 		cfg, schema, c := publishedProfileAttributesInitial(t)
-		sql, err := fs.ReadFile("0002_add_profile_attributes.up.sql")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := c.Exec(context.Background(), string(sql)); err != nil {
-			t.Fatal(err)
-		}
-		catalog := migrationCatalog(t, c, schema)
+		seedRenameFlow(t, c, "sign_in_completion_flow")
+		catalog, data := migrationCatalog(t, c, schema), profileAttributesOldData(t, c)
 		if err := Up(context.Background(), cfg, schema); !errors.Is(err, ErrIncompatibleBaseline) {
-			t.Fatalf("v1 all residual profile_attributes accepted: %v", err)
+			t.Fatal("published v1 accepted", err)
 		}
 		assertVersion(t, cfg, schema, 1, false)
-		if catalog != migrationCatalog(t, c, schema) {
-			t.Fatal("residual rejection changed catalog")
+		if catalog != migrationCatalog(t, c, schema) || data != profileAttributesOldData(t, c) {
+			t.Fatal("rejection changed catalog/data")
 		}
 	})
-	t.Run("cancel_v1_upgrade_releases_locks", func(t *testing.T) {
-		cfg, schema, _ := publishedProfileAttributesInitial(t)
+	t.Run("cancel_v1_repeat_releases_locks", func(t *testing.T) {
+		cfg, schema, _ := consolidatedProfileAttributesInitial(t)
 		ctx := context.Background()
 		release, err := lockMigration(ctx, cfg, schema)
 		if err != nil {
@@ -353,6 +337,67 @@ func TestProfileAttributesBaseline(t *testing.T) {
 		if err := Up(ctx, cfg, schema); err != nil {
 			t.Fatal("cancellation leaked lock", err)
 		}
-		assertVersion(t, cfg, schema, 2, false)
+		assertVersion(t, cfg, schema, 1, false)
 	})
+}
+
+// This fixture models the consolidated initial schema without a production upgrade.
+func TestProfileAttributesConsolidatedV1Repeat(t *testing.T) {
+	cfg, schema, c := publishedProfileAttributesInitial(t)
+	ctx := context.Background()
+	if _, err := c.Exec(ctx, `ALTER TABLE user_account ADD COLUMN profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb`); err != nil {
+		t.Fatal(err)
+	}
+	seedRenameFlow(t, c, "sign_in_completion_flow")
+	catalog, data := migrationCatalog(t, c, schema), profileAttributesOldData(t, c)
+	for range 2 {
+		if err := Up(ctx, cfg, schema); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertVersion(t, cfg, schema, 1, false)
+	if catalog != migrationCatalog(t, c, schema) || data != profileAttributesOldData(t, c) {
+		t.Fatal("repeat changed catalog/data")
+	}
+}
+
+func consolidatedProfileAttributesInitial(t *testing.T) (*pgx.ConnConfig, string, *pgx.Conn) {
+	t.Helper()
+	cfg, schema := safetyDB(t)
+	if err := Up(context.Background(), cfg, schema); err != nil {
+		t.Fatal(err)
+	}
+	return cfg, schema, migrationTestConn(t, cfg, schema)
+}
+
+const profileAttributesInitialDDL = `ALTER TABLE user_account ADD COLUMN profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb`
+
+func TestProfileAttributesInitialCatalogEquivalent(t *testing.T) {
+	cfg, oldSchema, old := publishedProfileAttributesInitial(t)
+	if _, err := old.Exec(context.Background(), profileAttributesInitialDDL); err != nil {
+		t.Fatal(err)
+	}
+	_, schema, current := consolidatedProfileAttributesInitial(t)
+	if want, got := migrationCatalog(t, old, oldSchema), migrationCatalog(t, current, schema); want != got {
+		t.Fatalf("consolidated catalog differs from two-step structure\nwant: %s\ngot: %s", want, got)
+	}
+	assertVersion(t, cfg, schema, 1, false)
+}
+
+func TestProfileAttributesWithdrawnV2Rejected(t *testing.T) {
+	cfg, schema, c := consolidatedProfileAttributesInitial(t)
+	seedRenameFlow(t, c, "sign_in_completion_flow")
+	if _, err := c.Exec(context.Background(), "UPDATE schema_migrations SET version=2"); err != nil {
+		t.Fatal(err)
+	}
+	catalog, data := migrationCatalog(t, c, schema), profileAttributesOldData(t, c)
+	for range 2 {
+		if err := Up(context.Background(), cfg, schema); !errors.Is(err, ErrIncompatibleBaseline) {
+			t.Fatal("withdrawn version accepted", err)
+		}
+	}
+	assertVersion(t, cfg, schema, 2, false)
+	if catalog != migrationCatalog(t, c, schema) || data != profileAttributesOldData(t, c) {
+		t.Fatal("rejection changed catalog/data")
+	}
 }

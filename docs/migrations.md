@@ -4,19 +4,15 @@
 
 Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史身份密钥检查的顺序执行。最后的密钥检查失败不代表数据库迁移没有成功，排障时需同时检查当前版本和实际表结构。
 
-## 当前用户资料属性增量：version 2
+## 当前用户资料属性初始整合：version 1
 
-当前生产源保留 v0.4.0 原样 0001，本变更的 0002_add_profile_attributes 尚未发布。本轮经用户明确授权沿当前文件名将未发布 0002 修订为单列，不新增 0003。新空 schema 执行至 version=2/dirty=false，仍为七张业务表；完整 v0.4.0 version 1 可升级。
+本轮用户明确要求“0002 并入 0001，无需考虑旧数据迁移”，仅授权把 `profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb` 单列合入当前工作树 0001，撤回生产 0002；新空 schema 安装 version=1/dirty=false，其他列、索引和业务行为保持。当前 initialFrozen 新哈希与 v0.4.0 已发布旧定义分别固定；v0.4.0 精确 tag `62f0799b6c6ef1603b33f81834d39033dd0d0c4d`、其他发布 tag/SQL 和冻结源保持。旧 v0.4.0 v1 缺资料列、其他历史 v1 及各代撤回 v2（含单列、四列、五列及混合资料 v2）均无写拒绝，dirty 优先，保留 catalog、数据及 version/dirty；不转换旧数据、不重放同号 SQL、不 Force、改版本或清库。本轮不提供旧数据迁移工具或升级承诺；后续真实增量从 0002 递增，测试 probe 使用 latest+1（当前为 2）。
 
-最终仅 profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb 单列，复用账号原 update_time。移除 Schema 版本、指纹、独立更新时间及相关 CHECK，不增加 JSON 业务 CHECK。升级保留账号原时间与其余数据。
+预检核对完整基础结构、资料单列类型/默认值/非空性、无旧资料元数据及账号原五个时间列精度。当前完整 v1 重复 Up 不改变 catalog、数据或时间；仅资料列整合，不新增 JSON 业务 CHECK、索引、外键或触发器。公共 API、账号行锁、Schema 演进和认证生命周期保持。
 
-预检核对基础结构和版本对应的单列、类型、默认值、非空性及账号原五个时间列的精度。version 1 不得有手工添加的部分或全部资料列；完整合法 version 2 重复 Up 不改变数据或 catalog。dirty 始终优先拒绝。
+新部署仅用人工核验的新空资源，不承诺 v0.4.0、54afa4b 或旧单列增量实现混跑/回退。公共 Down 无 I/O 拒绝。宿主 Schema 配置兼容调整、收紧修复及未知 null 删除规则保持，配置演进不等于旧数据库转换。
 
-**旧临时四列、五列及混合 version 2 均不兼容。** 其 extensions、extensions_schema_version、extensions_schema_fingerprint、extensions_revision、extensions_update_time 不能自动接管为当前单列定义，即使同时存在 profile_attributes 也拒绝。无论空或非空，预检无写拒绝并保持 catalog、数据、version/dirty；不自动重命名、转换、Force、改版本或清库。需保留数据时另行设计并验证迁移；新部署只用经人工核验的空资源。所有更早撤回 version 2、旧 v0.3.0 v1、双快照 v1、旧流程/审计结构继续无写拒绝。0001、已发布标签与冻结源绝不改动。
-
-升级前停止旧应用写入及维护任务，备份并在隔离环境验证非空 v0.4.0→本轮 v2 和认证行为，再统一部署匹配代码。不能推定 v0.4.0、54afa4b 与本轮代码可以混跑或安全回退，回退须独立验证。宿主 Schema 兼容调整可直接更新一致配置；收紧时完整结果可能拒绝，同次补丁可修复；移除声明字段须过渡 Schema 或专项迁移，不能未知 null 删除或自动丢字段，SQL 结构迁移不转换宿主资料；公共 Down 继续无 I/O 拒绝。
-
-测试成功/失败 probe 使用生产最新版本加一（当前为 3）；testdata/0002_success.up.sql 和 0002_failure.up.sql 为固定测试内容，不属于生产迁移。恢复演练须覆盖资料值、精确数字、账号原时间及源库不变证据。[变更验收记录](../openspec/changes/add-schema-validated-user-extensions/verification.md)明确区分旧五列验收与本轮待验收，旧日志不能证明本轮通过。以下初始整合内容保持历史事实。
+固定测试文件 testdata/0002_success.up.sql 和 0002_failure.up.sql 仅作 latest+1 测试源。真实恢复覆盖 version 1、资料值/精确数字、账号时间、认证/匿名化和源库不变。[本轮验收记录](../openspec/changes/add-schema-validated-user-extensions/verification.md)顶部列当前状态，下文旧日志仅证明原阶段。以下会话整合保留历史事实。
 
 ## 会话认证依据初始整合（v0.4.0 发布历史）
 
@@ -28,20 +24,18 @@ Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史�
 
 1. 核对目标 schema、实际结构、版本、密钥、Redis 前缀和备份。新安装先确认目标为空；有旧数据时先完成独立迁移方案，不对旧库 Force 或改版本。
 2. 进入维护窗口，暂停并排空旧认证写请求和相关维护任务，或统一切换全部认证副本。旧副本不得继续建无来源会话、重新认证不替换来源或执行旧解绑/换绑撤销规则；不可让新旧副本混承接身份变更。
-3. 该次 v0.4.0 对核验后的新空目标执行迁移至 version=1/dirty=false 和完整七表；当前安装/升级使用本页 version 2 流程。全部新副本就绪后再恢复入口。网关明确放行当前详情 GET 和实际使用的可选头/CORS，验证旧客户端、解绑 204 可能退出与新客户端重查流程。
+3. 该次 v0.4.0 对核验后的新空目标执行迁移至 version=1/dirty=false 和完整七表；当前新安装使用本页资料初始整合 version 1 流程，不提供旧库升级。全部新副本就绪后再恢复入口。网关明确放行当前详情 GET 和实际使用的可选头/CORS，验证旧客户端、解绑 204 可能退出与新客户端重查流程。
 4. 观察查询与撤销行为，保持原JWT/refresh/Redis故障模式；Migrate重复执行不重建来源。保留密钥与Redis状态，数据库备份并不包括它们。
 
 回退优先前向修复。旧v0.3.0的预检只检查流程和审计，可能接受同为v1的新结构，不能依赖旧迁移器阻止启动；部署必须人工阻止混跑或未经核验的回退。旧sqlc使用显式列，读取可用也不证明具备新来源与撤销规则；前一开发版本的known/双快照写法同样不兼容。不能绕过Migrate将旧身份写路径重新上线。必要应用回退先停写/排空，另行证明结构、存量来源与安全行为兼容；公共Down无I/O拒绝，不能通过Force、改version、自动清库或清Redis回退。数据库恢复必须先落独立空库，核对两张上下文表、每个会话有效非空来源、单份nested客户端JSON及extensions/原观察时间、版本和源库未变，再按产品维护流程切换，不能承诺零数据损失。
 
 ## 当前初始基线
 
-当前初始结构是经明确授权的会话简化版本，已随 v0.4.0 发布，与v0.3.0 tag中的0001分别固定。此前合并会话0002、删除known/双快照、改为单份JSONB及数据库设计评审索引调整的授权各自限于发布前的指定范围，v0.4.0 发布后不再适用，也不构成日常改写开关。后续结构使用0002起的递增迁移，已发布SQL与tag不变。
+当前初始结构在 v0.4.0 七表会话定义之上，仅按本轮授权合入资料单列；生产目录只有 0001 up/down，version=1/dirty=false。0001 down 继续覆盖七表，公共 Down 拒绝；审计流程关联仍为 data.accountkit.flow_id。此前审计、流程改名、索引和会话简化授权各自限于当时范围。
 
-此前通用审计、流程改名和索引命名的初始整合已随 v0.3.0 发布；该版本包含五张业务表。随 v0.4.0 发布的 `0001_init.up.sql` 另按授权纳入会话上下文，共七张业务表及完整索引/约束；配套 down 覆盖七表，公共 Down 仍拒绝。审计流程关联仍存于 data.accountkit.flow_id。该次生产目录只有 0001 up/down；当前另有正式扩展资料 0002，测试 probe 不混入生产目录。
+基线预检要求完整 sign_in_completion_flow、十列 UUIDv7 审计、必有来源/单份描述及当前资料单列。旧 v0.4.0 v1、v0.3.0 v1、双快照/旧流程/审计、双表及各代撤回 v2 均返回可由 errors.Is 识别的 migrations.ErrIncompatibleBaseline，保持 catalog、数据和 version/dirty，dirty 优先。UnsafeReset 沿用相同预检，不接受旧基线；重复 Up 不补列或重放同号 SQL。
 
-基线预检要求完整sign_in_completion_flow且不存在identity_flow、十列UUIDv7审计，以及当前简化会话上下文的字段、约束和索引；明确拒绝known标记、snapshot_kind/平坦快照或非session_id单列主键。旧流程/审计结构、缺少会话上下文的v0.3.0 v1、前一`b414fef`双快照v1，以及所有撤回v2（含原会话v2）均返回可由errors.Is识别的`migrations.ErrIncompatibleBaseline`。拒绝保留原数据、结构和版本；dirty优先阻断。完整 v0.4.0 v1 的非空实例执行 Up 仅增加扩展资料结构至 v2，之后重复 Up 无变化，也不影响其他 schema。UnsafeReset沿用相同预检，不接受旧基线；本包不自动改名、重放、转换或清库。
-
-固定 source-baseline 和 v0.1.0/v0.2.0/v0.3.0/v0.4.0 历史标签保持。源快照、v0.3.0 初始 SQL、当前初始 SQL 使用三代独立固定校验；后续迁移仍不可改写。旧发布说明和归档中的 0002 记录描述当时版本，当前操作以本节为准。
+冻结源、全部发布 tag/SQL、v0.4.0 旧定义与当前 initialFrozen 分别固定。实际当前哈希和校验结果记于[本轮验收](../openspec/changes/add-schema-validated-user-extensions/verification.md)。后续真实增量从 0002 递增；旧发布说明和归档保留原文，当前操作以本节为准。
 
 此前索引命名维护按用户明确要求未新增迁移：直接将未发布 0001 的 22 个普通索引命名为 `idx_<表名>_<字段或用途>`、4 个独立唯一索引命名为 `uk_<表名>_<字段或用途>`；主键索引保留 `<表名>_pkey`，索引列、唯一性、谓词及访问方法保持。当时同步更新固定校验，初始版本仍为 1；历史 SQL 和源快照未改。已有同号数据库不会重放 0001，因此不会自动得到该次命名调整；不能靠修改版本或自动重建绕过基线检查。
 

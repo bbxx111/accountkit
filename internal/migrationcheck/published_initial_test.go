@@ -79,7 +79,7 @@ func TestPublishedV040Pinned(t *testing.T) {
 	if !ok || pinned.Commit != "62f0799b6c6ef1603b33f81834d39033dd0d0c4d" {
 		t.Fatal("v0.4.0 exact release not protected")
 	}
-	for name, want := range initialFrozen {
+	for name, want := range map[string]string{"0001_init.up.sql": "e1c5f1232136ed655e4963411f972e64493290998c5de27f88e511b94dde710e", "0001_init.down.sql": "2f26c7dc5f5c5cfe2ee5a9967884fc70c7f213418a602fb2535621904f251f9b"} {
 		if pinned.Hashes[name] != want {
 			t.Fatalf("v0.4.0 %s hash differs from immutable initial definition", name)
 		}
@@ -110,5 +110,11 @@ func TestPinnedLegacyReleaseCannotDisappearFromHistory(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestCurrentInitialDiffersFromPublishedV040(t *testing.T) {
+	if initialFrozen["0001_init.up.sql"] == publishedInitialReleases["refs/tags/v0.4.0"].Hashes["0001_init.up.sql"] {
+		t.Fatal("current initial must retain its independent baseline")
 	}
 }

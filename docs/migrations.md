@@ -6,6 +6,8 @@ Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史�
 
 ## 当前头像初始定义：version 1
 
+该完整初始定义已随 [v0.5.0](releases/v0.5.0.md) 发布，tag 固定为 `102315c3069273f7a8c3ad253c1f4ae01255f8c6`。以下为发布前的有限授权记录；发布后的 0001 字节保持，后续真实结构变更从 0002 递增。
+
 本轮用户明确要求“不新增 0002 迁移，改现有 0001”，范围仅为在当前 `user_account` 增加 `avatar_url TEXT NULL`，无默认值、业务 CHECK 或索引。同步 sqlc、当前 `initialFrozen` 与预检，新空 schema 安装仍为 version=1/dirty=false；0001 down 的整表删除定义已覆盖头像列，无需改动。此前资料单列整合与更早授权分别保留历史事实。
 
 预检要求完整头像列类型、可空性和无默认值。前一含 `profile_attributes` 但缺 `avatar_url` 的 v1（无论空或非空）、其他历史 v1 和撤回 v2 均无写拒绝，dirty 优先，保留 catalog、数据与 version/dirty。重复 Up 不补列、不重放同号 SQL；本轮不提供旧数据迁移或升级承诺，不 Force、改版本或清库。

@@ -1,6 +1,6 @@
 # HTTP OpenAPI 契约
 
-本契约描述 v0.5.0 发布候选的内置 HTTP handler，基于 v0.4.0 增加本人资料属性接口及内置头像字段；已发布 v0.4.0 不包含这些能力。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
+本契约描述已发布 v0.5.0 的内置 HTTP handler，基于 v0.4.0 增加本人资料属性接口及内置头像字段；已发布 v0.4.0 不包含这些能力。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
 
 ## 两个独立 HTTP 面
 
@@ -11,7 +11,7 @@
 
 两份文件各自独立，使用 [OpenAPI 3.1.0](https://spec.openapis.org/oas/v3.1.0.html) 与 JSON Schema 描述。所有 paths 均为相对 handler 路由，`servers[0].variables.basePath.default` 由宿主调整为实际挂载前缀或完整服务 URL。路径中的 `user` / `session` / `identity` 是原始 `u_` / `s_` / `i_` ID；响应 `name` 才是 `users/{id}` 等资源名。
 
-`info.version` 标识文档所依据的开发基准，不是新发布 tag。文件不包含 accountsvc 专属的 `/v1/introspect`、探针或管理员登录流程，也不描述宿主自有业务接口；这些不能由库契约自动推导。
+`info.version` 标识当前已发布 v0.5.0 的接口契约。文件不包含 accountsvc 专属的 `/v1/introspect`、探针或管理员登录流程，也不描述宿主自有业务接口；这些不能由库契约自动推导。
 
 消费者使用自己的 Bearer access token。`x-allowed-scopes` 表示允许的 scope 列表，`x-recent-authentication` 表示现有近期认证要求；这些扩展与说明用于接入核对，代码生成器不会自动替宿主实施授权。未标 scope 的 `GET /users/me` 接受任何有效消费者 Bearer scope。
 

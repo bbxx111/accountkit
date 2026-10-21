@@ -2,7 +2,7 @@
 
 ## 内置头像属性
 
-当前开发版新增 `user.Me`、`user.AdminUser`、`user.PublicProfile` 的 `AvatarURL string` 和对应两面 JSON `avatar_url`；未设置返回空字符串。使用结构体无字段名的位置字面量的 Go 调用者需改为带字段名的写法，HTTP 严格字段解析器需允许新字段。
+v0.5.0 新增 `user.Me`、`user.AdminUser`、`user.PublicProfile` 的 `AvatarURL string` 和对应两面 JSON `avatar_url`；未设置返回空字符串。使用结构体无字段名的位置字面量的 Go 调用者需改为带字段名的写法，HTTP 严格字段解析器需允许新字段。
 
 新增 `user.ProfilePatch` 与 `Service.UpdateProfile`，支持显示名/头像原子部分更新，nil 保持、空字符串清空，仅允许 ACTIVE。`UpdateDisplayName` 保留签名和原行为。消费者 `Service` 必需方法集不变，新增可选 `enduser.ProfileUpdater`；旧适配器的显示名更新仍可用，头像请求缺少能力时返回 503，避免部分写入。
 
@@ -94,7 +94,7 @@ v0.3.0 新增 `accountkit.Deps.Observer`、`user.Deps.Observer` 及相关审计/
 
 ## 初始数据库基线整合
 
-当前本轮仅将资料单列并入工作树 0001、撤回生产 0002，新安装 version 1；旧 v0.4.0 v1 及各代撤回 v2 无写拒绝，不提供旧数据迁移。已发布旧 SQL 与当前 initialFrozen 分别固定。以下保留此前整合历史，当前操作见[迁移手册](migrations.md#当前用户资料属性初始整合version-1)。
+当前 v0.5.0 初始定义包含资料单列和头像列，生产仅 0001，新安装 version 1；旧 v0.4.0 v1 及各代撤回 v2 无写拒绝，不提供旧数据迁移。已发布旧 SQL 与当前 initialFrozen 分别固定。以下保留此前整合历史，当前操作见[迁移手册](migrations.md#当前用户资料属性初始整合version-1)。
 
 在尚无实际产品接入的前提下，项目曾执行初始结构整合：当时 `0001_init.up.sql` 定义 user_account、identity、session、audit_event、identity_flow 及字段、索引与约束。十列 UUIDv7 通用审计按用户授权纳入原始定义并更新固定校验，撤回当时独立的 `0002_identity_flow` 和通用审计 0002，也不提供 staging/Prepare 转换工具；初始版本为 1，配套 down 覆盖五个表，公开 Down 拒绝执行。后续审计校验职责调整经另行授权修改未发布 0001，移除五个审计校验函数并同步固定校验，其他表 CHECK 保持。在v0.3.0发布前另经用户明确授权，直接将 0001 的流程对象命名调整为 sign_in_completion_flow 并更新当前固定校验，撤回本分支新增的重命名 0002；初始化仍为 1，后续真实增量从 0002 开始。
 

@@ -453,6 +453,8 @@ HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额
 
 ## 仓库与发布状态
 
+`v0.5.0` 发布候选包含资料属性、本人资料 HTTP 和头像；范围见[发布说明](docs/releases/v0.5.0.md)，最终发布进度见[验收记录](openspec/changes/prepare-v0-5-0-release/verification.md)。下列 v0.4.0 是当前已发布版本。
+
 远程仓库：https://github.com/bbxx111/accountkit.git
 
 Go module：github.com/bbxx111/accountkit。`v0.4.0` 已发布，使用 `go get github.com/bbxx111/accountkit@v0.4.0` 接入；旧库不能直接接管、解绑/换绑撤销、直接 Go 解绑调用及连接池容量等升级边界见[发布说明](docs/releases/v0.4.0.md)。固定提交 `62f0799` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/39408975386)已通过。[发布验收](openspec/changes/archive/2026-10-20-prepare-v0-4-0-release/verification.md)记录候选、tag/Release 与独立宿主远端消费结果；发布及上线要求见[检查表](docs/release-checklist.md)。`v0.1.0`、`v0.2.0`、`v0.3.0` 历史说明和 tag 保持。

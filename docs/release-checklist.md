@@ -4,6 +4,20 @@
 
 ## 当前待办与责任归属
 
+当前准备发布 **v0.5.0**：资料属性、本人资料 HTTP/accountsvc Schema 配置、内置头像均已完成并归档，头像已合入 develop。用户确认尚无正式部署，本次以新空 schema 安装为目标，不安排旧数据库迁移。发布说明见 [v0.5.0](releases/v0.5.0.md)，实际候选和证据见[发布验收](../openspec/changes/prepare-v0-5-0-release/verification.md)。以下 v0.4.0 及更早记录保留历史事实。
+
+## v0.5.0 版本门禁
+
+- [x] 三项功能任务已完成、已归档并本地集成，规格严格校验问题已修复。
+- [x] 审查 v0.5.0 发布说明，核对公开 API、HTTP/配置、依赖、新实例安装和宿主责任；执行文档/生成/历史检查。
+- [ ] 通过 --no-ff 将发布材料合入 develop/main 并推送，确定干净的最终 main 候选 SHA。
+- [ ] 最终候选在线 CI 全部通过：生成一致性、完整库/race/必需门禁/真实恢复、accountsvc 专项依赖与进程信号验证。
+- [ ] 创建并推送唯一 v0.5.0 annotated tag，核对精确 SHA，发布正式 GitHub Release；历史 tag 不移动。
+- [ ] 两个独立宿主 GOWORK=off、无 replace 从远端消费 v0.5.0，验证根门面及直接 enduser 的资料/头像能力、模块版本和 SQL 哈希。
+- [ ] 补记实际发布、CI 和消费证据，更新文档发布状态；产品上线和发布变更归档另行执行。
+
+## 历史发布与产品责任
+
 v0.4.0 发布前，会话0002先经明确授权合入当时未发布的0001，又经批准简化为必有来源和单行JSONB描述，初始化仍为version=1，与已发布v0.3.0及前一`b414fef`双快照v1结构不同。[v0.4.0 发布说明](releases/v0.4.0.md)已明确旧v0.3.0 v1、前一开发v1和撤回会话v2均不可直接接管，保留数据/结构/version/dirty；公开known/initial字段及快照枚举删除、nested HTTP DTO变化须给开发调用者迁移说明。历史tag/SQL和source-baseline保持。新基线验证与限制见[本次简化记录](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)，正式发布仍须重新核验最终候选提交，旧版CI或历史验收不代表当前完整验证通过。
 
 v0.4.0 发布门禁覆盖来源缺失/失效时的事务拒绝、普通JWT不加数据库热路径、客户端非空观察整体替换与无描述不写、pending本次优先/首次原时间回退及重放不更新、单份nested JSON含extensions的pg_dump/pg_restore核验。JSON业务校验、深拷贝与宿主扩展隐私责任按[Go指南](go-integration.md#当前会话解绑与客户端描述)复核；数据库无JSON对象/业务CHECK。完整Linux/race和恢复结果以本次验收实际记录为准，不能提前勾选。

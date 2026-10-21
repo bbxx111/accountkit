@@ -43,3 +43,7 @@
 - 归档位置为 `openspec/changes/archive/2026-10-21-add-user-avatar-url/`；保留 `.openspec.yaml`，同步修复 AGENTS、迁移手册和实现计划的链接。
 - `openspec validate --specs`：27 项通过，退出 0。`openspec validate --all --strict`：24 项通过、3 项既有长文本问题失败，与归档前一致。日志分别保留为 `.test-output/add-user-avatar-url/openspec-archive-specs.txt` 和 `openspec-archive-strict.txt`。
 - `openspec list --json`：活动变更为空；文档路径、主规格结构及差异检查通过。本轮仅规格/文档归档维护，没有重复执行 Go、数据库或恢复测试，前文实施证据仍对应功能提交前的定版代码。
+
+## 发布收尾规格复核（2026-10-21）
+
+用户要求处理剩余收尾，并确认当前没有正式部署、无需旧数据库迁移。三处过长要求通过精简正文及将精确细节移至既有场景修复；历史授权、v0.4.0 pin、旧结构无写拒绝、资料隐私及本人访问规则均保留。`openspec validate --all --strict` 当前 27/27 通过、0 警告，独立只读审查 PASS。本节更新此前记录的文档限制状态，不追改旧校验输出，也未修改 Go/SQL 或重跑运行时测试。

@@ -8,7 +8,7 @@
 
 ### Requirement: 包内数据库定义
 
-包 SHALL 按本轮显式限定授权将资料单列并入当前 0001，撤回生产 0002 up/down。本轮用户明确要求“0002 并入 0001，无需考虑旧数据迁移”，仅授权把 `profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb` 单列合入当前工作树 0001，撤回生产 0002；新空 schema 安装 version=1/dirty=false，其他列、索引和业务行为保持。当前 initialFrozen 新哈希与 v0.4.0 已发布旧定义分别固定；v0.4.0 精确 tag `62f0799b6c6ef1603b33f81834d39033dd0d0c4d`、其他发布 tag/SQL 和冻结源保持。旧 v0.4.0 v1 缺资料列、其他历史 v1 及各代撤回 v2（含单列、四列、五列及混合资料 v2）均无写拒绝，dirty 优先，保留 catalog、数据及 version/dirty；不转换旧数据、不重放同号 SQL、不 Force、改版本或清库。本轮不提供旧数据迁移工具或升级承诺；后续真实增量从 0002 递增，测试 probe 使用 latest+1（当前为 2）。 JSON Schema/属性业务校验 SHALL 在 Go 执行，不新增外键、JSON 业务 CHECK、触发器、索引或逐行 Schema 元数据；公共 API、账号行锁、账号时间、认证和隐私行为保持。0001 down 仍删除整张账号表。
+包 SHALL 按资料整合限定授权将 `profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb` 单列合入当前 0001，撤回生产 0002 up/down，新空 schema 安装 version=1/dirty=false；当前完整结构另遵循本规格的头像列授权。JSON Schema/属性业务校验 SHALL 在 Go 执行，不新增外键、JSON 业务 CHECK、触发器、索引或逐行 Schema 元数据；资料整合阶段其他列、公共 API、账号行锁、账号时间、认证和隐私行为保持，0001 down 仍删除整张账号表。当前与历史定义 SHALL 独立固定；旧结构拒绝和后续版本遵循“整合基线的兼容边界”，不提供旧数据迁移工具或升级承诺。
 
 #### Scenario: 空数据库安装
 - **WHEN** 对合法新空 schema 执行 Up
@@ -20,7 +20,7 @@
 
 #### Scenario: 已发布初始定义保持
 - **WHEN** 检查 v0.3.0、v0.4.0 及其他正式 tag 内初始定义与当前工作树 0001
-- **THEN** 已发布精确提交及原始 SQL 保持；当前仅按本轮明确授权纳入资料单列并固定新哈希，不把有限授权扩展为日常历史改写
+- **THEN** 已发布精确提交及原始 SQL 保持，v0.4.0 固定为 `62f0799b6c6ef1603b33f81834d39033dd0d0c4d`；资料整合阶段仅按用户“0002 并入 0001，无需考虑旧数据迁移”的明确授权纳入资料单列并固定新哈希，不把有限授权扩展为日常历史改写
 
 #### Scenario: 直接定义仅调整名称
 - **WHEN** 追溯 v0.3.0 发布前流程改名

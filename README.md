@@ -453,7 +453,7 @@ HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额
 
 ## 仓库与发布状态
 
-当前最新版本为 [v0.5.0](https://github.com/bbxx111/accountkit/releases/tag/v0.5.0)，包含资料属性、本人资料 HTTP 和头像。使用 `go get github.com/bbxx111/accountkit@v0.5.0` 接入；范围见[发布说明](docs/releases/v0.5.0.md)，候选 `102315c` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/39587858534)已通过，实际证据见[发布验收](openspec/changes/prepare-v0-5-0-release/verification.md)。
+当前最新版本为 [v0.5.0](https://github.com/bbxx111/accountkit/releases/tag/v0.5.0)，包含资料属性、本人资料 HTTP 和头像。使用 `go get github.com/bbxx111/accountkit@v0.5.0` 接入；范围见[发布说明](docs/releases/v0.5.0.md)，候选 `102315c` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/39587858534)已通过，实际证据见[发布验收](openspec/changes/archive/2026-10-21-prepare-v0-5-0-release/verification.md)。
 
 远程仓库：https://github.com/bbxx111/accountkit.git
 

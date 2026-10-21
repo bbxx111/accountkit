@@ -2,7 +2,7 @@
 
 ## Context
 
-三项能力分别在 add-schema-validated-user-extensions、add-self-profile-http、add-user-avatar-url 归档。头像代码已完成完整本地库/race/恢复验证，HTTP 阶段有服务进程 race 证据；本轮只改文档和发布工件，不重复构造运行时功能。v0.5.0 已发布，两个独立宿主已完成远端消费验证；剩余工作是发布记录提交、集成和归档。
+三项能力分别在 add-schema-validated-user-extensions、add-self-profile-http、add-user-avatar-url 归档。头像代码已完成完整本地库/race/恢复验证，HTTP 阶段有服务进程 race 证据；本轮只改文档和发布工件，不重复构造运行时功能。v0.5.0 已发布，两个独立宿主已完成远端消费验证；发布记录已提交并以 `--no-ff` 集成，剩余工作是按 Workflow follow-up 明确执行归档。
 
 ## Goals / Non-Goals
 
@@ -17,7 +17,7 @@
 - 使用既有 GitHub Actions 对最终候选运行 check-generated.sh、verify.sh 和 verify-accountsvc.sh。此前本地完整验证是准备证据，最终候选 CI 为正式发布门禁；若失败先定位并修正，不改门禁或称旧日志通过。
 - 当前 0001 已含 profile_attributes 和 avatar_url，安装 version=1/dirty=false。用户确认无正式部署，本轮提供新实例安装说明，不新增旧数据迁移工作；保留既有无写拒绝及历史保护。
 - Release 正文由审查后的本地发布说明生成，链接固定到 tag/候选；已通过 GitHub API 核对 Release 的 tag、目标提交、非草稿/非预发布状态。两个独立宿主从远端 go get 固定 v0.5.0，无 replace，编译新增 Go/可选 HTTP 能力，并核验模块来源和初始 SQL 哈希。
-- 发布后的事实以单独文档提交补记，保持 tag 不移动。归档须单独明确执行。
+- 发布后的事实已以单独文档提交补记，保持 tag 不移动。归档须单独明确执行。
 
 ## Risks / Trade-offs
 

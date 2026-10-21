@@ -2,7 +2,7 @@
 
 ## Purpose
 
-为嵌入式宿主提供结构可声明、修改可验证的账号附加资料能力。宿主使用 JSON Schema 定义属性，库负责离线校验、JSON Merge Patch、并发版本及隐私生命周期，使业务能够扩展用户资料而不绕开账号状态、事务和匿名化契约。
+为嵌入式宿主提供结构可声明、修改可验证的账号用户资料属性能力。宿主使用 JSON Schema 定义属性，库负责离线校验、JSON Merge Patch、数据库账号行锁并发控制及隐私生命周期，使业务能够扩展用户资料而不绕开账号状态、事务和匿名化契约。
 
 ## ADDED Requirements
 
@@ -60,7 +60,7 @@ Schema SHALL 定义顶层对象并接受空对象。每个对象层级 SHALL 使
 
 ### Requirement: 宿主专用资料接口
 
-库 SHALL 提供独立的宿主 Go 读取和部分更新能力，返回资料、已记录的 Schema 版本与指纹、独立 revision 及可空更新时间。宿主 SHALL 在调用前完成业务授权及字段访问控制；库 SHALL 验证资源 ID、存在性与生命周期，返回独立复制的数据。当前 HTTP 必需接口、公开资料、JWT、内省和认证 DTO SHALL 不隐式承载扩展，新增接口不把数据作为认证或授权依据。
+库 SHALL 通过 Config/Deps.ProfileAttributes、ProfileAttributesConfig/View/Patch 和 GetProfileAttributes/PatchProfileAttributes 提供独立的宿主 Go 读取和部分更新能力；Patch 只含 Document，View 无 Revision，返回资料、已记录的 Schema 版本与指纹及可空更新时间。宿主 SHALL 在调用前完成业务授权及字段访问控制；库 SHALL 验证资源 ID、存在性与生命周期，返回独立复制的数据。当前 HTTP 必需接口、公开资料、JWT、内省和认证 DTO SHALL 不隐式承载扩展，新增接口不把数据作为认证或授权依据。
 
 #### Scenario: 未知账号与非法 ID
 - **WHEN** 宿主传入格式错误的账号 ID 或合法但不存在的 ID
@@ -80,7 +80,7 @@ Schema SHALL 定义顶层对象并接受空对象。每个对象层级 SHALL 使
 
 ### Requirement: 资料用途与隐私边界
 
-扩展 SHALL 仅承载宿主审核过的附加资料，不提供字段级加密。宿主 SHALL 管理字段用途及隐私白名单，不通过扩展复制明文手机号/邮箱或保存验证码、令牌和密钥；这些数据继续遵循既有身份及凭证契约。Schema 通过 SHALL 不被解释为已验证任意值的隐私安全，扩展 SHALL 不成为认证权限判断来源。
+`profile_attributes` SHALL 仅承载宿主审核过的用户资料（如 bio、locale、timezone、pronouns），不得存放宿主业务状态、权益或权限，不提供字段级加密。宿主 SHALL 管理字段用途及隐私白名单，不通过扩展复制明文手机号/邮箱或保存验证码、令牌和密钥；这些数据继续遵循既有身份及凭证契约。Schema 通过 SHALL 不被解释为已验证任意值的隐私安全，扩展 SHALL 不成为认证权限判断来源。
 
 #### Scenario: 配置资料字段
 - **WHEN** 宿主接入扩展 Schema 并开放自己的资料接口
@@ -91,8 +91,8 @@ Schema SHALL 定义顶层对象并接受空对象。每个对象层级 SHALL 使
 部分更新 SHALL 使用 RFC 7396 合并规则，且顶层补丁必须为对象。缺失属性保持、对象递归合并、数组整体替换、属性 null 删除。所有涉及的对象属性 SHALL 属于声明目录，包括值为 null 的属性；不存在但已声明属性的删除为无变化操作。库 SHALL 校验合并后的完整资料，任一错误整次拒绝；不能用完整资料 Schema 直接校验补丁或将部分成功写入。
 
 #### Scenario: 修改部分嵌套属性
-- **WHEN** 原 preferences 含 theme 和 notifications，补丁仅修改 theme
-- **THEN** theme 更新且 notifications 保留
+- **WHEN** 原 preferences 含 locale 和 timezone，补丁仅修改 locale
+- **THEN** locale 更新且 timezone 保留
 
 #### Scenario: 删除属性与替换数组
 - **WHEN** 补丁以 null 删除可选 bio 并以空数组更新 tags
@@ -110,33 +110,41 @@ Schema SHALL 定义顶层对象并接受空对象。每个对象层级 SHALL 使
 - **WHEN** 补丁删除已有嵌套对象中的必填属性
 - **THEN** 完整候选资料不符合 Schema，原始资料及版本保持
 
-### Requirement: 版本条件与原子更新
+### Requirement: 账号行锁与原子更新
 
-更新 SHALL 显式提供 expected_revision，0 为初始有效版本，缺失、负值和过期版本必须拒绝。普通写入 SHALL 仅允许 ACTIVE，在同一领域事务的账号锁内读取最新状态、比较版本、合并校验和保存。发生实际内容变化时 revision 加一并更新资料及账号更新时间；无变化请求仍检查配置、状态、版本及 Schema，但不得推进 revision 或时间。revision 溢出 SHALL 无写拒绝。
+普通写入 SHALL 仅允许 ACTIVE。并发控制 SHALL 仅使用数据库账号行锁，在内部 Read Committed 领域事务中依次完成锁内最新读取、RFC 7396 Merge Patch、完整 Schema 与存储边界校验、原子写入和提交。SHALL 不使用 Redis 锁、revision、expected_revision 或版本冲突错误。实际变化 SHALL 更新资料与独立资料更新时间及账号更新时间；无变化仍检查配置、锁后状态与 Schema，但不改变标识或时间。
 
-#### Scenario: 相同版本并发更新
-- **WHEN** 两个修改请求携带同一 revision 并发操作同一账号，即使修改不同属性
-- **THEN** 至多一个有变化请求提交，另一个得到冲突，不能静默覆盖先提交结果
+#### Scenario: 不重叠属性并发更新
+- **WHEN** 两个请求并发修改同一账号不同且不重叠的资料属性
+- **THEN** 两者按行锁顺序执行并可成功，后者读取前者提交的最新资料，最终保留双方修改
+
+#### Scenario: 同属性并发更新
+- **WHEN** 两个请求更新同一属性
+- **THEN** 以后取得账号行锁并执行的事务为准，不返回版本冲突
+
+#### Scenario: 数组与父对象竞争
+- **WHEN** 后执行补丁替换数组或以 null 删除父对象
+- **THEN** 按 RFC 7396 整体替换或删除，即使影响先执行事务写入的数组元素或子属性；完整结果仍须满足 Schema
 
 #### Scenario: 空补丁与重复值
-- **WHEN** 合法请求提交 `{}`、删除不存在的已声明属性或重新设置相同值
-- **THEN** 返回现有资料，不改变 Schema 标识、revision、更新时间或发出成功修改事件
+- **WHEN** 合法请求提交 {}、删除不存在的已声明属性或重复同值
+- **THEN** 返回现有资料，不改变 Schema 标识、独立更新时间或发出成功修改事件
 
 #### Scenario: 锁等待后状态变化
-- **WHEN** 修改请求等待账号锁期间账号被冻结或进入注销冷静期
-- **THEN** 锁后状态检查拒绝更新，不能按请求开始时的状态写入
+- **WHEN** 请求等待账号锁时账号被冻结或进入注销冷静期
+- **THEN** 锁后复核拒绝更新，不按请求开始时的状态写入
 
 #### Scenario: 较高宿主隔离级别
-- **WHEN** 宿主连接池默认 Repeatable Read 或 Serializable，多个更新或注销请求竞争账号锁
-- **THEN** 库内部领域事务仍按既有锁后最新状态契约执行，不覆盖已提交结果；公开仓储事务隔离级别保持
+- **WHEN** 连接池默认 Repeatable Read 或 Serializable，多个更新或注销请求竞争账号锁
+- **THEN** 内部领域事务仍使用 Read Committed 并读取锁后最新资料；公开仓储隔离级别保持
 
 #### Scenario: 失败与取消
 - **WHEN** 合并校验、SQL、事务提交或取消导致更新未成功提交
-- **THEN** 不返回成功结果，不留下部分资料、元数据或成功修改审计
+- **THEN** 不返回成功，不留下部分资料、元数据或成功修改审计
 
 #### Scenario: 提交结果不确定
-- **WHEN** 提交时连接中断，客户端无法确认事务结果
-- **THEN** 返回错误而非成功或确定回滚的承诺，宿主重新读取资料和 revision 核对，库不盲目重放补丁
+- **WHEN** 提交时连接中断而无法确认事务结果
+- **THEN** 返回错误，不承诺确定回滚；宿主重新读取核对，库不盲目重放补丁
 
 ### Requirement: Schema 身份与历史资料
 
@@ -144,7 +152,7 @@ Schema SHALL 定义顶层对象并接受空对象。每个对象层级 SHALL 使
 
 #### Scenario: 同名版本漂移
 - **WHEN** 记录引用版本 v1，而实例配置仍名为 v1 但定义指纹改变
-- **THEN** 更新返回 Schema 不匹配错误，资料和 revision 不变
+- **THEN** 更新返回 Schema 不匹配错误，资料和元数据 不变
 
 #### Scenario: 更换版本
 - **WHEN** 已有 v1 资料的账号在 v2 配置下读取和更新
@@ -156,7 +164,7 @@ Schema SHALL 定义顶层对象并接受空对象。每个对象层级 SHALL 使
 
 ### Requirement: 错误和审计隐私
 
-库 SHALL 暴露稳定可识别的配置缺失、参数、Schema 校验、状态、资料版本冲突及 Schema 不匹配错误；Schema 校验错误只含受控属性路径和规则原因。成功内容变更 SHALL 在事务提交后通过既有尽力异步审计记录账号目标、Schema 标识和新 revision，不记录原值、新值、补丁、完整 Schema 或任意原始校验器错误。审计失败 SHALL 不回滚已提交资料。
+库 SHALL 暴露 ErrProfileAttributesNotConfigured、ErrProfileAttributesSchemaMismatch 及稳定可识别的配置缺失、参数、Schema 校验、状态及 Schema 不匹配错误；Schema 校验错误只含受控属性路径和规则原因。成功内容变更 SHALL 在事务提交后通过 USER_PROFILE_ATTRIBUTES_UPDATED 既有尽力异步审计记录账号目标、Schema 标识，不记录原值、新值、补丁、完整 Schema 或任意原始校验器错误。审计失败 SHALL 不回滚已提交资料。
 
 #### Scenario: 校验器携带输入值
 - **WHEN** 第三方校验器错误包含个人简介、未知属性名或 enum 内容
@@ -168,4 +176,4 @@ Schema SHALL 定义顶层对象并接受空对象。每个对象层级 SHALL 使
 
 #### Scenario: 普通操作不会写成功修改事件
 - **WHEN** 读取、无变化更新或失败请求发生
-- **THEN** 不发出成功修改事件，失败诊断不包含扩展资料内容
+- **THEN** 不发出成功修改事件，失败诊断不包含用户资料属性内容

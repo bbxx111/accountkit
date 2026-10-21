@@ -1,5 +1,40 @@
 # Verification
 
+> **证据界限：本轮结果见紧接的“本轮修订验收”。从“Scope”起的原有验收和日志属于 54afa4b 的旧五列/revision 实现，保持原文，仅证明旧实现。**
+
+## 本轮修订验收
+
+- 已确认：仅用户资料属性；数据库账号行锁内最新读取、Merge Patch、完整 Schema 校验和提交，无 revision/expected_revision/Conflict 或 Redis 锁。
+- 保留：Schema 版本、指纹及独立更新时间；最终四列；0001、冻结源及历史发布不变；未发布 0002 文件名保持。
+- 范围：本轮相对 `54afa4b` 的未提交修订；公开接口为 ProfileAttributesConfig/View/Patch、Config/Deps.ProfileAttributes、GetProfileAttributes/PatchProfileAttributes。没有增加 HTTP、JWT 或内省资料字段。
+- TDD：原接口下两个相同 revision、不同属性补丁的测试先因版本冲突失败；改为新接口后两次成功并保留两项。新增确定锁序测试使用数据库 gate 和 blocking PID 链，覆盖同字段、嵌套、数组、父删除及完整结果失败；冻结、注销、匿名化先执行后写入拒绝与原子回滚均有真实数据库覆盖。
+- 迁移：最终四列及三个基础 CHECK；旧五列 v2、新旧混合残留、v1 残留无写拒绝且 dirty 优先；原结构、时间精度及发布历史保护保留。测试清单 26 项逐项改名，新增两个锁行为入口，无删除必需保护。
+
+| 当前检查 | 实际结果 |
+|---|---|
+| `GOWORK=off go build ./...`、`go vet ./...` | 通过 |
+| 全量普通测试、Linux race | 各 44 个有测试包、869 个顶层测试、2644 个含子测试条目通过；0 失败、0 race warning |
+| 普通与 race 必需门禁 | 各 768/768 通过，清单无重复 |
+| 真实 PostgreSQL 相关测试 | user、migrations、根包 ProfileAttributes 测试通过，包含临时旧 v2 拒绝、精度和确定锁序 |
+| sqlc 1.31.1 生成一致性、迁移历史 | 通过；0001 和固定源未改 |
+| `bash scripts/verify.sh` | 通过，含真实 PG 17.11 dump/restore 和 seed/verify/source-unchanged 三阶段 |
+| `openspec validate --all --strict` | 25 项通过，0 失败 |
+| 独立文档及最终代码审查 | PASS，无 P0–P3 问题；恢复成功提示随后一行术语修正独立复核 |
+| 验证前后源文件哈希 | 32 个已改 Go/SQL/必需清单文件完全相同 |
+
+普通与 race 套件唯一测试级 skip 是预期的 `TestRecoveryFixture`，恢复脚本单独强制执行三阶段全部通过。恢复检查完整四列资料、精确数值、Schema 标识与时间、恢复后匿名化及源库不变。全量验证之后仅将恢复成功提示由旧 `identity/revision/time` 改为 `identity/time` 并明确 profile attributes，执行 `bash -n` 和差异检查；没有改变恢复逻辑，也未重复使用非空恢复库。
+
+原始输出目录为 `.test-output/profile-attributes-row-lock/`：
+
+- [当前状态](../../../.test-output/profile-attributes-row-lock/status.log)、[原始 JSON 核对摘要](../../../.test-output/profile-attributes-row-lock/evidence-summary.json)、[完整验证输出](../../../.test-output/profile-attributes-row-lock/full-verify.log)。
+- [RED](../../../.test-output/profile-attributes-row-lock/red.log)、[相关 GREEN](../../../.test-output/profile-attributes-row-lock/related-green.log)、[实现与测试映射](../../../.test-output/profile-attributes-row-lock/implementation-report.md)、[最终审查](../../../.test-output/profile-attributes-row-lock/final-review.md)。
+- [验证后源哈希](../../../.test-output/profile-attributes-row-lock/verified-source-after.json)；恢复材料位于 `.test-output/recovery.x2rlsT`，保留 dump、合成 state 与三个阶段 JSON。
+- [任务资源清理](../../../.test-output/profile-attributes-row-lock/cleanup.log)：逐项核验任务标签后删除三个容器、专用网络及两个缓存卷，宿主日志和备份保留。
+
+实施裁定：只移除用户已决定的 revision，Schema 版本、指纹和独立时间继续保留；若需进一步简化，应另行调整这些字段的契约。本 change 的 0002 尚未发布，沿原文件名修订并拒绝旧临时五列 v2；如果已有未报告的开发部署需要保留数据，须另行评审迁移，不能自动转换或清库。
+
+未验证：在线 CI、生产部署、真实宿主资料、旧应用与新结构混跑/回退、宿主业务 Schema 数据转换。本轮不新增提交、推送或归档。以下章节为历史记录。
+
 ## Scope
 
 - 日期：2026-10-21。

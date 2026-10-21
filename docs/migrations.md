@@ -4,15 +4,19 @@
 
 Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史身份密钥检查的顺序执行。最后的密钥检查失败不代表数据库迁移没有成功，排障时需同时检查当前版本和实际表结构。
 
-## 当前扩展资料增量：version 2
+## 当前用户资料属性增量：version 2
 
-当前生产源保留 v0.4.0 原样 `0001`，新增 `0002_add_user_extensions`。新空 schema 依次执行至 version=2/dirty=false，仍为七张业务表。完整 v0.4.0 version 1 可直接升级；新增账号扩展 JSONB 初始为 `{}`、revision 为 0，Schema 版本/指纹及扩展更新时间为 NULL，原账号时间、身份、会话、审计、流程、来源和客户端描述保持。
+当前生产源保留 v0.4.0 原样 0001，本变更的 0002_add_user_extensions 尚未发布。本轮经用户明确授权直接修订该 0002，保留原 up/down 文件名，不新增 0003。新空 schema 执行至 version=2/dirty=false，仍为七张业务表；完整 v0.4.0 version 1 可升级。
 
-预检先核验基础结构，再核验版本对应的扩展结构。version 1 不能有手工添加的部分或全部扩展列；version 2 必须具备五列、正确类型/默认值/可空性和四个已验证基础约束。合法 version 2 重复 Up 不改变数据或 catalog。dirty 始终优先拒绝。所有历史撤回 version 2、旧 v0.3.0 v1、双快照 v1、旧流程/审计结构继续无写拒绝，不能凭同号源文件接管，也不 Force、改版本、自动转换或清库。
+最终仅四列：profile_attributes JSONB NOT NULL DEFAULT '{}', profile_attributes_schema_version 可空 TEXT、profile_attributes_schema_fingerprint 可空 TEXT、profile_attributes_update_time 可空 TIMESTAMPTZ。Schema 版本、指纹和独立更新时间继续保留，移除 revision。新资料为空对象，三项元数据为 NULL，原账号时间及身份、会话、审计、流程、来源和客户端描述保持。基础约束保留 Schema 标识成对及版本/指纹格式检查，不加入 JSON 业务 CHECK。
 
-升级前停止旧应用写入及维护任务，备份并在隔离环境验证非空 v0.4.0→v2 和认证行为，再统一部署匹配的新代码。不能推定 v0.4.0 与 v2 可以混跑或安全回退；应用回退必须独立验证。宿主 Schema 启用及后续定义变更另遵循扩展配置契约，SQL 迁移不转换宿主资料。公共 Down 继续无 I/O 拒绝；配套 `.down.sql` 不构成生产删除扩展的授权。
+预检核对基础结构和版本对应的四列、类型、默认值、可空性、基础约束及时间精度。version 1 不得有手工添加的部分或全部资料列；完整合法 version 2 重复 Up 不改变数据或 catalog。dirty 始终优先拒绝。
 
-测试成功/失败 probe 的运行版本始终为生产最新版本加一（当前为 3）；`testdata/0002_success.up.sql` / `0002_failure.up.sql` 只是固定测试内容文件，不属于生产迁移。发布前恢复演练还须覆盖账号扩展值、Schema 标识、revision 和扩展更新时间。本次实际证据统一存于[变更验收记录](../openspec/changes/add-schema-validated-user-extensions/verification.md)。以下初始整合内容保留各历史发布的事实。
+**54afa4b 临时五列 version 2 不兼容。** 其 extensions、extensions_schema_version、extensions_schema_fingerprint、extensions_revision、extensions_update_time 不能自动接管为当前 profile_attributes 四列。无论空或非空，预检无写拒绝并保持 catalog、数据、version/dirty；不自动重命名、转换、Force、改版本或清库。需保留数据时另行设计并验证迁移；新部署只用经人工核验的空资源。所有更早撤回 version 2、旧 v0.3.0 v1、双快照 v1、旧流程/审计结构继续无写拒绝。0001、已发布标签与冻结源绝不改动。
+
+升级前停止旧应用写入及维护任务，备份并在隔离环境验证非空 v0.4.0→本轮 v2 和认证行为，再统一部署匹配代码。不能推定 v0.4.0、54afa4b 与本轮代码可以混跑或安全回退，回退须独立验证。宿主 Schema 变更另行设计受控数据迁移，SQL 结构迁移不转换宿主资料；公共 Down 继续无 I/O 拒绝。
+
+测试成功/失败 probe 使用生产最新版本加一（当前为 3）；testdata/0002_success.up.sql 和 0002_failure.up.sql 为固定测试内容，不属于生产迁移。恢复演练须覆盖资料值、精确数字、Schema 版本、指纹、独立更新时间和源库不变证据。[变更验收记录](../openspec/changes/add-schema-validated-user-extensions/verification.md)明确区分旧五列验收与本轮待验收，旧日志不能证明本轮通过。以下初始整合内容保持历史事实。
 
 ## 会话认证依据初始整合（v0.4.0 发布历史）
 

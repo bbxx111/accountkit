@@ -177,7 +177,7 @@ func TestImportAccounts(t *testing.T) {
 		t.Fatal("tombstone claimed login anchors", err)
 	}
 	for _, row := range []db.UserAccount{got, tomb} {
-		if string(row.Extensions) != "{}" || row.ExtensionsSchemaVersion != nil || row.ExtensionsSchemaFingerprint != nil || row.ExtensionsRevision != 0 || row.ExtensionsUpdateTime != nil {
+		if string(row.ProfileAttributes) != "{}" || row.ProfileAttributesSchemaVersion != nil || row.ProfileAttributesSchemaFingerprint != nil || row.ProfileAttributesUpdateTime != nil {
 			t.Fatal("import must preserve uninitialized extension defaults")
 		}
 	}
@@ -201,8 +201,8 @@ func TestImportAccounts(t *testing.T) {
 	}
 }
 
-func TestUserExtensionsImportPostCommit(t *testing.T) {
-	f, _ := extensionsFixture(t)
+func TestProfileAttributesImportPostCommit(t *testing.T) {
+	f, _ := profileAttributesFixture(t)
 	ctx := context.Background()
 	active := importAccount(t, "synthetic-import-active@example.com")
 	deleted := importAccount(t, "synthetic-import-deleted@example.com")
@@ -216,15 +216,14 @@ func TestUserExtensionsImportPostCommit(t *testing.T) {
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	z := int64(0)
-	if _, err := f.svc.PatchExtensions(ctx, active.ID, user.ExtensionsPatch{Document: []byte(`{"theme":"synthetic-import-private"}`), ExpectedRevision: &z}, meta1); err != nil {
+	if _, err := f.svc.PatchProfileAttributes(ctx, active.ID, user.ProfileAttributesPatch{Document: []byte(`{"theme":"synthetic-import-private"}`)}, meta1); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.svc.PatchExtensions(ctx, deleted.ID, user.ExtensionsPatch{Document: []byte(`{"theme":"synthetic-import-private"}`), ExpectedRevision: &z}, meta1); !errors.Is(err, user.ErrInvalidState) {
+	if _, err := f.svc.PatchProfileAttributes(ctx, deleted.ID, user.ProfileAttributesPatch{Document: []byte(`{"theme":"synthetic-import-private"}`)}, meta1); !errors.Is(err, user.ErrInvalidState) {
 		t.Fatal("deleted import must reject extension writes", err)
 	}
 	row, err := f.repo.Q().GetUserByID(ctx, deleted.ID)
-	if err != nil || string(row.Extensions) != "{}" || row.ExtensionsRevision != 0 || row.ExtensionsSchemaVersion != nil || row.ExtensionsUpdateTime != nil {
+	if err != nil || string(row.ProfileAttributes) != "{}" || row.ProfileAttributesSchemaVersion != nil || row.ProfileAttributesUpdateTime != nil {
 		t.Fatal("deleted import changed defaults", err)
 	}
 }

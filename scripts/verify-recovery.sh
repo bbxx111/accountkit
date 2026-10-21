@@ -36,5 +36,5 @@ phase verify "$ACCOUNTKIT_RECOVERY_TARGET_DSN"
 phase source-unchanged "$ACCOUNTKIT_RECOVERY_SOURCE_DSN"
 pg_dump --version
 pg_restore --version
-echo "Recovery drill passed: version, authentication data, exact user extensions with schema identity/revision/time and restored-data cleanup, required session sources, single JSON client information and sign-in-completion-flow snapshot, decryption, access/refresh and source preservation"
+echo "Recovery drill passed: version, authentication data, exact profile attributes with schema identity/time and restored-data cleanup, required session sources, single JSON client information and sign-in-completion-flow snapshot, decryption, access/refresh and source preservation"
 echo "Synthetic fixture evidence retained at $work"

@@ -20,9 +20,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func TestUserExtensionsConfigurationOwnership(t *testing.T) {
+func TestProfileAttributesConfigurationOwnership(t *testing.T) {
 	cfg := minimal()
-	cfg.UserExtensions = &user.ExtensionsConfig{SchemaVersion: "v1", Schema: []byte(`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{},"additionalProperties":false}`)}
+	cfg.ProfileAttributes = &user.ProfileAttributesConfig{SchemaVersion: "v1", Schema: []byte(`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{},"additionalProperties":false}`)}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -44,31 +44,31 @@ func TestUserExtensionsConfigurationOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer a.Close()
-	cfg.UserExtensions.Schema[0] = 'x'
-	cfg.UserExtensions.SchemaVersion = "changed"
+	cfg.ProfileAttributes.Schema[0] = 'x'
+	cfg.ProfileAttributes.SchemaVersion = "changed"
 	view := a.Config()
-	if view.UserExtensions.Schema[0] != '{' || view.UserExtensions.SchemaVersion != "v1" {
+	if view.ProfileAttributes.Schema[0] != '{' || view.ProfileAttributes.SchemaVersion != "v1" {
 		t.Fatal("New retained caller configuration")
 	}
-	view.UserExtensions.Schema[0] = 'y'
-	view.UserExtensions.SchemaVersion = "changed"
-	if a.Config().UserExtensions.Schema[0] != '{' || a.Config().UserExtensions.SchemaVersion != "v1" {
+	view.ProfileAttributes.Schema[0] = 'y'
+	view.ProfileAttributes.SchemaVersion = "changed"
+	if a.Config().ProfileAttributes.Schema[0] != '{' || a.Config().ProfileAttributes.SchemaVersion != "v1" {
 		t.Fatal("Config exposes mutable configuration")
 	}
 	if attempts.Load() != 0 {
 		t.Fatal("constructor performed database I/O")
 	}
-	cfg.UserExtensions.Schema = []byte(`{}`)
+	cfg.ProfileAttributes.Schema = []byte(`{}`)
 	if err := cfg.Validate(); !errors.Is(err, user.ErrInvalidArgument) {
 		t.Fatal(err)
 	}
 }
 
-func TestUserExtensionsHTTPTokenIntrospectionPrivacy(t *testing.T) {
+func TestProfileAttributesHTTPTokenIntrospectionPrivacy(t *testing.T) {
 	ctx := context.Background()
 	rdb := testRedis(t)
 	cfg := minimal()
-	cfg.UserExtensions = &user.ExtensionsConfig{SchemaVersion: "synthetic-schema-v1", Schema: []byte(`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{"synthetic_secret_key":{"type":"string"}},"additionalProperties":false}`)}
+	cfg.ProfileAttributes = &user.ProfileAttributesConfig{SchemaVersion: "synthetic-schema-v1", Schema: []byte(`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{"synthetic_secret_key":{"type":"string"}},"additionalProperties":false}`)}
 	base, pool, sent := integrationInstance(t, cfg, rdb)
 	if err := base.Migrate(ctx); err != nil {
 		t.Fatal(err)
@@ -92,7 +92,7 @@ func TestUserExtensionsHTTPTokenIntrospectionPrivacy(t *testing.T) {
 		req := httptest.NewRequest(method, path, strings.NewReader(body))
 		req.RemoteAddr = "203.0.113.55:42"
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-Device-Id", "extensions-privacy")
+		req.Header.Set("X-Device-Id", "profile_attributes-privacy")
 		if bearer != "" {
 			req.Header.Set("Authorization", "Bearer "+bearer)
 		}
@@ -110,7 +110,7 @@ func TestUserExtensionsHTTPTokenIntrospectionPrivacy(t *testing.T) {
 		}
 		return result
 	}
-	const target = "extensions-private@example.test"
+	const target = "profile_attributes-private@example.test"
 	challengeBody := map[string]string{"channel": "EMAIL", "target": target}
 	raw, _ := json.Marshal(challengeBody)
 	challenge := call(enduser, "POST", "/users:sendSignInCode", string(raw), "", "")
@@ -118,9 +118,8 @@ func TestUserExtensionsHTTPTokenIntrospectionPrivacy(t *testing.T) {
 	credential, _ := json.Marshal(map[string]any{"email": map[string]string{"target": target, "code_id": sent.codeID(target), "code": sent.code(target)}})
 	signed := call(enduser, "POST", "/users:signInWithCode", string(credential), "", "")
 	id := signed["user_id"].(string)
-	z := int64(0)
-	view, err := auth.Users().PatchExtensions(ctx, id, user.ExtensionsPatch{Document: []byte(`{"synthetic_secret_key":"synthetic-secret-value"}`), ExpectedRevision: &z}, user.Meta{RequestID: "synthetic-private-write"})
-	if err != nil || view.Revision != 1 {
+	view, err := auth.Users().PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{"synthetic_secret_key":"synthetic-secret-value"}`)}, user.Meta{RequestID: "synthetic-private-write"})
+	if err != nil {
 		t.Fatalf("extension setup: %+v %v", view, err)
 	}
 	// Obtain a fresh real token after private data exists, rather than inspecting a pre-write JWT.
@@ -134,7 +133,7 @@ func TestUserExtensionsHTTPTokenIntrospectionPrivacy(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, secret := range []string{"synthetic_secret_key", "synthetic-secret-value", "extensions", "schema_version", "schema_fingerprint", "synthetic-schema-v1", "$schema", "additionalProperties", *view.SchemaFingerprint} {
+		for _, secret := range []string{"synthetic_secret_key", "synthetic-secret-value", "profile_attributes", "schema_version", "schema_fingerprint", "synthetic-schema-v1", "$schema", "additionalProperties", *view.SchemaFingerprint} {
 			if strings.Contains(string(raw), secret) {
 				t.Fatalf("%s leaked private extension information %q", label, secret)
 			}

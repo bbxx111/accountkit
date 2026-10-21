@@ -7,21 +7,18 @@ RETURNING *;
 -- name: GetUserByID :one
 SELECT * FROM user_account WHERE id = $1;
 
--- name: GetUserExtensions :one
-SELECT id, state, extensions, extensions_schema_version, extensions_schema_fingerprint,
-       extensions_revision, extensions_update_time
+-- name: GetProfileAttributes :one
+SELECT id, state, profile_attributes, profile_attributes_schema_version, profile_attributes_schema_fingerprint, profile_attributes_update_time
 FROM user_account WHERE id = @id;
 
--- name: UpdateUserExtensions :one
+-- name: UpdateProfileAttributes :one
 UPDATE user_account
-SET extensions = @extensions::jsonb,
-    extensions_schema_version = @extensions_schema_version::text,
-    extensions_schema_fingerprint = @extensions_schema_fingerprint::text,
-    extensions_revision = extensions_revision + 1,
-    extensions_update_time = @now::timestamptz, update_time = @now::timestamptz
-WHERE id = @id AND extensions_revision = @expected_revision::bigint AND state = @active_state
-RETURNING id, state, extensions, extensions_schema_version, extensions_schema_fingerprint,
-          extensions_revision, extensions_update_time;
+SET profile_attributes = @profile_attributes::jsonb,
+    profile_attributes_schema_version = @profile_attributes_schema_version::text,
+    profile_attributes_schema_fingerprint = @profile_attributes_schema_fingerprint::text,
+    profile_attributes_update_time = @now::timestamptz, update_time = @now::timestamptz
+WHERE id = @id AND state = @active_state
+RETURNING id, state, profile_attributes, profile_attributes_schema_version, profile_attributes_schema_fingerprint, profile_attributes_update_time;
 
 -- name: BatchPublicProfiles :many
 -- 宿主授权的业务页批量读取最小公开资料；包含注销状态，由领域层清空其显示名。
@@ -64,12 +61,9 @@ LIMIT @batch_size::int;
 UPDATE user_account
 SET state = @deleted_state, display_name = NULL, freeze_time = NULL, freeze_reason = NULL,
     freeze_actor_subject = NULL, freeze_actor_username = NULL,
-    extensions = '{}'::jsonb, extensions_schema_version = NULL, extensions_schema_fingerprint = NULL,
-    extensions_revision = CASE
-        WHEN extensions_revision > 0 AND extensions_revision < 9223372036854775807
-        THEN extensions_revision + 1 ELSE extensions_revision END,
-    extensions_update_time = CASE
-        WHEN extensions_revision > 0 THEN @now::timestamptz ELSE extensions_update_time END,
+    profile_attributes = '{}'::jsonb, profile_attributes_schema_version = NULL, profile_attributes_schema_fingerprint = NULL,
+    profile_attributes_update_time = CASE
+        WHEN profile_attributes_update_time IS NOT NULL THEN @now::timestamptz ELSE profile_attributes_update_time END,
     purge_time = @now::timestamptz, update_time = @now::timestamptz
 WHERE id = @id AND state = @pending_state;
 

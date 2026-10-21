@@ -60,7 +60,7 @@ func Compile(version string, raw json.RawMessage) (*Policy, error) {
 	c.AssertFormat()
 	c.UseLoader(offlineLoader{})
 	c.UseRegexpEngine(func(s string) (jsonschema.Regexp, error) { return regexp.Compile(s) })
-	const location = "urn:accountkit:user-extensions"
+	const location = "urn:accountkit:user-profile-attributes"
 	if err := c.AddResource(location, value); err != nil {
 		return nil, errSchema
 	}

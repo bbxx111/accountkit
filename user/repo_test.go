@@ -22,7 +22,7 @@ import (
 	"github.com/bbxx111/accountkit/user/db"
 )
 
-func TestRepoUserExtensions(t *testing.T) {
+func TestRepoProfileAttributes(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
 	q := user.NewRepo(pool).Q()
@@ -30,41 +30,40 @@ func TestRepoUserExtensions(t *testing.T) {
 	if _, err := q.CreateUser(ctx, db.CreateUserParams{ID: id, State: enum.UserActive}); err != nil {
 		t.Fatal(err)
 	}
-	initial, err := q.GetUserExtensions(ctx, id)
+	initial, err := q.GetProfileAttributes(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(initial.Extensions) != "{}" || initial.ExtensionsRevision != 0 || initial.ExtensionsSchemaVersion != nil || initial.ExtensionsSchemaFingerprint != nil || initial.ExtensionsUpdateTime != nil {
+	if string(initial.ProfileAttributes) != "{}" || initial.ProfileAttributesSchemaVersion != nil || initial.ProfileAttributesSchemaFingerprint != nil || initial.ProfileAttributesUpdateTime != nil {
 		t.Fatal("new account extension metadata initialized")
 	}
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	args := db.UpdateUserExtensionsParams{ID: id, ActiveState: enum.UserActive, ExpectedRevision: 0, Extensions: []byte(`{"large":9007199254740993}`), ExtensionsSchemaVersion: "v1", ExtensionsSchemaFingerprint: strings.Repeat("a", 64), Now: now}
-	got, err := q.UpdateUserExtensions(ctx, args)
+	args := db.UpdateProfileAttributesParams{ID: id, ActiveState: enum.UserActive, ProfileAttributes: []byte(`{"large":9007199254740993}`), ProfileAttributesSchemaVersion: "v1", ProfileAttributesSchemaFingerprint: strings.Repeat("a", 64), Now: now}
+	got, err := q.UpdateProfileAttributes(ctx, args)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.ID != id || got.State != enum.UserActive || string(got.Extensions) != `{"large": 9007199254740993}` || got.ExtensionsRevision != 1 || got.ExtensionsSchemaVersion == nil || *got.ExtensionsSchemaVersion != "v1" || got.ExtensionsSchemaFingerprint == nil || *got.ExtensionsSchemaFingerprint != strings.Repeat("a", 64) || got.ExtensionsUpdateTime == nil || !got.ExtensionsUpdateTime.Equal(now) {
+	if got.ID != id || got.State != enum.UserActive || string(got.ProfileAttributes) != `{"large": 9007199254740993}` || got.ProfileAttributesSchemaVersion == nil || *got.ProfileAttributesSchemaVersion != "v1" || got.ProfileAttributesSchemaFingerprint == nil || *got.ProfileAttributesSchemaFingerprint != strings.Repeat("a", 64) || got.ProfileAttributesUpdateTime == nil || !got.ProfileAttributesUpdateTime.Equal(now) {
 		t.Fatalf("extension roundtrip: %+v", got)
 	}
 	var accountTime time.Time
 	if err := pool.QueryRow(ctx, "SELECT update_time FROM user_account WHERE id=$1", id).Scan(&accountTime); err != nil || !accountTime.Equal(now) {
 		t.Fatalf("account timestamp: %v", err)
 	}
-	if _, err := q.UpdateUserExtensions(ctx, args); !errors.Is(err, pgx.ErrNoRows) {
-		t.Fatalf("stale CAS: %v", err)
+	if _, err := q.UpdateProfileAttributes(ctx, args); err != nil {
+		t.Fatalf("repeated update: %v", err)
 	}
-	args.ExpectedRevision = 1
 	if _, err := pool.Exec(ctx, "UPDATE user_account SET state=$2 WHERE id=$1", id, enum.UserFrozen); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.UpdateUserExtensions(ctx, args); !errors.Is(err, pgx.ErrNoRows) {
+	if _, err := q.UpdateProfileAttributes(ctx, args); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("frozen account updated: %v", err)
 	}
 	args.ID, _ = ids.New(ids.User)
-	if _, err := q.UpdateUserExtensions(ctx, args); !errors.Is(err, pgx.ErrNoRows) {
+	if _, err := q.UpdateProfileAttributes(ctx, args); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("missing account updated: %v", err)
 	}
-	if after, err := q.GetUserExtensions(ctx, id); err != nil || after.ExtensionsRevision != 1 || string(after.Extensions) != string(got.Extensions) || after.ExtensionsUpdateTime == nil || !after.ExtensionsUpdateTime.Equal(now) {
+	if after, err := q.GetProfileAttributes(ctx, id); err != nil || string(after.ProfileAttributes) != string(got.ProfileAttributes) || after.ProfileAttributesUpdateTime == nil || !after.ProfileAttributesUpdateTime.Equal(now) {
 		t.Fatalf("failed CAS changed data/metadata: %+v %v", after, err)
 	}
 }

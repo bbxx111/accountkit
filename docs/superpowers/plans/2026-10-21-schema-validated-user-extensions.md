@@ -1,5 +1,7 @@
 # 用户扩展资料 Implementation Plan
 
+> **历史计划，受影响步骤已被替代。** 本文勾选及命令结果仅描述 54afa4b 旧实现。本轮命名改为 profile_attributes，移除 revision/expected_revision/Conflict，改为数据库账号行锁内最新读取→Merge Patch→完整 Schema 校验→提交。任务 3–6 的存储、公开 API、并发、生命周期、审计和恢复步骤，以及任务 1/2 中相关命名与保留键，以[本轮详细计划](2026-10-21-profile-attributes-row-lock.md)为准；Schema 版本、指纹和独立更新时间保留。旧完成证据不能证明本轮完成。本文余下历史原文保持。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 为宿主增加基于 JSON Schema 的账号扩展资料及带版本条件的 JSON Merge Patch，覆盖数据库升级、状态控制、审计和匿名化。

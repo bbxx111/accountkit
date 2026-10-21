@@ -17,7 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-func extensionsNoSecrets(t *testing.T, value any, secrets ...string) {
+func profileAttributesNoSecrets(t *testing.T, value any, secrets ...string) {
 	t.Helper()
 	text := fmt.Sprintf("%+v", value)
 	b, _ := json.Marshal(value)
@@ -29,7 +29,7 @@ func extensionsNoSecrets(t *testing.T, value any, secrets ...string) {
 	}
 }
 
-func extensionsSafeErrorChain(t *testing.T, err error, secrets ...string) {
+func profileAttributesSafeErrorChain(t *testing.T, err error, secrets ...string) {
 	t.Helper()
 	if err == nil {
 		t.Fatal("expected failed extension operation")
@@ -43,7 +43,7 @@ func extensionsSafeErrorChain(t *testing.T, err error, secrets ...string) {
 		if e == nil {
 			return
 		}
-		extensionsNoSecrets(t, e, secrets...)
+		profileAttributesNoSecrets(t, e, secrets...)
 		if multi, ok := e.(interface{ Unwrap() []error }); ok {
 			for _, c := range multi.Unwrap() {
 				walk(c)
@@ -53,13 +53,13 @@ func extensionsSafeErrorChain(t *testing.T, err error, secrets ...string) {
 		}
 	}
 	walk(err)
-	var ve *user.ExtensionsValidationError
+	var ve *user.ProfileAttributesValidationError
 	if errors.As(err, &ve) {
-		extensionsNoSecrets(t, ve.Violations, secrets...)
+		profileAttributesNoSecrets(t, ve.Violations, secrets...)
 	}
 }
 
-func TestUserExtensionsValidatorErrorPrivacy(t *testing.T) {
+func TestProfileAttributesValidatorErrorPrivacy(t *testing.T) {
 	for _, tc := range []struct{ name, schema, patch string }{
 		{"enum", `{"type":"string","enum":["synthetic-enum-candidate"]}`, `{"theme":"synthetic-secret-input"}`},
 		{"const", `{"type":"string","const":"synthetic-const-candidate"}`, `{"theme":"synthetic-secret-input"}`},
@@ -67,23 +67,22 @@ func TestUserExtensionsValidatorErrorPrivacy(t *testing.T) {
 		{"nested_unknown", `{"type":"object","properties":{"allowed":{"type":"string"}},"additionalProperties":false}`, `{"theme":{"synthetic_unknown_private":null}}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			f, id := extensionsFixture(t)
+			f, id := profileAttributesFixture(t)
 			var logs bytes.Buffer
 			schema := `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{"theme":` + tc.schema + `},"additionalProperties":false}`
 			newServiceWith(t, f, func(d *user.Deps) {
 				d.Logger = slog.New(slog.NewTextHandler(&logs, nil))
-				d.UserExtensions = &user.ExtensionsConfig{SchemaVersion: "v1", Schema: []byte(schema)}
+				d.ProfileAttributes = &user.ProfileAttributesConfig{SchemaVersion: "v1", Schema: []byte(schema)}
 			})
-			z := int64(0)
-			_, err := f.svc.PatchExtensions(context.Background(), id, user.ExtensionsPatch{Document: []byte(tc.patch), ExpectedRevision: &z}, meta1)
+			_, err := f.svc.PatchProfileAttributes(context.Background(), id, user.ProfileAttributesPatch{Document: []byte(tc.patch)}, meta1)
 			if !errors.Is(err, user.ErrInvalidArgument) {
 				t.Fatal("wrong validation class", err)
 			}
 			secrets := []string{"synthetic-enum-candidate", "synthetic-const-candidate", "synthetic-secret-input", "synthetic_unknown_private"}
-			extensionsSafeErrorChain(t, err, secrets...)
-			extensionsNoSecrets(t, logs.String(), secrets...)
+			profileAttributesSafeErrorChain(t, err, secrets...)
+			profileAttributesNoSecrets(t, logs.String(), secrets...)
 			for _, e := range f.audit.RawEvents() {
-				if e.Action == "USER_EXTENSIONS_UPDATED" {
+				if e.Action == "USER_PROFILE_ATTRIBUTES_UPDATED" {
 					t.Fatal("validation failure emitted success")
 				}
 			}
@@ -91,29 +90,28 @@ func TestUserExtensionsValidatorErrorPrivacy(t *testing.T) {
 	}
 }
 
-func TestUserExtensionsStorageErrorPrivacy(t *testing.T) {
+func TestProfileAttributesStorageErrorPrivacy(t *testing.T) {
 	for _, phase := range []string{"update", "commit"} {
 		t.Run(phase, func(t *testing.T) {
-			f, id := extensionsFixture(t)
+			f, id := profileAttributesFixture(t)
 			ctx := context.Background()
 			var logs bytes.Buffer
 			newServiceWith(t, f, func(d *user.Deps) { d.Logger = slog.New(slog.NewTextHandler(&logs, nil)) })
-			before := extensionsSnapshot(t, f, id)
-			mustExec(t, f, `CREATE FUNCTION synthetic_extensions_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic-sql-private-detail'; END $$`)
+			before := profileAttributesSnapshot(t, f, id)
+			mustExec(t, f, `CREATE FUNCTION synthetic_profile_attributes_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic-sql-private-detail'; END $$`)
 			if phase == "update" {
-				mustExec(t, f, `CREATE TRIGGER synthetic_extensions_fail BEFORE UPDATE ON user_account FOR EACH ROW EXECUTE FUNCTION synthetic_extensions_fail()`)
+				mustExec(t, f, `CREATE TRIGGER synthetic_profile_attributes_fail BEFORE UPDATE ON user_account FOR EACH ROW EXECUTE FUNCTION synthetic_profile_attributes_fail()`)
 			} else {
-				mustExec(t, f, `CREATE CONSTRAINT TRIGGER synthetic_extensions_fail AFTER UPDATE ON user_account DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION synthetic_extensions_fail()`)
+				mustExec(t, f, `CREATE CONSTRAINT TRIGGER synthetic_profile_attributes_fail AFTER UPDATE ON user_account DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION synthetic_profile_attributes_fail()`)
 			}
-			z := int64(0)
-			v, err := f.svc.PatchExtensions(ctx, id, user.ExtensionsPatch{Document: []byte(`{"theme":"synthetic-sql-private-value"}`), ExpectedRevision: &z}, meta1)
-			extensionsSafeErrorChain(t, err, "synthetic-sql-private-detail", "synthetic-sql-private-value")
-			if v.Data != nil || extensionsSnapshot(t, f, id) != before {
-				t.Fatal("failed storage transaction changed extensions or returned success")
+			v, err := f.svc.PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{"theme":"synthetic-sql-private-value"}`)}, meta1)
+			profileAttributesSafeErrorChain(t, err, "synthetic-sql-private-detail", "synthetic-sql-private-value")
+			if v.Data != nil || profileAttributesSnapshot(t, f, id) != before {
+				t.Fatal("failed storage transaction changed profile_attributes or returned success")
 			}
-			extensionsNoSecrets(t, logs.String(), "synthetic-sql-private-detail", "synthetic-sql-private-value")
+			profileAttributesNoSecrets(t, logs.String(), "synthetic-sql-private-detail", "synthetic-sql-private-value")
 			for _, e := range f.audit.RawEvents() {
-				if e.Action == "USER_EXTENSIONS_UPDATED" {
+				if e.Action == "USER_PROFILE_ATTRIBUTES_UPDATED" {
 					t.Fatal("storage failure emitted success")
 				}
 			}
@@ -121,15 +119,14 @@ func TestUserExtensionsStorageErrorPrivacy(t *testing.T) {
 	}
 }
 
-func TestUserExtensionsPurgeFailureLogPrivacy(t *testing.T) {
-	f, id := extensionsFixture(t)
+func TestProfileAttributesPurgeFailureLogPrivacy(t *testing.T) {
+	f, id := profileAttributesFixture(t)
 	ctx := context.Background()
 	var logs bytes.Buffer
-	z := int64(0)
-	if _, err := f.svc.PatchExtensions(ctx, id, user.ExtensionsPatch{Document: []byte(`{"theme":"synthetic-purge-private-value"}`), ExpectedRevision: &z}, meta1); err != nil {
+	if _, err := f.svc.PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{"theme":"synthetic-purge-private-value"}`)}, meta1); err != nil {
 		t.Fatal(err)
 	}
-	a := &extensionsRollbackAnonymizer{t: t}
+	a := &profileAttributesRollbackAnonymizer{t: t}
 	newServiceWith(t, f, func(d *user.Deps) {
 		d.Anonymizers = []anonymize.Anonymizer{a}
 		d.Logger = slog.New(slog.NewTextHandler(&logs, nil))
@@ -142,28 +139,27 @@ func TestUserExtensionsPurgeFailureLogPrivacy(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "synthetic host down") {
 		t.Fatal("legacy callback error contract changed", err)
 	}
-	extensionsNoSecrets(t, err, "synthetic-purge-private-value")
-	extensionsNoSecrets(t, logs.String(), "synthetic-purge-private-value")
+	profileAttributesNoSecrets(t, err, "synthetic-purge-private-value")
+	profileAttributesNoSecrets(t, logs.String(), "synthetic-purge-private-value")
 	if !strings.Contains(logs.String(), "purge failed") {
 		t.Fatal("failure logger not exercised")
 	}
 }
 
-func TestUserExtensionsAuditLateInsertPrivacy(t *testing.T) {
-	f, id := extensionsFixture(t)
+func TestProfileAttributesAuditLateInsertPrivacy(t *testing.T) {
+	f, id := profileAttributesFixture(t)
 	ctx := context.Background()
-	z := int64(0)
-	r := &extensionsRecorder{f: f}
-	opts := audit.StoreOptions{Source: "synthetic/extensions", Namespace: "synthetic/extensions"}
+	r := &profileAttributesRecorder{f: f}
+	opts := audit.StoreOptions{Source: "synthetic/profile_attributes", Namespace: "synthetic/profile_attributes"}
 	newServiceWith(t, f, func(d *user.Deps) { d.Audit = r; d.AuditSource = opts.Source; d.AuditNamespace = opts.Namespace })
-	if _, err := f.svc.PatchExtensions(ctx, id, user.ExtensionsPatch{Document: []byte(`{"theme":"synthetic-late-private"}`), ExpectedRevision: &z}, meta1); err != nil {
+	if _, err := f.svc.PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{"theme":"synthetic-late-private"}`)}, meta1); err != nil {
 		t.Fatal(err)
 	}
 	if len(r.events) != 1 {
 		t.Fatal("missing captured event")
 	}
 	e := r.events[0]
-	extensionsNoSecrets(t, e, "theme", "synthetic-late-private", "properties")
+	profileAttributesNoSecrets(t, e, "theme", "synthetic-late-private", "properties")
 	if e.Actor.Type != audit.ActorService || e.Actor.Namespace != opts.Namespace || len(e.Targets) != 1 || e.Targets[0].Type != "USER" || e.Targets[0].Namespace != opts.Namespace || e.Targets[0].ID != id {
 		t.Fatal("extension event lacks scoped local USER reference")
 	}
@@ -185,11 +181,11 @@ func TestUserExtensionsAuditLateInsertPrivacy(t *testing.T) {
 	if err != nil || len(page.Records) != 1 {
 		t.Fatal("late record missing", err)
 	}
-	extensionsNoSecrets(t, page.Records, "theme", "synthetic-late-private", "properties")
+	profileAttributesNoSecrets(t, page.Records, "theme", "synthetic-late-private", "properties")
 	if !bytes.Equal(page.Records[0].Event.Data, e.Data) {
-		t.Fatal("safe schema/revision audit facts changed")
+		t.Fatal("safe schema audit facts changed")
 	}
-	if _, err := f.svc.GetExtensions(ctx, id); !errors.Is(err, user.ErrInvalidState) {
-		t.Fatal("deleted extensions became readable", err)
+	if _, err := f.svc.GetProfileAttributes(ctx, id); !errors.Is(err, user.ErrInvalidState) {
+		t.Fatal("deleted profile_attributes became readable", err)
 	}
 }

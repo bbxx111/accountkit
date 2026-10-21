@@ -8,10 +8,10 @@ type Violation struct{ Path, Rule string }
 // ValidationError deliberately does not retain or wrap validator errors.
 type ValidationError struct{ Violations []Violation }
 
-func (*ValidationError) Error() string { return "user extensions validation failed" }
+func (*ValidationError) Error() string { return "user profile_attributes validation failed" }
 
-var errSchema = errors.New("invalid user extensions schema configuration")
-var errDocument = errors.New("invalid user extensions JSON document")
+var errSchema = errors.New("invalid user profile_attributes schema configuration")
+var errDocument = errors.New("invalid user profile_attributes JSON document")
 
 func invalid(path, rule string) error {
 	return &ValidationError{Violations: []Violation{{Path: path, Rule: rule}}}

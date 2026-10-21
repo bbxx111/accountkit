@@ -27,8 +27,8 @@ type WeChatApp struct {
 // Config 是 accountkit 的全部配置。New 应用默认值并校验；Validate 可独立提前校验。
 // 密钥只来自配置：JWT/HMAC/加密三组都是"版本 → 密钥"映射加一个 active 版本。
 type Config struct {
-	// UserExtensions 为 nil 时关闭扩展资料；宿主负责字段授权及隐私用途。
-	UserExtensions *user.ExtensionsConfig
+	// ProfileAttributes 为 nil 时关闭用户资料属性；宿主负责字段授权及隐私用途。
+	ProfileAttributes *user.ProfileAttributesConfig
 	// nil 使用默认策略，非 nil 空切片表示显式空列表。
 	EnabledIdentityKinds  []enum.IdentityKind
 	RequiredIdentityKinds []enum.IdentityKind
@@ -83,7 +83,7 @@ type Config struct {
 	MaintenanceInterval time.Duration // 默认 5m
 }
 
-func cloneUserExtensionsConfig(c *user.ExtensionsConfig) *user.ExtensionsConfig {
+func cloneProfileAttributesConfig(c *user.ProfileAttributesConfig) *user.ProfileAttributesConfig {
 	if c == nil {
 		return nil
 	}
@@ -164,7 +164,7 @@ func (c Config) Validate() error {
 	if err := c.validateBase(); err != nil {
 		return err
 	}
-	return user.ValidateExtensionsConfig(c.UserExtensions)
+	return user.ValidateProfileAttributesConfig(c.ProfileAttributes)
 }
 
 func (c Config) validateBase() error {

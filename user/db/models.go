@@ -88,19 +88,16 @@ type SignInCompletionFlow struct {
 }
 
 type UserAccount struct {
-	ID                                 string
-	State                              enum.UserState
-	DisplayName                        *string
-	FreezeTime                         *time.Time
-	FreezeReason                       *string
-	FreezeActorSubject                 *string
-	FreezeActorUsername                *string
-	DeleteTime                         *time.Time
-	PurgeTime                          *time.Time
-	CreateTime                         time.Time
-	UpdateTime                         time.Time
-	ProfileAttributes                  []byte
-	ProfileAttributesSchemaVersion     *string
-	ProfileAttributesSchemaFingerprint *string
-	ProfileAttributesUpdateTime        *time.Time
+	ID                  string
+	State               enum.UserState
+	DisplayName         *string
+	FreezeTime          *time.Time
+	FreezeReason        *string
+	FreezeActorSubject  *string
+	FreezeActorUsername *string
+	DeleteTime          *time.Time
+	PurgeTime           *time.Time
+	CreateTime          time.Time
+	UpdateTime          time.Time
+	ProfileAttributes   []byte
 }

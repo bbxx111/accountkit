@@ -120,7 +120,7 @@ func NewService(d Deps) (*Service, error) {
 	var profileAttributes *profileattributes.Policy
 	if d.ProfileAttributes != nil {
 		var err error
-		profileAttributes, err = profileattributes.Compile(d.ProfileAttributes.SchemaVersion, d.ProfileAttributes.Schema)
+		profileAttributes, err = profileattributes.Compile(d.ProfileAttributes.Schema)
 		if err != nil {
 			return nil, ErrInvalidArgument
 		}

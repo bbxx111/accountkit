@@ -15,7 +15,7 @@ import (
 const recoveryProfileAttributesData = `{"count":9007199254740993,"label":"recovery-final"}`
 
 func recoveryProfileAttributesConfig() *user.ProfileAttributesConfig {
-	return &user.ProfileAttributesConfig{SchemaVersion: "recovery-v1", Schema: json.RawMessage(`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{"count":{"type":"integer"},"label":{"type":"string"}},"additionalProperties":false}`)}
+	return &user.ProfileAttributesConfig{Schema: json.RawMessage(`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{"count":{"type":"integer"},"label":{"type":"string"}},"additionalProperties":false}`)}
 }
 
 func seedRecoveryProfileAttributes(t *testing.T, a *accountkit.Auth, id string) user.ProfileAttributesView {
@@ -26,8 +26,8 @@ func seedRecoveryProfileAttributes(t *testing.T, a *accountkit.Auth, id string) 
 		t.Fatalf("first recovery extension write: %v", err)
 	}
 	v, err = a.Users().PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{"label":"recovery-final"}`)}, user.Meta{})
-	if err != nil || string(v.Data) != recoveryProfileAttributesData || v.SchemaVersion == nil || *v.SchemaVersion != "recovery-v1" || v.SchemaFingerprint == nil || len(*v.SchemaFingerprint) != 64 || v.UpdateTime == nil || v.UpdateTime.IsZero() {
-		t.Fatalf("recovery profile_attributes were not initialized with exact data and identity: %+v %v", v, err)
+	if err != nil || string(v.Data) != recoveryProfileAttributesData {
+		t.Fatalf("recovery profile_attributes were not initialized with exact data: %+v %v", v, err)
 	}
 	return v
 }
@@ -36,13 +36,14 @@ func assertRecoveryProfileAttributes(t *testing.T, a *accountkit.Auth, state rec
 	t.Helper()
 	got, err := a.Users().GetProfileAttributes(context.Background(), state.Fixture.UserID)
 	want := state.ProfileAttributes
-	if err != nil || !bytes.Equal(got.Data, want.Data) || string(got.Data) != recoveryProfileAttributesData || got.SchemaVersion == nil || want.SchemaVersion == nil || *got.SchemaVersion != "recovery-v1" || *got.SchemaVersion != *want.SchemaVersion || got.SchemaFingerprint == nil || want.SchemaFingerprint == nil || *got.SchemaFingerprint != *want.SchemaFingerprint || got.UpdateTime == nil || want.UpdateTime == nil || !got.UpdateTime.Equal(*want.UpdateTime) {
-		t.Fatalf("recovered profile_attributes data, schema identity or time differs: %+v %v", got, err)
+	if err != nil || !bytes.Equal(got.Data, want.Data) || string(got.Data) != recoveryProfileAttributesData {
+		t.Fatalf("recovered profile_attributes data differs: %+v %v", got, err)
 	}
 }
 
 // This test exercises the existing whole-row snapshot. Omitting any extension
-// column would hide corruption from both restore and source-unchanged checks.
+// data or account update_time would hide corruption from both restore and
+// source-unchanged checks.
 func TestRecoveryProfileAttributesSnapshot(t *testing.T) {
 	cfg := minimal()
 	cfg.ProfileAttributes = recoveryProfileAttributesConfig()
@@ -53,9 +54,7 @@ func TestRecoveryProfileAttributesSnapshot(t *testing.T) {
 	before := snapshotRecovery(t, pool)
 	for _, tc := range []struct{ name, sql string }{
 		{"data", `UPDATE user_account SET profile_attributes='{"count":9007199254740992,"label":"recovery-final"}' WHERE id=$1`},
-		{"schema version", `UPDATE user_account SET profile_attributes_schema_version='recovery-v2' WHERE id=$1`},
-		{"schema fingerprint", `UPDATE user_account SET profile_attributes_schema_fingerprint=repeat('0',64) WHERE id=$1`},
-		{"update time", `UPDATE user_account SET profile_attributes_update_time=profile_attributes_update_time+interval '1 second' WHERE id=$1`},
+		{"account update time", `UPDATE user_account SET update_time=update_time+interval '1 second' WHERE id=$1`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, err := pool.Exec(context.Background(), tc.sql, f.UserID); err != nil {
@@ -63,13 +62,12 @@ func TestRecoveryProfileAttributesSnapshot(t *testing.T) {
 			}
 			after := snapshotRecovery(t, pool)
 			if after == before {
-				t.Fatal("recovery/source-unchanged snapshot omitted changed extension column")
+				t.Fatal("recovery/source-unchanged snapshot omitted changed profile data or account update_time")
 			}
 			before = after
 		})
 	}
-	// Even after the synthetic historical Schema mismatch above, cleanup must
-	// erase the stored data without attempting validation against current Schema.
+	// Cleanup must erase the restored JSON in the anonymization transaction.
 	assertRecoveryProfileAttributesCleanup(t, a, pool, f.UserID)
 }
 
@@ -89,15 +87,15 @@ func assertRecoveryProfileAttributesCleanup(t *testing.T, a *accountkit.Auth, po
 		t.Fatalf("recovery cleanup purge count=%d err=%v", n, err)
 	}
 	var clean bool
-	if err := pool.QueryRow(ctx, `SELECT state=$2 AND profile_attributes='{}'::jsonb AND profile_attributes_schema_version IS NULL AND profile_attributes_schema_fingerprint IS NULL AND profile_attributes_update_time IS NOT NULL FROM user_account WHERE id=$1`, id, enum.UserDeleted).Scan(&clean); err != nil || !clean {
-		t.Fatalf("recovery cleanup retained profile_attributes or lost cleanup metadata: clean=%v err=%v", clean, err)
+	if err := pool.QueryRow(ctx, `SELECT state=$2 AND profile_attributes='{}'::jsonb FROM user_account WHERE id=$1`, id, enum.UserDeleted).Scan(&clean); err != nil || !clean {
+		t.Fatalf("recovery cleanup retained profile_attributes: clean=%v err=%v", clean, err)
 	}
 }
 
 // Removing extension state must fail before a backup can silently lose its
-// independent expected values, in particular exact numbers and nullable metadata.
+// independent expected values, in particular exact numbers and complete JSON.
 func TestRecoveryProfileAttributesState(t *testing.T) {
-	const expected = `{"Data":{"count":9007199254740993,"label":"recovery-final"},"SchemaVersion":"recovery-v1","SchemaFingerprint":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","UpdateTime":"2026-10-21T01:02:03.456789Z"}`
+	const expected = `{"Data":{"count":9007199254740993,"label":"recovery-final"}}`
 	var state recoveryState
 	if err := json.Unmarshal([]byte(`{"ProfileAttributes":`+expected+`}`), &state); err != nil {
 		t.Fatal(err)
@@ -111,6 +109,6 @@ func TestRecoveryProfileAttributesState(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(fields["ProfileAttributes"]) != expected {
-		t.Fatalf("recovery state dropped or changed exact extension data/metadata: %s", fields["Extensions"])
+		t.Fatalf("recovery state dropped or changed exact profile data: %s", fields["ProfileAttributes"])
 	}
 }

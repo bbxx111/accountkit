@@ -88,7 +88,7 @@ func TestProfileAttributesConcurrency(t *testing.T) {
 			t.Fatal(err)
 		}
 		v, err := f.svc.GetProfileAttributes(ctx, id)
-		if err != nil || v.UpdateTime != nil {
+		if err != nil || string(v.Data) != "{}" {
 			t.Fatalf("cancelled mutation: %+v %v", v, err)
 		}
 	})
@@ -112,7 +112,7 @@ func TestProfileAttributesSerializedMerge(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFixture(t)
 			newServiceWith(t, f, func(d *user.Deps) {
-				d.ProfileAttributes = &user.ProfileAttributesConfig{SchemaVersion: "v1", Schema: []byte(schema)}
+				d.ProfileAttributes = &user.ProfileAttributesConfig{Schema: []byte(schema)}
 			})
 			id := f.signIn(t, enum.IdentityPhone, phone1, dev1).UserID
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -145,7 +145,7 @@ func TestProfileAttributesSerializedMerge(t *testing.T) {
 				t.Fatal(out.err)
 			}
 			got, err := f.svc.GetProfileAttributes(ctx, id)
-			if err != nil || string(got.Data) != tc.want || got.SchemaVersion == nil || got.SchemaFingerprint == nil || got.UpdateTime == nil {
+			if err != nil || string(got.Data) != tc.want {
 				t.Fatalf("locked merge result: %+v %v, want %s", got, err, tc.want)
 			}
 			count := 0
@@ -196,7 +196,7 @@ func TestProfileAttributesPurgeBeforeWrite(t *testing.T) {
 		t.Fatal(out.err)
 	}
 	row, err := f.repo.Q().GetUserByID(ctx, id)
-	if err != nil || row.State != enum.UserDeleted || string(row.ProfileAttributes) != "{}" || row.ProfileAttributesSchemaVersion != nil || row.ProfileAttributesSchemaFingerprint != nil || row.ProfileAttributesUpdateTime == nil {
+	if err != nil || row.State != enum.UserDeleted || string(row.ProfileAttributes) != "{}" {
 		t.Fatalf("late write restored purged data: %+v %v", row, err)
 	}
 }

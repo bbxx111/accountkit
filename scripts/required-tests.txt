@@ -764,6 +764,7 @@ github.com/bbxx111/accountkit/user/TestProfileAttributesPurgeBoundaries
 github.com/bbxx111/accountkit/user/TestProfileAttributesPurgeFailureLogPrivacy
 github.com/bbxx111/accountkit/user/TestProfileAttributesPurgeRollback
 github.com/bbxx111/accountkit/user/TestProfileAttributesSchemaAndLimit
+github.com/bbxx111/accountkit/user/TestProfileAttributesSchemaEvolution
 github.com/bbxx111/accountkit/user/TestProfileAttributesStorageErrorPrivacy
 github.com/bbxx111/accountkit/user/TestProfileAttributesUpperBoundConcurrency
 github.com/bbxx111/accountkit/user/TestProfileAttributesValidatorErrorPrivacy

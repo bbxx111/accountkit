@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,7 +17,7 @@ import (
 func profileAttributesSnapshot(t *testing.T, f *fixture, id string) string {
 	t.Helper()
 	var s string
-	if err := f.pool.QueryRow(context.Background(), `SELECT jsonb_build_array(profile_attributes,profile_attributes_schema_version,profile_attributes_schema_fingerprint,profile_attributes_update_time)::text FROM user_account WHERE id=$1`, id).Scan(&s); err != nil {
+	if err := f.pool.QueryRow(context.Background(), `SELECT jsonb_build_array(profile_attributes)::text FROM user_account WHERE id=$1`, id).Scan(&s); err != nil {
 		t.Fatal(err)
 	}
 	return s
@@ -66,7 +67,7 @@ func TestProfileAttributesLifecycle(t *testing.T) {
 		t.Fatal("purge", n, err)
 	}
 	row, err := f.repo.Q().GetUserByID(ctx, id)
-	if err != nil || string(row.ProfileAttributes) != "{}" || row.ProfileAttributesSchemaVersion != nil || row.ProfileAttributesSchemaFingerprint != nil || row.ProfileAttributesUpdateTime == nil || !row.ProfileAttributesUpdateTime.Equal(*f.clock) {
+	if err != nil || string(row.ProfileAttributes) != "{}" || !row.UpdateTime.Equal(*f.clock) {
 		t.Fatal("purge must clear profile_attributes and advance metadata", err)
 	}
 	after := profileAttributesSnapshot(t, f, id)
@@ -99,8 +100,12 @@ func TestProfileAttributesPurgeBoundaries(t *testing.T) {
 			}
 			if mode == "mismatch" {
 				newServiceWith(t, f, func(d *user.Deps) {
-					d.ProfileAttributes = &user.ProfileAttributesConfig{SchemaVersion: "v2", Schema: []byte(profileAttributesSchema)}
+					schema := strings.Replace(profileAttributesSchema, `"theme":{"type":"string"}`, `"theme":{"type":"string","maxLength":2}`, 1)
+					d.ProfileAttributes = &user.ProfileAttributesConfig{Schema: []byte(schema)}
 				})
+				if _, err := f.svc.PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{}`)}, meta1); !errors.Is(err, user.ErrInvalidArgument) {
+					t.Fatal("current schema must reject the existing profile before purge", err)
+				}
 			}
 			if _, err := f.svc.AdminDeleteUser(ctx, admin1, id, meta1); err != nil {
 				t.Fatal(err)
@@ -110,15 +115,11 @@ func TestProfileAttributesPurgeBoundaries(t *testing.T) {
 				t.Fatal(n, err)
 			}
 			row, err := f.repo.Q().GetUserByID(ctx, id)
-			if err != nil || string(row.ProfileAttributes) != "{}" || row.ProfileAttributesSchemaVersion != nil || row.ProfileAttributesSchemaFingerprint != nil {
+			if err != nil || string(row.ProfileAttributes) != "{}" {
 				t.Fatal("boundary purge metadata", err)
 			}
-			if mode == "neverused" {
-				if row.ProfileAttributesUpdateTime != nil {
-					t.Fatal("unused metadata initialized")
-				}
-			} else if row.ProfileAttributesUpdateTime == nil || !row.ProfileAttributesUpdateTime.Equal(*f.clock) {
-				t.Fatal("cleanup time missing")
+			if !row.UpdateTime.Equal(*f.clock) {
+				t.Fatal("purge must update account time")
 			}
 		})
 	}
@@ -135,7 +136,7 @@ func (a *profileAttributesRollbackAnonymizer) Name() string {
 func (a *profileAttributesRollbackAnonymizer) Tables() []string { return nil }
 func (a *profileAttributesRollbackAnonymizer) Anonymize(ctx context.Context, tx pgx.Tx, id string) error {
 	var empty bool
-	if err := tx.QueryRow(ctx, `SELECT profile_attributes='{}'::jsonb AND profile_attributes_schema_version IS NULL AND profile_attributes_schema_fingerprint IS NULL AND state=$2 FROM user_account WHERE id=$1`, id, enum.UserDeleted).Scan(&empty); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT profile_attributes='{}'::jsonb AND state=$2 FROM user_account WHERE id=$1`, id, enum.UserDeleted).Scan(&empty); err != nil {
 		a.t.Fatal(err)
 	}
 	if !empty {

@@ -17,16 +17,10 @@ func checkProfileAttributesBaseline(ctx context.Context, db *sql.DB, schema stri
  ('purge_time','timestamptz','YES',NULL,NULL),('create_time','timestamptz','NO','now()',NULL),
  ('update_time','timestamptz','NO','now()',NULL)
  ), extension_columns(column_name,udt_name,is_nullable,column_default) AS (VALUES
- ('profile_attributes','jsonb','NO','''{}''::jsonb'),('profile_attributes_schema_version','text','YES',NULL),
- ('profile_attributes_schema_fingerprint','text','YES',NULL),
- ('profile_attributes_update_time','timestamptz','YES',NULL)
+ ('profile_attributes','jsonb','NO','''{}''::jsonb')
  ), base_constraints(conname,definition) AS (VALUES
  ('user_account_pkey','PRIMARY KEY (id)'),
  ('user_account_id_format','CHECK ((id ~ ''^u_[0-9a-hjkmnp-tv-z]{13}$''::text))')
- ), extension_constraints(conname,definition) AS (VALUES
- ('user_account_profile_attributes_schema_pair','CHECK (((profile_attributes_schema_version IS NULL) = (profile_attributes_schema_fingerprint IS NULL)))'),
- ('user_account_profile_attributes_schema_version_format','CHECK ((profile_attributes_schema_version ~ ''^[A-Za-z0-9._-]{1,64}$''::text))'),
- ('user_account_profile_attributes_schema_fingerprint_format','CHECK ((profile_attributes_schema_fingerprint ~ ''^[0-9a-f]{64}$''::text))')
  ), scoped_constraints AS MATERIALIZED (
  SELECT c.oid,c.conname,c.convalidated FROM pg_constraint c
  JOIN pg_class r ON r.oid=c.conrelid JOIN pg_namespace n ON n.oid=r.relnamespace
@@ -36,15 +30,13 @@ func checkProfileAttributesBaseline(ctx context.Context, db *sql.DB, schema stri
  AND NOT EXISTS(SELECT 1 FROM base_columns e LEFT JOIN information_schema.columns c ON c.table_schema=$1 AND c.table_name='user_account' AND c.column_name=e.column_name
  WHERE c.column_name IS NULL OR c.udt_name<>e.udt_name OR c.is_nullable<>e.is_nullable OR c.column_default IS DISTINCT FROM e.column_default OR (e.collation_name IS NOT NULL AND c.collation_name IS DISTINCT FROM e.collation_name) OR (e.udt_name='timestamptz' AND c.datetime_precision IS DISTINCT FROM 6))
  AND NOT EXISTS(SELECT 1 FROM base_constraints e WHERE NOT EXISTS(SELECT 1 FROM scoped_constraints c WHERE c.conname=e.conname AND c.convalidated AND pg_get_constraintdef(c.oid)=e.definition))
- AND NOT EXISTS(SELECT 1 FROM information_schema.columns c WHERE c.table_schema=$1 AND c.table_name='user_account' AND c.column_name IN ('extensions','extensions_schema_version','extensions_schema_fingerprint','extensions_revision','extensions_update_time','profile_attributes_revision'))
- AND NOT EXISTS(SELECT 1 FROM scoped_constraints c WHERE c.conname IN ('user_account_extensions_revision_nonnegative','user_account_extensions_schema_pair','user_account_extensions_schema_version_format','user_account_extensions_schema_fingerprint_format','user_account_profile_attributes_revision_nonnegative'))
+ AND NOT EXISTS(SELECT 1 FROM information_schema.columns c WHERE c.table_schema=$1 AND c.table_name='user_account' AND c.column_name IN ('extensions','extensions_schema_version','extensions_schema_fingerprint','extensions_revision','extensions_update_time','profile_attributes_revision','profile_attributes_schema_version','profile_attributes_schema_fingerprint','profile_attributes_update_time'))
+ AND NOT EXISTS(SELECT 1 FROM scoped_constraints c WHERE c.conname IN ('user_account_extensions_revision_nonnegative','user_account_extensions_schema_pair','user_account_extensions_schema_version_format','user_account_extensions_schema_fingerprint_format','user_account_profile_attributes_revision_nonnegative','user_account_profile_attributes_schema_pair','user_account_profile_attributes_schema_version_format','user_account_profile_attributes_schema_fingerprint_format'))
  AND CASE WHEN $2=1 THEN
  NOT EXISTS(SELECT 1 FROM information_schema.columns c JOIN extension_columns e USING(column_name) WHERE c.table_schema=$1 AND c.table_name='user_account')
- AND NOT EXISTS(SELECT 1 FROM scoped_constraints c JOIN extension_constraints e USING(conname))
  ELSE
  NOT EXISTS(SELECT 1 FROM extension_columns e LEFT JOIN information_schema.columns c ON c.table_schema=$1 AND c.table_name='user_account' AND c.column_name=e.column_name
- WHERE c.column_name IS NULL OR c.udt_name<>e.udt_name OR c.is_nullable<>e.is_nullable OR c.column_default IS DISTINCT FROM e.column_default OR (e.udt_name='timestamptz' AND c.datetime_precision IS DISTINCT FROM 6))
- AND NOT EXISTS(SELECT 1 FROM extension_constraints e WHERE NOT EXISTS(SELECT 1 FROM scoped_constraints c WHERE c.conname=e.conname AND c.convalidated AND pg_get_constraintdef(c.oid)=e.definition)) END`
+ WHERE c.column_name IS NULL OR c.udt_name<>e.udt_name OR c.is_nullable<>e.is_nullable OR c.column_default IS DISTINCT FROM e.column_default OR (e.udt_name='timestamptz' AND c.datetime_precision IS DISTINCT FROM 6)) END`
 	var complete bool
 	if err := db.QueryRowContext(ctx, query, schema, version).Scan(&complete); err != nil {
 		return fmt.Errorf("migrations: inspect account profile_attributes structure: %w", err)

@@ -8,8 +8,7 @@ nil 默认保持旧行为；既有 enduser/admin DTO、适配器必需接口、J
 `BatchPublicProfiles` 不增加扩展字段。不要直接序列化新增列后的 sqlc 行。
 构造和 `Auth.Config()` 均复制 Schema 字节；服务只读复用其构造时编译的策略。
 
-新增错误为 `ErrProfileAttributesNotConfigured`、
-`ErrProfileAttributesSchemaMismatch`；参数/校验错误支持 `ErrInvalidArgument`，
+新增错误为 `ErrProfileAttributesNotConfigured`；参数/校验错误支持 `ErrInvalidArgument`，
 账号状态拒绝沿用 `ErrInvalidState`。结构化校验错误是
 `ProfileAttributesValidationError`，其 `Violations` 最多包含 16 条安全的 Path/Rule。
 未新增 HTTP 映射；宿主自行授权并将领域错误转换为自身协议。
@@ -17,8 +16,8 @@ nil 默认保持旧行为；既有 enduser/admin DTO、适配器必需接口、J
 提交结果不确定时重新读取核对，不盲目重放。Patch 仅含 Document，View 不含 Revision；不再接收 expected_revision 或返回 Conflict。
 并发仅用数据库账号行锁：锁内读取最新资料→RFC 7396 合并→完整 Schema 校验→提交。不同不重叠属性保留彼此修改，同属性以后执行事务为准，数组整体替换及父对象删除仍遵循 RFC 7396；不使用 Redis 锁。
 
-这是相对未发布 54afa4b 的 Go 源码破坏性调整：调用者将 UserExtensions/Extensions* 和 GetExtensions/PatchExtensions 改为上述 ProfileAttributes 名称，删除 ExpectedRevision、Revision 及 Conflict 处理；不保留旧 API 别名。SchemaVersion、SchemaFingerprint 和 UpdateTime 保留。
-属性仅允许用户资料，禁止宿主业务状态、权益及权限。尚未发布的 0002 保留文件名并改为四列；旧临时五列 v2 无写拒绝，不能直接混跑、自动转换或清库，详见[迁移说明](migrations.md#当前用户资料属性增量version-2)。
+这是相对未发布 54afa4b 的 Go 源码破坏性调整：调用者将 UserExtensions/Extensions* 和 GetExtensions/PatchExtensions 改为上述 ProfileAttributes 名称，删除 ExpectedRevision、Revision 及 Conflict 处理；不保留旧 API 别名。配置只保留 Schema，视图只保留 Data；调用者移除 SchemaVersion、SchemaFingerprint、UpdateTime 及 ErrProfileAttributesSchemaMismatch 处理。
+属性仅允许用户资料，禁止宿主业务状态、权益及权限。尚未发布的 0002 保留文件名并改为单列；旧临时四列、五列及混合 v2 无写拒绝，不能直接混跑、自动转换或清库，详见[迁移说明](migrations.md#当前用户资料属性增量version-2)。
 
 固定兼容基线包含 130 个文件，原始文件清单与 SHA-256 见 `tests/testdata/source-baseline/manifest.json`；该清单用于追溯冻结快照，不表示当前文件名和内容必须与历史快照相同。当前根包名为 `accountkit`，导入路径为 `github.com/bbxx111/accountkit`。
 
@@ -42,11 +41,11 @@ Schema 固定为 Draft 2020-12 的受支持范围：主结构树每层对象声�
 
 Schema 原始输入限 64 KiB、32 层；展开后的主树属性声明限 128，验证节点限 1024。同一属性的条件约束不增加声明计数，主树不同位置复用的结构按各位置计数。补丁原始输入与规范化最终资料分别限 16 KiB、深度 8、512 个值节点（含根和容器）。重复键、尾随文档、非法 Unicode、NUL 和 PostgreSQL JSONB 无法存储的数字均拒绝；资料不保存 JSON `null`。数字精确处理，`1`、`1.0`、`1e0` 按相同值比较。
 
-Schema 指纹为包含注解的规范化定义 SHA-256；同一版本改定义也会改变指纹。内容无变化不推进扩展元数据。既有资料读取只检查通用存储边界；普通更新要求已绑定的版本与指纹一致，不自动转换历史资料。Schema 升级须协调停写并另行评审完整资料迁移。详细契约与本次实际验证见[变更设计](../openspec/changes/add-schema-validated-user-extensions/design.md)及[验收记录](../openspec/changes/add-schema-validated-user-extensions/verification.md)。
+宿主保证同一数据库实例的 Schema 配置一致。库不保存逐行 Schema 身份，不提供 SchemaMismatch 错误。读取只检查通用存储边界；更新按当前 Schema 校验完整合并结果，无变化请求也不得绕过。新增可选属性、放宽约束、修改注解可直接更新配置。收紧规则可能使旧资料完整结果不合法，更新拒绝且原资料与账号 update_time 保持；同次补丁可修复后保存。移除声明属性后，遗留属性仍不能以未知属性 null 删除，须通过过渡 Schema 或专项迁移清理；库不自动丢弃字段。详细设计与实际验证见[变更设计](../openspec/changes/add-schema-validated-user-extensions/design.md)及[验收记录](../openspec/changes/add-schema-validated-user-extensions/verification.md)。
 
-冻结、解冻、注销冷静期与恢复均不改变资料内容及元数据。最终匿名化在原事务中清空资料和 Schema 标识，已使用资料记录清理时间，从未使用的空资料保留 NULL 时间。撤掉配置或更换不兼容 Schema 均不阻断清理；宿主回调失败整体回滚，已 DELETED 重复维护不再推进资料时间。
+冻结、解冻、注销冷静期与恢复保留资料。最终匿名化在原事务中清空 JSON，复用账号原时间语义，不区分曾使用与未使用；配置移除或 Schema 不兼容不阻断清理，回调失败整体回滚。
 
-新增资料路径的校验器及存储错误不会保留能恢复原始资料的底层错误链，审计动作 USER_PROFILE_ATTRIBUTES_UPDATED 只保存 Schema 标识等受控事实，不保存资料值、补丁、属性名、revision 或 Schema 全文。既有导入和匿名化错误的诊断 cause 契约保持；宿主匿名化回调不得在 error 中拼接资料或隐私数据，维护日志可能记录该错误。
+新增资料路径的校验器及存储错误不会保留能恢复原始资料的底层错误链，审计动作 USER_PROFILE_ATTRIBUTES_UPDATED 只保存固定服务 actor、账号目标、请求 ID 等受控事实，不保存资料值、补丁、属性名、Schema 版本、指纹、资料时间元数据或 Schema 全文。既有导入和匿名化错误的诊断 cause 契约保持；宿主匿名化回调不得在 error 中拼接资料或隐私数据，维护日志可能记录该错误。
 
 ## 会话认证依据与客户端描述
 
@@ -205,7 +204,7 @@ E/R 环境键沿宿主前缀，R 仅 PHONE/EMAIL any-of；省略 R 默认二选�
 
 `user.ImportAccount` 保留合法 `u_` ID 和原创建/更新时间；账号和锚点创建/更新时间必需非零，允许历史时钟回退，不强制更新时间晚于创建时间。ACTIVE 至少包含一个 `user.ImportAnchor` 的 PHONE/EMAIL 合法目标，删除/匿名化时间为空；DELETED 只允许无显示名、无锚点的匿名墓碑，可保留删除/匿名化时间，不重新抢占旧地址。FROZEN、PENDING_DELETION、第三方身份和非法目标拒绝。归一化和版本化加密/摘要沿用库配置；重复 ID 或归一化身份冲突失败，不合并、不静默跳过。
 
-普通创建和 ACTIVE/DELETED 导入均使用空扩展默认值：`{}`、NULL Schema 标识与独立更新时间。`ImportAccount` 不接收用户资料属性；ACTIVE 导入提交后可另调 `PatchProfileAttributes`，DELETED 墓碑拒绝写入。导入和补丁是两个独立调用，不提供同批事务原子性保证。
+普通创建和 ACTIVE/DELETED 导入均使用空扩展默认值：`{}`，复用账号原时间。`ImportAccount` 不接收用户资料属性；ACTIVE 导入提交后可另调 `PatchProfileAttributes`，DELETED 墓碑拒绝写入。导入和补丁是两个独立调用，不提供同批事务原子性保证。
 
 导入先校验并归一化整批输入，再在写入前对整批 PHONE/EMAIL subject 按全部摘要版本一次性排序加事务级锁，因此任一账号的输入错误会先于任何数据库写入或冲突返回；误并行的批次即使身份顺序相反也只会排队，后到者得到身份冲突而不是死锁。锁持有到调用者事务结束，同一事务内的其他写入照常进行。
 

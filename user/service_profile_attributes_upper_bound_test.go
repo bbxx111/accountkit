@@ -21,7 +21,7 @@ func upperBoundProfileAttributesFixture(t *testing.T) (*fixture, string) {
 	t.Helper()
 	f := newFixture(t)
 	newServiceWith(t, f, func(d *user.Deps) {
-		d.ProfileAttributes = &user.ProfileAttributesConfig{SchemaVersion: "upper-v1", Schema: []byte(`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{"payload":{"type":"string"}},"additionalProperties":false}`)}
+		d.ProfileAttributes = &user.ProfileAttributesConfig{Schema: []byte(`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{"payload":{"type":"string"}},"additionalProperties":false}`)}
 	})
 	return f, f.signIn(t, enum.IdentityPhone, phone1, dev1).UserID
 }

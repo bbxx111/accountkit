@@ -2,9 +2,7 @@
 package profileattributes
 
 import (
-	"crypto/sha256"
 	"encoding/json"
-	"fmt"
 	"regexp"
 
 	"github.com/bbxx111/accountkit/internal/boundedjson"
@@ -12,9 +10,8 @@ import (
 )
 
 type Policy struct {
-	version, fingerprint string
-	schema               *jsonschema.Schema
-	root                 *declaration
+	schema *jsonschema.Schema
+	root   *declaration
 }
 type declaration struct {
 	kind       string
@@ -22,18 +19,14 @@ type declaration struct {
 	items      *declaration
 }
 
-var versionPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
-
 type offlineLoader struct{}
 
 func (offlineLoader) Load(string) (any, error) { return nil, errSchema }
 
 // Compile validates the supported schema subset before invoking the offline
 // Draft 2020-12 compiler. No caller-owned bytes or mutable trees are retained.
-func Compile(version string, raw json.RawMessage) (*Policy, error) {
-	if !versionPattern.MatchString(version) {
-		return nil, errSchema
-	}
+func Compile(raw json.RawMessage) (*Policy, error) {
+
 	value, err := boundedjson.Decode(raw, boundedjson.Limits{MaxBytes: 65536, MaxDepth: 32})
 	if err != nil {
 		return nil, errSchema
@@ -71,11 +64,9 @@ func Compile(version string, raw json.RawMessage) (*Policy, error) {
 	if err := compiled.Validate(map[string]any{}); err != nil {
 		return nil, errSchema
 	}
-	canonical, err := boundedjson.Canonical(value)
+	_, err = boundedjson.Canonical(value)
 	if err != nil {
 		return nil, errSchema
 	}
-	return &Policy{version: version, fingerprint: fmt.Sprintf("%x", sha256.Sum256(canonical)), schema: compiled, root: directory}, nil
+	return &Policy{schema: compiled, root: directory}, nil
 }
-func (p *Policy) Version() string     { return p.version }
-func (p *Policy) Fingerprint() string { return p.fingerprint }

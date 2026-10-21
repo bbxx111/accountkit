@@ -22,7 +22,7 @@ import (
 
 func TestProfileAttributesConfigurationOwnership(t *testing.T) {
 	cfg := minimal()
-	cfg.ProfileAttributes = &user.ProfileAttributesConfig{SchemaVersion: "v1", Schema: []byte(`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{},"additionalProperties":false}`)}
+	cfg.ProfileAttributes = &user.ProfileAttributesConfig{Schema: []byte(`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{},"additionalProperties":false}`)}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -45,14 +45,12 @@ func TestProfileAttributesConfigurationOwnership(t *testing.T) {
 	}
 	defer a.Close()
 	cfg.ProfileAttributes.Schema[0] = 'x'
-	cfg.ProfileAttributes.SchemaVersion = "changed"
 	view := a.Config()
-	if view.ProfileAttributes.Schema[0] != '{' || view.ProfileAttributes.SchemaVersion != "v1" {
+	if view.ProfileAttributes.Schema[0] != '{' {
 		t.Fatal("New retained caller configuration")
 	}
 	view.ProfileAttributes.Schema[0] = 'y'
-	view.ProfileAttributes.SchemaVersion = "changed"
-	if a.Config().ProfileAttributes.Schema[0] != '{' || a.Config().ProfileAttributes.SchemaVersion != "v1" {
+	if a.Config().ProfileAttributes.Schema[0] != '{' {
 		t.Fatal("Config exposes mutable configuration")
 	}
 	if attempts.Load() != 0 {
@@ -68,7 +66,7 @@ func TestProfileAttributesHTTPTokenIntrospectionPrivacy(t *testing.T) {
 	ctx := context.Background()
 	rdb := testRedis(t)
 	cfg := minimal()
-	cfg.ProfileAttributes = &user.ProfileAttributesConfig{SchemaVersion: "synthetic-schema-v1", Schema: []byte(`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{"synthetic_secret_key":{"type":"string"}},"additionalProperties":false}`)}
+	cfg.ProfileAttributes = &user.ProfileAttributesConfig{Schema: []byte(`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{"synthetic_secret_key":{"type":"string"}},"additionalProperties":false}`)}
 	base, pool, sent := integrationInstance(t, cfg, rdb)
 	if err := base.Migrate(ctx); err != nil {
 		t.Fatal(err)
@@ -133,7 +131,7 @@ func TestProfileAttributesHTTPTokenIntrospectionPrivacy(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, secret := range []string{"synthetic_secret_key", "synthetic-secret-value", "profile_attributes", "schema_version", "schema_fingerprint", "synthetic-schema-v1", "$schema", "additionalProperties", *view.SchemaFingerprint} {
+		for _, secret := range []string{"synthetic_secret_key", "synthetic-secret-value", "profile_attributes", "schema_version", "schema_fingerprint", "synthetic-schema-v1", "$schema", "additionalProperties"} {
 			if strings.Contains(string(raw), secret) {
 				t.Fatalf("%s leaked private extension information %q", label, secret)
 			}

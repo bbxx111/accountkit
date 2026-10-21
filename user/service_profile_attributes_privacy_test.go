@@ -72,7 +72,7 @@ func TestProfileAttributesValidatorErrorPrivacy(t *testing.T) {
 			schema := `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{"theme":` + tc.schema + `},"additionalProperties":false}`
 			newServiceWith(t, f, func(d *user.Deps) {
 				d.Logger = slog.New(slog.NewTextHandler(&logs, nil))
-				d.ProfileAttributes = &user.ProfileAttributesConfig{SchemaVersion: "v1", Schema: []byte(schema)}
+				d.ProfileAttributes = &user.ProfileAttributesConfig{Schema: []byte(schema)}
 			})
 			_, err := f.svc.PatchProfileAttributes(context.Background(), id, user.ProfileAttributesPatch{Document: []byte(tc.patch)}, meta1)
 			if !errors.Is(err, user.ErrInvalidArgument) {

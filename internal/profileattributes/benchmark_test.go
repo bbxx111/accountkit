@@ -46,7 +46,7 @@ func policyBenchmarkFixtures() []policyBenchmarkFixture {
 
 func preparePolicyBenchmark(tb testing.TB, f policyBenchmarkFixture) (*Policy, *Patch, []byte) {
 	tb.Helper()
-	p, err := Compile("benchmark-v1", []byte(f.schema))
+	p, err := Compile([]byte(f.schema))
 	if err != nil {
 		tb.Fatalf("invalid benchmark schema: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestPolicyBenchmarkFixtures(t *testing.T) {
 			}
 			if f.name == "expandedNodes1024" {
 				over := strings.Replace(f.schema, `"allOf":[`, `"allOf":[true,`, 1)
-				if _, err := Compile("benchmark-v1", []byte(over)); err == nil {
+				if _, err := Compile([]byte(over)); err == nil {
 					t.Fatal("1025 schema nodes accepted")
 				}
 			}
@@ -127,7 +127,7 @@ func TestPolicyBenchmarkFixtures(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if _, err := Compile("benchmark-v1", over); err == nil {
+				if _, err := Compile(over); err == nil {
 					t.Fatal("129 schema properties accepted")
 				}
 			}
@@ -143,7 +143,7 @@ func BenchmarkCompile(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for b.Loop() {
-				if _, err := Compile("benchmark-v1", raw); err != nil {
+				if _, err := Compile(raw); err != nil {
 					b.Fatal(err)
 				}
 			}

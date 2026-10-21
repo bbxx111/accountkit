@@ -10,7 +10,7 @@ import (
 
 // configureProfileAttributes 是可选的纯 Go 装配示例；宿主在 New 前显式调用。
 func configureProfileAttributes(cfg *accountkit.Config) {
-	cfg.ProfileAttributes = &user.ProfileAttributesConfig{SchemaVersion: "profile-v1", Schema: json.RawMessage(`{
+	cfg.ProfileAttributes = &user.ProfileAttributesConfig{Schema: json.RawMessage(`{
  "$schema":"https://json-schema.org/draft/2020-12/schema",
  "type":"object","properties":{
    "theme":{"type":"string","enum":["light","dark"]},

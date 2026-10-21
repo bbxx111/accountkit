@@ -6,17 +6,17 @@ Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史�
 
 ## 当前用户资料属性增量：version 2
 
-当前生产源保留 v0.4.0 原样 0001，本变更的 0002_add_profile_attributes 尚未发布。本轮经用户明确授权直接修订该 0002，此前保留原 up/down 文件名；本次命名维护统一为 profile_attributes，SQL 字节及 version 2 不变，不新增 0003。新空 schema 执行至 version=2/dirty=false，仍为七张业务表；完整 v0.4.0 version 1 可升级。
+当前生产源保留 v0.4.0 原样 0001，本变更的 0002_add_profile_attributes 尚未发布。本轮经用户明确授权沿当前文件名将未发布 0002 修订为单列，不新增 0003。新空 schema 执行至 version=2/dirty=false，仍为七张业务表；完整 v0.4.0 version 1 可升级。
 
-最终仅四列：profile_attributes JSONB NOT NULL DEFAULT '{}', profile_attributes_schema_version 可空 TEXT、profile_attributes_schema_fingerprint 可空 TEXT、profile_attributes_update_time 可空 TIMESTAMPTZ。Schema 版本、指纹和独立更新时间继续保留，移除 revision。新资料为空对象，三项元数据为 NULL，原账号时间及身份、会话、审计、流程、来源和客户端描述保持。基础约束保留 Schema 标识成对及版本/指纹格式检查，不加入 JSON 业务 CHECK。
+最终仅 profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb 单列，复用账号原 update_time。移除 Schema 版本、指纹、独立更新时间及相关 CHECK，不增加 JSON 业务 CHECK。升级保留账号原时间与其余数据。
 
-预检核对基础结构和版本对应的四列、类型、默认值、可空性、基础约束及时间精度。version 1 不得有手工添加的部分或全部资料列；完整合法 version 2 重复 Up 不改变数据或 catalog。dirty 始终优先拒绝。
+预检核对基础结构和版本对应的单列、类型、默认值、非空性及账号原五个时间列的精度。version 1 不得有手工添加的部分或全部资料列；完整合法 version 2 重复 Up 不改变数据或 catalog。dirty 始终优先拒绝。
 
-**54afa4b 临时五列 version 2 不兼容。** 其 extensions、extensions_schema_version、extensions_schema_fingerprint、extensions_revision、extensions_update_time 不能自动接管为当前 profile_attributes 四列。无论空或非空，预检无写拒绝并保持 catalog、数据、version/dirty；不自动重命名、转换、Force、改版本或清库。需保留数据时另行设计并验证迁移；新部署只用经人工核验的空资源。所有更早撤回 version 2、旧 v0.3.0 v1、双快照 v1、旧流程/审计结构继续无写拒绝。0001、已发布标签与冻结源绝不改动。
+**旧临时四列、五列及混合 version 2 均不兼容。** 其 extensions、extensions_schema_version、extensions_schema_fingerprint、extensions_revision、extensions_update_time 不能自动接管为当前单列定义，即使同时存在 profile_attributes 也拒绝。无论空或非空，预检无写拒绝并保持 catalog、数据、version/dirty；不自动重命名、转换、Force、改版本或清库。需保留数据时另行设计并验证迁移；新部署只用经人工核验的空资源。所有更早撤回 version 2、旧 v0.3.0 v1、双快照 v1、旧流程/审计结构继续无写拒绝。0001、已发布标签与冻结源绝不改动。
 
-升级前停止旧应用写入及维护任务，备份并在隔离环境验证非空 v0.4.0→本轮 v2 和认证行为，再统一部署匹配代码。不能推定 v0.4.0、54afa4b 与本轮代码可以混跑或安全回退，回退须独立验证。宿主 Schema 变更另行设计受控数据迁移，SQL 结构迁移不转换宿主资料；公共 Down 继续无 I/O 拒绝。
+升级前停止旧应用写入及维护任务，备份并在隔离环境验证非空 v0.4.0→本轮 v2 和认证行为，再统一部署匹配代码。不能推定 v0.4.0、54afa4b 与本轮代码可以混跑或安全回退，回退须独立验证。宿主 Schema 兼容调整可直接更新一致配置；收紧时完整结果可能拒绝，同次补丁可修复；移除声明字段须过渡 Schema 或专项迁移，不能未知 null 删除或自动丢字段，SQL 结构迁移不转换宿主资料；公共 Down 继续无 I/O 拒绝。
 
-测试成功/失败 probe 使用生产最新版本加一（当前为 3）；testdata/0002_success.up.sql 和 0002_failure.up.sql 为固定测试内容，不属于生产迁移。恢复演练须覆盖资料值、精确数字、Schema 版本、指纹、独立更新时间和源库不变证据。[变更验收记录](../openspec/changes/add-schema-validated-user-extensions/verification.md)明确区分旧五列验收与本轮待验收，旧日志不能证明本轮通过。以下初始整合内容保持历史事实。
+测试成功/失败 probe 使用生产最新版本加一（当前为 3）；testdata/0002_success.up.sql 和 0002_failure.up.sql 为固定测试内容，不属于生产迁移。恢复演练须覆盖资料值、精确数字、账号原时间及源库不变证据。[变更验收记录](../openspec/changes/add-schema-validated-user-extensions/verification.md)明确区分旧五列验收与本轮待验收，旧日志不能证明本轮通过。以下初始整合内容保持历史事实。
 
 ## 会话认证依据初始整合（v0.4.0 发布历史）
 
@@ -105,7 +105,7 @@ err := migrations.UnsafeReset(ctx, connCfg, schema,
 
 ## 历史检查与恢复演练
 
-当前sign_in_completion_flow保存加密的短期登录证明和完成结果，含pending首次客户端描述及原观察时间。备份恢复须覆盖其密文、cipher_version、原expire_time、账号/会话引用和version/dirty，并保留相应旧密钥。旧流程、旧v0.3.0 v1、前一`b414fef`双快照v1或撤回v2的备份先恢复到独立库核验，需使用当前代码时另行制定并验证数据迁移方案，不能重复Up、改版本或清库接管。v0.4.0 备份应为完整七表、version=1，包含有效非空来源及单份 nested 客户端 JSON（可含客户端描述 extensions）；当前 version 2 备份还包含账号扩展资料及其 Schema/revision/时间元数据；v0.3.0备份也标为1，但缺少会话上下文。恢复演练验证数据/凭证格式和流程记录保持，不是旧库原地升级。源库和目标库必须为两个独立一次性空库。
+当前sign_in_completion_flow保存加密的短期登录证明和完成结果，含pending首次客户端描述及原观察时间。备份恢复须覆盖其密文、cipher_version、原expire_time、账号/会话引用和version/dirty，并保留相应旧密钥。旧流程、旧v0.3.0 v1、前一`b414fef`双快照v1或撤回v2的备份先恢复到独立库核验，需使用当前代码时另行制定并验证数据迁移方案，不能重复Up、改版本或清库接管。v0.4.0 备份应为完整七表、version=1，包含有效非空来源及单份 nested 客户端 JSON（可含客户端描述 extensions）；当前 version 2 备份还包含账号资料 JSON 及账号原时间，不含 Schema/revision/独立时间元数据；v0.3.0备份也标为1，但缺少会话上下文。恢复演练验证数据/凭证格式和流程记录保持，不是旧库原地升级。源库和目标库必须为两个独立一次性空库。
 
 Redis 验证码状态不在数据库备份中；恢复后的 PENDING 流程缺少验证码轮次时必须拒绝，不能仅凭数据库票据放行。COMPLETED 的相同请求只有在原期限内、账号和会话有效且 refresh 未轮换时可读取原结果；期限自然经过后应拒绝票据，仍可验证已完成会话的 refresh。演练不延长5分钟流程期限，也不宣称数据库备份实现零数据损失。
 

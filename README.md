@@ -3,12 +3,13 @@
 ### 可选用户资料属性（Go 接口）
 
 宿主可在 `New` 前设置 `Config.ProfileAttributes`；nil 关闭接口且不删除已有资料。
+`ProfileAttributesConfig` 仅含 `Schema`，`ProfileAttributesView` 仅含 `Data`。
+存储仅增加 `profile_attributes` JSONB，实际变化复用账号原 `update_time`。
 Schema 由宿主读取或嵌入，没有文件路径环境变量或 accountsvc 自动加载。
 宿主装配示例见 [examples/embedded/profile_attributes.go](examples/embedded/profile_attributes.go)：
 
 ```go
 cfg.ProfileAttributes = &user.ProfileAttributesConfig{
-    SchemaVersion: "profile-v1",
     Schema: json.RawMessage(`{
       "$schema":"https://json-schema.org/draft/2020-12/schema",
       "type":"object",
@@ -33,15 +34,14 @@ _ = updated
 不需要 revision/expected_revision，不使用 Redis 锁，不返回版本冲突。
 不同且不重叠属性均可更新并保留彼此结果；同属性以后取得锁并执行的事务为准。
 数组整体替换、父对象删除按 RFC 7396，可能覆盖先写入的重叠子树；未知属性（包括 null 删除）拒绝。
-无变化保留 Schema 标识和时间，不产生修改审计。
+无变化不写入，不推进账号 update_time，不产生修改审计。
 读取仅允许 ACTIVE/FROZEN，普通写入仅允许 ACTIVE；冷静期不可读取。
-首次实际修改绑定 Schema 版本和规范化 SHA-256 指纹，随后不匹配时返回
-`ErrProfileAttributesSchemaMismatch`，空回 `{}` 也保留绑定；未配置返回 `ErrProfileAttributesNotConfigured`。
-Schema 升级需协调停写并通过另行评审的数据迁移完成。提交错误可能有不确定结果，宿主须重新读取核对。
+宿主保证同一数据库实例的 Schema 配置一致。库不保存逐行 Schema 身份，不提供 SchemaMismatch 错误。读取只检查通用存储边界；更新按当前 Schema 校验完整合并结果，无变化请求也不得绕过。新增可选属性、放宽约束、修改注解可直接更新配置。收紧规则可能使旧资料完整结果不合法，更新拒绝且原资料与账号 update_time 保持；同次补丁可修复后保存。移除声明属性后，遗留属性仍不能以未知属性 null 删除，须通过过渡 Schema 或专项迁移清理；库不自动丢弃字段。未配置返回 `ErrProfileAttributesNotConfigured`。
+需要转换旧资料时由宿主另行评审专项迁移。提交错误可能有不确定结果，宿主须重新读取核对。
 
-冻结、解冻、注销冷静期及恢复均保留资料内容、Schema 标识和独立更新时间。
-最终 purge 在既有匿名化事务中清空资料与 Schema 标识，不依赖当前配置或 Schema；
-已使用资料记录清理时间，从未写入的空资料保持未初始化时间，重复维护已清理账号不再推进资料时间。
+冻结、解冻、注销冷静期及恢复保留资料内容。
+最终 purge 在原匿名化事务中清空 JSON，复用账号时间语义，不依赖当前配置或 Schema；
+不区分曾使用与未使用资料；已清理账号的重复维护不再次修改账号时间。
 宿主匿名化回调失败会一并回滚清理。
 
 Schema 使用 Draft 2020-12，根必须接受 `{}`，每层对象固定 properties 和
@@ -55,7 +55,7 @@ profile_attributes 只承载 bio、locale、timezone、pronouns 等用户资料�
 宿主负责目标账号与属性授权，包括删除和父对象替换；readOnly/writeOnly 只作注解。
 资料没有字段级加密，不得存放验证码、令牌、密钥或身份联系方式明文副本。
 现有 HTTP 响应、公开资料、JWT 和内省均不附带资料属性，也不新增内置路由或认证查询。
-成功审计 `USER_PROFILE_ATTRIBUTES_UPDATED` 只记录目标和 Schema 标识，actor 为 SERVICE/accountkit-host；
+成功审计 `USER_PROFILE_ATTRIBUTES_UPDATED` 只记录账号目标，actor 为 SERVICE/accountkit-host；
 `Meta` 仅取 request_id。参数错误支持 `errors.Is(err, user.ErrInvalidArgument)`，
 `ProfileAttributesValidationError` 最多提供 16 条受控路径/规则，不含原始值。
 新增接口的存储错误不保留可能含资料内容的底层错误链；审计和日志不记录资料值、补丁、未知属性名或 Schema 全文。
@@ -135,7 +135,7 @@ HTTP 新增 `POST /users:sendSignInCompletionCode`（`{sign_in_completion_token,
 
 离线导入须停写并核验目标库，使用 schema 匹配连接池创建的事务传入 `ImportAccounts`。`user.ImportAccount` 保留账号原 ID/时间，创建/更新时间必需非零且允许历史时钟回退。ACTIVE 必须有 PHONE/EMAIL 锚点，无删除/匿名化时间；DELETED 墓碑无锚点和显示名。库复用归一化、密文与摘要规则，重复账号或身份冲突直接失败，不合并、不发码、不创建会话、不签令牌、不调用 IdP。错误消息脱敏，调用者可用 `errors.Is`/`errors.As` 区分冲突和数据库原因，解包后的诊断也须脱敏。调用者负责批次记录、业务引用迁移和失败后的全事务回滚，详见[导入边界](docs/compatibility.md#离线账号导入)。
 
-普通创建和 ACTIVE/DELETED 导入均初始化为空资料属性（`{}`、NULL Schema 标识及独立更新时间）。`ImportAccount` 不接收扩展；ACTIVE 导入提交后可另调 `PatchProfileAttributes`，DELETED 拒绝写入。两个调用不承诺同批事务原子性。
+普通创建和 ACTIVE/DELETED 导入均初始化为空资料属性（`{}`，复用账号原时间）。`ImportAccount` 不接收扩展；ACTIVE 导入提交后可另调 `PatchProfileAttributes`，DELETED 拒绝写入。两个调用不承诺同批事务原子性。
 
 ### 会话过期语义
 

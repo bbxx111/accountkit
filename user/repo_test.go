@@ -34,16 +34,16 @@ func TestRepoProfileAttributes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(initial.ProfileAttributes) != "{}" || initial.ProfileAttributesSchemaVersion != nil || initial.ProfileAttributesSchemaFingerprint != nil || initial.ProfileAttributesUpdateTime != nil {
+	if string(initial.ProfileAttributes) != "{}" {
 		t.Fatal("new account extension metadata initialized")
 	}
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	args := db.UpdateProfileAttributesParams{ID: id, ActiveState: enum.UserActive, ProfileAttributes: []byte(`{"large":9007199254740993}`), ProfileAttributesSchemaVersion: "v1", ProfileAttributesSchemaFingerprint: strings.Repeat("a", 64), Now: now}
+	args := db.UpdateProfileAttributesParams{ID: id, ActiveState: enum.UserActive, ProfileAttributes: []byte(`{"large":9007199254740993}`), Now: now}
 	got, err := q.UpdateProfileAttributes(ctx, args)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.ID != id || got.State != enum.UserActive || string(got.ProfileAttributes) != `{"large": 9007199254740993}` || got.ProfileAttributesSchemaVersion == nil || *got.ProfileAttributesSchemaVersion != "v1" || got.ProfileAttributesSchemaFingerprint == nil || *got.ProfileAttributesSchemaFingerprint != strings.Repeat("a", 64) || got.ProfileAttributesUpdateTime == nil || !got.ProfileAttributesUpdateTime.Equal(now) {
+	if got.ID != id || got.State != enum.UserActive || string(got.ProfileAttributes) != `{"large": 9007199254740993}` {
 		t.Fatalf("extension roundtrip: %+v", got)
 	}
 	var accountTime time.Time
@@ -63,7 +63,7 @@ func TestRepoProfileAttributes(t *testing.T) {
 	if _, err := q.UpdateProfileAttributes(ctx, args); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("missing account updated: %v", err)
 	}
-	if after, err := q.GetProfileAttributes(ctx, id); err != nil || string(after.ProfileAttributes) != string(got.ProfileAttributes) || after.ProfileAttributesUpdateTime == nil || !after.ProfileAttributesUpdateTime.Equal(now) {
+	if after, err := q.GetProfileAttributes(ctx, id); err != nil || string(after.ProfileAttributes) != string(got.ProfileAttributes) {
 		t.Fatalf("failed CAS changed data/metadata: %+v %v", after, err)
 	}
 }

@@ -1,3 +1,5 @@
+> 历史计划：已由[单列计划](2026-10-21-profile-attributes-single-column.md)替代；下文保留原文供追溯，不作为当前实现要求。
+
 # 用户扩展资料 Implementation Plan
 
 > **历史计划，受影响步骤已被替代。** 本文勾选及命令结果仅描述 54afa4b 旧实现。本轮命名改为 profile_attributes，移除 revision/expected_revision/Conflict，改为数据库账号行锁内最新读取→Merge Patch→完整 Schema 校验→提交。任务 3–6 的存储、公开 API、并发、生命周期、审计和恢复步骤，以及任务 1/2 中相关命名与保留键，以[本轮详细计划](2026-10-21-profile-attributes-row-lock.md)为准；Schema 版本、指纹和独立更新时间保留。旧完成证据不能证明本轮完成。本文余下历史原文保持。

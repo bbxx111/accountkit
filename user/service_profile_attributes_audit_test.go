@@ -22,7 +22,7 @@ func (r *profileAttributesRecorder) Record(ctx context.Context, e audit.Event) {
 		return
 	}
 	var committed bool
-	err := r.f.pool.QueryRow(ctx, `SELECT profile_attributes_schema_version IS NOT NULL FROM user_account WHERE id=$1`, e.Targets[0].ID).Scan(&committed)
+	err := r.f.pool.QueryRow(ctx, `SELECT profile_attributes <> '{}'::jsonb FROM user_account WHERE id=$1`, e.Targets[0].ID).Scan(&committed)
 	r.committed = err == nil && committed
 	r.events = append(r.events, e)
 }
@@ -43,7 +43,7 @@ func TestProfileAttributesAuditPrivacy(t *testing.T) {
 		t.Fatalf("event metadata: %+v", e)
 	}
 	b, _ := json.Marshal(e)
-	for _, secret := range []string{"theme", "synthetic-private-value", "203.0.113.43", "properties"} {
+	for _, secret := range []string{"theme", "synthetic-private-value", "203.0.113.43", "properties", "schema_version", "schema_fingerprint", "update_time"} {
 		if strings.Contains(string(b), secret) {
 			t.Fatalf("event leaked %q", secret)
 		}

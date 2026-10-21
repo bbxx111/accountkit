@@ -1,3 +1,5 @@
+> 历史计划：已由[单列计划](2026-10-21-profile-attributes-single-column.md)替代；下文保留原文供追溯，不作为当前实现要求。
+
 # 用户资料属性与数据库行锁 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development。按任务实施并独立审查；本轮不自动提交、推送或归档。

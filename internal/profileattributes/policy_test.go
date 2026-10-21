@@ -18,7 +18,7 @@ func objectSchema(properties string) string {
 }
 func compileTest(t *testing.T, schema string) *Policy {
 	t.Helper()
-	p, err := Compile("v1", json.RawMessage(schema))
+	p, err := Compile(json.RawMessage(schema))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,13 +27,9 @@ func compileTest(t *testing.T, schema string) *Policy {
 
 func TestCompilePolicy(t *testing.T) {
 	valid := objectSchema(`"bio":{"type":"string"}`)
-	for _, v := range []string{"", "bad version", strings.Repeat("x", 65), "中文"} {
-		if _, err := Compile(v, []byte(valid)); err == nil {
-			t.Fatalf("version %q accepted", v)
-		}
-	}
+
 	for _, raw := range []string{"", "null", `{}`, strings.Replace(valid, "2020-12", "2019-09", 1), strings.Replace(valid, `"properties"`, `"propertiez"`, 1), objectSchema(`"id":{"type":"string"}`), objectSchema(`"profile_attributes":{"type":"string"}`), objectSchema(`"Bad":{"type":"string"}`), objectSchema(`"x":{"type":["string","integer"]}`), objectSchema(`"x":{}`), objectSchema(`"x":{"type":"null"}`), objectSchema(`"x":{"$id":"urn:nested","type":"string"}`), objectSchema(`"x":{"type":"string","format":"hostname"}`), objectSchema(`"x":{"type":"string","pattern":"(?<=a)b"}`), objectSchema(`"x":{"type":"array","prefixItems":[{"type":"string"}]}`), objectSchema(`"x":{"type":"object","patternProperties":{},"additionalProperties":false}`), strings.TrimSuffix(valid, "}") + `,"required":["bio"]}`, objectSchema(`"x":{"$ref":"https://example.invalid/schema"}`), `{` + dialect + `"type":"object","properties":{"x":{"$ref":"#/$defs/a"}},"additionalProperties":false,"$defs":{"a":{"$ref":"#/$defs/a"}}}`} {
-		if _, err := Compile("v1", []byte(raw)); err == nil {
+		if _, err := Compile([]byte(raw)); err == nil {
 			t.Errorf("invalid schema accepted: %s", raw)
 		}
 	}
@@ -45,20 +41,16 @@ func TestCompilePolicy(t *testing.T) {
 			t.Fatal("conditional ignored")
 		}
 		for _, bad := range []string{strings.Replace(raw, `"a":{"enum"`, `"unknown":{"enum"`, 1), strings.Replace(raw, `"a":{"enum":["yes"]}`, `"a":{"type":"integer"}`, 1)} {
-			if _, err := Compile("v1", []byte(bad)); err == nil {
+			if _, err := Compile([]byte(bad)); err == nil {
 				t.Fatal("branch changed declaration")
 			}
 		}
 	})
-	t.Run("fingerprint", func(t *testing.T) {
-		p := compileTest(t, valid)
-		q := compileTest(t, " \n"+valid)
-		if p.Version() != "v1" || len(p.Fingerprint()) != 64 || p.Fingerprint() != q.Fingerprint() {
-			t.Fatal("unstable identity")
-		}
-		q = compileTest(t, strings.TrimSuffix(valid, "}")+`,"description":"annotation"}`)
-		if p.Fingerprint() == q.Fingerprint() {
-			t.Fatal("annotation ignored")
+	t.Run("compatibleAnnotations", func(t *testing.T) {
+		p := compileTest(t, strings.TrimSuffix(valid, "}")+`,"description":"annotation"}`)
+		patch, _ := DecodePatch([]byte(`{"bio":"valid"}`))
+		if _, _, err := p.Apply([]byte(`{}`), patch); err != nil {
+			t.Fatal(err)
 		}
 	})
 	t.Run("expandedProperties", func(t *testing.T) {
@@ -66,7 +58,7 @@ func TestCompilePolicy(t *testing.T) {
 		for i := 0; i < 129; i++ {
 			props = append(props, fmt.Sprintf(`"p%d":{"type":"string"}`, i))
 		}
-		if _, err := Compile("v1", []byte(objectSchema(strings.Join(props, ",")))); err == nil {
+		if _, err := Compile([]byte(objectSchema(strings.Join(props, ",")))); err == nil {
 			t.Fatal("property cap ignored")
 		}
 	})
@@ -183,7 +175,7 @@ func TestPolicyConstraintDefinitionsAndBooleanFragments(t *testing.T) {
 		}
 	}
 	for _, raw := range []string{objectSchema(`"x":true`), objectSchema(`"x":false`), `{` + dialect + `"type":"object","properties":{},"additionalProperties":false,"$defs":{"unused":{"typo":true}}}`, `{` + dialect + `"type":"object","properties":{},"additionalProperties":false,"$defs":{"unused":{"$ref":"#/$defs/unused"}}}`} {
-		if _, err := Compile("v1", []byte(raw)); err == nil {
+		if _, err := Compile([]byte(raw)); err == nil {
 			t.Fatal("unsafe definition/structure accepted")
 		}
 	}
@@ -199,7 +191,7 @@ func TestPolicyExpandedBudgets(t *testing.T) {
 	for _, count := range []int{1023, 1024} {
 		conditions := strings.TrimSuffix(strings.Repeat("true,", count), ",")
 		raw := strings.TrimSuffix(objectSchema(""), "}") + `,"allOf":[` + conditions + `]}`
-		_, err := Compile("v1", []byte(raw))
+		_, err := Compile([]byte(raw))
 		if (err == nil) != (count == 1023) {
 			t.Fatalf("root + %d nodes: %v", count, err)
 		}
@@ -212,14 +204,14 @@ func TestPolicyExpandedBudgets(t *testing.T) {
 			props[i] = fmt.Sprintf(`"p%d":{"$ref":"#/$defs/item"}`, i)
 		}
 		raw := strings.TrimSuffix(objectSchema(strings.Join(props, ",")), "}") + `,"$defs":{"item":{"type":"object","properties":{"value":{"type":"string"}},"additionalProperties":false}}}`
-		_, err := Compile("v1", []byte(raw))
+		_, err := Compile([]byte(raw))
 		if (err == nil) != (count == 64) {
 			t.Fatalf("expanded properties %d: %v", count*2, err)
 		}
 	}
 	// Reused constraints expand only to the node budget, never as declarations.
 	raw = strings.TrimSuffix(objectSchema(`"x":{"type":"string"}`), "}") + `,"$defs":{"a":{"allOf":[{"$ref":"#/$defs/b"},{"$ref":"#/$defs/b"}]},"b":{"allOf":[{"$ref":"#/$defs/c"},{"$ref":"#/$defs/c"}]},"c":{"allOf":[` + strings.TrimSuffix(strings.Repeat("true,", 300), ",") + `]}},"allOf":[{"$ref":"#/$defs/a"}]}`
-	if _, err := Compile("v1", []byte(raw)); err == nil {
+	if _, err := Compile([]byte(raw)); err == nil {
 		t.Fatal("reference expansion bypassed node budget")
 	}
 }
@@ -234,7 +226,7 @@ func TestPolicyOfflineAndReferences(t *testing.T) {
 		strings.TrimSuffix(objectSchema(`"x":{"type":"string"}`), "}") + `,"allOf":[{"required":["unknown"]}]}`,
 		strings.TrimSuffix(objectSchema(`"x":{"type":"string"}`), "}") + `,"dependentRequired":{"x":["unknown"]}}`,
 	} {
-		if _, err := Compile("v1", []byte(raw)); err == nil {
+		if _, err := Compile([]byte(raw)); err == nil {
 			t.Fatal("invalid reference or undeclared constraint accepted")
 		}
 	}
@@ -283,13 +275,14 @@ func TestPolicyMergedResultLimitsAndOwnership(t *testing.T) {
 		t.Fatal("patch retained caller bytes")
 	}
 	schema := []byte(objectSchema(`"n":{"type":"number","minimum":1.0}`))
-	q, err := Compile("v1", schema)
+	q, err := Compile(schema)
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := compileTest(t, strings.Replace(string(schema), "1.0", "1e0", 1))
-	if q.Fingerprint() != r.Fingerprint() {
-		t.Fatal("fingerprint used lexical numbers")
+	patch, _ = DecodePatch([]byte(`{"n":1}`))
+	if _, _, err := r.Apply([]byte(`{}`), patch); err != nil {
+		t.Fatal("equivalent schema number rejected", err)
 	}
 	for i := range schema {
 		schema[i] = 'x'
@@ -303,7 +296,7 @@ func TestPolicyMergedResultLimitsAndOwnership(t *testing.T) {
 func TestPolicyUnusedAdditionalPropertiesCannotHideSchemas(t *testing.T) {
 	for _, value := range []string{`{"typo":true}`, `{"format":"hostname"}`, `{"$ref":"https://example.invalid/schema"}`, `{"$id":"urn:nested"}`, `true`, `null`, `[]`} {
 		raw := strings.TrimSuffix(objectSchema(""), "}") + `,"$defs":{"unused":{"additionalProperties":` + value + `}}}`
-		if _, err := Compile("v1", []byte(raw)); err == nil {
+		if _, err := Compile([]byte(raw)); err == nil {
 			t.Errorf("unsupported additionalProperties value accepted: %s", value)
 		}
 	}
@@ -336,7 +329,7 @@ func TestPolicyUnusedDefinitionBudgetIsIndependentOfScanOrder(t *testing.T) {
 		})
 	}
 	for i := 0; i < 100; i++ {
-		if _, err := Compile("v1", []byte(raw)); err != nil {
+		if _, err := Compile([]byte(raw)); err != nil {
 			t.Fatalf("same schema rejected at attempt %d: %v", i, err)
 		}
 	}
@@ -345,11 +338,11 @@ func TestPolicyUnusedDefinitionBudgetIsIndependentOfScanOrder(t *testing.T) {
 	// Deduplication is restricted to unused safety checks. Actual consuming
 	// references still expand at every position and exceed the node budget.
 	consumed := strings.TrimSuffix(shared, "}") + `,"allOf":[{"$ref":"#/$defs/a"},{"$ref":"#/$defs/c"}]}`
-	if _, err := Compile("v1", []byte(consumed)); err == nil {
+	if _, err := Compile([]byte(consumed)); err == nil {
 		t.Fatal("actual consuming positions were incorrectly deduplicated")
 	}
 	overLimit := strings.TrimSuffix(objectSchema(""), "}") + `,"$defs":{"unused":{"allOf":[` + strings.TrimSuffix(strings.Repeat("true,", 1023), ",") + `]}}}`
-	if _, err := Compile("v1", []byte(overLimit)); err == nil {
+	if _, err := Compile([]byte(overLimit)); err == nil {
 		t.Fatal("unique unused nodes bypassed total node budget")
 	}
 }

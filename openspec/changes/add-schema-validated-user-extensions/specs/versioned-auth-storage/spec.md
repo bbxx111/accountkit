@@ -4,7 +4,7 @@
 
 ### Requirement: 包内数据库定义
 
-包 SHALL 携带 v0.4.0 已发布的完整 `0001` 及后续递增迁移，schema 可配置。本次 SHALL 修订尚未发布的生产 `0002_add_profile_attributes`，文件名 SHALL 统一为 profile_attributes，命名维护 SHALL 保持 SQL 字节及 version 2 不变，向 `user_account` 增加 profile_attributes JSONB、Schema 版本、指纹及独立更新时间四列，新安装依次执行至 version 2。`0001`、其固定哈希、冻结源和全部已发布标签 SHALL 保持。新增存储 SHALL 不增加外键、级联、宿主业务列或通用 JSON 查询索引，JSON Schema 与属性业务校验在 Go 执行，数据库保留必要基础结构约束。
+包 SHALL 携带 v0.4.0 已发布的完整 `0001` 及后续递增迁移，schema 可配置。本次 SHALL 修订尚未发布的生产 `0002_add_profile_attributes`，SHALL 沿当前文件名修订为单列，version 2 保持，向 `user_account` 增加 profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb 单列，复用账号 update_time，新安装依次执行至 version 2。`0001`、其固定哈希、冻结源和全部已发布标签 SHALL 保持。新增存储 SHALL 不增加外键、级联、宿主业务列或通用 JSON 查询索引，JSON Schema 与属性业务校验在 Go 执行，数据库保留必要基础结构约束。
 
 #### Scenario: 空数据库安装
 - **WHEN** 对合法新空 schema 执行迁移
@@ -32,7 +32,7 @@
 
 #### Scenario: 既有账号的初始扩展
 - **WHEN** 非空 v0.4.0 数据库完成 `0002`
-- **THEN** 原账号、身份和会话数据及原创建/更新时间保持，资料属性为 `{}`，Schema 版本、指纹与独立更新时间为 NULL
+- **THEN** 原账号、身份和会话数据及原创建/更新时间保持，资料属性为 `{}`，原账号时间不变
 
 ### Requirement: 整合基线的兼容边界
 
@@ -98,6 +98,10 @@
 - **WHEN** 连接 54afa4b 临时实现的五列 version 2（含 extensions_revision）
 - **THEN** 无写拒绝并保留 catalog、数据及 version/dirty，不自动转换、Force、清库或改版本；本轮只修订未发布 0002，文件名保持，0001 与历史不变
 
-#### Scenario: 四列资料属性结构
-- **WHEN** 核对本轮合法 version 2
-- **THEN** 具有 profile_attributes、profile_attributes_schema_version、profile_attributes_schema_fingerprint、profile_attributes_update_time，保留 Schema 版本、指纹及独立更新时间，不包含 revision 列
+#### Scenario: 单列资料属性结构
+- **WHEN** 核对合法 version 2
+- **THEN** 仅有 profile_attributes JSONB，复用账号 update_time，无 Schema 版本、指纹与独立更新时间
+
+#### Scenario: 临时结构无写拒绝
+- **WHEN** 旧四列、五列或混合临时 v2，或 v1 带资料残留连接迁移器
+- **THEN** dirty 优先，无写拒绝并保持 catalog、数据、version/dirty，不自动转换、Force、改版本或清库

@@ -6,7 +6,7 @@
 
 `user/client_info_json.go` 已有 JSON 精度、容量和深拷贝经验，但客户端描述与账号资料的来源、大小及生命周期不同，不能直接复用其整套规则。当前匿名化通过 `PurgeUser` 与宿主回调共享事务。
 
-v0.4.0 已固定发布。本变更的 `0002_add_profile_attributes` 尚未发布，此前修订其定义；本次命名维护将文件名统一为 profile_attributes，SQL 字节及 version 2 不变；旧迁移预检拒绝多代同号结构，并会检查迁移源是否存在当前版本。新增合法 `0002` 后，必须额外防止历史撤回的 version 2 因源文件存在而被误接管。
+v0.4.0 已固定发布。本变更的 `0002_add_profile_attributes` 尚未发布，本轮沿当前文件名直接修订为单列，version 2 保持；旧迁移预检拒绝多代同号结构，并会检查迁移源是否存在当前版本。新增合法 `0002` 后，必须额外防止历史撤回的 version 2 因源文件存在而被误接管。
 
 ## Goals / Non-Goals
 
@@ -54,15 +54,11 @@ v0.4.0 已固定发布。本变更的 `0002_add_profile_attributes` 尚未发布
 ```go
 // user 包；Config.ProfileAttributes 与 user.Deps.ProfileAttributes 使用可选指针。
 type ProfileAttributesConfig struct {
-    SchemaVersion string
     Schema        json.RawMessage
 }
 
 type ProfileAttributesView struct {
-    Data              json.RawMessage
-    SchemaVersion     *string
-    SchemaFingerprint *string
-    UpdateTime        *time.Time
+    Data json.RawMessage
 }
 
 type ProfileAttributesPatch struct {
@@ -73,7 +69,7 @@ func (s *Service) GetProfileAttributes(ctx context.Context, userID string) (Prof
 func (s *Service) PatchProfileAttributes(ctx context.Context, userID string, patch ProfileAttributesPatch, meta Meta) (ProfileAttributesView, error)
 ```
 
-Patch 仅含 Document；View 不含 Revision，不要求调用者先读取或提交并发版本。版本标识限定为 1–64 个 ASCII 字符 `[A-Za-z0-9._-]`。Schema 内容和请求/响应字节均复制；公开类型不出现校验器对象、SQL 行或可变的编译缓存。
+Patch 仅含 Document；View 不含 Revision，不要求调用者先读取或提交并发版本。Config 仅含 Schema，View 仅含 Data。Schema 内容和请求/响应字节均复制；公开类型不出现校验器对象、SQL 行或可变的编译缓存。
 
 宿主自行读取文件或嵌入 Schema 并传入配置。首版不增加 Schema 文件路径环境变量或 accountsvc 配置加载逻辑，也不自动将扩展加入现有 HTTP 响应。
 
@@ -85,20 +81,11 @@ API 是宿主信任边界内的能力，不接受客户端自报“我是管理�
 
 修订未发布生产迁移 `0002_add_profile_attributes.up.sql` / `.down.sql`，在 `user_account` 增加：
 
-| 列 | 定义及语义 |
-|---|---|
-| `profile_attributes` | JSONB NOT NULL DEFAULT `'{}'::jsonb` |
-| `profile_attributes_schema_version` | 可空 TEXT，首次有变化写入后记录 |
-| `profile_attributes_schema_fingerprint` | 可空 TEXT，定义指纹；与 version 成对 |
-| `profile_attributes_update_time` | 可空 TIMESTAMPTZ，首次实际变化前为 NULL |
-
-采用明确命名的基础 CHECK：Schema 标识成对、版本及指纹格式；不把宿主 Schema、JSON 业务约束放进 SQL。约束名遵守 63 字节上限，例如 `user_account_profile_attributes_schema_pair`、`user_account_profile_attributes_schema_version_format`、`user_account_profile_attributes_schema_fingerprint_format`。不增加外键、索引、触发器或影子用户 ID。
-
-结构预检同时核对本函数覆盖的账号时间列与扩展更新时间为有效精度 6，防止 `TIMESTAMPTZ(0)` 等同类型低精度列冒充完整结构并丢失微秒。默认 TIMESTAMPTZ 和显式 TIMESTAMPTZ(6) 均接受；漂移只无写拒绝，不自动 ALTER 或修复数据。
+仅增加 `profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb`，复用账号原 `update_time`，无逐行版本、指纹、独立资料时间或相关 CHECK。不增加外键、索引、触发器或影子用户 ID。预检继续保护账号原有五个时间列的有效精度 6；默认 TIMESTAMPTZ 和显式 TIMESTAMPTZ(6) 均接受，漂移无写拒绝。
 
 选择账号行是因为数据小、更新低频，状态和扩展可共享原子行锁。独立资料表可以减轻大文档更新的竞争，但会引入引用完整性和额外清理路径，当前没有必要。所有新查询写在 `user/query.sql` 并经 sqlc 生成，不通过通用动态 SQL 更新 JSON 路径。
 
-普通内容变化同时更新账号原 `update_time` 和 `profile_attributes_update_time`。现有显示名更新不改变资料属性的独立更新时间；冻结、软删除与恢复不改变扩展元数据。数据库升级只增加空扩展初值，不改旧行原时间。
+实际变化只更新资料和账号原 update_time，无变化不写入或推进时间；升级不改旧行原时间。
 
 ### 4. 精确 JSON 与 Merge Patch
 
@@ -122,38 +109,31 @@ API 是宿主信任边界内的能力，不接受客户端自报“我是管理�
 
 1. 检查功能配置、user ID 和原始补丁解析/容量；Patch 只包含 Document。
 2. 在内部 Read Committed 领域事务中获取数据库账号行锁，并在锁内读取最新状态与完整资料；不存在返回既有 not-found，非 ACTIVE 返回状态错误。
-3. 比较已存 Schema 版本及指纹；不匹配无写拒绝。
-4. 检查补丁声明路径，对锁内最新资料的副本执行 RFC 7396 Merge Patch，完整 Schema 校验和存储边界校验后写入。
-5. 内容无变化时返回当前视图，不初始化 Schema 标识、不推进时间、不发成功修改事件。
-6. 实际变化时更新完整结果、Schema 标识、独立资料更新时间及账号更新时间；事务成功提交后返回视图并尽力记录事件。
+3. 检查补丁声明路径，对锁内最新资料的副本执行 RFC 7396 Merge Patch，完整 Schema 校验和存储边界校验后写入。
+4. 无变化仍通过当前 Schema 校验，不推进账号时间、不发成功修改事件。
+5. 实际变化时更新完整结果及账号更新时间；事务成功提交后返回视图并尽力记录事件。
 
 并发控制仅依赖数据库账号行锁；没有 Redis 锁、revision、expected_revision 或版本冲突。不同且不重叠属性的并发请求均可提交并保留彼此结果；同一属性以后获得锁并执行的事务为准。数组整体替换、父对象 null 删除仍按 RFC 7396，后执行补丁可能替换数组或删除先写入的子树，不能承诺所有重叠路径均保留。所有请求须基于锁内最新资料校验完整结果。提交结果不确定时返回错误，宿主重新读取核对，不承诺确定未提交或盲目重放。
 
-读取只允许 ACTIVE/FROZEN；PENDING_DELETION/DELETED 拒绝。读取验证通用存储边界和成对元数据，发现损坏报告内部不变量错误，不静默清空。历史资料不按当前 Schema 重新判合法；认证路径不新增扩展查询、解析或校验，不将扩展作为认证结果依据。
+读取只允许 ACTIVE/FROZEN；PENDING_DELETION/DELETED 拒绝。读取验证通用存储边界，发现损坏报告内部不变量错误，不静默清空。历史资料不按当前 Schema 重新判合法；认证路径不新增扩展查询、解析或校验，不将扩展作为认证结果依据。
 
 实施规划核对说明：现有账号查询使用 `SELECT *` / `RETURNING *`，新增列后 sqlc 行类型会包含扩展原始列。这不表示新增独立查询或公开序列化；原登录路径保持既有查询结构，普通 JWT/内省不增加数据库访问，明确 DTO 继续排除扩展。这里澄清原“认证热路径也不加载扩展”为“不新增扩展查询或校验”，避免承诺现有宽行查询无法满足的列级排除。
 
-错误类别为：未配置、参数非法、Schema 校验失败、账号状态拒绝、Schema 标识不匹配，以及内部/依赖失败。Schema 校验失败可通过 `errors.Is(..., ErrInvalidArgument)` 和专用结构化错误区分；最多返回 16 条受控路径与关键字原因，不包装可能包含原始值的校验器错误。非法或未知键只报告最近合法父路径。
+错误类别为：未配置、参数非法、Schema 校验失败、账号状态拒绝，以及内部/依赖失败。Schema 校验失败可通过 `errors.Is(..., ErrInvalidArgument)` 和专用结构化错误区分；最多返回 16 条受控路径与关键字原因，不包装可能包含原始值的校验器错误。非法或未知键只报告最近合法父路径。
 
 本次没有内置 HTTP 路由，因此不为错误提前新增 HTTP 映射或改变现有 FAILED_PRECONDITION 的 400 行为。
 
-### 6. Schema 标识及升级边界
+### 6. 当前 Schema 与演进边界
 
-指纹为规范化 Schema JSON 的 SHA-256 小写十六进制。规范化去除非字符串空白、按对象键排序、保持数组顺序及精确数值；注解也纳入指纹。它是保守的定义身份，不证明语义等价，也不是机密保护。相同版本修改定义需要受控迁移，不能仅凭字段看似兼容就复用旧版本。
-
-初始 `{}` 的资料无标识；首次有变化写入绑定当前定义。绑定后即使内容又变回 `{}`，仍保留标识，防止旧实例借空对象重新接管。
-
-首版正常写 API 不跨 Schema 标识。宿主 Schema 升级流程为：协调所有写入者停写，备份，使用另行评审的专门数据迁移验证/转换完整资料、条件更新标识与独立更新时间，核验后部署一致配置再恢复写入。该流程不由账号库生产 SQL 迁移自动完成；本次不提供在线批量迁移接口，也不指导直接改版本绕过校验。
-
-仅凭逐行指纹无法阻止错误配置实例首次初始化不同空账号。因此同一数据库实例使用一致配置是宿主部署契约；逐行标识只是拒绝已有资料被另一配置覆盖，不宣称全实例自动发现混跑。关闭扩展配置不删除既有资料，重新启用需要原定义或完成专项迁移。
+宿主保证同一数据库实例的 Schema 配置一致。库不保存逐行 Schema 身份，不提供 SchemaMismatch 错误。读取只检查通用存储边界；更新按当前 Schema 校验完整合并结果，无变化请求也不得绕过。新增可选属性、放宽约束、修改注解可直接更新配置。收紧规则可能使旧资料完整结果不合法，更新拒绝且原资料与账号 update_time 保持；同次补丁可修复后保存。移除声明属性后，遗留属性仍不能以未知属性 null 删除，须通过过渡 Schema 或专项迁移清理；库不自动丢弃字段。
 
 ### 7. 生命周期、导入与审计
 
-`PurgeUser` 同事务将 profile_attributes 改为 `{}`、清除 Schema 版本及指纹。曾使用资料记录清理时间；从未使用的空资料保持未初始化元数据。已 DELETED 不再次执行清理；宿主回调失败恢复所有原字段。不依赖资料 Schema 配置或普通更新校验。
+`PurgeUser` 在原事务中将资料改为 `{}`，沿用账号时间语义，不区分曾使用与未使用。已 DELETED 不重复清理；宿主回调失败恢复 JSON、账号时间及其他字段，不依赖当前 Schema 或配置。
 
 迁移与现有 `ImportAccounts` 均依赖新增列默认值。首版不向 ImportAccount 增加扩展字段；导入 ACTIVE 后，宿主可通过新增接口写入；两次调用不宣称同一批事务。DELETED 导入保持空资料且不能调用新增写接口。需要批量原子导入扩展属于以后单独设计的能力。
 
-新增成功操作审计动作 `USER_PROFILE_ATTRIBUTES_UPDATED`，通过现有通用 Recorder 及配置的 source/namespace 投递。记录目标账号、存储 Schema 标识；不保存数据值、补丁、属性名清单或 Schema 全文。宿主 Go 操作使用明确的服务 actor `accountkit-host`（类型 SERVICE，namespace 为当前审计配置），不把目标账号冒充为操作人；request_id 取既有 Meta，首版不额外采集 IP/设备资料。若将来需要具体宿主操作者，另设计可信 actor 注入。
+新增成功操作审计动作 `USER_PROFILE_ATTRIBUTES_UPDATED`，通过现有通用 Recorder 及配置的 source/namespace 投递。记录目标账号；不保存资料、补丁、属性名、Schema 全文或版本/指纹/资料时间元数据。宿主 Go 操作使用明确的服务 actor `accountkit-host`（类型 SERVICE，namespace 为当前审计配置），不把目标账号冒充为操作人；request_id 取既有 Meta，首版不额外采集 IP/设备资料。若将来需要具体宿主操作者，另设计可信 actor 注入。
 
 事件在提交后尽力投递，失败不影响修改成功；不创建事务 outbox。无变化及失败请求不发出成功事件。新增动作的枚举适配若需要，只追加不重编号；资料本身可含隐私，审计、日志、错误和公开查询都必须有泄露回归测试。
 
@@ -163,7 +143,7 @@ API 是宿主信任边界内的能力，不接受客户端自报“我是管理�
 - Schema 可以声明隐私文本，但不能判断任意字符串中的隐私 → 宿主维护资料用途和字段权限；库限制暴露并整份匿名化，不把黑名单称作完整隐私检测。
 - 小数据仍会竞争账号行锁 → 限制大小与复杂度，测试代表性和上限输入的校验时间及锁等待；目前不引入独立表。
 - 同属性按账号行锁取得并执行的顺序覆盖；数组替换及父对象删除可能覆盖重叠子树 → 宿主授权需覆盖整个补丁影响范围，不能按属性自动合并所有竞争。
-- 没有自动 Schema 迁移 → 旧资料可读但普通写入阻断，部署必须停写并执行单独验证的数据迁移。
+- 没有自动 Schema 迁移 → 旧资料可读，更新完整结果须符合当前配置，宿主协调一致配置并按需修复或专项迁移。
 - 新增 version 2 与历史撤回版本同号 → 预检同时核对基础结构和扩展结构，回归所有历史拒绝夹具。
 - 升级后旧应用使用 `SELECT *` 或旧结构预检可能不兼容 → 部署默认不混跑，应用回退须独立测试，不以新增可空列推断兼容。
 - 提交时断连可能造成结果不确定 → 返回错误并要求读取核对，不把技术错误描述为确定未落库。
@@ -185,6 +165,6 @@ API 是宿主信任边界内的能力，不接受客户端自报“我是管理�
 - [JSON Merge Patch — RFC 7396](https://www.rfc-editor.org/info/rfc7396/)
 - [Go 校验器候选文档](https://pkg.go.dev/github.com/santhosh-tekuri/jsonschema/v6@v6.0.3)
 
-## 本轮修订裁定
+## 本轮单列修订裁定
 
-公开配置及 Deps 字段统一为 `ProfileAttributes`，公开类型为 `ProfileAttributesConfig/View/Patch`，读取和更新为 `GetProfileAttributes/PatchProfileAttributes`。稳定错误为 `ErrProfileAttributesNotConfigured`、`ErrProfileAttributesSchemaMismatch`，不提供 Conflict。最终存储仅四列：`profile_attributes`、`profile_attributes_schema_version`、`profile_attributes_schema_fingerprint`、`profile_attributes_update_time`。用户资料属性只允许用户资料，不承载宿主业务状态、权益或权限。Schema 版本、指纹及独立更新时间继续保留。54afa4b 临时五列 version 2 与本轮四列结构不同，预检必须无写拒绝并保持 catalog、数据及 version/dirty；不自动转换、Force、清库或改版本。`0001` 和已发布历史字节不变。旧详细计划的受影响步骤由[本轮计划](../../../docs/superpowers/plans/2026-10-21-profile-attributes-row-lock.md)替代；旧验收记录不作为本轮证据。
+以[单列计划](../../../docs/superpowers/plans/2026-10-21-profile-attributes-single-column.md)为准。Config 仅 Schema，View 仅 Data，Patch/API 名称保持，移除 SchemaVersion、SchemaFingerprint、独立 UpdateTime 及 ErrProfileAttributesSchemaMismatch。旧临时四列、五列、混合 v2 与 v1 资料残留均无写拒绝，保留 catalog、数据、version/dirty，dirty 优先；不自动转换、Force、改版本或清库。0001、历史标签与冻结源保持，旧验收仅作历史。

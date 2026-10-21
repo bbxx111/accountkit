@@ -8,17 +8,15 @@ RETURNING *;
 SELECT * FROM user_account WHERE id = $1;
 
 -- name: GetProfileAttributes :one
-SELECT id, state, profile_attributes, profile_attributes_schema_version, profile_attributes_schema_fingerprint, profile_attributes_update_time
+SELECT id, state, profile_attributes
 FROM user_account WHERE id = @id;
 
 -- name: UpdateProfileAttributes :one
 UPDATE user_account
 SET profile_attributes = @profile_attributes::jsonb,
-    profile_attributes_schema_version = @profile_attributes_schema_version::text,
-    profile_attributes_schema_fingerprint = @profile_attributes_schema_fingerprint::text,
-    profile_attributes_update_time = @now::timestamptz, update_time = @now::timestamptz
+    update_time = @now::timestamptz
 WHERE id = @id AND state = @active_state
-RETURNING id, state, profile_attributes, profile_attributes_schema_version, profile_attributes_schema_fingerprint, profile_attributes_update_time;
+RETURNING id, state, profile_attributes;
 
 -- name: BatchPublicProfiles :many
 -- 宿主授权的业务页批量读取最小公开资料；包含注销状态，由领域层清空其显示名。
@@ -61,9 +59,7 @@ LIMIT @batch_size::int;
 UPDATE user_account
 SET state = @deleted_state, display_name = NULL, freeze_time = NULL, freeze_reason = NULL,
     freeze_actor_subject = NULL, freeze_actor_username = NULL,
-    profile_attributes = '{}'::jsonb, profile_attributes_schema_version = NULL, profile_attributes_schema_fingerprint = NULL,
-    profile_attributes_update_time = CASE
-        WHEN profile_attributes_update_time IS NOT NULL THEN @now::timestamptz ELSE profile_attributes_update_time END,
+    profile_attributes = '{}'::jsonb,
     purge_time = @now::timestamptz, update_time = @now::timestamptz
 WHERE id = @id AND state = @pending_state;
 

@@ -1,3 +1,45 @@
+## 当前单列修订验收（2026-10-21）
+
+本轮相对 `9619ff5` 的修订只保留 `profile_attributes JSONB`，移除逐行 Schema 版本、指纹及独立更新时间。Config 仅 Schema、View 仅 Data，删除 SchemaMismatch；行锁内按当前 Schema 校验完整合并结果，实际变化复用账号 update_time，无变化不写入。以下旧验收原文全部保留，仅证明其对应旧实现。
+
+### Behavior Evidence
+
+- 有效 RED：旧 API 下仅兼容调整 Schema 即返回 SchemaMismatch；更新后同一场景 GREEN。SchemaEvolution 覆盖注解、可选字段、放宽约束、收紧后完整候选拒绝（含空补丁）、历史资料读取、失败时间不变、同次补丁修复及未知属性 null 删除拒绝。
+- 当前 Schema 一致性由宿主部署保证；库不再绑定历史定义、不自动转换或丢弃旧字段。规范化容量、精确数值、离线编译、声明目录及其他安全限制保持。
+- 真实 PostgreSQL 覆盖账号行锁并发、状态竞争、无变化、账号时间、回调失败回滚、关闭或不兼容 Schema 下匿名化及隐私。审计只保留既有服务 actor、目标、请求关联和事件时间，不携带资料或 Schema 元数据。
+- 未发布 0002 沿当前文件名改单列，0001/固定源/已发布历史保持。完整旧四列/五列、任一元数据或约束残留、混合结构及 v1 残留无写拒绝，dirty 优先，基础账号结构及五个原时间列精度检查保持。
+
+### Final Checks
+
+| 检查 | 本轮实际结果 |
+|---|---|
+| `GOWORK=off go build ./...`、`go vet ./...` | 通过 |
+| 全量普通测试及 Linux race | 各 44 个有测试包、870 个顶层测试、2637 个含子测试条目通过；0 失败、0 race warning |
+| 普通及 race 必需门禁 | 各 769/769 通过；原 768 个入口保留，新增 SchemaEvolution，无重复 |
+| 定向真实数据库与 JSON/schema 单元测试 | 通过；恢复 JSON 精确大整数及账号 update_time 扰动检测通过 |
+| sqlc 1.31.1 生成一致性、历史迁移检查 | 通过；SQL 生成模型匹配单列，无手改生成结果 |
+| `bash scripts/verify.sh` | 通过，含 PG 17.11 dump/restore，seed/verify/source-unchanged 三阶段全部通过 |
+| OpenSpec strict | 25 项通过、0 失败 |
+| 格式与差异 | 23 个改动 Go 文件 gofmt 检查通过，差异空白检查通过 |
+| 独立审查 | 无 P0/P1/P2 实现问题；唯一 P3 测试覆盖退化已修复并限定复审 ADDRESSED，无新增发现 |
+
+普通/race 套件唯一测试级 skip 为预期的 TestRecoveryFixture，恢复脚本分别强制其三阶段运行。恢复演练检查单列 JSON、精确 `9007199254740993`、账号 update_time、恢复后匿名化及源库不变；材料保留在 `.test-output/recovery.aB2xXw`。
+
+验证期间生产源码未变。28 个 Go/SQL/门禁及恢复脚本源哈希中，只有审查后补强的生命周期测试发生变化：将 mismatch 分支改为真正不接受旧资料的 Schema，先断言空补丁失败，再验证 purge 成功。修复仅涉及测试文件，另行执行该顶层四分支的普通测试及 race，均通过；独立限定复审确认关闭 P3，没有重新运行整套验证。
+
+原始证据：
+
+- [全量状态](../../../.test-output/profile-single-column/status.log)、[原始 JSON 汇总](../../../.test-output/profile-single-column/evidence-summary.json)、[完整验证与恢复输出](../../../.test-output/profile-single-column/full-verify.log)。
+- [RED](../../../.test-output/profile-single-column/red.log)、[实现报告](../../../.test-output/profile-single-column/implementation-report.md)、[恢复夹具报告](../../../.test-output/profile-single-column/recovery-report.md)。
+- [最终审查](../../../.test-output/profile-single-column/final-review.md)、[唯一修复及普通/race 证据](../../../.test-output/profile-single-column/fix-report.md)、[限定复审](../../../.test-output/profile-single-column/re-review.md)、[源哈希核对](../../../.test-output/profile-single-column/source-after.json)。
+- [资源清理](../../../.test-output/profile-single-column/cleanup.log)：先核对标签，再删除本任务三个容器、网络及两个缓存卷；宿主日志、合成备份与状态保留。
+
+### Decisions and Limits
+
+实施裁定：随删除的存储元数据一并移除配置 SchemaVersion、View 元数据和审计元数据，View 包装类型保留以减少方法签名变化；若宿主以后需要诊断标签，可另行增加，不隐含历史绑定。修订未发布 0002 而不自动删除旧临时 v2 的列；若已有未报告的开发部署需要保留数据，仍需单独评审迁移。
+
+未验证在线 CI、生产部署、真实宿主资料、旧应用与新单列结构混跑/回退或宿主不兼容 Schema 数据迁移。本轮未提交、推送或归档。下文为历史验收原文。
+
 # Verification
 
 ## 文件命名修订验收（2026-10-21）

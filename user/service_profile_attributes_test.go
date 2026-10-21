@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
@@ -14,11 +15,66 @@ import (
 
 const profileAttributesSchema = `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{"theme":{"type":"string"},"score":{"type":"number"}},"additionalProperties":false}`
 
+func TestProfileAttributesSchemaEvolution(t *testing.T) {
+	f, id := profileAttributesFixture(t)
+	ctx := context.Background()
+	if _, err := f.svc.PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{"theme":"old"}`)}, meta1); err != nil {
+		t.Fatal(err)
+	}
+	schema := strings.Replace(profileAttributesSchema, `"theme":{"type":"string"}`, `"theme":{"type":"string","description":"compatible annotation"}`, 1)
+	newServiceWith(t, f, func(d *user.Deps) { d.ProfileAttributes = &user.ProfileAttributesConfig{Schema: []byte(schema)} })
+	if _, err := f.svc.PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{"score":2}`)}, meta1); err != nil {
+		t.Fatalf("compatible schema evolution rejected: %v", err)
+	}
+	for _, next := range []string{
+		strings.Replace(profileAttributesSchema, `"score":{"type":"number"}`, `"score":{"type":"number"},"optional":{"type":"boolean"}`, 1),
+		strings.Replace(profileAttributesSchema, `"theme":{"type":"string"}`, `"theme":{"type":"string","maxLength":100}`, 1),
+	} {
+		newServiceWith(t, f, func(d *user.Deps) { d.ProfileAttributes = &user.ProfileAttributesConfig{Schema: []byte(next)} })
+		if _, err := f.svc.PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{"score":3}`)}, meta1); err != nil {
+			t.Fatal("compatible schema rejected", err)
+		}
+	}
+	tight := strings.Replace(profileAttributesSchema, `"theme":{"type":"string"}`, `"theme":{"type":"string","maxLength":2}`, 1)
+	newServiceWith(t, f, func(d *user.Deps) { d.ProfileAttributes = &user.ProfileAttributesConfig{Schema: []byte(tight)} })
+	before, _ := f.repo.Q().GetUserByID(ctx, id)
+	if v, err := f.svc.GetProfileAttributes(ctx, id); err != nil || !strings.Contains(string(v.Data), "old") {
+		t.Fatal("historical read rejected", err)
+	}
+	f.advance(time.Second)
+	for _, patch := range []string{`{}`, `{"score":4}`} {
+		if _, err := f.svc.PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(patch)}, meta1); !errors.Is(err, user.ErrInvalidArgument) {
+			t.Fatal("invalid complete candidate accepted", err)
+		}
+	}
+	after, _ := f.repo.Q().GetUserByID(ctx, id)
+	if string(before.ProfileAttributes) != string(after.ProfileAttributes) || !before.UpdateTime.Equal(after.UpdateTime) {
+		t.Fatal("rejected candidate changed account")
+	}
+	if _, err := f.svc.PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{"theme":"ok","score":4}`)}, meta1); err != nil {
+		t.Fatal("same patch repair rejected", err)
+	}
+	after, _ = f.repo.Q().GetUserByID(ctx, id)
+	if !after.UpdateTime.Equal(*f.clock) {
+		t.Fatal("changed document did not update account time")
+	}
+	loose := strings.Replace(tight, `"maxLength":2`, `"maxLength":100`, 1)
+	newServiceWith(t, f, func(d *user.Deps) { d.ProfileAttributes = &user.ProfileAttributesConfig{Schema: []byte(loose)} })
+	if _, err := f.svc.PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{"theme":"relaxed"}`)}, meta1); err != nil {
+		t.Fatal("relaxed schema rejected", err)
+	}
+	removed := strings.Replace(profileAttributesSchema, `"theme":{"type":"string"},`, "", 1)
+	newServiceWith(t, f, func(d *user.Deps) { d.ProfileAttributes = &user.ProfileAttributesConfig{Schema: []byte(removed)} })
+	if _, err := f.svc.PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{"theme":null}`)}, meta1); !errors.Is(err, user.ErrInvalidArgument) {
+		t.Fatal("unknown deletion accepted", err)
+	}
+}
+
 func profileAttributesFixture(t *testing.T) (*fixture, string) {
 	t.Helper()
 	f := newFixture(t)
 	newServiceWith(t, f, func(d *user.Deps) {
-		d.ProfileAttributes = &user.ProfileAttributesConfig{SchemaVersion: "v1", Schema: json.RawMessage(profileAttributesSchema)}
+		d.ProfileAttributes = &user.ProfileAttributesConfig{Schema: json.RawMessage(profileAttributesSchema)}
 	})
 	return f, f.signIn(t, enum.IdentityPhone, phone1, dev1).UserID
 }
@@ -27,7 +83,7 @@ func TestProfileAttributesJSONBRepresentationBudget(t *testing.T) {
 	f := newFixture(t)
 	schema := `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{"entries":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}`
 	newServiceWith(t, f, func(d *user.Deps) {
-		d.ProfileAttributes = &user.ProfileAttributesConfig{SchemaVersion: "v1", Schema: []byte(schema)}
+		d.ProfileAttributes = &user.ProfileAttributesConfig{Schema: []byte(schema)}
 	})
 	id := f.signIn(t, enum.IdentityPhone, phone1, dev1).UserID
 	entries := make([]string, 100)
@@ -70,17 +126,19 @@ func TestProfileAttributes(t *testing.T) {
 	f, id := profileAttributesFixture(t)
 	ctx := context.Background()
 	v, err := f.svc.GetProfileAttributes(ctx, id)
-	if err != nil || string(v.Data) != "{}" || v.SchemaVersion != nil || v.UpdateTime != nil {
+	if err != nil || string(v.Data) != "{}" {
 		t.Fatalf("initial: %+v %v", v, err)
 	}
 
 	v, err = f.svc.PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{"theme":"synthetic-private","score":1}`)}, meta1)
-	if err != nil || v.SchemaVersion == nil || *v.SchemaVersion != "v1" {
+	if err != nil {
 		t.Fatalf("write: %+v %v", v, err)
 	}
-	before := *v.UpdateTime
+	before, _ := f.repo.Q().GetUserByID(ctx, id)
+	f.advance(time.Second)
 	v, err = f.svc.PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{"score":1e0}`)}, meta1)
-	if err != nil || !v.UpdateTime.Equal(before) {
+	after, _ := f.repo.Q().GetUserByID(ctx, id)
+	if err != nil || !after.UpdateTime.Equal(before.UpdateTime) {
 		t.Fatalf("noop: %+v %v", v, err)
 	}
 
@@ -119,9 +177,9 @@ func TestProfileAttributesSchemaAndLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	newServiceWith(t, f, func(d *user.Deps) {
-		d.ProfileAttributes = &user.ProfileAttributesConfig{SchemaVersion: "v2", Schema: []byte(profileAttributesSchema)}
+		d.ProfileAttributes = &user.ProfileAttributesConfig{Schema: []byte(profileAttributesSchema)}
 	})
-	if _, err := f.svc.PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{}`)}, meta1); !errors.Is(err, user.ErrProfileAttributesSchemaMismatch) {
+	if _, err := f.svc.PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{}`)}, meta1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -130,7 +188,7 @@ func TestProfileAttributesConfiguration(t *testing.T) {
 	if err := user.ValidateProfileAttributesConfig(nil); err != nil {
 		t.Fatal(err)
 	}
-	for _, cfg := range []*user.ProfileAttributesConfig{{SchemaVersion: "bad version", Schema: []byte(profileAttributesSchema)}, {SchemaVersion: "v1", Schema: []byte(`{}`)}} {
+	for _, cfg := range []*user.ProfileAttributesConfig{{Schema: []byte(`{}`)}} {
 		if err := user.ValidateProfileAttributesConfig(cfg); !errors.Is(err, user.ErrInvalidArgument) {
 			t.Fatal(err)
 		}
@@ -152,7 +210,7 @@ func TestProfileAttributesMetadataAndLegacyViews(t *testing.T) {
 		t.Fatal(err)
 	}
 	row, err := f.repo.Q().GetUserByID(ctx, id)
-	if err != nil || !row.UpdateTime.Equal(initial.UpdateTime) || row.ProfileAttributesSchemaVersion != nil {
+	if err != nil || !row.UpdateTime.Equal(initial.UpdateTime) {
 		t.Fatal("initial no-op changed metadata", err)
 	}
 	v, err := f.svc.PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{"theme":"synthetic-hidden"}`)}, meta1)
@@ -178,10 +236,10 @@ func TestProfileAttributesMetadataAndLegacyViews(t *testing.T) {
 		}
 	}
 	v, err = f.svc.PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{"theme":null}`)}, meta1)
-	if err != nil || string(v.Data) != "{}" || v.SchemaVersion == nil {
+	if err != nil || string(v.Data) != "{}" {
 		t.Fatalf("cleared document lost binding: %+v %v", v, err)
 	}
-	mustExec(t, f, `UPDATE user_account SET profile_attributes_update_time=NULL WHERE id=$1`, id)
+	mustExec(t, f, `UPDATE user_account SET profile_attributes='[]'::jsonb WHERE id=$1`, id)
 	if _, err = f.svc.GetProfileAttributes(ctx, id); err == nil || errors.Is(err, user.ErrInvalidArgument) {
 		t.Fatalf("corrupt metadata must fail internally: %v", err)
 	}

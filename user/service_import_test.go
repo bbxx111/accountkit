@@ -177,7 +177,7 @@ func TestImportAccounts(t *testing.T) {
 		t.Fatal("tombstone claimed login anchors", err)
 	}
 	for _, row := range []db.UserAccount{got, tomb} {
-		if string(row.ProfileAttributes) != "{}" || row.ProfileAttributesSchemaVersion != nil || row.ProfileAttributesSchemaFingerprint != nil || row.ProfileAttributesUpdateTime != nil {
+		if string(row.ProfileAttributes) != "{}" {
 			t.Fatal("import must preserve uninitialized extension defaults")
 		}
 	}
@@ -223,7 +223,7 @@ func TestProfileAttributesImportPostCommit(t *testing.T) {
 		t.Fatal("deleted import must reject extension writes", err)
 	}
 	row, err := f.repo.Q().GetUserByID(ctx, deleted.ID)
-	if err != nil || string(row.ProfileAttributes) != "{}" || row.ProfileAttributesSchemaVersion != nil || row.ProfileAttributesUpdateTime != nil {
+	if err != nil || string(row.ProfileAttributes) != "{}" {
 		t.Fatal("deleted import changed defaults", err)
 	}
 }

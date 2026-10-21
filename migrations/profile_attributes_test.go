@@ -60,7 +60,7 @@ func TestProfileAttributesMigration(t *testing.T) {
 		t.Fatal("upgrade changed old fields, times, credentials or context")
 	}
 	var defaults bool
-	if err := c.QueryRow(ctx, `SELECT profile_attributes='{}'::jsonb AND profile_attributes_schema_version IS NULL AND profile_attributes_schema_fingerprint IS NULL AND profile_attributes_update_time IS NULL FROM user_account`).Scan(&defaults); err != nil || !defaults {
+	if err := c.QueryRow(ctx, `SELECT profile_attributes='{}'::jsonb FROM user_account`).Scan(&defaults); err != nil || !defaults {
 		t.Fatalf("defaults=%v: %v", defaults, err)
 	}
 	catalog, data := migrationCatalog(t, c, schema), renameDataSnapshot(t, c, "sign_in_completion_flow")
@@ -71,12 +71,6 @@ func TestProfileAttributesMigration(t *testing.T) {
 		t.Fatal("repeat changed data/catalog")
 	}
 	for _, invalid := range []string{
-		`profile_attributes_schema_version='v1'`,
-		`profile_attributes_schema_version='',profile_attributes_schema_fingerprint=repeat('a',64)`,
-		`profile_attributes_schema_version=repeat('a',65),profile_attributes_schema_fingerprint=repeat('a',64)`,
-		`profile_attributes_schema_version='bad version',profile_attributes_schema_fingerprint=repeat('a',64)`,
-		`profile_attributes_schema_version='v1',profile_attributes_schema_fingerprint=repeat('A',64)`,
-		`profile_attributes_schema_version='v1',profile_attributes_schema_fingerprint='abc'`,
 		`profile_attributes=NULL`,
 	} {
 		if _, err := c.Exec(ctx, "UPDATE user_account SET "+invalid); err == nil {
@@ -123,10 +117,42 @@ func TestProfileAttributesMigration(t *testing.T) {
 }
 
 func TestProfileAttributesBaseline(t *testing.T) {
+	t.Run("retired_profile_metadata", func(t *testing.T) {
+		legacy := `ALTER TABLE user_account ADD COLUMN profile_attributes_schema_version TEXT, ADD COLUMN profile_attributes_schema_fingerprint TEXT, ADD COLUMN profile_attributes_update_time TIMESTAMPTZ, ADD CONSTRAINT user_account_profile_attributes_schema_pair CHECK ((profile_attributes_schema_version IS NULL) = (profile_attributes_schema_fingerprint IS NULL)), ADD CONSTRAINT user_account_profile_attributes_schema_version_format CHECK (profile_attributes_schema_version ~ '^[A-Za-z0-9._-]{1,64}$'), ADD CONSTRAINT user_account_profile_attributes_schema_fingerprint_format CHECK (profile_attributes_schema_fingerprint ~ '^[0-9a-f]{64}$')`
+		for _, extra := range []string{legacy, legacy + `; ALTER TABLE user_account ADD COLUMN profile_attributes_revision bigint NOT NULL DEFAULT 0`, `ALTER TABLE user_account ADD CONSTRAINT user_account_profile_attributes_schema_version_format CHECK(true)`, `ALTER TABLE user_account ADD CONSTRAINT user_account_profile_attributes_schema_fingerprint_format CHECK(true)`} {
+			cfg, schema := safetyDB(t)
+			ctx := context.Background()
+			if err := Up(ctx, cfg, schema); err != nil {
+				t.Fatal(err)
+			}
+			c := migrationTestConn(t, cfg, schema)
+			seedRenameFlow(t, c, "sign_in_completion_flow")
+			if _, err := c.Exec(ctx, extra); err != nil {
+				t.Fatal(err)
+			}
+			catalog, data := migrationCatalog(t, c, schema), renameDataSnapshot(t, c, "sign_in_completion_flow")
+			for range 2 {
+				if err := Up(ctx, cfg, schema); !errors.Is(err, ErrIncompatibleBaseline) {
+					t.Fatal("retired metadata accepted", err)
+				}
+			}
+			assertVersion(t, cfg, schema, 2, false)
+			if catalog != migrationCatalog(t, c, schema) || data != renameDataSnapshot(t, c, "sign_in_completion_flow") {
+				t.Fatal("rejection changed catalog/data")
+			}
+			if _, err := c.Exec(ctx, "UPDATE schema_migrations SET dirty=true"); err != nil {
+				t.Fatal(err)
+			}
+			var dirty migrate.ErrDirty
+			if err := Up(ctx, cfg, schema); !errors.As(err, &dirty) || dirty.Version != 2 {
+				t.Fatal("dirty precedence", err)
+			}
+		}
+	})
 	t.Run("retired_and_mixed_structures", func(t *testing.T) {
 		const old = "ALTER TABLE user_account ADD COLUMN extensions JSONB NOT NULL DEFAULT '{}'::jsonb, ADD COLUMN extensions_schema_version TEXT, ADD COLUMN extensions_schema_fingerprint TEXT, ADD COLUMN extensions_revision BIGINT NOT NULL DEFAULT 0, ADD COLUMN extensions_update_time TIMESTAMPTZ, ADD CONSTRAINT user_account_extensions_revision_nonnegative CHECK (extensions_revision >= 0), ADD CONSTRAINT user_account_extensions_schema_pair CHECK ((extensions_schema_version IS NULL) = (extensions_schema_fingerprint IS NULL)), ADD CONSTRAINT user_account_extensions_schema_version_format CHECK (extensions_schema_version ~ '^[A-Za-z0-9._-]{1,64}$'), ADD CONSTRAINT user_account_extensions_schema_fingerprint_format CHECK (extensions_schema_fingerprint ~ '^[0-9a-f]{64}$');"
 		for _, version := range []int{1, 2} {
-			for _, residue := range []string{old, "ALTER TABLE user_account ADD COLUMN extensions jsonb", "ALTER TABLE user_account ADD COLUMN extensions_schema_version text", "ALTER TABLE user_account ADD COLUMN extensions_schema_fingerprint text", "ALTER TABLE user_account ADD COLUMN extensions_revision bigint", "ALTER TABLE user_account ADD COLUMN extensions_update_time timestamptz", "ALTER TABLE user_account ADD COLUMN profile_attributes_revision bigint", "ALTER TABLE user_account ADD CONSTRAINT user_account_extensions_schema_pair CHECK(true)"} {
+			for _, residue := range []string{old, "ALTER TABLE user_account ADD COLUMN extensions jsonb", "ALTER TABLE user_account ADD COLUMN extensions_schema_version text", "ALTER TABLE user_account ADD COLUMN extensions_schema_fingerprint text", "ALTER TABLE user_account ADD COLUMN extensions_revision bigint", "ALTER TABLE user_account ADD COLUMN extensions_update_time timestamptz", "ALTER TABLE user_account ADD COLUMN profile_attributes_revision bigint", "ALTER TABLE user_account ADD COLUMN profile_attributes_schema_version text", "ALTER TABLE user_account ADD COLUMN profile_attributes_schema_fingerprint text", "ALTER TABLE user_account ADD COLUMN profile_attributes_update_time timestamptz", "ALTER TABLE user_account ADD CONSTRAINT user_account_profile_attributes_schema_pair CHECK(true)", "ALTER TABLE user_account ADD CONSTRAINT user_account_extensions_schema_pair CHECK(true)"} {
 				t.Run(fmt.Sprintf("v%d/%s", version, residue), func(t *testing.T) {
 					cfg, schema, c := publishedProfileAttributesInitial(t)
 					ctx := context.Background()
@@ -172,9 +198,7 @@ func TestProfileAttributesBaseline(t *testing.T) {
 			version int
 		}{{"v1", 1}, {"v2", 2}} {
 			columns := []string{"freeze_time", "delete_time", "purge_time", "create_time", "update_time"}
-			if baseline.version == 2 {
-				columns = append(columns, "profile_attributes_update_time")
-			}
+
 			for _, column := range columns {
 				for _, precision := range []string{"0", "3", "6"} {
 					t.Run(baseline.name+"/"+column+"/precision_"+precision, func(t *testing.T) {
@@ -222,23 +246,11 @@ func TestProfileAttributesBaseline(t *testing.T) {
 		}
 	})
 	mutations := []string{
-		`ALTER TABLE user_account DROP COLUMN profile_attributes_update_time`,
+		`ALTER TABLE user_account DROP COLUMN profile_attributes`,
 		`ALTER TABLE user_account ALTER COLUMN profile_attributes TYPE json USING profile_attributes::json`,
 		`ALTER TABLE user_account ALTER COLUMN profile_attributes DROP NOT NULL`,
 		`ALTER TABLE user_account ALTER COLUMN profile_attributes DROP DEFAULT`,
 		`ALTER TABLE user_account ALTER COLUMN profile_attributes SET DEFAULT '[]'::jsonb`,
-		`ALTER TABLE user_account ALTER COLUMN profile_attributes_schema_version SET NOT NULL`,
-		`ALTER TABLE user_account ALTER COLUMN profile_attributes_schema_version SET DEFAULT 'v1'`,
-		`ALTER TABLE user_account ALTER COLUMN profile_attributes_schema_fingerprint TYPE varchar(64)`,
-		`ALTER TABLE user_account ALTER COLUMN profile_attributes_schema_fingerprint SET NOT NULL`,
-		`ALTER TABLE user_account ALTER COLUMN profile_attributes_update_time SET NOT NULL`,
-		`ALTER TABLE user_account ALTER COLUMN profile_attributes_update_time TYPE timestamp`,
-		`ALTER TABLE user_account ALTER COLUMN profile_attributes_update_time SET DEFAULT now()`,
-		`ALTER TABLE user_account DROP CONSTRAINT user_account_profile_attributes_schema_pair`,
-		`ALTER TABLE user_account DROP CONSTRAINT user_account_profile_attributes_schema_version_format`,
-		`ALTER TABLE user_account DROP CONSTRAINT user_account_profile_attributes_schema_fingerprint_format`,
-		`ALTER TABLE user_account DROP CONSTRAINT user_account_profile_attributes_schema_pair, ADD CONSTRAINT user_account_profile_attributes_schema_pair CHECK(true)`,
-		`ALTER TABLE user_account DROP CONSTRAINT user_account_profile_attributes_schema_pair, ADD CONSTRAINT user_account_profile_attributes_schema_pair CHECK ((profile_attributes_schema_version IS NULL) = (profile_attributes_schema_fingerprint IS NULL)) NOT VALID`,
 		`ALTER TABLE user_account DROP COLUMN display_name`,
 		`ALTER TABLE user_account DROP CONSTRAINT user_account_id_format`,
 		`ALTER TABLE user_account DROP CONSTRAINT user_account_pkey`,
@@ -253,7 +265,7 @@ func TestProfileAttributesBaseline(t *testing.T) {
 			}
 			c := migrationTestConn(t, cfg, schema)
 			seedRenameFlow(t, c, "sign_in_completion_flow")
-			if _, err := c.Exec(ctx, `UPDATE user_account SET profile_attributes='{"synthetic":9007199254740993}',profile_attributes_schema_version='v1',profile_attributes_schema_fingerprint=repeat('a',64),profile_attributes_update_time='2024-01-02T03:04:05Z'`); err != nil {
+			if _, err := c.Exec(ctx, `UPDATE user_account SET profile_attributes='{"synthetic":9007199254740993}'`); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := c.Exec(ctx, mutation); err != nil {

@@ -8,14 +8,14 @@
 
 ### Requirement: 可选且离线的 Schema 配置
 
-宿主 SHALL 通过 Go 配置提供非空版本标识与 Draft 2020-12 Schema 内容。初始化 SHALL 校验并编译一次，拒绝无效或超出支持范围的定义，不做数据库、文件或网络 I/O。仅支持当前文档内的无环引用，拒绝外部引用和运行时替换。未配置时 SHALL 关闭扩展读写而不影响既有认证能力；不得把未配置解释为允许任意 JSON。
+宿主 SHALL 通过 Go 配置提供Draft 2020-12 Schema 内容。初始化 SHALL 校验并编译一次，拒绝无效或超出支持范围的定义，不做数据库、文件或网络 I/O。仅支持当前文档内的无环引用，拒绝外部引用和运行时替换。未配置时 SHALL 关闭扩展读写而不影响既有认证能力；不得把未配置解释为允许任意 JSON。
 
 #### Scenario: 配置缺失
 - **WHEN** 宿主未配置扩展 Schema
 - **THEN** 原有登录和资料接口可用，新增扩展读写返回可识别的未配置错误
 
 #### Scenario: 错误配置尽早失败
-- **WHEN** Schema 非法、版本为空、引用外部资源或引用形成循环
+- **WHEN** Schema 非法、引用外部资源或引用形成循环
 - **THEN** 初始化失败且不访问数据库、网络或 Schema 文件
 
 #### Scenario: 配置与调用方内存隔离
@@ -60,7 +60,7 @@ Schema SHALL 定义顶层对象并接受空对象。每个对象层级 SHALL 使
 
 ### Requirement: 宿主专用资料接口
 
-库 SHALL 通过 Config/Deps.ProfileAttributes、ProfileAttributesConfig/View/Patch 和 GetProfileAttributes/PatchProfileAttributes 提供独立的宿主 Go 读取和部分更新能力；Patch 只含 Document，View 无 Revision，返回资料、已记录的 Schema 版本与指纹及可空更新时间。宿主 SHALL 在调用前完成业务授权及字段访问控制；库 SHALL 验证资源 ID、存在性与生命周期，返回独立复制的数据。当前 HTTP 必需接口、公开资料、JWT、内省和认证 DTO SHALL 不隐式承载扩展，新增接口不把数据作为认证或授权依据。
+库 SHALL 通过 Config/Deps.ProfileAttributes、ProfileAttributesConfig/View/Patch 和 GetProfileAttributes/PatchProfileAttributes 提供独立的宿主 Go 读取和部分更新能力；Patch 只含 Document，Config 仅含 Schema，View 仅含 Data，无 Revision 或 Schema/时间元数据。宿主 SHALL 在调用前完成业务授权及字段访问控制；库 SHALL 验证资源 ID、存在性与生命周期，返回独立复制的数据。当前 HTTP 必需接口、公开资料、JWT、内省和认证 DTO SHALL 不隐式承载扩展，新增接口不把数据作为认证或授权依据。
 
 #### Scenario: 未知账号与非法 ID
 - **WHEN** 宿主传入格式错误的账号 ID 或合法但不存在的 ID
@@ -72,7 +72,7 @@ Schema SHALL 定义顶层对象并接受空对象。每个对象层级 SHALL 使
 
 #### Scenario: 读取生命周期
 - **WHEN** 已授权宿主读取 ACTIVE 或 FROZEN 账号扩展
-- **THEN** 返回存储资料及元数据；读取 PENDING_DELETION 或 DELETED 返回可识别的状态拒绝，不返回原扩展内容
+- **THEN** 返回存储资料；读取 PENDING_DELETION 或 DELETED 返回可识别的状态拒绝，不返回原扩展内容
 
 #### Scenario: 输入输出深拷贝
 - **WHEN** 调用者在操作完成后修改补丁或返回资料的字节
@@ -108,11 +108,11 @@ Schema SHALL 定义顶层对象并接受空对象。每个对象层级 SHALL 使
 
 #### Scenario: 删除必填子属性
 - **WHEN** 补丁删除已有嵌套对象中的必填属性
-- **THEN** 完整候选资料不符合 Schema，原始资料及版本保持
+- **THEN** 完整候选资料不符合 Schema，原始资料及账号 update_time 保持
 
 ### Requirement: 账号行锁与原子更新
 
-普通写入 SHALL 仅允许 ACTIVE。并发控制 SHALL 仅使用数据库账号行锁，在内部 Read Committed 领域事务中依次完成锁内最新读取、RFC 7396 Merge Patch、完整 Schema 与存储边界校验、原子写入和提交。SHALL 不使用 Redis 锁、revision、expected_revision 或版本冲突错误。实际变化 SHALL 更新资料与独立资料更新时间及账号更新时间；无变化仍检查配置、锁后状态与 Schema，但不改变标识或时间。
+普通写入 SHALL 仅允许 ACTIVE。并发控制 SHALL 仅使用数据库账号行锁，在内部 Read Committed 领域事务中依次完成锁内最新读取、RFC 7396 Merge Patch、完整 Schema 与存储边界校验、原子写入和提交。SHALL 不使用 Redis 锁、revision、expected_revision 或版本冲突错误。实际变化 SHALL 更新资料与账号 update_time；无变化仍检查配置、锁后状态与 Schema，但不改变资料或账号时间。
 
 #### Scenario: 不重叠属性并发更新
 - **WHEN** 两个请求并发修改同一账号不同且不重叠的资料属性
@@ -128,7 +128,7 @@ Schema SHALL 定义顶层对象并接受空对象。每个对象层级 SHALL 使
 
 #### Scenario: 空补丁与重复值
 - **WHEN** 合法请求提交 {}、删除不存在的已声明属性或重复同值
-- **THEN** 返回现有资料，不改变 Schema 标识、独立更新时间或发出成功修改事件
+- **THEN** 返回现有资料，不改变账号 update_time或发出成功修改事件
 
 #### Scenario: 锁等待后状态变化
 - **WHEN** 请求等待账号锁时账号被冻结或进入注销冷静期
@@ -140,31 +140,31 @@ Schema SHALL 定义顶层对象并接受空对象。每个对象层级 SHALL 使
 
 #### Scenario: 失败与取消
 - **WHEN** 合并校验、SQL、事务提交或取消导致更新未成功提交
-- **THEN** 不返回成功，不留下部分资料、元数据或成功修改审计
+- **THEN** 不返回成功，不留下部分资料、账号时间或成功修改审计
 
 #### Scenario: 提交结果不确定
 - **WHEN** 提交时连接中断而无法确认事务结果
 - **THEN** 返回错误，不承诺确定回滚；宿主重新读取核对，库不盲目重放补丁
 
-### Requirement: Schema 身份与历史资料
+### Requirement: 当前 Schema 与历史资料
 
-成功首次非空写入 SHALL 记录配置版本和定义指纹，后续正常更新只允许与存储标识一致的定义。空且从未写入的资料无 Schema 标识；同版本不同定义和不同版本均 SHALL 拒绝普通写入，不自动转换。读取历史资料 SHALL 返回其存储标识，并只做通用存储边界检查，不套用新 Schema 阻断认证。Schema 变更 SHALL 通过宿主协调停写、数据验证和专门迁移，首版不提供自动升级或在线编辑。
+库 SHALL 按当前 Schema 校验完整合并结果。宿主保证同一数据库实例的 Schema 配置一致。库不保存逐行 Schema 身份，不提供 SchemaMismatch 错误。读取只检查通用存储边界；更新按当前 Schema 校验完整合并结果，无变化请求也不得绕过。新增可选属性、放宽约束、修改注解可直接更新配置。收紧规则可能使旧资料完整结果不合法，更新拒绝且原资料与账号 update_time 保持；同次补丁可修复后保存。移除声明属性后，遗留属性仍不能以未知属性 null 删除，须通过过渡 Schema 或专项迁移清理；库不自动丢弃字段。
 
-#### Scenario: 同名版本漂移
-- **WHEN** 记录引用版本 v1，而实例配置仍名为 v1 但定义指纹改变
-- **THEN** 更新返回 Schema 不匹配错误，资料和元数据 不变
+#### Scenario: 兼容调整
+- **WHEN** 一致部署新增可选属性、放宽约束或修改注解的 Schema
+- **THEN** 补丁可直接保存，无逐行身份匹配
 
-#### Scenario: 更换版本
-- **WHEN** 已有 v1 资料的账号在 v2 配置下读取和更新
-- **THEN** 已授权读取返回原资料及 v1 标识，普通更新拒绝；登录、刷新及匿名化不依赖 v2 校验通过
+#### Scenario: 收紧规则与同次修复
+- **WHEN** 当前 Schema 收紧使旧资料不合法
+- **THEN** 读取仍可返回，未修复的更新拒绝且原值与账号时间保持，同次补丁修复后可保存
 
-#### Scenario: 回退实例不能接管
-- **WHEN** 资料已由受控迁移转为 v2，而旧配置实例尝试写入
-- **THEN** 即使 JSON 内容也满足 v1，仍因标识不匹配拒绝，不写回 v1
+#### Scenario: 移除声明后的遗留属性
+- **WHEN** 已存属性不再声明且补丁以 null 删除它
+- **THEN** 拒绝未知删除，宿主使用过渡 Schema 或专项迁移，库不自动丢弃
 
 ### Requirement: 错误和审计隐私
 
-库 SHALL 暴露 ErrProfileAttributesNotConfigured、ErrProfileAttributesSchemaMismatch 及稳定可识别的配置缺失、参数、Schema 校验、状态及 Schema 不匹配错误；Schema 校验错误只含受控属性路径和规则原因。成功内容变更 SHALL 在事务提交后通过 USER_PROFILE_ATTRIBUTES_UPDATED 既有尽力异步审计记录账号目标、Schema 标识，不记录原值、新值、补丁、完整 Schema 或任意原始校验器错误。审计失败 SHALL 不回滚已提交资料。
+库 SHALL 暴露 ErrProfileAttributesNotConfigured 及稳定可识别的配置缺失、参数、Schema 校验及状态错误；Schema 校验错误只含受控属性路径和规则原因。成功内容变更 SHALL 在事务提交后通过 USER_PROFILE_ATTRIBUTES_UPDATED 既有尽力异步审计记录固定服务 actor、账号目标及请求 ID，不记录原值、新值、补丁、完整 Schema 、版本/指纹/资料时间元数据或任意原始校验器错误。审计失败 SHALL 不回滚已提交资料。
 
 #### Scenario: 校验器携带输入值
 - **WHEN** 第三方校验器错误包含个人简介、未知属性名或 enum 内容

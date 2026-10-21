@@ -4,17 +4,17 @@
 
 ## 当前待办与责任归属
 
-当前准备发布 **v0.5.0**：资料属性、本人资料 HTTP/accountsvc Schema 配置、内置头像均已完成并归档，头像已合入 develop。用户确认尚无正式部署，本次以新空 schema 安装为目标，不安排旧数据库迁移。发布说明见 [v0.5.0](releases/v0.5.0.md)，实际候选和证据见[发布验收](../openspec/changes/prepare-v0-5-0-release/verification.md)。以下 v0.4.0 及更早记录保留历史事实。
+**v0.5.0 已发布**：资料属性、本人资料 HTTP/accountsvc Schema 配置、内置头像均已完成并归档，已合入 develop/main；最终候选 CI 全部通过，tag 和正式 Release 已核验。用户确认尚无正式部署，本次以新空 schema 安装为目标，不安排旧数据库迁移。发布说明见 [v0.5.0](releases/v0.5.0.md)，候选/CI/tag/Release 与远端消费证据见[发布验收](../openspec/changes/prepare-v0-5-0-release/verification.md)。以下 v0.4.0 及更早记录保留历史事实。
 
 ## v0.5.0 版本门禁
 
 - [x] 三项功能任务已完成、已归档并本地集成，规格严格校验问题已修复。
 - [x] 审查 v0.5.0 发布说明，核对公开 API、HTTP/配置、依赖、新实例安装和宿主责任；执行文档/生成/历史检查。
-- [ ] 通过 --no-ff 将发布材料合入 develop/main 并推送，确定干净的最终 main 候选 SHA。
-- [ ] 最终候选在线 CI 全部通过：生成一致性、完整库/race/必需门禁/真实恢复、accountsvc 专项依赖与进程信号验证。
-- [ ] 创建并推送唯一 v0.5.0 annotated tag，核对精确 SHA，发布正式 GitHub Release；历史 tag 不移动。
-- [ ] 两个独立宿主 GOWORK=off、无 replace 从远端消费 v0.5.0，验证根门面及直接 enduser 的资料/头像能力、模块版本和 SQL 哈希。
-- [ ] 补记实际发布、CI 和消费证据，更新文档发布状态；产品上线和发布变更归档另行执行。
+- [x] 通过 --no-ff 将发布材料合入 develop/main 并推送，确定干净的最终 main 候选 SHA。
+- [x] 最终候选在线 CI 全部通过：生成一致性、完整库/race/必需门禁/真实恢复、accountsvc 专项依赖与进程信号验证。
+- [x] 创建并推送唯一 v0.5.0 annotated tag，核对精确 SHA，发布正式 GitHub Release；历史 tag 不移动。
+- [x] 两个独立宿主 GOWORK=off、无 replace 从远端消费 v0.5.0，验证根门面及直接 enduser 的资料/头像能力、模块版本和 SQL 哈希。
+- [x] 补记实际发布、CI 和消费证据，更新文档发布状态；产品上线和发布变更归档另行执行。
 
 ## 历史发布与产品责任
 

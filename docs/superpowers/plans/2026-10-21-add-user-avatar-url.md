@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、PostgreSQL 17、pgx、sqlc 1.31.1、Chi。
 
-**Spec:** [设计](../../../openspec/changes/add-user-avatar-url/design.md)及该 change 的全部 specs。
+**Spec:** [设计](../../../openspec/changes/archive/2026-10-21-add-user-avatar-url/design.md)及该 change 的全部 specs。
 
 ## Global Constraints
 
@@ -48,7 +48,7 @@
 
 ### Task 2: 全量验证和交付
 
-**Files:** openspec/changes/add-user-avatar-url/verification.md、tasks.md。
+**Files:** openspec/changes/archive/2026-10-21-add-user-avatar-url/verification.md、tasks.md。
 
 **Interfaces:** 消费 Task 1 的全部变更与测试。
 

@@ -4,7 +4,7 @@
 
 ## 范围和授权
 
-用户确认仅新增 `avatar_url`，并明确要求“不新增 0002 迁移，改现有 0001”。当前初始结构只增加可空头像列，历史标签、发布 SQL 与冻结源分别保留。实现和验收完成后，用户另行明确要求提交；本次仅执行本地提交，推送与归档另行授权。
+用户确认仅新增 `avatar_url`，并明确要求“不新增 0002 迁移，改现有 0001”。当前初始结构只增加可空头像列，历史标签、发布 SQL 与冻结源分别保留。实现和验收完成后，用户另行明确要求提交，功能提交为 `4e84a78`；随后明确要求“存档，提交”，授权本轮同步规格、归档及本地提交。合并和推送另行授权。
 
 ## 实际执行
 
@@ -35,3 +35,11 @@
 修正前 race 运行已停止并保留日志 `verify-before-review-fix.log`、`tests-race-before-review-fix.jsonl`，不将其计作通过。全库普通首轮失败日志保持原样，以修正后定向测试及最终全量 race 为最终行为证据。三个未改主规格的 OpenSpec strict 长文本问题保留为既有验证限制，本次 change 自身严格校验通过。
 
 未运行在线 CI、产品部署、真实产品数据库升级或旧代码混跑/回退测试；本次明确不提供旧数据迁移。头像图片上传、可用性、内容和宿主删除策略不在库验证范围。
+
+## 归档核验（2026-10-21）
+
+- 工件全部完成，6 个实施任务均已完成；归档前逐项核对三个 delta 与主规格的同步结果。
+- 新建 `user-basic-profile` 主规格（4 个要求），更新 `host-account-contracts` 的批量公开资料要求，向 `versioned-auth-storage` 增加头像初始定义及旧结构拒绝要求；保留未涉及的场景和历史授权。
+- 归档位置为 `openspec/changes/archive/2026-10-21-add-user-avatar-url/`；保留 `.openspec.yaml`，同步修复 AGENTS、迁移手册和实现计划的链接。
+- `openspec validate --specs`：27 项通过，退出 0。`openspec validate --all --strict`：24 项通过、3 项既有长文本问题失败，与归档前一致。日志分别保留为 `.test-output/add-user-avatar-url/openspec-archive-specs.txt` 和 `openspec-archive-strict.txt`。
+- `openspec list --json`：活动变更为空；文档路径、主规格结构及差异检查通过。本轮仅规格/文档归档维护，没有重复执行 Go、数据库或恢复测试，前文实施证据仍对应功能提交前的定版代码。

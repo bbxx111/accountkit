@@ -20,6 +20,11 @@ import (
 	"github.com/bbxx111/accountkit/user"
 )
 
+// ProfileUpdater 是可选的基础资料原子更新能力。
+type ProfileUpdater interface {
+	UpdateProfile(context.Context, string, user.ProfilePatch) (user.Me, error)
+}
+
 // Service 是 handler 依赖的领域面；*user.Service 满足它。
 type Service interface {
 	SendSignInCode(ctx context.Context, channel enum.IdentityKind, target string, meta user.Meta) (user.CodeChallenge, error)

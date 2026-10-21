@@ -61,9 +61,7 @@ Schema SHALL 定义顶层对象并接受空对象。每个对象层级 SHALL 使
 
 ### Requirement: 宿主专用资料接口
 
-库 SHALL 通过 Config/Deps.ProfileAttributes、ProfileAttributesConfig/View/Patch 和 GetProfileAttributes/PatchProfileAttributes 提供独立的宿主 Go 读取和部分更新能力；Patch 只含 Document，Config 仅含 Schema，View 仅含 Data，无 Revision 或 Schema/时间元数据。宿主 SHALL 在调用前完成业务授权及字段访问控制；库 SHALL 验证资源 ID、存在性与生命周期，返回独立复制的数据。当前 HTTP 必需接口、公开资料、JWT、内省和认证 DTO SHALL 不隐式承载扩展，新增接口不把数据作为认证或授权依据。
-
-[self-profile-http](../self-profile-http/spec.md) SHALL 提供独立本人资料 HTTP，所有资料对本人完整可读写；上段宿主授权指 Go 直接调用，不要求内置本人路由再执行字段授权。既有 HTTP 响应和必需方法集保持不变。启用 Schema 的部署 SHALL 不保存本人不可见或不可改字段，Schema 注解不限制本人访问。
+库 SHALL 通过 Config/Deps.ProfileAttributes、ProfileAttributesConfig/View/Patch 和 GetProfileAttributes/PatchProfileAttributes 提供宿主 Go 读取及部分更新能力；Config/Patch/View 分别只含 Schema/Document/Data，无 Revision 或 Schema/时间元数据。Go 直接调用由宿主完成业务和字段授权；库 SHALL 校验 ID、存在性与生命周期并返回独立复制的数据。既有 HTTP 必需方法集和响应保持，公开资料、JWT、内省及认证 DTO 不隐式承载扩展，资料不作为认证授权依据。[self-profile-http](../self-profile-http/spec.md) SHALL 提供独立本人 HTTP，全部资料可由本人读写，无额外字段授权；Schema 注解不限制访问，启用时不得保存本人不可见或不可改字段。
 
 #### Scenario: 未知账号与非法 ID
 - **WHEN** 宿主传入格式错误的账号 ID 或合法但不存在的 ID

@@ -194,7 +194,7 @@ func decode(t *testing.T, rec *httptest.ResponseRecorder, dst any) {
 }
 
 func adminUserFixture() user.AdminUser {
-	return user.AdminUser{ID: uid, State: enum.UserActive, DisplayName: "白博", CreateTime: testNow.Add(-48 * time.Hour), UpdateTime: testNow.Add(-time.Hour)}
+	return user.AdminUser{ID: uid, State: enum.UserActive, DisplayName: "白博", AvatarURL: "https://example.com/avatar", CreateTime: testNow.Add(-48 * time.Hour), UpdateTime: testNow.Add(-time.Hour)}
 }
 
 func keysOf(m map[string]any) []string {

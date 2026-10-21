@@ -81,7 +81,7 @@ func TestServiceIntegrationSessionExpiry(t *testing.T) {
 		f.assertSafe(mustExpiryJSON(t, list))
 	}
 	detail := f.call("GET", p.baseURL+"/admin/v1/users/"+uid, f.env["FIXTURE_operator"], nil, 200)
-	if detail["active_session_count"] != float64(1) || len(detail) != 10 {
+	if detail["active_session_count"] != float64(1) || len(detail) != 11 || detail["avatar_url"] != "" {
 		t.Error("detail count or DTO changed")
 	}
 	f.assertSafe(mustExpiryJSON(t, detail))

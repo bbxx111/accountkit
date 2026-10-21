@@ -86,8 +86,8 @@ func TestListUsersParsesQueryAndEncodesNextPage(t *testing.T) {
 	}
 	users := out["users"].([]any)
 	u := users[0].(map[string]any)
-	assertKeys(t, u, "name", "state", "display_name", "create_time", "update_time", "delete_time", "purge_time", "freeze")
-	if u["name"] != "users/"+uid || u["state"] != "ACTIVE" || u["freeze"] != nil || u["delete_time"] != nil {
+	assertKeys(t, u, "name", "state", "display_name", "avatar_url", "create_time", "update_time", "delete_time", "purge_time", "freeze")
+	if u["name"] != "users/"+uid || u["state"] != "ACTIVE" || u["avatar_url"] != "https://example.com/avatar" || u["freeze"] != nil || u["delete_time"] != nil {
 		t.Fatalf("user resource: %v", u)
 	}
 	token, _ := out["next_page_token"].(string)
@@ -153,7 +153,7 @@ func TestGetUserDetail(t *testing.T) {
 	if rec.Code != 200 {
 		t.Fatalf("detail: %d %s", rec.Code, rec.Body.String())
 	}
-	assertKeys(t, d, "name", "state", "display_name", "create_time", "update_time", "delete_time", "purge_time", "freeze", "identities", "active_session_count")
+	assertKeys(t, d, "name", "state", "display_name", "avatar_url", "create_time", "update_time", "delete_time", "purge_time", "freeze", "identities", "active_session_count")
 	fr := d["freeze"].(map[string]any)
 	assertKeys(t, fr, "freeze_time", "reason", "actor_subject", "actor_username")
 	if fr["reason"] != "abuse" || fr["actor_username"] != "ops" || d["active_session_count"] != float64(2) || d["state"] != "FROZEN" {

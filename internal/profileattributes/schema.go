@@ -8,7 +8,7 @@ import (
 )
 
 var propertyPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(_[a-z0-9]+)*$`)
-var reserved = wordSet("id name state display_name create_time update_time delete_time purge_time profile_attributes")
+var reserved = wordSet("id name state display_name avatar_url create_time update_time delete_time purge_time profile_attributes")
 var keywords = wordSet("$schema $id $ref $defs type properties items additionalProperties enum const required minLength maxLength pattern format minimum maximum exclusiveMinimum exclusiveMaximum multipleOf minItems maxItems uniqueItems minProperties maxProperties dependentRequired allOf anyOf oneOf not if then else title description default examples readOnly writeOnly deprecated $comment")
 var formats = wordSet("date date-time email uri uuid")
 var types = wordSet("object array string boolean integer number")

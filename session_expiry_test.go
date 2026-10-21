@@ -166,7 +166,7 @@ func TestSessionExpiryEndToEndAgainstRealDB(t *testing.T) {
 		}
 	}
 	detail := call("GET", "/admin/v1/users/"+principal.UserID, "", "", nil, 200)
-	if detail["active_session_count"] != float64(1) || len(detail) != 10 {
+	if detail["active_session_count"] != float64(1) || len(detail) != 11 || detail["avatar_url"] != "" {
 		t.Error("admin detail must count only live sessions and retain DTO")
 	}
 	if snapshot() != before || len(events.Events()) != auditBefore {

@@ -785,3 +785,13 @@ github.com/bbxx111/accountkit/internal/accountsvc/TestServiceProfileAttributesHT
 github.com/bbxx111/accountkit/TestProfileAttributesHTTPIntegration
 github.com/bbxx111/accountkit/TestProfileAttributesHTTPCapacity
 github.com/bbxx111/accountkit/TestProfileAttributesHTTPConcurrency
+github.com/bbxx111/accountkit/user/TestAvatarProfileUpdate
+github.com/bbxx111/accountkit/user/TestAvatarLifecycle
+github.com/bbxx111/accountkit/user/TestAvatarConcurrency
+github.com/bbxx111/accountkit/migrations/TestAvatarInitialMigration
+github.com/bbxx111/accountkit/migrations/TestAvatarBaselineRejected
+github.com/bbxx111/accountkit/migrations/TestAvatarPreviousProfileV1Rejected
+github.com/bbxx111/accountkit/httpapi/enduser/TestUpdateMeAvatarLegacyCapability
+github.com/bbxx111/accountkit/httpapi/enduser/TestUpdateMeAvatar
+github.com/bbxx111/accountkit/TestAvatarHTTPIntegration
+github.com/bbxx111/accountkit/TestRecoveryAvatarFixture

@@ -14,6 +14,7 @@ CREATE TABLE user_account (
                           CONSTRAINT user_account_id_format CHECK (id ~ '^u_[0-9a-hjkmnp-tv-z]{13}$'),
     state                 SMALLINT NOT NULL,            -- ACTIVE / FROZEN / PENDING_DELETION / DELETED，Go 定义
     display_name          TEXT,
+    avatar_url            TEXT,
     freeze_time           TIMESTAMPTZ,
     freeze_reason         TEXT,
     freeze_actor_subject  TEXT,                         -- 管理员 OIDC sub 快照

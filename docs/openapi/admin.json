@@ -888,6 +888,10 @@
           "display_name": {
             "type": "string"
           },
+          "avatar_url": {
+            "type": "string",
+            "description": "头像 HTTPS 地址；未设置或已匿名化时为空字符串。"
+          },
           "create_time": {
             "type": "string",
             "format": "date-time"
@@ -933,6 +937,7 @@
           "name",
           "state",
           "display_name",
+          "avatar_url",
           "create_time",
           "delete_time",
           "purge_time",
@@ -980,6 +985,10 @@
           },
           "display_name": {
             "type": "string"
+          },
+          "avatar_url": {
+            "type": "string",
+            "description": "头像 HTTPS 地址；未设置或已匿名化时为空字符串。"
           },
           "create_time": {
             "type": "string",
@@ -1036,6 +1045,7 @@
           "name",
           "state",
           "display_name",
+          "avatar_url",
           "create_time",
           "delete_time",
           "purge_time",

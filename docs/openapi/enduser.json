@@ -949,8 +949,8 @@
       },
       "patch": {
         "operationId": "updateMe",
-        "summary": "更新显示名",
-        "description": " 允许的消费者 scope：user。",
+        "summary": "更新显示名和头像",
+        "description": "允许的消费者 scope：user。原子更新非 null 的 display_name 和 avatar_url，省略或 null 保持，空字符串清空；无有效字段返回 NO_FIELDS。内置服务锁后仅允许 ACTIVE。旧适配器缺少头像更新能力时，含头像请求返回 503 PROFILE_UPDATE_NOT_CONFIGURED 且不部分写入。",
         "responses": {
           "200": {
             "description": "成功。",
@@ -2621,6 +2621,10 @@
           "display_name": {
             "type": "string"
           },
+          "avatar_url": {
+            "type": "string",
+            "description": "头像 HTTPS 地址；未设置或已匿名化时为空字符串。"
+          },
           "create_time": {
             "type": "string",
             "format": "date-time"
@@ -2652,6 +2656,7 @@
           "name",
           "state",
           "display_name",
+          "avatar_url",
           "create_time",
           "delete_time",
           "purge_time"
@@ -3266,12 +3271,17 @@
         "type": "object",
         "properties": {
           "display_name": {
-            "type": "string",
+            "type": ["string", "null"],
             "description": "TrimSpace 后最多 32 个 Unicode 字符；空字符串清空，禁止控制字符及指定双向格式控制符。"
+          },
+          "avatar_url": {
+            "type": ["string", "null"],
+            "description": "TrimSpace 后最多 2048 字节，具有非空主机的绝对 HTTPS URL；拒绝用户信息、fragment、反斜线、内部空白、控制字符及非法 UTF-8。空字符串清空，null 或省略保持。"
           }
         },
-        "required": [
-          "display_name"
+        "anyOf": [
+          {"required": ["display_name"], "properties": {"display_name": {"type": "string"}}},
+          {"required": ["avatar_url"], "properties": {"avatar_url": {"type": "string"}}}
         ],
         "additionalProperties": false
       },

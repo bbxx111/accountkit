@@ -1,5 +1,15 @@
 # 功能与兼容对照
 
+## 内置头像属性
+
+当前开发版新增 `user.Me`、`user.AdminUser`、`user.PublicProfile` 的 `AvatarURL string` 和对应两面 JSON `avatar_url`；未设置返回空字符串。使用结构体无字段名的位置字面量的 Go 调用者需改为带字段名的写法，HTTP 严格字段解析器需允许新字段。
+
+新增 `user.ProfilePatch` 与 `Service.UpdateProfile`，支持显示名/头像原子部分更新，nil 保持、空字符串清空，仅允许 ACTIVE。`UpdateDisplayName` 保留签名和原行为。消费者 `Service` 必需方法集不变，新增可选 `enduser.ProfileUpdater`；旧适配器的显示名更新仍可用，头像请求缺少能力时返回 503，避免部分写入。
+
+头像现在属于内置顶层保留字段，`profile_attributes` Schema 不得重复声明 `avatar_url`。宿主此前若自行声明同名扩展，应先设计并验证资料调整；库不会自动转移旧扩展值。图片文件仍由宿主管理。HTTP 细节见[基础资料与头像](openapi.md#基础资料与头像)。
+
+按本轮明确授权，当前 `0001` 增加 `avatar_url TEXT NULL`，仍安装 version 1。无头像列的前一资料 v1 及历史拒绝结构无写拒绝；新部署使用经核验的新空 schema，保留数据需求另行制定迁移。详见[头像迁移边界](migrations.md#当前头像初始定义version-1)。
+
 ## 可选用户资料属性的 Go 与 HTTP 接口
 
 新增 `Config.ProfileAttributes`、`user.Deps.ProfileAttributes`、`user.ProfileAttributesConfig`、
@@ -19,7 +29,7 @@ Go 直接调用仍由宿主授权。内置新增 GET/PATCH `/users/me/profile`�
 这是相对未发布 54afa4b 的 Go 源码破坏性调整：调用者将 UserExtensions/Extensions* 和 GetExtensions/PatchExtensions 改为上述 ProfileAttributes 名称，删除 ExpectedRevision、Revision 及 Conflict 处理；不保留旧 API 别名。配置只保留 Schema，视图只保留 Data；调用者移除 SchemaVersion、SchemaFingerprint、UpdateTime 及 ErrProfileAttributesSchemaMismatch 处理。
 属性仅允许用户资料，禁止宿主业务状态、权益及权限。本轮授权将单列并入当前 0001、撤回生产 0002，新安装 version 1；旧 v0.4.0 v1 及各代撤回 v2 无写拒绝，无旧数据迁移，不重放同号 SQL、Force、改版本或清库。旧发布 tag/SQL 和冻结源独立固定，详见[迁移说明](migrations.md#当前用户资料属性初始整合version-1)。
 
-**本人访问契约变化：** 启用 Schema 并挂载内置消费者 handler，即允许本人完整读取和修改所有 profile_attributes。升级前须迁出本人不可见或不可改的内部字段；Schema 的 readOnly/writeOnly 不能当作权限。已有 enduser.Service 必需方法集不变，旧自定义适配器继续编译；需要新能力时实现可选 `enduser.ProfileAttributesService`，未实现的新路由返回 503。既有 `/users/me` 仍只更新 display_name，不接受混合资料更新。
+**本人访问契约变化：** 启用 Schema 并挂载内置消费者 handler，即允许本人完整读取和修改所有 profile_attributes。升级前须迁出本人不可见或不可改的内部字段；Schema 的 readOnly/writeOnly 不能当作权限。已有 enduser.Service 必需方法集不变，旧自定义适配器继续编译；需要新能力时实现可选 `enduser.ProfileAttributesService`，未实现的新路由返回 503。`/users/me` 支持内置 display_name 和 avatar_url，不接收 profile_attributes；扩展更新仍使用独立路由。
 
 accountsvc 新增可选 `ACCOUNTSVC_PROFILE_ATTRIBUTES_SCHEMA_FILE`，仅 serve 读取；migrate 忽略。未设置不启用资料，文件非法则启动失败；库 ConfigFromEnv/New 仍不读文件。HTTP 启用过程不新增数据库迁移，见[协议](openapi.md#本人资料属性)及[当前验收](../openspec/changes/archive/2026-10-21-add-self-profile-http/verification.md)。
 
@@ -198,7 +208,7 @@ E/R 环境键沿宿主前缀，R 仅 PHONE/EMAIL any-of；省略 R 默认二选�
 
 ## 宿主账号契约
 
-`BatchPublicProfiles(ctx, ids)` 是 Go 批量查询，结果仅含 ID/DisplayName/State。输入去重，非法 ID 返回参数错误，未知账号略去，待注销及已删除账号清空显示名；宿主在调用前按业务权限过滤 ID。无任意用户资料 HTTP 端点。
+`BatchPublicProfiles(ctx, ids)` 是 Go 批量查询，结果仅含 ID/DisplayName/AvatarURL/State。输入去重，非法 ID 返回参数错误，未知账号略去，待注销及已删除账号清空显示名和头像；宿主在调用前按业务权限过滤 ID。无任意用户资料 HTTP 端点。
 
 `Deps.BeforeDelete` 在账号锁和状态检查后、改变状态前使用同一 `pgx.Tx`，消费者和管理员共享。返回 `user.ErrDeletionBlocked` 为 400 `FAILED_PRECONDITION`、reason `DELETION_BLOCKED` 和固定消息；其他错误为固定 500，同批账号、会话和业务写入回滚。其他回调错误不进入库的业务错误分类，不能通过返回旧 `ErrNotFound` 等哨兵变成 404；调用者不要依赖对这些底层错误的 `errors.Is`/`errors.As`，明确业务拒绝使用 `ErrDeletionBlocked`。
 

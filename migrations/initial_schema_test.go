@@ -26,7 +26,7 @@ func TestConsolidatedInitialSchema(t *testing.T) {
 			names = append(names, entry.Name())
 		}
 	}
-	if !slices.Equal(names, []string{"0001_init.down.sql", "0001_init.up.sql", "0002_add_user_extensions.down.sql", "0002_add_user_extensions.up.sql"}) {
+	if !slices.Equal(names, []string{"0001_init.down.sql", "0001_init.up.sql", "0002_add_profile_attributes.down.sql", "0002_add_profile_attributes.up.sql"}) {
 		t.Errorf("unexpected production migrations: %v", names)
 	}
 	cfg, schema := safetyDB(t)

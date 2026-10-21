@@ -17,7 +17,7 @@ import (
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
 	"github.com/bbxx111/accountkit/internal/auditconfig"
-	"github.com/bbxx111/accountkit/internal/userextensions"
+	"github.com/bbxx111/accountkit/internal/profileattributes"
 	"github.com/bbxx111/accountkit/observability"
 	"github.com/bbxx111/accountkit/phone"
 	"github.com/bbxx111/accountkit/pii"
@@ -96,7 +96,7 @@ type Deps struct {
 
 // Service 持有用户域的全部业务规则。
 type Service struct {
-	profileAttributes *userextensions.Policy
+	profileAttributes *profileattributes.Policy
 	observer          *observability.Recorder
 	authAudit         *audit.AuthenticationRecorder
 	d                 Deps
@@ -117,10 +117,10 @@ func (s *Service) IdentityPolicy() *IdentityPolicy {
 // 这些默认值只承诺当前数据库内一致，跨数据库汇聚审计时须显式提供稳定且可区分的二者。
 func NewService(d Deps) (*Service, error) {
 	d.ProfileAttributes = cloneProfileAttributesConfig(d.ProfileAttributes)
-	var profileAttributes *userextensions.Policy
+	var profileAttributes *profileattributes.Policy
 	if d.ProfileAttributes != nil {
 		var err error
-		profileAttributes, err = userextensions.Compile(d.ProfileAttributes.SchemaVersion, d.ProfileAttributes.Schema)
+		profileAttributes, err = profileattributes.Compile(d.ProfileAttributes.SchemaVersion, d.ProfileAttributes.Schema)
 		if err != nil {
 			return nil, ErrInvalidArgument
 		}

@@ -15,7 +15,7 @@
 - 用户已确认 `profile_attributes` 命名及仅存用户资料；宿主业务属性、权益、权限、凭据保持原领域归属。
 - 移除数据 revision、ExpectedRevision、资料版本冲突错误、审计 revision；SchemaVersion、SchemaFingerprint、UpdateTime 保留，Schema 不匹配仍拒绝。
 - 四列为 `profile_attributes`、`profile_attributes_schema_version`、`profile_attributes_schema_fingerprint`、`profile_attributes_update_time`；三个 Schema 基础 CHECK 名称须不超过 PostgreSQL 63 字节，使用清楚缩写。
-- `0001`、已发布 SQL/tag、冻结源不可改；修订本 change 未发布的 `0002_add_user_extensions`，保留文件路径。旧五列开发 v2 和 v1 残留必须无写拒绝，不能自动迁移、Force 或清库。
+- `0001`、已发布 SQL/tag、冻结源不可改；修订本 change 未发布的 `0002_add_profile_attributes`；本次命名维护统一文件路径为 profile_attributes，SQL 字节和 version 2 不变。旧五列开发 v2 和 v1 残留必须无写拒绝，不能自动迁移、Force 或清库。
 - 无变化不更新时间、不初始化 Schema 标识、不审计。清空后保留绑定标识；匿名化清空内容和标识，曾使用资料记录清理时间，从未使用保持 NULL；失败回滚全部字段。
 - 不新增 HTTP 路由、DTO 字段、JWT 或内省资料，不增加认证查询；不修改客户端 ClientInfo.Extensions。
 - 只改本轮范围，sqlc 结果仅生成，测试材料留 `.test-output/profile-attributes-row-lock/`；不提交或发布。
@@ -37,7 +37,7 @@
 
 ## Task 2: 存储、宿主 API 与行为回归
 
-**Files:** migrations/0002_add_user_extensions.*、migrations/user_extensions*、user/query.sql、user/service_extensions*、user/extensions.go、user/service.go、user/repo_test.go、user/service_import_test.go；config.go、accountkit.go、accountkit_extensions_test.go、examples/embedded/extensions.go；internal/userextensions/；recovery_user_extensions_test.go、recovery_test.go、scripts/required-tests.txt；sqlc 生成 user/db/ 与 audit/db/。
+**Files:** migrations/0002_add_profile_attributes.*、migrations/profile_attributes*、user/query.sql、user/service_profile_attributes*、user/profile_attributes.go、user/service.go、user/repo_test.go、user/service_import_test.go；config.go、accountkit.go、accountkit_profile_attributes_test.go、examples/embedded/profile_attributes.go；internal/profileattributes/；recovery_profile_attributes_test.go、recovery_test.go、scripts/required-tests.txt；sqlc 生成 user/db/ 与 audit/db/。
 
 **Interfaces:** `ProfileAttributesConfig{SchemaVersion, Schema}`；`ProfileAttributesView{Data, SchemaVersion, SchemaFingerprint, UpdateTime}`；`ProfileAttributesPatch{Document}`；`Config.ProfileAttributes`、`user.Deps.ProfileAttributes`；`GetProfileAttributes(ctx,userID)`、`PatchProfileAttributes(ctx,userID,patch,meta)`。错误 `ErrProfileAttributesNotConfigured`、`ErrProfileAttributesSchemaMismatch`；沿用安全校验错误结构，改名 `ProfileAttributesValidationError/Violation`。不保留未发布旧名称兼容入口。内部文件路径可保留，领域名统一；客户端描述 Extensions 保持。
 

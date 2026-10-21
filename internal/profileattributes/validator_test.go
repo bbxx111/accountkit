@@ -1,4 +1,4 @@
-package userextensions
+package profileattributes
 
 import (
 	"encoding/json"
@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/bbxx111/accountkit/internal/extensionjson"
+	"github.com/bbxx111/accountkit/internal/boundedjson"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -27,7 +27,7 @@ func (denyCandidateLoader) Load(string) (any, error) {
 func TestValidatorCandidate(t *testing.T) {
 	decode := func(raw string) any {
 		t.Helper()
-		v, err := extensionjson.Decode([]byte(raw), extensionjson.Limits{MaxBytes: 65536, MaxDepth: 32})
+		v, err := boundedjson.Decode([]byte(raw), boundedjson.Limits{MaxBytes: 65536, MaxDepth: 32})
 		if err != nil {
 			t.Fatal(err)
 		}

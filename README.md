@@ -4,7 +4,7 @@
 
 宿主可在 `New` 前设置 `Config.ProfileAttributes`；nil 关闭接口且不删除已有资料。
 Schema 由宿主读取或嵌入，没有文件路径环境变量或 accountsvc 自动加载。
-宿主装配示例见 [examples/embedded/extensions.go](examples/embedded/extensions.go)：
+宿主装配示例见 [examples/embedded/profile_attributes.go](examples/embedded/profile_attributes.go)：
 
 ```go
 cfg.ProfileAttributes = &user.ProfileAttributesConfig{

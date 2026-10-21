@@ -307,7 +307,7 @@ func TestProfileAttributesBaseline(t *testing.T) {
 	}
 	t.Run("v1_all_profile_attributes_residual", func(t *testing.T) {
 		cfg, schema, c := publishedProfileAttributesInitial(t)
-		sql, err := fs.ReadFile("0002_add_user_extensions.up.sql")
+		sql, err := fs.ReadFile("0002_add_profile_attributes.up.sql")
 		if err != nil {
 			t.Fatal(err)
 		}

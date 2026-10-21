@@ -1,4 +1,4 @@
-package extensionjson
+package boundedjson
 
 import (
 	"bytes"

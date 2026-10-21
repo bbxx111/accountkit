@@ -6,7 +6,7 @@ Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史�
 
 ## 当前用户资料属性增量：version 2
 
-当前生产源保留 v0.4.0 原样 0001，本变更的 0002_add_user_extensions 尚未发布。本轮经用户明确授权直接修订该 0002，保留原 up/down 文件名，不新增 0003。新空 schema 执行至 version=2/dirty=false，仍为七张业务表；完整 v0.4.0 version 1 可升级。
+当前生产源保留 v0.4.0 原样 0001，本变更的 0002_add_profile_attributes 尚未发布。本轮经用户明确授权直接修订该 0002，此前保留原 up/down 文件名；本次命名维护统一为 profile_attributes，SQL 字节及 version 2 不变，不新增 0003。新空 schema 执行至 version=2/dirty=false，仍为七张业务表；完整 v0.4.0 version 1 可升级。
 
 最终仅四列：profile_attributes JSONB NOT NULL DEFAULT '{}', profile_attributes_schema_version 可空 TEXT、profile_attributes_schema_fingerprint 可空 TEXT、profile_attributes_update_time 可空 TIMESTAMPTZ。Schema 版本、指纹和独立更新时间继续保留，移除 revision。新资料为空对象，三项元数据为 NULL，原账号时间及身份、会话、审计、流程、来源和客户端描述保持。基础约束保留 Schema 标识成对及版本/指纹格式检查，不加入 JSON 业务 CHECK。
 

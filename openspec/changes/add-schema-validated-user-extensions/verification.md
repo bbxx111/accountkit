@@ -1,5 +1,16 @@
 # Verification
 
+## 文件命名修订验收（2026-10-21）
+
+- 统一资料属性实现、测试、示例、内部包及未发布 0002 的文件命名；通用 JSON 工具包为 `internal/boundedjson`。SQL 字节、迁移 version 2、测试名与公开行为保持。
+- 名称映射及逐项内容核对：`.test-output/profile-filenames/rename-map.json`；实施说明：`.test-output/profile-filenames/implementation-report.md`。
+- 实际检查：`GOWORK=off go build ./...`、`go vet ./...` 通过；`go test -count=1 ./internal/boundedjson ./internal/profileattributes ./internal/migrationcheck` 通过；迁移无 I/O 测试通过；`scripts/check-generated.sh` 与迁移历史检查通过，生成代码未变化。
+- OpenSpec 最终严格校验：25 项通过、0 失败；差异空白检查通过。
+- 独立审查 PASS：28 项逐一与 HEAD 原文件对照，仅指定命名替换；两份 0002 SQL 字节完全相同；必需清单仍为 768 条，只更新 20 条包路径，测试名与顺序保持。实现、测试、示例、内部包以及当前文档引用已同步。
+- 本次为纯命名维护，没有重新运行真实数据库、race 或恢复演练；前次完整行为验证仅作为其对应提交的历史记录，不宣称本次又执行了完整验收。没有新增提交、推送或归档。
+- 当前日志见 [检查状态](../../../.test-output/profile-filenames/status.log)、[单元测试](../../../.test-output/profile-filenames/unit.log)、[独立审查](../../../.test-output/profile-filenames/review.md)。本节以下保留此前验收原文，其中原文件名仅用于历史追溯。
+
+
 > **证据界限：本轮结果见紧接的“本轮修订验收”。从“Scope”起的原有验收和日志属于 54afa4b 的旧五列/revision 实现，保持原文，仅证明旧实现。**
 
 ## 本轮修订验收

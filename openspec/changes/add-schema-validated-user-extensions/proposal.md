@@ -35,4 +35,4 @@ accountkit 已提供显示名，但宿主尚无受约束的账号用户资料属
 
 ## 本轮已确认修订
 
-54afa4b 的实现尚未发布，本轮直接修订现有变更及未发布 `0002_add_user_extensions`（保留文件名）。属性仅用于 bio、locale、timezone、pronouns 等用户资料，禁止宿主业务状态、权益、权限；保留 Schema 版本、指纹及独立更新时间。`0001`、历史标签与冻结源不变。旧临时 version 2 无写拒绝，不自动转换、改版本或清库；旧验收仅证明旧实现。
+54afa4b 的实现尚未发布，本轮直接修订现有变更及未发布 `0002_add_profile_attributes`（本次命名维护将文件名统一为 profile_attributes，SQL 字节及 version 2 不变）。属性仅用于 bio、locale、timezone、pronouns 等用户资料，禁止宿主业务状态、权益、权限；保留 Schema 版本、指纹及独立更新时间。`0001`、历史标签与冻结源不变。旧临时 version 2 无写拒绝，不自动转换、改版本或清库；旧验收仅证明旧实现。

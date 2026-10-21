@@ -1,4 +1,4 @@
-package userextensions
+package profileattributes
 
 import (
 	"net/url"

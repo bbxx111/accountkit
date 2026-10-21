@@ -1,4 +1,4 @@
-package userextensions
+package profileattributes
 
 import (
 	"bytes"
@@ -8,18 +8,18 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bbxx111/accountkit/internal/extensionjson"
+	"github.com/bbxx111/accountkit/internal/boundedjson"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 type Patch struct{ value map[string]any }
 
-var documentLimits = extensionjson.Limits{MaxBytes: 16384, MaxDepth: 8, MaxNodes: 512}
+var documentLimits = boundedjson.Limits{MaxBytes: 16384, MaxDepth: 8, MaxNodes: 512}
 
 // DecodePatch performs syntax and resource checks only. Declared path checks
 // intentionally wait until Apply, after the domain's state/revision checks.
 func DecodePatch(raw json.RawMessage) (*Patch, error) {
-	v, err := extensionjson.Decode(raw, documentLimits)
+	v, err := boundedjson.Decode(raw, documentLimits)
 	if err != nil {
 		return nil, errDocument
 	}
@@ -37,7 +37,7 @@ func NormalizeStored(raw json.RawMessage) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	canonical, err := extensionjson.Canonical(value)
+	canonical, err := boundedjson.Canonical(value)
 	if err != nil {
 		return nil, errDocument
 	}
@@ -48,7 +48,7 @@ func stored(raw []byte) (map[string]any, error) {
 	// Bound decoding separately, then enforce the normalized document budget.
 	storageLimits := documentLimits
 	storageLimits.MaxBytes = 65536
-	v, err := extensionjson.Decode(raw, storageLimits)
+	v, err := boundedjson.Decode(raw, storageLimits)
 	if err != nil {
 		return nil, errDocument
 	}
@@ -56,7 +56,7 @@ func stored(raw []byte) (map[string]any, error) {
 	if !ok || hasNull(v) {
 		return nil, errDocument
 	}
-	canonical, err := extensionjson.Canonical(v)
+	canonical, err := boundedjson.Canonical(v)
 	if err != nil || len(canonical) > documentLimits.MaxBytes {
 		return nil, errDocument
 	}
@@ -93,8 +93,8 @@ func (p *Policy) Apply(current json.RawMessage, patch *Patch) (json.RawMessage, 
 	if err := checkPaths(patch.value, p.root, "", true); err != nil {
 		return nil, false, err
 	}
-	merged := merge(extensionjson.Clone(value), patch.value)
-	canonical, err := extensionjson.Canonical(merged)
+	merged := merge(boundedjson.Clone(value), patch.value)
+	canonical, err := boundedjson.Canonical(merged)
 	if err != nil {
 		return nil, false, invalid("", "limit")
 	}
@@ -104,7 +104,7 @@ func (p *Policy) Apply(current json.RawMessage, patch *Patch) (json.RawMessage, 
 	if err := p.schema.Validate(merged); err != nil {
 		return nil, false, p.safeError(err)
 	}
-	previous, err := extensionjson.Canonical(value)
+	previous, err := boundedjson.Canonical(value)
 	if err != nil {
 		return nil, false, errDocument
 	}
@@ -113,7 +113,7 @@ func (p *Policy) Apply(current json.RawMessage, patch *Patch) (json.RawMessage, 
 func merge(current, patch any) any {
 	object, ok := patch.(map[string]any)
 	if !ok {
-		return extensionjson.Clone(patch)
+		return boundedjson.Clone(patch)
 	}
 	target, ok := current.(map[string]any)
 	if !ok {

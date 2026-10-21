@@ -1,4 +1,4 @@
-package userextensions
+package profileattributes
 
 import (
 	"bytes"
@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bbxx111/accountkit/internal/extensionjson"
+	"github.com/bbxx111/accountkit/internal/boundedjson"
 )
 
 type policyBenchmarkFixture struct {
@@ -58,7 +58,7 @@ func preparePolicyBenchmark(tb testing.TB, f policyBenchmarkFixture) (*Policy, *
 	if err != nil || !changed {
 		tb.Fatalf("benchmark must exercise a successful change: changed=%v err=%v", changed, err)
 	}
-	v, err := extensionjson.Decode(got, extensionjson.Limits{MaxBytes: 16384, MaxDepth: 8, MaxNodes: 512})
+	v, err := boundedjson.Decode(got, boundedjson.Limits{MaxBytes: 16384, MaxDepth: 8, MaxNodes: 512})
 	if err != nil {
 		tb.Fatal(err)
 	}

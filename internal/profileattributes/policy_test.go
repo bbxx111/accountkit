@@ -1,4 +1,4 @@
-package userextensions
+package profileattributes
 
 import (
 	"encoding/json"
@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/bbxx111/accountkit/internal/extensionjson"
+	"github.com/bbxx111/accountkit/internal/boundedjson"
 )
 
 const dialect = `"$schema":"https://json-schema.org/draft/2020-12/schema",`
@@ -316,7 +316,7 @@ func TestPolicyUnusedDefinitionBudgetIsIndependentOfScanOrder(t *testing.T) {
 	// would make a regression test itself nondeterministic.
 	for _, first := range []string{"a", "b"} {
 		t.Run(first+"First", func(t *testing.T) {
-			value, err := extensionjson.Decode([]byte(raw), extensionjson.Limits{MaxBytes: 65536, MaxDepth: 32})
+			value, err := boundedjson.Decode([]byte(raw), boundedjson.Limits{MaxBytes: 65536, MaxDepth: 32})
 			if err != nil {
 				t.Fatal(err)
 			}

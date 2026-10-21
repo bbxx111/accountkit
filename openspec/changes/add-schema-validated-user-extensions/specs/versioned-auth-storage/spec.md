@@ -4,7 +4,7 @@
 
 ### Requirement: 包内数据库定义
 
-包 SHALL 携带 v0.4.0 已发布的完整 `0001` 及后续递增迁移，schema 可配置。本次 SHALL 修订尚未发布的生产 `0002_add_user_extensions`，保留文件名，向 `user_account` 增加 profile_attributes JSONB、Schema 版本、指纹及独立更新时间四列，新安装依次执行至 version 2。`0001`、其固定哈希、冻结源和全部已发布标签 SHALL 保持。新增存储 SHALL 不增加外键、级联、宿主业务列或通用 JSON 查询索引，JSON Schema 与属性业务校验在 Go 执行，数据库保留必要基础结构约束。
+包 SHALL 携带 v0.4.0 已发布的完整 `0001` 及后续递增迁移，schema 可配置。本次 SHALL 修订尚未发布的生产 `0002_add_profile_attributes`，文件名 SHALL 统一为 profile_attributes，命名维护 SHALL 保持 SQL 字节及 version 2 不变，向 `user_account` 增加 profile_attributes JSONB、Schema 版本、指纹及独立更新时间四列，新安装依次执行至 version 2。`0001`、其固定哈希、冻结源和全部已发布标签 SHALL 保持。新增存储 SHALL 不增加外键、级联、宿主业务列或通用 JSON 查询索引，JSON Schema 与属性业务校验在 Go 执行，数据库保留必要基础结构约束。
 
 #### Scenario: 空数据库安装
 - **WHEN** 对合法新空 schema 执行迁移

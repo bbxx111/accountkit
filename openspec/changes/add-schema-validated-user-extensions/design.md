@@ -6,7 +6,7 @@
 
 `user/client_info_json.go` 已有 JSON 精度、容量和深拷贝经验，但客户端描述与账号资料的来源、大小及生命周期不同，不能直接复用其整套规则。当前匿名化通过 `PurgeUser` 与宿主回调共享事务。
 
-v0.4.0 已固定发布。本变更的 `0002_add_user_extensions` 尚未发布，本轮保留文件名并修订其定义；旧迁移预检拒绝多代同号结构，并会检查迁移源是否存在当前版本。新增合法 `0002` 后，必须额外防止历史撤回的 version 2 因源文件存在而被误接管。
+v0.4.0 已固定发布。本变更的 `0002_add_profile_attributes` 尚未发布，此前修订其定义；本次命名维护将文件名统一为 profile_attributes，SQL 字节及 version 2 不变；旧迁移预检拒绝多代同号结构，并会检查迁移源是否存在当前版本。新增合法 `0002` 后，必须额外防止历史撤回的 version 2 因源文件存在而被误接管。
 
 ## Goals / Non-Goals
 
@@ -83,7 +83,7 @@ API 是宿主信任边界内的能力，不接受客户端自报“我是管理�
 
 ### 3. 存储放在已有账号行
 
-修订未发布生产迁移 `0002_add_user_extensions.up.sql` / `.down.sql`，在 `user_account` 增加：
+修订未发布生产迁移 `0002_add_profile_attributes.up.sql` / `.down.sql`，在 `user_account` 增加：
 
 | 列 | 定义及语义 |
 |---|---|

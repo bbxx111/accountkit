@@ -8,7 +8,7 @@ import (
 
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
-	"github.com/bbxx111/accountkit/internal/userextensions"
+	"github.com/bbxx111/accountkit/internal/profileattributes"
 	"github.com/bbxx111/accountkit/user/db"
 	"github.com/jackc/pgx/v5"
 )
@@ -19,7 +19,7 @@ var profileAttributesVersionPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$
 var profileAttributesFingerprintPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 func profileAttributesView(raw []byte, version, fingerprint *string, updated *time.Time) (ProfileAttributesView, error) {
-	data, err := userextensions.NormalizeStored(raw)
+	data, err := profileattributes.NormalizeStored(raw)
 	if err != nil || (version == nil) != (fingerprint == nil) || (version != nil && (!profileAttributesVersionPattern.MatchString(*version) || !profileAttributesFingerprintPattern.MatchString(*fingerprint))) {
 		return ProfileAttributesView{}, errProfileAttributesInvariant
 	}
@@ -70,7 +70,7 @@ func (s *Service) PatchProfileAttributes(ctx context.Context, userID string, pat
 	if !ids.Valid(ids.User, userID) {
 		return ProfileAttributesView{}, ErrInvalidArgument
 	}
-	decoded, err := userextensions.DecodePatch(patch.Document)
+	decoded, err := profileattributes.DecodePatch(patch.Document)
 	if err != nil {
 		return ProfileAttributesView{}, ErrInvalidArgument
 	}

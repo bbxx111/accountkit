@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/bbxx111/accountkit/internal/userextensions"
+	"github.com/bbxx111/accountkit/internal/profileattributes"
 )
 
 // ProfileAttributesConfig 定义宿主授权后可写的用户 JSON 资料；nil 关闭能力。
@@ -57,14 +57,14 @@ func ValidateProfileAttributesConfig(c *ProfileAttributesConfig) error {
 	if c == nil {
 		return nil
 	}
-	_, err := userextensions.Compile(c.SchemaVersion, c.Schema)
+	_, err := profileattributes.Compile(c.SchemaVersion, c.Schema)
 	if err != nil {
 		return ErrInvalidArgument
 	}
 	return nil
 }
 func profileAttributesValidation(err error) error {
-	var e *userextensions.ValidationError
+	var e *profileattributes.ValidationError
 	if !errors.As(err, &e) {
 		return ErrInvalidArgument
 	}

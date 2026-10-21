@@ -1,5 +1,5 @@
-// Package extensionjson parses bounded, exact JSON suitable for PostgreSQL JSONB.
-package extensionjson
+// Package boundedjson parses bounded, exact JSON suitable for PostgreSQL JSONB.
+package boundedjson
 
 import (
 	"bytes"

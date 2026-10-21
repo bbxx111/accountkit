@@ -1,5 +1,5 @@
-// Package userextensions implements immutable bounded schema policies and patches.
-package userextensions
+// Package profileattributes implements immutable bounded schema policies and patches.
+package profileattributes
 
 import (
 	"crypto/sha256"
@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/bbxx111/accountkit/internal/extensionjson"
+	"github.com/bbxx111/accountkit/internal/boundedjson"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -34,7 +34,7 @@ func Compile(version string, raw json.RawMessage) (*Policy, error) {
 	if !versionPattern.MatchString(version) {
 		return nil, errSchema
 	}
-	value, err := extensionjson.Decode(raw, extensionjson.Limits{MaxBytes: 65536, MaxDepth: 32})
+	value, err := boundedjson.Decode(raw, boundedjson.Limits{MaxBytes: 65536, MaxDepth: 32})
 	if err != nil {
 		return nil, errSchema
 	}
@@ -71,7 +71,7 @@ func Compile(version string, raw json.RawMessage) (*Policy, error) {
 	if err := compiled.Validate(map[string]any{}); err != nil {
 		return nil, errSchema
 	}
-	canonical, err := extensionjson.Canonical(value)
+	canonical, err := boundedjson.Canonical(value)
 	if err != nil {
 		return nil, errSchema
 	}

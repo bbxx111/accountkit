@@ -4,7 +4,7 @@
 
 ## 当前待办与责任归属
 
-**v0.5.0 已发布**：资料属性、本人资料 HTTP/accountsvc Schema 配置、内置头像均已完成并归档，已合入 develop/main；最终候选 CI 全部通过，tag 和正式 Release 已核验。用户确认尚无正式部署，本次以新空 schema 安装为目标，不安排旧数据库迁移。发布说明见 [v0.5.0](releases/v0.5.0.md)，候选/CI/tag/Release 与远端消费证据见[发布验收](../openspec/changes/prepare-v0-5-0-release/verification.md)。以下 v0.4.0 及更早记录保留历史事实。
+**v0.5.0 已发布**：资料属性、本人资料 HTTP/accountsvc Schema 配置、内置头像均已完成并归档，已合入 develop/main；最终候选 CI 全部通过，tag 和正式 Release 已核验。用户确认尚无正式部署，本次以新空 schema 安装为目标，不安排旧数据库迁移。发布说明见 [v0.5.0](releases/v0.5.0.md)，候选/CI/tag/Release 与远端消费证据见[发布验收](../openspec/changes/archive/2026-10-21-prepare-v0-5-0-release/verification.md)。以下 v0.4.0 及更早记录保留历史事实。
 
 ## v0.5.0 版本门禁
 

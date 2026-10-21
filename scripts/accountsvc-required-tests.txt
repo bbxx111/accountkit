@@ -23,3 +23,7 @@ github.com/bbxx111/accountkit/internal/accountsvc/TestRuntimeSingleListener
 github.com/bbxx111/accountkit/internal/accountsvc/TestHTTPIntrospectionBoundary
 github.com/bbxx111/accountkit/internal/accountsvc/TestGatewayCurrentSessionAndOptionalHeaders
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationCurrentSessionContext
+github.com/bbxx111/accountkit/internal/accountsvc/TestLoadConfigProfileAttributes
+github.com/bbxx111/accountkit/internal/accountsvc/TestServiceProfileAttributesHTTP
+github.com/bbxx111/accountkit/internal/accountsvc/TestProfileAttributesNonRegularFile
+github.com/bbxx111/accountkit/internal/accountsvc/TestProfileAttributesReadFailure

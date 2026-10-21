@@ -68,6 +68,8 @@ profile_attributes 必须出现且是对象；外层只允许此字段，不接�
 
 所有新增参数错误使用固定消息；首版不增加 violations HTTP 格式，不透传 err.Error() 或第三方校验器错误。MALFORMED_BODY 消息使用不含固定 64 KiB 数字的专用安全文案，适应自定义上限。存储错误不因猜测被改成 503，也不自动重试提交。
 
+分类示例：外层 `null`、`{}` 是 MALFORMED_BODY；`{"profile_attributes":null}` 是内层非对象，归 INVALID_PROFILE_ATTRIBUTES。冒号后和值末尾的 JSON 空白计入内层原始补丁字节预算，HTTP 不先压缩空白。
+
 直接复用领域账号行锁；不加 ETag、If-Match 或 revision 协议。并发不重叠补丁保留双方结果，重叠内容以后执行事务为准。成功响应是本次事务结果，不承诺返回发送时数据库的最新值。失败后客户端按需 GET 核对，不盲目重放。
 
 沿用 USER_PROFILE_ATTRIBUTES_UPDATED 尽力异步审计，Meta 传 request_id；当前固定 SERVICE/accountkit-host actor 保持，不把新增 HTTP 接口误描述为新增 END_USER 审计 actor。实际变化才更新时间和发事件；本次不扩展审计模型。
@@ -87,6 +89,6 @@ ConfigFromEnv 和 accountkit.New 保持无文件 I/O。migrate 不读取或验�
 
 ## Migration Plan
 
-仅设计阶段，不改产品代码、不执行迁移。实施前复核基础 change 工件，创建详细实施计划；按任务完成 HTTP/装配/文档与测试。发布前说明新增本人访问面，旧 Service 适配器无需增加方法；需要新功能的适配器实现可选接口。关闭 Schema 会令资料接口返回 503，但不删除存储。应用回退到本变更之前只撤去 HTTP/配置能力，资料列和数据保持；其他基础结构回退仍须遵循迁移手册，不能据此承诺跨版本可回退。
+本变更不执行数据库迁移。实施计划见[详细计划](../../../docs/superpowers/plans/2026-10-21-self-profile-http.md)，按任务完成 HTTP/装配/文档与测试。发布前说明新增本人访问面，旧 Service 适配器无需增加方法；需要新功能的适配器实现可选接口。关闭 Schema 会令资料接口返回 503，但不删除存储。应用回退到本变更之前只撤去 HTTP/配置能力，资料列和数据保持；其他基础结构回退仍须遵循迁移手册，不能据此承诺跨版本可回退。
 
 基础 change 的“不新增内置路由”是先前范围记录，本变更明确取代该限制；先归档基础 change，再同步本变更，并在主规格说明本人全部访问的优先契约。历史 verification 不改写。

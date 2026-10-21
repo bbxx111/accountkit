@@ -1,6 +1,6 @@
 # 功能与兼容对照
 
-## 可选用户资料属性的 Go 接口
+## 可选用户资料属性的 Go 与 HTTP 接口
 
 新增 `Config.ProfileAttributes`、`user.Deps.ProfileAttributes`、`user.ProfileAttributesConfig`、
 `user.ProfileAttributesView`、`user.ProfileAttributesPatch` 与 `Service.GetProfileAttributes/PatchProfileAttributes`。
@@ -11,13 +11,17 @@ nil 默认保持旧行为；既有 enduser/admin DTO、适配器必需接口、J
 新增错误为 `ErrProfileAttributesNotConfigured`；参数/校验错误支持 `ErrInvalidArgument`，
 账号状态拒绝沿用 `ErrInvalidState`。结构化校验错误是
 `ProfileAttributesValidationError`，其 `Violations` 最多包含 16 条安全的 Path/Rule。
-未新增 HTTP 映射；宿主自行授权并将领域错误转换为自身协议。
+Go 直接调用仍由宿主授权。内置新增 GET/PATCH `/users/me/profile`，要求 `user` scope，不要求近期重新认证，返回全部资料；参数错误为 `400 INVALID_PROFILE_ATTRIBUTES`，未配置为 `503 PROFILE_ATTRIBUTES_NOT_CONFIGURED`，外层格式错误为 `400 MALFORMED_BODY`。HTTP 只返回固定安全消息，不直接序列化 Violations。
 数据库错误使用固定安全消息，不保留可能含整行资料的 PostgreSQL 错误详情。
 提交结果不确定时重新读取核对，不盲目重放。Patch 仅含 Document，View 不含 Revision；不再接收 expected_revision 或返回 Conflict。
 并发仅用数据库账号行锁：锁内读取最新资料→RFC 7396 合并→完整 Schema 校验→提交。不同不重叠属性保留彼此修改，同属性以后执行事务为准，数组整体替换及父对象删除仍遵循 RFC 7396；不使用 Redis 锁。
 
 这是相对未发布 54afa4b 的 Go 源码破坏性调整：调用者将 UserExtensions/Extensions* 和 GetExtensions/PatchExtensions 改为上述 ProfileAttributes 名称，删除 ExpectedRevision、Revision 及 Conflict 处理；不保留旧 API 别名。配置只保留 Schema，视图只保留 Data；调用者移除 SchemaVersion、SchemaFingerprint、UpdateTime 及 ErrProfileAttributesSchemaMismatch 处理。
 属性仅允许用户资料，禁止宿主业务状态、权益及权限。本轮授权将单列并入当前 0001、撤回生产 0002，新安装 version 1；旧 v0.4.0 v1 及各代撤回 v2 无写拒绝，无旧数据迁移，不重放同号 SQL、Force、改版本或清库。旧发布 tag/SQL 和冻结源独立固定，详见[迁移说明](migrations.md#当前用户资料属性初始整合version-1)。
+
+**本人访问契约变化：** 启用 Schema 并挂载内置消费者 handler，即允许本人完整读取和修改所有 profile_attributes。升级前须迁出本人不可见或不可改的内部字段；Schema 的 readOnly/writeOnly 不能当作权限。已有 enduser.Service 必需方法集不变，旧自定义适配器继续编译；需要新能力时实现可选 `enduser.ProfileAttributesService`，未实现的新路由返回 503。既有 `/users/me` 仍只更新 display_name，不接受混合资料更新。
+
+accountsvc 新增可选 `ACCOUNTSVC_PROFILE_ATTRIBUTES_SCHEMA_FILE`，仅 serve 读取；migrate 忽略。未设置不启用资料，文件非法则启动失败；库 ConfigFromEnv/New 仍不读文件。HTTP 启用过程不新增数据库迁移，见[协议](openapi.md#本人资料属性)及[当前验收](../openspec/changes/add-self-profile-http/verification.md)。
 
 固定兼容基线包含 130 个文件，原始文件清单与 SHA-256 见 `tests/testdata/source-baseline/manifest.json`；该清单用于追溯冻结快照，不表示当前文件名和内容必须与历史快照相同。当前根包名为 `accountkit`，导入路径为 `github.com/bbxx111/accountkit`。
 

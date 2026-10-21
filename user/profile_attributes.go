@@ -7,8 +7,9 @@ import (
 	"github.com/bbxx111/accountkit/internal/profileattributes"
 )
 
-// ProfileAttributesConfig 定义宿主授权后可写的用户 JSON 资料；nil 关闭能力。
-// Schema 只作数据校验，宿主负责字段权限和隐私用途；业务权益、权限和凭据保持原领域归属。
+// ProfileAttributesConfig 定义用户 JSON 资料；nil 关闭能力。
+// 内置 HTTP 允许本人完整读写；Go 直接调用由宿主授权。Schema 只作数据校验，
+// readOnly/writeOnly 不限制本人访问；业务权益、权限和凭据保持原领域归属。
 type ProfileAttributesConfig struct {
 	Schema json.RawMessage
 }

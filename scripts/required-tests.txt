@@ -775,3 +775,13 @@ github.com/bbxx111/accountkit/migrations/TestProfileAttributesConsolidatedV1Repe
 github.com/bbxx111/accountkit/migrations/TestProfileAttributesInitialCatalogEquivalent
 github.com/bbxx111/accountkit/migrations/TestProfileAttributesWithdrawnV2Rejected
 github.com/bbxx111/accountkit/internal/migrationcheck/TestCurrentInitialDiffersFromPublishedV040
+github.com/bbxx111/accountkit/httpapi/enduser/TestProfileAttributesEndpoint
+github.com/bbxx111/accountkit/httpapi/enduser/TestProfileAttributesRequest
+github.com/bbxx111/accountkit/httpapi/enduser/TestProfileAttributesErrors
+github.com/bbxx111/accountkit/internal/accountsvc/TestLoadConfigProfileAttributes
+github.com/bbxx111/accountkit/internal/accountsvc/TestProfileAttributesNonRegularFile
+github.com/bbxx111/accountkit/internal/accountsvc/TestProfileAttributesReadFailure
+github.com/bbxx111/accountkit/internal/accountsvc/TestServiceProfileAttributesHTTP
+github.com/bbxx111/accountkit/TestProfileAttributesHTTPIntegration
+github.com/bbxx111/accountkit/TestProfileAttributesHTTPCapacity
+github.com/bbxx111/accountkit/TestProfileAttributesHTTPConcurrency

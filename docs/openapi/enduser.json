@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "accountkit 消费者 HTTP API",
-    "version": "v0.4.0",
-    "description": "依据已发布 v0.4.0 的内置 HTTP 契约，包含 v0.4.0 新增的会话认证依据和可选客户端描述；v0.3.0 不含这些能力，不适用于 v0.2.0 的全部接口。宿主配置实际挂载地址。请求体为单个 JSON 对象，默认上限 64 KiB，拒绝未知字段与尾随内容。领域状态、事务、故障策略以规格与 README 为准。"
+    "version": "v0.4.0+self-profile-http",
+    "description": "当前开发版内置 HTTP 契约，基于 v0.4.0 增加本人资料属性 GET/PATCH；已发布 v0.4.0 不含该新增能力。宿主配置实际挂载地址。请求体为单个 JSON 对象，默认上限 64 KiB，拒绝未知字段与尾随内容。领域状态、事务、故障策略以规格与 README 为准。"
   },
   "servers": [
     {
@@ -1821,6 +1821,321 @@
           }
         }
       }
+    },
+    "/users/me/profile": {
+      "get": {
+        "operationId": "getMyProfile",
+        "summary": "读取本人完整资料属性",
+        "description": "仅认证本人，全部资料属性可读写；readOnly/writeOnly 注解不限制访问。GET 允许 ACTIVE/FROZEN，PATCH 仅 ACTIVE。不要求近期重新认证。成功返回完整资料，无资料为 {}。旧适配器缺少可选能力或 Schema 未配置返回 503。所有响应禁止缓存。",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "x-allowed-scopes": [
+          "user"
+        ],
+        "x-recent-authentication": false,
+        "responses": {
+          "200": {
+            "description": "完整本人资料快照。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_ACCOUNT_STATE：当前账号状态不允许读取。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "消费者 Bearer 凭据无效或缺失。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "INSUFFICIENT_SCOPE：要求 user，不接受 user:bind 或 user:undelete。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND：账号不存在。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "固定 internal error；不包含底层错误或资料内容。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PROFILE_ATTRIBUTES_NOT_CONFIGURED：能力或 Schema 未配置；DEPENDENCY_UNAVAILABLE：可识别依赖故障。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchMyProfile",
+        "summary": "部分修改本人资料属性",
+        "description": "仅认证本人，全部资料属性可读写；readOnly/writeOnly 注解不限制访问。GET 允许 ACTIVE/FROZEN，PATCH 仅 ACTIVE。不要求近期重新认证。成功返回完整资料，无资料为 {}。旧适配器缺少可选能力或 Schema 未配置返回 503。所有响应禁止缓存。",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "x-allowed-scopes": [
+          "user"
+        ],
+        "x-recent-authentication": false,
+        "responses": {
+          "200": {
+            "description": "完整本人资料快照。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "MALFORMED_BODY：请求 JSON/外层字段/总大小错误；INVALID_PROFILE_ATTRIBUTES：内层语义/容量/Schema 错误；INVALID_ACCOUNT_STATE：状态不允许。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "消费者 Bearer 凭据无效或缺失。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              },
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "INSUFFICIENT_SCOPE：要求 user，不接受 user:bind 或 user:undelete。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND：账号不存在。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "固定 internal error；不包含底层错误或资料内容。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PROFILE_ATTRIBUTES_NOT_CONFIGURED：能力或 Schema 未配置；DEPENDENCY_UNAVAILABLE：可识别依赖故障。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "description": "只接受 profile_attributes 对象。内层 RFC 7396 合并：null 删除、数组整体替换、对象递归合并、未传保持；空对象不是清空。内层原始补丁和规范化结果各 16 KiB，深度 8、512 值节点；未知属性包含 null 删除均拒绝，结果完整校验。外层不是通用 Merge Patch 文档。",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchProfileRequest"
+              },
+              "example": {
+                "profile_attributes": {
+                  "bio": "你好",
+                  "preferences": {
+                    "locale": "zh-CN"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3125,6 +3440,40 @@
           "authentication_identities"
         ],
         "additionalProperties": false
+      },
+      "Profile": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "profile_attributes"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "readOnly": true,
+            "pattern": "^users/u_[0-9a-hjkmnp-tv-z]{13}/profile$"
+          },
+          "profile_attributes": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "本人完整资料；动态属性及类型由宿主 Schema 决定，空资料为 {}。不含 Schema/revision/独立更新时间元数据。"
+          }
+        }
+      },
+      "PatchProfileRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "profile_attributes"
+        ],
+        "properties": {
+          "profile_attributes": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "内层 JSON Merge Patch。任一未知属性拒绝（含 null）；此文档不静态列出部署方 Schema。"
+          }
+        }
       }
     }
   }

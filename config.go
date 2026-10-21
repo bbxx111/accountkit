@@ -27,7 +27,8 @@ type WeChatApp struct {
 // Config 是 accountkit 的全部配置。New 应用默认值并校验；Validate 可独立提前校验。
 // 密钥只来自配置：JWT/HMAC/加密三组都是"版本 → 密钥"映射加一个 active 版本。
 type Config struct {
-	// ProfileAttributes 为 nil 时关闭用户资料属性；宿主负责字段授权及隐私用途。
+	// ProfileAttributes 为 nil 时关闭用户资料属性；启用后内置 HTTP 允许本人完整读写。
+	// 宿主负责资料用途及 Go 直接调用授权，不应存放本人不可见或不可改的字段。
 	ProfileAttributes *user.ProfileAttributesConfig
 	// nil 使用默认策略，非 nil 空切片表示显式空列表。
 	EnabledIdentityKinds  []enum.IdentityKind

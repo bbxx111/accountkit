@@ -1,11 +1,11 @@
 # accountkit
 
-### 可选用户资料属性（Go 接口）
+### 可选用户资料属性（Go 与本人 HTTP 接口）
 
 宿主可在 `New` 前设置 `Config.ProfileAttributes`；nil 关闭接口且不删除已有资料。
 `ProfileAttributesConfig` 仅含 `Schema`，`ProfileAttributesView` 仅含 `Data`。
 存储仅增加 `profile_attributes` JSONB，实际变化复用账号原 `update_time`。本轮授权将单列并入当前 0001、撤回生产 0002，新空 schema 安装 version 1；旧 v0.4.0 v1 及各代撤回 v2 无写拒绝，无旧数据迁移。已发布 tag/SQL 与冻结源独立固定，详见[迁移手册](docs/migrations.md#当前用户资料属性初始整合version-1)。
-Schema 由宿主读取或嵌入，没有文件路径环境变量或 accountsvc 自动加载。
+嵌入库时 Schema 由宿主读取或嵌入；accountsvc 可通过 `ACCOUNTSVC_PROFILE_ATTRIBUTES_SCHEMA_FILE` 在启动时加载本地文件，见[服务配置](docs/accountsvc.md#本人资料属性)。
 宿主装配示例见 [examples/embedded/profile_attributes.go](examples/embedded/profile_attributes.go)：
 
 ```go
@@ -52,14 +52,26 @@ date/date-time/email/uri/uuid format。资源边界及关键字清单见
 数值精确处理且按数学值比较，拒绝重复键、非法 Unicode、NUL 及存储 null。
 
 profile_attributes 只承载 bio、locale、timezone、pronouns 等用户资料，禁止存放宿主业务状态、权益或权限。
-宿主负责目标账号与属性授权，包括删除和父对象替换；readOnly/writeOnly 只作注解。
+直接调用 Go 方法时宿主负责目标账号与属性授权，包括删除和父对象替换。挂载内置消费者 handler 并启用 Schema 后，全部资料属性允许本人读取、修改和删除；readOnly/writeOnly 只作注解，不隐藏字段、不禁止修改。不得在资料中保存本人不可见或不可修改的内部字段。
 资料没有字段级加密，不得存放验证码、令牌、密钥或身份联系方式明文副本。
-现有 HTTP 响应、公开资料、JWT 和内省均不附带资料属性，也不新增内置路由或认证查询。
+内置 `GET /users/me/profile` 与 `PATCH /users/me/profile` 提供本人完整资料读写；要求 `user` scope，无需近期重新认证。已有 `/users/me`、管理详情、公开资料、JWT 和内省不附带资料属性，普通认证不增加数据库查询。
 成功审计 `USER_PROFILE_ATTRIBUTES_UPDATED` 只记录账号目标，actor 为 SERVICE/accountkit-host；
 `Meta` 仅取 request_id。参数错误支持 `errors.Is(err, user.ErrInvalidArgument)`，
 `ProfileAttributesValidationError` 最多提供 16 条受控路径/规则，不含原始值。
 新增接口的存储错误不保留可能含资料内容的底层错误链；审计和日志不记录资料值、补丁、未知属性名或 Schema 全文。
 既有匿名化回调错误仍保留诊断原因并可能进入维护日志，宿主回调不得在错误中携带资料值或其他隐私数据。
+
+HTTP 示例（假设挂载 `/v1`）：
+
+```http
+PATCH /v1/users/me/profile
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{"profile_attributes":{"bio":"你好","preferences":{"locale":"zh-CN"}}}
+```
+
+GET 与 PATCH 成功均返回 200 和 `{"name":"users/u_0000000000001/profile","profile_attributes":{...}}`，无资料返回 `{}`。补丁只允许外层 `profile_attributes` 对象；内层 `null` 删除、对象递归合并、数组整体替换。`{"profile_attributes":{}}` 不清空资料，删除 `bio` 使用 `{"profile_attributes":{"bio":null}}`。所有响应 `Cache-Control: no-store`。能力或 Schema 未配置时，已认证的合法请求返回 `503 PROFILE_ATTRIBUTES_NOT_CONFIGURED`；未知属性或 Schema 校验失败为 `400 INVALID_PROFILE_ATTRIBUTES`。完整协议见 [HTTP 契约](docs/openapi.md#本人资料属性)。
 
 可嵌入宿主服务的 C 端账号体系（多身份账号、JWT + 轮换 refresh 会话、软删除与匿名化、管理面）。
 本 README 覆盖配置、密码学原语、迁移、生命周期、C 端 HTTP 面（登录、会话、IdP、身份绑定）、账号注销/恢复/purge、审计落库与密钥回填、管理面。模块路径为 `github.com/bbxx111/accountkit`，根包名为 `accountkit`。宿主装配示例见 `examples/embedded`。
@@ -72,7 +84,7 @@ profile_attributes 只承载 bio、locale、timezone、pronouns 等用户资料�
 
 挂载内置 HTTP handler 的宿主可使用[消费者与管理面 OpenAPI 契约](docs/openapi.md)，按实际地址调整挂载前缀。
 
-本文描述 v0.4.0 已交付的能力，包括身份策略、登录补全、通用审计、指标，以及会话认证来源与客户端描述，版本状态见[发布说明](docs/releases/v0.4.0.md)。账号资源沿用 `/users`，升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
+本文描述当前开发版：基于 v0.4.0 的身份策略、登录补全、通用审计、指标及会话上下文，新增资料属性及本人 HTTP 读写、服务 Schema 文件配置；这些新增能力不在已发布 v0.4.0 中。历史版本状态见[发布说明](docs/releases/v0.4.0.md)。账号资源沿用 `/users`，升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
 
 accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可选服务实现，使用同一套库能力；选择库集成不需要部署或调用 accountsvc。服务入口是 `cmd/accountsvc`，包含 SMTP 邮件投递、消费者远程鉴权和默认关闭的外部管理员 JWT 验证，运行与配置见 [accountsvc 服务手册](docs/accountsvc.md)。`examples/embedded` 保留为库集成开发示例。
 

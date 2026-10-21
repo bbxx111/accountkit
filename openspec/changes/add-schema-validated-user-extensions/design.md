@@ -1,5 +1,7 @@
 # Design
 
+后续设计：[本人资料 HTTP](../add-self-profile-http/design.md) 明确启用 Schema 后内置接口允许本人完整读写，并增加 accountsvc 文件装配。本文“首版不增加 HTTP/文件设置”描述本次基础能力交付，后续范围由新变更覆盖；Go 直接调用仍由宿主授权，存储与生命周期规则保持。
+
 ## Context
 
 动机见 [proposal.md](proposal.md)。当前 `user/service_me.go` 只承载显示名资料，`BatchPublicProfiles` 明确限定 ID、DisplayName 和 State。宿主通过 `Auth.Users()` 使用领域服务；`New` 不做 I/O，领域事务使用既有账号锁及锁后最新状态规则。资料新增不能扩大 HTTP 必需接口或改变认证热路径。

@@ -57,7 +57,7 @@
 
 ### Requirement: 已发布迁移不可改写
 
-发布 SHALL 核验完整历史与全部可达正式标签，分别固定当前 initialFrozen、已发布精确提交/SQL 和冻结源。用户对当前初始定义的有限授权 SHALL 仅按对应场景执行，保留历史授权及验收原文，不扩大成日常改写权限或新增跳过检查开关。旧结构 SHALL 无写拒绝且 dirty 优先，保留 catalog、数据和 version/dirty，不转换、重放同号 SQL、Force、改版本或清库。资料整合不提供旧数据迁移工具或升级承诺；后续真实增量 SHALL 从 0002 递增，测试 probe 使用 latest+1（当前为 2）。
+发布 SHALL 核验完整历史与全部可达正式标签，分别固定当前 initialFrozen、已发布精确提交/SQL 和冻结源。用户对当前初始定义的有限授权 SHALL 仅按对应场景执行，保留历史授权及验收原文，不扩大成日常改写权限或新增跳过检查开关。旧结构 SHALL 无写拒绝且 dirty 优先，保留 catalog、数据和 version/dirty，不转换、重放同号 SQL、Force、改版本或清库。资料整合不提供旧数据迁移工具或升级承诺；后续真实增量 SHALL 从 0002 递增，测试 probe 使用 latest+1（当前为 2）。本变更另按用户“数据库变更直接修改 0001 即可”的授权，只更新当前 0001 中 identity.kind 与 provider_meta 的注释；不新增列、索引、约束或生产 0002。
 
 #### Scenario: 修改历史 SQL
 - **WHEN** 已发布迁移修改、删除、重编号或 tag 移动
@@ -94,6 +94,10 @@
 #### Scenario: 本轮授权简化会话初始结构
 - **WHEN** 追溯 v0.4.0 发布前移除 known/双快照并改为单行 JSONB 的会话简化
 - **THEN** 保留该历史阶段 version 1、无生产 0002 及当时哈希/验收原文；本轮只整合资料单列，已发布会话 SQL 保持，旧 v0.3.0 v1、前一整合 v1 及撤回 v2 的无写拒绝保护继续保留
+
+#### Scenario: Google 登录注释并入当前初始定义
+- **WHEN** 按用户“数据库变更直接修改 0001 即可”，只把 GOOGLE 与 profile 声明补进当前 0001 的 identity.kind、provider_meta 注释
+- **THEN** 生产源仍只有 0001，新空 schema 为 version=1/dirty=false，仅当前 initialFrozen 更新；已发布 tag、冻结源和 down 整表语义保持；旧同号库不重放 0001，不 Force、不改版本、不清库
 
 ### Requirement: 备份恢复可演练
 首次生产发布 SHALL 完成隔离数据库的备份恢复演练，操作手册 SHALL 区分应用回退、前向修复和数据库备份恢复，并明确数据损失窗口及密钥、Redis 会话状态的处理。

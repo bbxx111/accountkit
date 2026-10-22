@@ -1,6 +1,6 @@
 # 验收记录：add-google-sign-in
 
-日期：2026-10-23。工作树 `feat/add-google-sign-in`。未归档，未推送。
+日期：2026-10-23。实现已由 `d3e9762` 合入 `develop`。
 
 ## 已核对
 
@@ -25,3 +25,7 @@
 
 - 未跑 `scripts/verify.sh`，没有恢复演练，没有 race。
 - 未对 Google 的真实 JWKS 端点做在线请求；校验器用本地 JWKS 测试。
+
+## 归档
+
+2026-10-23 将 delta spec 同步到主规格后，变更目录移至 `openspec/changes/archive/2026-10-23-add-google-sign-in`。本记录没有需要按新深度改写的相对链接。

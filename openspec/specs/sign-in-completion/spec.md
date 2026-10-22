@@ -22,7 +22,7 @@
 - **THEN** 直接注册并返回 user，不强制另一种身份；不能凭第三方邮箱提示识别别的已有账号
 
 ### Requirement: 独立补全端点与票据字段
-系统 SHALL 仅新增 POST /users:sendSignInCompletionCode 和 POST /users:completeSignIn 两个登录补全业务端点。两者 SHALL 在请求体使用 sign_in_completion_token。pending 响应 SHALL 使用同名字段及 next_action=COMPLETE_IDENTITY、expire_time、启用和必需身份集合。补全发码 SHALL 与普通 sendSignInCode 保持独立，不能通过普通发码入口的可选票据或公开 purpose 参数切换用途。
+系统 SHALL 仅新增 POST /users:sendSignInCompletionCode 和 POST /users:completeSignIn 两个登录补全业务端点。两者 SHALL 在请求体使用 sign_in_completion_token。pending 响应 SHALL 使用同名字段及 next_action=COMPLETE_IDENTITY、expire_time、启用和必需身份集合。初始证明含已验证邮箱时，pending 响应 SHALL 另外包含该 hint_email；没有该证明时 SHALL 省略。hint_email SHALL 只来自初始证明，不因该邮箱是否已有账号而改变，也不代替请求中的 target。补全发码 SHALL 与普通 sendSignInCode 保持独立，不能通过普通发码入口的可选票据或公开 purpose 参数切换用途。
 
 #### Scenario: 补全发码
 - **WHEN** 客户端向 sendSignInCompletionCode 提交有效 sign_in_completion_token、PHONE/EMAIL channel 和 target
@@ -35,6 +35,18 @@
 #### Scenario: 普通发码不得切换为补全
 - **WHEN** 客户端向普通 sendSignInCode 提交补全票据或 purpose 字段
 - **THEN** 按严格请求 DTO 拒绝，不签发补全用途的验证码
+
+#### Scenario: 已验证邮箱作为预填
+- **WHEN** 初始 IdP 证明含已验证邮箱并返回 pending
+- **THEN** 响应包含该 hint_email，以及 next_action、票据、expire_time 和身份集合，不含 user_id、access_token 或 refresh_token
+
+#### Scenario: 没有已验证邮箱
+- **WHEN** 初始证明没有已验证邮箱并返回 pending
+- **THEN** 响应省略 hint_email
+
+#### Scenario: 省略目标不能改用提示
+- **WHEN** 客户端省略 target，期望服务改用 hint_email 发码或完成
+- **THEN** 返回 400，不向 hint_email 发送验证码，不创建 EMAIL 身份
 
 ### Requirement: 验证后自动确定账号
 系统 SHALL 在手机或邮箱补充证明通过后查询其归属，不根据未验证输入或第三方邮箱提示关联。目标属于 ACTIVE 账号 B 时 SHALL 关联尚未占用的暂存身份到 B；目标无归属时 SHALL 仅在已验证身份满足完整性条件后创建一个账号。界面 SHALL 说明“验证并继续”会关联本次身份、未注册时自动注册，不要求用户选择两条分支。
@@ -105,11 +117,15 @@
 - **THEN** 返回 400 FAILED_PRECONDITION / SIGN_IN_ALREADY_COMPLETED，不能回发旧 pair 或创建新会话；票据本身失效则返回 SIGN_IN_COMPLETION_INVALID
 
 ### Requirement: 隐私隔离与审计
-未验证目标前的响应 SHALL 不泄露账号存在性。票据、验证码、第三方原始凭证、完整目标及完整摘要 SHALL 不进入日志、审计或 URL；凭证响应 SHALL no-store。暂存数据及结果 SHALL 按实例隔离、加密和有界清理。审计 SHALL 异步脱敏，失败不改变结果；账号删除/匿名化 SHALL 撤销或清理关联未完成记录及可重放结果。
+未验证目标前的响应 SHALL 不泄露账号存在性。票据、验证码、第三方原始凭证、完整目标及完整摘要 SHALL 不进入日志、审计或 URL；凭证响应 SHALL no-store。pending 响应中的 hint_email SHALL 不进入日志、审计或 URL，且 SHALL 不因邮箱是否已注册而不同。暂存数据及结果 SHALL 按实例隔离、加密和有界清理。审计 SHALL 异步脱敏，失败不改变结果；账号删除/匿名化 SHALL 撤销或清理关联未完成记录及可重放结果。
 
 #### Scenario: 发码不能枚举账号
 - **WHEN** 尚未验证目标时分别向已注册和未注册目标请求补全码
 - **THEN** 除原格式、渠道和额度错误外，响应不揭示账号是否存在
+
+#### Scenario: 提示邮箱不揭示注册状态
+- **WHEN** 两个初始证明含有相同的已验证邮箱，其中一个邮箱已注册、另一个未注册
+- **THEN** 两个 pending 响应的 hint_email 相同，响应不揭示账号是否存在
 
 #### Scenario: 依赖故障或跨实例请求
 - **WHEN** 证明存储不可用或另一实例票据被提交

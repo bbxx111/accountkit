@@ -709,7 +709,7 @@ func TestGetMeAndUpdateDisplayName(t *testing.T) {
 	if err != nil || me.DisplayName != "白博" {
 		t.Fatalf("update: %+v %v", me, err)
 	}
-	if _, err := f.svc.UpdateDisplayName(ctx, res.UserID, strings.Repeat("字", 33)); !errors.Is(err, user.ErrInvalidArgument) {
+	if _, err := f.svc.UpdateDisplayName(ctx, res.UserID, strings.Repeat("字", 129)); !errors.Is(err, user.ErrInvalidArgument) {
 		t.Fatalf("33 runes must be rejected: %v", err)
 	}
 	if _, err := f.svc.UpdateDisplayName(ctx, res.UserID, "line1\nline2"); !errors.Is(err, user.ErrInvalidArgument) {
@@ -730,8 +730,8 @@ func TestGetMeAndUpdateDisplayName(t *testing.T) {
 	if _, err := f.svc.UpdateDisplayName(ctx, res.UserID, "\uFEFFname"); !errors.Is(err, user.ErrInvalidArgument) {
 		t.Fatalf("a leading BOM (U+FEFF) must be rejected: %v", err)
 	}
-	if me, err = f.svc.UpdateDisplayName(ctx, res.UserID, strings.Repeat("字", 32)); err != nil || len([]rune(me.DisplayName)) != 32 {
-		t.Fatalf("32 runes must be accepted: %v", err)
+	if me, err = f.svc.UpdateDisplayName(ctx, res.UserID, strings.Repeat("字", 128)); err != nil || len([]rune(me.DisplayName)) != 128 {
+		t.Fatalf("128 runes must be accepted: %v", err)
 	}
 	if me, err = f.svc.UpdateDisplayName(ctx, res.UserID, ""); err != nil || me.DisplayName != "" {
 		t.Fatalf("empty clears the name: %+v %v", me, err)

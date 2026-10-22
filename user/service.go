@@ -69,9 +69,10 @@ type Deps struct {
 	// Observer 可选，以尽力语义记录本地运行观测；宿主负责其生命周期。
 	Observer observability.Observer
 
-	// WeChat / Apple 为 nil 表示未启用对应 IdP。
+	// WeChat / Apple / Google 为 nil 表示未启用对应 IdP。
 	WeChat idp.WeChatVerifier
 	Apple  idp.AppleVerifier
+	Google idp.GoogleVerifier
 
 	AccessTTL     time.Duration
 	RefreshTTL    time.Duration
@@ -132,6 +133,9 @@ func NewService(d Deps) (*Service, error) {
 	if d.Apple != nil {
 		providers = append(providers, enum.IdentityApple)
 	}
+	if d.Google != nil {
+		providers = append(providers, enum.IdentityGoogle)
+	}
 	policy, err := NewIdentityPolicy(d.EnabledIdentityKinds, d.RequiredIdentityKinds, providers...)
 	if err != nil {
 		return nil, err
@@ -146,7 +150,7 @@ func NewService(d Deps) (*Service, error) {
 			}
 			return true
 		}
-		if err := policy.ValidateCapabilities(IdentityCapabilities{Phone: available(d.SMS), Email: available(d.Email), WeChat: d.WeChat != nil, Apple: d.Apple != nil}); err != nil {
+		if err := policy.ValidateCapabilities(IdentityCapabilities{Phone: available(d.SMS), Email: available(d.Email), WeChat: d.WeChat != nil, Apple: d.Apple != nil, Google: d.Google != nil}); err != nil {
 			return nil, err
 		}
 		if d.SMS == nil {
@@ -254,7 +258,7 @@ type TokenResult struct {
 	Scope            string
 	UserID           string
 	IsNewUser        bool
-	// HintEmail 是 Apple 已验证的邮箱（含 Apple 私密转发地址），仅供客户端预填绑定页，不代表已绑定。
+	// HintEmail 是已验证的第三方邮箱，仅供客户端预填绑定页，不代表已绑定。
 	HintEmail string
 }
 
@@ -268,6 +272,7 @@ type SignInResult struct {
 type PendingSignIn struct {
 	SignInCompletionToken string
 	ExpireTime            time.Time
+	HintEmail             string
 	EnabledIdentityKinds  []enum.IdentityKind
 	RequiredIdentityKinds []enum.IdentityKind
 }

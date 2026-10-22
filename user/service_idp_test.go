@@ -1,9 +1,11 @@
 package user_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"testing"
@@ -347,5 +349,194 @@ func TestSignInWithCodeFrozenAuditCarriesUserID(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("SIGN_IN_FAILED/USER_FROZEN missing")
+	}
+}
+
+type fakeGoogle struct {
+	identities map[string]idp.Identity
+	used       map[string]bool
+}
+
+func (f *fakeGoogle) VerifyGoogle(_ context.Context, idToken, nonce string) (idp.Identity, error) {
+	if f.used == nil {
+		f.used = map[string]bool{}
+	}
+	if f.used[nonce] {
+		return idp.Identity{}, idp.ErrNonceReplayed
+	}
+	f.used[nonce] = true
+	id := f.identities[idToken]
+	if id.Subject == "" {
+		id.Subject = "google-" + idToken
+	}
+	id.Kind = enum.IdentityGoogle
+	return id, nil
+}
+
+func useGoogle(t *testing.T, f *fixture, g *fakeGoogle, required []enum.IdentityKind, logs *bytes.Buffer) {
+	t.Helper()
+	newServiceWith(t, f, func(d *user.Deps) {
+		d.Google = g
+		if required != nil {
+			d.RequiredIdentityKinds = required
+		}
+		if logs != nil {
+			d.Logger = slog.New(slog.NewTextHandler(logs, nil))
+		}
+	})
+}
+
+func TestGoogleProfileFillHintAndOpenIDCoexistence(t *testing.T) {
+	ctx := context.Background()
+	longName := strings.Repeat("名", 300) + "\n\u202e"
+	g := &fakeGoogle{identities: map[string]idp.Identity{
+		"first":  {Subject: "gsub", HintEmail: "person@example.test", Name: longName, Picture: "https://example.test/a.png"},
+		"second": {Subject: "gsub", Name: "Updated Name"},
+		"badpic": {Subject: "gpicture", Name: "Pic", Picture: "http://insecure.example/a.png"},
+	}}
+	f := newFixture(t)
+	var logs bytes.Buffer
+	useGoogle(t, f, g, []enum.IdentityKind{}, &logs)
+	out, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityGoogle, IDToken: "first", Nonce: "n1"}, dev1, meta1)
+	res := requireSignInTokens(t, out)
+	if err != nil || !res.IsNewUser || res.HintEmail != "person@example.test" || strings.Contains(logs.String(), "person@example.test") {
+		t.Fatalf("direct register: %+v %v logs=%s", res, err, logs.String())
+	}
+	me, err := f.svc.GetMe(ctx, res.UserID)
+	if err != nil || me.DisplayName != strings.Repeat("名", 128) || me.AvatarURL != "https://example.test/a.png" {
+		t.Fatalf("filled profile: %+v %v", me, err)
+	}
+	idents, _ := f.repo.Q().ListActiveIdentitiesByUser(ctx, res.UserID)
+	if len(idents) != 1 || !strings.Contains(string(idents[0].ProviderMeta), strings.Repeat("名", 256)) || strings.Contains(string(idents[0].ProviderMeta), "\u202e") {
+		t.Fatalf("provider meta: %s", idents[0].ProviderMeta)
+	}
+	for _, id := range idents {
+		if id.Kind == enum.IdentityEmail {
+			t.Fatal("hint email must not become an identity")
+		}
+	}
+	if _, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityGoogle, IDToken: "second", Nonce: "n2"}, dev1, meta1); err != nil {
+		t.Fatal(err)
+	}
+	me, _ = f.svc.GetMe(ctx, res.UserID)
+	idents, _ = f.repo.Q().ListActiveIdentitiesByUser(ctx, res.UserID)
+	meta := string(idents[0].ProviderMeta)
+	if me.DisplayName != strings.Repeat("名", 128) || me.AvatarURL != "https://example.test/a.png" || !strings.Contains(meta, "Updated Name") || !strings.Contains(meta, "https://example.test/a.png") {
+		t.Fatalf("later login changed account profile or dropped picture: %+v %s", me, meta)
+	}
+	bad, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityGoogle, IDToken: "badpic", Nonce: "n3"}, dev2, meta1)
+	badRes := requireSignInTokens(t, bad)
+	if err != nil {
+		t.Fatal(err)
+	}
+	me, _ = f.svc.GetMe(ctx, badRes.UserID)
+	idents, _ = f.repo.Q().ListActiveIdentitiesByUser(ctx, badRes.UserID)
+	if me.DisplayName != "Pic" || me.AvatarURL != "" || strings.Contains(string(idents[0].ProviderMeta), "insecure") {
+		t.Fatalf("invalid picture must be skipped: %+v %s", me, idents[0].ProviderMeta)
+	}
+
+	kept := newFixture(t)
+	useGoogle(t, kept, &fakeGoogle{identities: map[string]idp.Identity{"bind": {Subject: "gbind", Name: "Google", Picture: "https://example.test/new.png"}}}, nil, nil)
+	phone := kept.signIn(t, enum.IdentityPhone, phone1, dev1)
+	name, avatar := "Kept", "https://example.test/kept.png"
+	if _, err := kept.svc.UpdateProfile(ctx, phone.UserID, user.ProfilePatch{DisplayName: &name, AvatarURL: &avatar}); err != nil {
+		t.Fatal(err)
+	}
+	if _, created, err := kept.svc.BindWithIdp(ctx, principalOf(t, kept, phone), user.IdpCredential{Kind: enum.IdentityGoogle, IDToken: "bind", Nonce: "nb"}, meta1); err != nil || !created {
+		t.Fatalf("bind: created=%v %v", created, err)
+	}
+	me, _ = kept.svc.GetMe(ctx, phone.UserID)
+	if me.DisplayName != "Kept" || me.AvatarURL != "https://example.test/kept.png" {
+		t.Fatalf("bind must not overwrite profile: %+v", me)
+	}
+
+	emailUser := newFixture(t)
+	useGoogle(t, emailUser, &fakeGoogle{identities: map[string]idp.Identity{"mail": {Subject: "gmail", HintEmail: email1, Name: "From Google", Picture: "https://example.test/g.png"}}}, []enum.IdentityKind{}, nil)
+	existing := emailUser.signIn(t, enum.IdentityEmail, email1, dev2)
+	linked, err := emailUser.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityGoogle, IDToken: "mail", Nonce: "nm"}, dev1, meta1)
+	linkedRes := requireSignInTokens(t, linked)
+	if err != nil || linkedRes.UserID == existing.UserID {
+		t.Fatalf("verified email must not merge accounts: %+v %v", linkedRes, err)
+	}
+	me, _ = emailUser.svc.GetMe(ctx, linkedRes.UserID)
+	if me.DisplayName != "From Google" || me.AvatarURL != "https://example.test/g.png" {
+		t.Fatalf("new account fill: %+v", me)
+	}
+
+	pendingSame := func(register bool) string {
+		t.Helper()
+		pf := newFixture(t)
+		var buf bytes.Buffer
+		useGoogle(t, pf, &fakeGoogle{identities: map[string]idp.Identity{"p": {Subject: "gpending", HintEmail: email1, Name: "Pending Name", Picture: "https://example.test/p.png"}}}, nil, &buf)
+		if register {
+			pf.signIn(t, enum.IdentityEmail, email1, dev2)
+		}
+		got, err := pf.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityGoogle, IDToken: "p", Nonce: "np"}, dev1, meta1)
+		if err != nil || got.Pending == nil || got.Pending.HintEmail != email1 || strings.Contains(buf.String(), email1) {
+			t.Fatalf("pending hint register=%v: %+v %v logs=%s", register, got.Pending, err, buf.String())
+		}
+		if _, err := pf.svc.CompleteSignIn(ctx, got.Pending.SignInCompletionToken, user.CodeCredential{Channel: enum.IdentityEmail}, dev1, meta1); !errors.Is(err, user.ErrInvalidArgument) {
+			t.Fatalf("omitted target: %v", err)
+		}
+		return got.Pending.HintEmail
+	}
+	if pendingSame(false) != pendingSame(true) {
+		t.Fatal("hint must not depend on whether the email is registered")
+	}
+
+	created := newFixture(t)
+	useGoogle(t, created, &fakeGoogle{identities: map[string]idp.Identity{"c": {Subject: "gcreate", Name: "Created", Picture: "https://example.test/c.png"}}}, nil, nil)
+	pending, err := created.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityGoogle, IDToken: "c", Nonce: "nc"}, dev1, meta1)
+	if err != nil || pending.Pending == nil {
+		t.Fatal(err)
+	}
+	cred := completionCredential(t, created, pending.Pending, enum.IdentityEmail, "new.google@example.test")
+	done, err := created.svc.CompleteSignIn(ctx, pending.Pending.SignInCompletionToken, cred, dev1, meta1)
+	doneRes := requireSignInTokens(t, done)
+	if err != nil {
+		t.Fatal(err)
+	}
+	me, _ = created.svc.GetMe(ctx, doneRes.UserID)
+	if me.DisplayName != "Created" || me.AvatarURL != "https://example.test/c.png" {
+		t.Fatalf("completion create fill: %+v", me)
+	}
+
+	linkedFlow := newFixture(t)
+	useGoogle(t, linkedFlow, &fakeGoogle{identities: map[string]idp.Identity{"l": {Subject: "glink", Name: "Should Not Replace", Picture: "https://example.test/link.png"}}}, nil, nil)
+	owner := linkedFlow.signIn(t, enum.IdentityEmail, email1, dev2)
+	if _, err := linkedFlow.svc.UpdateDisplayName(ctx, owner.UserID, "Already Set"); err != nil {
+		t.Fatal(err)
+	}
+	flow, err := linkedFlow.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityGoogle, IDToken: "l", Nonce: "nl"}, dev1, meta1)
+	if err != nil || flow.Pending == nil {
+		t.Fatal(err)
+	}
+	linkCred := completionCredential(t, linkedFlow, flow.Pending, enum.IdentityEmail, email1)
+	if _, err := linkedFlow.svc.CompleteSignIn(ctx, flow.Pending.SignInCompletionToken, linkCred, dev1, meta1); err != nil {
+		t.Fatal(err)
+	}
+	me, _ = linkedFlow.svc.GetMe(ctx, owner.UserID)
+	if me.DisplayName != "Already Set" {
+		t.Fatalf("completion link must keep display name: %+v", me)
+	}
+
+	wx := newFixture(t)
+	newServiceWith(t, wx, func(d *user.Deps) { d.RequiredIdentityKinds = []enum.IdentityKind{} })
+	first, err := wx.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:profile@o1"}, dev1, meta1)
+	firstRes := requireSignInTokens(t, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, _ := wx.repo.Q().ListActiveIdentitiesByUser(ctx, firstRes.UserID)
+	if _, err := wx.repo.Q().UpdateIdentityProviderMeta(ctx, db.UpdateIdentityProviderMetaParams{ID: rows[0].ID, ProviderMeta: []byte(`{"openids":{"wx1":"o1"},"profile":{"name":"keep-me"}}`), UpdateTime: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := wx.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx2", Code: "union:profile@o2"}, dev2, meta1); err != nil {
+		t.Fatal(err)
+	}
+	rows, _ = wx.repo.Q().ListActiveIdentitiesByUser(ctx, firstRes.UserID)
+	meta = string(rows[0].ProviderMeta)
+	if !strings.Contains(meta, `"wx2": "o2"`) || !strings.Contains(meta, "keep-me") {
+		t.Fatalf("openid merge dropped profile: %s", meta)
 	}
 }

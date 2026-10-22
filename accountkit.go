@@ -210,6 +210,13 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 			Nonces: idp.NewNonceRegistry(deps.Redis, cfg.KeyPrefix), Logger: deps.Logger, NonceTTL: cfg.AppleNonceTTL, Observer: deps.Observer,
 		})
 	}
+	var google idp.GoogleVerifier
+	if len(cfg.GoogleClientIDs) > 0 {
+		google = idp.NewGoogle(idp.GoogleOptions{
+			ClientIDs: cfg.GoogleClientIDs, JWKSURL: cfg.GoogleJWKSURL, HTTP: deps.HTTPClient,
+			Nonces: idp.NewNonceRegistry(deps.Redis, cfg.KeyPrefix), Logger: deps.Logger, NonceTTL: cfg.GoogleNonceTTL, Observer: deps.Observer,
+		})
+	}
 	users, err := user.NewService(user.Deps{
 		ProfileAttributes:           cfg.ProfileAttributes,
 		SignInCompletionFlowContext: cfg.Schema,
@@ -218,7 +225,7 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 		Signer: signer, Cipher: cipher, Digester: digester,
 		AuditSource: cfg.AuditSource, AuditNamespace: cfg.AuditNamespace,
 		SMS: deps.SMSSender, Email: deps.EmailSender, Audit: deps.Audit, Logger: deps.Logger, Observer: deps.Observer,
-		WeChat: wechat, Apple: apple,
+		WeChat: wechat, Apple: apple, Google: google,
 		AccessTTL: cfg.AccessTokenTTL, RefreshTTL: cfg.RefreshTokenTTL, RefreshGrace: cfg.RefreshGrace, CodeTTL: cfg.CodeTTL,
 		DefaultRegion:           cfg.DefaultRegion,
 		ReauthMaxAge:            cfg.ReauthMaxAge,

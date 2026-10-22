@@ -18,7 +18,7 @@ func (s *Service) requireIdentityEnabled(kind enum.IdentityKind) error {
 		return nil
 	}
 	// 省略 Enabled 的旧宿主保留未装配提供方的原错误契约。
-	if s.d.EnabledIdentityKinds == nil && ((kind == enum.IdentityWeChat && s.d.WeChat == nil) || (kind == enum.IdentityApple && s.d.Apple == nil)) {
+	if s.d.EnabledIdentityKinds == nil && ((kind == enum.IdentityWeChat && s.d.WeChat == nil) || (kind == enum.IdentityApple && s.d.Apple == nil) || (kind == enum.IdentityGoogle && s.d.Google == nil)) {
 		return fmt.Errorf("%w: identity provider not configured", idp.ErrAppNotAllowed)
 	}
 	return ErrIdentityKindNotEnabled

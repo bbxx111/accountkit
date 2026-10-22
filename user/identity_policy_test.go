@@ -18,6 +18,7 @@ func TestIdentityPolicy(t *testing.T) {
 		{"duplicate", []enum.IdentityKind{phone, phone}, nil, true},
 		{"required duplicate", nil, []enum.IdentityKind{phone, phone}, true},
 		{"third party required", []enum.IdentityKind{wechat}, []enum.IdentityKind{wechat}, true},
+		{"google required", []enum.IdentityKind{enum.IdentityGoogle}, []enum.IdentityKind{enum.IdentityGoogle}, true},
 		{"default subset", []enum.IdentityKind{email}, nil, true},
 		{"explicit subset", []enum.IdentityKind{email}, []enum.IdentityKind{phone}, true},
 	} {

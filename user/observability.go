@@ -53,6 +53,8 @@ func observationMethod(kind enum.IdentityKind) ob.Method {
 		return ob.MethodWechat
 	case enum.IdentityApple:
 		return ob.MethodApple
+	case enum.IdentityGoogle:
+		return ob.MethodGoogle
 	default:
 		return ob.MethodUnknown
 	}
@@ -446,6 +448,10 @@ func (s *Service) verifyWeChat(ctx context.Context, cred IdpCredential) (idp.Ide
 
 func (s *Service) verifyApple(ctx context.Context, cred IdpCredential) (idp.Identity, error) {
 	return observedDependency(s, ctx, ob.ComponentIDP, ob.DependencyVerifyApple, func() (idp.Identity, error) { return s.d.Apple.VerifyApple(ctx, cred.IDToken, cred.Nonce) })
+}
+
+func (s *Service) verifyGoogle(ctx context.Context, cred IdpCredential) (idp.Identity, error) {
+	return observedDependency(s, ctx, ob.ComponentIDP, ob.DependencyVerifyGoogle, func() (idp.Identity, error) { return s.d.Google.VerifyGoogle(ctx, cred.IDToken, cred.Nonce) })
 }
 
 func (s *Service) observeDegradation(ctx context.Context, scenario ob.DegradationScenario) {

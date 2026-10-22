@@ -77,9 +77,13 @@ type Config struct {
 	// AppleBundleIDs 为空表示未启用 Apple 登录；id_token 的 aud 须在其中。
 	AppleBundleIDs []string
 	AppleNonceTTL  time.Duration // 默认 10m
-	// WeChatAPIBaseURL / AppleJWKSURL 供测试与代理部署覆盖；生产保持默认。
+	// GoogleClientIDs 为空表示未启用 Google 登录；id_token 的 aud 以及出现的 azp 须在其中。
+	GoogleClientIDs []string
+	GoogleNonceTTL  time.Duration // 默认 10m
+	// WeChatAPIBaseURL / AppleJWKSURL / GoogleJWKSURL 供测试与代理部署覆盖；生产保持默认。
 	WeChatAPIBaseURL string
 	AppleJWKSURL     string
+	GoogleJWKSURL    string
 
 	MaintenanceInterval time.Duration // 默认 5m
 }
@@ -100,6 +104,9 @@ func (c Config) identityPolicy() (*user.IdentityPolicy, error) {
 	}
 	if len(c.AppleBundleIDs) > 0 {
 		providers = append(providers, enum.IdentityApple)
+	}
+	if len(c.GoogleClientIDs) > 0 {
+		providers = append(providers, enum.IdentityGoogle)
 	}
 	return user.NewIdentityPolicy(c.EnabledIdentityKinds, c.RequiredIdentityKinds, providers...)
 }
@@ -151,11 +158,15 @@ func (c *Config) applyDefaults() {
 	}
 	c.DefaultRegion = strings.ToUpper(c.DefaultRegion)
 	def(&c.AppleNonceTTL, 10*time.Minute)
+	def(&c.GoogleNonceTTL, 10*time.Minute)
 	if c.WeChatAPIBaseURL == "" {
 		c.WeChatAPIBaseURL = "https://api.weixin.qq.com"
 	}
 	if c.AppleJWKSURL == "" {
 		c.AppleJWKSURL = "https://appleid.apple.com/auth/keys"
+	}
+	if c.GoogleJWKSURL == "" {
+		c.GoogleJWKSURL = "https://www.googleapis.com/oauth2/v3/certs"
 	}
 	def(&c.MaintenanceInterval, 5*time.Minute)
 }
@@ -251,7 +262,20 @@ func (c Config) validateBase() error {
 	if c.AppleNonceTTL < time.Minute {
 		return errors.New("accountkit: AppleNonceTTL must be >= 1m")
 	}
-	for name, raw := range map[string]string{"WeChatAPIBaseURL": c.WeChatAPIBaseURL, "AppleJWKSURL": c.AppleJWKSURL} {
+	seenG := map[string]struct{}{}
+	for i, id := range c.GoogleClientIDs {
+		if id == "" {
+			return fmt.Errorf("accountkit: GoogleClientIDs[%d] must not be empty", i)
+		}
+		if _, dup := seenG[id]; dup {
+			return fmt.Errorf("accountkit: GoogleClientIDs: duplicate %q", id)
+		}
+		seenG[id] = struct{}{}
+	}
+	if c.GoogleNonceTTL < time.Minute {
+		return errors.New("accountkit: GoogleNonceTTL must be >= 1m")
+	}
+	for name, raw := range map[string]string{"WeChatAPIBaseURL": c.WeChatAPIBaseURL, "AppleJWKSURL": c.AppleJWKSURL, "GoogleJWKSURL": c.GoogleJWKSURL} {
 		u, err := url.Parse(raw)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			return fmt.Errorf("accountkit: %s %q must be an absolute http(s) URL", name, raw)
@@ -442,8 +466,17 @@ func ConfigFromEnv(prefix string) (Config, error) {
 		}
 	}
 	dur("APPLE_NONCE_TTL", &c.AppleNonceTTL)
+	if s := str("GOOGLE_CLIENT_IDS"); s != "" {
+		for _, id := range strings.Split(s, ",") {
+			if id = strings.TrimSpace(id); id != "" {
+				c.GoogleClientIDs = append(c.GoogleClientIDs, id)
+			}
+		}
+	}
+	dur("GOOGLE_NONCE_TTL", &c.GoogleNonceTTL)
 	c.WeChatAPIBaseURL = str("WECHAT_API_BASE_URL")
 	c.AppleJWKSURL = str("APPLE_JWKS_URL")
+	c.GoogleJWKSURL = str("GOOGLE_JWKS_URL")
 
 	if firstErr != nil {
 		return Config{}, firstErr

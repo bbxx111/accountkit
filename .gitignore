@@ -24,3 +24,6 @@ coverage.html
 Thumbs.db
 
 .test-output/
+
+# Linked git worktrees
+.worktrees/

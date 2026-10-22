@@ -117,7 +117,7 @@ accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect
 | 登出 | `Revoke(ctx, refreshToken, meta)` | RFC 7009 语义：未知 token 也返回成功 |
 | 校验 access | `Authenticate(ctx, raw)` | 验签 + id 格式 + Redis 吊销集（Redis 不可用时 fail-open） |
 | 重新认证 | `SendReauthenticationCode` / `Reauthenticate` | 只接受本账号已启用手机/邮箱身份；刷新 `auth_time` 并重签 access（不发 refresh） |
-| 资料 | `GetMe` / `UpdateProfile` / `UpdateDisplayName` | 显示名 ≤ 32 个字符；头像为最长 2048 字节的 HTTPS URL；可原子更新两字段 |
+| 资料 | `GetMe` / `UpdateProfile` / `UpdateDisplayName` | 显示名 ≤ 128 个 Unicode 码位；头像为最长 2048 字节的 HTTPS URL；可原子更新两字段 |
 | 批量公开资料 | `BatchPublicProfiles(ctx, ids)` | 一次查询返回 ID/DisplayName/AvatarURL/State；未知账号略去，待注销/已删除账号显示名和头像为空；宿主先过滤业务权限 |
 | 宿主事务保护 | `WithActiveUsers(ctx, ids, fn)` | 验证、去重并排序锁定 ACTIVE 账号后执行 `fn(pgx.Tx)`；库提交，错误或 panic 回滚 |
 | 离线导入 | `ImportAccounts(ctx, tx, accounts)` | 调用者事务中的 ACTIVE PHONE/EMAIL 锚点账号或 DELETED 匿名墓碑；调用者提交/回滚 |
@@ -227,7 +227,7 @@ r.Route("/v1", func(r chi.Router) {
 |---|---|---|---|
 | `POST /users:sendSignInCode` `{channel, target}` | 无 | 200 `{code_id, expire_time}` | 429 `RESOURCE_EXHAUSTED` + `retry_after_seconds`；400 `CHANNEL_INVALID` / `INVALID_TARGET` |
 | `POST /users:signInWithCode` `{phone\|email:{target,code_id,code}}` + `X-Device-Id`/`X-Device-Name` | 无 | 200 token 或 pending | 400 `CODE_INVALID` / `CODE_EXPIRED` / `DEVICE_ID_INVALID`；429 `TARGET_VERIFY_LIMIT`；403 `USER_FROZEN` |
-| `POST /users:signInWithIdp` `{wechat\|apple:{...}}` + `X-Device-Id`/`X-Device-Name`（阶段 4a，见下） | 无 | 200 token 或 pending | 400 `IDP_CREDENTIAL_INVALID` / `IDP_APP_NOT_ALLOWED` / `IDP_NONCE_REPLAYED`；403 `USER_FROZEN`；503 `IDP_UNAVAILABLE`；403 USER_PENDING_DELETION（冷静期账号） |
+| `POST /users:signInWithIdp` `{wechat\|apple\|google:{...}}` + `X-Device-Id`/`X-Device-Name`（阶段 4a，见下） | 无 | 200 token 或 pending | 400 `IDP_CREDENTIAL_INVALID` / `IDP_APP_NOT_ALLOWED` / `IDP_NONCE_REPLAYED`；403 `USER_FROZEN`；503 `IDP_UNAVAILABLE`；403 USER_PENDING_DELETION（冷静期账号） |
 | `POST /token` `{grant_type:"refresh_token", refresh_token}` | 无 | 200 token | RFC 6749：400 `invalid_grant`；403 `invalid_grant`+`reason:USER_FROZEN`；503 `temporarily_unavailable` |
 | `POST /revoke` `{token}` | 无 | 200 空 | 400 `invalid_request`（缺 token） |
 | `GET /users/me` | 任意 scope | 200 资源 | |
@@ -251,18 +251,20 @@ r.Route("/v1", func(r chi.Router) {
 
 ## IdP 登录（阶段 4a）
 
-`POST /users:signInWithIdp`，body 为凭证 oneof 的 `wechat` / `apple` 成员，设备头同验证码登录：
+`POST /users:signInWithIdp`，body 为凭证 oneof 的 `wechat` / `apple` / `google` 成员，设备头同验证码登录：
 
 ```json
 {"wechat": {"app_id": "wx…", "code": "…"}}
 {"apple":  {"id_token": "…", "nonce": "<客户端随机原值>"}}
+{"google": {"id_token": "…", "nonce": "<客户端随机原值>"}}
 ```
 
 - **微信**：服务端用 `WeChatApps` 中对应的 secret 调 `sns/oauth2/access_token` 取 `unionid`（身份 subject）与 `openid`（按 app_id 存入 `provider_meta.openids`，从另一 App 登录时增量合并）。换回的微信 token 用完即弃。缺 `unionid` 视为配置错误（500 + Error 日志），不会降级用 openid。
 - **Apple**：仅 RS256；校验 `iss`、`aud ∈ AppleBundleIDs`、`exp`（30s leeway）、`nonce = sha256hex(原值)`；通过后 nonce 以 `SETNX` 登记 `AppleNonceTTL`，重复 → 400 `IDP_NONCE_REPLAYED`。JWKS 懒加载、缓存，未知 kid 触发 ≥ 60s 节流的刷新。`email` 仅在 `email_verified` 为真时作为 `hint_email` 返回，**不会**自动绑定为 EMAIL 身份。
+- **Google**：仅 RS256；`iss` 为 `https://accounts.google.com` 或 `accounts.google.com`，`aud` 以及出现的 `azp` 须在 `GoogleClientIDs`。nonce 与客户端提交的原始字符串做常量时间比较，不以 Apple 的 SHA-256 十六进制代替。JWKS 默认 `https://www.googleapis.com/oauth2/v3/certs`，懒加载并缓存；无缓存时拉取失败为 503 `IDP_UNAVAILABLE`，已有密钥在刷新失败时继续验签并单独计入 `google_cached_key_fallback`。已验证 `email` 作为成功响应或 pending 的 `hint_email` 预填，不参与查号或合并。`name` / `picture` 写入该身份的 `provider_meta.profile`；仅在该 Google 身份首次写入且账号 `display_name` 或 `avatar_url` 仍为空时填充，超长名称截到 128 个码位，非法头像地址跳过。身份列表和管理面 `:reveal` 不返回 `provider_meta`。库不保存 Google access/refresh token，也不下载头像。
 - **scope**：已知账号按当前 E/R 的全部可用身份得到 `user` 或 `user:bind`；未知第三方在默认 R 下返回 pending，补全后才关联或建号。已有 user:bind 账号绑定补齐后，新一轮刷新取得 user。
 - **错误**：400 `IDP_CREDENTIAL_INVALID` / `IDP_APP_NOT_ALLOWED`（含 IdP 未启用）/ `IDP_NONCE_REPLAYED`；503 `IDP_UNAVAILABLE`（IdP 网络、JWKS 不可得、Redis 不可用；带 `Retry-After: 1`）；500（appid/secret 无效、缺 unionid）。
-- **配置**：宿主前缀加 `WECHAT_APPS`、`APPLE_BUNDLE_IDS`、`APPLE_NONCE_TTL`；`WECHAT_API_BASE_URL` / `APPLE_JWKS_URL` 仅供测试或代理部署覆盖。`Deps.HTTPClient` 默认 10 秒超时。
+- **配置**：宿主前缀加 `WECHAT_APPS`、`APPLE_BUNDLE_IDS`、`APPLE_NONCE_TTL`、`GOOGLE_CLIENT_IDS`、`GOOGLE_NONCE_TTL`；`WECHAT_API_BASE_URL` / `APPLE_JWKS_URL` / `GOOGLE_JWKS_URL` 仅供测试或代理部署覆盖。空的客户端标识列表表示未启用。`Deps.HTTPClient` 默认 10 秒超时。旧二进制不能解释 `identity.kind = 5`；去掉客户端标识只停止新的 Google 登录，不删除已有身份行。
 
 只有第三方身份的账号需要近期认证时，重新走普通 IdP 登录；同设备会话被替换，客户端更新 token pair 并确认仍为同一 user_id 后再继续敏感动作。手机/邮箱重新认证仍只更新当前会话 auth_time 和 access，不延长 refresh。纯第三方账号没有手机/邮箱自助恢复路径；普通 IdP 登录仍拒绝冷静期账号，合法管理员恢复保持。
 
@@ -427,6 +429,9 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 | `APPLE_NONCE_TTL` | `10m` | |
 | `WECHAT_API_BASE_URL` | `https://api.weixin.qq.com` | 测试/代理部署钩子 |
 | `APPLE_JWKS_URL` | `https://appleid.apple.com/auth/keys` | 测试/代理部署钩子 |
+| `GOOGLE_CLIENT_IDS` | 空（未启用） | 逗号分隔的 OAuth 客户端 ID；无客户端秘密 |
+| `GOOGLE_NONCE_TTL` | `10m` | nonce 登记下限，实际取它与 `exp` + 30s 的较大者 |
+| `GOOGLE_JWKS_URL` | `https://www.googleapis.com/oauth2/v3/certs` | 测试/代理部署钩子 |
 
 ## 密钥轮换
 

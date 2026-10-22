@@ -60,7 +60,7 @@ func TestAvatarProfileUpdate(t *testing.T) {
 	if _, err = f.svc.UpdateProfile(ctx, unknown, user.ProfilePatch{AvatarURL: avatarPointer("")}); !errors.Is(err, user.ErrNotFound) {
 		t.Fatal("unknown id", err)
 	}
-	if _, err = f.svc.UpdateProfile(ctx, id, user.ProfilePatch{DisplayName: avatarPointer(strings.Repeat("x", 33)), AvatarURL: avatarPointer("https://example.com/a")}); !errors.Is(err, user.ErrInvalidArgument) {
+	if _, err = f.svc.UpdateProfile(ctx, id, user.ProfilePatch{DisplayName: avatarPointer(strings.Repeat("x", 129)), AvatarURL: avatarPointer("https://example.com/a")}); !errors.Is(err, user.ErrInvalidArgument) {
 		t.Fatal("invalid name", err)
 	}
 }

@@ -41,11 +41,11 @@ func Project(observation o.Observation, emit func(Measurement)) {
 		if v.Operation != o.AuthRefresh && mode != o.RefreshNone {
 			return
 		}
-		method := normalize(v.Method, o.MethodUnknown, o.MethodPhone, o.MethodEmail, o.MethodWechat, o.MethodApple, o.MethodUnknown)
+		method := normalize(v.Method, o.MethodUnknown, o.MethodPhone, o.MethodEmail, o.MethodWechat, o.MethodApple, o.MethodGoogle, o.MethodUnknown)
 		if v.Operation == o.AuthRefresh || v.Operation == o.AuthAuthenticate {
 			method = o.MethodNone
 		}
-		if (v.Operation == o.AuthCompleteSignIn || v.Operation == o.AuthReauthenticate) && (method == o.MethodWechat || method == o.MethodApple) {
+		if (v.Operation == o.AuthCompleteSignIn || v.Operation == o.AuthReauthenticate) && (method == o.MethodWechat || method == o.MethodApple || method == o.MethodGoogle) {
 			return
 		}
 		labels := []Label{{"operation", string(v.Operation)}, {"method", string(method)}, {"result", string(v.Result)}}
@@ -74,7 +74,7 @@ func Project(observation o.Observation, emit func(Measurement)) {
 		emit(Measurement{ID: DependencyOperations, Count: 1, Labels: copyLabels(labels)})
 		emit(Measurement{ID: DependencyDuration, Value: v.Duration.Seconds(), Labels: labels})
 	case o.DegradationObservation:
-		if v.Count <= 0 || !oneOf(v.Scenario, o.DegradationRevocationCheckFailOpen, o.DegradationRefreshGraceWriteFailed, o.DegradationAppleCachedKeyFallback) {
+		if v.Count <= 0 || !oneOf(v.Scenario, o.DegradationRevocationCheckFailOpen, o.DegradationRefreshGraceWriteFailed, o.DegradationAppleCachedKeyFallback, o.DegradationGoogleCachedKeyFallback) {
 			return
 		}
 		emit(Measurement{ID: Degradations, Count: v.Count, Labels: []Label{{"scenario", string(v.Scenario)}}})
@@ -161,7 +161,7 @@ func dependencyPair(component o.Component, operation o.DependencyOperation) bool
 	case o.ComponentRevocation:
 		return oneOf(operation, o.DependencyCheck, o.DependencyRevoke)
 	case o.ComponentIDP:
-		return oneOf(operation, o.DependencyVerifyWechat, o.DependencyVerifyApple)
+		return oneOf(operation, o.DependencyVerifyWechat, o.DependencyVerifyApple, o.DependencyVerifyGoogle)
 	case o.ComponentSender:
 		return oneOf(operation, o.DependencySMS, o.DependencyEmail)
 	}

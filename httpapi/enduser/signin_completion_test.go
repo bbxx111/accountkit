@@ -225,6 +225,15 @@ func TestInitialSignInResultUnion(t *testing.T) {
 	}
 }
 
+func TestCompletionOmitsTargetInsteadOfUsingHint(t *testing.T) {
+	h := completionHandler(t, &completionService{fakeService: &fakeService{}})
+	r := do(t, h, call{method: "POST", path: "/users:completeSignIn", body: `{"sign_in_completion_token":"opaque","email":{"code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`})
+	s, _ := aipError(t, r)
+	if r.Code != 400 || s != "INVALID_ARGUMENT/CREDENTIAL_INCOMPLETE" {
+		t.Fatalf("omitted target: %d %s %s", r.Code, s, r.Body.String())
+	}
+}
+
 func TestCompletionOneofDescribesOnlySupportedCredentials(t *testing.T) {
 	h := completionHandler(t, &completionService{fakeService: &fakeService{}})
 	r := do(t, h, call{method: "POST", path: "/users:completeSignIn", body: `{"sign_in_completion_token":"opaque"}`})

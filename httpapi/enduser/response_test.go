@@ -258,11 +258,18 @@ func TestCredentialIdp(t *testing.T) {
 	if e != nil || got.Kind != enum.IdentityApple || got.IDToken != "t" || got.Nonce != "n" {
 		t.Fatalf("%+v %v", got, e)
 	}
+	got, e = credential{Google: &googleCredential{IDToken: "gt", Nonce: "gn"}}.idp()
+	if e != nil || got.Kind != enum.IdentityGoogle || got.IDToken != "gt" || got.Nonce != "gn" {
+		t.Fatalf("%+v %v", got, e)
+	}
 	if _, e := (credential{}).idp(); e == nil || e.Reason != "CREDENTIAL_ONEOF" {
 		t.Fatal("empty")
 	}
 	if _, e := (credential{Wechat: &wechatCredential{AppID: "a", Code: "c"}, Apple: &appleCredential{IDToken: "t", Nonce: "n"}}).idp(); e == nil || e.Reason != "CREDENTIAL_ONEOF" {
 		t.Fatal("two")
+	}
+	if _, e := (credential{Google: &googleCredential{IDToken: "gt", Nonce: "gn"}, Apple: &appleCredential{IDToken: "t", Nonce: "n"}}).idp(); e == nil || e.Reason != "CREDENTIAL_ONEOF" {
+		t.Fatal("google and apple")
 	}
 	if _, e := (credential{Phone: &codeCredential{CodeID: "0123456789abcdef0123456789abcdef", Target: "x", Code: "y"}}).idp(); e == nil || e.Reason != "CREDENTIAL_KIND_NOT_ALLOWED" {
 		t.Fatal("phone on idp endpoint")

@@ -93,7 +93,7 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 				if u.State == enum.UserPendingDeletion {
 					return ErrUserPendingDeletion
 				}
-				if err = s.mergeOpenIDs(ctx, q, current, proof.Provider.OpenIDs, s.now()); err != nil {
+				if err = s.refreshProviderMeta(ctx, q, current, *proof.Provider, s.now()); err != nil {
 					return err
 				}
 			}
@@ -493,7 +493,7 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.SignI
 			kinds = append(kinds, proof.Kind)
 		}
 		if len(owners) == 0 && !s.policy.Complete(kinds) {
-			result = s.pendingResult(token, fresh.ExpireTime)
+			result = s.pendingResult(token, fresh.ExpireTime, pendingHintEmail(fp.Proofs))
 			return nil
 		}
 		var u db.UserAccount
@@ -528,7 +528,7 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.SignI
 					if e != nil {
 						return e
 					}
-					if e = s.mergeOpenIDs(ctx, q, existing, proof.Provider.OpenIDs, s.now()); e != nil {
+					if e = s.refreshProviderMeta(ctx, q, existing, *proof.Provider, s.now()); e != nil {
 						return e
 					}
 				}

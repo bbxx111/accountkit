@@ -76,17 +76,23 @@ type appleCredential struct {
 	Nonce   string `json:"nonce"`
 }
 
-// credential 是 §2.1 的凭证 oneof；成员为指针，显式 null 等同缺失。
+type googleCredential struct {
+	IDToken string `json:"id_token"`
+	Nonce   string `json:"nonce"`
+}
+
+// credential 是凭证 oneof；成员为指针，显式 null 等同缺失。
 type credential struct {
 	Phone  *codeCredential   `json:"phone"`
 	Email  *codeCredential   `json:"email"`
 	Wechat *wechatCredential `json:"wechat"`
 	Apple  *appleCredential  `json:"apple"`
+	Google *googleCredential `json:"google"`
 }
 
 func (c credential) present() int {
 	n := 0
-	for _, p := range []bool{c.Phone != nil, c.Email != nil, c.Wechat != nil, c.Apple != nil} {
+	for _, p := range []bool{c.Phone != nil, c.Email != nil, c.Wechat != nil, c.Apple != nil, c.Google != nil} {
 		if p {
 			n++
 		}
@@ -95,7 +101,7 @@ func (c credential) present() int {
 }
 
 func oneofError() *apierror.Error {
-	return apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_ONEOF", "exactly one of phone, email, wechat, apple must be present")
+	return apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_ONEOF", "exactly one of phone, email, wechat, apple, google must be present")
 }
 
 // anchor 校验恰好一个成员，且只接受 phone/email。
@@ -103,7 +109,7 @@ func (c credential) anchor() (enum.IdentityKind, codeCredential, *apierror.Error
 	if c.present() != 1 {
 		return 0, codeCredential{}, oneofError()
 	}
-	if c.Wechat != nil || c.Apple != nil {
+	if c.Wechat != nil || c.Apple != nil || c.Google != nil {
 		return 0, codeCredential{}, apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_KIND_NOT_ALLOWED", "only phone or email credentials are accepted here")
 	}
 	kind, cc := enum.IdentityPhone, c.Phone
@@ -120,7 +126,7 @@ func (c credential) anchor() (enum.IdentityKind, codeCredential, *apierror.Error
 	return kind, *cc, nil
 }
 
-// idp 校验恰好一个成员，且只接受 wechat/apple。
+// idp 校验恰好一个成员，且只接受 wechat/apple/google。
 func (c credential) idp() (user.IdpCredential, *apierror.Error) {
 	if c.present() != 1 {
 		return user.IdpCredential{}, oneofError()
@@ -136,8 +142,13 @@ func (c credential) idp() (user.IdpCredential, *apierror.Error) {
 			return user.IdpCredential{}, apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_INCOMPLETE", "id_token and nonce are required")
 		}
 		return user.IdpCredential{Kind: enum.IdentityApple, IDToken: c.Apple.IDToken, Nonce: c.Apple.Nonce}, nil
+	case c.Google != nil:
+		if c.Google.IDToken == "" || c.Google.Nonce == "" {
+			return user.IdpCredential{}, apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_INCOMPLETE", "id_token and nonce are required")
+		}
+		return user.IdpCredential{Kind: enum.IdentityGoogle, IDToken: c.Google.IDToken, Nonce: c.Google.Nonce}, nil
 	}
-	return user.IdpCredential{}, apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_KIND_NOT_ALLOWED", "only wechat or apple credentials are accepted here")
+	return user.IdpCredential{}, apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_KIND_NOT_ALLOWED", "only wechat, apple, or google credentials are accepted here")
 }
 
 // parseChannel 解析 "PHONE" / "EMAIL"。

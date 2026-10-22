@@ -233,7 +233,7 @@ func (s *Service) BindWithCode(ctx context.Context, p Principal, cred CodeCreden
 	return info, created, nil
 }
 
-// createProviderIdentity 创建 WECHAT/APPLE 身份行：provider_subject 明文 + provider_meta（空 openid 不落库）。
+// createProviderIdentity 创建第三方身份行。空 openid 与空 profile 不落库。
 func (s *Service) createProviderIdentity(ctx context.Context, q *db.Queries, userID string, ident idp.Identity) (db.Identity, error) {
 	iid, err := ids.New(ids.Identity)
 	if err != nil {
@@ -247,8 +247,9 @@ func (s *Service) createProviderIdentity(ctx context.Context, q *db.Queries, use
 			openIDs[app] = oid
 		}
 	}
-	if len(openIDs) > 0 {
-		meta, err = json.Marshal(providerMeta{OpenIDs: openIDs})
+	profile := providerProfileFrom(ident)
+	if len(openIDs) > 0 || profile != nil {
+		meta, err = json.Marshal(providerMeta{OpenIDs: openIDs, Profile: profile})
 		if err != nil {
 			return db.Identity{}, fmt.Errorf("user: encode provider meta: %w", err)
 		}
@@ -257,12 +258,15 @@ func (s *Service) createProviderIdentity(ctx context.Context, q *db.Queries, use
 	if err != nil {
 		return db.Identity{}, err
 	}
+	if err := s.seedEmptyGoogleProfile(ctx, q, userID, ident); err != nil {
+		return db.Identity{}, err
+	}
 	return row, nil
 }
 
 // BindWithIdp 把第三方身份绑定到当前账号。
 func (s *Service) BindWithIdp(ctx context.Context, p Principal, cred IdpCredential, meta Meta) (IdentityInfo, bool, error) {
-	if cred.Kind != enum.IdentityWeChat && cred.Kind != enum.IdentityApple {
+	if cred.Kind != enum.IdentityWeChat && cred.Kind != enum.IdentityApple && cred.Kind != enum.IdentityGoogle {
 		return IdentityInfo{}, false, ErrInvalidArgument
 	}
 	ev := audit.AuthenticationEvent{UserID: p.UserID, SessionID: p.SessionID, IdentityKind: cred.Kind, IP: meta.IP, RequestID: meta.RequestID}
@@ -294,7 +298,7 @@ func (s *Service) BindWithIdp(ctx context.Context, p Principal, cred IdpCredenti
 		existing, err := q.FindActiveIdentityByProviderSubject(ctx, db.FindActiveIdentityByProviderSubjectParams{Kind: ident.Kind, ProviderSubject: &subject})
 		switch {
 		case err == nil && existing.UserID == p.UserID:
-			if err := s.mergeOpenIDs(ctx, q, existing, ident.OpenIDs, now); err != nil {
+			if err := s.refreshProviderMeta(ctx, q, existing, ident, now); err != nil {
 				return err
 			}
 			info, created = identityInfoFrom(existing), false

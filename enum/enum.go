@@ -39,12 +39,13 @@ const (
 	IdentityEmail                        // 2
 	IdentityWeChat                       // 3
 	IdentityApple                        // 4
+	IdentityGoogle                       // 5
 )
 
-var identityKindNames = [...]string{"UNSPECIFIED", "PHONE", "EMAIL", "WECHAT", "APPLE"}
+var identityKindNames = [...]string{"UNSPECIFIED", "PHONE", "EMAIL", "WECHAT", "APPLE", "GOOGLE"}
 
 func (k IdentityKind) String() string { return name(identityKindNames[:], int(k)) }
-func (k IdentityKind) Valid() bool    { return k >= IdentityPhone && k <= IdentityApple }
+func (k IdentityKind) Valid() bool    { return k >= IdentityPhone && k <= IdentityGoogle }
 
 // IsAnchor 报告该 kind 是否为锚点身份（账号至少需一个）。
 func (k IdentityKind) IsAnchor() bool { return k == IdentityPhone || k == IdentityEmail }

@@ -160,6 +160,7 @@ func TestConfigExplicitIdentityProviderDependencies(t *testing.T) {
 	for _, provider := range []struct{ kind, key, value string }{
 		{"WECHAT", "ACCOUNTKIT_WECHAT_APPS", "test-app:synthetic-provider-secret"},
 		{"APPLE", "ACCOUNTKIT_APPLE_BUNDLE_IDS", "com.example.synthetic-app"},
+		{"GOOGLE", "ACCOUNTKIT_GOOGLE_CLIENT_IDS", "synthetic-client.apps.googleusercontent.com"},
 	} {
 		for _, configured := range []bool{false, true} {
 			for _, command := range []string{"serve", "migrate"} {

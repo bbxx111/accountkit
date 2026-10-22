@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -60,7 +61,7 @@ func TestUpdateMe(t *testing.T) {
 	var gotName string
 	f := withAuth(&fakeService{updateDisplayName: func(_ context.Context, uid, name string) (user.Me, error) {
 		gotName = name
-		if len([]rune(name)) > 32 {
+		if len([]rune(name)) > 128 {
 			return user.Me{}, user.ErrInvalidArgument
 		}
 		m := meFixture()
@@ -88,7 +89,11 @@ func TestUpdateMe(t *testing.T) {
 	if status, _ := aipError(t, rec); rec.Code != 400 || status != "INVALID_ARGUMENT/MALFORMED_BODY" {
 		t.Fatalf("read-only field: %d %s", rec.Code, status)
 	}
-	rec = do(t, h, call{method: "PATCH", path: "/users/me", bearer: "good", body: map[string]string{"display_name": string(make([]rune, 33))}})
+	rec = do(t, h, call{method: "PATCH", path: "/users/me", bearer: "good", body: map[string]string{"display_name": strings.Repeat("字", 128)}})
+	if rec.Code != 200 || gotName != strings.Repeat("字", 128) {
+		t.Fatalf("128 runes: %d %q", rec.Code, gotName)
+	}
+	rec = do(t, h, call{method: "PATCH", path: "/users/me", bearer: "good", body: map[string]string{"display_name": strings.Repeat("字", 129)}})
 	if status, _ := aipError(t, rec); rec.Code != 400 || status != "INVALID_ARGUMENT/INVALID_ARGUMENT" {
 		t.Fatalf("too long: %d %s", rec.Code, status)
 	}

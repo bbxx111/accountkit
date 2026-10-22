@@ -18,6 +18,9 @@ type Identity struct {
 	Subject   string
 	OpenIDs   map[string]string
 	HintEmail string
+	// Name 和 Picture 是 Google 身份声明。登录不因这两项失败；落库前再净化。
+	Name    string
+	Picture string
 	// ExpireTime 是已验证凭证的原始期限；未知期限保持零值。
 	ExpireTime time.Time
 }
@@ -25,9 +28,9 @@ type Identity struct {
 var (
 	// ErrInvalidCredential：code 无效/已用/过期，或 id_token 验签、iss、exp、nonce 不通过。
 	ErrInvalidCredential = errors.New("idp: invalid credential")
-	// ErrAppNotAllowed：app_id 不在 WeChatApps，或 aud 不在 AppleBundleIDs（含 IdP 未启用）。
+	// ErrAppNotAllowed：app_id 不在 WeChatApps，或 aud 不在允许的客户端标识（含 IdP 未启用）。
 	ErrAppNotAllowed = errors.New("idp: app not allowed")
-	// ErrNonceReplayed：同一 Apple nonce 在 TTL 内第二次出现。
+	// ErrNonceReplayed：同一 nonce 在 TTL 内第二次出现。
 	ErrNonceReplayed = errors.New("idp: nonce already used")
 	// ErrUnavailable：IdP 网络/5xx、JWKS 不可得、Redis 不可用 → 503。
 	ErrUnavailable = errors.New("idp: provider unavailable")
@@ -43,4 +46,9 @@ type WeChatVerifier interface {
 // AppleVerifier 校验 id_token 与 nonce。
 type AppleVerifier interface {
 	VerifyApple(ctx context.Context, idToken, rawNonce string) (Identity, error)
+}
+
+// GoogleVerifier 校验 Google ID token 与原始 nonce。
+type GoogleVerifier interface {
+	VerifyGoogle(ctx context.Context, idToken, rawNonce string) (Identity, error)
 }

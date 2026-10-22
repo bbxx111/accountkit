@@ -20,6 +20,7 @@ const (
 	MethodEmail   Method = "email"
 	MethodWechat  Method = "wechat"
 	MethodApple   Method = "apple"
+	MethodGoogle  Method = "google"
 	MethodUnknown Method = "unknown"
 )
 
@@ -160,6 +161,7 @@ const (
 	DependencyRevoke       DependencyOperation = "revoke"
 	DependencyVerifyWechat DependencyOperation = "verify_wechat"
 	DependencyVerifyApple  DependencyOperation = "verify_apple"
+	DependencyVerifyGoogle DependencyOperation = "verify_google"
 	DependencySMS          DependencyOperation = "sms"
 	DependencyEmail        DependencyOperation = "email"
 )
@@ -171,6 +173,7 @@ const (
 	DegradationRevocationCheckFailOpen DegradationScenario = "revocation_check_fail_open"
 	DegradationRefreshGraceWriteFailed DegradationScenario = "refresh_grace_write_failed"
 	DegradationAppleCachedKeyFallback  DegradationScenario = "apple_cached_key_fallback"
+	DegradationGoogleCachedKeyFallback DegradationScenario = "google_cached_key_fallback"
 )
 
 // AuditKind separates event counts from omitted field counts.

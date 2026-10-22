@@ -13,7 +13,7 @@ import (
 	"github.com/bbxx111/accountkit/user/idp"
 )
 
-// IdpCredential 是 §2.1 凭证 oneof 的 wechat / apple 成员。
+// IdpCredential 是第三方凭证 oneof 的 wechat / apple / google 成员。
 type IdpCredential struct {
 	Kind    enum.IdentityKind
 	AppID   string
@@ -63,6 +63,11 @@ func (s *Service) verifyIdp(ctx context.Context, cred IdpCredential) (idp.Identi
 			return idp.Identity{}, fmt.Errorf("%w: apple sign-in not configured", idp.ErrAppNotAllowed)
 		}
 		return s.verifyApple(ctx, cred)
+	case enum.IdentityGoogle:
+		if s.d.Google == nil {
+			return idp.Identity{}, fmt.Errorf("%w: google sign-in not configured", idp.ErrAppNotAllowed)
+		}
+		return s.verifyGoogle(ctx, cred)
 	default:
 		return idp.Identity{}, fmt.Errorf("%w: kind %s is not an identity provider", ErrInvalidArgument, cred.Kind)
 	}
@@ -81,16 +86,19 @@ func idpFailureReason(err error) string {
 	return ""
 }
 
-// providerMeta 是 identity.provider_meta 的形状（§3.2）。
-type providerMeta struct {
-	OpenIDs map[string]string `json:"openids,omitempty"`
+// providerMeta 是 identity.provider_meta 的形状。openids 与 profile 共存。
+type providerProfile struct {
+	Name    string `json:"name,omitempty"`
+	Picture string `json:"picture,omitempty"`
 }
 
-// mergeOpenIDs 把本次登录 App 的 openid 并入 provider_meta.openids（只增不改）。
-func (s *Service) mergeOpenIDs(ctx context.Context, q *db.Queries, existing db.Identity, incoming map[string]string, now time.Time) error {
-	if len(incoming) == 0 {
-		return nil
-	}
+type providerMeta struct {
+	OpenIDs map[string]string `json:"openids,omitempty"`
+	Profile *providerProfile  `json:"profile,omitempty"`
+}
+
+// refreshProviderMeta 合并本次 openid，并按非空字段更新 Google profile。缺省字段保持原值。
+func (s *Service) refreshProviderMeta(ctx context.Context, q *db.Queries, existing db.Identity, ident idp.Identity, now time.Time) error {
 	var pm providerMeta
 	if len(existing.ProviderMeta) > 0 {
 		if err := json.Unmarshal(existing.ProviderMeta, &pm); err != nil {
@@ -98,7 +106,7 @@ func (s *Service) mergeOpenIDs(ctx context.Context, q *db.Queries, existing db.I
 		}
 	}
 	changed := false
-	for app, openid := range incoming {
+	for app, openid := range ident.OpenIDs {
 		if openid == "" {
 			continue
 		}
@@ -107,6 +115,19 @@ func (s *Service) mergeOpenIDs(ctx context.Context, q *db.Queries, existing db.I
 		}
 		if _, seen := pm.OpenIDs[app]; !seen {
 			pm.OpenIDs[app] = openid
+			changed = true
+		}
+	}
+	if incoming := providerProfileFrom(ident); incoming != nil {
+		if pm.Profile == nil {
+			pm.Profile = &providerProfile{}
+		}
+		if incoming.Name != "" && pm.Profile.Name != incoming.Name {
+			pm.Profile.Name = incoming.Name
+			changed = true
+		}
+		if incoming.Picture != "" && pm.Profile.Picture != incoming.Picture {
+			pm.Profile.Picture = incoming.Picture
 			changed = true
 		}
 	}
@@ -119,6 +140,57 @@ func (s *Service) mergeOpenIDs(ctx context.Context, q *db.Queries, existing db.I
 	}
 	if _, err := q.UpdateIdentityProviderMeta(ctx, db.UpdateIdentityProviderMetaParams{ID: existing.ID, ProviderMeta: b, UpdateTime: now}); err != nil {
 		return fmt.Errorf("user: merge provider meta: %w", err)
+	}
+	return nil
+}
+
+func providerProfileFrom(ident idp.Identity) *providerProfile {
+	if ident.Kind != enum.IdentityGoogle {
+		return nil
+	}
+	name := sanitizeProviderName(ident.Name)
+	var picture string
+	if ident.Picture != "" {
+		if value, err := normalizeAvatarURL(ident.Picture); err == nil {
+			picture = value
+		}
+	}
+	if name == "" && picture == "" {
+		return nil
+	}
+	return &providerProfile{Name: name, Picture: picture}
+}
+
+func (s *Service) seedEmptyGoogleProfile(ctx context.Context, q *db.Queries, userID string, ident idp.Identity) error {
+	profile := providerProfileFrom(ident)
+	if profile == nil {
+		return nil
+	}
+	row, err := q.LockUserByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("user: lock profile seed: %w", err)
+	}
+	if row.State != enum.UserActive {
+		return nil
+	}
+	name := displayNameFromProvider(ident.Name)
+	setName := name != "" && (row.DisplayName == nil || *row.DisplayName == "")
+	setAvatar := profile.Picture != "" && (row.AvatarUrl == nil || *row.AvatarUrl == "")
+	if !setName && !setAvatar {
+		return nil
+	}
+	var display, avatar *string
+	if setName {
+		display = &name
+	}
+	if setAvatar {
+		avatar = &profile.Picture
+	}
+	if _, err := q.UpdateUserProfile(ctx, db.UpdateUserProfileParams{
+		SetDisplayName: setName, DisplayName: display, SetAvatarUrl: setAvatar, AvatarUrl: avatar,
+		Now: s.now(), ID: userID, ActiveState: enum.UserActive,
+	}); err != nil {
+		return fmt.Errorf("user: seed google profile: %w", err)
 	}
 	return nil
 }

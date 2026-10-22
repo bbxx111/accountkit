@@ -17,11 +17,17 @@ me, err := auth.Users().UpdateProfile(ctx, userID, user.ProfilePatch{
 })
 ```
 
-指针 nil 保持字段，指向空字符串清空；至少提供一个字段。更新在账号行锁内确认 ACTIVE 并原子保存，任一字段非法则整次拒绝。错误沿用 `ErrInvalidArgument`、`ErrNotFound`、`ErrInvalidState`；头像校验边界见 [HTTP 契约](openapi.md#基础资料与头像)。`UpdateDisplayName` 保留既有签名和行为，新代码需要原子更新或锁后状态检查时使用 `UpdateProfile`。
+指针 nil 保持字段，指向空字符串清空；至少提供一个字段。更新在账号行锁内确认 ACTIVE 并原子保存，任一字段非法则整次拒绝。显示名最多 128 个 Unicode 码位。此前把 32 写死在客户端校验里的宿主需要接受 128。错误沿用 `ErrInvalidArgument`、`ErrNotFound`、`ErrInvalidState`；头像校验边界见 [HTTP 契约](openapi.md#基础资料与头像)。`UpdateDisplayName` 保留既有签名和行为，新代码需要原子更新或锁后状态检查时使用 `UpdateProfile`。
 
 `BatchPublicProfiles` 返回 ID、DisplayName、AvatarURL 和 State；宿主先按业务权限过滤 ID，待注销和已删除账号的显示名与头像均为空。图片文件的上传、公开访问、默认图及删除由宿主管理；头像清空只清除账号中的引用。
 
 自定义 `enduser.Service` 仍满足原必需方法集；实现可选 `enduser.ProfileUpdater` 的 `UpdateProfile` 方法即可支持头像。仅实现旧方法时，原显示名 PATCH 继续工作，含头像的 PATCH 返回 `503 PROFILE_UPDATE_NOT_CONFIGURED`，不会先修改显示名。
+
+## Google 登录
+
+配置 `GoogleClientIDs` 后，`SignInWithIdp` 接受 `IdpCredential{Kind: enum.IdentityGoogle, IDToken: token, Nonce: rawNonce}`。nonce 是客户端原始字符串。已验证邮箱出现在成功 `TokenResult.HintEmail` 或 pending `PendingSignIn.HintEmail`，补全时仍要传入明确的 `target`。`GOOGLE` 不能放入 `RequiredIdentityKinds`。只启用 Google 且 Required 为空时，不要求短信或邮件发送器。
+
+`name` 和 `picture` 记在该身份的 `provider_meta.profile`。账号 `display_name`、`avatar_url` 只在该身份首次关联且对应列仍为空时填充。身份列表和 `:reveal` 不返回 `provider_meta`。宿主继续负责头像文件、默认图和后续同步。未配置客户端 ID 时 Google 登录保持关闭，配置里没有客户端秘密。
 
 ## 当前会话、解绑与客户端描述
 

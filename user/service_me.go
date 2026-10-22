@@ -18,7 +18,8 @@ import (
 	"github.com/bbxx111/accountkit/user/db"
 )
 
-const maxDisplayNameRunes = 32
+const maxDisplayNameRunes = 128
+const maxProviderNameRunes = 256
 
 // Me 是当前用户资料（C 端 DTO 的数据源；不含任何身份或密钥字段）。
 type Me struct {
@@ -99,7 +100,40 @@ func normalizeDisplayName(name string) (string, error) {
 	return name, nil
 }
 
-// UpdateDisplayName 修改显示名：TrimSpace，rune 数 ≤ 32，空串清空。
+// sanitizeProviderName 去掉控制字符和双向格式符，再截到身份附加数据允许的长度。
+// 空结果表示该声明不可用，调用方跳过字段，不因此拒绝登录。
+func sanitizeProviderName(name string) string {
+	name = strings.TrimSpace(name)
+	if !utf8.ValidString(name) {
+		return ""
+	}
+	var b strings.Builder
+	b.Grow(len(name))
+	for _, r := range name {
+		if unicode.IsControl(r) || isForbiddenDisplayNameRune(r) {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	out := strings.TrimSpace(b.String())
+	runes := []rune(out)
+	if len(runes) > maxProviderNameRunes {
+		out = strings.TrimSpace(string(runes[:maxProviderNameRunes]))
+	}
+	return out
+}
+
+// displayNameFromProvider 取已净化名称的前 128 个码位，供账号显示名首次填充。
+func displayNameFromProvider(name string) string {
+	name = sanitizeProviderName(name)
+	runes := []rune(name)
+	if len(runes) > maxDisplayNameRunes {
+		name = strings.TrimSpace(string(runes[:maxDisplayNameRunes]))
+	}
+	return name
+}
+
+// UpdateDisplayName 修改显示名：TrimSpace，rune 数 ≤ 128，空串清空。
 func (s *Service) UpdateDisplayName(ctx context.Context, userID, name string) (Me, error) {
 	name, err := normalizeDisplayName(name)
 	if err != nil {

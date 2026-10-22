@@ -67,12 +67,12 @@ func (p *IdentityPolicy) Fingerprint() string {
 }
 
 // IdentityCapabilities 描述装配能力，不表示依赖瞬时健康状态。
-type IdentityCapabilities struct{ Phone, Email, WeChat, Apple bool }
+type IdentityCapabilities struct{ Phone, Email, WeChat, Apple, Google bool }
 
 // ValidateCapabilities 仅供显式 Enabled 使用；默认装配保留 Disabled 发送器兼容性。
 func (p *IdentityPolicy) ValidateCapabilities(c IdentityCapabilities) error {
 	for _, k := range p.enabled {
-		if !map[enum.IdentityKind]bool{enum.IdentityPhone: c.Phone, enum.IdentityEmail: c.Email, enum.IdentityWeChat: c.WeChat, enum.IdentityApple: c.Apple}[k] {
+		if !map[enum.IdentityKind]bool{enum.IdentityPhone: c.Phone, enum.IdentityEmail: c.Email, enum.IdentityWeChat: c.WeChat, enum.IdentityApple: c.Apple, enum.IdentityGoogle: c.Google}[k] {
 			return fmt.Errorf("user: EnabledIdentityKinds %s has no verification capability", k)
 		}
 	}

@@ -123,6 +123,7 @@ type pendingSignInResponse struct {
 	ExpireTime            string   `json:"expire_time"`
 	EnabledIdentityKinds  []string `json:"enabled_identity_kinds"`
 	RequiredIdentityKinds []string `json:"required_identity_kinds"`
+	HintEmail             string   `json:"hint_email,omitempty"`
 }
 
 func identityKindNames(kinds []enum.IdentityKind) []string {
@@ -151,6 +152,7 @@ func (h *Handler) writeSignIn(w http.ResponseWriter, r *http.Request, res user.S
 		ExpireTime:            fmtTime(p.ExpireTime),
 		EnabledIdentityKinds:  identityKindNames(p.EnabledIdentityKinds),
 		RequiredIdentityKinds: identityKindNames(p.RequiredIdentityKinds),
+		HintEmail:             p.HintEmail,
 	})
 }
 

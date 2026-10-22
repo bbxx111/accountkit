@@ -45,6 +45,8 @@ Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史�
 
 当前初始结构在 v0.4.0 七表会话定义之上，按各次限定授权合入资料单列和本轮头像列；生产目录只有 0001 up/down，version=1/dirty=false。0001 down 继续覆盖七表，公共 Down 拒绝；审计流程关联仍为 data.accountkit.flow_id。此前审计、流程改名、索引和会话简化授权各自限于当时范围。
 
+`add-google-sign-in` 只改当前 0001 up 中 `identity.kind` 与 `provider_meta` 的注释，并更新当前 initialFrozen。不新增列、索引、CHECK 或 0002。已发布 tag、冻结源和 0001 down 不变。同号数据库不会重放这段注释。旧二进制不能解释 kind 5。后续真实结构增量仍从 0002 开始。
+
 基线预检要求完整 sign_in_completion_flow、十列 UUIDv7 审计、必有来源/单份描述、当前资料单列和头像列。旧缺头像资料 v1、v0.4.0 v1、v0.3.0 v1、双快照/旧流程/审计、双表及各代撤回 v2 均返回可由 errors.Is 识别的 migrations.ErrIncompatibleBaseline，保持 catalog、数据和 version/dirty，dirty 优先。UnsafeReset 沿用相同预检，不接受旧基线；重复 Up 不补列或重放同号 SQL。
 
 冻结源、全部发布 tag/SQL、v0.4.0 旧定义与当前 initialFrozen 分别固定。实际当前哈希和校验结果记于[本轮验收](../openspec/changes/archive/2026-10-21-add-user-avatar-url/verification.md)。后续真实增量从 0002 递增；旧发布说明和归档保留原文，当前操作以本节为准。

@@ -10,7 +10,7 @@ func TestUserStateValuesArePinned(t *testing.T) {
 	if enum.UserActive != 1 || enum.UserFrozen != 2 || enum.UserPendingDeletion != 3 || enum.UserDeleted != 4 {
 		t.Fatalf("UserState values drifted: %d %d %d %d", enum.UserActive, enum.UserFrozen, enum.UserPendingDeletion, enum.UserDeleted)
 	}
-	if enum.IdentityPhone != 1 || enum.IdentityEmail != 2 || enum.IdentityWeChat != 3 || enum.IdentityApple != 4 {
+	if enum.IdentityPhone != 1 || enum.IdentityEmail != 2 || enum.IdentityWeChat != 3 || enum.IdentityApple != 4 || enum.IdentityGoogle != 5 {
 		t.Fatal("IdentityKind values drifted")
 	}
 	if enum.RevokeUserLogout != 1 || enum.RevokeReplacedByRelogin != 6 || enum.RevokeAdmin != 7 {
@@ -34,7 +34,7 @@ func TestStringAndParseRoundTrip(t *testing.T) {
 	if enum.UserPendingDeletion.String() != "PENDING_DELETION" || enum.RevokeReplacedByRelogin.String() != "REPLACED_BY_RELOGIN" || enum.EventSignIn.String() != "SIGN_IN" {
 		t.Fatal("UPPER_SNAKE spelling mismatch")
 	}
-	for _, k := range []enum.IdentityKind{enum.IdentityPhone, enum.IdentityEmail, enum.IdentityWeChat, enum.IdentityApple} {
+	for _, k := range []enum.IdentityKind{enum.IdentityPhone, enum.IdentityEmail, enum.IdentityWeChat, enum.IdentityApple, enum.IdentityGoogle} {
 		got, err := enum.ParseIdentityKind(k.String())
 		if err != nil || got != k {
 			t.Fatalf("IdentityKind %d round trip failed", k)
@@ -49,8 +49,11 @@ func TestParseRejectsLowercaseAndUnknown(t *testing.T) {
 	if _, err := enum.ParseUserState("UNSPECIFIED"); err == nil {
 		t.Fatal("UNSPECIFIED must be rejected as input")
 	}
-	if _, err := enum.ParseIdentityKind("GOOGLE"); err == nil {
+	if _, err := enum.ParseIdentityKind("FACEBOOK"); err == nil {
 		t.Fatal("unknown must be rejected")
+	}
+	if k, err := enum.ParseIdentityKind("GOOGLE"); err != nil || k != enum.IdentityGoogle {
+		t.Fatal("GOOGLE must parse")
 	}
 }
 
@@ -64,10 +67,10 @@ func TestValidAndUnknownString(t *testing.T) {
 }
 
 func TestIdentityKindHelpers(t *testing.T) {
-	if !enum.IdentityPhone.IsAnchor() || !enum.IdentityEmail.IsAnchor() || enum.IdentityWeChat.IsAnchor() || enum.IdentityApple.IsAnchor() {
+	if !enum.IdentityPhone.IsAnchor() || !enum.IdentityEmail.IsAnchor() || enum.IdentityWeChat.IsAnchor() || enum.IdentityApple.IsAnchor() || enum.IdentityGoogle.IsAnchor() {
 		t.Fatal("IsAnchor mismatch")
 	}
-	if !enum.IdentityPhone.IsChannel() || enum.IdentityWeChat.IsChannel() {
+	if !enum.IdentityPhone.IsChannel() || enum.IdentityWeChat.IsChannel() || enum.IdentityGoogle.IsChannel() {
 		t.Fatal("IsChannel mismatch")
 	}
 	if enum.PurposeSignIn.Key() != "signin" || enum.PurposeBind.Key() != "bind" || enum.PurposeReauth.Key() != "reauth" {

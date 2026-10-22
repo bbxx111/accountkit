@@ -35,7 +35,7 @@
 
 省略或 `null` 保持原字段，`""` 清空；两个字段都没有非 null 值时为 `400 NO_FIELDS`。头像去除首尾空白后最长 2048 **字节**，必须是具有非空主机的绝对 HTTPS URL，无用户信息、fragment、反斜线、内部空白或控制字符且为合法 UTF-8；允许普通查询参数。库不请求该地址，上传和存储由宿主提供。
 
-地址错误为 `400 INVALID_ARGUMENT`，JSON 类型/格式错误为 `400 MALFORMED_BODY`，锁后非 ACTIVE 为 `400 FAILED_PRECONDITION / INVALID_ACCOUNT_STATE`，目标不存在为 404。自定义旧 Service 没有可选 `ProfileUpdater` 时，显示名请求仍可处理，含非 null 头像的请求返回 `503 PROFILE_UPDATE_NOT_CONFIGURED`，两字段都不写入。头像是内置公开资料，不依赖资料扩展 Schema，不能在 profile_attributes 顶层重复声明。
+地址错误为 `400 INVALID_ARGUMENT`，JSON 类型/格式错误为 `400 MALFORMED_BODY`，锁后非 ACTIVE 为 `400 FAILED_PRECONDITION / INVALID_ACCOUNT_STATE`，目标不存在为 404。显示名去掉首尾空白后最多 128 个 Unicode 码位；超出或含有控制字符、双向格式符时整次拒绝，原值不变。自定义旧 Service 没有可选 `ProfileUpdater` 时，显示名请求仍可处理，含非 null 头像的请求返回 `503 PROFILE_UPDATE_NOT_CONFIGURED`，两字段都不写入。头像是内置公开资料，不依赖资料扩展 Schema，不能在 profile_attributes 顶层重复声明。
 
 ## 本人资料属性
 

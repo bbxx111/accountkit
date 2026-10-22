@@ -196,6 +196,12 @@ func TestSignInWithIdp(t *testing.T) {
 			return user.SignInResult{}, idp.ErrAppNotAllowed
 		case cred.Kind == enum.IdentityApple && cred.Nonce == "replay":
 			return user.SignInResult{}, idp.ErrNonceReplayed
+		case cred.Kind == enum.IdentityGoogle && cred.Nonce == "pending":
+			return user.SignInResult{Pending: &user.PendingSignIn{
+				SignInCompletionToken: "opaque", ExpireTime: time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC),
+				HintEmail: "person@example.test", EnabledIdentityKinds: []enum.IdentityKind{enum.IdentityEmail, enum.IdentityGoogle},
+				RequiredIdentityKinds: []enum.IdentityKind{enum.IdentityEmail},
+			}}, nil
 		case cred.Kind == enum.IdentityWeChat && cred.Code == "down":
 			return user.SignInResult{}, idp.ErrUnavailable
 		case cred.Kind == enum.IdentityWeChat && cred.Code == "miscfg":
@@ -204,7 +210,7 @@ func TestSignInWithIdp(t *testing.T) {
 			return user.SignInResult{}, user.ErrUserFrozen
 		}
 		res := user.TokenResult{AccessToken: "at", RefreshToken: "rt", ExpiresIn: 900, RefreshExpiresIn: 2592000, Scope: "user:bind", UserID: "u_1", IsNewUser: true}
-		if cred.Kind == enum.IdentityApple {
+		if cred.Kind == enum.IdentityApple || cred.Kind == enum.IdentityGoogle {
 			res.HintEmail = "x@privaterelay.appleid.com"
 		}
 		return user.SignInResult{Tokens: &res}, nil
@@ -227,6 +233,25 @@ func TestSignInWithIdp(t *testing.T) {
 	decode(t, rec, &tok)
 	if rec.Code != 200 || tok["hint_email"] != "x@privaterelay.appleid.com" || got.cred.Kind != enum.IdentityApple || got.cred.IDToken != "t" || got.cred.Nonce != "n" {
 		t.Fatalf("apple: %d %v %+v", rec.Code, tok, got)
+	}
+	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"google": map[string]string{"id_token": "gt", "nonce": "gn"}}, headers: devHeaders()})
+	decode(t, rec, &tok)
+	if rec.Code != 200 || tok["hint_email"] != "x@privaterelay.appleid.com" || got.cred.Kind != enum.IdentityGoogle || got.cred.IDToken != "gt" || got.cred.Nonce != "gn" || tok["provider_meta"] != nil {
+		t.Fatalf("google: %d %v %+v", rec.Code, tok, got)
+	}
+	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"google": map[string]string{"id_token": "gt"}}, headers: devHeaders()})
+	if status, _ := aipError(t, rec); status != "INVALID_ARGUMENT/CREDENTIAL_INCOMPLETE" {
+		t.Fatalf("google incomplete: %s", status)
+	}
+	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"google": map[string]string{"id_token": "gt", "nonce": "gn"}, "apple": map[string]string{"id_token": "t", "nonce": "n"}}, headers: devHeaders()})
+	if status, _ := aipError(t, rec); status != "INVALID_ARGUMENT/CREDENTIAL_ONEOF" {
+		t.Fatalf("google and apple: %s", status)
+	}
+	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"google": map[string]string{"id_token": "gt", "nonce": "pending"}}, headers: devHeaders()})
+	var pending map[string]any
+	decode(t, rec, &pending)
+	if rec.Code != 200 || pending["hint_email"] != "person@example.test" || pending["next_action"] != "COMPLETE_IDENTITY" {
+		t.Fatalf("google pending hint: %d %v", rec.Code, pending)
 	}
 
 	// 设备头与凭证形状

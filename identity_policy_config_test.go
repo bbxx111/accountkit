@@ -111,7 +111,7 @@ func TestIdentityPolicyNewSnapshot(t *testing.T) {
 }
 
 func TestIdentityKindsConfigMissingProvider(t *testing.T) {
-	for _, kind := range []enum.IdentityKind{enum.IdentityWeChat, enum.IdentityApple} {
+	for _, kind := range []enum.IdentityKind{enum.IdentityWeChat, enum.IdentityApple, enum.IdentityGoogle} {
 		c := minimal()
 		c.EnabledIdentityKinds = []enum.IdentityKind{kind}
 		c.RequiredIdentityKinds = []enum.IdentityKind{}

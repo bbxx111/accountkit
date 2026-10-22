@@ -37,7 +37,7 @@ CREATE TABLE identity (
     id                  TEXT COLLATE "C" PRIMARY KEY
                         CONSTRAINT identity_id_format CHECK (id ~ '^i_[0-9a-hjkmnp-tv-z]{13}$'),
     user_id             TEXT COLLATE "C" NOT NULL,
-    kind                SMALLINT NOT NULL,              -- PHONE / EMAIL / WECHAT / APPLE，Go 定义
+    kind                SMALLINT NOT NULL,              -- PHONE / EMAIL / WECHAT / APPLE / GOOGLE，Go 定义
     subject_digest      TEXT COLLATE "C",               -- HMAC-SHA256 hex（锚点类）
     digest_key_version  SMALLINT,
     provider_subject    TEXT COLLATE "C",               -- UnionID / Apple sub（第三方类）
@@ -45,7 +45,7 @@ CREATE TABLE identity (
     cipher_key_version  SMALLINT,
     hint_prefix         TEXT COLLATE "C",               -- 掩码可见的前缀（§3.3）
     hint_suffix         TEXT COLLATE "C",               -- 掩码可见的后缀
-    provider_meta       JSONB,                          -- 微信：{"openids": {"<appid>": "<openid>"}}
+    provider_meta       JSONB,                          -- 微信：{"openids": {"<appid>": "<openid>"}}；Google：{"profile":{"name","picture"}}
     create_time         TIMESTAMPTZ NOT NULL DEFAULT now(),
     update_time         TIMESTAMPTZ NOT NULL DEFAULT now(),
     delete_time         TIMESTAMPTZ,                    -- 解绑 = 软删

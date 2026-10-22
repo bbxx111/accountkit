@@ -1,5 +1,11 @@
 # 功能与兼容对照
 
+## Google 登录与显示名长度
+
+`IdentityKind` 追加 `GOOGLE = 5`。`POST /users:signInWithIdp` 增加与 `apple` 互斥的 `google` 成员，字段为 `id_token` 和原始 `nonce`。未配置 `GoogleClientIDs` 时该登录关闭。已验证邮箱只作为 `hint_email` 预填，补全仍要显式 `target`。`Required` 不能包含 `GOOGLE`。
+
+显示名上限由 32 放宽到 128 个 Unicode 码位，适用于 `PATCH /users/me` 和 Google 首次填充。把 32 写死的宿主需要同时放宽。旧二进制不能解释 kind 5；回退二进制前不能保留已写入的 Google 身份行。去掉客户端 ID 只停止新的 Google 登录。
+
 ## 内置头像属性
 
 v0.5.0 新增 `user.Me`、`user.AdminUser`、`user.PublicProfile` 的 `AvatarURL string` 和对应两面 JSON `avatar_url`；未设置返回空字符串。使用结构体无字段名的位置字面量的 Go 调用者需改为带字段名的写法，HTTP 严格字段解析器需允许新字段。

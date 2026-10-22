@@ -146,8 +146,17 @@ func (s *Service) loadFlow(ctx context.Context, token string, dev Device) (db.Si
 	return row, p, err
 }
 
-func (s *Service) pendingResult(token string, expiry time.Time) SignInResult {
-	return SignInResult{Pending: &PendingSignIn{SignInCompletionToken: token, ExpireTime: expiry, EnabledIdentityKinds: s.policy.EnabledKinds(), RequiredIdentityKinds: s.policy.RequiredKinds()}}
+func (s *Service) pendingResult(token string, expiry time.Time, hint string) SignInResult {
+	return SignInResult{Pending: &PendingSignIn{SignInCompletionToken: token, ExpireTime: expiry, HintEmail: hint, EnabledIdentityKinds: s.policy.EnabledKinds(), RequiredIdentityKinds: s.policy.RequiredKinds()}}
+}
+
+func pendingHintEmail(proofs []completionProof) string {
+	for _, proof := range proofs {
+		if proof.Provider != nil && proof.Provider.HintEmail != "" {
+			return proof.Provider.HintEmail
+		}
+	}
+	return ""
 }
 
 func (s *Service) createPending(ctx context.Context, q *db.Queries, proof completionProof, expiry time.Time, dev Device, info *ClientInfo) (SignInResult, string, error) {
@@ -184,7 +193,7 @@ func (s *Service) createPending(ctx context.Context, q *db.Queries, proof comple
 	if err != nil {
 		return SignInResult{}, "", err
 	}
-	return s.pendingResult(token, deadline), id, nil
+	return s.pendingResult(token, deadline, pendingHintEmail([]completionProof{proof})), id, nil
 }
 
 func completionRequest(token string, cred CodeCredential) string {

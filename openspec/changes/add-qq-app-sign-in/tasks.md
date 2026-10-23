@@ -36,10 +36,10 @@
 
 ## 6. App 接入说明与库侧契约验收
 
-- [ ] 6.1 编写 QQ App SDK 接入文档：SDK 登录取得 access_token、提交统一凭证、不提交 openid、令牌保密与可重放风险、UnionID 打通、头像名单与 HTTPS 说明；核对官方文档链接与配置示例。
-- [ ] 6.2 使用正式根门面和 HTTP handler、实际 QQ Provider、本地模拟 `/me` 与 `get_user_info` 及真实 PostgreSQL/Redis，验证登录、本人资料读取、刷新、凭证拒绝、跨应用令牌拒绝及资料失败后补填；`TestQQHTTPLoginContract` 实际通过并加入 `scripts/required-tests.txt`。
-- [ ] 6.3 经正式 HTTP 入口配置两个 AppID，验证 UNIONID 同号单账号/身份及 OpenID 元数据合并、OPENID 应用隔离与跨 App 空字段补填；`TestQQHTTPMultiAppIdentityContract` 实际通过并加入必需清单，不将模拟值描述为真实平台打通验证。
-- [ ] 6.4 执行 `go build ./...`、`go vet ./...`、`go test -count=1 ./...`（含 SERVER_TEST_DB_DSN）、`bash scripts/check-generated.sh` 与 `openspec validate --all --strict`，并把实际结果、宿主联调清单（真机 SDK、UnionID 返回、头像主机 HTTPS）的未执行状态写入 `verification.md`。
+- [x] 6.1 编写 QQ App SDK 接入文档：SDK 登录取得 access_token、提交统一凭证、不提交 openid、令牌保密与可重放风险、UnionID 打通、头像名单与 HTTPS 说明；核对官方文档链接与配置示例。
+- [x] 6.2 使用正式根门面和 HTTP handler、实际 QQ Provider、本地模拟 `/me` 与 `get_user_info` 及真实 PostgreSQL/Redis，验证登录、本人资料读取、刷新、凭证拒绝、跨应用令牌拒绝及资料失败后补填；`TestQQHTTPLoginContract` 实际通过并加入 `scripts/required-tests.txt`。
+- [x] 6.3 经正式 HTTP 入口配置两个 AppID，验证 UNIONID 同号单账号/身份及 OpenID 元数据合并、OPENID 应用隔离与跨 App 空字段补填；`TestQQHTTPMultiAppIdentityContract` 实际通过并加入必需清单，不将模拟值描述为真实平台打通验证。
+- [x] 6.4 执行 `go build ./...`、`go vet ./...`、`go test -count=1 ./...`（含 SERVER_TEST_DB_DSN）、`bash scripts/check-generated.sh` 与 `openspec validate --all --strict`，并把实际结果、宿主联调清单（真机 SDK、UnionID 返回、头像主机 HTTPS）的未执行状态写入 `verification.md`。
 
 ## Workflow follow-up
 

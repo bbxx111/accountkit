@@ -96,7 +96,7 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 				if err = s.refreshProviderMeta(ctx, q, current, *proof.Provider, s.now()); err != nil {
 					return err
 				}
-				if proof.Kind == enum.IdentityAlipay {
+				if refillsProfileOnSignIn(proof.Kind) {
 					if err = s.seedEmptyProviderProfile(ctx, q, u.ID, *proof.Provider); err != nil {
 						return err
 					}
@@ -536,7 +536,7 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.SignI
 					if e = s.refreshProviderMeta(ctx, q, existing, *proof.Provider, s.now()); e != nil {
 						return e
 					}
-					if proof.Kind == enum.IdentityAlipay {
+					if refillsProfileOnSignIn(proof.Kind) {
 						if e = s.seedEmptyProviderProfile(ctx, q, u.ID, *proof.Provider); e != nil {
 							return e
 						}

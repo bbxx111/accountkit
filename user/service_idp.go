@@ -57,9 +57,9 @@ func (s *Service) verifyIdp(ctx context.Context, cred IdpCredential) (idp.Identi
 	if err != nil {
 		return idp.Identity{}, err
 	}
-	// Pending proofs retain only the current, sanitized Alipay claims. Other
-	// providers keep their existing proof and first-identity profile semantics.
-	if cred.Kind == enum.IdentityAlipay {
+	// Pending proofs retain only the current, sanitized claims of sign-in refill
+	// providers. Other providers keep their existing proof and first-identity profile semantics.
+	if refillsProfileOnSignIn(cred.Kind) {
 		profile := providerProfileFrom(ident)
 		ident.Name, ident.Picture = "", ""
 		if profile != nil {
@@ -67,6 +67,12 @@ func (s *Service) verifyIdp(ctx context.Context, cred IdpCredential) (idp.Identi
 		}
 	}
 	return ident, nil
+}
+
+// refillsProfileOnSignIn 报告该提供方在首次及后续成功登录时是否补填账号仍为空的显示名与头像。
+// 集合固定为 ALIPAY 与 QQ；宿主或 OIDC 提供方不在集合内。
+func refillsProfileOnSignIn(kind enum.IdentityKind) bool {
+	return kind == enum.IdentityAlipay || kind == enum.IdentityQQ
 }
 
 // providerFailure 隔离宿主提供方的非哨兵错误：保留原文供日志，但不解包，

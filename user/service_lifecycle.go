@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
@@ -55,47 +56,62 @@ func (s *Service) softDelete(ctx context.Context, userID string, missing error, 
 		if err != nil {
 			return err
 		}
-		if err := requireState(u, enum.UserActive); err != nil {
-			return err
-		}
-		if s.d.BeforeDelete != nil {
-			if err := s.d.BeforeDelete(ctx, tx, userID); err != nil {
-				if errors.Is(err, ErrDeletionBlocked) {
-					return ErrDeletionBlocked
-				}
-				// 不展开宿主错误链，防止宿主返回的领域哨兵被 HTTP 面误分类或泄露业务细节。
-				return fmt.Errorf("user: before delete: %v", err)
-			}
-		}
-		row, err = q.SoftDeleteUser(ctx, db.SoftDeleteUserParams{
-			ID: userID, State: enum.UserPendingDeletion, Now: now, PurgeTime: now.Add(s.d.DeletionCoolingPeriod),
-		})
-		if err != nil {
-			return fmt.Errorf("user: soft delete user: %w", err)
-		}
-		if _, err = q.LockSignInCompletionFlowsForUser(ctx, userID); err != nil {
-			return fmt.Errorf("user: lock sign-in flows: %w", err)
-		}
-		if _, err = q.LockAuditEventsForUserCleanup(ctx, db.LockAuditEventsForUserCleanupParams{UserID: userID, Source: s.d.AuditSource, Namespace: s.d.AuditNamespace}); err != nil {
-			return fmt.Errorf("user: lock flow audit: %w", err)
-		}
-		if _, err = q.ScrubSignInCompletionFlowAuditForUser(ctx, db.ScrubSignInCompletionFlowAuditForUserParams{UserID: userID, Source: s.d.AuditSource, Namespace: s.d.AuditNamespace, AuthenticationActions: authenticationAuditActions()}); err != nil {
-			return fmt.Errorf("user: scrub sign-in flow audit: %w", err)
-		}
-		if _, err = q.DeleteSignInCompletionFlowsForUser(ctx, userID); err != nil {
-			return fmt.Errorf("user: delete sign-in flows: %w", err)
-		}
-		revoked, err = s.revokeAllForUser(ctx, q, userID, nil, enum.RevokeUserDeleted, now)
+		row, revoked, err = s.softDeleteLocked(ctx, tx, q, u, now)
 		return err
 	})
 	if err != nil {
 		return db.UserAccount{}, err
 	}
+	s.afterSoftDelete(ctx, revoked, tmpl)
+	return row, nil
+}
+
+// softDeleteLocked 是注销的事务体：调用方已持有账号行锁。供本人、管理员与第三方数据删除共用。
+func (s *Service) softDeleteLocked(ctx context.Context, tx pgx.Tx, q *db.Queries, u db.UserAccount, now time.Time) (db.UserAccount, []string, error) {
+	userID := u.ID
+	if err := requireState(u, enum.UserActive); err != nil {
+		return db.UserAccount{}, nil, err
+	}
+	if s.d.BeforeDelete != nil {
+		if err := s.d.BeforeDelete(ctx, tx, userID); err != nil {
+			if errors.Is(err, ErrDeletionBlocked) {
+				return db.UserAccount{}, nil, ErrDeletionBlocked
+			}
+			// 不展开宿主错误链，防止宿主返回的领域哨兵被 HTTP 面误分类或泄露业务细节。
+			return db.UserAccount{}, nil, fmt.Errorf("user: before delete: %v", err)
+		}
+	}
+	row, err := q.SoftDeleteUser(ctx, db.SoftDeleteUserParams{
+		ID: userID, State: enum.UserPendingDeletion, Now: now, PurgeTime: now.Add(s.d.DeletionCoolingPeriod),
+	})
+	if err != nil {
+		return db.UserAccount{}, nil, fmt.Errorf("user: soft delete user: %w", err)
+	}
+	if _, err = q.LockSignInCompletionFlowsForUser(ctx, userID); err != nil {
+		return db.UserAccount{}, nil, fmt.Errorf("user: lock sign-in flows: %w", err)
+	}
+	if _, err = q.LockAuditEventsForUserCleanup(ctx, db.LockAuditEventsForUserCleanupParams{UserID: userID, Source: s.d.AuditSource, Namespace: s.d.AuditNamespace}); err != nil {
+		return db.UserAccount{}, nil, fmt.Errorf("user: lock flow audit: %w", err)
+	}
+	if _, err = q.ScrubSignInCompletionFlowAuditForUser(ctx, db.ScrubSignInCompletionFlowAuditForUserParams{UserID: userID, Source: s.d.AuditSource, Namespace: s.d.AuditNamespace, AuthenticationActions: authenticationAuditActions()}); err != nil {
+		return db.UserAccount{}, nil, fmt.Errorf("user: scrub sign-in flow audit: %w", err)
+	}
+	if _, err = q.DeleteSignInCompletionFlowsForUser(ctx, userID); err != nil {
+		return db.UserAccount{}, nil, fmt.Errorf("user: delete sign-in flows: %w", err)
+	}
+	revoked, err := s.revokeAllForUser(ctx, q, userID, nil, enum.RevokeUserDeleted, now)
+	if err != nil {
+		return db.UserAccount{}, nil, err
+	}
+	return row, revoked, nil
+}
+
+// afterSoftDelete 是注销提交后的吊销集写入与审计。
+func (s *Service) afterSoftDelete(ctx context.Context, revoked []string, tmpl audit.AuthenticationEvent) {
 	s.afterRevokeAll(ctx, revoked, enum.RevokeUserDeleted, tmpl)
 	ev := tmpl
 	ev.Type, ev.Result = enum.EventUserDeleted, enum.ResultSuccess
 	s.record(ctx, ev)
-	return row, nil
 }
 
 // Undelete 取消注销（§1.1/§2.4）：PENDING_DELETION → ACTIVE，清空 delete_time / purge_time。

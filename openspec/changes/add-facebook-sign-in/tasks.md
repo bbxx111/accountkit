@@ -23,8 +23,8 @@
 
 ## 4. 数据删除
 
-- [ ] 4.1 实现 `(*Facebook).ParseSignedRequest` 与 `ErrInvalidSignedRequest`：base64url 无填充解码、算法为 HMAC-SHA256、常量时间比较，返回用户 id 与 `issued_at`。用测试验证合法请求、错误签名、错误算法、段数错误、填充和非法 JSON，且错误不含 Secret。
-- [ ] 4.2 把 `softDelete` 的事务体抽成可在已有事务内调用的内部函数，`DeleteMe` 与 `AdminDeleteUser` 改为调用它。用现有注销测试全部通过来证明行为不变。
+- [x] 4.1 实现 `(*Facebook).ParseSignedRequest` 与 `ErrInvalidSignedRequest`：base64url 无填充解码、算法为 HMAC-SHA256、常量时间比较，返回用户 id 与 `issued_at`。用测试验证合法请求、错误签名、错误算法、段数错误、填充和非法 JSON，且错误不含 Secret。
+- [x] 4.2 把 `softDelete` 的事务体抽成可在已有事务内调用的内部函数，`DeleteMe` 与 `AdminDeleteUser` 改为调用它。用现有注销测试全部通过来证明行为不变。
 - [ ] 4.3 实现 `user.Service.DeleteProviderIdentityData`：在账号行锁内按 design 的分支判定，S2 调用 `AnonymizeIdentity` 与 `RevokeSessionsByIdentity`，S1 调用 4.2 的函数，并返回确认码、状态与 purge_time。用真实数据库测试覆盖 spec 的全部场景：无身份；重复请求；有手机号；剩余身份不满足 Required 时得到 user:bind；来源会话吊销；冻结账号有其他身份；只有 FB；宿主阻止；冻结账号只有 FB；已在冷静期；请求签发后重新绑定；`BeforeDelete` 返回普通错误时返回错误。
 - [ ] 4.4 并发测试：数据删除与同账号绑定 PHONE、普通解绑、注销并发时，结果等同于某一串行顺序。用 `-race` 及真实数据库的并发用例验证。
 - [ ] 4.5 审计：确认码等于数据删除事件 ID，操作者为服务，扩展数据只有 kind、status 与 hint；S2 与 S1 的既有事件操作者同为服务。用审计测试验证事件内容，确认不含完整 ASID；BLOCKED 时不出现解绑或注销事件；审计写入失败不改变返回结果。

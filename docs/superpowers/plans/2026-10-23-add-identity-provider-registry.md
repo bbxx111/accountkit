@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、pgx/v5、sqlc 1.31.1、PostgreSQL 17、go-redis/v9（测试 miniredis）、golang-jwt/v5、chi。
 
-**Spec:** `openspec/changes/add-identity-provider-registry/`（proposal.md、design.md、specs/、tasks.md）。本计划不复制需求；冲突时以 OpenSpec 工件为准。
+**Spec:** `openspec/changes/archive/2026-10-23-add-identity-provider-registry/`（proposal.md、design.md、specs/、tasks.md）。本计划不复制需求；冲突时以 OpenSpec 工件为准。
 
 ## Global Constraints
 

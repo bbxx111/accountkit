@@ -880,3 +880,5 @@ github.com/bbxx111/accountkit/user/TestAlipayPendingConcurrentOwnershipRejectsWi
 github.com/bbxx111/accountkit/user/TestAlipayPendingSanitizesAndCompletesWithoutVerifyReplay
 github.com/bbxx111/accountkit/user/TestAlipayRepeatBindingDoesNotBackfill
 github.com/bbxx111/accountkit/user/TestAlipayUniqueRetryDoesNotRepeatVerification
+github.com/bbxx111/accountkit/TestAlipayHTTPLoginContract
+github.com/bbxx111/accountkit/TestAlipayHTTPMultiAppIdentityContract

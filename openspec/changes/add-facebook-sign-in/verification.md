@@ -31,7 +31,12 @@ Linux 完整验证（镜像 `accountkit-verify:local`，golang:1.26.5 加 postgr
 
 ## 过程说明
 
-- 第一次容器运行把 `GIT_DIR` 设为工作树指向的路径。`internal/migrationcheck` 的临时仓库用例因继承该变量而失败，原因是验证方式，不是代码。改用容器内克隆后重跑，全部通过。该失败运行不计入上面的结果。
+- 被验证的代码提交是 `a6e9558`。本记录所在的 `deddf87` 只改文档（tasks.md 与 verification.md）。
+- 证据文件是 `.test-output/task9-verify.log`，即通过的那次运行。`.test-output/tests.jsonl` 来自失败的第一次运行，不是证据。
+- 第一次容器运行把 `GIT_DIR` 设为指向主仓库的工作树 gitdir。`internal/migrationcheck` 的临时仓库用例因继承该变量而失败，原因是验证方式，不是代码。该失败运行不计入上面的结果。它还留下两处副作用：
+  - 在分支上产生了无用提交 `592b7c0`（"baseline"）。已用 `git reset --mixed a6e9558` 撤销，该提交现在只存在于 reflog。
+  - 改写了共享仓库配置 `D:\code\bbxx111\accountkit\.git\config`：加入 `core.worktree=/src`，并把 `core.filemode` 设为 `true`。本会话的沙箱不允许还原，尚未还原，还原工作交给用户处理，待办。
+- 教训：容器内验证应针对容器内的干净克隆，不要让 `GIT_DIR` 指向宿主仓库。改用容器内克隆后重跑，全部通过。
 
 ## 未验证
 

@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net"
 	"time"
@@ -55,8 +56,10 @@ func observationMethod(kind enum.IdentityKind) ob.Method {
 		return ob.MethodApple
 	case enum.IdentityGoogle:
 		return ob.MethodGoogle
-	default:
+	case enum.IdentityKindUnspecified:
 		return ob.MethodUnknown
+	default:
+		return ob.MethodProvider
 	}
 }
 
@@ -442,16 +445,21 @@ func (s *Service) revokeObserved(ctx context.Context, sid string, ttl time.Durat
 	return err
 }
 
-func (s *Service) verifyWeChat(ctx context.Context, cred IdpCredential) (idp.Identity, error) {
-	return observedDependency(s, ctx, ob.ComponentIDP, ob.DependencyVerifyWechat, func() (idp.Identity, error) { return s.d.WeChat.VerifyWeChat(ctx, cred.AppID, cred.Code) })
+func (s *Service) verifyProvider(ctx context.Context, provider idp.Provider, credential json.RawMessage) (idp.Identity, error) {
+	return observedDependency(s, ctx, ob.ComponentIDP, observationDependency(provider), func() (idp.Identity, error) { return provider.Verify(ctx, credential) })
 }
 
-func (s *Service) verifyApple(ctx context.Context, cred IdpCredential) (idp.Identity, error) {
-	return observedDependency(s, ctx, ob.ComponentIDP, ob.DependencyVerifyApple, func() (idp.Identity, error) { return s.d.Apple.VerifyApple(ctx, cred.IDToken, cred.Nonce) })
-}
-
-func (s *Service) verifyGoogle(ctx context.Context, cred IdpCredential) (idp.Identity, error) {
-	return observedDependency(s, ctx, ob.ComponentIDP, ob.DependencyVerifyGoogle, func() (idp.Identity, error) { return s.d.Google.VerifyGoogle(ctx, cred.IDToken, cred.Nonce) })
+// observationDependency 只使用固定取值；配置或宿主提供的类型名不进入指标标签。
+func observationDependency(provider idp.Provider) ob.DependencyOperation {
+	switch provider.Kind() {
+	case enum.IdentityWeChat:
+		return ob.DependencyVerifyWechat
+	case enum.IdentityApple:
+		return ob.DependencyVerifyApple
+	case enum.IdentityGoogle:
+		return ob.DependencyVerifyGoogle
+	}
+	return ob.DependencyVerifyProvider
 }
 
 func (s *Service) observeDegradation(ctx context.Context, scenario ob.DegradationScenario) {

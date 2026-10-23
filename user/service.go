@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/bbxx111/accountkit/anonymize"
@@ -48,8 +49,8 @@ type Deps struct {
 	SignInCompletionFlowContext string
 	// Deprecated: use SignInCompletionFlowContext. Used only when that field is empty.
 	IdentityFlowContext string
-	// ProviderConfiguration 是自定义 IdP 验证器的稳定配置标识，应用允许列表变化时应变化。
-	// 内置验证器自动提供 PolicyFingerprint；此字段不含秘密。
+	// ProviderConfiguration 是宿主附加的稳定配置标识，并入登录补全配置指纹；不含秘密。
+	// 已登记提供方的 PolicyFingerprint 会自动并入。
 	ProviderConfiguration string
 	EnabledIdentityKinds  []enum.IdentityKind
 	RequiredIdentityKinds []enum.IdentityKind
@@ -69,10 +70,9 @@ type Deps struct {
 	// Observer 可选，以尽力语义记录本地运行观测；宿主负责其生命周期。
 	Observer observability.Observer
 
-	// WeChat / Apple / Google 为 nil 表示未启用对应 IdP。
-	WeChat idp.WeChatVerifier
-	Apple  idp.AppleVerifier
-	Google idp.GoogleVerifier
+	// Providers 是已登记的第三方身份提供方，装配后不可变。类型须格式合法、互不重复，
+	// 且不得为 PHONE/EMAIL；未登记的第三方类型不能用于登录或新绑定。
+	Providers []idp.Provider
 
 	AccessTTL     time.Duration
 	RefreshTTL    time.Duration
@@ -102,6 +102,7 @@ type Service struct {
 	authAudit         *audit.AuthenticationRecorder
 	d                 Deps
 	policy            *IdentityPolicy
+	providers         map[enum.IdentityKind]idp.Provider
 	flowContext       string
 	flowPolicy        string
 }
@@ -126,16 +127,11 @@ func NewService(d Deps) (*Service, error) {
 			return nil, ErrInvalidArgument
 		}
 	}
-	var providers []enum.IdentityKind
-	if d.WeChat != nil {
-		providers = append(providers, enum.IdentityWeChat)
+	registry, providers, err := newProviderRegistry(d.Providers)
+	if err != nil {
+		return nil, err
 	}
-	if d.Apple != nil {
-		providers = append(providers, enum.IdentityApple)
-	}
-	if d.Google != nil {
-		providers = append(providers, enum.IdentityGoogle)
-	}
+	d.Providers = slices.Clone(d.Providers)
 	policy, err := NewIdentityPolicy(d.EnabledIdentityKinds, d.RequiredIdentityKinds, providers...)
 	if err != nil {
 		return nil, err
@@ -150,7 +146,7 @@ func NewService(d Deps) (*Service, error) {
 			}
 			return true
 		}
-		if err := policy.ValidateCapabilities(IdentityCapabilities{Phone: available(d.SMS), Email: available(d.Email), WeChat: d.WeChat != nil, Apple: d.Apple != nil, Google: d.Google != nil}); err != nil {
+		if err := policy.ValidateCapabilities(IdentityCapabilities{Phone: available(d.SMS), Email: available(d.Email), Providers: providers}); err != nil {
 			return nil, err
 		}
 		if d.SMS == nil {
@@ -224,7 +220,7 @@ func NewService(d Deps) (*Service, error) {
 		return nil, err
 	}
 	flowContext, flowPolicy := signInCompletionFlowConfiguration(d, policy)
-	return &Service{profileAttributes: profileAttributes, observer: observer, authAudit: mapper, d: d, policy: policy, flowContext: flowContext, flowPolicy: flowPolicy}, nil
+	return &Service{profileAttributes: profileAttributes, observer: observer, authAudit: mapper, d: d, policy: policy, providers: registry, flowContext: flowContext, flowPolicy: flowPolicy}, nil
 }
 
 // Device 是客户端设备身份（X-Device-Id / X-Device-Name）。

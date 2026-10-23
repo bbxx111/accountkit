@@ -92,6 +92,13 @@ nonce 键：Apple `nonce:apple:`、Google `nonce:google:` 不变；OIDC 为 `non
 
 `observationMethod` 对 OIDC 类型返回新增固定值 `oidc`，降级新增 `oidc_cached_key_fallback`；类型名不进入指标标签，避免基数随配置增长。审计照常记录具体类型名。
 
+实施补充：`user.Deps.Providers` 在第一期已可接收宿主自写的 Provider，其类型既非内置也非 OIDC，统一使用固定方法值 `provider` 与依赖操作 `verify_provider`；内置三种保持原 `wechat`/`apple`/`google` 与 `verify_*`，OIDC 依赖操作为 `verify_oidc`。
+
+### 实施补充：绑定路径与策略输出顺序
+
+- 绑定此前只接受三种写死的类型，且依赖内置验证器保证结果类型；改为“格式合法的非锚点类型”后，绑定与登录同样校验验证结果类型等于请求类型且 subject 非空，否则按凭证无效处理。
+- 字符串排序会把策略输出变为字母序。`EnabledKinds`/`RequiredKinds`（进而 pending 响应中的类型列表）保持内置类型的历史顺序 PHONE、EMAIL、WECHAT、APPLE、GOOGLE，配置类型按名称排在其后。
+
 ## Risks / Trade-offs
 
 - [宿主配置的 OIDC 类型名与未来内置类型撞名] → 内置名单写进文档；将来新增内置类型时作为兼容性变更说明。

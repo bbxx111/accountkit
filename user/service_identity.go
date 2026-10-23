@@ -258,7 +258,7 @@ func (s *Service) createProviderIdentity(ctx context.Context, q *db.Queries, use
 	if err != nil {
 		return db.Identity{}, err
 	}
-	if err := s.seedEmptyGoogleProfile(ctx, q, userID, ident); err != nil {
+	if err := s.seedEmptyProviderProfile(ctx, q, userID, ident); err != nil {
 		return db.Identity{}, err
 	}
 	return row, nil
@@ -266,7 +266,7 @@ func (s *Service) createProviderIdentity(ctx context.Context, q *db.Queries, use
 
 // BindWithIdp 把第三方身份绑定到当前账号。
 func (s *Service) BindWithIdp(ctx context.Context, p Principal, cred IdpCredential, meta Meta) (IdentityInfo, bool, error) {
-	if cred.Kind != enum.IdentityWeChat && cred.Kind != enum.IdentityApple && cred.Kind != enum.IdentityGoogle {
+	if !cred.Kind.Valid() || cred.Kind.IsAnchor() {
 		return IdentityInfo{}, false, ErrInvalidArgument
 	}
 	ev := audit.AuthenticationEvent{UserID: p.UserID, SessionID: p.SessionID, IdentityKind: cred.Kind, IP: meta.IP, RequestID: meta.RequestID}
@@ -284,6 +284,9 @@ func (s *Service) BindWithIdp(ctx context.Context, p Principal, cred IdpCredenti
 			s.record(ctx, ev)
 		}
 		return IdentityInfo{}, false, err
+	}
+	if ident.Kind != cred.Kind || ident.Subject == "" {
+		return IdentityInfo{}, false, idp.ErrInvalidCredential
 	}
 	ev.SubjectHint = audit.Hint(ident.Subject)
 	now := s.now()

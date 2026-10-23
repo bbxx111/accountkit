@@ -87,7 +87,7 @@ func TestPurgeAnonymizesAccountIdentitiesSessionsAuditAndHostTables(t *testing.T
 	if err := f.svc.UnbindIdentity(ctx, p, mail.ID, meta1); err != nil {
 		t.Fatal(err)
 	}
-	wx := user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:U-PURGE@o1"}
+	wx := wechatCred("wx1", "union:U-PURGE@o1")
 	if _, _, err := f.svc.BindWithIdp(ctx, p, wx, meta1); err != nil {
 		t.Fatal(err)
 	}

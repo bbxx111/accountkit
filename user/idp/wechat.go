@@ -76,6 +76,26 @@ func redactTransportErr(err error) error {
 }
 
 // VerifyWeChat 实现 WeChatVerifier。
+type wechatCredential struct {
+	AppID string `json:"app_id"`
+	Code  string `json:"code"`
+}
+
+// Kind 实现 Provider。
+func (w *WeChat) Kind() enum.IdentityKind { return enum.IdentityWeChat }
+
+// Verify 实现 Provider：credential 为 {"app_id","code"}。
+func (w *WeChat) Verify(ctx context.Context, credential json.RawMessage) (Identity, error) {
+	var c wechatCredential
+	if err := decodeCredential(credential, &c); err != nil {
+		return Identity{}, err
+	}
+	if c.AppID == "" || c.Code == "" {
+		return Identity{}, fmt.Errorf("%w: app_id and code are required", ErrMalformedCredential)
+	}
+	return w.VerifyWeChat(ctx, c.AppID, c.Code)
+}
+
 func (w *WeChat) VerifyWeChat(ctx context.Context, appID, code string) (Identity, error) {
 	secret, ok := w.secrets[appID]
 	if !ok {

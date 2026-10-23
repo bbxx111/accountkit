@@ -157,7 +157,7 @@ func TestSignInCompletionClientInfoSelection(t *testing.T) {
 				if first {
 					initial = &user.ClientInfo{BrowserName: "Chrome", BrowserVersion: "123", OSName: "Android", Extensions: map[string]json.RawMessage{"release": json.RawMessage(`"initial-client-observation"`)}}
 				}
-				r, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:client-info@openid"}, dev1, clientMeta(initial))
+				r, err := f.svc.SignInWithIdp(ctx, wechatCred("wx1", "union:client-info@openid"), dev1, clientMeta(initial))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -348,7 +348,7 @@ func TestPendingClientInfoLegacyAndFallback(t *testing.T) {
 			f := newFixture(t)
 			ctx := context.Background()
 			firstAt := *f.clock
-			r, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:legacy-client@openid"}, dev1, clientMeta(&user.ClientInfo{ClientType: enum.ClientWeb, BrowserName: "Chrome", BrowserVersion: "123"}))
+			r, err := f.svc.SignInWithIdp(ctx, wechatCred("wx1", "union:legacy-client@openid"), dev1, clientMeta(&user.ClientInfo{ClientType: enum.ClientWeb, BrowserName: "Chrome", BrowserVersion: "123"}))
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -161,7 +161,7 @@ func dependencyPair(component o.Component, operation o.DependencyOperation) bool
 	case o.ComponentRevocation:
 		return oneOf(operation, o.DependencyCheck, o.DependencyRevoke)
 	case o.ComponentIDP:
-		return oneOf(operation, o.DependencyVerifyWechat, o.DependencyVerifyApple, o.DependencyVerifyGoogle)
+		return oneOf(operation, o.DependencyVerifyWechat, o.DependencyVerifyApple, o.DependencyVerifyGoogle, o.DependencyVerifyProvider)
 	case o.ComponentSender:
 		return oneOf(operation, o.DependencySMS, o.DependencyEmail)
 	}

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -80,13 +81,13 @@ func signInCompletionFlowConfiguration(d Deps, policy *IdentityPolicy) (string, 
 	context := fingerprintJSON(struct{ SearchPath, Prefix, JWT, Extra string }{
 		searchPath, d.Codes.InstancePrefix(), d.Signer.ContextFingerprint(), extra,
 	})
-	provider := func(v any) string {
-		if p, ok := v.(interface{ PolicyFingerprint() string }); ok {
-			return p.PolicyFingerprint()
-		}
-		return fmt.Sprintf("%T", v)
+	parts := []string{policy.Fingerprint(), d.ProviderConfiguration}
+	providers := slices.Clone(d.Providers)
+	slices.SortFunc(providers, func(a, b idp.Provider) int { return strings.Compare(string(a.Kind()), string(b.Kind())) })
+	for _, p := range providers {
+		parts = append(parts, string(p.Kind())+":"+p.PolicyFingerprint())
 	}
-	return context, fingerprintJSON([]string{policy.Fingerprint(), provider(d.WeChat), provider(d.Apple), d.ProviderConfiguration})
+	return context, fingerprintJSON(parts)
 }
 
 func (s *Service) flowAAD(id string) []byte {

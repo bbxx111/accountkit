@@ -49,7 +49,7 @@ func seedExistingBindScopeProvider(t *testing.T, f *fixture, subject string, dev
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:" + subject + "@o1"}, device, meta1)
+	result, err := f.svc.SignInWithIdp(ctx, wechatCred("wx1", "union:"+subject+"@o1"), device, meta1)
 	if err != nil || result.Tokens == nil || result.Pending != nil || result.Tokens.UserID != uid || result.Tokens.Scope != user.ScopeBind {
 		t.Fatalf("existing incomplete provider sign-in: %+v %v", result, err)
 	}
@@ -213,7 +213,7 @@ func TestBindWithIdpHappyIdempotentConflictAndLimit(t *testing.T) {
 	// 手机号账号 A 绑定微信
 	resA := f.signIn(t, enum.IdentityPhone, phone1, dev1)
 	pA := principalOf(t, f, resA)
-	info, created, err := f.svc.BindWithIdp(ctx, pA, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:UBI1@o-wx1"}, meta1)
+	info, created, err := f.svc.BindWithIdp(ctx, pA, wechatCred("wx1", "union:UBI1@o-wx1"), meta1)
 	if err != nil || !created || info.Kind != enum.IdentityWeChat || info.MaskedSubject != "" {
 		t.Fatalf("bind wechat: %+v %v %v", info, created, err)
 	}
@@ -221,7 +221,7 @@ func TestBindWithIdpHappyIdempotentConflictAndLimit(t *testing.T) {
 		t.Fatal("audit IDENTITY_BOUND")
 	}
 	// 幂等 + openid 合并（另一 App）
-	again, created, err := f.svc.BindWithIdp(ctx, pA, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx2", Code: "union:UBI1@o-wx2"}, meta1)
+	again, created, err := f.svc.BindWithIdp(ctx, pA, wechatCred("wx2", "union:UBI1@o-wx2"), meta1)
 	if err != nil || created || again.ID != info.ID {
 		t.Fatalf("idempotent: %+v %v %v", again, created, err)
 	}
@@ -238,19 +238,19 @@ func TestBindWithIdpHappyIdempotentConflictAndLimit(t *testing.T) {
 	// 该 UnionID 已属于 A；账号 B 绑定 → 冲突
 	resB := f.signIn(t, enum.IdentityPhone, phone2, dev2)
 	pB := principalOf(t, f, resB)
-	if _, _, err := f.svc.BindWithIdp(ctx, pB, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:UBI1@o-x"}, meta1); !errors.Is(err, user.ErrIdentityConflict) {
+	if _, _, err := f.svc.BindWithIdp(ctx, pB, wechatCred("wx1", "union:UBI1@o-x"), meta1); !errors.Is(err, user.ErrIdentityConflict) {
 		t.Fatalf("conflict: %v", err)
 	}
 	// A 已有一个 WECHAT，绑另一个 UnionID → 上限
-	if _, _, err := f.svc.BindWithIdp(ctx, pA, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:UBI2@o-y"}, meta1); !errors.Is(err, user.ErrIdentityKindLimit) {
+	if _, _, err := f.svc.BindWithIdp(ctx, pA, wechatCred("wx1", "union:UBI2@o-y"), meta1); !errors.Is(err, user.ErrIdentityKindLimit) {
 		t.Fatalf("kind limit: %v", err)
 	}
 	// Apple 绑定：hint_email 不影响；nonce 重放被拒并审计
-	appleInfo, created, err := f.svc.BindWithIdp(ctx, pB, user.IdpCredential{Kind: enum.IdentityApple, IDToken: "tokB+email", Nonce: "nb1"}, meta1)
+	appleInfo, created, err := f.svc.BindWithIdp(ctx, pB, appleCred("tokB+email", "nb1"), meta1)
 	if err != nil || !created || appleInfo.Kind != enum.IdentityApple || appleInfo.MaskedSubject != "" {
 		t.Fatalf("bind apple: %+v %v", appleInfo, err)
 	}
-	if _, _, err := f.svc.BindWithIdp(ctx, pB, user.IdpCredential{Kind: enum.IdentityApple, IDToken: "tokB+email", Nonce: "nb1"}, meta1); !errors.Is(err, idp.ErrNonceReplayed) {
+	if _, _, err := f.svc.BindWithIdp(ctx, pB, appleCred("tokB+email", "nb1"), meta1); !errors.Is(err, idp.ErrNonceReplayed) {
 		t.Fatalf("replay: %v", err)
 	}
 	if !hasEventReason(f.audit, enum.EventIdentityBindRejected, enum.ResultFailure, "IDP_NONCE_REPLAYED") {
@@ -277,7 +277,7 @@ func TestBindWithIdpRejectsNonIdpKindAndDisabledProvider(t *testing.T) {
 		t.Fatalf("email kind: %v", err)
 	}
 	f.svc = newServiceWithout(t, f, "apple")
-	if _, _, err := f.svc.BindWithIdp(ctx, p, user.IdpCredential{Kind: enum.IdentityApple, IDToken: "t", Nonce: "n"}, meta1); !errors.Is(err, idp.ErrAppNotAllowed) {
+	if _, _, err := f.svc.BindWithIdp(ctx, p, appleCred("t", "n"), meta1); !errors.Is(err, idp.ErrAppNotAllowed) {
 		t.Fatalf("apple disabled: %v", err)
 	}
 	if !hasEventReason(f.audit, enum.EventIdentityBindRejected, enum.ResultFailure, "IDP_APP_NOT_ALLOWED") {
@@ -327,7 +327,7 @@ func TestUnbindIdentityGuardsLastAnchorAndOwnership(t *testing.T) {
 		t.Fatalf("last email anchor: %v", err)
 	}
 	// 第三方身份不是锚点，随时可解绑；解绑后同 UnionID 可绑到别的账号
-	wx, _, err := f.svc.BindWithIdp(ctx, p, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:UU1@o"}, meta1)
+	wx, _, err := f.svc.BindWithIdp(ctx, p, wechatCred("wx1", "union:UU1@o"), meta1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -345,7 +345,7 @@ func TestUnbindIdentityGuardsLastAnchorAndOwnership(t *testing.T) {
 	// A 解绑的 WeChat UU1 也可被 C 绑定
 	resC := f.signIn(t, enum.IdentityPhone, phone2, dev2)
 	pC := principalOf(t, f, resC)
-	if _, created, err := f.svc.BindWithIdp(ctx, pC, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:UU1@o"}, meta1); err != nil || !created {
+	if _, created, err := f.svc.BindWithIdp(ctx, pC, wechatCred("wx1", "union:UU1@o"), meta1); err != nil || !created {
 		t.Fatalf("rebind wx after unbind: %v", err)
 	}
 	// 非本人 / 非法 id
@@ -404,7 +404,7 @@ func TestBindWithIdpRejectsNonActiveAccountStates(t *testing.T) {
 	p := principalOf(t, f, res)
 
 	mustExec(t, f, "UPDATE user_account SET state = 3 WHERE id = $1", res.UserID)
-	if _, _, err := f.svc.BindWithIdp(ctx, p, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:USTATE1@o1"}, meta1); !errors.Is(err, user.ErrInvalidToken) {
+	if _, _, err := f.svc.BindWithIdp(ctx, p, wechatCred("wx1", "union:USTATE1@o1"), meta1); !errors.Is(err, user.ErrInvalidToken) {
 		t.Fatalf("pending deletion: %v", err)
 	}
 	if hasEvent(f.audit, enum.EventIdentityBound, enum.ResultSuccess) || hasEvent(f.audit, enum.EventIdentityBindRejected, enum.ResultFailure) {
@@ -412,7 +412,7 @@ func TestBindWithIdpRejectsNonActiveAccountStates(t *testing.T) {
 	}
 
 	mustExec(t, f, "UPDATE user_account SET state = 4 WHERE id = $1", res.UserID)
-	if _, _, err := f.svc.BindWithIdp(ctx, p, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:USTATE2@o2"}, meta1); !errors.Is(err, user.ErrInvalidToken) {
+	if _, _, err := f.svc.BindWithIdp(ctx, p, wechatCred("wx1", "union:USTATE2@o2"), meta1); !errors.Is(err, user.ErrInvalidToken) {
 		t.Fatalf("deleted: %v", err)
 	}
 	if hasEvent(f.audit, enum.EventIdentityBound, enum.ResultSuccess) || hasEvent(f.audit, enum.EventIdentityBindRejected, enum.ResultFailure) {
@@ -468,10 +468,10 @@ func TestUnbindLastTwoAnchorsConcurrently(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Independent provider source lets the losing request reach last-anchor protection.
-	if _, _, err := f.svc.BindWithIdp(ctx, p, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:last-anchors@o"}, meta1); err != nil {
+	if _, _, err := f.svc.BindWithIdp(ctx, p, wechatCred("wx1", "union:last-anchors@o"), meta1); err != nil {
 		t.Fatal(err)
 	}
-	login, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:last-anchors@o"}, user.Device{ID: "independent-anchors"}, meta1)
+	login, err := f.svc.SignInWithIdp(ctx, wechatCred("wx1", "union:last-anchors@o"), user.Device{ID: "independent-anchors"}, meta1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -544,7 +544,7 @@ func TestBindSameSubjectConcurrentlyFromTwoAccounts(t *testing.T) {
 		wg.Go(func() {
 			ready.Done()
 			start.Wait()
-			_, created[i], errs[i] = f.svc.BindWithIdp(ctx, principals[i], user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx2", Code: codes[i]}, meta1)
+			_, created[i], errs[i] = f.svc.BindWithIdp(ctx, principals[i], wechatCred("wx2", codes[i]), meta1)
 		})
 	}
 	ready.Wait()

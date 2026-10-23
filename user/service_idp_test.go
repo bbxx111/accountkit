@@ -60,7 +60,7 @@ func TestSignInWithIdpWeChatEmptyRequiredRegistersAndMergesOpenIDs(t *testing.T)
 	f := newFixture(t)
 	newServiceWith(t, f, func(d *user.Deps) { d.RequiredIdentityKinds = []enum.IdentityKind{} })
 	ctx := context.Background()
-	outcome, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:U1@o-wx1"}, dev1, meta1)
+	outcome, err := f.svc.SignInWithIdp(ctx, wechatCred("wx1", "union:U1@o-wx1"), dev1, meta1)
 	res := requireSignInTokens(t, outcome)
 	if err != nil || !res.IsNewUser || res.Scope != user.ScopeUser || res.RefreshToken == "" || res.HintEmail != "" {
 		t.Fatalf("first wechat login: %+v %v", res, err)
@@ -73,7 +73,7 @@ func TestSignInWithIdpWeChatEmptyRequiredRegistersAndMergesOpenIDs(t *testing.T)
 		t.Fatal("audit SIGN_IN")
 	}
 	// 从另一 App 登录同一 UnionID：同一用户、不是新用户、openid 合并
-	outcome2, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx2", Code: "union:U1@o-wx2"}, dev2, meta1)
+	outcome2, err := f.svc.SignInWithIdp(ctx, wechatCred("wx2", "union:U1@o-wx2"), dev2, meta1)
 	res2 := requireSignInTokens(t, outcome2)
 	if err != nil || res2.IsNewUser || res2.UserID != res.UserID || res2.Scope != user.ScopeUser {
 		t.Fatalf("second app login: %+v %v", res2, err)
@@ -88,7 +88,7 @@ func TestSignInWithIdpWeChatEmptyRequiredRegistersAndMergesOpenIDs(t *testing.T)
 		t.Fatalf("sessions: %d", len(sessions))
 	}
 	// 同设备再登录 → 替换旧会话
-	outcome3, _ := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:U1@o-wx1"}, dev1, meta1)
+	outcome3, _ := f.svc.SignInWithIdp(ctx, wechatCred("wx1", "union:U1@o-wx1"), dev1, meta1)
 	res3 := requireSignInTokens(t, outcome3)
 	sessions, _ = f.svc.ListSessions(ctx, res.UserID, "")
 	if len(sessions) != 2 || res3.UserID != res.UserID {
@@ -105,7 +105,7 @@ func TestSignInWithIdpAppleHintEmailAndReplay(t *testing.T) {
 	f := newFixture(t)
 	newServiceWith(t, f, func(d *user.Deps) { d.RequiredIdentityKinds = []enum.IdentityKind{} })
 	ctx := context.Background()
-	outcome, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityApple, IDToken: "tok1+email", Nonce: "n1"}, dev1, meta1)
+	outcome, err := f.svc.SignInWithIdp(ctx, appleCred("tok1+email", "n1"), dev1, meta1)
 	res := requireSignInTokens(t, outcome)
 	if err != nil || !res.IsNewUser || res.Scope != user.ScopeUser || res.HintEmail != "x@privaterelay.appleid.com" {
 		t.Fatalf("apple login: %+v %v", res, err)
@@ -120,7 +120,7 @@ func TestSignInWithIdpAppleHintEmailAndReplay(t *testing.T) {
 			t.Fatal("apple email must not be bound automatically")
 		}
 	}
-	_, err = f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityApple, IDToken: "tok1+email", Nonce: "n1"}, dev1, meta1)
+	_, err = f.svc.SignInWithIdp(ctx, appleCred("tok1+email", "n1"), dev1, meta1)
 	if !errors.Is(err, idp.ErrNonceReplayed) {
 		t.Fatalf("replay: %v", err)
 	}
@@ -139,11 +139,11 @@ func TestSignInWithIdpRejections(t *testing.T) {
 		want error
 		aud  string // 期望的 SIGN_IN_FAILED reason；空 = 不写审计
 	}{
-		{"wechat invalid code", user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "nope"}, idp.ErrInvalidCredential, "IDP_CREDENTIAL_INVALID"},
-		{"wechat unknown app", user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx9", Code: "union:U@o"}, idp.ErrAppNotAllowed, "IDP_APP_NOT_ALLOWED"},
-		{"wechat unavailable", user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "down"}, idp.ErrUnavailable, ""},
-		{"wechat misconfigured", user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "miscfg"}, idp.ErrMisconfigured, ""},
-		{"apple invalid", user.IdpCredential{Kind: enum.IdentityApple, IDToken: "bad", Nonce: "n"}, idp.ErrInvalidCredential, "IDP_CREDENTIAL_INVALID"},
+		{"wechat invalid code", wechatCred("wx1", "nope"), idp.ErrInvalidCredential, "IDP_CREDENTIAL_INVALID"},
+		{"wechat unknown app", wechatCred("wx9", "union:U@o"), idp.ErrAppNotAllowed, "IDP_APP_NOT_ALLOWED"},
+		{"wechat unavailable", wechatCred("wx1", "down"), idp.ErrUnavailable, ""},
+		{"wechat misconfigured", wechatCred("wx1", "miscfg"), idp.ErrMisconfigured, ""},
+		{"apple invalid", appleCred("bad", "n"), idp.ErrInvalidCredential, "IDP_CREDENTIAL_INVALID"},
 		{"phone kind not idp", user.IdpCredential{Kind: enum.IdentityPhone}, user.ErrInvalidArgument, ""},
 	}
 	for _, c := range cases {
@@ -162,16 +162,16 @@ func TestSignInWithIdpRejections(t *testing.T) {
 	// 未启用（nil 校验器）
 	f2 := newFixture(t)
 	f2.svc = newServiceWithout(t, f2, "wechat")
-	if _, err := f2.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:U@o"}, dev1, meta1); !errors.Is(err, idp.ErrAppNotAllowed) {
+	if _, err := f2.svc.SignInWithIdp(ctx, wechatCred("wx1", "union:U@o"), dev1, meta1); !errors.Is(err, idp.ErrAppNotAllowed) {
 		t.Fatalf("wechat disabled: %v", err)
 	}
 	// 冻结用户
 	f3 := newFixture(t)
 	newServiceWith(t, f3, func(d *user.Deps) { d.RequiredIdentityKinds = []enum.IdentityKind{} })
-	outcome, _ := f3.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:UF@o"}, dev1, meta1)
+	outcome, _ := f3.svc.SignInWithIdp(ctx, wechatCred("wx1", "union:UF@o"), dev1, meta1)
 	res := requireSignInTokens(t, outcome)
 	mustExec(t, f3, "UPDATE user_account SET state = 2 WHERE id = $1", res.UserID)
-	if _, err := f3.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:UF@o"}, dev1, meta1); !errors.Is(err, user.ErrUserFrozen) {
+	if _, err := f3.svc.SignInWithIdp(ctx, wechatCred("wx1", "union:UF@o"), dev1, meta1); !errors.Is(err, user.ErrUserFrozen) {
 		t.Fatalf("frozen: %v", err)
 	}
 	if !hasEventReason(f3.audit, enum.EventSignInFailed, enum.ResultFailure, "USER_FROZEN") {
@@ -185,7 +185,7 @@ func TestSignInWithIdpWeChatIgnoresEmptyOpenID(t *testing.T) {
 	f := newFixture(t)
 	newServiceWith(t, f, func(d *user.Deps) { d.RequiredIdentityKinds = []enum.IdentityKind{} })
 	ctx := context.Background()
-	outcome, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:U-empty"}, dev1, meta1)
+	outcome, err := f.svc.SignInWithIdp(ctx, wechatCred("wx1", "union:U-empty"), dev1, meta1)
 	if err != nil {
 		t.Fatalf("signin: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestSignInWithIdpWeChatIgnoresEmptyOpenID(t *testing.T) {
 		t.Fatalf("empty openid must not be persisted: %+v", idents)
 	}
 	// 再从另一个 app 用同一 UnionID 登录、同样是空 openid：合并路径也不能写入。
-	outcome2, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx2", Code: "union:U-empty"}, dev2, meta1)
+	outcome2, err := f.svc.SignInWithIdp(ctx, wechatCred("wx2", "union:U-empty"), dev2, meta1)
 	res2 := requireSignInTokens(t, outcome2)
 	if err != nil || res2.UserID != res.UserID {
 		t.Fatalf("second empty-openid login: %+v %v", res2, err)
@@ -223,7 +223,7 @@ func TestSignInWithIdpWeChatConcurrentFirstLoginCreatesOneUser(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			dev := user.Device{ID: fmt.Sprintf("concurrent-dev-%02d", i), Name: "dev"}
-			cred := user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:CONC@o-conc"}
+			cred := wechatCred("wx1", "union:CONC@o-conc")
 			results[i], errs[i] = f.svc.SignInWithIdp(ctx, cred, dev, meta1)
 		}(i)
 	}
@@ -287,7 +287,7 @@ func TestSignInWithIdpRejectsPendingDeletionAccount(t *testing.T) {
 	// 手机登录建号 → 绑定微信 → 软删除
 	res := f.signIn(t, enum.IdentityPhone, phone1, dev1)
 	p := principalOf(t, f, res)
-	cred := user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:U-PD@o1"}
+	cred := wechatCred("wx1", "union:U-PD@o1")
 	if _, _, err := f.svc.BindWithIdp(ctx, p, cred, meta1); err != nil {
 		t.Fatal(err)
 	}
@@ -376,7 +376,7 @@ func (f *fakeGoogle) VerifyGoogle(_ context.Context, idToken, nonce string) (idp
 func useGoogle(t *testing.T, f *fixture, g *fakeGoogle, required []enum.IdentityKind, logs *bytes.Buffer) {
 	t.Helper()
 	newServiceWith(t, f, func(d *user.Deps) {
-		d.Google = g
+		*d = withProvider(*d, googleProvider(g))
 		if required != nil {
 			d.RequiredIdentityKinds = required
 		}
@@ -397,7 +397,7 @@ func TestGoogleProfileFillHintAndOpenIDCoexistence(t *testing.T) {
 	f := newFixture(t)
 	var logs bytes.Buffer
 	useGoogle(t, f, g, []enum.IdentityKind{}, &logs)
-	out, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityGoogle, IDToken: "first", Nonce: "n1"}, dev1, meta1)
+	out, err := f.svc.SignInWithIdp(ctx, googleCred("first", "n1"), dev1, meta1)
 	res := requireSignInTokens(t, out)
 	if err != nil || !res.IsNewUser || res.HintEmail != "person@example.test" || strings.Contains(logs.String(), "person@example.test") {
 		t.Fatalf("direct register: %+v %v logs=%s", res, err, logs.String())
@@ -415,7 +415,7 @@ func TestGoogleProfileFillHintAndOpenIDCoexistence(t *testing.T) {
 			t.Fatal("hint email must not become an identity")
 		}
 	}
-	if _, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityGoogle, IDToken: "second", Nonce: "n2"}, dev1, meta1); err != nil {
+	if _, err := f.svc.SignInWithIdp(ctx, googleCred("second", "n2"), dev1, meta1); err != nil {
 		t.Fatal(err)
 	}
 	me, _ = f.svc.GetMe(ctx, res.UserID)
@@ -424,7 +424,7 @@ func TestGoogleProfileFillHintAndOpenIDCoexistence(t *testing.T) {
 	if me.DisplayName != strings.Repeat("名", 128) || me.AvatarURL != "https://example.test/a.png" || !strings.Contains(meta, "Updated Name") || !strings.Contains(meta, "https://example.test/a.png") {
 		t.Fatalf("later login changed account profile or dropped picture: %+v %s", me, meta)
 	}
-	bad, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityGoogle, IDToken: "badpic", Nonce: "n3"}, dev2, meta1)
+	bad, err := f.svc.SignInWithIdp(ctx, googleCred("badpic", "n3"), dev2, meta1)
 	badRes := requireSignInTokens(t, bad)
 	if err != nil {
 		t.Fatal(err)
@@ -442,7 +442,7 @@ func TestGoogleProfileFillHintAndOpenIDCoexistence(t *testing.T) {
 	if _, err := kept.svc.UpdateProfile(ctx, phone.UserID, user.ProfilePatch{DisplayName: &name, AvatarURL: &avatar}); err != nil {
 		t.Fatal(err)
 	}
-	if _, created, err := kept.svc.BindWithIdp(ctx, principalOf(t, kept, phone), user.IdpCredential{Kind: enum.IdentityGoogle, IDToken: "bind", Nonce: "nb"}, meta1); err != nil || !created {
+	if _, created, err := kept.svc.BindWithIdp(ctx, principalOf(t, kept, phone), googleCred("bind", "nb"), meta1); err != nil || !created {
 		t.Fatalf("bind: created=%v %v", created, err)
 	}
 	me, _ = kept.svc.GetMe(ctx, phone.UserID)
@@ -453,7 +453,7 @@ func TestGoogleProfileFillHintAndOpenIDCoexistence(t *testing.T) {
 	emailUser := newFixture(t)
 	useGoogle(t, emailUser, &fakeGoogle{identities: map[string]idp.Identity{"mail": {Subject: "gmail", HintEmail: email1, Name: "From Google", Picture: "https://example.test/g.png"}}}, []enum.IdentityKind{}, nil)
 	existing := emailUser.signIn(t, enum.IdentityEmail, email1, dev2)
-	linked, err := emailUser.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityGoogle, IDToken: "mail", Nonce: "nm"}, dev1, meta1)
+	linked, err := emailUser.svc.SignInWithIdp(ctx, googleCred("mail", "nm"), dev1, meta1)
 	linkedRes := requireSignInTokens(t, linked)
 	if err != nil || linkedRes.UserID == existing.UserID {
 		t.Fatalf("verified email must not merge accounts: %+v %v", linkedRes, err)
@@ -471,7 +471,7 @@ func TestGoogleProfileFillHintAndOpenIDCoexistence(t *testing.T) {
 		if register {
 			pf.signIn(t, enum.IdentityEmail, email1, dev2)
 		}
-		got, err := pf.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityGoogle, IDToken: "p", Nonce: "np"}, dev1, meta1)
+		got, err := pf.svc.SignInWithIdp(ctx, googleCred("p", "np"), dev1, meta1)
 		if err != nil || got.Pending == nil || got.Pending.HintEmail != email1 || strings.Contains(buf.String(), email1) {
 			t.Fatalf("pending hint register=%v: %+v %v logs=%s", register, got.Pending, err, buf.String())
 		}
@@ -486,7 +486,7 @@ func TestGoogleProfileFillHintAndOpenIDCoexistence(t *testing.T) {
 
 	created := newFixture(t)
 	useGoogle(t, created, &fakeGoogle{identities: map[string]idp.Identity{"c": {Subject: "gcreate", Name: "Created", Picture: "https://example.test/c.png"}}}, nil, nil)
-	pending, err := created.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityGoogle, IDToken: "c", Nonce: "nc"}, dev1, meta1)
+	pending, err := created.svc.SignInWithIdp(ctx, googleCred("c", "nc"), dev1, meta1)
 	if err != nil || pending.Pending == nil {
 		t.Fatal(err)
 	}
@@ -507,7 +507,7 @@ func TestGoogleProfileFillHintAndOpenIDCoexistence(t *testing.T) {
 	if _, err := linkedFlow.svc.UpdateDisplayName(ctx, owner.UserID, "Already Set"); err != nil {
 		t.Fatal(err)
 	}
-	flow, err := linkedFlow.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityGoogle, IDToken: "l", Nonce: "nl"}, dev1, meta1)
+	flow, err := linkedFlow.svc.SignInWithIdp(ctx, googleCred("l", "nl"), dev1, meta1)
 	if err != nil || flow.Pending == nil {
 		t.Fatal(err)
 	}
@@ -522,7 +522,7 @@ func TestGoogleProfileFillHintAndOpenIDCoexistence(t *testing.T) {
 
 	wx := newFixture(t)
 	newServiceWith(t, wx, func(d *user.Deps) { d.RequiredIdentityKinds = []enum.IdentityKind{} })
-	first, err := wx.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:profile@o1"}, dev1, meta1)
+	first, err := wx.svc.SignInWithIdp(ctx, wechatCred("wx1", "union:profile@o1"), dev1, meta1)
 	firstRes := requireSignInTokens(t, first)
 	if err != nil {
 		t.Fatal(err)
@@ -531,7 +531,7 @@ func TestGoogleProfileFillHintAndOpenIDCoexistence(t *testing.T) {
 	if _, err := wx.repo.Q().UpdateIdentityProviderMeta(ctx, db.UpdateIdentityProviderMetaParams{ID: rows[0].ID, ProviderMeta: []byte(`{"openids":{"wx1":"o1"},"profile":{"name":"keep-me"}}`), UpdateTime: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := wx.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx2", Code: "union:profile@o2"}, dev2, meta1); err != nil {
+	if _, err := wx.svc.SignInWithIdp(ctx, wechatCred("wx2", "union:profile@o2"), dev2, meta1); err != nil {
 		t.Fatal(err)
 	}
 	rows, _ = wx.repo.Q().ListActiveIdentitiesByUser(ctx, firstRes.UserID)

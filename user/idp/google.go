@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"crypto/subtle"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -84,7 +85,19 @@ func NewGoogle(o GoogleOptions) *Google {
 	}
 }
 
-// VerifyGoogle 实现 GoogleVerifier。
+// Kind 实现 Provider。
+func (g *Google) Kind() enum.IdentityKind { return enum.IdentityGoogle }
+
+// Verify 实现 Provider：credential 为 {"id_token","nonce"}。
+func (g *Google) Verify(ctx context.Context, credential json.RawMessage) (Identity, error) {
+	c, err := decodeTokenCredential(credential)
+	if err != nil {
+		return Identity{}, err
+	}
+	return g.VerifyGoogle(ctx, c.IDToken, c.Nonce)
+}
+
+// VerifyGoogle 校验 Google ID token 与原始 nonce。
 func (g *Google) VerifyGoogle(ctx context.Context, idToken, rawNonce string) (Identity, error) {
 	if len(g.clientIDs) == 0 {
 		return Identity{}, fmt.Errorf("%w: google sign-in not configured", ErrAppNotAllowed)

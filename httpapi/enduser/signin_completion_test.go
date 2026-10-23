@@ -39,7 +39,7 @@ func completionHandler(t *testing.T, f *completionService) http.Handler {
 }
 
 const completionCodeBody = `{"sign_in_completion_token":"opaque","channel":"EMAIL","target":"a@example.test"}`
-const completionBody = `{"sign_in_completion_token":"opaque","email":{"target":"a@example.test","code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`
+const completionBody = `{"sign_in_completion_token":"opaque","kind":"EMAIL","credential":{"target":"a@example.test","code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`
 
 func TestSignInCompletionEndpoints(t *testing.T) {
 	f := &completionService{fakeService: &fakeService{}}
@@ -86,9 +86,10 @@ func TestSignInCompletionRejectsMalformedCredentials(t *testing.T) {
 	h := completionHandler(t, &completionService{fakeService: &fakeService{}})
 	for _, body := range []string{
 		`{"sign_in_completion_token":"opaque"}`,
-		`{"sign_in_completion_token":"opaque","phone":{},"email":{}}`,
-		`{"sign_in_completion_token":"opaque","wechat":{"app_id":"wx","code":"secret"}}`,
-		`{"sign_in_completion_token":"opaque","apple":{"id_token":"secret","nonce":"n"}}`,
+		`{"sign_in_completion_token":"opaque","phone":{"target":"+8613812341234","code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`,
+		`{"sign_in_completion_token":"opaque","kind":"PHONE","credential":{}}`,
+		`{"sign_in_completion_token":"opaque","kind":"WECHAT","credential":{"app_id":"wx","code":"secret"}}`,
+		`{"sign_in_completion_token":"opaque","kind":"APPLE","credential":{"id_token":"secret","nonce":"n"}}`,
 		strings.Replace(completionBody, `"code":"123456"`, `"code":"123456","unknown":true`, 1),
 		strings.Replace(completionBody, `"code_id":"0123456789abcdef0123456789abcdef",`, ``, 1),
 	} {
@@ -202,7 +203,7 @@ func TestInitialSignInResultUnion(t *testing.T) {
 		}, signInWithIdp: func(context.Context, user.IdpCredential, user.Device, user.Meta) (user.SignInResult, error) {
 			return tc.result, nil
 		}}
-		for path, body := range map[string]string{"/users:signInWithCode": `{"phone":{"target":"+8613812341234","code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`, "/users:signInWithIdp": `{"wechat":{"app_id":"wx","code":"secret"}}`} {
+		for path, body := range map[string]string{"/users:signInWithCode": `{"kind":"PHONE","credential":{"target":"+8613812341234","code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`, "/users:signInWithIdp": `{"kind":"WECHAT","credential":{"app_id":"wx","code":"secret"}}`} {
 			t.Run(tc.name+path, func(t *testing.T) {
 				r := do(t, newHandler(t, f), call{method: "POST", path: path, body: body, headers: devHeaders()})
 				if r.Code != tc.code {
@@ -227,7 +228,7 @@ func TestInitialSignInResultUnion(t *testing.T) {
 
 func TestCompletionOmitsTargetInsteadOfUsingHint(t *testing.T) {
 	h := completionHandler(t, &completionService{fakeService: &fakeService{}})
-	r := do(t, h, call{method: "POST", path: "/users:completeSignIn", body: `{"sign_in_completion_token":"opaque","email":{"code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`})
+	r := do(t, h, call{method: "POST", path: "/users:completeSignIn", body: `{"sign_in_completion_token":"opaque","kind":"EMAIL","credential":{"code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`})
 	s, _ := aipError(t, r)
 	if r.Code != 400 || s != "INVALID_ARGUMENT/CREDENTIAL_INCOMPLETE" {
 		t.Fatalf("omitted target: %d %s %s", r.Code, s, r.Body.String())
@@ -239,7 +240,7 @@ func TestCompletionOneofDescribesOnlySupportedCredentials(t *testing.T) {
 	r := do(t, h, call{method: "POST", path: "/users:completeSignIn", body: `{"sign_in_completion_token":"opaque"}`})
 	s, body := aipError(t, r)
 	message, _ := body["message"].(string)
-	if s != "INVALID_ARGUMENT/CREDENTIAL_ONEOF" || strings.Contains(message, "wechat") || strings.Contains(message, "apple") {
+	if s != "INVALID_ARGUMENT/CREDENTIAL_INCOMPLETE" || strings.Contains(message, "wechat") || strings.Contains(message, "apple") {
 		t.Fatalf("completion oneof: %s", r.Body.String())
 	}
 }
@@ -325,7 +326,7 @@ func TestInitialSignInDeviceNameRetainsTrimming(t *testing.T) {
 			return user.SignInResult{Tokens: &user.TokenResult{AccessToken: "at"}}, nil
 		},
 	}
-	r := do(t, newHandler(t, f), call{method: "POST", path: "/users:signInWithCode", body: `{"email":{"target":"a@example.test","code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`, headers: map[string]string{"X-Device-Id": "device", "X-Device-Name": "\u00a0Pixel 9\u00a0"}})
+	r := do(t, newHandler(t, f), call{method: "POST", path: "/users:signInWithCode", body: `{"kind":"EMAIL","credential":{"target":"a@example.test","code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`, headers: map[string]string{"X-Device-Id": "device", "X-Device-Name": "\u00a0Pixel 9\u00a0"}})
 	if r.Code != 200 {
 		t.Fatalf("initial login: %d %s", r.Code, r.Body.String())
 	}

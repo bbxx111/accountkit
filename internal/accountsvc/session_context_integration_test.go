@@ -55,7 +55,7 @@ func TestServiceIntegrationCurrentSessionContext(t *testing.T) {
 	const retained = "svc-context-retained@example.test"
 	call("POST", "/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": original}, nil, 200)
 	mail := f.smtp.mail(t)
-	body := map[string]any{"email": map[string]string{"target": original, "code_id": f.codeID(original), "code": mail.code}}
+	body := map[string]any{"kind": "EMAIL", "credential": map[string]string{"target": original, "code_id": f.codeID(original), "code": mail.code}}
 	call("POST", "/users:signInWithCode", "", body, map[string]string{"X-Client-Type": "INVALID"}, 400)
 	pair := call("POST", "/users:signInWithCode", "", body, map[string]string{"X-Client-Type": "WEB", "X-Client-Browser-Name": "Firefox"}, 200)
 	access := pair["access_token"].(string)
@@ -70,7 +70,7 @@ func TestServiceIntegrationCurrentSessionContext(t *testing.T) {
 	f.call("POST", p.baseURL+"/v1/users/me:sendBindCode", access, map[string]string{"channel": "EMAIL", "target": retained}, 200)
 	mail = f.smtp.mail(t)
 	f.secrets = append(f.secrets, mail.code)
-	bound := f.call("POST", p.baseURL+"/v1/users/me/identities", access, map[string]any{"email": map[string]string{"target": retained, "code_id": f.codeID(retained), "code": mail.code}}, 201)
+	bound := f.call("POST", p.baseURL+"/v1/users/me/identities", access, map[string]any{"kind": "EMAIL", "credential": map[string]string{"target": retained, "code_id": f.codeID(retained), "code": mail.code}}, 201)
 	rotated := call("POST", "/token", "", map[string]string{"grant_type": "refresh_token", "refresh_token": pair["refresh_token"].(string)}, map[string]string{"X-Client-Type": "NATIVE", "X-Client-App-Name": "Service App"}, 200)
 	f.secrets = append(f.secrets, rotated["access_token"].(string), rotated["refresh_token"].(string))
 	latest := call("GET", "/users/me/sessions/current", access, nil, nil, 200)
@@ -89,7 +89,7 @@ func TestServiceIntegrationCurrentSessionContext(t *testing.T) {
 	mail = f.smtp.mail(t)
 	f.secrets = append(f.secrets, mail.code)
 	// The proxy allowlist only adds the explicit new GET; reauthentication itself remains covered on the service entry point.
-	reauth := f.call("POST", p.baseURL+"/v1/users/me:reauthenticate", access, map[string]any{"email": map[string]string{"target": retained, "code_id": f.codeID(retained), "code": mail.code}}, 200)
+	reauth := f.call("POST", p.baseURL+"/v1/users/me:reauthenticate", access, map[string]any{"kind": "EMAIL", "credential": map[string]string{"target": retained, "code_id": f.codeID(retained), "code": mail.code}}, 200)
 	f.secrets = append(f.secrets, reauth["access_token"].(string))
 	current := call("GET", "/users/me/sessions/current", access, nil, map[string]string{"X-Client-Type": "INVALID"}, 200)
 	if current["name"] != initial["name"] || len(current["authentication_identities"].([]any)) != 1 {

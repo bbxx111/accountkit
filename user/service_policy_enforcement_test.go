@@ -112,7 +112,7 @@ func TestIdentityPolicyDisabledProviderBindingPreservesNonce(t *testing.T) {
 	ctx := context.Background()
 	p := principalOf(t, f, f.signIn(t, enum.IdentityEmail, email1, dev1))
 	setIdentityPolicy(t, f, []enum.IdentityKind{enum.IdentityEmail}, []enum.IdentityKind{enum.IdentityEmail})
-	cred := user.IdpCredential{Kind: enum.IdentityApple, IDToken: "policy", Nonce: "policy-nonce"}
+	cred := appleCred("policy", "policy-nonce")
 	if _, _, err := f.svc.BindWithIdp(ctx, p, cred, meta1); !errors.Is(err, user.ErrIdentityKindNotEnabled) {
 		t.Fatalf("disabled Apple: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestIdentityPolicyUnbindPreservesCurrentRequirements(t *testing.T) {
 			p := principalOf(t, f, login)
 			list, _ := f.svc.ListIdentities(ctx, p.UserID)
 			phoneID := list[0].ID
-			wx, _, err := f.svc.BindWithIdp(ctx, p, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:policy@o"}, meta1)
+			wx, _, err := f.svc.BindWithIdp(ctx, p, wechatCred("wx1", "union:policy@o"), meta1)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -148,7 +148,7 @@ func TestIdentityPolicyUnbindPreservesCurrentRequirements(t *testing.T) {
 				setIdentityPolicy(t, f, []enum.IdentityKind{enum.IdentityPhone, enum.IdentityEmail, enum.IdentityWeChat}, []enum.IdentityKind{enum.IdentityEmail})
 			case "last-provider":
 				setIdentityPolicy(t, f, []enum.IdentityKind{enum.IdentityWeChat}, []enum.IdentityKind{})
-				provider, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:policy@o"}, user.Device{ID: "policy-provider"}, meta1)
+				provider, err := f.svc.SignInWithIdp(ctx, wechatCred("wx1", "union:policy@o"), user.Device{ID: "policy-provider"}, meta1)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -210,7 +210,7 @@ func TestIdentityPolicyReplacementAllowsEnabledNonRequiredKind(t *testing.T) {
 	if err != nil || out.Kind != enum.IdentityPhone || out.ID == iid {
 		t.Fatalf("enabled non-required PHONE replacement: %+v %v", out, err)
 	}
-	if _, created, err := f.svc.BindWithIdp(ctx, p, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:nonrequired@o"}, meta1); err != nil || !created {
+	if _, created, err := f.svc.BindWithIdp(ctx, p, wechatCred("wx1", "union:nonrequired@o"), meta1); err != nil || !created {
 		t.Fatalf("ordinary WECHAT binding must ignore Required: %v %v", created, err)
 	}
 	list, err := f.svc.ListIdentities(ctx, p.UserID)

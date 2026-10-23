@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -82,7 +83,19 @@ func NewApple(o AppleOptions) *Apple {
 // errJWKSUnavailable 在 keyfunc 内部标记“取不到 JWKS 且无缓存”，外层映射为 ErrUnavailable。
 var errJWKSUnavailable = errors.New("jwks unavailable")
 
-// VerifyApple 实现 AppleVerifier。
+// Kind 实现 Provider。
+func (a *Apple) Kind() enum.IdentityKind { return enum.IdentityApple }
+
+// Verify 实现 Provider：credential 为 {"id_token","nonce"}。
+func (a *Apple) Verify(ctx context.Context, credential json.RawMessage) (Identity, error) {
+	c, err := decodeTokenCredential(credential)
+	if err != nil {
+		return Identity{}, err
+	}
+	return a.VerifyApple(ctx, c.IDToken, c.Nonce)
+}
+
+// VerifyApple 校验 id_token 与原始 nonce。
 func (a *Apple) VerifyApple(ctx context.Context, idToken, rawNonce string) (Identity, error) {
 	if len(a.bundleIDs) == 0 {
 		return Identity{}, fmt.Errorf("%w: apple sign-in not configured", ErrAppNotAllowed)

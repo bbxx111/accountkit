@@ -17,7 +17,7 @@ import (
 
 const replacementIdentityID = "i_0k3f9c2m1xq7z"
 const replacementPath = "/users/me/identities/" + replacementIdentityID + ":replace"
-const replacementBody = `{"email":{"code_id":"0123456789abcdef0123456789abcdef","target":"new@example.test","code":"123456"}}`
+const replacementBody = `{"kind":"EMAIL","credential":{"code_id":"0123456789abcdef0123456789abcdef","target":"new@example.test","code":"123456"}}`
 
 // The old fake deliberately has no replacement method; embedding preserves its interface.
 var _ enduser.Service = (*fakeService)(nil)
@@ -76,7 +76,7 @@ func TestIdentityReplacementReturnsMaskedResource(t *testing.T) {
 		kind               enum.IdentityKind
 	}{
 		{"email", replacementBody, "new@example.test", enum.IdentityEmail},
-		{"phone", `{"phone":{"code_id":"0123456789abcdef0123456789abcdef","target":"+8613812345678","code":"123456"}}`, "+8613812345678", enum.IdentityPhone},
+		{"phone", `{"kind":"PHONE","credential":{"code_id":"0123456789abcdef0123456789abcdef","target":"+8613812345678","code":"123456"}}`, "+8613812345678", enum.IdentityPhone},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := &replacementService{fakeService: withAuth(&fakeService{}, principal), replace: func(_ context.Context, p user.Principal, id string, cred user.CodeCredential, meta user.Meta) (user.IdentityInfo, error) {
@@ -159,16 +159,17 @@ func TestIdentityReplacementRejectsMalformedInputs(t *testing.T) {
 		{"empty", replacementPath, "", "MALFORMED_BODY"},
 		{"invalid json", replacementPath, "{", "MALFORMED_BODY"},
 		{"null", replacementPath, "null", "MALFORMED_BODY"},
-		{"unknown field", replacementPath, `{"email":{"code_id":"0123456789abcdef0123456789abcdef","target":"new@example.test","code":"123456","extra":true}}`, "MALFORMED_BODY"},
+		{"unknown field", replacementPath, `{"kind":"EMAIL","credential":{"code_id":"0123456789abcdef0123456789abcdef","target":"new@example.test","code":"123456"},"extra":true}`, "MALFORMED_BODY"},
+		{"unknown credential field", replacementPath, `{"kind":"EMAIL","credential":{"code_id":"0123456789abcdef0123456789abcdef","target":"new@example.test","code":"123456","extra":true}}`, "CREDENTIAL_INCOMPLETE"},
 		{"extra object", replacementPath, replacementBody + ` {}`, "MALFORMED_BODY"},
-		{"oversize", replacementPath, `{"email":{"code_id":"0123456789abcdef0123456789abcdef","target":"` + strings.Repeat("a", 64<<10) + `","code":"123456"}}`, "MALFORMED_BODY"},
-		{"none", replacementPath, `{}`, "CREDENTIAL_ONEOF"},
-		{"all null", replacementPath, `{"phone":null,"email":null}`, "CREDENTIAL_ONEOF"},
-		{"two credentials", replacementPath, `{"email":{"code_id":"0123456789abcdef0123456789abcdef","target":"new@example.test","code":"123456"},"phone":{"code_id":"0123456789abcdef0123456789abcdef","target":"+8613812345678","code":"123456"}}`, "CREDENTIAL_ONEOF"},
-		{"wechat", replacementPath, `{"wechat":{"app_id":"wx","code":"c"}}`, "CREDENTIAL_KIND_NOT_ALLOWED"},
-		{"apple", replacementPath, `{"apple":{"id_token":"token","nonce":"n"}}`, "CREDENTIAL_KIND_NOT_ALLOWED"},
-		{"missing code", replacementPath, `{"email":{"code_id":"0123456789abcdef0123456789abcdef","target":"new@example.test"}}`, "CREDENTIAL_INCOMPLETE"},
-		{"missing target", replacementPath, `{"phone":{"code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`, "CREDENTIAL_INCOMPLETE"},
+		{"oversize", replacementPath, `{"kind":"EMAIL","credential":{"code_id":"0123456789abcdef0123456789abcdef","target":"` + strings.Repeat("a", 64<<10) + `","code":"123456"}}`, "MALFORMED_BODY"},
+		{"none", replacementPath, `{}`, "CREDENTIAL_INCOMPLETE"},
+		{"null credential", replacementPath, `{"kind":"EMAIL","credential":null}`, "CREDENTIAL_INCOMPLETE"},
+		{"legacy members", replacementPath, `{"email":{"code_id":"0123456789abcdef0123456789abcdef","target":"new@example.test","code":"123456"}}`, "MALFORMED_BODY"},
+		{"wechat", replacementPath, `{"kind":"WECHAT","credential":{"app_id":"wx","code":"c"}}`, "CREDENTIAL_KIND_NOT_ALLOWED"},
+		{"apple", replacementPath, `{"kind":"APPLE","credential":{"id_token":"token","nonce":"n"}}`, "CREDENTIAL_KIND_NOT_ALLOWED"},
+		{"missing code", replacementPath, `{"kind":"EMAIL","credential":{"code_id":"0123456789abcdef0123456789abcdef","target":"new@example.test"}}`, "CREDENTIAL_INCOMPLETE"},
+		{"missing target", replacementPath, `{"kind":"PHONE","credential":{"code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`, "CREDENTIAL_INCOMPLETE"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := &replacementService{fakeService: withAuth(&fakeService{}, principal), replace: func(context.Context, user.Principal, string, user.CodeCredential, user.Meta) (user.IdentityInfo, error) {

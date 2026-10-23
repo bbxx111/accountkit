@@ -15,13 +15,15 @@ const (
 type Method string
 
 const (
-	MethodNone    Method = "none"
-	MethodPhone   Method = "phone"
-	MethodEmail   Method = "email"
-	MethodWechat  Method = "wechat"
-	MethodApple   Method = "apple"
-	MethodGoogle  Method = "google"
-	MethodUnknown Method = "unknown"
+	MethodNone   Method = "none"
+	MethodPhone  Method = "phone"
+	MethodEmail  Method = "email"
+	MethodWechat Method = "wechat"
+	MethodApple  Method = "apple"
+	MethodGoogle Method = "google"
+	// MethodProvider 汇总宿主登记的其他第三方类型；具体类型名不作为标签。
+	MethodProvider Method = "provider"
+	MethodUnknown  Method = "unknown"
 )
 
 // Result is shared vocabulary; each observation kind permits only its own subset.
@@ -162,8 +164,10 @@ const (
 	DependencyVerifyWechat DependencyOperation = "verify_wechat"
 	DependencyVerifyApple  DependencyOperation = "verify_apple"
 	DependencyVerifyGoogle DependencyOperation = "verify_google"
-	DependencySMS          DependencyOperation = "sms"
-	DependencyEmail        DependencyOperation = "email"
+	// DependencyVerifyProvider 汇总宿主登记的其他第三方提供方。
+	DependencyVerifyProvider DependencyOperation = "verify_provider"
+	DependencySMS            DependencyOperation = "sms"
+	DependencyEmail          DependencyOperation = "email"
 )
 
 // DegradationScenario enumerates actual degraded behavior, not dependency errors.

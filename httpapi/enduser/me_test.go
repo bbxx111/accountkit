@@ -232,7 +232,7 @@ func TestReauthentication(t *testing.T) {
 		t.Fatalf("needs bearer: %d", rec.Code)
 	}
 
-	body := map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "123456"}}
+	body := map[string]any{"kind": "PHONE", "credential": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "123456"}}
 	rec = do(t, h, call{method: "POST", path: "/users/me:reauthenticate", bearer: "good", body: body})
 	var tok map[string]any
 	decode(t, rec, &tok)
@@ -245,19 +245,19 @@ func TestReauthentication(t *testing.T) {
 	if _, has := tok["refresh_expires_in"]; has {
 		t.Fatal("reauthenticate must not return refresh_expires_in")
 	}
-	rec = do(t, h, call{method: "POST", path: "/users/me:reauthenticate", bearer: "good", body: map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "000000"}}})
+	rec = do(t, h, call{method: "POST", path: "/users/me:reauthenticate", bearer: "good", body: map[string]any{"kind": "PHONE", "credential": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "000000"}}})
 	if status, _ := aipError(t, rec); rec.Code != 400 || status != "INVALID_ARGUMENT/CODE_INVALID" {
 		t.Fatalf("wrong code: %d %s", rec.Code, status)
 	}
-	rec = do(t, h, call{method: "POST", path: "/users/me:reauthenticate", bearer: "good", body: map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "999999"}}})
+	rec = do(t, h, call{method: "POST", path: "/users/me:reauthenticate", bearer: "good", body: map[string]any{"kind": "PHONE", "credential": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "999999"}}})
 	if status, _ := aipError(t, rec); rec.Code != 401 || status != "UNAUTHENTICATED/TOKEN_INVALID" || rec.Header().Get("WWW-Authenticate") == "" {
 		t.Fatalf("revoked session: %d %s", rec.Code, status)
 	}
-	rec = do(t, h, call{method: "POST", path: "/users/me:reauthenticate", bearer: "good", body: map[string]any{"wechat": map[string]string{"app_id": "wx", "code": "c"}}})
+	rec = do(t, h, call{method: "POST", path: "/users/me:reauthenticate", bearer: "good", body: map[string]any{"kind": "WECHAT", "credential": map[string]string{"app_id": "wx", "code": "c"}}})
 	if status, _ := aipError(t, rec); status != "INVALID_ARGUMENT/CREDENTIAL_KIND_NOT_ALLOWED" {
 		t.Fatalf("reauth accepts only phone/email: %s", status)
 	}
-	rec = do(t, h, call{method: "POST", path: "/users/me:reauthenticate", bearer: "good", body: map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "888888"}}})
+	rec = do(t, h, call{method: "POST", path: "/users/me:reauthenticate", bearer: "good", body: map[string]any{"kind": "PHONE", "credential": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "888888"}}})
 	if rec.Code != 500 || contains(rec.Body.String(), "pg") {
 		t.Fatalf("500: %d %s", rec.Code, rec.Body.String())
 	}

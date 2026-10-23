@@ -44,7 +44,7 @@ func (f *integrationFixture) localWeChat() {
 
 func providerSignInBody(t *testing.T, code string) string {
 	t.Helper()
-	raw, err := json.Marshal(map[string]any{"wechat": map[string]string{"app_id": "service-test-app", "code": code}})
+	raw, err := json.Marshal(map[string]any{"kind": "WECHAT", "credential": map[string]string{"app_id": "service-test-app", "code": code}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func serviceGatewayCompletion(t *testing.T) {
 	if detail, _ := limited["error"].(map[string]any); detail["reason"] != "COOLDOWN" || h.Get("Retry-After") == "" {
 		t.Fatal("gateway lost completion cooldown Retry-After")
 	}
-	raw, _ := json.Marshal(map[string]any{"sign_in_completion_token": token, "email": map[string]string{"code_id": f.codeID(target), "target": target, "code": m.code}})
+	raw, _ := json.Marshal(map[string]any{"sign_in_completion_token": token, "kind": "EMAIL", "credential": map[string]string{"code_id": f.codeID(target), "target": target, "code": m.code}})
 	headers["X-Request-Id"] = "completion-final"
 	h, pair := transportRequest(t, f.client, "POST", public.server.URL+"/v1/users:completeSignIn", "application/json", string(raw), headers, 200)
 	if pair["scope"] != "user" || pair["is_new_user"] != true || pair["next_action"] != nil || h.Get("Cache-Control") != "no-store" {

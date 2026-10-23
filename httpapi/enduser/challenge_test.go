@@ -71,7 +71,7 @@ func TestCodeChallengeHTTPContract(t *testing.T) {
 	for _, path := range []string{"/users:signInWithCode", "/users/me/identities", "/users/me:reauthenticate", replacementPath} {
 		for _, channel := range []string{"phone", "email"} {
 			for _, badID := range []string{"", "UPPER0123456789abcdef0123456789ab", "abcd"} {
-				w := do(t, h, call{method: "POST", path: path, bearer: "good", headers: devHeaders(), body: map[string]any{channel: map[string]string{"target": "person@example.test", "code": "valid", "code_id": badID}}})
+				w := do(t, h, call{method: "POST", path: path, bearer: "good", headers: devHeaders(), body: map[string]any{"kind": strings.ToUpper(channel), "credential": map[string]string{"target": "person@example.test", "code": "valid", "code_id": badID}}})
 				if w.Code != 400 || !strings.Contains(w.Body.String(), "INVALID_ARGUMENT") {
 					t.Fatal(w.Code, w.Body.String())
 				}
@@ -80,7 +80,7 @@ func TestCodeChallengeHTTPContract(t *testing.T) {
 				plain, reason string
 				status        int
 			}{{"expired", "CODE_EXPIRED", 400}, {"wrong", "CODE_INVALID", 400}, {"limit", "TARGET_VERIFY_LIMIT", 429}, {"down", "DEPENDENCY_UNAVAILABLE", 503}} {
-				w := do(t, h, call{method: "POST", path: path, bearer: "good", headers: devHeaders(), body: map[string]any{channel: map[string]string{"target": "person@example.test", "code": tc.plain, "code_id": challengeID}}})
+				w := do(t, h, call{method: "POST", path: path, bearer: "good", headers: devHeaders(), body: map[string]any{"kind": strings.ToUpper(channel), "credential": map[string]string{"target": "person@example.test", "code": tc.plain, "code_id": challengeID}}})
 				if w.Code != tc.status || !strings.Contains(w.Body.String(), tc.reason) || w.Header().Get("WWW-Authenticate") != "" {
 					t.Fatal(w.Code, w.Header(), w.Body.String())
 				}

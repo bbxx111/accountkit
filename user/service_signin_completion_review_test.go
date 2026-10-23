@@ -240,7 +240,7 @@ func TestSignInCompletionReplayRechecksExpiryAfterRedis(t *testing.T) {
 func TestSignInCompletionAuditLifecycleExists(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
-	initial, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:audit-life@openid"}, dev1, user.Meta{IP: meta1.IP, RequestID: "start-request"})
+	initial, err := f.svc.SignInWithIdp(ctx, wechatCred("wx1", "union:audit-life@openid"), dev1, user.Meta{IP: meta1.IP, RequestID: "start-request"})
 	if err != nil || initial.Pending == nil {
 		t.Fatal(err)
 	}

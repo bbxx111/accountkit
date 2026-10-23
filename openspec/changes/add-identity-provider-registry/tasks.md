@@ -11,19 +11,19 @@
 
 ## 2. 注册表与统一 Provider 契约
 
-- [ ] 2.1 在 `user/idp` 新增 `Provider` 接口与 `ErrMalformedCredential`，移除 `WeChatVerifier`/`AppleVerifier`/`GoogleVerifier`；单测覆盖错误哨兵
-- [ ] 2.2 微信、Apple、Google 改为实现 `Provider`：各自严格解码凭证（未知字段、缺字段返回 `ErrMalformedCredential` 且不发网络请求、不登记 nonce）；Google 补 `PolicyFingerprint`；原有 idp 单测改写后全部通过并新增畸形凭证用例
-- [ ] 2.3 `user.Deps.Providers` 取代三个字段，`NewService` 构建不可变注册表并校验格式、非锚点、不重复、非 nil；`IdentityPolicy` 默认启用全部已登记类型，能力校验改为查注册表、拒绝未登记类型；单测覆盖重复、占用 PHONE/EMAIL、显式启用未登记类型
-- [ ] 2.4 `verifyIdp` 改为注册表分派，`requireIdentityEnabled` 的未配置分支改为“Enabled 未显式且未登记 → IDP_APP_NOT_ALLOWED”；`user.IdpCredential` 改为 `{Kind, Credential}`；`ErrMalformedCredential` 映射 400 `CREDENTIAL_INCOMPLETE` 且不写失败审计；未分类错误固定 500；服务层测试覆盖各分支
-- [ ] 2.5 资料声明与首次填充去掉 GOOGLE 条件（重命名首次填充函数）；测试确认微信/Apple 不写 profile，任意返回 name/picture 的提供方按 Google 规则写入
-- [ ] 2.6 补全配置指纹纳入全部已登记提供方（按类型排序）；测试确认更换 Google client ID 后旧 pending 流程被拒绝
-- [ ] 2.7 未登记历史类型：集成测试确认该类身份可列出、解绑、匿名化、管理查询并输出原类型名，但不能登录或新绑定
-- [ ] 2.8 `accountkit.go` 装配改为构建 Provider 列表；`examples/embedded` 与 `examples/` 下受影响代码编译通过
+- [x] 2.1 在 `user/idp` 新增 `Provider` 接口与 `ErrMalformedCredential`，移除 `WeChatVerifier`/`AppleVerifier`/`GoogleVerifier`；单测覆盖错误哨兵
+- [x] 2.2 微信、Apple、Google 改为实现 `Provider`：各自严格解码凭证（未知字段、缺字段返回 `ErrMalformedCredential` 且不发网络请求、不登记 nonce）；Google 补 `PolicyFingerprint`；原有 idp 单测改写后全部通过并新增畸形凭证用例
+- [x] 2.3 `user.Deps.Providers` 取代三个字段，`NewService` 构建不可变注册表并校验格式、非锚点、不重复、非 nil；`IdentityPolicy` 默认启用全部已登记类型，能力校验改为查注册表、拒绝未登记类型；单测覆盖重复、占用 PHONE/EMAIL、显式启用未登记类型
+- [x] 2.4 `verifyIdp` 改为注册表分派，`requireIdentityEnabled` 的未配置分支改为“Enabled 未显式且未登记 → IDP_APP_NOT_ALLOWED”；`user.IdpCredential` 改为 `{Kind, Credential}`；`ErrMalformedCredential` 映射 400 `CREDENTIAL_INCOMPLETE` 且不写失败审计；未分类错误固定 500；服务层测试覆盖各分支
+- [x] 2.5 资料声明与首次填充去掉 GOOGLE 条件（重命名首次填充函数）；测试确认微信/Apple 不写 profile，任意返回 name/picture 的提供方按 Google 规则写入
+- [x] 2.6 补全配置指纹纳入全部已登记提供方（按类型排序）；测试确认更换 Google client ID 后旧 pending 流程被拒绝
+- [x] 2.7 未登记历史类型：集成测试确认该类身份可列出、解绑、匿名化、管理查询并输出原类型名，但不能登录或新绑定
+- [x] 2.8 `accountkit.go` 装配改为构建 Provider 列表；`examples/embedded` 与 `examples/` 下受影响代码编译通过
 
 ## 3. C 端统一凭证格式
 
-- [ ] 3.1 `httpapi/enduser/request.go`：凭证改为顶层 `{kind, credential}` 信封，删除 `phone`/`email`/`wechat`/`apple`/`google` 成员与 `CREDENTIAL_ONEOF`；按端点允许类别（锚点/第三方/两者）校验 kind，PHONE/EMAIL 严格解码 `{target, code_id, code}` 并保留原错误码，第三方 credential 为对象且 ≤16 KiB；HTTP 测试覆盖旧成员 400、缺 kind/credential 为 `CREDENTIAL_INCOMPLETE`、跨类别 `CREDENTIAL_KIND_NOT_ALLOWED`
-- [ ] 3.2 `signInWithCode`、`signInWithIdp`、`completeSignIn`、`reauthenticate`、绑定、换绑的处理器与 HTTP 测试改用新格式，验证码与三种内置登录端到端结果与原行为一致
+- [x] 3.1 `httpapi/enduser/request.go`：凭证改为顶层 `{kind, credential}` 信封，删除 `phone`/`email`/`wechat`/`apple`/`google` 成员与 `CREDENTIAL_ONEOF`；按端点允许类别（锚点/第三方/两者）校验 kind，PHONE/EMAIL 严格解码 `{target, code_id, code}` 并保留原错误码，第三方 credential 为对象且 ≤16 KiB；HTTP 测试覆盖旧成员 400、缺 kind/credential 为 `CREDENTIAL_INCOMPLETE`、跨类别 `CREDENTIAL_KIND_NOT_ALLOWED`
+- [x] 3.2 `signInWithCode`、`signInWithIdp`、`completeSignIn`、`reauthenticate`、绑定、换绑的处理器与 HTTP 测试改用新格式，验证码与三种内置登录端到端结果与原行为一致
 - [ ] 3.3 更新 `docs/openapi/enduser.json` 与 openapi 一致性测试、README 请求示例、`docs/compatibility.md` 写出 Go API 与请求格式迁移说明；验证文档中的示例 JSON 可被新解析器接受
 
 ## 4. 通用 OIDC 验证器

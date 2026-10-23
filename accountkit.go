@@ -195,28 +195,6 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 	})
 	a.revocation = revocation.NewSet(deps.Redis, cfg.KeyPrefix)
 	a.grace = grace.NewCache(deps.Redis, cfg.KeyPrefix, cipher)
-	var wechat idp.WeChatVerifier
-	if len(cfg.WeChatApps) > 0 {
-		apps := make([]idp.App, len(cfg.WeChatApps))
-		for i, a := range cfg.WeChatApps {
-			apps[i] = idp.App{AppID: a.AppID, Secret: a.Secret}
-		}
-		wechat = idp.NewWeChat(apps, cfg.WeChatAPIBaseURL, deps.HTTPClient, deps.Logger)
-	}
-	var apple idp.AppleVerifier
-	if len(cfg.AppleBundleIDs) > 0 {
-		apple = idp.NewApple(idp.AppleOptions{
-			BundleIDs: cfg.AppleBundleIDs, JWKSURL: cfg.AppleJWKSURL, HTTP: deps.HTTPClient,
-			Nonces: idp.NewNonceRegistry(deps.Redis, cfg.KeyPrefix), Logger: deps.Logger, NonceTTL: cfg.AppleNonceTTL, Observer: deps.Observer,
-		})
-	}
-	var google idp.GoogleVerifier
-	if len(cfg.GoogleClientIDs) > 0 {
-		google = idp.NewGoogle(idp.GoogleOptions{
-			ClientIDs: cfg.GoogleClientIDs, JWKSURL: cfg.GoogleJWKSURL, HTTP: deps.HTTPClient,
-			Nonces: idp.NewNonceRegistry(deps.Redis, cfg.KeyPrefix), Logger: deps.Logger, NonceTTL: cfg.GoogleNonceTTL, Observer: deps.Observer,
-		})
-	}
 	users, err := user.NewService(user.Deps{
 		ProfileAttributes:           cfg.ProfileAttributes,
 		SignInCompletionFlowContext: cfg.Schema,
@@ -225,7 +203,7 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 		Signer: signer, Cipher: cipher, Digester: digester,
 		AuditSource: cfg.AuditSource, AuditNamespace: cfg.AuditNamespace,
 		SMS: deps.SMSSender, Email: deps.EmailSender, Audit: deps.Audit, Logger: deps.Logger, Observer: deps.Observer,
-		WeChat: wechat, Apple: apple, Google: google,
+		Providers: identityProviders(cfg, deps),
 		AccessTTL: cfg.AccessTokenTTL, RefreshTTL: cfg.RefreshTokenTTL, RefreshGrace: cfg.RefreshGrace, CodeTTL: cfg.CodeTTL,
 		DefaultRegion:           cfg.DefaultRegion,
 		ReauthMaxAge:            cfg.ReauthMaxAge,
@@ -442,4 +420,29 @@ func defaultRequestID(r *http.Request) string {
 		return "00000000000000000000000000000000"
 	}
 	return hex.EncodeToString(b[:])
+}
+
+// identityProviders 按配置构造已启用的第三方提供方；顺序与 Config.providerKinds 一致。
+func identityProviders(cfg Config, deps Deps) []idp.Provider {
+	var providers []idp.Provider
+	if len(cfg.WeChatApps) > 0 {
+		apps := make([]idp.App, len(cfg.WeChatApps))
+		for i, a := range cfg.WeChatApps {
+			apps[i] = idp.App{AppID: a.AppID, Secret: a.Secret}
+		}
+		providers = append(providers, idp.NewWeChat(apps, cfg.WeChatAPIBaseURL, deps.HTTPClient, deps.Logger))
+	}
+	if len(cfg.AppleBundleIDs) > 0 {
+		providers = append(providers, idp.NewApple(idp.AppleOptions{
+			BundleIDs: cfg.AppleBundleIDs, JWKSURL: cfg.AppleJWKSURL, HTTP: deps.HTTPClient,
+			Nonces: idp.NewNonceRegistry(deps.Redis, cfg.KeyPrefix), Logger: deps.Logger, NonceTTL: cfg.AppleNonceTTL, Observer: deps.Observer,
+		}))
+	}
+	if len(cfg.GoogleClientIDs) > 0 {
+		providers = append(providers, idp.NewGoogle(idp.GoogleOptions{
+			ClientIDs: cfg.GoogleClientIDs, JWKSURL: cfg.GoogleJWKSURL, HTTP: deps.HTTPClient,
+			Nonces: idp.NewNonceRegistry(deps.Redis, cfg.KeyPrefix), Logger: deps.Logger, NonceTTL: cfg.GoogleNonceTTL, Observer: deps.Observer,
+		}))
+	}
+	return providers
 }

@@ -15,7 +15,7 @@ import (
 	"github.com/bbxx111/accountkit/user"
 )
 
-const clientCodeBody = `{"email":{"target":"a@example.test","code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`
+const clientCodeBody = `{"kind":"EMAIL","credential":{"target":"a@example.test","code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`
 
 func TestAuthenticationClientInfoHeaders(t *testing.T) {
 	for _, path := range []string{"/users:signInWithCode", "/users:signInWithIdp", "/users:completeSignIn", "/users/me:reauthenticate", "/token"} {
@@ -57,7 +57,7 @@ func TestAuthenticationClientInfoHeaders(t *testing.T) {
 				}}
 				body := clientCodeBody
 				if path == "/users:signInWithIdp" {
-					body = `{"wechat":{"code":"idp-code","app_id":"app"}}`
+					body = `{"kind":"WECHAT","credential":{"code":"idp-code","app_id":"app"}}`
 				}
 				if path == "/users:completeSignIn" {
 					body = completionBody

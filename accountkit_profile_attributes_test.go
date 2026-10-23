@@ -113,7 +113,7 @@ func TestProfileAttributesHTTPTokenIntrospectionPrivacy(t *testing.T) {
 	raw, _ := json.Marshal(challengeBody)
 	challenge := call(enduser, "POST", "/users:sendSignInCode", string(raw), "", "")
 	sent.rememberChallenge(challengeBody, challenge)
-	credential, _ := json.Marshal(map[string]any{"email": map[string]string{"target": target, "code_id": sent.codeID(target), "code": sent.code(target)}})
+	credential, _ := json.Marshal(map[string]any{"kind": "EMAIL", "credential": map[string]string{"target": target, "code_id": sent.codeID(target), "code": sent.code(target)}})
 	signed := call(enduser, "POST", "/users:signInWithCode", string(credential), "", "")
 	id := signed["user_id"].(string)
 	view, err := auth.Users().PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{"synthetic_secret_key":"synthetic-secret-value"}`)}, user.Meta{RequestID: "synthetic-private-write"})

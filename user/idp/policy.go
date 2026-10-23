@@ -2,6 +2,7 @@ package idp
 
 import (
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"sort"
@@ -45,4 +46,15 @@ func (g *Google) PolicyFingerprint() string { return g.v.fingerprint(g.jwksURL) 
 // PolicyFingerprint 标识 App ID、Graph 版本与地址、JWKS 地址，不含 App Secret。
 func (f *Facebook) PolicyFingerprint() string {
 	return f.v.fingerprint(f.version + "\n" + f.graph + "\n" + f.jwksURL)
+}
+
+// PolicyFingerprint 包含应用集合、模式、网关和规范公钥摘要，不含应用私钥。
+func (a *Alipay) PolicyFingerprint() string {
+	apps := make([]string, 0, len(a.config.apps))
+	for appID, app := range a.config.apps {
+		der, _ := x509.MarshalPKIXPublicKey(app.publicKey)
+		digest := sha256.Sum256(der)
+		apps = append(apps, appID+":"+hex.EncodeToString(digest[:]))
+	}
+	return configurationFingerprint("alipay:"+string(a.config.subjectMode), a.config.gatewayURL, apps)
 }

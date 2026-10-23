@@ -485,6 +485,13 @@ func identityProviders(cfg Config, deps Deps) ([]idp.Provider, error) {
 			Nonces: idp.NewNonceRegistry(deps.Redis, cfg.KeyPrefix), Logger: deps.Logger, NonceTTL: cfg.FacebookNonceTTL, Observer: deps.Observer,
 		}))
 	}
+	if len(cfg.AlipayApps) > 0 {
+		provider, err := idp.NewAlipay(idp.AlipayOptions{Config: cfg.alipayConfig(), HTTP: deps.HTTPClient, Logger: deps.Logger, Observer: deps.Observer})
+		if err != nil {
+			return nil, err
+		}
+		providers = append(providers, provider)
+	}
 	for _, p := range cfg.OIDCProviders {
 		providers = append(providers, idp.NewOIDC(idp.OIDCOptions{
 			Kind: p.Kind, Issuer: p.Issuer, JWKSURL: p.JWKSURL, ClientIDs: p.ClientIDs,

@@ -123,6 +123,9 @@ func TestIdentityKindFormat(t *testing.T) {
 }
 
 func TestIdentityKindBuiltin(t *testing.T) {
+	if enum.IdentityAlipay != "ALIPAY" || !enum.IdentityAlipay.IsBuiltin() || !enum.IdentityAlipay.Valid() || enum.IdentityAlipay.IsAnchor() || enum.IdentityAlipay.IsChannel() {
+		t.Fatal("ALIPAY must be a builtin third-party identity kind")
+	}
 	for _, k := range []enum.IdentityKind{enum.IdentityPhone, enum.IdentityEmail, enum.IdentityWeChat, enum.IdentityApple, enum.IdentityGoogle, enum.IdentityFacebook} {
 		if !k.IsBuiltin() {
 			t.Fatalf("%s must be builtin", k)

@@ -46,6 +46,7 @@ const (
 	IdentityApple           IdentityKind = "APPLE"
 	IdentityGoogle          IdentityKind = "GOOGLE"
 	IdentityFacebook        IdentityKind = "FACEBOOK"
+	IdentityAlipay          IdentityKind = "ALIPAY"
 )
 
 var identityKindFormat = regexp.MustCompile(`^[A-Z][A-Z0-9_]{1,31}$`)
@@ -63,7 +64,7 @@ func (k IdentityKind) Valid() bool { return identityKindFormat.MatchString(strin
 // IsBuiltin 报告该 kind 是否为包内置类型；配置的 OIDC 类型不得使用这些名字。
 func (k IdentityKind) IsBuiltin() bool {
 	switch k {
-	case IdentityPhone, IdentityEmail, IdentityWeChat, IdentityApple, IdentityGoogle, IdentityFacebook:
+	case IdentityPhone, IdentityEmail, IdentityWeChat, IdentityApple, IdentityGoogle, IdentityFacebook, IdentityAlipay:
 		return true
 	}
 	return false

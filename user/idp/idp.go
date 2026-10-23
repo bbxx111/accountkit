@@ -1,4 +1,4 @@
-// Package idp 把第三方登录凭证换成已验证的身份（微信 UnionID、Apple/Google/OIDC sub）。
+// Package idp 把第三方登录凭证换成已验证的身份（微信/支付宝标识、Apple/Google/OIDC sub）。
 //
 // 只做校验与取值，不碰数据库；换回的第三方 access/refresh token 用完即弃，
 // 不落日志、不返回给调用方。错误以哨兵表达，HTTP 层按 errors.Is 映射。
@@ -20,7 +20,7 @@ import (
 type Identity struct {
 	Kind    enum.IdentityKind
 	Subject string
-	// UnionID 是微信已验证的跨应用标识，仅用作白名单元数据。
+	// UnionID 是提供方已验证的跨应用标识，仅用作白名单元数据。
 	UnionID   string
 	OpenIDs   map[string]string
 	HintEmail string
@@ -34,13 +34,13 @@ type Identity struct {
 var (
 	// ErrInvalidCredential：code 无效/已用/过期，或 id_token 验签、iss、exp、nonce 不通过。
 	ErrInvalidCredential = errors.New("idp: invalid credential")
-	// ErrAppNotAllowed：app_id 不在 WeChatApps，或 aud 不在允许的客户端标识（含 IdP 未启用）。
+	// ErrAppNotAllowed：app_id 不在允许列表或与凭证不符，或 aud 不在允许的客户端标识（含 IdP 未启用）。
 	ErrAppNotAllowed = errors.New("idp: app not allowed")
 	// ErrNonceReplayed：同一 nonce 在 TTL 内第二次出现。
 	ErrNonceReplayed = errors.New("idp: nonce already used")
 	// ErrUnavailable：IdP 网络/5xx、JWKS 不可得、Redis 不可用 → 503。
 	ErrUnavailable = errors.New("idp: provider unavailable")
-	// ErrMisconfigured：服务端配置问题（appid/secret 无效、微信未返回 unionid）→ 500 + 告警日志。
+	// ErrMisconfigured：服务端配置或响应可信性问题（凭据配置、必需标识缺失等）→ 固定消息 500。
 	ErrMisconfigured = errors.New("idp: provider misconfigured")
 	// ErrMalformedCredential：凭证不是对象、缺字段、含未知字段或类型错误；在任何外部调用与 nonce 登记前返回。
 	ErrMalformedCredential = errors.New("idp: malformed credential")

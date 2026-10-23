@@ -2,6 +2,7 @@ package enduser_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -125,7 +126,7 @@ func TestSignInWithCode(t *testing.T) {
 		return user.SignInResult{Tokens: &user.TokenResult{AccessToken: "at", RefreshToken: "rt", ExpiresIn: 900, RefreshExpiresIn: 2592000, Scope: "user", UserID: "u_1", IsNewUser: true}}, nil
 	}}
 	h := newHandler(t, f)
-	body := map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "123456"}}
+	body := map[string]any{"kind": "PHONE", "credential": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": "123456"}}
 
 	rec := do(t, h, call{method: "POST", path: "/users:signInWithCode", body: body, headers: devHeaders()})
 	var tok map[string]any
@@ -151,27 +152,30 @@ func TestSignInWithCode(t *testing.T) {
 	}
 
 	// 凭证形状
-	for name, b := range map[string]any{
-		"none": map[string]any{},
-		"both": map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "a", "code": "b"}, "email": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "a", "code": "b"}},
+	for name, c := range map[string]struct {
+		body any
+		want string
+	}{
+		"none":   {map[string]any{}, "INVALID_ARGUMENT/CREDENTIAL_INCOMPLETE"},
+		"legacy": {map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "a", "code": "b"}}, "INVALID_ARGUMENT/MALFORMED_BODY"},
 	} {
-		rec = do(t, h, call{method: "POST", path: "/users:signInWithCode", body: b, headers: devHeaders()})
-		if status, _ := aipError(t, rec); rec.Code != 400 || status != "INVALID_ARGUMENT/CREDENTIAL_ONEOF" {
+		rec = do(t, h, call{method: "POST", path: "/users:signInWithCode", body: c.body, headers: devHeaders()})
+		if status, _ := aipError(t, rec); rec.Code != 400 || status != c.want {
 			t.Fatalf("%s: %d %s", name, rec.Code, status)
 		}
 	}
-	rec = do(t, h, call{method: "POST", path: "/users:signInWithCode", body: map[string]any{"wechat": map[string]string{"app_id": "wx", "code": "c"}}, headers: devHeaders()})
+	rec = do(t, h, call{method: "POST", path: "/users:signInWithCode", body: map[string]any{"kind": "WECHAT", "credential": map[string]string{"app_id": "wx", "code": "c"}}, headers: devHeaders()})
 	if status, _ := aipError(t, rec); status != "INVALID_ARGUMENT/CREDENTIAL_KIND_NOT_ALLOWED" {
 		t.Fatalf("wechat here: %s", status)
 	}
-	rec = do(t, h, call{method: "POST", path: "/users:signInWithCode", body: map[string]any{"email": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "a@b.co"}}, headers: devHeaders()})
+	rec = do(t, h, call{method: "POST", path: "/users:signInWithCode", body: map[string]any{"kind": "EMAIL", "credential": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "a@b.co"}}, headers: devHeaders()})
 	if status, _ := aipError(t, rec); status != "INVALID_ARGUMENT/CREDENTIAL_INCOMPLETE" {
 		t.Fatalf("incomplete: %s", status)
 	}
 
 	// 领域错误映射（码错不是 401）
 	for c, want := range map[string]string{"000000": "400 INVALID_ARGUMENT/CODE_INVALID", "111111": "400 INVALID_ARGUMENT/CODE_EXPIRED", "222222": "400 INVALID_ARGUMENT/CODE_ATTEMPTS_EXHAUSTED", "333333": "403 PERMISSION_DENIED/USER_FROZEN", "444444": "500 INTERNAL/"} {
-		rec = do(t, h, call{method: "POST", path: "/users:signInWithCode", body: map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": c}}, headers: devHeaders()})
+		rec = do(t, h, call{method: "POST", path: "/users:signInWithCode", body: map[string]any{"kind": "PHONE", "credential": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": c}}, headers: devHeaders()})
 		status, _ := aipError(t, rec)
 		if got := itoa(rec.Code) + " " + status; got != want {
 			t.Fatalf("code %s: got %q want %q", c, got, want)
@@ -190,23 +194,27 @@ func TestSignInWithIdp(t *testing.T) {
 	f := &fakeService{signInWithIdp: func(_ context.Context, cred user.IdpCredential, dev user.Device, meta user.Meta) (user.SignInResult, error) {
 		got.cred, got.dev = cred, dev
 		switch {
-		case cred.Kind == enum.IdentityWeChat && cred.Code == "bad":
+		case cred.Kind == enum.IdentityWeChat && credFields(cred)["code"] == "bad":
 			return user.SignInResult{}, idp.ErrInvalidCredential
-		case cred.Kind == enum.IdentityWeChat && cred.AppID == "wx-no":
+		case cred.Kind == enum.IdentityWeChat && credFields(cred)["app_id"] == "wx-no":
 			return user.SignInResult{}, idp.ErrAppNotAllowed
-		case cred.Kind == enum.IdentityApple && cred.Nonce == "replay":
+		case credFields(cred)["id_token"] != "" && credFields(cred)["nonce"] == "", cred.Kind == enum.IdentityWeChat && credFields(cred)["code"] == "":
+			return user.SignInResult{}, idp.ErrMalformedCredential
+		case cred.Kind == enum.IdentityApple && credFields(cred)["nonce"] == "replay":
 			return user.SignInResult{}, idp.ErrNonceReplayed
-		case cred.Kind == enum.IdentityGoogle && cred.Nonce == "pending":
+		case cred.Kind == enum.IdentityGoogle && credFields(cred)["nonce"] == "pending":
 			return user.SignInResult{Pending: &user.PendingSignIn{
 				SignInCompletionToken: "opaque", ExpireTime: time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC),
 				HintEmail: "person@example.test", EnabledIdentityKinds: []enum.IdentityKind{enum.IdentityEmail, enum.IdentityGoogle},
 				RequiredIdentityKinds: []enum.IdentityKind{enum.IdentityEmail},
 			}}, nil
-		case cred.Kind == enum.IdentityWeChat && cred.Code == "down":
+		case cred.Kind == enum.IdentityWeChat && credFields(cred)["code"] == "down":
 			return user.SignInResult{}, idp.ErrUnavailable
-		case cred.Kind == enum.IdentityWeChat && cred.Code == "miscfg":
+		case cred.Kind == enum.IdentityWeChat && credFields(cred)["code"] == "miscfg":
 			return user.SignInResult{}, idp.ErrMisconfigured
-		case cred.Kind == enum.IdentityWeChat && cred.Code == "frozen":
+		case cred.Kind == enum.IdentityWeChat && credFields(cred)["code"] == "unclassified":
+			return user.SignInResult{}, errors.New("dial tcp 10.9.8.7:443: provider secret leaked")
+		case cred.Kind == enum.IdentityWeChat && credFields(cred)["code"] == "frozen":
 			return user.SignInResult{}, user.ErrUserFrozen
 		}
 		res := user.TokenResult{AccessToken: "at", RefreshToken: "rt", ExpiresIn: 900, RefreshExpiresIn: 2592000, Scope: "user:bind", UserID: "u_1", IsNewUser: true}
@@ -217,7 +225,7 @@ func TestSignInWithIdp(t *testing.T) {
 	}}
 	h := newHandler(t, f)
 
-	rec := do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"wechat": map[string]string{"app_id": "wx1", "code": "c1"}}, headers: devHeaders()})
+	rec := do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"kind": "WECHAT", "credential": map[string]string{"app_id": "wx1", "code": "c1"}}, headers: devHeaders()})
 	var tok map[string]any
 	decode(t, rec, &tok)
 	if rec.Code != 200 || tok["scope"] != "user:bind" || tok["is_new_user"] != true || rec.Header().Get("Cache-Control") != "no-store" {
@@ -226,28 +234,28 @@ func TestSignInWithIdp(t *testing.T) {
 	if _, has := tok["hint_email"]; has {
 		t.Fatal("wechat response must omit hint_email")
 	}
-	if got.cred.Kind != enum.IdentityWeChat || got.cred.AppID != "wx1" || got.cred.Code != "c1" || got.dev.ID != devHeaders()["X-Device-Id"] {
+	if got.cred.Kind != enum.IdentityWeChat || string(got.cred.Credential) != `{"app_id":"wx1","code":"c1"}` || got.dev.ID != devHeaders()["X-Device-Id"] {
 		t.Fatalf("args: %+v", got)
 	}
-	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"apple": map[string]string{"id_token": "t", "nonce": "n"}}, headers: devHeaders()})
+	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"kind": "APPLE", "credential": map[string]string{"id_token": "t", "nonce": "n"}}, headers: devHeaders()})
 	decode(t, rec, &tok)
-	if rec.Code != 200 || tok["hint_email"] != "x@privaterelay.appleid.com" || got.cred.Kind != enum.IdentityApple || got.cred.IDToken != "t" || got.cred.Nonce != "n" {
+	if rec.Code != 200 || tok["hint_email"] != "x@privaterelay.appleid.com" || got.cred.Kind != enum.IdentityApple || string(got.cred.Credential) != `{"id_token":"t","nonce":"n"}` {
 		t.Fatalf("apple: %d %v %+v", rec.Code, tok, got)
 	}
-	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"google": map[string]string{"id_token": "gt", "nonce": "gn"}}, headers: devHeaders()})
+	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"kind": "GOOGLE", "credential": map[string]string{"id_token": "gt", "nonce": "gn"}}, headers: devHeaders()})
 	decode(t, rec, &tok)
-	if rec.Code != 200 || tok["hint_email"] != "x@privaterelay.appleid.com" || got.cred.Kind != enum.IdentityGoogle || got.cred.IDToken != "gt" || got.cred.Nonce != "gn" || tok["provider_meta"] != nil {
+	if rec.Code != 200 || tok["hint_email"] != "x@privaterelay.appleid.com" || got.cred.Kind != enum.IdentityGoogle || string(got.cred.Credential) != `{"id_token":"gt","nonce":"gn"}` || tok["provider_meta"] != nil {
 		t.Fatalf("google: %d %v %+v", rec.Code, tok, got)
 	}
-	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"google": map[string]string{"id_token": "gt"}}, headers: devHeaders()})
+	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"kind": "GOOGLE", "credential": map[string]string{"id_token": "gt"}}, headers: devHeaders()})
 	if status, _ := aipError(t, rec); status != "INVALID_ARGUMENT/CREDENTIAL_INCOMPLETE" {
 		t.Fatalf("google incomplete: %s", status)
 	}
-	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"google": map[string]string{"id_token": "gt", "nonce": "gn"}, "apple": map[string]string{"id_token": "t", "nonce": "n"}}, headers: devHeaders()})
-	if status, _ := aipError(t, rec); status != "INVALID_ARGUMENT/CREDENTIAL_ONEOF" {
-		t.Fatalf("google and apple: %s", status)
+	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"google": map[string]string{"id_token": "gt", "nonce": "gn"}}, headers: devHeaders()})
+	if status, _ := aipError(t, rec); status != "INVALID_ARGUMENT/MALFORMED_BODY" {
+		t.Fatalf("legacy google member: %s", status)
 	}
-	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"google": map[string]string{"id_token": "gt", "nonce": "pending"}}, headers: devHeaders()})
+	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"kind": "GOOGLE", "credential": map[string]string{"id_token": "gt", "nonce": "pending"}}, headers: devHeaders()})
 	var pending map[string]any
 	decode(t, rec, &pending)
 	if rec.Code != 200 || pending["hint_email"] != "person@example.test" || pending["next_action"] != "COMPLETE_IDENTITY" {
@@ -255,21 +263,25 @@ func TestSignInWithIdp(t *testing.T) {
 	}
 
 	// 设备头与凭证形状
-	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"wechat": map[string]string{"app_id": "wx1", "code": "c1"}}})
+	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"kind": "WECHAT", "credential": map[string]string{"app_id": "wx1", "code": "c1"}}})
 	if status, _ := aipError(t, rec); status != "INVALID_ARGUMENT/DEVICE_ID_INVALID" {
 		t.Fatalf("no device: %s", status)
 	}
-	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"phone": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+86138", "code": "1"}}, headers: devHeaders()})
+	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"kind": "PHONE", "credential": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+86138", "code": "1"}}, headers: devHeaders()})
 	if status, _ := aipError(t, rec); status != "INVALID_ARGUMENT/CREDENTIAL_KIND_NOT_ALLOWED" {
 		t.Fatalf("phone here: %s", status)
 	}
-	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"wechat": map[string]string{"app_id": "wx1"}}, headers: devHeaders()})
+	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"kind": "WECHAT", "credential": map[string]string{"app_id": "wx1"}}, headers: devHeaders()})
 	if status, _ := aipError(t, rec); status != "INVALID_ARGUMENT/CREDENTIAL_INCOMPLETE" {
 		t.Fatalf("incomplete: %s", status)
 	}
 	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: `{"wechat":null,"apple":null}`, headers: devHeaders()})
-	if status, _ := aipError(t, rec); status != "INVALID_ARGUMENT/CREDENTIAL_ONEOF" {
-		t.Fatalf("nulls: %s", status)
+	if status, _ := aipError(t, rec); status != "INVALID_ARGUMENT/MALFORMED_BODY" {
+		t.Fatalf("legacy nulls: %s", status)
+	}
+	rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"kind": "WECHAT", "credential": map[string]string{"app_id": "wx1", "code": "unclassified"}}, headers: devHeaders()})
+	if status, _ := aipError(t, rec); rec.Code != 500 || status != "INTERNAL/" || strings.Contains(rec.Body.String(), "10.9.8.7") || strings.Contains(rec.Body.String(), "secret") {
+		t.Fatalf("unclassified provider error: %d %s", rec.Code, rec.Body.String())
 	}
 
 	// 领域错误映射
@@ -277,12 +289,12 @@ func TestSignInWithIdp(t *testing.T) {
 		body any
 		want string
 	}{
-		"invalid": {map[string]any{"wechat": map[string]string{"app_id": "wx1", "code": "bad"}}, "400 INVALID_ARGUMENT/IDP_CREDENTIAL_INVALID"},
-		"app":     {map[string]any{"wechat": map[string]string{"app_id": "wx-no", "code": "c"}}, "400 INVALID_ARGUMENT/IDP_APP_NOT_ALLOWED"},
-		"replay":  {map[string]any{"apple": map[string]string{"id_token": "t", "nonce": "replay"}}, "400 INVALID_ARGUMENT/IDP_NONCE_REPLAYED"},
-		"down":    {map[string]any{"wechat": map[string]string{"app_id": "wx1", "code": "down"}}, "503 UNAVAILABLE/IDP_UNAVAILABLE"},
-		"miscfg":  {map[string]any{"wechat": map[string]string{"app_id": "wx1", "code": "miscfg"}}, "500 INTERNAL/"},
-		"frozen":  {map[string]any{"wechat": map[string]string{"app_id": "wx1", "code": "frozen"}}, "403 PERMISSION_DENIED/USER_FROZEN"},
+		"invalid": {map[string]any{"kind": "WECHAT", "credential": map[string]string{"app_id": "wx1", "code": "bad"}}, "400 INVALID_ARGUMENT/IDP_CREDENTIAL_INVALID"},
+		"app":     {map[string]any{"kind": "WECHAT", "credential": map[string]string{"app_id": "wx-no", "code": "c"}}, "400 INVALID_ARGUMENT/IDP_APP_NOT_ALLOWED"},
+		"replay":  {map[string]any{"kind": "APPLE", "credential": map[string]string{"id_token": "t", "nonce": "replay"}}, "400 INVALID_ARGUMENT/IDP_NONCE_REPLAYED"},
+		"down":    {map[string]any{"kind": "WECHAT", "credential": map[string]string{"app_id": "wx1", "code": "down"}}, "503 UNAVAILABLE/IDP_UNAVAILABLE"},
+		"miscfg":  {map[string]any{"kind": "WECHAT", "credential": map[string]string{"app_id": "wx1", "code": "miscfg"}}, "500 INTERNAL/"},
+		"frozen":  {map[string]any{"kind": "WECHAT", "credential": map[string]string{"app_id": "wx1", "code": "frozen"}}, "403 PERMISSION_DENIED/USER_FROZEN"},
 	} {
 		rec = do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: c.body, headers: devHeaders()})
 		status, _ := aipError(t, rec)
@@ -306,8 +318,15 @@ func TestSignInWithIdpPendingDeletionIs403(t *testing.T) {
 		return user.SignInResult{}, user.ErrUserPendingDeletion
 	}}
 	h := newHandler(t, f)
-	rec := do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"wechat": map[string]string{"app_id": "wx1", "code": "c1"}}, headers: devHeaders()})
+	rec := do(t, h, call{method: "POST", path: "/users:signInWithIdp", body: map[string]any{"kind": "WECHAT", "credential": map[string]string{"app_id": "wx1", "code": "c1"}}, headers: devHeaders()})
 	if status, _ := aipError(t, rec); rec.Code != 403 || status != "PERMISSION_DENIED/USER_PENDING_DELETION" {
 		t.Fatalf("pending deletion via idp: %d %s", rec.Code, status)
 	}
+}
+
+// credFields 解码第三方 credential 的平坦字段，供假服务按内容分支。
+func credFields(c user.IdpCredential) map[string]string {
+	fields := map[string]string{}
+	_ = json.Unmarshal(c.Credential, &fields)
+	return fields
 }

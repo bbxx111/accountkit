@@ -796,14 +796,14 @@ func TestRepoListUsersAdminFiltersAndPaginates(t *testing.T) {
 		t.Fatalf("time range: %v", idsOf(rows))
 	}
 	// 身份：digest 等值；hint 前缀+后缀；kind 不匹配 → 空
-	phone := int16(enum.IdentityPhone)
+	phone := string(enum.IdentityPhone)
 	if rows, _ = q.ListUsersAdmin(ctx, db.ListUsersAdminParams{ByIdentity: true, IdentityKind: &phone, Digests: []string{"nope", "dg-a1"}, PageLimit: 10}); !eq(idsOf(rows), active1) {
 		t.Fatalf("by digest: %v", idsOf(rows))
 	}
 	if rows, _ = q.ListUsersAdmin(ctx, db.ListUsersAdminParams{ByIdentity: true, IdentityKind: &phone, Digests: []string{}, HintPrefix: ptr("+86138"), HintSuffix: ptr("1234"), PageLimit: 10}); !eq(idsOf(rows), active1) {
 		t.Fatalf("by hints: %v", idsOf(rows))
 	}
-	mail := int16(enum.IdentityEmail)
+	mail := string(enum.IdentityEmail)
 	if rows, _ = q.ListUsersAdmin(ctx, db.ListUsersAdminParams{ByIdentity: true, IdentityKind: &mail, Digests: []string{}, HintSuffix: ptr("shifang.co"), PageLimit: 10}); !eq(idsOf(rows), active2) {
 		t.Fatalf("by email domain: %v", idsOf(rows))
 	}

@@ -69,7 +69,7 @@ func seedFormatFixture(t *testing.T, pool *pgxpool.Pool, cfg accountkit.Config) 
 	}
 	nonce := make([]byte, gcm.NonceSize()) // Synthetic fixture only.
 	ct := gcm.Seal(nonce, nonce, []byte(f.Phone), nil)
-	exec("INSERT INTO identity(id,user_id,kind,subject_digest,digest_key_version,subject_ciphertext,cipher_key_version,hint_prefix,hint_suffix) VALUES($1,$2,1,$3,1,$4,1,'+86138','1234')", f.IdentityID, f.UserID, hex.EncodeToString(mac.Sum(nil)), ct)
+	exec("INSERT INTO identity(id,user_id,kind,subject_digest,digest_key_version,subject_ciphertext,cipher_key_version,hint_prefix,hint_suffix) VALUES($1,$2,'PHONE',$3,1,$4,1,'+86138','1234')", f.IdentityID, f.UserID, hex.EncodeToString(mac.Sum(nil)), ct)
 	hash := sha256.Sum256([]byte(f.RefreshToken))
 	exec("INSERT INTO session(id,user_id,device_id,auth_time,refresh_token_hash,refresh_expire_time) VALUES($1,$2,'source-device',$3,$4,$5)", f.SessionID, f.UserID, now, hash[:], now.Add(24*time.Hour))
 	// Explicit synthetic projection only; this is not a legacy database upgrade.

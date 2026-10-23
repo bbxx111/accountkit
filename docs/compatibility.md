@@ -1,5 +1,26 @@
 # 功能与兼容对照
 
+## 统一凭证信封与身份类型字符串
+
+本节是未发布的开发分支变化，对 v0.5.0 不兼容，不提供旧数据迁移。
+
+- **HTTP 请求**：`signInWithCode`、`signInWithIdp`、`completeSignIn`、`reauthenticate`、绑定和换绑的请求体统一为 `{"kind","credential"}`。旧写法与新写法对照：
+
+  | 旧 | 新 |
+  |---|---|
+  | `{"phone":{"target":…,"code_id":…,"code":…}}` | `{"kind":"PHONE","credential":{"target":…,"code_id":…,"code":…}}` |
+  | `{"email":{…}}` | `{"kind":"EMAIL","credential":{…}}` |
+  | `{"wechat":{"app_id":…,"code":…}}` | `{"kind":"WECHAT","credential":{"app_id":…,"code":…}}` |
+  | `{"apple":{"id_token":…,"nonce":…}}` / `{"google":{…}}` | `{"kind":"APPLE"\|"GOOGLE","credential":{"id_token":…,"nonce":…}}` |
+  | `completeSignIn` 的 `phone`/`email` 成员 | 同一请求体内的 `kind` + `credential` |
+
+  旧成员返回 `400 MALFORMED_BODY`，`CREDENTIAL_ONEOF` 不再出现；缺少 `kind`/`credential` 或 credential 字段不合法为 `CREDENTIAL_INCOMPLETE`。credential 内的未知字段从 `MALFORMED_BODY` 改为 `CREDENTIAL_INCOMPLETE`。发码接口的 `channel`/`target` 不变。
+- **Go API**：`enum.IdentityKind` 改为字符串底型，常量值即 API 名，零值 `""`；`Valid()` 只检查格式 `^[A-Z][A-Z0-9_]{1,31}$`，新增 `IsBuiltin()`；`ParseIdentityKind` 不再拒绝格式合法的未知类型。按数值比较、持久化或用 `IdentityKind(5)` 构造的代码须改为字符串。`idp.WeChatVerifier`、`AppleVerifier`、`GoogleVerifier` 与 `user.Deps` 的 `WeChat`/`Apple`/`Google` 字段移除，改为 `user.Deps.Providers []idp.Provider`；`user.IdpCredential` 改为 `{Kind, Credential json.RawMessage}`；`user.IdentityCapabilities` 改为 `{Phone, Email bool; Providers []enum.IdentityKind}`。`accountkit.Config` 的微信/Apple/Google 配置不变。
+- **策略与输出**：显式 Enabled 中的非内置类型必须已登记。`EnabledIdentityKinds`/`RequiredIdentityKinds` 的输出顺序保持内置类型的历史顺序，配置类型按名称排在其后。
+- **数据库**：当前 0001 的 `identity.kind` 改为 `VARCHAR(32) COLLATE "C"` 加格式 CHECK。`identity.kind` 仍为 SMALLINT 的 version 1 被无写拒绝，须使用新空资源；旧二进制不能在新结构上运行，见[迁移手册](migrations.md#当前初始基线)。
+- **进行中的登录补全**：补全载荷中的类型编码与配置指纹都已变化，升级前创建的 pending 流程会被拒绝，客户端须重新开始。补全指纹现在也覆盖 Google 的 client ID 配置。
+- **指标**：宿主登记的其他第三方类型使用固定方法值 `provider` 与依赖操作 `verify_provider`，类型名不进入标签。
+
 ## Google 登录与显示名长度
 
 `IdentityKind` 追加 `GOOGLE = 5`。`POST /users:signInWithIdp` 增加与 `apple` 互斥的 `google` 成员，字段为 `id_token` 和原始 `nonce`。未配置 `GoogleClientIDs` 时该登录关闭。已验证邮箱只作为 `hint_email` 预填，补全仍要显式 `target`。`Required` 不能包含 `GOOGLE`。

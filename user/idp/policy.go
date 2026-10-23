@@ -34,3 +34,6 @@ func (a *Apple) PolicyFingerprint() string {
 	}
 	return configurationFingerprint("apple", a.jwksURL, apps)
 }
+
+// PolicyFingerprint 标识 Google client ID 允许列表和 JWKS 地址。
+func (g *Google) PolicyFingerprint() string { return g.v.fingerprint(g.jwksURL) }

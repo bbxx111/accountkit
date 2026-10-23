@@ -252,11 +252,10 @@ func TestCurrentSessionContextDomain(t *testing.T) {
 		t.Fatalf("missing authentication identities is invariant error: %v", err)
 	}
 	mustExec(t, f, `INSERT INTO session_authentication_identity(session_id,identity_id) VALUES ($1,$2)`, p.SessionID, ids[0].ID)
-	mustExec(t, f, `UPDATE identity SET kind=99 WHERE id=$1`, ids[0].ID)
-	if _, err := r.GetCurrentSession(ctx, p); err == nil || errors.Is(err, user.ErrInvalidToken) {
-		t.Fatalf("invalid persisted kind: %v", err)
+	// 存储层格式 CHECK 阻止非法类型落库，GetCurrentSession 的格式防御不再可从数据库触发。
+	if _, err := f.pool.Exec(ctx, `UPDATE identity SET kind='99' WHERE id=$1`, ids[0].ID); err == nil {
+		t.Fatal("malformed persisted kind accepted")
 	}
-	mustExec(t, f, `UPDATE identity SET kind=1 WHERE id=$1`, ids[0].ID)
 	for _, offset := range []time.Duration{-time.Microsecond, 0, time.Microsecond} {
 		mustExec(t, f, `UPDATE session SET refresh_expire_time=$2 WHERE id=$1`, p.SessionID, f.clock.Add(offset))
 		_, err := r.GetCurrentSession(ctx, p)

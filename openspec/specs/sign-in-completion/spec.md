@@ -30,7 +30,7 @@
 
 #### Scenario: 完成接口凭证限制
 - **WHEN** 客户端调用 completeSignIn
-- **THEN** 除有效 sign_in_completion_token 外必须恰好提供一个 phone 或 email 凭证成员，包含 target、code_id、code；缺失、多个成员或第三方凭证返回 400
+- **THEN** 除有效 sign_in_completion_token 外必须提供 kind 为 PHONE 或 EMAIL 的凭证，credential 包含 target、code_id、code；kind 或 credential 缺失返回 400 `CREDENTIAL_INCOMPLETE`，第三方类型返回 400 `CREDENTIAL_KIND_NOT_ALLOWED`
 
 #### Scenario: 普通发码不得切换为补全
 - **WHEN** 客户端向普通 sendSignInCode 提交补全票据或 purpose 字段

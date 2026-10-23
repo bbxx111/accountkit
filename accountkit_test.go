@@ -354,7 +354,7 @@ func TestNewWiresIdPVerifiersOnlyWhenConfigured(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("POST", "/users:signInWithIdp", strings.NewReader(`{"wechat":{"app_id":"wx1","code":"c"}}`))
+	req := httptest.NewRequest("POST", "/users:signInWithIdp", strings.NewReader(`{"kind":"WECHAT","credential":{"app_id":"wx1","code":"c"}}`))
 	req.Header.Set("X-Device-Id", "d1")
 	a.EndUserHandler().ServeHTTP(rec, req)
 	if rec.Code != 400 || !strings.Contains(rec.Body.String(), "IDP_APP_NOT_ALLOWED") {
@@ -373,14 +373,14 @@ func TestNewWiresIdPVerifiersOnlyWhenConfigured(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest("POST", "/users:signInWithIdp", strings.NewReader(`{"wechat":{"app_id":"wx1","code":"c"}}`))
+	req = httptest.NewRequest("POST", "/users:signInWithIdp", strings.NewReader(`{"kind":"WECHAT","credential":{"app_id":"wx1","code":"c"}}`))
 	req.Header.Set("X-Device-Id", "d1")
 	a2.EndUserHandler().ServeHTTP(rec, req)
 	if rec.Code != 503 || !strings.Contains(rec.Body.String(), "IDP_UNAVAILABLE") || rec.Header().Get("Retry-After") != "1" {
 		t.Fatalf("wechat unreachable: %d %s", rec.Code, rec.Body.String())
 	}
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest("POST", "/users:signInWithIdp", strings.NewReader(`{"apple":{"id_token":"x.y.z","nonce":"n"}}`))
+	req = httptest.NewRequest("POST", "/users:signInWithIdp", strings.NewReader(`{"kind":"APPLE","credential":{"id_token":"x.y.z","nonce":"n"}}`))
 	req.Header.Set("X-Device-Id", "d1")
 	a2.EndUserHandler().ServeHTTP(rec, req)
 	// 垃圾 id_token 在拉 JWKS 前就解析失败 → 400；证明 Apple 校验器已装配（而非 IDP_APP_NOT_ALLOWED）

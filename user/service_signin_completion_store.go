@@ -9,7 +9,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -63,7 +65,7 @@ func fingerprintJSON(v any) string {
 	return hex.EncodeToString(h[:])
 }
 
-func signInCompletionFlowConfiguration(d Deps, policy *IdentityPolicy) (string, string) {
+func signInCompletionFlowConfiguration(d Deps, policy *IdentityPolicy, providers map[enum.IdentityKind]idp.Provider) (string, string) {
 	var searchPath string
 	if d.Repo.pool != nil {
 		cfg := d.Repo.pool.Config().ConnConfig
@@ -80,13 +82,12 @@ func signInCompletionFlowConfiguration(d Deps, policy *IdentityPolicy) (string, 
 	context := fingerprintJSON(struct{ SearchPath, Prefix, JWT, Extra string }{
 		searchPath, d.Codes.InstancePrefix(), d.Signer.ContextFingerprint(), extra,
 	})
-	provider := func(v any) string {
-		if p, ok := v.(interface{ PolicyFingerprint() string }); ok {
-			return p.PolicyFingerprint()
-		}
-		return fmt.Sprintf("%T", v)
+	parts := []string{policy.Fingerprint(), d.ProviderConfiguration}
+	kinds := slices.Sorted(maps.Keys(providers))
+	for _, kind := range kinds {
+		parts = append(parts, string(kind)+":"+providers[kind].PolicyFingerprint())
 	}
-	return context, fingerprintJSON([]string{policy.Fingerprint(), provider(d.WeChat), provider(d.Apple), d.ProviderConfiguration})
+	return context, fingerprintJSON(parts)
 }
 
 func (s *Service) flowAAD(id string) []byte {

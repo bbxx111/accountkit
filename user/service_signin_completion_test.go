@@ -23,7 +23,7 @@ import (
 func TestSignInCompletionDefersUnknownUser(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
-	result, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:pending-source@openid"}, dev1, meta1)
+	result, err := f.svc.SignInWithIdp(ctx, wechatCred("wx1", "union:pending-source@openid"), dev1, meta1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestSignInCompletionDefersUnknownUser(t *testing.T) {
 
 func pendingFlow(t *testing.T, f *fixture, subject string) *user.PendingSignIn {
 	t.Helper()
-	r, err := f.svc.SignInWithIdp(context.Background(), user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:" + subject + "@openid"}, dev1, meta1)
+	r, err := f.svc.SignInWithIdp(context.Background(), wechatCred("wx1", "union:"+subject+"@openid"), dev1, meta1)
 	if err != nil || r.Pending == nil || r.Tokens != nil {
 		t.Fatalf("pending: %+v %v", r, err)
 	}
@@ -321,12 +321,12 @@ func TestSignInCompletionRefusesChangedSourceOwnerAndUnavailableTarget(t *testin
 			want := user.ErrIdentityConflict
 			switch mode {
 			case "source":
-				_, _, err := f.svc.BindWithIdp(ctx, principalOf(t, f, owner), user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:later-owned@openid"}, meta1)
+				_, _, err := f.svc.BindWithIdp(ctx, principalOf(t, f, owner), wechatCred("wx1", "union:later-owned@openid"), meta1)
 				if err != nil {
 					t.Fatal(err)
 				}
 			case "limit":
-				_, _, err := f.svc.BindWithIdp(ctx, principalOf(t, f, owner), user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:other-owned@openid"}, meta1)
+				_, _, err := f.svc.BindWithIdp(ctx, principalOf(t, f, owner), wechatCred("wx1", "union:other-owned@openid"), meta1)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -412,8 +412,8 @@ func (a expiringApple) VerifyApple(context.Context, string, string) (idp.Identit
 func TestSignInCompletionUsesVerifiedIdpExpiry(t *testing.T) {
 	f := newFixture(t)
 	expiry := f.clock.Add(30 * time.Second)
-	newServiceWith(t, f, func(d *user.Deps) { d.Apple = expiringApple{expiry: expiry} })
-	r, err := f.svc.SignInWithIdp(context.Background(), user.IdpCredential{Kind: enum.IdentityApple, IDToken: "opaque-verified-input", Nonce: "n"}, dev1, meta1)
+	newServiceWith(t, f, func(d *user.Deps) { *d = withProvider(*d, appleProvider(expiringApple{expiry: expiry})) })
+	r, err := f.svc.SignInWithIdp(context.Background(), appleCred("opaque-verified-input", "n"), dev1, meta1)
 	if err != nil || r.Pending == nil || !r.Pending.ExpireTime.Equal(expiry) {
 		t.Fatalf("verified expiry: %+v %v", r, err)
 	}
@@ -587,7 +587,7 @@ func TestSignInIdpRechecksOwnershipAfterUserLock(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
 	owner := f.signIn(t, enum.IdentityEmail, email1, dev2)
-	cred := user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:stale-owner@openid"}
+	cred := wechatCred("wx1", "union:stale-owner@openid")
 	identity, _, err := f.svc.BindWithIdp(ctx, principalOf(t, f, owner), cred, meta1)
 	if err != nil {
 		t.Fatal(err)

@@ -452,7 +452,7 @@ func TestSessionContextPendingUnbindOrder(t *testing.T) {
 			f, p, _, _ := replacementSetup(t, enum.IdentityPhone, phone1)
 			emailID := contextBindEmail(t, f, p, email1)
 			f.advance(61 * time.Second)
-			pendingResult, err := f.svc.SignInWithIdp(context.Background(), user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:pending-unbind-order@openid"}, user.Device{ID: "separate-pending-device"}, meta1)
+			pendingResult, err := f.svc.SignInWithIdp(context.Background(), wechatCred("wx1", "union:pending-unbind-order@openid"), user.Device{ID: "separate-pending-device"}, meta1)
 			if err != nil || pendingResult.Pending == nil {
 				t.Fatalf("pending: %v", err)
 			}

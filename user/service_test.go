@@ -25,6 +25,7 @@ import (
 	"github.com/bbxx111/accountkit/user"
 	"github.com/bbxx111/accountkit/user/code"
 	"github.com/bbxx111/accountkit/user/db"
+	"github.com/bbxx111/accountkit/user/idp"
 	"github.com/bbxx111/accountkit/user/sender"
 )
 
@@ -96,8 +97,7 @@ func newFixture(t *testing.T) *fixture {
 		Codes:      code.NewStore(rdb, "t:", dig, code.Options{FailureLimitPerTarget: 10, FailureWindow: 15 * time.Minute, TTL: 5 * time.Minute, Cooldown: 60 * time.Second, MaxAttempts: 5, DailyLimitPerTarget: 10, DailyLimitPerIP: 100, Now: func() time.Time { return *clock }}),
 		Revocation: revocation.NewSet(rdb, "t:"), Grace: grace.NewCache(rdb, "t:", ciph),
 		Signer: signer, Cipher: ciph, Digester: dig, SMS: sent, Email: sent, Audit: mem,
-		WeChat:    wechat,
-		Apple:     apple,
+		Providers: []idp.Provider{wechatProvider(wechat), appleProvider(apple)},
 		Logger:    slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
 		AccessTTL: 15 * time.Minute, RefreshTTL: 720 * time.Hour, RefreshGrace: 30 * time.Second, CodeTTL: 5 * time.Minute,
 		DefaultRegion: "CN", Now: func() time.Time { return *clock },
@@ -388,9 +388,9 @@ func newServiceWithout(t *testing.T, f *fixture, which string) *user.Service {
 	d := f.deps
 	switch which {
 	case "wechat":
-		d.WeChat = nil
+		d = withoutProvider(d, enum.IdentityWeChat)
 	case "apple":
-		d.Apple = nil
+		d = withoutProvider(d, enum.IdentityApple)
 	}
 	svc, err := user.NewService(d)
 	if err != nil {

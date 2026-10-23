@@ -88,6 +88,7 @@
 - PostgreSQL 同库可以跨 schema 查询、join、事务及定义外键；本包不使用外键是领域设计选择，不是数据库不支持跨 schema。不要添加 `REFERENCES` 或级联删除；引用一致性由领域写路径和测试保证。单表格式、结构 CHECK 与唯一约束不属于外键，仍须保留。
 - 无外键不等于省略引用校验。创建或变更引用时，领域方法须检查目标存在性、所属用户及生命周期；涉及多行不变量的校验和写入放在同一事务内，并沿用相应行锁与锁序，防止并发绕过。管理面、导入和维护任务同样遵守；手工修数没有外键兜底，必须单独核验引用完整性。
 - 枚举存 SMALLINT，Go 类型集中在 int16 底型的叶子包 `enum`，sqlc 使用类型 override，避免生成代码与领域包形成循环依赖。合法值由 Go 枚举唯一定义，不新增枚举值 CHECK 或 PostgreSQL ENUM；新增值不应仅因数据库枚举定义而要求迁移。
+- 例外：`IdentityKind` 的类型集合可由部署配置扩展（OIDC 提供方），因此为 string 底型，`identity.kind` 存 `VARCHAR(32) COLLATE "C"` 加格式 CHECK（`^[A-Z][A-Z0-9_]{1,31}$`），不枚举合法值；Go 端格式校验为准。其他枚举不据此改为文本。
 - 枚举值只追加，禁止重编号和 `state >= 2` 这类序数判断；0 保留为 UNSPECIFIED，不作为有效值写入或输出，可选枚举缺失使用 NULL。生命周期列命名为 `state`，由领域状态迁移方法更新，不能通过通用 PATCH 任意赋值。
 
 ### 字段、时间与隐私
@@ -112,6 +113,7 @@
 - v0.5.0 已发布，tag 固定到 `102315c3069273f7a8c3ad253c1f4ae01255f8c6`；其中的 0001 已包含资料属性与头像，原始 SQL 字节不可改写。下述资料单列整合及头像直接修改 0001 的限定授权均已完成，不构成后续改写开关；后续真实结构变更从 0002 递增，已发布 tag/SQL 和冻结源保持。用户确认当前尚无正式部署，本次发布不提供旧数据库迁移工具；这不放宽迁移历史保护。证据见 [v0.5.0 发布说明](docs/releases/v0.5.0.md)。
 
 - 本轮 `add-google-sign-in` 经用户明确要求“数据库变更直接修改 0001”，仅授权更新当前 `0001_init.up.sql` 里 `identity.kind` 与 `provider_meta` 的注释（提及 GOOGLE 及 `profile.name` / `profile.picture`），并只同步当前 `initialFrozen`。不新增列、索引、CHECK 或 0002；down、已发布 tag/SQL 和冻结源保持。新安装仍为 version=1/dirty=false。同号数据库不重放 0001，不会自动更新注释。不 Force、改版本或清库。此授权不构成日常改写初始 SQL 的开关。
+- 本轮 `add-identity-provider-registry` 经用户明确要求“直接改 0001”，仅授权把当前 `0001_init.up.sql` 中 `identity.kind` 改为 `VARCHAR(32) COLLATE "C" NOT NULL` 并加格式 CHECK `identity_kind_format`，同步相关注释、sqlc、运行时预检和当前 `initialFrozen`。索引定义文本、其他列与约束、down、已发布 tag/SQL 和冻结源保持，不新增 0002；新安装仍为 version=1/dirty=false。`identity.kind` 仍为 SMALLINT 的 v1 及该列漂移结构无写拒绝，dirty 优先；不转换列、不重放同号 SQL、不 Force、改版本或清库，也不提供旧数据迁移。见 [OpenSpec 变更](openspec/changes/archive/2026-10-23-add-identity-provider-registry/proposal.md)。此授权不构成日常改写初始 SQL 的开关。
 - 本轮 `add-user-avatar-url` 经用户明确要求“不新增 0002 迁移，改现有 0001”，仅授权在当前 `user_account` 增加 `avatar_url TEXT NULL`（无默认值、索引或业务 CHECK），同步 sqlc、运行时预检和当前 initialFrozen。新安装仍为 version=1/dirty=false，down 整表语义保持。前一含资料但无头像的 v1、全部既有历史拒绝结构及撤回 v2 均无写拒绝，dirty 优先，保留 catalog、数据、version/dirty；不补列、重放同号 SQL、Force、改版本、清库或提供旧数据迁移。已发布 tag/SQL、v0.4.0 精确 pin 和冻结源保持；后续增量仍从 0002，测试 probe 使用 latest+1。本条仅覆盖头像列，以下历史授权与验收保持原事实；见[头像计划](docs/superpowers/plans/2026-10-21-add-user-avatar-url.md)和[验收记录](openspec/changes/archive/2026-10-21-add-user-avatar-url/verification.md)。
 
 - 本轮用户明确要求“0002 并入 0001，无需考虑旧数据迁移”，仅授权把 `profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb` 单列合入当前工作树 0001，撤回生产 0002；新空 schema 安装 version=1/dirty=false，其他列、索引和业务行为保持。当前 initialFrozen 新哈希与 v0.4.0 已发布旧定义分别固定；v0.4.0 精确 tag `62f0799b6c6ef1603b33f81834d39033dd0d0c4d`、其他发布 tag/SQL 和冻结源保持。旧 v0.4.0 v1 缺资料列、其他历史 v1 及各代撤回 v2（含单列、四列、五列及混合资料 v2）均无写拒绝，dirty 优先，保留 catalog、数据及 version/dirty；不转换旧数据、不重放同号 SQL、不 Force、改版本或清库。本轮不提供旧数据迁移工具或升级承诺；后续真实增量从 0002 递增，测试 probe 使用 latest+1（当前为 2）。 本轮见[整合计划](docs/superpowers/plans/2026-10-21-consolidate-profile-attributes-initial.md)和[验收记录](openspec/changes/archive/2026-10-21-add-schema-validated-user-extensions/verification.md)。此授权不扩大历史授权，不构成日常改写初始 SQL 的开关。

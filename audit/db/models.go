@@ -27,7 +27,7 @@ type AuditEvent struct {
 type Identity struct {
 	ID                string
 	UserID            string
-	Kind              int16
+	Kind              string
 	SubjectDigest     *string
 	DigestKeyVersion  *int16
 	ProviderSubject   *string

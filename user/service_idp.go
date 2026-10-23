@@ -13,13 +13,10 @@ import (
 	"github.com/bbxx111/accountkit/user/idp"
 )
 
-// IdpCredential 是第三方凭证 oneof 的 wechat / apple / google 成员。
+// IdpCredential 是第三方类型的凭证；Credential 为客户端 credential 对象的原始 JSON，由提供方解析。
 type IdpCredential struct {
-	Kind    enum.IdentityKind
-	AppID   string
-	Code    string
-	IDToken string
-	Nonce   string
+	Kind       enum.IdentityKind
+	Credential json.RawMessage
 }
 
 // signInWithIdp 验证第三方身份，按完整性策略选择登录、直接注册或待补全。
@@ -41,9 +38,6 @@ func (s *Service) signInWithIdp(ctx context.Context, cred IdpCredential, dev Dev
 		}
 		return SignInResult{}, err
 	}
-	if ident.Kind != cred.Kind || ident.Subject == "" {
-		return SignInResult{}, idp.ErrInvalidCredential
-	}
 	return s.signInVerified(ctx, completionProof{Kind: ident.Kind, Provider: &ident}, ident.ExpireTime, dev, meta)
 }
 
@@ -52,25 +46,34 @@ func (s *Service) verifyIdp(ctx context.Context, cred IdpCredential) (idp.Identi
 	if err := s.requireIdentityEnabled(cred.Kind); err != nil {
 		return idp.Identity{}, err
 	}
-	switch cred.Kind {
-	case enum.IdentityWeChat:
-		if s.d.WeChat == nil {
-			return idp.Identity{}, fmt.Errorf("%w: wechat sign-in not configured", idp.ErrAppNotAllowed)
-		}
-		return s.verifyWeChat(ctx, cred)
-	case enum.IdentityApple:
-		if s.d.Apple == nil {
-			return idp.Identity{}, fmt.Errorf("%w: apple sign-in not configured", idp.ErrAppNotAllowed)
-		}
-		return s.verifyApple(ctx, cred)
-	case enum.IdentityGoogle:
-		if s.d.Google == nil {
-			return idp.Identity{}, fmt.Errorf("%w: google sign-in not configured", idp.ErrAppNotAllowed)
-		}
-		return s.verifyGoogle(ctx, cred)
-	default:
+	if cred.Kind.IsAnchor() {
 		return idp.Identity{}, fmt.Errorf("%w: kind %s is not an identity provider", ErrInvalidArgument, cred.Kind)
 	}
+	provider := s.providers[cred.Kind]
+	if provider == nil {
+		return idp.Identity{}, fmt.Errorf("%w: %s sign-in not configured", idp.ErrAppNotAllowed, cred.Kind)
+	}
+	return s.verifyProvider(ctx, cred.Kind, provider, cred.Credential)
+}
+
+// providerFailure 隔离宿主提供方的非哨兵错误：保留原文供日志，但不解包，
+// 避免其包装的 user/idp 哨兵改变 HTTP 状态或把内部文本带进响应。
+type providerFailure struct {
+	kind enum.IdentityKind
+	err  error
+}
+
+func (e providerFailure) Error() string {
+	return fmt.Sprintf("user: identity provider %s failed: %v", e.kind, e.err)
+}
+
+func isolateProviderError(kind enum.IdentityKind, err error) error {
+	for _, sentinel := range []error{idp.ErrInvalidCredential, idp.ErrAppNotAllowed, idp.ErrNonceReplayed, idp.ErrUnavailable, idp.ErrMisconfigured, idp.ErrMalformedCredential, context.Canceled, context.DeadlineExceeded} {
+		if errors.Is(err, sentinel) {
+			return err
+		}
+	}
+	return providerFailure{kind: kind, err: err}
 }
 
 // idpFailureReason 把可审计的 IdP 拒绝映射为 reason；基础设施/配置错误返回空（只进日志）。
@@ -97,7 +100,7 @@ type providerMeta struct {
 	Profile *providerProfile  `json:"profile,omitempty"`
 }
 
-// refreshProviderMeta 合并本次 openid，并按非空字段更新 Google profile。缺省字段保持原值。
+// refreshProviderMeta 合并本次 openid，并按非空字段更新提供方 profile。缺省字段保持原值。
 func (s *Service) refreshProviderMeta(ctx context.Context, q *db.Queries, existing db.Identity, ident idp.Identity, now time.Time) error {
 	var pm providerMeta
 	if len(existing.ProviderMeta) > 0 {
@@ -144,10 +147,8 @@ func (s *Service) refreshProviderMeta(ctx context.Context, q *db.Queries, existi
 	return nil
 }
 
+// providerProfileFrom 不按类型区分：任何提供方返回的 name/picture 都按同一规则净化。
 func providerProfileFrom(ident idp.Identity) *providerProfile {
-	if ident.Kind != enum.IdentityGoogle {
-		return nil
-	}
 	name := sanitizeProviderName(ident.Name)
 	var picture string
 	if ident.Picture != "" {
@@ -161,7 +162,7 @@ func providerProfileFrom(ident idp.Identity) *providerProfile {
 	return &providerProfile{Name: name, Picture: picture}
 }
 
-func (s *Service) seedEmptyGoogleProfile(ctx context.Context, q *db.Queries, userID string, ident idp.Identity) error {
+func (s *Service) seedEmptyProviderProfile(ctx context.Context, q *db.Queries, userID string, ident idp.Identity) error {
 	profile := providerProfileFrom(ident)
 	if profile == nil {
 		return nil
@@ -190,7 +191,7 @@ func (s *Service) seedEmptyGoogleProfile(ctx context.Context, q *db.Queries, use
 		SetDisplayName: setName, DisplayName: display, SetAvatarUrl: setAvatar, AvatarUrl: avatar,
 		Now: s.now(), ID: userID, ActiveState: enum.UserActive,
 	}); err != nil {
-		return fmt.Errorf("user: seed google profile: %w", err)
+		return fmt.Errorf("user: seed provider profile: %w", err)
 	}
 	return nil
 }

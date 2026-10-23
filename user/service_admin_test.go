@@ -333,7 +333,7 @@ func TestGetUserDetailAndRevealIdentity(t *testing.T) {
 	res := f.signIn(t, enum.IdentityPhone, phone1, dev1)
 	_ = f.signIn(t, enum.IdentityPhone, phone1, dev2)
 	p := principalOf(t, f, res)
-	if _, _, err := f.svc.BindWithIdp(ctx, p, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:U-REVEALS@o1"}, meta1); err != nil {
+	if _, _, err := f.svc.BindWithIdp(ctx, p, wechatCred("wx1", "union:U-REVEALS@o1"), meta1); err != nil {
 		t.Fatal(err)
 	}
 	other := f.signIn(t, enum.IdentityPhone, phone2, dev1)

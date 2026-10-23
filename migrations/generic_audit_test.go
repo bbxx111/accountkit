@@ -50,7 +50,7 @@ func TestGenericAuditNonemptyRepeatInstall(t *testing.T) {
 	c := migrationTestConn(t, cfg, schema)
 	for _, q := range []string{
 		`INSERT INTO user_account(id,state,display_name) VALUES('u_0000000000001',1,'preserved')`,
-		`INSERT INTO identity(id,user_id,kind,provider_subject) VALUES('i_0000000000001','u_0000000000001',3,'synthetic-provider')`,
+		`INSERT INTO identity(id,user_id,kind,provider_subject) VALUES('i_0000000000001','u_0000000000001','WECHAT','synthetic-provider')`,
 		`INSERT INTO session(id,user_id,device_id,auth_time,refresh_token_hash,refresh_expire_time) VALUES('s_0000000000001','u_0000000000001','device',now(),decode('1234','hex'),now()+interval '1 day')`,
 		`INSERT INTO sign_in_completion_flow(id,token_digest,state,policy_fingerprint,payload,cipher_version,proof_user_ids,user_id,session_id,create_time,update_time,expire_time) VALUES('f_0000000000001','test-token-digest',1,'policy',decode('1234','hex'),1,ARRAY['u_0000000000001'],'u_0000000000001','s_0000000000001',now(),now(),now()+interval '5 minutes')`,
 		`INSERT INTO audit_event(id,source,action,result,actor,targets,context,data,occur_time) VALUES('019a0000-0000-7000-8000-000000000001','test/auth','SIGN_IN',1,'{"type":"USER","namespace":"urn:test:accounts","id":"u_0000000000001"}','[]','{}','{"accountkit":{"flow_id":"f_0000000000001"}}','2024-03-04T05:06:07.123456Z')`,

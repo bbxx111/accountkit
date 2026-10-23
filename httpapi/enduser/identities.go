@@ -58,7 +58,7 @@ func (h *Handler) listIdentities(w http.ResponseWriter, r *http.Request) {
 	apierror.WriteJSON(w, http.StatusOK, out)
 }
 
-// POST /users/me/identities — body 为凭证 oneof；新建 201，幂等命中 200。
+// POST /users/me/identities — body 为统一凭证信封；新建 201，幂等命中 200。
 func (h *Handler) bindIdentity(w http.ResponseWriter, r *http.Request) {
 	p, ok := principal(w, r)
 	if !ok {
@@ -69,16 +69,12 @@ func (h *Handler) bindIdentity(w http.ResponseWriter, r *http.Request) {
 		apierror.Write(w, malformed())
 		return
 	}
-	if cred.present() != 1 {
-		apierror.Write(w, oneofError())
-		return
-	}
 	var (
 		info    user.IdentityInfo
 		created bool
 		err     error
 	)
-	if cred.Phone != nil || cred.Email != nil {
+	if cred.isAnchor() {
 		kind, cc, e := cred.anchor()
 		if e != nil {
 			apierror.Write(w, e)
@@ -86,7 +82,7 @@ func (h *Handler) bindIdentity(w http.ResponseWriter, r *http.Request) {
 		}
 		info, created, err = h.d.Users.BindWithCode(r.Context(), p, user.CodeCredential{Channel: kind, Target: cc.Target, CodeID: cc.CodeID, Code: cc.Code}, h.meta(r))
 	} else {
-		ic, e := cred.idp()
+		ic, e := cred.provider()
 		if e != nil {
 			apierror.Write(w, e)
 			return

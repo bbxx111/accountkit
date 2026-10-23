@@ -190,7 +190,7 @@ func (s *Service) ListUsers(ctx context.Context, f UserFilter, after *PageCursor
 	p.CreateTimeMin, p.CreateTimeMax = f.CreateTimeMin, f.CreateTimeMax
 	if f.IdentityKind != enum.IdentityKindUnspecified {
 		p.ByIdentity = true
-		k := int16(f.IdentityKind)
+		k := string(f.IdentityKind)
 		p.IdentityKind = &k
 		if f.Subject != nil {
 			norm, _, _, err := s.normalizeTarget(f.IdentityKind, *f.Subject)

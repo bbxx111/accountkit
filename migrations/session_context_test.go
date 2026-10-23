@@ -108,7 +108,7 @@ func TestSessionContextQueriesIsolation(t *testing.T) {
 	for _, conn := range []*pgx.Conn{c, other} {
 		for _, sql := range []string{
 			`INSERT INTO user_account(id,state) VALUES('u_0000000000001',1),('u_0000000000002',1)`,
-			`INSERT INTO identity(id,user_id,kind,provider_subject) VALUES('i_0000000000001','u_0000000000001',3,'synthetic-a'),('i_0000000000002','u_0000000000001',4,'synthetic-b'),('i_0000000000003','u_0000000000002',3,'synthetic-c')`,
+			`INSERT INTO identity(id,user_id,kind,provider_subject) VALUES('i_0000000000001','u_0000000000001','WECHAT','synthetic-a'),('i_0000000000002','u_0000000000001','APPLE','synthetic-b'),('i_0000000000003','u_0000000000002','WECHAT','synthetic-c')`,
 			`INSERT INTO session(id,user_id,device_id,auth_time,refresh_token_hash,refresh_expire_time) SELECT 's_000000000000'||n,CASE WHEN n=5 THEN 'u_0000000000002' ELSE 'u_0000000000001' END,'device-'||n,now(),decode('000'||n,'hex'),CASE WHEN n=3 THEN now()-interval '1 day' ELSE now()+interval '1 day' END FROM generate_series(1,5) n`,
 		} {
 			if _, err := conn.Exec(ctx, sql); err != nil {
@@ -152,7 +152,7 @@ func TestSessionContextQueriesIsolation(t *testing.T) {
 	}
 	values, err := pgx.CollectRows(rows, pgx.RowToStructByPos[struct {
 		IdentityID string
-		Kind       int16
+		Kind       string
 	}])
 	if err != nil || len(values) != 1 || values[0].IdentityID != "i_0000000000001" {
 		t.Fatalf("identities: %v %v", values, err)

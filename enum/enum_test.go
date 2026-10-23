@@ -1,6 +1,7 @@
 package enum_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/bbxx111/accountkit/enum"
@@ -10,7 +11,7 @@ func TestUserStateValuesArePinned(t *testing.T) {
 	if enum.UserActive != 1 || enum.UserFrozen != 2 || enum.UserPendingDeletion != 3 || enum.UserDeleted != 4 {
 		t.Fatalf("UserState values drifted: %d %d %d %d", enum.UserActive, enum.UserFrozen, enum.UserPendingDeletion, enum.UserDeleted)
 	}
-	if enum.IdentityPhone != 1 || enum.IdentityEmail != 2 || enum.IdentityWeChat != 3 || enum.IdentityApple != 4 || enum.IdentityGoogle != 5 {
+	if enum.IdentityPhone != "PHONE" || enum.IdentityEmail != "EMAIL" || enum.IdentityWeChat != "WECHAT" || enum.IdentityApple != "APPLE" || enum.IdentityGoogle != "GOOGLE" {
 		t.Fatal("IdentityKind values drifted")
 	}
 	if enum.RevokeUserLogout != 1 || enum.RevokeReplacedByRelogin != 6 || enum.RevokeAdmin != 7 {
@@ -37,7 +38,7 @@ func TestStringAndParseRoundTrip(t *testing.T) {
 	for _, k := range []enum.IdentityKind{enum.IdentityPhone, enum.IdentityEmail, enum.IdentityWeChat, enum.IdentityApple, enum.IdentityGoogle} {
 		got, err := enum.ParseIdentityKind(k.String())
 		if err != nil || got != k {
-			t.Fatalf("IdentityKind %d round trip failed", k)
+			t.Fatalf("IdentityKind %s round trip failed", k)
 		}
 	}
 }
@@ -49,8 +50,8 @@ func TestParseRejectsLowercaseAndUnknown(t *testing.T) {
 	if _, err := enum.ParseUserState("UNSPECIFIED"); err == nil {
 		t.Fatal("UNSPECIFIED must be rejected as input")
 	}
-	if _, err := enum.ParseIdentityKind("FACEBOOK"); err == nil {
-		t.Fatal("unknown must be rejected")
+	if _, err := enum.ParseIdentityKind("facebook"); err == nil {
+		t.Fatal("lowercase identity kind must be rejected")
 	}
 	if k, err := enum.ParseIdentityKind("GOOGLE"); err != nil || k != enum.IdentityGoogle {
 		t.Fatal("GOOGLE must parse")
@@ -99,5 +100,35 @@ func TestIdentityUnboundRevokeReason(t *testing.T) {
 	r, err := enum.ParseRevokeReason("IDENTITY_UNBOUND")
 	if err != nil || r != enum.RevokeIdentityUnbound || !r.Valid() || r.String() != "IDENTITY_UNBOUND" || enum.RevokeReason(10).Valid() {
 		t.Fatalf("unbind revoke reason: %v %v", r, err)
+	}
+}
+
+func TestIdentityKindFormat(t *testing.T) {
+	valid := []string{"AB", "A_1", "CORP_SSO", "A" + strings.Repeat("B", 31)}
+	for _, v := range valid {
+		k, err := enum.ParseIdentityKind(v)
+		if err != nil || !k.Valid() || string(k) != v {
+			t.Fatalf("%q must be a valid identity kind: %v", v, err)
+		}
+	}
+	invalid := []string{"", "A", "A" + strings.Repeat("B", 32), "wechat", "1A", "_A", "A-B", "A B", "ÄB", "UNSPECIFIED "}
+	for _, v := range invalid {
+		if _, err := enum.ParseIdentityKind(v); err == nil || enum.IdentityKind(v).Valid() {
+			t.Fatalf("%q must be rejected", v)
+		}
+	}
+	if enum.IdentityKindUnspecified.Valid() || enum.IdentityKindUnspecified.String() != "UNSPECIFIED" {
+		t.Fatal("empty identity kind must be unspecified")
+	}
+}
+
+func TestIdentityKindBuiltin(t *testing.T) {
+	for _, k := range []enum.IdentityKind{enum.IdentityPhone, enum.IdentityEmail, enum.IdentityWeChat, enum.IdentityApple, enum.IdentityGoogle} {
+		if !k.IsBuiltin() {
+			t.Fatalf("%s must be builtin", k)
+		}
+	}
+	if enum.IdentityKind("CORP_SSO").IsBuiltin() || enum.IdentityKind("CORP_SSO").IsAnchor() || enum.IdentityKind("CORP_SSO").IsChannel() {
+		t.Fatal("configured kinds are neither builtin nor anchors")
 	}
 }

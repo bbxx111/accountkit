@@ -25,9 +25,9 @@ func TestAuthenticationObservationBoundaries(t *testing.T) {
 	ctx := context.Background()
 	t.Run("business verifier panic", func(t *testing.T) {
 		f, r := observedFixture(t)
-		f.deps.WeChat = metricsWeChatFunc(func(context.Context, string, string) (idp.Identity, error) {
+		f.deps = withProvider(f.deps, wechatProvider(metricsWeChatFunc(func(context.Context, string, string) (idp.Identity, error) {
 			panic("synthetic business verifier panic")
-		})
+		})))
 		rebuildMetricsService(t, f)
 		func() {
 			defer func() {
@@ -35,7 +35,7 @@ func TestAuthenticationObservationBoundaries(t *testing.T) {
 					t.Fatalf("panic=%v", p)
 				}
 			}()
-			_, _ = f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat}, dev1, meta1)
+			_, _ = f.svc.SignInWithIdp(ctx, wechatCred("", ""), dev1, meta1)
 			t.Fatal("panic swallowed")
 		}()
 		if len(authValues(r)) != 0 || len(dependencyValues(r, ob.ComponentIDP, ob.DependencyVerifyWechat)) != 0 {
@@ -116,7 +116,7 @@ func TestAuthenticationObservationBoundaries(t *testing.T) {
 		for _, tt := range cases {
 			f, r := observedFixture(t)
 			f.wechat.err = map[string]error{"bad-proof": tt.err}
-			_, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "bad-proof"}, dev1, meta1)
+			_, err := f.svc.SignInWithIdp(ctx, wechatCred("wx1", "bad-proof"), dev1, meta1)
 			if !errors.Is(err, tt.err) {
 				t.Fatal(err)
 			}
@@ -129,7 +129,7 @@ func TestAuthenticationObservationBoundaries(t *testing.T) {
 	})
 	t.Run("apple verifier is one logical call", func(t *testing.T) {
 		f, r := observedFixture(t)
-		_, err := f.svc.SignInWithIdp(ctx, user.IdpCredential{Kind: enum.IdentityApple, IDToken: "metrics-apple", Nonce: "synthetic-nonce"}, dev1, meta1)
+		_, err := f.svc.SignInWithIdp(ctx, appleCred("metrics-apple", "synthetic-nonce"), dev1, meta1)
 		if err != nil {
 			t.Fatal(err)
 		}

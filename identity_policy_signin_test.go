@@ -52,7 +52,7 @@ func policyEmailSignIn(t *testing.T, a *accountkit.Auth, sent *captureSender, ta
 
 func policyIdpSignIn(t *testing.T, a *accountkit.Auth, subject string) user.SignInResult {
 	t.Helper()
-	result, err := a.Users().SignInWithIdp(context.Background(), user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "test-wechat", Code: subject}, user.Device{ID: "policy-device", Name: "first"}, user.Meta{IP: "127.0.0.1"})
+	result, err := a.Users().SignInWithIdp(context.Background(), user.IdpCredential{Kind: enum.IdentityWeChat, Credential: mustJSON(t, map[string]string{"app_id": "test-wechat", "code": subject})}, user.Device{ID: "policy-device", Name: "first"}, user.Meta{IP: "127.0.0.1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +242,7 @@ func TestUsersResourceProtocolAgainstRealDB(t *testing.T) {
 		_ = json.Unmarshal(rec.Body.Bytes(), &out)
 		return rec, out
 	}
-	rec, pending := call(a.EndUserHandler(), "POST", "/users:signInWithIdp", `{"wechat":{"app_id":"test-wechat","code":"protocol-subject"}}`, "")
+	rec, pending := call(a.EndUserHandler(), "POST", "/users:signInWithIdp", `{"kind":"WECHAT","credential":{"app_id":"test-wechat","code":"protocol-subject"}}`, "")
 	if rec.Code != 200 || rec.Header().Get("Cache-Control") != "no-store" || len(pending) != 5 || pending["next_action"] != "COMPLETE_IDENTITY" {
 		t.Fatalf("pending protocol status=%d fields=%d", rec.Code, len(pending))
 	}
@@ -257,7 +257,7 @@ func TestUsersResourceProtocolAgainstRealDB(t *testing.T) {
 	if rec.Code != 200 {
 		t.Fatalf("completion send status=%d", rec.Code)
 	}
-	body, _ = json.Marshal(map[string]any{"sign_in_completion_token": token, "email": map[string]any{"target": "protocol@example.test", "code_id": challenge["code_id"], "code": sent.code("protocol@example.test")}})
+	body, _ = json.Marshal(map[string]any{"sign_in_completion_token": token, "kind": "EMAIL", "credential": map[string]any{"target": "protocol@example.test", "code_id": challenge["code_id"], "code": sent.code("protocol@example.test")}})
 	rec, pair := call(a.EndUserHandler(), "POST", "/users:completeSignIn", string(body), "")
 	if rec.Code != 200 || pair["scope"] != "user" || pair["token_type"] != "Bearer" || rec.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("completion status=%d", rec.Code)
@@ -317,4 +317,13 @@ func TestUsersResourceProtocolAgainstRealDB(t *testing.T) {
 	if rec.Code != 404 {
 		t.Fatalf("admin route exposed to enduser status=%d", rec.Code)
 	}
+}
+
+func mustJSON(t *testing.T, v any) json.RawMessage {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

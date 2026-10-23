@@ -158,25 +158,25 @@ func TestSchemaPinsInvariants(t *testing.T) {
 
 	// identity：digest 与 provider_subject 恰好一个
 	iid, _ := ids.New(ids.Identity)
-	if err := q(`INSERT INTO %s.identity (id, user_id, kind) VALUES ($1, $2, 1)`, iid, goodUser); err == nil {
+	if err := q(`INSERT INTO %s.identity (id, user_id, kind) VALUES ($1, $2, 'PHONE')`, iid, goodUser); err == nil {
 		t.Fatal("both NULL must violate identity_subject_exactly_one")
 	}
-	if err := q(`INSERT INTO %s.identity (id, user_id, kind, subject_digest, provider_subject) VALUES ($1, $2, 1, 'd', 'p')`, iid, goodUser); err == nil {
+	if err := q(`INSERT INTO %s.identity (id, user_id, kind, subject_digest, provider_subject) VALUES ($1, $2, 'PHONE', 'd', 'p')`, iid, goodUser); err == nil {
 		t.Fatal("both set must violate identity_subject_exactly_one")
 	}
 	// 唯一部分索引：同 (kind, digest) 活跃行只能一个；软删后可重建
 	i1, _ := ids.New(ids.Identity)
 	i2, _ := ids.New(ids.Identity)
-	if err := q(`INSERT INTO %s.identity (id, user_id, kind, subject_digest, digest_key_version) VALUES ($1, $2, 1, 'dup', 1)`, i1, goodUser); err != nil {
+	if err := q(`INSERT INTO %s.identity (id, user_id, kind, subject_digest, digest_key_version) VALUES ($1, $2, 'PHONE', 'dup', 1)`, i1, goodUser); err != nil {
 		t.Fatal(err)
 	}
-	if err := q(`INSERT INTO %s.identity (id, user_id, kind, subject_digest, digest_key_version) VALUES ($1, $2, 1, 'dup', 1)`, i2, goodUser); err == nil {
+	if err := q(`INSERT INTO %s.identity (id, user_id, kind, subject_digest, digest_key_version) VALUES ($1, $2, 'PHONE', 'dup', 1)`, i2, goodUser); err == nil {
 		t.Fatal("duplicate active (kind, digest) must be rejected")
 	}
 	if err := q(`UPDATE %s.identity SET delete_time = now() WHERE id = $1`, i1); err != nil {
 		t.Fatal(err)
 	}
-	if err := q(`INSERT INTO %s.identity (id, user_id, kind, subject_digest, digest_key_version) VALUES ($1, $2, 1, 'dup', 1)`, i2, goodUser); err != nil {
+	if err := q(`INSERT INTO %s.identity (id, user_id, kind, subject_digest, digest_key_version) VALUES ($1, $2, 'PHONE', 'dup', 1)`, i2, goodUser); err != nil {
 		t.Fatalf("after soft delete the same subject must be insertable: %v", err)
 	}
 

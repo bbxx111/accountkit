@@ -382,3 +382,60 @@ func TestConfigAdministratorAudienceSeparation(t *testing.T) {
 		t.Fatal("ID token audience accepted for admin API")
 	}
 }
+
+func TestConfigOIDCProviders(t *testing.T) {
+	oidcEnv := func(t *testing.T) {
+		t.Setenv("ACCOUNTKIT_OIDC_PROVIDERS", "CORP_SSO")
+		t.Setenv("ACCOUNTKIT_OIDC_CORP_SSO_ISSUER", "https://sso.corp.example")
+		t.Setenv("ACCOUNTKIT_OIDC_CORP_SSO_JWKS_URL", "https://sso.corp.example/jwks")
+		t.Setenv("ACCOUNTKIT_OIDC_CORP_SSO_CLIENT_IDS", "synthetic-corp-client")
+	}
+	noSMTP := func(t *testing.T) {
+		for _, key := range []string{"HOST", "PORT", "FROM", "USERNAME", "PASSWORD", "TLS_MODE", "TIMEOUT"} {
+			t.Setenv("ACCOUNTSVC_SMTP_"+key, "")
+		}
+	}
+	t.Run("OIDC only without SMTP", func(t *testing.T) {
+		serveEnvironment(t)
+		oidcEnv(t)
+		noSMTP(t)
+		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "CORP_SSO")
+		t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
+		c, err := LoadConfig("serve")
+		if err != nil || len(c.Library.OIDCProviders) != 1 || c.Library.OIDCProviders[0].Kind != "CORP_SSO" {
+			t.Fatalf("OIDC-only service: %+v %v", c.Library.OIDCProviders, err)
+		}
+	})
+	t.Run("missing issuer names the variable", func(t *testing.T) {
+		serveEnvironment(t)
+		oidcEnv(t)
+		t.Setenv("ACCOUNTKIT_OIDC_CORP_SSO_ISSUER", "synthetic-secret-host")
+		_, err := LoadConfig("serve")
+		if err == nil || !strings.Contains(err.Error(), "ACCOUNTKIT_OIDC_CORP_SSO_ISSUER") || strings.Contains(err.Error(), "synthetic-secret-host") {
+			t.Fatalf("issuer error: %v", err)
+		}
+	})
+	t.Run("enabled kind without OIDC configuration", func(t *testing.T) {
+		serveEnvironment(t)
+		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "EMAIL,CORP_SSO")
+		t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "EMAIL")
+		_, err := LoadConfig("serve")
+		if err == nil || !strings.Contains(err.Error(), "ACCOUNTKIT_ENABLED_IDENTITY_KINDS") {
+			t.Fatalf("unconfigured enabled kind: %v", err)
+		}
+	})
+	t.Run("migrate does not need OIDC variables", func(t *testing.T) {
+		configEnvironment(t)
+		if _, err := LoadConfig("migrate"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("migrate rejects incomplete OIDC configuration", func(t *testing.T) {
+		configEnvironment(t)
+		t.Setenv("ACCOUNTKIT_OIDC_PROVIDERS", "CORP_SSO")
+		_, err := LoadConfig("migrate")
+		if err == nil || !strings.Contains(err.Error(), "ACCOUNTKIT_OIDC_CORP_SSO_ISSUER") {
+			t.Fatalf("incomplete OIDC during migrate: %v", err)
+		}
+	})
+}

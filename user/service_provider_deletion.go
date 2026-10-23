@@ -160,6 +160,10 @@ func (s *Service) DeleteProviderIdentityData(ctx context.Context, kind enum.Iden
 		res, err = ProviderDeletionResult{ConfirmationCode: res.ConfirmationCode, Status: ProviderDeletionBlocked}, nil
 		unbound, deleted, revoked = false, false, nil
 	}
+	if err == nil {
+		// 主事务已提交（含 BLOCKED）；历史解除行失败仍返回错误，重试时主流程幂等。
+		err = s.scrubUnboundProviderIdentities(ctx, kind, subject, requestTime)
+	}
 	hint := providerSubjectHint(subject)
 	tmpl := audit.AuthenticationEvent{Actor: enum.ActorSystem, UserID: target.UserID, IP: meta.IP, RequestID: meta.RequestID}
 	ev := tmpl
@@ -181,4 +185,42 @@ func (s *Service) DeleteProviderIdentityData(ctx context.Context, kind enum.Iden
 	ev.Result, ev.Reason = enum.ResultSuccess, string(res.Status)
 	s.record(ctx, ev)
 	return res, nil
+}
+
+// scrubUnboundProviderIdentities 抹除 requestTime 之前创建、已解除但仍保存原 subject 的同类型身份行。
+// 每行独立事务：先锁账号行再改身份行（账号行 → 身份行锁序）；账号不存在则跳过；匿名化幂等。
+func (s *Service) scrubUnboundProviderIdentities(ctx context.Context, kind enum.IdentityKind, subject string, requestTime time.Time) error {
+	var rows []db.Identity
+	err := s.d.Repo.withDomainTx(ctx, func(q *db.Queries) error {
+		var err error
+		rows, err = q.ListDeletedIdentitiesByProviderSubject(ctx, db.ListDeletedIdentitiesByProviderSubjectParams{Kind: kind, ProviderSubject: &subject})
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("user: list unbound provider identities: %w", err)
+	}
+	for _, row := range rows {
+		if row.CreateTime.After(requestTime) {
+			continue // 请求签发后才创建的身份与本请求无关
+		}
+		err := s.d.Repo.withDomainTx(ctx, func(q *db.Queries) error {
+			if _, err := lockUserAs(ctx, q, row.UserID, ErrNotFound); errors.Is(err, ErrNotFound) {
+				return nil
+			} else if err != nil {
+				return err
+			}
+			repl, err := randomHex(32)
+			if err != nil {
+				return err
+			}
+			if _, err := q.AnonymizeIdentity(ctx, db.AnonymizeIdentityParams{ID: row.ID, UserID: row.UserID, Replacement: repl, Now: sessionTime(s.now())}); err != nil {
+				return fmt.Errorf("user: anonymize unbound provider identity: %w", err)
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

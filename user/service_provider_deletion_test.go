@@ -435,6 +435,172 @@ func TestProviderDataDeletion(t *testing.T) {
 		}
 	})
 
+	// bindUnbindFb 为手机账号绑定再解绑 Facebook，留下一条仍存明文 subject 的历史行。
+	bindUnbindFb := func(t *testing.T, f *fixture, phone user.TokenResult) {
+		t.Helper()
+		p := principalOf(t, f, phone)
+		if _, _, err := f.svc.BindWithIdp(ctx, p, facebookCred(`{"access_token":"a"}`), meta1); err != nil {
+			t.Fatal(err)
+		}
+		active, _ := identitiesOf(t, f, phone.UserID)
+		for _, id := range active {
+			if id.Kind == enum.IdentityFacebook {
+				if err := f.svc.UnbindIdentity(ctx, p, id.ID, meta1); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+		}
+		t.Fatal("facebook identity not bound")
+	}
+
+	t.Run("previously unbound identity is scrubbed", func(t *testing.T) {
+		f := newFixture(t)
+		useFacebook(t, f, fb, noRequired)
+		phone := f.signIn(t, enum.IdentityPhone, phone1, dev1)
+		bindUnbindFb(t, f, phone)
+		if n := subjectRows(t, f, "asid-a"); n != 1 {
+			t.Fatalf("precondition: historical rows %d", n)
+		}
+		f.advance(time.Minute)
+		before := len(f.audit.RawEvents())
+		res, err := f.svc.DeleteProviderIdentityData(ctx, enum.IdentityFacebook, "asid-a", *f.clock, meta1)
+		if err != nil || res.Status != user.ProviderDeletionDeleted {
+			t.Fatalf("%+v %v", res, err)
+		}
+		if n := subjectRows(t, f, "asid-a"); n != 0 {
+			t.Fatalf("subject still stored in %d rows", n)
+		}
+		active, all := identitiesOf(t, f, phone.UserID)
+		if !hasKind(active, enum.IdentityPhone) || len(active) != 1 {
+			t.Fatalf("active: %+v", active)
+		}
+		for _, id := range all {
+			if id.Kind == enum.IdentityFacebook && (id.DeleteTime == nil || id.ProviderMeta != nil || id.HintPrefix != nil || id.HintSuffix != nil) {
+				t.Fatalf("facebook history row: %+v", id)
+			}
+		}
+		if _, err := f.svc.Refresh(ctx, phone.RefreshToken, meta1); err != nil {
+			t.Fatalf("phone session must stay: %v", err)
+		}
+		if len(eventsOf(f, enum.EventIdentityUnbound)) != 1 { // 仅来自此前的普通解绑
+			t.Fatalf("unbound events: %+v", eventsOf(f, enum.EventIdentityUnbound))
+		}
+		assertNoRawSubject(t, f, before, "asid-a")
+		again, err := f.svc.DeleteProviderIdentityData(ctx, enum.IdentityFacebook, "asid-a", *f.clock, meta1)
+		if err != nil || again.Status != user.ProviderDeletionDeleted {
+			t.Fatalf("repeat: %+v %v", again, err)
+		}
+	})
+
+	t.Run("blocked still scrubs historical rows", func(t *testing.T) {
+		f := newFixture(t)
+		useFacebook(t, f, fb, func(d *user.Deps) {
+			noRequired(d)
+			d.BeforeDelete = func(context.Context, pgx.Tx, string) error { return user.ErrDeletionBlocked }
+		})
+		fbTokens := fbSignIn(t, f, "a", dev1)
+		wx := wechatCred("wx1", "union:wx-a@o1")
+		if _, _, err := f.svc.BindWithIdp(ctx, principalOf(t, f, fbTokens), wx, meta1); err != nil {
+			t.Fatal(err)
+		}
+		wxRes, err := f.svc.SignInWithIdp(ctx, wx, dev2, meta1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wxP := principalOf(t, f, requireSignInTokens(t, wxRes))
+		active, _ := identitiesOf(t, f, fbTokens.UserID)
+		for _, id := range active {
+			if id.Kind == enum.IdentityFacebook {
+				if err := f.svc.UnbindIdentity(ctx, wxP, id.ID, meta1); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		if _, _, err := f.svc.BindWithIdp(ctx, wxP, facebookCred(`{"access_token":"a"}`), meta1); err != nil {
+			t.Fatal(err)
+		}
+		fbAgain := fbSignIn(t, f, "a", user.Device{ID: "dev-3", Name: "Mac"})
+		if fbAgain.UserID != fbTokens.UserID {
+			t.Fatalf("rebinding must hit same account: %+v", fbAgain)
+		}
+		active, _ = identitiesOf(t, f, fbTokens.UserID)
+		for _, id := range active {
+			if id.Kind == enum.IdentityWeChat {
+				if err := f.svc.UnbindIdentity(ctx, principalOf(t, f, fbAgain), id.ID, meta1); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		if n := subjectRows(t, f, "asid-a"); n != 2 {
+			t.Fatalf("precondition: want active + historical, got %d", n)
+		}
+		f.advance(time.Minute)
+		res, err := f.svc.DeleteProviderIdentityData(ctx, enum.IdentityFacebook, "asid-a", *f.clock, meta1)
+		if err != nil || res.Status != user.ProviderDeletionBlocked {
+			t.Fatalf("%+v %v", res, err)
+		}
+		active, all := identitiesOf(t, f, fbTokens.UserID)
+		if len(active) != 1 || active[0].Kind != enum.IdentityFacebook || active[0].ProviderSubject == nil || *active[0].ProviderSubject != "asid-a" {
+			t.Fatalf("active identity must stay: %+v", active)
+		}
+		stored := 0
+		for _, id := range all {
+			if id.Kind == enum.IdentityFacebook && id.ProviderSubject != nil && *id.ProviderSubject == "asid-a" {
+				stored++
+			}
+		}
+		if stored != 1 {
+			t.Fatalf("only the active row may keep the subject, got %d", stored)
+		}
+		if me := stateOf(t, f, fbTokens.UserID); me.State != enum.UserActive {
+			t.Fatalf("me: %+v", me)
+		}
+	})
+
+	t.Run("historical row created after request is kept", func(t *testing.T) {
+		f := newFixture(t)
+		useFacebook(t, f, fb, noRequired)
+		phone := f.signIn(t, enum.IdentityPhone, phone1, dev1)
+		issued := f.clock.Add(-time.Hour)
+		bindUnbindFb(t, f, phone)
+		res, err := f.svc.DeleteProviderIdentityData(ctx, enum.IdentityFacebook, "asid-a", issued, meta1)
+		if err != nil || res.Status != user.ProviderDeletionDeleted {
+			t.Fatalf("%+v %v", res, err)
+		}
+		if n := subjectRows(t, f, "asid-a"); n != 1 {
+			t.Fatalf("newer historical row must keep subject, rows=%d", n)
+		}
+	})
+
+	t.Run("historical rows of two accounts are scrubbed", func(t *testing.T) {
+		f := newFixture(t)
+		useFacebook(t, f, fb, noRequired)
+		first := f.signIn(t, enum.IdentityPhone, phone1, dev1)
+		second := f.signIn(t, enum.IdentityPhone, phone2, dev1)
+		bindUnbindFb(t, f, first)
+		bindUnbindFb(t, f, second)
+		if n := subjectRows(t, f, "asid-a"); n != 2 {
+			t.Fatalf("precondition: historical rows %d", n)
+		}
+		f.advance(time.Minute)
+		res, err := f.svc.DeleteProviderIdentityData(ctx, enum.IdentityFacebook, "asid-a", *f.clock, meta1)
+		if err != nil || res.Status != user.ProviderDeletionDeleted {
+			t.Fatalf("%+v %v", res, err)
+		}
+		for _, uid := range []string{first.UserID, second.UserID} {
+			_, all := identitiesOf(t, f, uid)
+			for _, id := range all {
+				if id.ProviderSubject != nil && *id.ProviderSubject == "asid-a" {
+					t.Fatalf("subject kept for %s: %+v", uid, id)
+				}
+			}
+		}
+		if n := subjectRows(t, f, "asid-a"); n != 0 {
+			t.Fatalf("rows %d", n)
+		}
+	})
+
 	t.Run("invalid arguments", func(t *testing.T) {
 		f := newFixture(t)
 		useFacebook(t, f, fb, noRequired)

@@ -1087,6 +1087,54 @@ func (q *Queries) ListActiveSessionsByUser(ctx context.Context, arg ListActiveSe
 	return items, nil
 }
 
+const listDeletedIdentitiesByProviderSubject = `-- name: ListDeletedIdentitiesByProviderSubject :many
+SELECT id, user_id, kind, subject_digest, digest_key_version, provider_subject, subject_ciphertext, cipher_key_version, hint_prefix, hint_suffix, provider_meta, create_time, update_time, delete_time FROM identity
+WHERE kind = $1 AND provider_subject = $2 AND delete_time IS NOT NULL
+ORDER BY user_id, id
+`
+
+type ListDeletedIdentitiesByProviderSubjectParams struct {
+	Kind            enum.IdentityKind
+	ProviderSubject *string
+}
+
+// 第三方数据删除专用：已解除（软删）但仍保存原 subject 的同一第三方身份。
+// 部分唯一索引只覆盖活动行，此查询走顺序扫描；删除回调低频，接受该代价（见 design）。
+func (q *Queries) ListDeletedIdentitiesByProviderSubject(ctx context.Context, arg ListDeletedIdentitiesByProviderSubjectParams) ([]Identity, error) {
+	rows, err := q.db.Query(ctx, listDeletedIdentitiesByProviderSubject, arg.Kind, arg.ProviderSubject)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Identity
+	for rows.Next() {
+		var i Identity
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Kind,
+			&i.SubjectDigest,
+			&i.DigestKeyVersion,
+			&i.ProviderSubject,
+			&i.SubjectCiphertext,
+			&i.CipherKeyVersion,
+			&i.HintPrefix,
+			&i.HintSuffix,
+			&i.ProviderMeta,
+			&i.CreateTime,
+			&i.UpdateTime,
+			&i.DeleteTime,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listIdentitiesByCipherKeyVersion = `-- name: ListIdentitiesByCipherKeyVersion :many
 SELECT id, user_id, kind, subject_digest, digest_key_version, provider_subject, subject_ciphertext, cipher_key_version, hint_prefix, hint_suffix, provider_meta, create_time, update_time, delete_time FROM identity
 WHERE delete_time IS NULL AND cipher_key_version = $1::smallint

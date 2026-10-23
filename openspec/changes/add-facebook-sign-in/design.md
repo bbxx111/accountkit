@@ -118,6 +118,12 @@ HTTP 客户端沿用微信的写法：不跟随重定向；传输错误先去掉
 - `BeforeDelete` 返回 `ErrDeletionBlocked` 以外的错误时，方法返回错误，宿主应返回 5xx 让 Meta 重试；不把它映射为 BLOCKED。
 - 比较 `create_time` 与 `issued_at`，是为了防止旧请求被重放后误删用户后来重新绑定的身份。成本只是一次时间比较。
 
+### 历史解除行
+
+用户可能早已通过普通解绑软删除了该 Facebook 身份，行内 `provider_subject` 仍是明文，直到账号到期匿名化。主事务提交之后（无论结果是 DELETED、SCHEDULED 还是 BLOCKED；主事务出错则不执行），按 `(kind, provider_subject)` 查出已软删的行，跳过 `create_time` 晚于请求时间的行，逐行在独立领域事务内处理：先锁账号行（账号不存在则跳过），再用 `AnonymizeIdentity` 抹除，保持"账号行 → 身份行"锁序，`delete_time` 保持原值。某行失败时返回错误并记失败审计，宿主以 5xx 让 Meta 重试；已处理行幂等，重试时主流程走"无活动身份 → DELETED"。不新增审计事件，也不为这些早已解绑的行产生 IDENTITY_UNBOUND。
+
+部分唯一索引只覆盖活动行，该查询没有可用索引，走顺序扫描。删除回调低频，接受此代价；若将来成为热点，再以 0002 迁移补 `(kind, provider_subject) WHERE delete_time IS NOT NULL` 索引。
+
 ### 确认码与审计
 
 - 每次调用生成一个 UUIDv7，作为确认码，同时也是新审计事件 `PROVIDER_DATA_DELETION_PROCESSED`（追加为 27）的事件 ID。
@@ -140,6 +146,7 @@ HTTP 客户端沿用微信的写法：不跟随重定向；传输错误先去掉
 - [确认码依赖尽力审计] → 领域方法同步返回状态，宿主自行持久化；文档写明。
 - [S2 把账号带入不满足 Required 的状态] → 这是讨论中确认的取舍，由现有补全流程收敛，不产生新状态。
 - [BLOCKED 请求需要人工跟进] → 状态如实返回给宿主，审计可检索；库不重试，也不替宿主决策。
+- [历史解除行查询走顺序扫描] → 删除回调低频，接受；成为热点时以 0002 迁移补部分索引。
 - [匿名化身份后，历史管理查询看不到原 ASID] → 有意的隐私取舍，审计保留 hint。
 
 ## Migration Plan

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5，标准库 RSA/HTTP/JSON，现有 pgx/PostgreSQL、Redis、OpenSpec、观测适配器。
 
-**Spec:** [OpenSpec design](../../../openspec/changes/add-alipay-app-sign-in/design.md)、[proposal](../../../openspec/changes/add-alipay-app-sign-in/proposal.md)、该目录下五份 `specs/**/spec.md`。规格优先；本计划补充实施接口与测试拆分。
+**Spec:** [OpenSpec design](../../../openspec/changes/archive/2026-10-24-add-alipay-app-sign-in/design.md)、[proposal](../../../openspec/changes/archive/2026-10-24-add-alipay-app-sign-in/proposal.md)、该目录下五份 `specs/**/spec.md`。规格优先；本计划补充实施接口与测试拆分。
 
 ## Global Constraints
 

@@ -44,7 +44,7 @@ accountkit 尚未提供支付宝身份验证能力，App 无法通过既有第�
 - 实施需要补充测试：格式及允许列表拒绝发生在外部调用之前、RSA2 请求与原始响应验签、上游错误分类、两种标识模式及跨 App 一致性、标识冲突、资料失败仍可登录、后续补填、并发资料更新、pending/绑定/匿名化与配置指纹。库以正式 HTTP 入口、实际提供方、独立签名网关及真实 PostgreSQL/Redis 做自动契约验收。真实 SDK、权限与控制台应用分组由宿主另行联调；保留未执行事实，不以模拟测试证明真实平台行为，也不把设备条件作为库验收阻塞项。
 - 资料查询与账号判定的组织方式在 design 中明确：沿用提供方无数据库职责，并确保网络请求有界、不会在重试或失败路径提前提交资料；不为补填而保存第三方令牌。
 - 文档同步 README、Go 集成及 accountsvc 配置、兼容说明和无秘密配置模板，说明 `auth_user` 权限、极简版需要安装支付宝客户端、state 责任、普通公钥配置和模式切换风险。
-- 兼容性需同时读取未归档的 [Facebook 变更](../add-facebook-sign-in/proposal.md) 及其 delta specs：本提案针对注册表、accountsvc 和指标的后续 delta 不得回退 FACEBOOK 能力；保留其与其他提供方的资料策略。
+- 兼容性需同时读取未归档的 [Facebook 变更](../../add-facebook-sign-in/proposal.md) 及其 delta specs：本提案针对注册表、accountsvc 和指标的后续 delta 不得回退 FACEBOOK 能力；保留其与其他提供方的资料策略。
 
 ## References
 

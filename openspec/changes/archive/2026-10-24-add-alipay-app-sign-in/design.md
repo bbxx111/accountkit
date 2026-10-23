@@ -117,7 +117,7 @@ OAuth 成功节点不强制要求通用业务接口的 `code=10000`：根据该�
 - 空字段自动补填也会恢复用户主动清空的资料 → 文档明确该语义，不覆盖非空字段，不声称识别用户主动清空意图。
 - 支付宝权限未开通、未安装客户端或资料字段本身缺失 → 客户端记录取消/未安装处理，后端资料失败不阻断认证；不能把测试 stub 当作开通能力证据。
 - 未签名的上游错误不能可信归类 → 固定内部错误及安全告警，保留失败而非为了错误文案接受未验签身份。
-- 未归档 Facebook 与注册表修改交叉 → delta 保留 Facebook 完整场景；归档顺序建议 Facebook 在先，支付宝在后，禁止反向覆盖类型清单。
+- 未归档 Facebook 与注册表修改交叉 → 本次同步保留 Facebook 完整场景，并对齐其重叠注册表增量与新主规格；Facebook 保持未归档，后续归档仍需保留 ALIPAY，禁止反向覆盖类型清单。
 
 ## Migration Plan
 
@@ -143,4 +143,4 @@ OAuth 成功节点不强制要求通用业务接口的 `code=10000`：根据该�
 
 2026-10-24 经用户确认调整验收职责：库的 6.2/6.3 改为正式 HTTP handler、实际 Alipay Provider、独立签名网关及真实 PostgreSQL/Redis 的自动契约验收；原真机与控制台分组检查移为宿主接入清单，不标为通过。补充 TestAlipayHTTPLoginContract / TestAlipayHTTPMultiAppIdentityContract 串联此前分层测试。模拟平台返回相同 UnionID 只能证明库对该声明的处理，不证明支付宝实际分组配置；宿主负责后者。
 
-2026-10-24 的额外非 race 全量验证暴露既有 `TestReplaceIdentityConcurrent/same-old-identity` 的断言遗漏：赢家可能在输家读取有效会话与旧身份之间提交，输家合法返回 `ErrNotFound`，原测试只接受 `ErrInvalidToken`。[身份换绑规格](../../specs/identity-replacement/spec.md) 已明确允许并发输家按时序返回 404 或认证失效。本次仅让该测试接受这两个结果，保留恰好一个成功及身份数量检查；换绑生产代码与规格均不改变。原始失败日志保留，修复后进行真实数据库重复测试、定向 race 与全量非 race 回归，结果记入 verification.md。
+2026-10-24 的额外非 race 全量验证暴露既有 `TestReplaceIdentityConcurrent/same-old-identity` 的断言遗漏：赢家可能在输家读取有效会话与旧身份之间提交，输家合法返回 `ErrNotFound`，原测试只接受 `ErrInvalidToken`。[身份换绑规格](../../../specs/identity-replacement/spec.md) 已明确允许并发输家按时序返回 404 或认证失效。本次仅让该测试接受这两个结果，保留恰好一个成功及身份数量检查；换绑生产代码与规格均不改变。原始失败日志保留，修复后进行真实数据库重复测试、定向 race 与全量非 race 回归，结果记入 verification.md。

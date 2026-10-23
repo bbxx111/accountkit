@@ -53,7 +53,7 @@ docker run --name ak-alipay-20261024-task4-tests-green @common accountkit-verify
 
 - `bash scripts/verify.sh`：**exit 0**。依次通过迁移历史检查、`go build ./...`、`go vet ./...`、`go test -race -json -count=1 ./...`、878 项 required-test 门禁与真实恢复演练。race JSON 为 `.test-output/alipay-task4-race-tests.jsonl`（从脚本 `tests.jsonl` 原样复制）；44 个有测试的包通过、1009 个顶层测试通过、无失败，34 个新增 Alipay 顶层测试全部通过。user 包含真实 PostgreSQL 的资料/身份/会话事务、PATCH/状态/匿名化竞争、两个 App UnionID 唯一性及 pending/重放断言。
 - `bash scripts/verify-accountsvc.sh`：**exit 0**。Linux CGO/race 与 `ACCOUNTSVC_TEST_RACE=1` 下，服务构建、范围 vet、5 个包/102 个顶层测试及服务必需门禁通过；实际服务 SIGTERM、TLS trust、生命周期、配置和远程鉴权已执行。日志 `.test-output/alipay-task4-accountsvc.log`，原始 JSON 另存 `.test-output/alipay-task4-accountsvc-tests.jsonl`。
-- `go test -count=1 -json ./...`：**首次 exit 1**。43 个包/1008 个顶层通过，34 个 Alipay 顶层均通过；仅既有 `user/TestReplaceIdentityConcurrent/same-old-identity` 失败，`service_identity_replacement_transaction_test.go:314` 报 `same identity loser: user: not found`。原始失败证据保留 `.test-output/alipay-task4-tests.jsonl`，未覆盖。preflight 先读会话再读身份，两次无锁读取之间赢家可提交，输家返回 ErrNotFound，而测试只接受 ErrInvalidToken。root 核对 [并发换绑规格](../../specs/identity-replacement/spec.md) 明确允许 404 或认证失效后，授权仅修正 sameUser 输家断言为接受 ErrInvalidToken/ErrNotFound；恰好一次成功和身份数量不变量保持，生产代码不变。该首次运行仍明确为失败，不能用后续 GREEN 覆盖历史结果。
+- `go test -count=1 -json ./...`：**首次 exit 1**。43 个包/1008 个顶层通过，34 个 Alipay 顶层均通过；仅既有 `user/TestReplaceIdentityConcurrent/same-old-identity` 失败，`service_identity_replacement_transaction_test.go:314` 报 `same identity loser: user: not found`。原始失败证据保留 `.test-output/alipay-task4-tests.jsonl`，未覆盖。preflight 先读会话再读身份，两次无锁读取之间赢家可提交，输家返回 ErrNotFound，而测试只接受 ErrInvalidToken。root 核对 [并发换绑规格](../../../specs/identity-replacement/spec.md) 明确允许 404 或认证失效后，授权仅修正 sameUser 输家断言为接受 ErrInvalidToken/ErrNotFound；恰好一次成功和身份数量不变量保持，生产代码不变。该首次运行仍明确为失败，不能用后续 GREEN 覆盖历史结果。
 - 修复后定向验证：`go test ./user -run '^TestReplaceIdentityConcurrent$/^same-old-identity$' -count=20 -json` **exit 0**，same-old-identity 实际通过 20 次；`go test -race ./user -run '^TestReplaceIdentityConcurrent$' -count=5 -json` **exit 0**，同旧身份和争抢同新目标各通过 5 次，均使用真实 PostgreSQL、无 skip。证据 `.test-output/alipay-task4-replacement-repeat.jsonl` / `alipay-task4-replacement-race.jsonl`。全套 race/服务/恢复在此 test-only 修复前通过；定向 race 在修复后通过，没有声称修复后重跑过全套 race 或恢复。
 - 修复后完整 `go test -count=1 -json ./...`：**exit 0**，44 个有测试包/1009 个顶层测试通过，34 个 Alipay 顶层通过，0 fail；原始 JSON `.test-output/alipay-task4-tests-green.jsonl`。仍只有下述两项测试 skip，未新增允许跳过、未删除门禁。该 GREEN 对应规格允许结果的精确测试修正，不改变生产认证行为。
 - 全套 race 和非 race 的真实测试 skip 均只有 `TestRecoveryFixture`（普通套件预期；恢复脚本单独强制三阶段执行）及 `TestProfileAttributesUnreadableFile`（Linux runner 为 root，chmod 000 后仍可读，测试显式 skip，**未把权限拒绝分支当作已通过**）。另外 8 个 package-level skip 对应无测试文件包。服务单独套件仅有上述权限测试 skip，未跳过服务进程集成。无 Alipay skip。
@@ -64,7 +64,7 @@ docker run --name ak-alipay-20261024-task4-tests-green @common accountkit-verify
 
 ### 文档与未验证项（当时的旧验收范围）
 
-新增 [支付宝接入指南](../../../docs/alipay-sign-in.md)，同步 README、Go/accountsvc 集成、兼容性、指标和 `.env.example`，明确 App 极简 SDK、auth_user/state、已安装客户端、取消/回跳、Flutter 桥接、一次性 code、普通公钥、多 App 分组、模式及指纹、资料降级和主动清空后补填。已对照官方 SDK 参数入口、当前公开 Go 类型及真实路由；Compose 默认 EMAIL，不会自动传递任意 `.env` IdP 变量，文档明确需要部署/override 注入。
+新增 [支付宝接入指南](../../../../docs/alipay-sign-in.md)，同步 README、Go/accountsvc 集成、兼容性、指标和 `.env.example`，明确 App 极简 SDK、auth_user/state、已安装客户端、取消/回跳、Flutter 桥接、一次性 code、普通公钥、多 App 分组、模式及指纹、资料降级和主动清空后补填。已对照官方 SDK 参数入口、当前公开 Go 类型及真实路由；Compose 默认 EMAIL，不会自动传递任意 `.env` IdP 变量，文档明确需要部署/override 注入。
 
 **真实支付宝 App/设备、授权权限和应用分组凭据缺失**，未记录平台/SDK 真机结果，也未证明控制台两个 App 实际返回相同 UnionID。当时 6.2/6.3 对应真机任务，因此保持未勾选；后续用户已确认将这两项调整为库侧自动契约，并把真实终端检查移到宿主清单，见最新 Library contract acceptance。合成签名网关、真实 DB、race 与恢复成功均不等于真实支付宝端到端上线验收。最终独立评审见下节。
 
@@ -81,7 +81,7 @@ docker run --name ak-alipay-20261024-task4-tests-green @common accountkit-verify
 
 ## Library contract acceptance — 2026-10-24
 
-用户明确指出终端验收应在宿主执行，并确认把库 6.2/6.3 调整为自动 HTTP 契约验收。原真机、权限、实际 SDK 与控制台分组检查移到 [宿主接入清单](../../../docs/alipay-sign-in.md#宿主上线前接入检查清单)，仍为未执行；没有把旧真机任务直接标为通过。
+用户明确指出终端验收应在宿主执行，并确认把库 6.2/6.3 调整为自动 HTTP 契约验收。原真机、权限、实际 SDK 与控制台分组检查移到 [宿主接入清单](../../../../docs/alipay-sign-in.md#宿主上线前接入检查清单)，仍为未执行；没有把旧真机任务直接标为通过。
 
 ### 新增证据与范围
 
@@ -104,3 +104,12 @@ docker run --name ak-alipay-20261024-task4-tests-green @common accountkit-verify
 更新后的 6.2/6.3 有对应自动测试与实际通过证据，库侧任务进度为 **24/24**。这是用户确认的职责范围修正后完成库验收，不是补填真实终端或真实控制台分组的通过记录。此前完整实现评审与全量验证结果仍保留原始范围，本次无生产实现修改。
 
 已核对并清理本轮 `ak-alipay-http-20261024-pg`、`ak-alipay-http-20261024-redis` 及专用网络，未操作其他 Docker 资源。新增原始测试日志继续保留在 `.test-output/`。
+
+## Archive and local integration — 2026-10-24
+
+- 用户明确要求归档并本地合并；归档前 OpenSpec 确认 24/24 完成，工作树干净。合并目标按仓库约定为 develop，使用独立 merge commit。
+- 同步五份主规格：新建 alipay-sign-in；更新 accountsvc-runtime、identity-provider-registry、standardized-metrics、user-basic-profile。逐项核对 21 个需求操作全部反映到主规格，已有 Purpose 和未涉及的需求保持，主规格没有 delta 操作标题。
+- Facebook 仍保持未归档，仅将其注册表增量的两条重叠 MODIFIED 要求与新主规格对齐，保留双方类型与场景，避免其后续归档把 ALIPAY 回退。没有归档、合并或部署其他独立功能分支。
+- 主规格同步前后全量严格校验通过；同步阶段新增主规格后为 34/34。归档使用 CLI 的 skip-specs 参数避免重复机械应用，但主规格已提前同步且逐需求验证，不表示省略主规格同步。
+- 归档目录为 `openspec/changes/archive/2026-10-24-add-alipay-app-sign-in`。已修复移入 archive 后的相对文档链接及实施计划外部引用。
+- 集成前在当前代码树运行 `GOWORK=off go test -count=1 ./...`，所有包通过；此轮未配置真实 DB/Redis，因此不作为新增真实依赖证据，之前的真实数据库、race、服务与恢复证据继续按原记录保留。

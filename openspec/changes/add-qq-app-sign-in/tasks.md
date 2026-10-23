@@ -15,10 +15,10 @@
 
 ## 3. 资料查询与头像改写
 
-- [ ] 3.1 实现 `get_user_info` 查询（同一令牌、`oauth_consumer_key`、已验证 openid）及 nickname、figureurl_qq_2→figureurl_qq_1 映射；测试仅取这两类字段、不使用 QQ 空间头像及其他字段。
-- [ ] 3.2 实现 QQ 头像改写：HTTPS 原样、名单内 HTTP 主机无端口/userinfo 时升级、其他丢弃；单元测试覆盖大小写主机、带端口、带 userinfo、名单外主机及改写结果仍经既有 `providerProfileFrom` 净化。
-- [ ] 3.3 实现 3 秒独立资料预算与失败放行：ret 非 0、is_lost=1、超时、5xx、解析失败记脱敏告警与 `qq_profile_unavailable` 并返回无资料身份；正常缺字段与头像被名单丢弃不计降级；外层取消返回 `ctx.Err()`；测试逐项验证并断言返回 `idp.Identity` 与日志不含令牌或资料原文。
-- [ ] 3.4 更新 `user/idp` 包注释说明 QQ 提供方，验证 `go vet ./user/idp/...` 与该包测试通过。
+- [x] 3.1 实现 `get_user_info` 查询（同一令牌、`oauth_consumer_key`、已验证 openid）及 nickname、figureurl_qq_2→figureurl_qq_1 映射；测试仅取这两类字段、不使用 QQ 空间头像及其他字段。
+- [x] 3.2 实现 QQ 头像改写：HTTPS 原样、名单内 HTTP 主机无端口/userinfo 时升级、其他丢弃；单元测试覆盖大小写主机、带端口、带 userinfo、名单外主机及改写结果仍经既有 `providerProfileFrom` 净化。
+- [x] 3.3 实现 3 秒独立资料预算与失败放行：ret 非 0、is_lost=1、超时、5xx、解析失败记脱敏告警与 `qq_profile_unavailable` 并返回无资料身份；正常缺字段与头像被名单丢弃不计降级；外层取消返回 `ctx.Err()`；测试逐项验证并断言返回 `idp.Identity` 与日志不含令牌或资料原文。
+- [x] 3.4 更新 `user/idp` 包注释说明 QQ 提供方，验证 `go vet ./user/idp/...` 与该包测试通过。
 
 ## 4. 补填集合收敛与领域行为
 

@@ -140,6 +140,9 @@ type Config struct {
 	QQAppIDs      []string
 	QQSubjectMode QQSubjectMode // 默认 UNIONID，所有应用固定使用同一模式。
 	QQAPIBaseURL  string        // 默认 https://graph.qq.com；HTTP 仅允许回环测试地址。
+	// WeiboAppIDs 是允许的微博 AppKey，为空表示未启用；App SDK 校验 access_token 不需要 AppSecret。
+	WeiboAppIDs     []string
+	WeiboAPIBaseURL string // 默认 https://api.weibo.com；HTTP 仅允许回环测试地址。
 	// OIDCProviders 是按配置启用的 OIDC 提供方，类型名一经使用不应更换。
 	OIDCProviders []OIDCProvider
 	// WeChatAPIBaseURL / AppleJWKSURL / GoogleJWKSURL / Facebook* 供测试与代理部署覆盖；生产保持默认。
@@ -156,6 +159,7 @@ var facebookVersionPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+$`)
 
 var alipayAppIDPattern = regexp.MustCompile(`^[0-9]{16}$`)
 var qqAppIDPattern = regexp.MustCompile(`^[0-9]{1,20}$`)
+var weiboAppIDPattern = regexp.MustCompile(`^[0-9]{1,20}$`)
 
 func cloneProfileAttributesConfig(c *user.ProfileAttributesConfig) *user.ProfileAttributesConfig {
 	if c == nil {
@@ -187,6 +191,9 @@ func (c Config) providerKinds() []enum.IdentityKind {
 	if len(c.QQAppIDs) > 0 {
 		kinds = append(kinds, enum.IdentityQQ)
 	}
+	if len(c.WeiboAppIDs) > 0 {
+		kinds = append(kinds, enum.IdentityWeibo)
+	}
 	for _, p := range c.OIDCProviders {
 		kinds = append(kinds, p.Kind)
 	}
@@ -205,6 +212,10 @@ func (c Config) alipayConfig() idp.AlipayConfig {
 
 func (c Config) qqConfig() idp.QQConfig {
 	return idp.QQConfig{AppIDs: slices.Clone(c.QQAppIDs), SubjectMode: c.QQSubjectMode, APIBaseURL: c.QQAPIBaseURL}
+}
+
+func (c Config) weiboConfig() idp.WeiboConfig {
+	return idp.WeiboConfig{AppIDs: slices.Clone(c.WeiboAppIDs), APIBaseURL: c.WeiboAPIBaseURL}
 }
 
 func (c *Config) applyDefaults() {
@@ -265,6 +276,10 @@ func (c *Config) applyDefaults() {
 	if c.QQAPIBaseURL == "" {
 		c.QQAPIBaseURL = "https://graph.qq.com"
 	}
+	c.WeiboAppIDs = slices.Clone(c.WeiboAppIDs)
+	if c.WeiboAPIBaseURL == "" {
+		c.WeiboAPIBaseURL = "https://api.weibo.com"
+	}
 	def(&c.AppleNonceTTL, 10*time.Minute)
 	def(&c.GoogleNonceTTL, 10*time.Minute)
 	def(&c.FacebookNonceTTL, 10*time.Minute)
@@ -311,6 +326,9 @@ func (c Config) validateBase() error {
 		return fmt.Errorf("accountkit: %w", err)
 	}
 	if err := idp.ValidateQQConfig(c.qqConfig()); err != nil {
+		return fmt.Errorf("accountkit: %w", err)
+	}
+	if err := idp.ValidateWeiboConfig(c.weiboConfig()); err != nil {
 		return fmt.Errorf("accountkit: %w", err)
 	}
 	kinds := map[enum.IdentityKind]bool{}
@@ -691,6 +709,19 @@ func ConfigFromEnv(prefix string) (Config, error) {
 			}
 			seen[appID] = true
 			c.QQAppIDs = append(c.QQAppIDs, appID)
+		}
+	}
+	c.WeiboAPIBaseURL = str("WEIBO_API_BASE_URL")
+	if raw := str("WEIBO_APP_IDS"); raw != "" {
+		seen := map[string]bool{}
+		for _, item := range strings.Split(raw, ",") {
+			appID := strings.TrimSpace(item)
+			if !weiboAppIDPattern.MatchString(appID) || seen[appID] {
+				fail("WEIBO_APP_IDS", errors.New("entries must be unique AppKeys of 1-20 ASCII digits"))
+				break
+			}
+			seen[appID] = true
+			c.WeiboAppIDs = append(c.WeiboAppIDs, appID)
 		}
 	}
 	if s := str("OIDC_PROVIDERS"); s != "" {

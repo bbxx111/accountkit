@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26（标准库 `net/http`、`net/url`、`encoding/json`）、pgx/v5、PostgreSQL 17、Redis（miniredis 单元测试 / 真实 Redis HTTP 契约测试）。
 
-**Spec:** OpenSpec 变更 [`openspec/changes/add-qq-app-sign-in/`](../../../openspec/changes/add-qq-app-sign-in/)：`proposal.md`、`design.md`、`specs/*/spec.md`、`tasks.md`。实施者必须先读 proposal、design 与五份 delta spec；本计划不复述需求，只给落地步骤。每完成一个 OpenSpec 任务，在 `tasks.md` 中勾选对应编号。
+**Spec:** OpenSpec 变更 [`openspec/changes/archive/2026-10-24-add-qq-app-sign-in/`](../../../openspec/changes/archive/2026-10-24-add-qq-app-sign-in/)：`proposal.md`、`design.md`、`specs/*/spec.md`、`tasks.md`。实施者必须先读 proposal、design 与五份 delta spec；本计划不复述需求，只给落地步骤。每完成一个 OpenSpec 任务，在 `tasks.md` 中勾选对应编号。
 
 ## Global Constraints
 

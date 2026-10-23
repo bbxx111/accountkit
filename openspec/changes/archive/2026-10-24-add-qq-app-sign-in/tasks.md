@@ -44,4 +44,4 @@
 ## Workflow follow-up
 
 - `add-facebook-sign-in` 已于 2026-10-24 先行归档，归档顺序前提已满足。
-- 归档作为单独步骤执行，归档后核对主规格中 ALIPAY、FACEBOOK、QQ 文本完整。
+- 已于 2026-10-24 归档并同步主规格；已核对主规格中 ALIPAY、FACEBOOK、QQ 文本完整。

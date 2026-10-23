@@ -44,7 +44,7 @@
 
 ### 待处理风险
 
-`add-facebook-sign-in` 已于 2026-10-24 先行归档（规格已同步到主规格），覆盖风险已解除；本变更归档后仍需核对主规格中 ALIPAY、FACEBOOK、QQ 文本完整。本任务未归档、未推送、未合并。
+`add-facebook-sign-in` 已于 2026-10-24 先行归档（规格已同步到主规格），覆盖风险已解除；实现已于 2026-10-24 本地合入 develop（`986a681`），合并结果完整测试通过（真实 PostgreSQL/Redis，44 个包 ok、0 失败）。本变更随后归档并同步主规格，`openspec validate --specs --strict` 35 项通过，主规格中 ALIPAY、FACEBOOK、QQ 文本已核对完整。未推送。
 
 ### 最终评审后复跑
 

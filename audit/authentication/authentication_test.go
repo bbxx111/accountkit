@@ -310,7 +310,7 @@ func TestAuthenticationInvalidInputs(t *testing.T) {
 			t.Fatal("invalid options accepted")
 		}
 	}
-	for _, mutate := range []func(*Input){func(in *Input) { in.Type = enum.EventTypeUnspecified }, func(in *Input) { in.Actor = 99 }, func(in *Input) { in.Result = 99 }, func(in *Input) { in.IdentityKind = 99 }, func(in *Input) { in.UserID = strings.Repeat("u", 513) }, func(in *Input) { in.Reason = "bad\x00reason" }} {
+	for _, mutate := range []func(*Input){func(in *Input) { in.Type = enum.EventTypeUnspecified }, func(in *Input) { in.Actor = 99 }, func(in *Input) { in.Result = 99 }, func(in *Input) { in.IdentityKind = "bad kind" }, func(in *Input) { in.UserID = strings.Repeat("u", 513) }, func(in *Input) { in.Reason = "bad\x00reason" }} {
 		in := fixture(enum.EventSignIn)
 		mutate(&in)
 		if _, err := Map(in, options); err == nil {

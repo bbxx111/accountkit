@@ -266,7 +266,7 @@ func TestIdentityPolicyCodeSendAndMalformedKinds(t *testing.T) {
 	ctx := context.Background()
 	p := principalOf(t, f, f.signIn(t, enum.IdentityPhone, phone1, dev1))
 	setIdentityPolicy(t, f, []enum.IdentityKind{enum.IdentityEmail}, []enum.IdentityKind{enum.IdentityEmail})
-	for _, kind := range []enum.IdentityKind{enum.IdentityPhone, enum.IdentityKind(99), enum.IdentityWeChat} {
+	for _, kind := range []enum.IdentityKind{enum.IdentityPhone, enum.IdentityKind("bad kind"), enum.IdentityWeChat} {
 		want := user.ErrInvalidArgument
 		if kind == enum.IdentityPhone {
 			want = user.ErrIdentityKindNotEnabled

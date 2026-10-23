@@ -68,7 +68,7 @@ func TestUpgradePreservesDataAndIsRepeatable(t *testing.T) {
 	}
 	for _, q := range []string{
 		"INSERT INTO user_account(id,state) VALUES('u_0000000000001',1)",
-		"INSERT INTO identity(id,user_id,kind,provider_subject) VALUES('i_0000000000001','u_0000000000001',3,'source-subject')",
+		"INSERT INTO identity(id,user_id,kind,provider_subject) VALUES('i_0000000000001','u_0000000000001','WECHAT','source-subject')",
 		"INSERT INTO session(id,user_id,device_id,auth_time,refresh_token_hash,refresh_expire_time) VALUES('s_0000000000001','u_0000000000001','device',now(),decode('1234','hex'),now()+interval '1 day')",
 		`INSERT INTO audit_event(id,source,action,result,actor,targets,occur_time) VALUES('019a0000-0000-7000-8000-000000000001','test/auth','CODE_SENT',1,'{"type":"ANONYMOUS"}','[{"type":"IDENTITY_FLOW","namespace":"urn:test:accounts","id":"f_0000000000001"}]',now())`,
 		"INSERT INTO sign_in_completion_flow(id,token_digest,state,policy_fingerprint,payload,cipher_version,proof_user_ids,user_id,session_id,create_time,update_time,expire_time) VALUES('f_0000000000001','upgrade-token-digest',1,'policy',decode('1234','hex'),1,ARRAY['u_0000000000001'],'u_0000000000001','s_0000000000001',now(),now(),now()+interval '5 minutes')",

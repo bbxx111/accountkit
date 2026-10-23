@@ -80,14 +80,14 @@ type anchorSubject struct {
 // active 期间不同进程会写入不同版本的摘要。锁序：subject 锁在任何行锁之前取得，
 // 全部键在同一条语句内按升序加锁；之后才是用户行 → 身份/会话行。
 func (s *Service) lockAnchorSubjects(ctx context.Context, q *db.Queries, subjects ...anchorSubject) error {
-	var kinds []int16
+	var kinds []string
 	var digests []string
 	for _, subject := range subjects {
 		if !subject.kind.IsChannel() {
 			continue
 		}
 		for _, digest := range s.d.Digester.AllDigests(subject.norm) {
-			kinds = append(kinds, int16(subject.kind))
+			kinds = append(kinds, string(subject.kind))
 			digests = append(digests, digest)
 		}
 	}

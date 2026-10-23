@@ -553,7 +553,7 @@ func TestIdentityBindingEndToEndAgainstRealDB(t *testing.T) {
 		if _, err := pool.Exec(ctx, "INSERT INTO user_account(id,state) VALUES($1,1)", uid); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := pool.Exec(ctx, "INSERT INTO identity(id,user_id,kind,provider_subject,provider_meta) VALUES($1,$2,3,$3,'{}')", iid, uid, subject); err != nil {
+		if _, err := pool.Exec(ctx, "INSERT INTO identity(id,user_id,kind,provider_subject,provider_meta) VALUES($1,$2,'WECHAT',$3,'{}')", iid, uid, subject); err != nil {
 			t.Fatal(err)
 		}
 	}

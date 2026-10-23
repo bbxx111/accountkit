@@ -351,6 +351,9 @@ func TestProfileAttributesConsolidatedV1Repeat(t *testing.T) {
 	if _, err := c.Exec(ctx, `ALTER TABLE user_account ADD COLUMN profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := c.Exec(ctx, identityKindTextDDL); err != nil {
+		t.Fatal(err)
+	}
 	seedRenameFlow(t, c, "sign_in_completion_flow")
 	catalog, data := migrationCatalog(t, c, schema), profileAttributesOldData(t, c)
 	for range 2 {
@@ -378,6 +381,9 @@ const profileAttributesInitialDDL = `ALTER TABLE user_account ADD COLUMN profile
 func TestProfileAttributesInitialCatalogEquivalent(t *testing.T) {
 	cfg, oldSchema, old := publishedProfileAttributesInitial(t, true)
 	if _, err := old.Exec(context.Background(), profileAttributesInitialDDL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := old.Exec(context.Background(), identityKindTextDDL); err != nil {
 		t.Fatal(err)
 	}
 	_, schema, current := consolidatedProfileAttributesInitial(t)

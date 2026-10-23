@@ -1309,7 +1309,7 @@ WHERE ($1::smallint IS NULL OR u.state = $1::smallint)
   AND (NOT $5::bool OR EXISTS (
         SELECT 1 FROM identity i
         WHERE i.user_id = u.id AND i.delete_time IS NULL
-          AND ($6::smallint IS NULL OR i.kind = $6::smallint)
+          AND ($6::text IS NULL OR i.kind = $6::text)
           AND (cardinality($7::text[]) = 0 OR i.subject_digest = ANY($7::text[]))
           AND ($8::text IS NULL OR i.hint_prefix = $8::text)
           AND ($9::text IS NULL OR i.hint_suffix = $9::text)))
@@ -1325,7 +1325,7 @@ type ListUsersAdminParams struct {
 	CreateTimeMin  *time.Time
 	CreateTimeMax  *time.Time
 	ByIdentity     bool
-	IdentityKind   *int16
+	IdentityKind   *string
 	Digests        []string
 	HintPrefix     *string
 	HintSuffix     *string
@@ -1425,14 +1425,14 @@ func (q *Queries) ListUsersDueForPurge(ctx context.Context, arg ListUsersDueForP
 const lockAnchorSubjects = `-- name: LockAnchorSubjects :exec
 WITH keys AS (
  SELECT DISTINCT hashtextextended(jsonb_build_array(
-  'accountkit.identity.subject', 'identity'::regclass::oid, ($1::smallint[])[d.n], d.digest)::text, 0)::bigint AS lock_key
+  'accountkit.identity.subject', 'identity'::regclass::oid, ($1::text[])[d.n], d.digest)::text, 0)::bigint AS lock_key
  FROM unnest($2::text[]) WITH ORDINALITY AS d(digest, n)
 )
 SELECT pg_advisory_xact_lock(lock_key) FROM keys ORDER BY lock_key
 `
 
 type LockAnchorSubjectsParams struct {
-	Kinds   []int16
+	Kinds   []string
 	Digests []string
 }
 

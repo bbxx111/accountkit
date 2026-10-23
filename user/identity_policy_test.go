@@ -14,7 +14,7 @@ func TestIdentityPolicy(t *testing.T) {
 	}{
 		{"defaults", nil, nil, false}, {"empty enabled", []enum.IdentityKind{}, nil, true},
 		{"empty required", []enum.IdentityKind{wechat}, []enum.IdentityKind{}, false},
-		{"invalid", []enum.IdentityKind{0}, nil, true}, {"unknown", []enum.IdentityKind{99}, nil, true},
+		{"invalid", []enum.IdentityKind{""}, nil, true}, {"unknown", []enum.IdentityKind{"CORP_SSO"}, nil, true},
 		{"duplicate", []enum.IdentityKind{phone, phone}, nil, true},
 		{"required duplicate", nil, []enum.IdentityKind{phone, phone}, true},
 		{"third party required", []enum.IdentityKind{wechat}, []enum.IdentityKind{wechat}, true},

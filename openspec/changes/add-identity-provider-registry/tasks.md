@@ -2,11 +2,11 @@
 
 ## 1. 字符串身份类型与 0001
 
-- [ ] 1.1 将 `enum.IdentityKind` 改为字符串底型：内置常量、格式 `Valid()`、`IsBuiltin()`、显式集合的 `IsAnchor`/`IsChannel`、只校验格式的 `ParseIdentityKind`；更新 `enum` 包注释；`go test ./enum/` 覆盖格式边界、空值与内置判定
-- [ ] 1.2 修改当前 `0001_init.up.sql`：`identity.kind` 为 `VARCHAR(32) COLLATE "C" NOT NULL` 加 `identity_kind_format` CHECK，更新文件头与列注释；索引定义文本与 down 不变；`user/query.sql` 中锁键 `@kinds::text[]` 与管理筛选 `::text`；运行 `sqlc generate` 并用 `bash scripts/check-generated.sh` 确认无多余差异
-- [ ] 1.3 运行时预检要求 `identity.kind` 为 `VARCHAR(32)` 且 C 排序；新增迁移测试：新空库 version=1/dirty=false 且 kind 定义与 CHECK 符合；SMALLINT kind 的 v1（空/非空）无写拒绝、dirty 优先、重复拒绝不泄漏锁；非法格式写入被 CHECK 拒绝
-- [ ] 1.4 更新当前 `initialFrozen`，确认 v0.4.0/v0.5.0 已发布定义及冻结源哈希不变；`bash scripts/check-migrations.sh` 通过
-- [ ] 1.5 修复全部编译点（领域、HTTP、审计、管理筛选、补全载荷、观测、测试中的数字字面量与 `int16(...)`），`GOWORK=off go build ./... && go vet ./...` 通过；相关包单元测试通过
+- [x] 1.1 将 `enum.IdentityKind` 改为字符串底型：内置常量、格式 `Valid()`、`IsBuiltin()`、显式集合的 `IsAnchor`/`IsChannel`、只校验格式的 `ParseIdentityKind`；更新 `enum` 包注释；`go test ./enum/` 覆盖格式边界、空值与内置判定
+- [x] 1.2 修改当前 `0001_init.up.sql`：`identity.kind` 为 `VARCHAR(32) COLLATE "C" NOT NULL` 加 `identity_kind_format` CHECK，更新文件头与列注释；索引定义文本与 down 不变；`user/query.sql` 中锁键 `@kinds::text[]` 与管理筛选 `::text`；运行 `sqlc generate` 并用 `bash scripts/check-generated.sh` 确认无多余差异
+- [x] 1.3 运行时预检要求 `identity.kind` 为 `VARCHAR(32)` 且 C 排序；新增迁移测试：新空库 version=1/dirty=false 且 kind 定义与 CHECK 符合；SMALLINT kind 的 v1（空/非空）无写拒绝、dirty 优先、重复拒绝不泄漏锁；非法格式写入被 CHECK 拒绝
+- [x] 1.4 更新当前 `initialFrozen`，确认 v0.4.0/v0.5.0 已发布定义及冻结源哈希不变；`bash scripts/check-migrations.sh` 通过
+- [x] 1.5 修复全部编译点（领域、HTTP、审计、管理筛选、补全载荷、观测、测试中的数字字面量与 `int16(...)`），`GOWORK=off go build ./... && go vet ./...` 通过；相关包单元测试通过
 - [ ] 1.6 AGENTS.md：枚举规则写明 IdentityKind 文本例外；迁移安全一节新增本次直接修改 0001 的限定授权记录；`docs/migrations.md` 当前初始基线同步说明；检查链接与路径
 
 ## 2. 注册表与统一 Provider 契约

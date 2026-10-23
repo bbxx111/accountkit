@@ -26,8 +26,8 @@ func NewIdentityPolicy(enabled, required []enum.IdentityKind, defaultProviders .
 	check := func(name string, kinds []enum.IdentityKind) error {
 		seen := map[enum.IdentityKind]bool{}
 		for _, k := range kinds {
-			if !k.Valid() || seen[k] {
-				return fmt.Errorf("user: %s contains invalid or duplicate kind %s", name, k)
+			if !k.Valid() || seen[k] || !(k.IsBuiltin() || slices.Contains(defaultProviders, k)) {
+				return fmt.Errorf("user: %s contains invalid, unregistered or duplicate kind %s", name, k)
 			}
 			seen[k] = true
 		}

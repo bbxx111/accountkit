@@ -105,7 +105,7 @@ WHERE (sqlc.narg('state')::smallint IS NULL OR u.state = sqlc.narg('state')::sma
   AND (NOT @by_identity::bool OR EXISTS (
         SELECT 1 FROM identity i
         WHERE i.user_id = u.id AND i.delete_time IS NULL
-          AND (sqlc.narg('identity_kind')::smallint IS NULL OR i.kind = sqlc.narg('identity_kind')::smallint)
+          AND (sqlc.narg('identity_kind')::text IS NULL OR i.kind = sqlc.narg('identity_kind')::text)
           AND (cardinality(@digests::text[]) = 0 OR i.subject_digest = ANY(@digests::text[]))
           AND (sqlc.narg('hint_prefix')::text IS NULL OR i.hint_prefix = sqlc.narg('hint_prefix')::text)
           AND (sqlc.narg('hint_suffix')::text IS NULL OR i.hint_suffix = sqlc.narg('hint_suffix')::text)))
@@ -138,7 +138,7 @@ LIMIT 1;
 -- （TestLockAnchorSubjectsLocksAfterSort 固定这一计划形状）。
 WITH keys AS (
  SELECT DISTINCT hashtextextended(jsonb_build_array(
-  'accountkit.identity.subject', 'identity'::regclass::oid, (@kinds::smallint[])[d.n], d.digest)::text, 0)::bigint AS lock_key
+  'accountkit.identity.subject', 'identity'::regclass::oid, (@kinds::text[])[d.n], d.digest)::text, 0)::bigint AS lock_key
  FROM unnest(@digests::text[]) WITH ORDINALITY AS d(digest, n)
 )
 SELECT pg_advisory_xact_lock(lock_key) FROM keys ORDER BY lock_key;

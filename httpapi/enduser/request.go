@@ -107,10 +107,10 @@ func oneofError() *apierror.Error {
 // anchor 校验恰好一个成员，且只接受 phone/email。
 func (c credential) anchor() (enum.IdentityKind, codeCredential, *apierror.Error) {
 	if c.present() != 1 {
-		return 0, codeCredential{}, oneofError()
+		return "", codeCredential{}, oneofError()
 	}
 	if c.Wechat != nil || c.Apple != nil || c.Google != nil {
-		return 0, codeCredential{}, apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_KIND_NOT_ALLOWED", "only phone or email credentials are accepted here")
+		return "", codeCredential{}, apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_KIND_NOT_ALLOWED", "only phone or email credentials are accepted here")
 	}
 	kind, cc := enum.IdentityPhone, c.Phone
 	if c.Email != nil {
@@ -118,10 +118,10 @@ func (c credential) anchor() (enum.IdentityKind, codeCredential, *apierror.Error
 	}
 
 	if cc.Target == "" || cc.Code == "" {
-		return 0, codeCredential{}, apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_INCOMPLETE", "target and code are required")
+		return "", codeCredential{}, apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_INCOMPLETE", "target and code are required")
 	}
 	if !codeIDRe.MatchString(cc.CodeID) {
-		return 0, codeCredential{}, apierror.New(apierror.StatusInvalidArgument, "INVALID_ARGUMENT", "code_id must be 32 lowercase hexadecimal characters")
+		return "", codeCredential{}, apierror.New(apierror.StatusInvalidArgument, "INVALID_ARGUMENT", "code_id must be 32 lowercase hexadecimal characters")
 	}
 	return kind, *cc, nil
 }
@@ -155,7 +155,7 @@ func (c credential) idp() (user.IdpCredential, *apierror.Error) {
 func parseChannel(s string) (enum.IdentityKind, *apierror.Error) {
 	k, err := enum.ParseIdentityKind(s)
 	if err != nil || !k.IsChannel() {
-		return 0, apierror.New(apierror.StatusInvalidArgument, "CHANNEL_INVALID", "channel must be PHONE or EMAIL")
+		return "", apierror.New(apierror.StatusInvalidArgument, "CHANNEL_INVALID", "channel must be PHONE or EMAIL")
 	}
 	return k, nil
 }

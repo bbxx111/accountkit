@@ -51,9 +51,9 @@ github.com/bbxx111/accountkit/httpapi/authn/TestPrincipalFromEmpty
 github.com/bbxx111/accountkit/httpapi/authn/TestRequireRecentAuth
 github.com/bbxx111/accountkit/httpapi/authn/TestRequireScope
 github.com/bbxx111/accountkit/httpapi/enduser/TestBindIdentity
-github.com/bbxx111/accountkit/httpapi/enduser/TestCredentialExplicitNullIsAbsent
-github.com/bbxx111/accountkit/httpapi/enduser/TestCredentialIdp
-github.com/bbxx111/accountkit/httpapi/enduser/TestCredentialOneof
+github.com/bbxx111/accountkit/httpapi/enduser/TestDocumentedCredentialExamplesDecode
+github.com/bbxx111/accountkit/httpapi/enduser/TestCredentialProvider
+github.com/bbxx111/accountkit/httpapi/enduser/TestCredentialAnchor
 github.com/bbxx111/accountkit/httpapi/enduser/TestDeleteMe
 github.com/bbxx111/accountkit/httpapi/enduser/TestDeviceFromHeaders
 github.com/bbxx111/accountkit/httpapi/enduser/TestDTOShapes

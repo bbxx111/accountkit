@@ -52,7 +52,7 @@ Verify(app_id, access_token)
 
 - `unionid=1` 只在 UNIONID 模式附加：未开通权限时上游整次报 100048，OPENID 部署不能因此失败。
 - `client_id` 必须等于请求的 `app_id`，而不仅是"在允许列表内"：同一实例登记多个 AppID 时，另一 App 的令牌不得以本 App 名义登录，OPENID 模式下这直接决定 subject。与 Facebook 一致返回 `ErrAppNotAllowed`。
-- 响应严格解析：只接受单个 JSON 对象，拒绝重复键与尾随内容，不对 JSONP 做字符串切分。复用支付宝 `alipay_json.go` 的重复键检测思路，但在 QQ 文件内实现小型解析，避免改动支付宝代码。
+- 响应严格解析：只接受单个 JSON 对象，拒绝重复键与尾随内容，不对 JSONP 做字符串切分。直接调用（不修改）支付宝 `alipay_json.go` 的包内严格解析函数 `alipayObject` / `alipayString`，避免重复实现同一解析，也不改动支付宝代码。
 - 标识校验：openid、unionid 为 1–256 字节且不含空白或控制字符，规则与 `validAlipayIdentifier` 对齐。
 - 浅拷贝宿主 HTTPClient 并禁用重定向；请求 URL 含令牌，所有传输错误经 `redactTransportErr` 去除 URL 后再记录或包装。每份响应最多读取 64 KiB。两次请求均不自动重试。
 

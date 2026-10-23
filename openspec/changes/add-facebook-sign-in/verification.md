@@ -59,3 +59,10 @@ Linux 完整验证（镜像 `accountkit-verify:local`，golang:1.26.5 加 postgr
 - `go build -buildvcs=false ./... && go vet ./...`：通过（此环境 git 状态异常，默认 VCS 标记失败，故加 `-buildvcs=false`）。
 - `go test -count=1 ./user/... ./user/idp/ .`：全部 ok。
 - `openspec validate add-facebook-sign-in --strict`：valid。
+
+## 合入 develop 后复验
+
+- 在功能分支上以合并提交 `906dd0d` 合入 develop（`1ce789a`，微信小程序登录）。冲突出现在 `accountkit.go`、`internal/accountsvc/config.go`、`README.md`、`scripts/required-tests.txt`，均按保留双方解决：`identityProviders` 采用 develop 的带错误返回签名，Facebook 变量名并入 accountsvc 映射与 README 配置行，两组必需测试都保留。
+- 宿主（`GOWORK=off`，`SERVER_TEST_DB_DSN` 指向一次性 PostgreSQL 17）：`go build ./...`、`go vet ./...` 通过；`go test -count=1 ./...` 44 个包通过、0 失败；`bash scripts/check-generated.sh` 退出码 0；`openspec validate --all --strict` 32/32 通过。
+- Linux（镜像 `accountkit-verify:local`）：容器只挂载只读的 git bundle 并在容器内克隆 `906dd0d`，宿主仓库不进入容器。`bash scripts/verify.sh` 退出码 0：`-race` 下 2932 个测试通过、0 失败、2 个预期跳过（`TestRecoveryFixture`、`TestProfileAttributesUnreadableFile`）；`TestProviderDataDeletionConcurrentWithBind`/`WithUnbind`/`WithDeleteMe` 通过；必需测试门禁与恢复演练通过（使用新建的空库 `recovery_source_merge`、`recovery_target_merge`）。证据：`.test-output/merge-verify.log`。
+- 前述共享 `.git/config` 中的 `core.worktree=/src` 已由用户删除；`core.filemode` 是否需要还原待用户确认。

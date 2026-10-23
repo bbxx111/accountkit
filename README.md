@@ -226,7 +226,7 @@ r.Route("/v1", func(r chi.Router) {
 | 端点 | 认证 | 成功 | 失败 |
 |---|---|---|---|
 | `POST /users:sendSignInCode` `{channel, target}` | 无 | 200 `{code_id, expire_time}` | 429 `RESOURCE_EXHAUSTED` + `retry_after_seconds`；400 `CHANNEL_INVALID` / `INVALID_TARGET` |
-| `POST /users:signInWithCode` `{phone\|email:{target,code_id,code}}` + `X-Device-Id`/`X-Device-Name` | 无 | 200 token 或 pending | 400 `CODE_INVALID` / `CODE_EXPIRED` / `DEVICE_ID_INVALID`；429 `TARGET_VERIFY_LIMIT`；403 `USER_FROZEN` |
+| `POST /users:signInWithCode` `{kind: PHONE\|EMAIL, credential:{target,code_id,code}}` + `X-Device-Id`/`X-Device-Name` | 无 | 200 token 或 pending | 400 `CODE_INVALID` / `CODE_EXPIRED` / `DEVICE_ID_INVALID`；429 `TARGET_VERIFY_LIMIT`；403 `USER_FROZEN` |
 | `POST /users:signInWithIdp` `{wechat\|apple\|google:{...}}` + `X-Device-Id`/`X-Device-Name`（阶段 4a，见下） | 无 | 200 token 或 pending | 400 `IDP_CREDENTIAL_INVALID` / `IDP_APP_NOT_ALLOWED` / `IDP_NONCE_REPLAYED`；403 `USER_FROZEN`；503 `IDP_UNAVAILABLE`；403 USER_PENDING_DELETION（冷静期账号） |
 | `POST /token` `{grant_type:"refresh_token", refresh_token}` | 无 | 200 token | RFC 6749：400 `invalid_grant`；403 `invalid_grant`+`reason:USER_FROZEN`；503 `temporarily_unavailable` |
 | `POST /revoke` `{token}` | 无 | 200 空 | 400 `invalid_request`（缺 token） |
@@ -235,14 +235,14 @@ r.Route("/v1", func(r chi.Router) {
 | `DELETE /users/me` | `user` + 近期认证 | 200 账号资源（`state=PENDING_DELETION`） | 400 `REAUTHENTICATION_REQUIRED` / `INVALID_ACCOUNT_STATE` / `DELETION_BLOCKED`；403 `USER_FROZEN` |
 | `POST /users/me:undelete` | `user:undelete` | 200 账号资源（`state=ACTIVE`） | 400 `INVALID_ACCOUNT_STATE`；403 `USER_FROZEN` |
 | `POST /users/me:sendReauthenticationCode` `{channel, target}` | `user` | 200 `{code_id, expire_time}` | 400 `TARGET_NOT_ANCHOR` |
-| `POST /users/me:reauthenticate` 凭证 oneof | `user` | 200 token（无 refresh） | 400 `CODE_*`；401 会话已吊销 |
+| `POST /users/me:reauthenticate` `{kind: PHONE\|EMAIL, credential}` | `user` | 200 token（无 refresh） | 400 `CODE_*`；401 会话已吊销 |
 | `GET /users/me/sessions/current` | `user` / `user:bind` | 200 当前会话（no-store） | 401 `TOKEN_INVALID`；403 scope不足；503 `SESSION_QUERY_NOT_CONFIGURED` / 依赖不可用 |
 | `GET /users/me/sessions` | `user` | 200 `{sessions:[…]}` | |
 | `DELETE /users/me/sessions/{session}` | `user` | 204 | 400 `INVALID_ID`；404 |
 | `POST /users/me/sessions:revokeOthers` | `user` | 200 `{}` | |
 | `POST /users/me:sendBindCode` `{channel, target}` | `user` / `user:bind` | 200 `{code_id, expire_time}` | 429 限流；400 `CHANNEL_INVALID` / `INVALID_TARGET` |
 | `GET /users/me/identities` | `user` / `user:bind` | 200 `{identities:[{name, kind, masked_subject, create_time}]}` | |
-| `POST /users/me/identities` 凭证 oneof | `user` / `user:bind` | 201 新建 / 200 幂等 | 400 `CODE_*` / `IDP_*`；409 `IDENTITY_ALREADY_BOUND` / `IDENTITY_KIND_LIMIT`；403 `USER_FROZEN` |
+| `POST /users/me/identities` `{kind, credential}` | `user` / `user:bind` | 201 新建 / 200 幂等 | 400 `CODE_*` / `IDP_*`；409 `IDENTITY_ALREADY_BOUND` / `IDENTITY_KIND_LIMIT`；403 `USER_FROZEN` |
 | `DELETE /users/me/identities/{identity}` | `user` | 204 | 400 `LAST_ANCHOR_IDENTITY` / `REAUTHENTICATION_REQUIRED` / `INVALID_ID`；404 |
 
 约定：错误体 AIP-193（`/token`、`/revoke` 为 RFC 6749 §5.2）；401 只表示 bearer 缺失/无效/会话已吊销并带 `WWW-Authenticate: Bearer`；scope 不足 403 `INSUFFICIENT_SCOPE`；需重新认证 400 `FAILED_PRECONDITION` `REAUTHENTICATION_REQUIRED`；body ≤ 64 KiB、严格 JSON（未知字段 400 `MALFORMED_BODY`）；所有响应带 `X-Request-Id`。`Deps.ClientIP` 必须返回非空 IP（默认取 `RemoteAddr`；经代理部署时宿主注入可信跳数解析）。405（方法不允许）body 沿用 AIP-193 形状，但不带 `Allow` 头（RFC 9110 建议携带，这里为实现简单接受偏离）。
@@ -251,20 +251,22 @@ r.Route("/v1", func(r chi.Router) {
 
 ## IdP 登录（阶段 4a）
 
-`POST /users:signInWithIdp`，body 为凭证 oneof 的 `wechat` / `apple` / `google` 成员，设备头同验证码登录：
+`POST /users:signInWithIdp`，body 为统一凭证信封 `{"kind","credential"}`，kind 只接受第三方类型，设备头同验证码登录：
 
 ```json
-{"wechat": {"app_id": "wx…", "code": "…"}}
-{"apple":  {"id_token": "…", "nonce": "<客户端随机原值>"}}
-{"google": {"id_token": "…", "nonce": "<客户端随机原值>"}}
+{"kind": "WECHAT", "credential": {"app_id": "wx…", "code": "…"}}
+{"kind": "APPLE",  "credential": {"id_token": "…", "nonce": "<客户端随机原值>"}}
+{"kind": "GOOGLE", "credential": {"id_token": "…", "nonce": "<客户端随机原值>"}}
 ```
+
+所有接收凭证的端点使用同一信封；手机/邮箱为 `{"kind":"PHONE","credential":{"target","code_id","code"}}`。旧的 `phone`/`email`/`wechat`/`apple`/`google` 成员返回 400 `MALFORMED_BODY`；`kind` 或 `credential` 缺失、credential 字段缺失或未知为 400 `CREDENTIAL_INCOMPLETE`，类型不属于该端点允许的类别为 400 `CREDENTIAL_KIND_NOT_ALLOWED`。完整规则见 [OpenAPI 说明](docs/openapi.md#统一凭证信封)。
 
 - **微信**：服务端用 `WeChatApps` 中对应的 secret 调 `sns/oauth2/access_token` 取 `unionid`（身份 subject）与 `openid`（按 app_id 存入 `provider_meta.openids`，从另一 App 登录时增量合并）。换回的微信 token 用完即弃。缺 `unionid` 视为配置错误（500 + Error 日志），不会降级用 openid。
 - **Apple**：仅 RS256；校验 `iss`、`aud ∈ AppleBundleIDs`、`exp`（30s leeway）、`nonce = sha256hex(原值)`；通过后 nonce 以 `SETNX` 登记 `AppleNonceTTL`，重复 → 400 `IDP_NONCE_REPLAYED`。JWKS 懒加载、缓存，未知 kid 触发 ≥ 60s 节流的刷新。`email` 仅在 `email_verified` 为真时作为 `hint_email` 返回，**不会**自动绑定为 EMAIL 身份。
 - **Google**：仅 RS256；`iss` 为 `https://accounts.google.com` 或 `accounts.google.com`，`aud` 以及出现的 `azp` 须在 `GoogleClientIDs`。nonce 与客户端提交的原始字符串做常量时间比较，不以 Apple 的 SHA-256 十六进制代替。JWKS 默认 `https://www.googleapis.com/oauth2/v3/certs`，懒加载并缓存；无缓存时拉取失败为 503 `IDP_UNAVAILABLE`，已有密钥在刷新失败时继续验签并单独计入 `google_cached_key_fallback`。已验证 `email` 作为成功响应或 pending 的 `hint_email` 预填，不参与查号或合并。`name` / `picture` 写入该身份的 `provider_meta.profile`；仅在该 Google 身份首次写入且账号 `display_name` 或 `avatar_url` 仍为空时填充，超长名称截到 128 个码位，非法头像地址跳过。身份列表和管理面 `:reveal` 不返回 `provider_meta`。库不保存 Google access/refresh token，也不下载头像。
 - **scope**：已知账号按当前 E/R 的全部可用身份得到 `user` 或 `user:bind`；未知第三方在默认 R 下返回 pending，补全后才关联或建号。已有 user:bind 账号绑定补齐后，新一轮刷新取得 user。
 - **错误**：400 `IDP_CREDENTIAL_INVALID` / `IDP_APP_NOT_ALLOWED`（含 IdP 未启用）/ `IDP_NONCE_REPLAYED`；503 `IDP_UNAVAILABLE`（IdP 网络、JWKS 不可得、Redis 不可用；带 `Retry-After: 1`）；500（appid/secret 无效、缺 unionid）。
-- **配置**：宿主前缀加 `WECHAT_APPS`、`APPLE_BUNDLE_IDS`、`APPLE_NONCE_TTL`、`GOOGLE_CLIENT_IDS`、`GOOGLE_NONCE_TTL`；`WECHAT_API_BASE_URL` / `APPLE_JWKS_URL` / `GOOGLE_JWKS_URL` 仅供测试或代理部署覆盖。空的客户端标识列表表示未启用。`Deps.HTTPClient` 默认 10 秒超时。旧二进制不能解释 `identity.kind = 5`；去掉客户端标识只停止新的 Google 登录，不删除已有身份行。
+- **配置**：宿主前缀加 `WECHAT_APPS`、`APPLE_BUNDLE_IDS`、`APPLE_NONCE_TTL`、`GOOGLE_CLIENT_IDS`、`GOOGLE_NONCE_TTL`；`WECHAT_API_BASE_URL` / `APPLE_JWKS_URL` / `GOOGLE_JWKS_URL` 仅供测试或代理部署覆盖。空的客户端标识列表表示未启用。`Deps.HTTPClient` 默认 10 秒超时。去掉客户端标识只停止新的 Google 登录，不删除已有身份行。
 
 只有第三方身份的账号需要近期认证时，重新走普通 IdP 登录；同设备会话被替换，客户端更新 token pair 并确认仍为同一 user_id 后再继续敏感动作。手机/邮箱重新认证仍只更新当前会话 auth_time 和 access，不延长 refresh。纯第三方账号没有手机/邮箱自助恢复路径；普通 IdP 登录仍拒绝冷静期账号，合法管理员恢复保持。
 
@@ -274,7 +276,7 @@ r.Route("/v1", func(r chi.Router) {
 |---|---|---|---|---|
 | `POST /users/me:sendBindCode` `{channel, target}` | `user` / `user:bind` | | 200 `{code_id, expire_time}` | 429 限流；400 `CHANNEL_INVALID` / `INVALID_TARGET` |
 | `GET /users/me/identities` | `user` / `user:bind` | | 200 `{identities:[{name, kind, masked_subject, create_time}]}` | |
-| `POST /users/me/identities` 凭证 oneof | `user` / `user:bind` | | 201 新建 / 200 幂等 | 400 `CODE_*` / `IDP_*`；409 `IDENTITY_ALREADY_BOUND` / `IDENTITY_KIND_LIMIT`；403 `USER_FROZEN` |
+| `POST /users/me/identities` `{kind, credential}` | `user` / `user:bind` | | 201 新建 / 200 幂等 | 400 `CODE_*` / `IDP_*`；409 `IDENTITY_ALREADY_BOUND` / `IDENTITY_KIND_LIMIT`；403 `USER_FROZEN` |
 | `DELETE /users/me/identities/{identity}` | `user` | 是 | 204 | 400 `LAST_ANCHOR_IDENTITY` / `REAUTHENTICATION_REQUIRED` / `INVALID_ID`；404 |
 
 规则：一个 subject 全局只属于一个账号（冲突 409，不合并不迁移）；每 kind 最多 `MaxIdentitiesPerKind`（默认 1）个活动身份；同一 subject 重复绑定到本账号为幂等；解绑是软删除，解绑后同一 subject 可绑到任一账号；解绑或换绑后的最终身份集合必须仍有至少一个已启用身份并满足当前 R；绑定不改变已签发 token 的 scope，客户端新一轮刷新后生效。`masked_subject` 由检索提示拼出（`+86 138****1234`、`ba***@example.com`），第三方身份为空串。
@@ -315,7 +317,7 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 
 ## 手机号与邮箱换绑
 
-`POST /v1/users/me/identities/{identity}:replace` 将指定的旧活动手机/邮箱身份替换为同类新身份。请求使用既有凭证结构，例如 `{"email":{"target":"new@example.test","code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`；成功返回200及新身份的掩码资源，身份 ID 更新、账号 ID 保持，不返回 token pair。
+`POST /v1/users/me/identities/{identity}:replace` 将指定的旧活动手机/邮箱身份替换为同类新身份。请求使用统一凭证信封，例如 `{"kind":"EMAIL","credential":{"target":"new@example.test","code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`；成功返回200及新身份的掩码资源，身份 ID 更新、账号 ID 保持，不返回 token pair。
 
 调用前须有 `user` scope 和有效当前会话，近期认证沿用 `REAUTH_MAX_AGE`（默认5分钟）及 `SENSITIVE_OP_VERIFICATION`（默认true）。需要时先走既有重新认证流程，再通过 `users/me:sendBindCode` 获取新地址 BIND 码。近期登录也满足现有新鲜度语义，不保证本次专门向旧地址发送验证码；首版不提供失去全部既有凭据的账号找回。
 

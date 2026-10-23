@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -310,5 +311,27 @@ func decodeInternal(t *testing.T, rec *httptest.ResponseRecorder, dst any) {
 	t.Helper()
 	if err := json.Unmarshal(rec.Body.Bytes(), dst); err != nil {
 		t.Fatalf("decode (%d): %s", rec.Code, rec.Body.String())
+	}
+}
+
+// README 的第三方登录示例必须能通过信封解析，避免文档与实现漂移。
+func TestDocumentedCredentialExamplesDecode(t *testing.T) {
+	raw, err := os.ReadFile("../../README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, line := range strings.Split(string(raw), "\n") {
+		if !strings.HasPrefix(line, `{"kind": "`) {
+			continue
+		}
+		n++
+		c := decodeCredentialBody(t, line)
+		if _, e := c.provider(); e != nil {
+			t.Fatalf("README example rejected: %s: %v", line, e)
+		}
+	}
+	if n < 3 {
+		t.Fatalf("README credential examples not found: %d", n)
 	}
 }

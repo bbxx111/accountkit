@@ -25,7 +25,7 @@ me, err := auth.Users().UpdateProfile(ctx, userID, user.ProfilePatch{
 
 ## Google 登录
 
-配置 `GoogleClientIDs` 后，`SignInWithIdp` 接受 `IdpCredential{Kind: enum.IdentityGoogle, IDToken: token, Nonce: rawNonce}`。nonce 是客户端原始字符串。已验证邮箱出现在成功 `TokenResult.HintEmail` 或 pending `PendingSignIn.HintEmail`，补全时仍要传入明确的 `target`。`GOOGLE` 不能放入 `RequiredIdentityKinds`。只启用 Google 且 Required 为空时，不要求短信或邮件发送器。
+配置 `GoogleClientIDs` 后，`SignInWithIdp` 接受 `IdpCredential{Kind: enum.IdentityGoogle, Credential: json.RawMessage(`{"id_token":"…","nonce":"…"}`)}`；`Credential` 是客户端 credential 对象的原始 JSON，由对应提供方严格解析。nonce 是客户端原始字符串。已验证邮箱出现在成功 `TokenResult.HintEmail` 或 pending `PendingSignIn.HintEmail`，补全时仍要传入明确的 `target`。`GOOGLE` 不能放入 `RequiredIdentityKinds`。只启用 Google 且 Required 为空时，不要求短信或邮件发送器。
 
 `name` 和 `picture` 记在该身份的 `provider_meta.profile`。账号 `display_name`、`avatar_url` 只在该身份首次关联且对应列仍为空时填充。身份列表和 `:reveal` 不返回 `provider_meta`。宿主继续负责头像文件、默认图和后续同步。未配置客户端 ID 时 Google 登录保持关闭，配置里没有客户端秘密。
 

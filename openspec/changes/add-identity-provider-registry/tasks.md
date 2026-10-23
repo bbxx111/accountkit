@@ -24,7 +24,7 @@
 
 - [x] 3.1 `httpapi/enduser/request.go`：凭证改为顶层 `{kind, credential}` 信封，删除 `phone`/`email`/`wechat`/`apple`/`google` 成员与 `CREDENTIAL_ONEOF`；按端点允许类别（锚点/第三方/两者）校验 kind，PHONE/EMAIL 严格解码 `{target, code_id, code}` 并保留原错误码，第三方 credential 为对象且 ≤16 KiB；HTTP 测试覆盖旧成员 400、缺 kind/credential 为 `CREDENTIAL_INCOMPLETE`、跨类别 `CREDENTIAL_KIND_NOT_ALLOWED`
 - [x] 3.2 `signInWithCode`、`signInWithIdp`、`completeSignIn`、`reauthenticate`、绑定、换绑的处理器与 HTTP 测试改用新格式，验证码与三种内置登录端到端结果与原行为一致
-- [ ] 3.3 更新 `docs/openapi/enduser.json` 与 openapi 一致性测试、README 请求示例、`docs/compatibility.md` 写出 Go API 与请求格式迁移说明；验证文档中的示例 JSON 可被新解析器接受
+- [x] 3.3 更新 `docs/openapi/enduser.json` 与 openapi 一致性测试、README 请求示例、`docs/compatibility.md` 写出 Go API 与请求格式迁移说明；验证文档中的示例 JSON 可被新解析器接受
 
 ## 4. 通用 OIDC 验证器
 

@@ -166,6 +166,10 @@ func TestOIDCVerifyRejections(t *testing.T) {
 	if _, err := p.VerifyIDToken(ctx, unsigned, "raw-1"); !errors.Is(err, idp.ErrInvalidCredential) {
 		t.Fatalf("none: %v", err)
 	}
+	emptyIssuer := f.provider("EMPTY_ISS", func(o *idp.OIDCOptions) { o.Issuer = "" })
+	if _, err := emptyIssuer.VerifyIDToken(ctx, f.token(t, map[string]any{"iss": nil}, nil, nil), "raw-1"); !errors.Is(err, idp.ErrInvalidCredential) {
+		t.Fatalf("missing iss must never match an empty configured issuer: %v", err)
+	}
 	if len(f.mr.Keys()) != 0 {
 		t.Fatalf("rejections must not register nonces: %v", f.mr.Keys())
 	}

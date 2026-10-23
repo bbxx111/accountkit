@@ -430,4 +430,12 @@ func TestConfigOIDCProviders(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+	t.Run("migrate rejects incomplete OIDC configuration", func(t *testing.T) {
+		configEnvironment(t)
+		t.Setenv("ACCOUNTKIT_OIDC_PROVIDERS", "CORP_SSO")
+		_, err := LoadConfig("migrate")
+		if err == nil || !strings.Contains(err.Error(), "ACCOUNTKIT_OIDC_CORP_SSO_ISSUER") {
+			t.Fatalf("incomplete OIDC during migrate: %v", err)
+		}
+	})
 }

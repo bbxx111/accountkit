@@ -69,7 +69,7 @@ func (v *idTokenVerifier) verify(ctx context.Context, idToken, rawNonce string) 
 		return Identity{}, fmt.Errorf("%w: %s id_token: %v", ErrInvalidCredential, v.label, err)
 	}
 	iss, _ := claims["iss"].(string)
-	if !slices.Contains(v.issuers, iss) {
+	if iss == "" || !slices.Contains(v.issuers, iss) {
 		return Identity{}, fmt.Errorf("%w: %s iss", ErrInvalidCredential, v.label)
 	}
 	if !v.audienceAllowed(claims["aud"]) {

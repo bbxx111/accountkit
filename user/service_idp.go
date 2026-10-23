@@ -53,15 +53,7 @@ func (s *Service) verifyIdp(ctx context.Context, cred IdpCredential) (idp.Identi
 	if provider == nil {
 		return idp.Identity{}, fmt.Errorf("%w: %s sign-in not configured", idp.ErrAppNotAllowed, cred.Kind)
 	}
-	ident, err := s.verifyProvider(ctx, cred.Kind, provider, cred.Credential)
-	if err != nil {
-		return idp.Identity{}, err
-	}
-	// 宿主提供方可能返回不一致的结果；按凭证无效处理并由调用方统一审计。
-	if ident.Kind != cred.Kind || ident.Subject == "" {
-		return idp.Identity{}, fmt.Errorf("%w: provider returned kind %s with empty or mismatched subject", idp.ErrInvalidCredential, ident.Kind)
-	}
-	return ident, nil
+	return s.verifyProvider(ctx, cred.Kind, provider, cred.Credential)
 }
 
 // providerFailure 隔离宿主提供方的非哨兵错误：保留原文供日志，但不解包，

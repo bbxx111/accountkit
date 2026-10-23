@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"time"
 
@@ -450,6 +451,10 @@ func (s *Service) verifyProvider(ctx context.Context, kind enum.IdentityKind, pr
 		ident, err := provider.Verify(ctx, credential)
 		if err != nil {
 			return idp.Identity{}, isolateProviderError(kind, err)
+		}
+		// 宿主提供方可能返回不一致的结果；按凭证无效拒绝，由调用方统一审计。
+		if ident.Kind != kind || ident.Subject == "" {
+			return idp.Identity{}, fmt.Errorf("%w: provider %s returned a mismatched kind or empty subject", idp.ErrInvalidCredential, kind)
 		}
 		return ident, nil
 	})

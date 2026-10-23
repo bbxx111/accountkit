@@ -1,6 +1,6 @@
 # 微信小程序与固定身份模式验收
 
-日期：2026-10-23。任务分支 `feat/wechat-mini-program-subject-mode`，起点 `6e8c88850ff68861b1821dee0d925bf52c689a4e`。范围见 [proposal](proposal.md)、[design](design.md)、[规格](specs/wechat-sign-in/spec.md) 和 [实施计划](../../../docs/superpowers/plans/2026-10-23-wechat-mini-program-sign-in.md)。
+日期：2026-10-23。任务分支 `feat/wechat-mini-program-subject-mode`，起点 `6e8c88850ff68861b1821dee0d925bf52c689a4e`。范围见 [proposal](proposal.md)、[design](design.md)、[规格](specs/wechat-sign-in/spec.md) 和 [实施计划](../../../../docs/superpowers/plans/2026-10-23-wechat-mini-program-sign-in.md)。
 
 ## 实现范围
 
@@ -9,7 +9,7 @@
 - 固定 subject 前缀；OpenID 按 AppID 隔离，不自动升级、降级、合并或通过元数据登录。
 - 验证后的 UnionID/OpenID 记录到元数据，缺失保留、矛盾回滚，创建/绑定/pending/刷新共用合并规则；不保存 token、session_key、code、Secret 或原始响应。
 - 配置指纹包含应用归属与模式；accountsvc 仅小程序装配、管理员 audience 隔离及错误脱敏同步更新。
-- 没有修改 SQL、生成代码、数据库结构、历史标签或冻结源；用户在验收后另行授权本地提交，未推送或归档。
+- 没有修改 SQL、生成代码、数据库结构、历史标签或冻结源；实现已提交为 `eaf8457`，用户在验收后另行授权归档及提交，未推送。
 
 ## 实际验证
 
@@ -48,3 +48,7 @@
 - 本次没有运行 pg_dump/pg_restore 恢复演练或完整发布入口 `scripts/verify.sh`，不宣称发布验收或在线 CI 已通过。普通套件中 TestRecoveryFixture 的预期 skip 不属于恢复演练通过。
 - 历史裸 UnionID 不自动转换；模式切换可能产生不同身份。已在 README、服务说明和兼容指南明确，不能在已有身份数据上无评估切换。
 - 已按标签与镜像 ID 核验并删除本任务创建的 PostgreSQL/Redis 测试容器和临时缓存镜像；原始日志保留在 .test-output。
+
+## 归档核验
+
+2026-10-23 按用户指令归档；全部 4 项任务和工件完成。已将 5 条新增要求及全部场景同步到 [wechat-sign-in 主规格](../../../specs/wechat-sign-in/spec.md)，原 Purpose 保留，主规格不含 delta 操作标题。归档同步修复实施计划与验收记录的双向链接；本次仅移动及维护文档，不重新运行 Go 测试，沿用上面的实现验收记录。归档后 `openspec validate --all --strict` 共 31 项通过；规格逐字一致性、相对链接检查及 `git diff --check` 均通过；活动变更列表为空。

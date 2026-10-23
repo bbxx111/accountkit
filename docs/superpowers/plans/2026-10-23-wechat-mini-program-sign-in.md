@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go、pgx、PostgreSQL、httptest、现有 OpenSpec。
 
-**Spec:** [设计](../../../openspec/changes/add-wechat-mini-program-sign-in/design.md)、[规格](../../../openspec/changes/add-wechat-mini-program-sign-in/specs/wechat-sign-in/spec.md)。
+**Spec:** [设计](../../../openspec/changes/archive/2026-10-23-add-wechat-mini-program-sign-in/design.md)、[规格](../../../openspec/changes/archive/2026-10-23-add-wechat-mini-program-sign-in/specs/wechat-sign-in/spec.md)。
 
 ## Global Constraints
 - 无 DDL/迁移/生成代码修改；无自动升级、降级、账号合并或历史数据转换。

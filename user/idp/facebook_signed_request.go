@@ -51,5 +51,5 @@ func (f *Facebook) ParseSignedRequest(raw string) (FacebookDeletionRequest, erro
 	if !strings.EqualFold(p.Algorithm, "HMAC-SHA256") || p.UserID == "" || p.IssuedAt <= 0 {
 		return FacebookDeletionRequest{}, fmt.Errorf("%w: payload fields", ErrInvalidSignedRequest)
 	}
-	return FacebookDeletionRequest{UserID: p.UserID, IssueTime: time.Unix(p.IssuedAt, 0)}, nil
+	return FacebookDeletionRequest{UserID: p.UserID, IssueTime: time.Unix(p.IssuedAt, 0).UTC()}, nil
 }

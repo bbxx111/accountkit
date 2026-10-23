@@ -44,3 +44,18 @@ Linux 完整验证（镜像 `accountkit-verify:local`，golang:1.26.5 加 postgr
 - 未做真实 Facebook 应用的数据删除回调联调，也未做浏览器或客户端 SDK 侧验证。
 - CI 在线结果未核对。
 - 未归档本变更。
+
+## 终审修复
+
+终审修复提交 `fix: align provider deletion with spec and correct status docs`：
+
+- F1：`docs/go-integration.md` 的 DELETED/SCHEDULED/BLOCKED 三行含义按代码与 spec 重写；README 与其他 docs 无同类描述。
+- F2：`DeleteProviderIdentityData` 把 PENDING_DELETION 判断移到“剩余有效身份”判断之后；冷静期账号仍有其他身份时抹除该身份并返回 DELETED，账号状态与 purge_time 不变。新增子测试“pending deletion with other identity”，先在旧代码下失败（返回 SCHEDULED），重排后通过。design.md 判定树同步。
+- F3：`TokenResult.HintEmail` 注释不再声称邮箱已验证。F4：design.md Risks 记录 hint 口径不一致的后续事项。F5：`IssueTime` 加 `.UTC()`。
+
+本次运行的命令（`GOWORK=off`，`SERVER_TEST_DB_DSN` 指向一次性库）：
+
+- `gofmt -l .`：无输出。
+- `go build -buildvcs=false ./... && go vet ./...`：通过（此环境 git 状态异常，默认 VCS 标记失败，故加 `-buildvcs=false`）。
+- `go test -count=1 ./user/... ./user/idp/ .`：全部 ok。
+- `openspec validate add-facebook-sign-in --strict`：valid。

@@ -414,6 +414,34 @@ func TestProviderDataDeletion(t *testing.T) {
 		}
 	})
 
+	t.Run("pending deletion with other identity", func(t *testing.T) {
+		f := newFixture(t)
+		useFacebook(t, f, fb, noRequired)
+		phone := f.signIn(t, enum.IdentityPhone, phone1, dev1)
+		if _, _, err := f.svc.BindWithIdp(ctx, principalOf(t, f, phone), facebookCred(`{"access_token":"a"}`), meta1); err != nil {
+			t.Fatal(err)
+		}
+		me, err := f.svc.DeleteMe(ctx, principalOf(t, f, phone), meta1)
+		if err != nil || me.PurgeTime == nil {
+			t.Fatalf("delete me: %+v %v", me, err)
+		}
+		f.advance(time.Minute)
+		res, err := f.svc.DeleteProviderIdentityData(ctx, enum.IdentityFacebook, "asid-a", *f.clock, meta1)
+		if err != nil || res.Status != user.ProviderDeletionDeleted || !res.PurgeTime.IsZero() {
+			t.Fatalf("%+v %v", res, err)
+		}
+		after := stateOf(t, f, phone.UserID)
+		if after.State != enum.UserPendingDeletion || after.PurgeTime == nil || !after.PurgeTime.Equal(*me.PurgeTime) {
+			t.Fatalf("after: %+v want purge %v", after, me.PurgeTime)
+		}
+		if subjectRows(t, f, "asid-a") != 0 {
+			t.Fatal("facebook subject must be erased")
+		}
+		if n := len(eventsOf(f, enum.EventUserDeleted)); n != 1 {
+			t.Fatalf("USER_DELETED events: %d", n)
+		}
+	})
+
 	t.Run("identity created after request", func(t *testing.T) {
 		f := newFixture(t)
 		useFacebook(t, f, fb, noRequired)

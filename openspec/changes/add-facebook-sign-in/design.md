@@ -100,12 +100,12 @@ HTTP 客户端沿用微信的写法：不跟随重定向；传输错误先去掉
   没有 -> DELETED（幂等）
   有   -> 锁账号行，在锁内重新读取该身份（仍为活动、属于同一账号）
           身份的 create_time 晚于请求的 issued_at -> DELETED（该身份是请求之后重新绑定的，不处理）
-          账号 PENDING_DELETION -> SCHEDULED（不改动，返回 purge_time）
-          去掉它之后仍有有效 Enabled 身份 -> S2：
+          去掉它之后仍有有效 Enabled 身份（不限账号状态：ACTIVE、FROZEN、PENDING_DELETION）-> S2：
               AnonymizeIdentity（随机替换 subject，清空 meta 与 hint，设置 delete_time）
               RevokeSessionsByIdentity（原因 IDENTITY_UNBOUND）
               -> DELETED
           否则：
+              账号 PENDING_DELETION -> SCHEDULED（不改动，返回已有 purge_time）
               账号 FROZEN -> BLOCKED（不改动）
               账号 ACTIVE -> 在同一事务内执行注销主体（含 BeforeDelete）
                   BeforeDelete 返回 ErrDeletionBlocked -> 回滚 -> BLOCKED
@@ -146,6 +146,7 @@ HTTP 客户端沿用微信的写法：不跟随重定向；传输错误先去掉
 - [确认码依赖尽力审计] → 领域方法同步返回状态，宿主自行持久化；文档写明。
 - [S2 把账号带入不满足 Required 的状态] → 这是讨论中确认的取舍，由现有补全流程收敛，不产生新状态。
 - [BLOCKED 请求需要人工跟进] → 状态如实返回给宿主，审计可检索；库不重试，也不替宿主决策。
+- [审计 hint 口径不一致，后续事项] 既有登录、绑定、解绑审计事件对第三方身份使用原始 subject 前 8 字符作为 hint，数据删除路径使用 sha256 截取的 hint；两者无法关联，且既有事件中的原始前缀不会被删除请求清除。属于既有行为，另行评估。
 - [历史解除行查询走顺序扫描] → 删除回调低频，接受；成为热点时以 0002 迁移补部分索引。
 - [匿名化身份后，历史管理查询看不到原 ASID] → 有意的隐私取舍，审计保留 hint。
 

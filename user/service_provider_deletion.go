@@ -20,11 +20,13 @@ import (
 type ProviderDeletionStatus string
 
 const (
-	// ProviderDeletionDeleted：该第三方身份已被抹除，或本就不存在、与本请求无关。
+	// ProviderDeletionDeleted：该第三方身份已被抹除（账号仍有其他有效身份，不论账号状态），
+	// 或本就没有活动身份、活动身份创建于请求签发之后而不处理。
 	ProviderDeletionDeleted ProviderDeletionStatus = "DELETED"
-	// ProviderDeletionScheduled：账号已处于注销冷静期，到 PurgeTime 匿名化。
+	// ProviderDeletionScheduled：账号本次进入注销冷静期（该身份是唯一有效身份），或已在冷静期内；到 PurgeTime 匿名化。
 	ProviderDeletionScheduled ProviderDeletionStatus = "SCHEDULED"
-	// ProviderDeletionBlocked：未改动数据，宿主注销检查拒绝或账号冻结，需宿主跟进。
+	// ProviderDeletionBlocked：活动身份与账号未改动（宿主注销检查拒绝或账号冻结），需宿主跟进；
+	// 此前已解除的同一用户 id 历史行仍会被清除。
 	ProviderDeletionBlocked ProviderDeletionStatus = "BLOCKED"
 )
 
@@ -47,7 +49,8 @@ func providerSubjectHint(subject string) string {
 
 // DeleteProviderIdentityData 处理第三方平台按 subject 发起的数据删除（provider-data-deletion 规格）。
 // 去掉该身份后仍有有效 Enabled 身份时抹除该身份并吊销以它为来源的会话，不检查 Required；
-// 否则 ACTIVE 账号转入注销，宿主阻止或账号冻结返回 BLOCKED 且不改动数据；已在冷静期返回 SCHEDULED。
+// 该判定不限账号状态（含冷静期、冻结）。否则已在冷静期返回 SCHEDULED 且不改动，
+// ACTIVE 账号转入注销，宿主阻止或账号冻结返回 BLOCKED 且不改动活动身份与账号。
 // requestTime 之前尚未创建的身份与本请求无关。判定与写入在同一事务、账号行锁下完成。
 // BeforeDelete 返回 ErrDeletionBlocked 以外的错误时返回错误，宿主应让平台重试。
 func (s *Service) DeleteProviderIdentityData(ctx context.Context, kind enum.IdentityKind, subject string, requestTime time.Time, meta Meta) (ProviderDeletionResult, error) {
@@ -91,13 +94,6 @@ func (s *Service) DeleteProviderIdentityData(ctx context.Context, kind enum.Iden
 		if ident.CreateTime.After(requestTime) {
 			return nil // 请求签发后重新绑定的身份与本请求无关
 		}
-		if u.State == enum.UserPendingDeletion {
-			res.Status = ProviderDeletionScheduled
-			if u.PurgeTime != nil {
-				res.PurgeTime = *u.PurgeTime
-			}
-			return nil
-		}
 		idents, err := q.ListActiveIdentitiesByUser(ctx, u.ID)
 		if err != nil {
 			return fmt.Errorf("user: list identities: %w", err)
@@ -137,6 +133,14 @@ func (s *Service) DeleteProviderIdentityData(ctx context.Context, kind enum.Iden
 				return fmt.Errorf("user: revoke identity sessions: %w", err)
 			}
 			unbound = true
+			return nil
+		}
+		if u.State == enum.UserPendingDeletion {
+			// 仅剩这一个有效身份且已在冷静期：不改动，返回已有 purge_time。
+			res.Status = ProviderDeletionScheduled
+			if u.PurgeTime != nil {
+				res.PurgeTime = *u.PurgeTime
+			}
 			return nil
 		}
 		if u.State != enum.UserActive {

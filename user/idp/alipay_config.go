@@ -97,7 +97,7 @@ func normalizeAlipayGateway(raw string) (string, error) {
 	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || strings.Contains(raw, "#") || u.Opaque != "" {
 		return "", errors.New("idp: AlipayGatewayURL must be an absolute HTTPS URL without userinfo, query or fragment")
 	}
-	loopback := strings.EqualFold(u.Hostname(), "localhost")
+	loopback := false
 	if ip := net.ParseIP(u.Hostname()); ip != nil {
 		loopback = ip.IsLoopback()
 	}

@@ -77,6 +77,7 @@ func TestAlipayConfigValidation(t *testing.T) {
 		{"lower_mode", func(c *AlipayConfig) { c.SubjectMode = "unionid" }},
 		{"blank_mode", func(c *AlipayConfig) { c.SubjectMode = " " }},
 		{"http_remote", func(c *AlipayConfig) { c.GatewayURL = "http://example.com/gateway.do" }},
+		{"http_localhost", func(c *AlipayConfig) { c.GatewayURL = "http://localhost:123/gateway.do" }},
 		{"userinfo", func(c *AlipayConfig) { c.GatewayURL = "https://secret@example.com/gateway.do" }},
 		{"query", func(c *AlipayConfig) { c.GatewayURL = "https://example.com/gateway.do?secret=value" }},
 		{"empty_query", func(c *AlipayConfig) { c.GatewayURL = "https://example.com/gateway.do?" }},
@@ -98,7 +99,7 @@ func TestAlipayConfigValidation(t *testing.T) {
 			}
 		})
 	}
-	for _, gateway := range []string{"", "https://example.com/gateway.do", "http://localhost:123/gateway.do", "http://127.0.0.1:123/gateway.do", "http://[::1]:123/gateway.do"} {
+	for _, gateway := range []string{"", "https://example.com/gateway.do", "http://127.0.0.1:123/gateway.do", "http://[::1]:123/gateway.do"} {
 		if err := ValidateAlipayConfig(AlipayConfig{Apps: []AlipayApp{app}, SubjectMode: AlipaySubjectModeOpenID, GatewayURL: gateway}); err != nil {
 			t.Fatalf("valid gateway rejected: %v", err)
 		}

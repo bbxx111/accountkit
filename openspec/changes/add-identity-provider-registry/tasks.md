@@ -37,7 +37,7 @@
 
 ## 5. 集成验证
 
-- [ ] 5.1 `GOWORK=off go build ./... && go vet ./... && go test -count=1 ./...`（含 `SERVER_TEST_DB_DSN`）通过；新增必需顶层测试同步 `scripts/required-tests.txt`
+- [x] 5.1 `GOWORK=off go build ./... && go vet ./... && go test -count=1 ./...`（含 `SERVER_TEST_DB_DSN`）通过；新增必需顶层测试同步 `scripts/required-tests.txt`
 - [ ] 5.2 `bash scripts/verify.sh` 完整验证（race 在 Linux 镜像中执行）与 `openspec validate --all --strict` 通过；结果、审查结论与未验证项写入本变更 `verification.md`
 
 ## Workflow follow-up

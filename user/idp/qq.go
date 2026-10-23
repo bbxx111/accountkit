@@ -90,11 +90,14 @@ func (q *QQ) Verify(ctx context.Context, credential json.RawMessage) (Identity, 
 	client, clientErr := alipayString(me, "client_id")
 	open, openErr := alipayString(me, "openid")
 	union, unionErr := alipayString(me, "unionid")
-	if clientErr != nil || openErr != nil || unionErr != nil || client == "" || !validAlipayIdentifier(open) || union != "" && !validAlipayIdentifier(union) {
+	if clientErr != nil || client == "" {
 		return Identity{}, qqFailure(ErrMisconfigured, "identity fields")
 	}
 	if client != c.AppID {
 		return Identity{}, qqFailure(ErrAppNotAllowed, "token issued for another application")
+	}
+	if openErr != nil || unionErr != nil || !validAlipayIdentifier(open) || union != "" && !validAlipayIdentifier(union) {
+		return Identity{}, qqFailure(ErrMisconfigured, "identity fields")
 	}
 	subject := "openid:" + c.AppID + ":" + open
 	if q.config.subjectMode == QQSubjectModeUnionID {

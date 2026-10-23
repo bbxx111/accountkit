@@ -159,6 +159,7 @@ func TestQQMeClassification(t *testing.T) {
 		{"unknown code", QQSubjectModeUnionID, 200, `{"error":100099,"error_description":"x"}`, ErrUnavailable},
 		{"non numeric code", QQSubjectModeUnionID, 200, `{"error":"x"}`, ErrUnavailable},
 		{"other app", QQSubjectModeUnionID, 200, `{"client_id":"1100000002","openid":"o","unionid":"u"}`, ErrAppNotAllowed},
+		{"other app malformed openid", QQSubjectModeOpenID, 200, `{"client_id":"1100000002","openid":"a b"}`, ErrAppNotAllowed},
 		{"missing client", QQSubjectModeUnionID, 200, `{"openid":"o","unionid":"u"}`, ErrMisconfigured},
 		{"missing unionid", QQSubjectModeUnionID, 200, `{"client_id":"1100000001","openid":"o"}`, ErrMisconfigured},
 		{"missing openid", QQSubjectModeOpenID, 200, `{"client_id":"1100000001"}`, ErrMisconfigured},
@@ -178,7 +179,7 @@ func TestQQMeClassification(t *testing.T) {
 			var logs bytes.Buffer
 			srv, calls := qqServer(t, func(w http.ResponseWriter, r *http.Request) {
 				if tc.status == 302 {
-					w.Header().Set("Location", "https://elsewhere.example.test/")
+					w.Header().Set("Location", "/oauth2.0/me?redirected=1")
 				}
 				w.WriteHeader(tc.status)
 				fmt.Fprint(w, tc.body)

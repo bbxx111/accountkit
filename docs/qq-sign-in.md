@@ -74,4 +74,5 @@ UNIONID → `unionid:<unionid>`；OPENID → `openid:<app_id>:<openid>`，不在
 - [ ] 真机 Android/iOS SDK 登录后提交令牌，后端登录成功
 - [ ] 移动 SDK 令牌调用 `/me` 返回的 `client_id` 等于移动应用 AppID
 - [ ] 两个已打通 App 对同一用户返回相同 unionid
+- [ ] QQ `/me` 对无效或过期令牌返回的 HTTP 状态确认为 200 加 JSON 错误体（当前非 200 一律映射为 503 IDP_UNAVAILABLE）
 - [ ] 实际 `figureurl_qq_*` 主机均在名单内，且对应 https 地址可访问

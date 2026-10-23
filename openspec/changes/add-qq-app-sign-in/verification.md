@@ -34,6 +34,7 @@
 - [ ] 真机 Android/iOS SDK 登录后提交令牌，后端登录成功：未执行
 - [ ] 移动 SDK 令牌调用 `/me` 返回的 `client_id` 等于移动应用 AppID：未执行
 - [ ] 两个已打通 App 对同一用户返回相同 unionid：未执行
+- [ ] QQ `/me` 对无效或过期令牌返回的 HTTP 状态确认为 200 加 JSON 错误体（当前非 200 映射为 503 IDP_UNAVAILABLE）：未执行
 - [ ] 实际 `figureurl_qq_*` 主机均在名单内，且对应 https 地址可访问：未执行
 
 ### Open Questions 现状（design.md）
@@ -44,3 +45,7 @@
 ### 待处理风险
 
 归档本变更前必须先归档 `add-facebook-sign-in`，或在其注册表 delta 中补入 QQ 文本，否则会覆盖本变更的需求；归档后核对主规格中 ALIPAY、FACEBOOK、QQ 文本完整。本任务未归档、未推送、未合并。
+
+### 最终评审后复跑
+
+最终整分支评审问题修复后复跑：`bash scripts/check-generated.sh` 退出码 0（无生成差异，此前仅以 `sqlc generate` 加无差异核对作等价验证）；`GOWORK=off go build ./...`、`go vet ./...` 通过；带 SERVER_TEST_DB_DSN 与 Redis 的 `go test -count=1 ./user/idp/ ./user/ .` 三个包均 ok，QQ 相关测试 `-v` 下无 SKIP。

@@ -42,7 +42,7 @@ cred := user.IdpCredential{
 }
 ```
 
-App 先完成极简 SDK 的 `auth_user` 授权和一次性 state 回跳核对，再提交 code；库不提供 authInfo 或回调端点。兑换 code 不重试，超时后重新授权。资料可降级；仅 ALIPAY 的后续成功登录会补填本次可信声明对应的空昵称/头像，主动清空也可补填，非空值保留，重复绑定不增加后续补填。配置片段、Flutter 桥接、库侧自动验收和宿主真机检查见[支付宝接入指南](alipay-sign-in.md)。
+App 先完成极简 SDK 的 `auth_user` 授权和一次性 state 回跳核对，再提交 code；库不提供 authInfo 或回调端点。兑换 code 不重试，超时后重新授权。资料可降级；登录补填提供方（ALIPAY、QQ）的后续成功登录会补填本次可信声明对应的空昵称/头像，主动清空也可补填，非空值保留，重复绑定不增加后续补填。配置片段、Flutter 桥接、库侧自动验收和宿主真机检查见[支付宝接入指南](alipay-sign-in.md)。
 
 配置 `QQAppIDs []string`（QQ 互联移动应用 AppID）启用 QQ；App SDK 校验 access_token 不需要 AppKey。`QQSubjectMode` 缺省 UNIONID（需在 QQ 互联开通 UnionID 打通），OPENID 按 AppID 隔离且不请求 UnionID。`New` 无网络 I/O。QQ access_token 在有效期内可重复用于登录，客户端只经 HTTPS 提交并且不得记录它。纯 QQ 可设 Enabled 为 QQ、Required 为显式空列表，无需发送器。详见 [QQ 接入指南](qq-sign-in.md)。
 

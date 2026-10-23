@@ -32,7 +32,7 @@
 
 ## 5. 服务与文档
 
-- [ ] 5.1 `internal/accountsvc` 读取 `ACCOUNTKIT_FACEBOOK_*` 并校验，migrate 不要求这些变量。用服务配置测试覆盖 accountsvc-runtime delta 的四个场景。
+- [x] 5.1 `internal/accountsvc` 读取 `ACCOUNTKIT_FACEBOOK_*` 并校验，migrate 不要求这些变量。用服务配置测试覆盖 accountsvc-runtime delta 的四个场景。
 - [ ] 5.2 更新 README 配置表、`docs/go-integration.md`（两种凭证、数据删除回调示例 handler 与状态页职责、确认码依赖尽力审计时宿主须自行持久化）、`docs/accountsvc.md`（服务不提供删除回调，部署方须配置 Meta 的数据删除说明页或另行实现）、`docs/compatibility.md` 与 `deploy/accountsvc/.env.example`（不含真实 Secret）。逐一核对文档中的路径与变量名与代码一致。
 - [ ] 5.3 文档写明 Classic token 的重放限制并建议开启 Require App Secret，写明 email 只作提示，以及回退到旧版本后 FACEBOOK 身份无法登录。核对 design 的 Risks 都已在文档中体现。
 - [ ] 5.4 在 `scripts/required-tests.txt` 登记新增的必需顶层测试，用 `internal/testgate` 的检查验证登记完整。

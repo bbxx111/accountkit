@@ -9,9 +9,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -21,6 +23,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/observability"
 	"github.com/bbxx111/accountkit/user/idp"
 )
 
@@ -36,6 +39,11 @@ type fbFixture struct {
 	debug     func(w http.ResponseWriter, r *http.Request)
 	me        func(w http.ResponseWriter, r *http.Request)
 	fb        *idp.Facebook
+	mr        *miniredis.Miniredis
+	jwksFail  atomic.Bool
+	logs      *syncBuf
+	obsMu     sync.Mutex
+	obs       []observability.Observation
 }
 
 func proofOf(token string) string {
@@ -53,6 +61,14 @@ func newFBFixture(t *testing.T) *fbFixture {
 	f := &fbFixture{key: key, now: time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)}
 	f.jwks = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.jwksHits.Add(1)
+		if f.jwksFail.Load() {
+			w.WriteHeader(500)
+			return
+		}
+		if f.jwksFail.Load() {
+			w.WriteHeader(500)
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []any{jwkOf("fk1", &key.PublicKey)}})
 	}))
 	t.Cleanup(f.jwks.Close)
@@ -87,11 +103,21 @@ func newFBFixture(t *testing.T) *fbFixture {
 	}))
 	t.Cleanup(f.graph.Close)
 	mr := miniredis.RunT(t)
+	f.mr = mr
+	f.logs = &syncBuf{}
+	f.mr = mr
+	f.logs = &syncBuf{}
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
 	f.fb = idp.NewFacebook(idp.FacebookOptions{
 		AppID: fbApp, AppSecret: fbSecret, GraphAPIVersion: "v26.0", GraphAPIBaseURL: f.graph.URL, JWKSURL: f.jwks.URL,
 		HTTP: f.graph.Client(), Nonces: idp.NewNonceRegistry(rdb, "t:"), NonceTTL: 10 * time.Minute,
+		Logger: slog.New(slog.NewTextHandler(f.logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Observer: fbObserver(func(_ context.Context, o observability.Observation) {
+			f.obsMu.Lock()
+			f.obs = append(f.obs, o)
+			f.obsMu.Unlock()
+		}),
 		Now: func() time.Time { return f.now },
 	})
 	return f

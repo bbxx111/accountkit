@@ -185,8 +185,22 @@ func (f *Facebook) graphGet(ctx context.Context, path string, q url.Values, dst 
 		f.logger.Warn("facebook graph non-success", "path", path, "status", resp.StatusCode)
 		return fmt.Errorf("%w: facebook http %d", ErrUnavailable, resp.StatusCode)
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxFacebookBody)).Decode(dst); err != nil {
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxFacebookBody))
+	if err != nil {
+		return fmt.Errorf("%w: facebook response: %v", ErrUnavailable, redactTransportErr(err))
+	}
+	if err := json.Unmarshal(body, dst); err != nil {
 		return fmt.Errorf("%w: facebook response: %v", ErrUnavailable, err)
+	}
+	if resp.StatusCode >= 400 {
+		// 4xx 必须带 Graph 错误对象；否则不能当作成功响应。
+		var probe struct {
+			Error *graphError `json:"error"`
+		}
+		if json.Unmarshal(body, &probe) != nil || probe.Error == nil {
+			f.logger.Warn("facebook graph 4xx without error object", "path", path, "status", resp.StatusCode)
+			return fmt.Errorf("%w: facebook http %d", ErrUnavailable, resp.StatusCode)
+		}
 	}
 	return nil
 }

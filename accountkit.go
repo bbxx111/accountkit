@@ -113,6 +113,23 @@ type Auth struct {
 	closeOnce sync.Once
 }
 
+// ErrFacebookNotConfigured 表示未配置 FacebookAppID 时调用了 Facebook 数据删除入口。
+var ErrFacebookNotConfigured = errors.New("accountkit: facebook sign-in not configured")
+
+// HandleFacebookDataDeletion 处理 Meta 数据删除回调：校验 signed_request 后按 Facebook 用户 id
+// 删除对应身份数据。宿主负责 HTTP 路由、把结果编码为 {url, confirmation_code} 以及状态页；
+// 签名无效返回 idp.ErrInvalidSignedRequest，宿主应返回 400；其他错误应返回 5xx 让 Meta 重试。
+func (a *Auth) HandleFacebookDataDeletion(ctx context.Context, signedRequest string, meta user.Meta) (user.ProviderDeletionResult, error) {
+	if a.facebook == nil {
+		return user.ProviderDeletionResult{}, ErrFacebookNotConfigured
+	}
+	req, err := a.facebook.ParseSignedRequest(signedRequest)
+	if err != nil {
+		return user.ProviderDeletionResult{}, err
+	}
+	return a.users.DeleteProviderIdentityData(ctx, enum.IdentityFacebook, req.UserID, req.IssueTime, meta)
+}
+
 // New 应用默认、校验配置与依赖，构造密码学原语与维护运行器。不做任何 I/O。
 func New(cfg Config, deps Deps) (*Auth, error) {
 	if deps.AuditReader != nil && deps.Audit == nil {

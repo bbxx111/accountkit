@@ -499,6 +499,13 @@ func identityProviders(cfg Config, deps Deps) ([]idp.Provider, error) {
 		}
 		providers = append(providers, provider)
 	}
+	if len(cfg.WeiboAppIDs) > 0 {
+		provider, err := idp.NewWeibo(idp.WeiboOptions{Config: cfg.weiboConfig(), HTTP: deps.HTTPClient, Logger: deps.Logger, Observer: deps.Observer})
+		if err != nil {
+			return nil, err
+		}
+		providers = append(providers, provider)
+	}
 	for _, p := range cfg.OIDCProviders {
 		providers = append(providers, idp.NewOIDC(idp.OIDCOptions{
 			Kind: p.Kind, Issuer: p.Issuer, JWKSURL: p.JWKSURL, ClientIDs: p.ClientIDs,

@@ -72,6 +72,10 @@ QQ App SDK 登录使用 `ACCOUNTKIT_QQ_APP_IDS`（逗号分隔的唯一 1–20 �
 
 纯 QQ 部署设 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS=QQ`、`ACCOUNTKIT_REQUIRED_IDENTITY_KINDS=[]`，无需 SMTP；默认 Required 仍要求手机号或邮箱补全。migrate 不需要 QQ 配置，但已提供的非法 QQ 配置会被拒绝。
 
+微博 App SDK 登录使用 `ACCOUNTKIT_WEIBO_APP_IDS`（逗号分隔的唯一 1–20 位数字微博 AppKey）和测试用 `ACCOUNTKIT_WEIBO_API_BASE_URL`；不需要 AppSecret，也没有标识模式变量。显式 Enabled 含 WEIBO 却未配置应用时启动失败并指出 `ACCOUNTKIT_WEIBO_APP_IDS`，非法值只报告变量名。服务不提供授权回调或取消授权通知路由。
+
+纯微博部署设 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS=WEIBO`、`ACCOUNTKIT_REQUIRED_IDENTITY_KINDS=[]`，无需 SMTP；默认 Required 仍要求手机号或邮箱补全。migrate 不需要微博配置，但已提供的非法微博配置会被拒绝。
+
 以下名称均加 `ACCOUNTSVC_` 前缀：
 
 | 变量 | 默认/要求 |

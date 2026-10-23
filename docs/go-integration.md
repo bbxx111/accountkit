@@ -46,6 +46,8 @@ App 先完成极简 SDK 的 `auth_user` 授权和一次性 state 回跳核对，
 
 配置 `QQAppIDs []string`（QQ 互联移动应用 AppID）启用 QQ；App SDK 校验 access_token 不需要 AppKey。`QQSubjectMode` 缺省 UNIONID（需在 QQ 互联开通 UnionID 打通），OPENID 按 AppID 隔离且不请求 UnionID。`New` 无网络 I/O。QQ access_token 在有效期内可重复用于登录，客户端只经 HTTPS 提交并且不得记录它。纯 QQ 可设 Enabled 为 QQ、Required 为显式空列表，无需发送器。详见 [QQ 接入指南](qq-sign-in.md)。
 
+配置 `WeiboAppIDs []string`（微博开放平台移动应用 AppKey）启用微博；凭证字段 `app_id` 即 AppKey，App SDK 校验 access_token 不需要 AppSecret。微博 uid 全局唯一，subject 固定为 `uid:<uid>`，没有标识模式配置。`New` 无网络 I/O。微博 access_token 在有效期内可重复用于登录，客户端只经 HTTPS 提交并且不得记录它。纯微博可设 Enabled 为 WEIBO、Required 为显式空列表，无需发送器。详见 [微博接入指南](weibo-sign-in.md)。
+
 ## Facebook 登录
 
 配置 `FacebookAppID` 与 `FacebookAppSecret` 后启用，一个实例只对接一个 Facebook App。`SignInWithIdp` 与绑定接受两种 credential，都以 `Kind: enum.IdentityFacebook` 提交原始 JSON：

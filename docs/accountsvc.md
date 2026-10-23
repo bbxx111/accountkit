@@ -64,6 +64,10 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 
 Facebook 登录使用 `ACCOUNTKIT_FACEBOOK_APP_ID`、`ACCOUNTKIT_FACEBOOK_APP_SECRET`，可选 `ACCOUNTKIT_FACEBOOK_GRAPH_API_VERSION`（默认 `v26.0`）、`ACCOUNTKIT_FACEBOOK_NONCE_TTL`（默认 `10m`），以及仅供测试或代理部署的 `ACCOUNTKIT_FACEBOOK_GRAPH_API_BASE_URL`、`ACCOUNTKIT_FACEBOOK_JWKS_URL`。App ID 为空表示未启用，非空时 App Secret 必填；App Secret 只通过环境或密钥注入，不写入镜像、Compose 文件或日志。accountsvc 不提供 Facebook 数据删除回调路由：部署方须在 Meta 后台配置数据删除说明页，或另行用嵌入式库的 `HandleFacebookDataDeletion` 实现回调，见 [Go 集成指南](go-integration.md#facebook-数据删除回调)。
 
+支付宝 App 极简登录使用 `ACCOUNTKIT_ALIPAY_APP_IDS`（逗号分隔的唯一 16 位数字 AppID），每个应用分别提供 `ACCOUNTKIT_ALIPAY_<APPID>_PRIVATE_KEY` 应用私钥和 `ACCOUNTKIT_ALIPAY_<APPID>_PUBLIC_KEY` 支付宝公钥的真实多行 PEM。至少 2048 位 RSA，只支持普通公钥，不能传文件路径或字面 `\n`。`ACCOUNTKIT_ALIPAY_SUBJECT_MODE` 未设置时 UNIONID，显式仅接受 UNIONID/OPENID；`ACCOUNTKIT_ALIPAY_GATEWAY_URL` 默认生产网关。serve 缺应用或密钥会在监听前指出具体变量名，不输出内容。migrate 无需配置支付宝、不访问上游，但已配置的非法材料仍拒绝。
+
+纯支付宝部署设 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS=ALIPAY`、`ACCOUNTKIT_REQUIRED_IDENTITY_KINDS=[]`，无需 SMTP；默认 Required 仍需手机/邮箱补全。客户端完成极简 SDK 的 auth_user 与一次性 state 核对后提交 `POST /v1/users:signInWithIdp` 的 `{"kind":"ALIPAY","credential":{"app_id":"2026000000000001","code":"synthetic-code"}}`，本服务无 authInfo 或回调端点。默认 UNIONID 跨 App 共享需真实应用分组验收；OPENID 按 AppID 隔离，不自动迁移。配置指纹改变会拒绝旧 pending，所有副本须一致。资料降级及后续成功登录空字段补填、Flutter 桥接与尚未完成的真机验收见[支付宝接入指南](alipay-sign-in.md)。本地 Compose 默认 EMAIL，须用 override 或实际部署环境显式传入上述变量并覆盖 E/R，单改 `.env` 不会自动传递任意变量。
+
 以下名称均加 `ACCOUNTSVC_` 前缀：
 
 | 变量 | 默认/要求 |

@@ -27,6 +27,16 @@
 
 显示名上限由 32 放宽到 128 个 Unicode 码位，适用于 `PATCH /users/me` 和 Google 首次填充。把 32 写死的宿主需要同时放宽。旧二进制不能解释 kind 5；回退二进制前不能保留已写入的 Google 身份行。去掉客户端 ID 只停止新的 Google 登录。
 
+## 支付宝 App 极简登录与空资料补填
+
+新增内置 `ALIPAY`、`AlipayApp`、`AlipaySubjectMode` 及 `Config.AlipayApps` / `AlipaySubjectMode` / `AlipayGatewayURL`，沿用统一 `{"kind":"ALIPAY","credential":{"app_id","code"}}`。未配置应用时关闭；显式 Enabled 的宿主需加入 ALIPAY，Required 仍只接受 PHONE/EMAIL，纯支付宝账号须显式 Required 为空。只支持普通公钥模式，无 SQL/schema 或迁移变化。
+
+UNIONID 默认使用 `unionid:<union_id>`，OPENID 使用 `openid:<app_id>:<open_id>`，不在模式间回退，也不以 `user_id` 兜底。跨 App 账号共享取决于支付宝应用分组及实际相同 UnionID；模式、分组或信任配置变化不提供自动迁移/合并。pending 指纹覆盖应用集合、模式、网关、公钥材料，变化后需重新授权；重排列表、等价 PEM 表达不影响指纹。所有副本应保持一致。
+
+ALIPAY 与其他提供方有明确资料差异：首次及后续成功登录都按字段补填本次可信且净化声明对应的空显示名/头像，用户主动清空也可以补填；不覆盖非空值、不使用历史 profile 补偿本次资料失败。重复绑定已有身份不触发后续补填，GOOGLE/APPLE/FACEBOOK/OIDC 保持仅首次关联身份时填充。写入遵守账号锁、生命周期和事务回滚，pending 完成/重放不再次请求支付宝。资料查询失败可降级，外层取消终止操作。
+
+指标追加 `alipay`、`verify_alipay`、`alipay_profile_unavailable`，不输出 AppID 或秘密。禁用后历史 ALIPAY 身份仍可列出、解绑和匿名化；回退前验证目标版本处理未知历史类型的能力，不通过清库或改 subject 回退。客户端需极简 SDK、已安装支付宝和一次性 state 核对，code 兑换失败后重新授权；真实 App/应用分组尚未验收，详情见[支付宝接入指南](alipay-sign-in.md)。
+
 ## Facebook 登录与数据删除回调
 
 `IdentityKind` 追加 `FACEBOOK`（内置第三方类型）。凭证沿用统一信封，`credential` 为 `{"id_token","nonce"}`（Limited Login）或 `{"access_token"}`（Classic Login）。配置 `FacebookAppID` 与 `FacebookAppSecret` 后启用，未配置时行为与升级前一致；显式设置 `EnabledIdentityKinds` 的宿主须手动加入 `FACEBOOK`，`Required` 不能包含它。新增配置 `FacebookGraphAPIVersion`（默认 `v26.0`，默认值升级属于兼容变更）、`FacebookNonceTTL`、`FacebookGraphAPIBaseURL`、`FacebookJWKSURL`，环境变量见 README。补全指纹覆盖 Facebook 配置，升级前创建的 pending 流程在配置变化后被拒绝。
@@ -373,6 +383,7 @@ HTTP 调用方继续使用原 URL（包括 `/users`）、DTO、设备头、JWT �
 | 验证码 HMAC 轮换 | user/code/store.go、user/code/scripts.go，库及 accountsvc 共用 | 多版本旧状态/并发测试、TestCodeKeyRotationIntegration、TestCodeRotationRedisIntegration、TestServiceIntegrationCodeKeyRotation；见[轮换验收记录](../openspec/changes/archive/2026-10-04-harden-code-key-rotation/verification.md) |
 | 微信/Apple | user/idp、service_idp.go | wechat_test.go、apple_test.go、nonce_test.go、service_idp_test.go、TestWeChatSignInEndToEndAgainstRealDB |
 | Facebook 登录（Limited/Classic） | user/idp/facebook.go、user/service_idp.go、config.go | user/idp/facebook*_test.go、user/service_facebook_test.go、httpapi/enduser/signin_facebook_test.go、config_facebook_test.go、internal/accountsvc/config_facebook_test.go |
+| 支付宝 App 极简登录与空字段补填 | user/idp/alipay*.go、user/service_idp.go、user/service_signin_completion.go、config.go | user/idp/alipay*_test.go、user/service_alipay_test.go、config_alipay_test.go、accountkit_alipay_test.go、internal/accountsvc/config_test.go；真实 App/应用分组仍待验收 |
 | Facebook 数据删除入口 | accountkit.go `HandleFacebookDataDeletion`、user/service_provider_deletion.go、user/idp/facebook_signed_request.go | accountkit_facebook_test.go、user/service_provider_deletion_test.go、user/idp/facebook_signed_request_test.go、audit/authentication/authentication_test.go |
 | 身份绑定解绑 | user/service_identity.go | service_identity_test.go、identities_test.go、TestIdentityBindingEndToEndAgainstRealDB |
 | 同类身份换绑 | user/service_identity_replacement.go、httpapi/enduser/replacement.go | 领域回滚/竞态、嵌入式及服务E2E，见[换绑验收记录](../openspec/changes/archive/2026-10-03-add-identity-replacement/verification.md) |

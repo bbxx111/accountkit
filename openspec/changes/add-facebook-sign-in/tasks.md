@@ -8,11 +8,11 @@
 
 ## 2. Facebook 提供方
 
-- [ ] 2.1 实现 `idp.Facebook` 的 credential 严格解码与形状分派。用表驱动测试验证：两种合法形状；并列、只有 nonce、空值、未知字段返回 `ErrMalformedCredential`，且测试替身确认未访问 JWKS 或 Graph、未登记 nonce。
-- [ ] 2.2 Limited 路径复用 `idTokenVerifier`（issuer `https://www.facebook.com`、aud 为 App ID、nonce 作用域 `facebook`、name/picture/email 声明），默认 JWKS 使用 www 域名，降级场景使用独立值。用校验器测试验证：合法 token；错误 iss；他人 aud 返回 `ErrAppNotAllowed`；nonce 重放；无缓存 JWKS 不可用返回 `ErrUnavailable`；缓存密钥降级单独计数。
-- [ ] 2.3 Classic 路径实现 `debug_token` 与 `/me` 两次调用、两种 `appsecret_proof`、不跟随重定向、去掉 URL 的错误包装与响应体上限，并按 design 的表格映射错误。用 `httptest` 测试验证：成功；`is_valid=false`；`type` 非 USER；`app_id` 不符；两步 id 不一致；5xx 与超时；App token 被拒返回 `ErrMisconfigured`；同一 token 可重复验证。断言错误文本与日志不含 token、Secret 或 proof。
-- [ ] 2.4 Classic 资料映射：剪影头像视为缺失，email 进入 `HintEmail`，`expires_at` 为 0 时 `ExpireTime` 保持零值。用单元测试覆盖这三项。
-- [ ] 2.5 实现 `PolicyFingerprint`：包含 App ID、版本、Graph 地址与 JWKS 地址，不含 Secret。用测试验证任一项变化都会改变指纹，且指纹文本不含 Secret。
+- [x] 2.1 实现 `idp.Facebook` 的 credential 严格解码与形状分派。用表驱动测试验证：两种合法形状；并列、只有 nonce、空值、未知字段返回 `ErrMalformedCredential`，且测试替身确认未访问 JWKS 或 Graph、未登记 nonce。
+- [x] 2.2 Limited 路径复用 `idTokenVerifier`（issuer `https://www.facebook.com`、aud 为 App ID、nonce 作用域 `facebook`、name/picture/email 声明），默认 JWKS 使用 www 域名，降级场景使用独立值。用校验器测试验证：合法 token；错误 iss；他人 aud 返回 `ErrAppNotAllowed`；nonce 重放；无缓存 JWKS 不可用返回 `ErrUnavailable`；缓存密钥降级单独计数。
+- [x] 2.3 Classic 路径实现 `debug_token` 与 `/me` 两次调用、两种 `appsecret_proof`、不跟随重定向、去掉 URL 的错误包装与响应体上限，并按 design 的表格映射错误。用 `httptest` 测试验证：成功；`is_valid=false`；`type` 非 USER；`app_id` 不符；两步 id 不一致；5xx 与超时；App token 被拒返回 `ErrMisconfigured`；同一 token 可重复验证。断言错误文本与日志不含 token、Secret 或 proof。
+- [x] 2.4 Classic 资料映射：剪影头像视为缺失，email 进入 `HintEmail`，`expires_at` 为 0 时 `ExpireTime` 保持零值。用单元测试覆盖这三项。
+- [x] 2.5 实现 `PolicyFingerprint`：包含 App ID、版本、Graph 地址与 JWKS 地址，不含 Secret。用测试验证任一项变化都会改变指纹，且指纹文本不含 Secret。
 
 ## 3. 配置与装配
 

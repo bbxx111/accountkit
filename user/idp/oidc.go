@@ -35,6 +35,8 @@ type idTokenVerifier struct {
 	now           func() time.Time
 	nameClaims    []string
 	pictureClaims []string
+	// 提供方不给 email_verified 时仍把 email 作提示（Facebook）。
+	hintEmailUnverified bool
 }
 
 func (v *idTokenVerifier) verify(ctx context.Context, idToken, rawNonce string) (Identity, error) {
@@ -102,7 +104,7 @@ func (v *idTokenVerifier) verify(ctx context.Context, idToken, rawNonce string) 
 	if exp, err := claims.GetExpirationTime(); err == nil && exp != nil {
 		id.ExpireTime = exp.Time
 	}
-	if email, _ := claims["email"].(string); email != "" && emailVerified(claims["email_verified"]) {
+	if email, _ := claims["email"].(string); email != "" && (v.hintEmailUnverified || emailVerified(claims["email_verified"])) {
 		id.HintEmail = email
 	}
 	id.Name = firstStringClaim(claims, v.nameClaims)

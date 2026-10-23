@@ -37,3 +37,8 @@ func (a *Apple) PolicyFingerprint() string {
 
 // PolicyFingerprint 标识 Google client ID 允许列表和 JWKS 地址。
 func (g *Google) PolicyFingerprint() string { return g.v.fingerprint(g.jwksURL) }
+
+// PolicyFingerprint 标识 App ID、Graph 版本与地址、JWKS 地址，不含 App Secret。
+func (f *Facebook) PolicyFingerprint() string {
+	return f.v.fingerprint(f.version + "\n" + f.graph + "\n" + f.jwksURL)
+}

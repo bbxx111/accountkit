@@ -219,7 +219,7 @@ func NewService(d Deps) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	flowContext, flowPolicy := signInCompletionFlowConfiguration(d, policy)
+	flowContext, flowPolicy := signInCompletionFlowConfiguration(d, policy, registry)
 	return &Service{profileAttributes: profileAttributes, observer: observer, authAudit: mapper, d: d, policy: policy, providers: registry, flowContext: flowContext, flowPolicy: flowPolicy}, nil
 }
 

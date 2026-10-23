@@ -285,9 +285,6 @@ func (s *Service) BindWithIdp(ctx context.Context, p Principal, cred IdpCredenti
 		}
 		return IdentityInfo{}, false, err
 	}
-	if ident.Kind != cred.Kind || ident.Subject == "" {
-		return IdentityInfo{}, false, idp.ErrInvalidCredential
-	}
 	ev.SubjectHint = audit.Hint(ident.Subject)
 	now := s.now()
 	var info IdentityInfo

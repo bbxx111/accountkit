@@ -18,6 +18,19 @@ import (
 	"github.com/bbxx111/accountkit/user"
 )
 
+// OIDCProvider 是一个按配置启用的 OIDC 身份提供方。Kind 须符合身份类型格式且不得为内置类型名；
+// Issuer 与 JWKSURL 为绝对 http(s) URL，Issuer 与 ID token 的 iss 精确比较；ClientIDs 非空。
+// NameClaims/PictureClaims 为 nil 时默认 ["name"]/["picture"]，非 nil 空切片表示不读取。
+type OIDCProvider struct {
+	Kind          enum.IdentityKind
+	Issuer        string
+	JWKSURL       string
+	ClientIDs     []string
+	NonceTTL      time.Duration // 默认 10m，须 >= 1m
+	NameClaims    []string
+	PictureClaims []string
+}
+
 // WeChatApp 是一个微信应用（小程序/App/公众号）的凭据；Secret 只在服务端换取 token 时使用。
 type WeChatApp struct {
 	AppID  string
@@ -80,6 +93,8 @@ type Config struct {
 	// GoogleClientIDs 为空表示未启用 Google 登录；id_token 的 aud 以及出现的 azp 须在其中。
 	GoogleClientIDs []string
 	GoogleNonceTTL  time.Duration // 默认 10m
+	// OIDCProviders 是按配置启用的 OIDC 提供方，类型名一经使用不应更换。
+	OIDCProviders []OIDCProvider
 	// WeChatAPIBaseURL / AppleJWKSURL / GoogleJWKSURL 供测试与代理部署覆盖；生产保持默认。
 	WeChatAPIBaseURL string
 	AppleJWKSURL     string
@@ -97,18 +112,26 @@ func cloneProfileAttributesConfig(c *user.ProfileAttributesConfig) *user.Profile
 	return &snapshot
 }
 
-func (c Config) identityPolicy() (*user.IdentityPolicy, error) {
-	var providers []enum.IdentityKind
+// providerKinds 返回配置启用的第三方类型，顺序与 identityProviders 的装配一致。
+func (c Config) providerKinds() []enum.IdentityKind {
+	var kinds []enum.IdentityKind
 	if len(c.WeChatApps) > 0 {
-		providers = append(providers, enum.IdentityWeChat)
+		kinds = append(kinds, enum.IdentityWeChat)
 	}
 	if len(c.AppleBundleIDs) > 0 {
-		providers = append(providers, enum.IdentityApple)
+		kinds = append(kinds, enum.IdentityApple)
 	}
 	if len(c.GoogleClientIDs) > 0 {
-		providers = append(providers, enum.IdentityGoogle)
+		kinds = append(kinds, enum.IdentityGoogle)
 	}
-	return user.NewIdentityPolicy(c.EnabledIdentityKinds, c.RequiredIdentityKinds, providers...)
+	for _, p := range c.OIDCProviders {
+		kinds = append(kinds, p.Kind)
+	}
+	return kinds
+}
+
+func (c Config) identityPolicy() (*user.IdentityPolicy, error) {
+	return user.NewIdentityPolicy(c.EnabledIdentityKinds, c.RequiredIdentityKinds, c.providerKinds()...)
 }
 
 func boolPtr(b bool) *bool { return &b }
@@ -159,6 +182,11 @@ func (c *Config) applyDefaults() {
 	c.DefaultRegion = strings.ToUpper(c.DefaultRegion)
 	def(&c.AppleNonceTTL, 10*time.Minute)
 	def(&c.GoogleNonceTTL, 10*time.Minute)
+	// 复制后再填默认值，避免写回宿主持有的切片。
+	c.OIDCProviders = slices.Clone(c.OIDCProviders)
+	for i := range c.OIDCProviders {
+		def(&c.OIDCProviders[i].NonceTTL, 10*time.Minute)
+	}
 	if c.WeChatAPIBaseURL == "" {
 		c.WeChatAPIBaseURL = "https://api.weixin.qq.com"
 	}
@@ -181,6 +209,16 @@ func (c Config) Validate() error {
 
 func (c Config) validateBase() error {
 	c.applyDefaults()
+	kinds := map[enum.IdentityKind]bool{}
+	for i, p := range c.OIDCProviders {
+		if field, err := validateOIDCProvider(p); err != nil {
+			return fmt.Errorf("accountkit: OIDCProviders[%d].%s: %w", i, field, err)
+		}
+		if kinds[p.Kind] {
+			return fmt.Errorf("accountkit: OIDCProviders[%d].Kind: duplicate %s", i, p.Kind)
+		}
+		kinds[p.Kind] = true
+	}
 	if _, err := c.identityPolicy(); err != nil {
 		return err
 	}
@@ -477,6 +515,9 @@ func ConfigFromEnv(prefix string) (Config, error) {
 	c.WeChatAPIBaseURL = str("WECHAT_API_BASE_URL")
 	c.AppleJWKSURL = str("APPLE_JWKS_URL")
 	c.GoogleJWKSURL = str("GOOGLE_JWKS_URL")
+	if s := str("OIDC_PROVIDERS"); s != "" {
+		c.OIDCProviders = oidcProvidersFromEnv(s, str, dur, fail, func(name string) (string, bool) { return os.LookupEnv(prefix + name) })
+	}
 
 	if firstErr != nil {
 		return Config{}, firstErr
@@ -489,4 +530,87 @@ func ConfigFromEnv(prefix string) (Config, error) {
 		return Config{}, err
 	}
 	return c, nil
+}
+
+// validateOIDCProvider 返回出错的字段名，供 Validate 报字段、ConfigFromEnv 报变量名。
+// NonceTTL 为零表示使用默认值。
+func validateOIDCProvider(p OIDCProvider) (string, error) {
+	if !p.Kind.Valid() {
+		return "Kind", errors.New("must match ^[A-Z][A-Z0-9_]{1,31}$")
+	}
+	if p.Kind.IsBuiltin() {
+		return "Kind", fmt.Errorf("%s is a builtin identity kind", p.Kind)
+	}
+	for _, f := range []struct{ field, raw string }{{"Issuer", p.Issuer}, {"JWKSURL", p.JWKSURL}} {
+		field, raw := f.field, f.raw
+		u, err := url.Parse(raw)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return field, errors.New("must be an absolute http(s) URL")
+		}
+	}
+	if len(p.ClientIDs) == 0 {
+		return "ClientIDs", errors.New("at least one client ID is required")
+	}
+	for _, f := range []struct {
+		field string
+		list  []string
+	}{{"ClientIDs", p.ClientIDs}, {"NameClaims", p.NameClaims}, {"PictureClaims", p.PictureClaims}} {
+		field, list := f.field, f.list
+		seen := map[string]bool{}
+		for _, v := range list {
+			if v == "" || seen[v] {
+				return field, errors.New("entries must be non-empty and unique")
+			}
+			seen[v] = true
+		}
+	}
+	if p.NonceTTL != 0 && p.NonceTTL < time.Minute {
+		return "NonceTTL", errors.New("must be >= 1m")
+	}
+	return "", nil
+}
+
+// oidcEnvSuffix 把 OIDCProvider 字段映射到 OIDC_<KIND>_ 之后的变量名后缀。
+var oidcEnvSuffix = map[string]string{"Issuer": "ISSUER", "JWKSURL": "JWKS_URL", "ClientIDs": "CLIENT_IDS", "NonceTTL": "NONCE_TTL", "NameClaims": "NAME_CLAIMS", "PictureClaims": "PICTURE_CLAIMS"}
+
+// oidcProvidersFromEnv 解析 OIDC_PROVIDERS 及每个类型的 OIDC_<KIND>_* 变量，错误指出具体变量名。
+func oidcProvidersFromEnv(list string, str func(string) string, dur func(string, *time.Duration), fail func(string, error), lookup func(string) (string, bool)) []OIDCProvider {
+	split := func(raw string) []string {
+		out := []string{}
+		for _, v := range strings.Split(raw, ",") {
+			if v = strings.TrimSpace(v); v != "" {
+				out = append(out, v)
+			}
+		}
+		return out
+	}
+	names := split(list)
+	seen := map[enum.IdentityKind]bool{}
+	for _, name := range names {
+		kind := enum.IdentityKind(name)
+		if !kind.Valid() || kind.IsBuiltin() || seen[kind] {
+			fail("OIDC_PROVIDERS", errors.New("entries must be unique, non-builtin and match ^[A-Z][A-Z0-9_]{1,31}$"))
+			return nil
+		}
+		seen[kind] = true
+	}
+	var providers []OIDCProvider
+	for _, name := range names {
+		kind := enum.IdentityKind(name)
+		base := "OIDC_" + name + "_"
+		p := OIDCProvider{Kind: kind, Issuer: str(base + "ISSUER"), JWKSURL: str(base + "JWKS_URL"), ClientIDs: split(str(base + "CLIENT_IDS"))}
+		dur(base+"NONCE_TTL", &p.NonceTTL)
+		if raw, ok := lookup(base + "NAME_CLAIMS"); ok {
+			p.NameClaims = split(raw)
+		}
+		if raw, ok := lookup(base + "PICTURE_CLAIMS"); ok {
+			p.PictureClaims = split(raw)
+		}
+		if field, err := validateOIDCProvider(p); err != nil {
+			fail(base+oidcEnvSuffix[field], err)
+			return nil
+		}
+		providers = append(providers, p)
+	}
+	return providers
 }

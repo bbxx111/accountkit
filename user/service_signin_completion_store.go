@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"slices"
 	"strings"
@@ -64,7 +65,7 @@ func fingerprintJSON(v any) string {
 	return hex.EncodeToString(h[:])
 }
 
-func signInCompletionFlowConfiguration(d Deps, policy *IdentityPolicy) (string, string) {
+func signInCompletionFlowConfiguration(d Deps, policy *IdentityPolicy, providers map[enum.IdentityKind]idp.Provider) (string, string) {
 	var searchPath string
 	if d.Repo.pool != nil {
 		cfg := d.Repo.pool.Config().ConnConfig
@@ -82,10 +83,9 @@ func signInCompletionFlowConfiguration(d Deps, policy *IdentityPolicy) (string, 
 		searchPath, d.Codes.InstancePrefix(), d.Signer.ContextFingerprint(), extra,
 	})
 	parts := []string{policy.Fingerprint(), d.ProviderConfiguration}
-	providers := slices.Clone(d.Providers)
-	slices.SortFunc(providers, func(a, b idp.Provider) int { return strings.Compare(string(a.Kind()), string(b.Kind())) })
-	for _, p := range providers {
-		parts = append(parts, string(p.Kind())+":"+p.PolicyFingerprint())
+	kinds := slices.Sorted(maps.Keys(providers))
+	for _, kind := range kinds {
+		parts = append(parts, string(kind)+":"+providers[kind].PolicyFingerprint())
 	}
 	return context, fingerprintJSON(parts)
 }

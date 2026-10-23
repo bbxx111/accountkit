@@ -38,9 +38,6 @@ func (s *Service) signInWithIdp(ctx context.Context, cred IdpCredential, dev Dev
 		}
 		return SignInResult{}, err
 	}
-	if ident.Kind != cred.Kind || ident.Subject == "" {
-		return SignInResult{}, idp.ErrInvalidCredential
-	}
 	return s.signInVerified(ctx, completionProof{Kind: ident.Kind, Provider: &ident}, ident.ExpireTime, dev, meta)
 }
 
@@ -56,7 +53,35 @@ func (s *Service) verifyIdp(ctx context.Context, cred IdpCredential) (idp.Identi
 	if provider == nil {
 		return idp.Identity{}, fmt.Errorf("%w: %s sign-in not configured", idp.ErrAppNotAllowed, cred.Kind)
 	}
-	return s.verifyProvider(ctx, provider, cred.Credential)
+	ident, err := s.verifyProvider(ctx, cred.Kind, provider, cred.Credential)
+	if err != nil {
+		return idp.Identity{}, err
+	}
+	// 宿主提供方可能返回不一致的结果；按凭证无效处理并由调用方统一审计。
+	if ident.Kind != cred.Kind || ident.Subject == "" {
+		return idp.Identity{}, fmt.Errorf("%w: provider returned kind %s with empty or mismatched subject", idp.ErrInvalidCredential, ident.Kind)
+	}
+	return ident, nil
+}
+
+// providerFailure 隔离宿主提供方的非哨兵错误：保留原文供日志，但不解包，
+// 避免其包装的 user/idp 哨兵改变 HTTP 状态或把内部文本带进响应。
+type providerFailure struct {
+	kind enum.IdentityKind
+	err  error
+}
+
+func (e providerFailure) Error() string {
+	return fmt.Sprintf("user: identity provider %s failed: %v", e.kind, e.err)
+}
+
+func isolateProviderError(kind enum.IdentityKind, err error) error {
+	for _, sentinel := range []error{idp.ErrInvalidCredential, idp.ErrAppNotAllowed, idp.ErrNonceReplayed, idp.ErrUnavailable, idp.ErrMisconfigured, idp.ErrMalformedCredential, context.Canceled, context.DeadlineExceeded} {
+		if errors.Is(err, sentinel) {
+			return err
+		}
+	}
+	return providerFailure{kind: kind, err: err}
 }
 
 // idpFailureReason 把可审计的 IdP 拒绝映射为 reason；基础设施/配置错误返回空（只进日志）。

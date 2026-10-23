@@ -36,10 +36,4 @@ func (a *Apple) PolicyFingerprint() string {
 }
 
 // PolicyFingerprint 标识 Google client ID 允许列表和 JWKS 地址。
-func (g *Google) PolicyFingerprint() string {
-	apps := make([]string, 0, len(g.clientIDs))
-	for app := range g.clientIDs {
-		apps = append(apps, app)
-	}
-	return configurationFingerprint("google", g.jwksURL, apps)
-}
+func (g *Google) PolicyFingerprint() string { return g.v.fingerprint(g.jwksURL) }

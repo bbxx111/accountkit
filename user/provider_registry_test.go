@@ -3,11 +3,13 @@ package user_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/bbxx111/accountkit/enum"
+	ob "github.com/bbxx111/accountkit/observability"
 	"github.com/bbxx111/accountkit/user"
 	"github.com/bbxx111/accountkit/user/idp"
 )
@@ -21,7 +23,9 @@ func corpProvider(kind enum.IdentityKind, fp string, extra func(*idp.Identity)) 
 		case "":
 			return idp.Identity{}, idp.ErrMalformedCredential
 		case "unclassified":
-			return idp.Identity{}, errors.New("provider internal detail")
+			return idp.Identity{}, fmt.Errorf("%w: provider internal detail", user.ErrInvalidArgument)
+		case "mismatch":
+			return idp.Identity{Kind: "OTHER_SSO", Subject: "s"}, nil
 		}
 		id := idp.Identity{Kind: kind, Subject: f["sub"]}
 		if extra != nil {
@@ -105,13 +109,41 @@ func TestProviderDispatchErrors(t *testing.T) {
 	if _, err := g.svc.SignInWithIdp(ctx, corpCred(corpSSO, ""), dev1, meta1); !errors.Is(err, idp.ErrMalformedCredential) {
 		t.Fatalf("malformed: %v", err)
 	}
-	if _, err := g.svc.SignInWithIdp(ctx, corpCred(corpSSO, "unclassified"), dev1, meta1); err == nil || errors.Is(err, idp.ErrInvalidCredential) {
-		t.Fatalf("unclassified error must stay internal: %v", err)
+	if _, err := g.svc.SignInWithIdp(ctx, corpCred(corpSSO, "unclassified"), dev1, meta1); err == nil || errors.Is(err, idp.ErrInvalidCredential) || errors.Is(err, user.ErrInvalidArgument) {
+		t.Fatalf("unclassified provider error must be isolated from sentinels: %v", err)
 	}
-	for _, e := range mem.Events() {
+	wechat := idp.NewWeChat([]idp.App{{AppID: "wx1", Secret: "s"}}, "http://127.0.0.1:1", nil, nil)
+	h := newFixture(t)
+	newServiceWith(t, h, func(d *user.Deps) { *d = withProvider(*d, wechat) })
+	if _, err := h.svc.SignInWithIdp(ctx, providerCred(enum.IdentityWeChat, map[string]string{}), dev1, meta1); !errors.Is(err, idp.ErrMalformedCredential) {
+		t.Fatalf("real provider malformed credential: %v", err)
+	}
+	for _, e := range append(mem.Events(), resetAudit(h).Events()...) {
 		if e.Type == enum.EventSignInFailed {
 			t.Fatalf("malformed or internal provider errors must not be audited as rejections: %+v", e)
 		}
+	}
+	if _, err := g.svc.SignInWithIdp(ctx, corpCred(corpSSO, "mismatch"), dev1, meta1); !errors.Is(err, idp.ErrInvalidCredential) {
+		t.Fatalf("mismatched provider result: %v", err)
+	}
+	p := principalOf(t, g, g.signIn(t, enum.IdentityPhone, phone1, dev2))
+	if _, _, err := g.svc.BindWithIdp(ctx, p, corpCred(corpSSO, "mismatch"), meta1); !errors.Is(err, idp.ErrInvalidCredential) {
+		t.Fatalf("mismatched provider result on bind: %v", err)
+	}
+	audited := map[enum.EventType]bool{}
+	for _, e := range mem.Events() {
+		if e.Reason == "IDP_CREDENTIAL_INVALID" {
+			if e.IdentityKind != corpSSO {
+				t.Fatalf("audit must record the configured kind name: %+v", e)
+			}
+			audited[e.Type] = true
+		}
+	}
+	if !audited[enum.EventSignInFailed] || !audited[enum.EventIdentityBindRejected] {
+		t.Fatalf("mismatched results must be audited like invalid credentials: %+v", mem.Events())
+	}
+	if _, err := g.svc.SignInWithIdp(ctx, corpCred("corp_sso", "x"), dev1, meta1); !errors.Is(err, user.ErrInvalidArgument) {
+		t.Fatalf("malformed kind through the Go API: %v", err)
 	}
 	res := requireSignInTokens(t, mustSignInWithIdp(t, g, corpCred(corpSSO, "corp-1")))
 	again := requireSignInTokens(t, mustSignInWithIdp(t, g, corpCred(corpSSO, "corp-1")))
@@ -232,6 +264,45 @@ func TestUnregisteredHistoricalKind(t *testing.T) {
 	for _, row := range rows {
 		if row.Kind == acme && (row.ProviderSubject == nil || *row.ProviderSubject == "acme-1" || row.DeleteTime == nil) {
 			t.Fatalf("historical identity not anonymized: %+v", row)
+		}
+	}
+}
+
+func TestProviderObservationLabels(t *testing.T) {
+	ctx := context.Background()
+	f, r := observedFixture(t)
+	f.deps = withProvider(f.deps, corpProvider(corpSSO, "", nil))
+	f.deps.RequiredIdentityKinds = []enum.IdentityKind{}
+	rebuildMetricsService(t, f)
+	if _, err := f.svc.SignInWithIdp(ctx, corpCred(corpSSO, ""), dev1, meta1); !errors.Is(err, idp.ErrMalformedCredential) {
+		t.Fatal(err)
+	}
+	deps := dependencyValues(r, ob.ComponentIDP, ob.DependencyVerifyProvider)
+	auth := authValues(r)
+	if len(deps) != 1 || deps[0].Result != ob.ResultRejected || len(auth) != 1 || auth[0].Result != ob.ResultRejected || auth[0].Reason != ob.ReasonInvalidArgument || auth[0].Method != ob.MethodProvider {
+		t.Fatalf("malformed credential must be a client rejection with fixed labels: deps=%+v auth=%+v", deps, auth)
+	}
+	for _, v := range r.Snapshot() {
+		if strings.Contains(fmt.Sprintf("%+v", v), string(corpSSO)) {
+			t.Fatalf("configured kind leaked into observations: %+v", v)
+		}
+	}
+
+	o, or := observedFixture(t)
+	o.deps = withProvider(o.deps, idp.NewOIDC(idp.OIDCOptions{Kind: "PARTNER_SSO", Issuer: "https://partner.example", JWKSURL: "http://127.0.0.1:1/jwks", ClientIDs: []string{"p"}}))
+	o.deps.RequiredIdentityKinds = []enum.IdentityKind{}
+	rebuildMetricsService(t, o)
+	if _, err := o.svc.SignInWithIdp(ctx, providerCred("PARTNER_SSO", map[string]string{"id_token": "t"}), dev1, meta1); !errors.Is(err, idp.ErrMalformedCredential) {
+		t.Fatal(err)
+	}
+	deps = dependencyValues(or, ob.ComponentIDP, ob.DependencyVerifyOIDC)
+	auth = authValues(or)
+	if len(deps) != 1 || len(auth) != 1 || auth[0].Method != ob.MethodOIDC {
+		t.Fatalf("OIDC must use fixed oidc labels: deps=%+v auth=%+v", deps, auth)
+	}
+	for _, v := range or.Snapshot() {
+		if strings.Contains(fmt.Sprintf("%+v", v), "PARTNER_SSO") {
+			t.Fatalf("configured kind leaked into observations: %+v", v)
 		}
 	}
 }

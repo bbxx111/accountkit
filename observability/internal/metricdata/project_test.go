@@ -185,3 +185,23 @@ func TestMetricProjectionLabelValuesAndOwnership(t *testing.T) {
 		}
 	})
 }
+
+func TestMetricProjectionProviderValues(t *testing.T) {
+	for method, want := range map[o.Method]string{o.MethodOIDC: "oidc", o.MethodProvider: "provider"} {
+		got := collect(o.AuthObservation{Operation: o.AuthSignIn, Method: method, Result: o.ResultSuccess, Grant: o.GrantUser})
+		if len(got) == 0 || got[0].Labels[1].Value != want {
+			t.Fatalf("method %s: %+v", method, got)
+		}
+		if got := collect(o.AuthObservation{Operation: o.AuthReauthenticate, Method: method, Result: o.ResultSuccess, Grant: o.GrantUser}); len(got) != 0 {
+			t.Fatalf("third-party method %s must not reauthenticate: %+v", method, got)
+		}
+	}
+	for _, op := range []o.DependencyOperation{o.DependencyVerifyOIDC, o.DependencyVerifyProvider} {
+		if len(collect(o.DependencyObservation{Component: o.ComponentIDP, Operation: op, Result: o.ResultRejected})) != 2 {
+			t.Fatalf("dependency %s rejected", op)
+		}
+	}
+	if len(collect(o.DegradationObservation{Scenario: o.DegradationOIDCCachedKeyFallback, Count: 1})) == 0 {
+		t.Fatal("OIDC cached-key degradation rejected")
+	}
+}

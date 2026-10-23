@@ -39,7 +39,7 @@
 | WECHAT | `{"app_id","code"}` | 第三方登录、绑定 |
 | APPLE / GOOGLE / 配置的 OIDC 类型 | `{"id_token","nonce"}`，nonce 为原始值 | 第三方登录、绑定 |
 
-`kind` 或 `credential` 缺失、`credential` 不是对象、第三方 credential 原始 JSON 超过 16 KiB，或 credential 字段缺失、未知、类型错误时返回 `400 CREDENTIAL_INCOMPLETE`；kind 格式非法为 `400 INVALID_ARGUMENT`；类型不属于该端点允许的类别为 `400 CREDENTIAL_KIND_NOT_ALLOWED`。这些拒绝都发生在消费验证码、访问提供方和登记 nonce 之前。未配置的第三方类型在未显式设置 Enabled 时为 `400 IDP_APP_NOT_ALLOWED`，显式设置时为 `IDENTITY_KIND_NOT_ENABLED`。旧格式迁移见[兼容说明](compatibility.md#统一凭证信封与身份类型字符串)。
+`kind` 或 `credential` 缺失、`credential` 不是对象、第三方 credential 原始 JSON 超过 16 KiB，或 credential 字段缺失、未知、类型错误时返回 `400 CREDENTIAL_INCOMPLETE`；kind 格式非法为 `400 INVALID_ARGUMENT`；类型不属于该端点允许的类别为 `400 CREDENTIAL_KIND_NOT_ALLOWED`。这些拒绝都发生在消费验证码、访问提供方和登记 nonce 之前。未配置的第三方类型在未显式设置 Enabled 时为 `400 IDP_APP_NOT_ALLOWED`，显式设置时为 `IDENTITY_KIND_NOT_ENABLED`。PHONE/EMAIL 的 `code_id` 缺失或格式错误沿用原分类 `400 INVALID_ARGUMENT`，其 credential 只受 64 KiB 请求体上限约束。同一对象内的重复键按标准 JSON 解码取最后一个值，客户端不应发送重复键。旧格式迁移见[兼容说明](compatibility.md#统一凭证信封与身份类型字符串)。
 
 ## 基础资料与头像
 

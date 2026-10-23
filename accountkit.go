@@ -444,5 +444,12 @@ func identityProviders(cfg Config, deps Deps) []idp.Provider {
 			Nonces: idp.NewNonceRegistry(deps.Redis, cfg.KeyPrefix), Logger: deps.Logger, NonceTTL: cfg.GoogleNonceTTL, Observer: deps.Observer,
 		}))
 	}
+	for _, p := range cfg.OIDCProviders {
+		providers = append(providers, idp.NewOIDC(idp.OIDCOptions{
+			Kind: p.Kind, Issuer: p.Issuer, JWKSURL: p.JWKSURL, ClientIDs: p.ClientIDs,
+			NameClaims: p.NameClaims, PictureClaims: p.PictureClaims, HTTP: deps.HTTPClient,
+			Nonces: idp.NewNonceRegistry(deps.Redis, cfg.KeyPrefix), Logger: deps.Logger, NonceTTL: p.NonceTTL, Observer: deps.Observer,
+		}))
+	}
 	return providers
 }

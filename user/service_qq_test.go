@@ -107,9 +107,11 @@ func TestQQPendingSanitizesAndCompletesWithoutVerifyReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertAlipayProfile(t, f, requireSignInTokens(t, done).UserID, "Pending", "")
-	if calls.Load() != 1 {
-		t.Fatal("completion called provider")
+	pair := requireSignInTokens(t, done)
+	assertAlipayProfile(t, f, pair.UserID, "Pending", "")
+	replay, err := f.svc.CompleteSignIn(context.Background(), pending.Pending.SignInCompletionToken, cred, dev1, meta1)
+	if err != nil || requireSignInTokens(t, replay) != pair || calls.Load() != 1 {
+		t.Fatalf("completion replay called provider or changed result: %v calls=%d", err, calls.Load())
 	}
 }
 
@@ -122,7 +124,10 @@ func TestQQLoginProfileRollbackAfterSessionFailure(t *testing.T) {
 		t.Fatal("session failure succeeded")
 	}
 	assertAlipayProfile(t, f, first.UserID, "", "")
-	rows, _ := f.repo.Q().ListActiveIdentitiesByUser(context.Background(), first.UserID)
+	rows, err := f.repo.Q().ListActiveIdentitiesByUser(context.Background(), first.UserID)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("list identities: %d %v", len(rows), err)
+	}
 	if strings.Contains(string(rows[0].ProviderMeta), "Rollback") {
 		t.Fatal("provider metadata survived rollback")
 	}
@@ -281,4 +286,81 @@ func TestQQBindUnbindAndDisabledHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertAlipayProfile(t, f, phone.UserID, "", "")
+}
+
+func TestQQClearedProfileUsesOnlyCurrentClaims(t *testing.T) {
+	f := newFixture(t)
+	useQQ(t, f, nil, []enum.IdentityKind{})
+	first := requireSignInTokens(t, mustSignInWithIdp(t, f, qqCred("Old", "https://example.test/old.png")))
+	empty := ""
+	if _, err := f.svc.UpdateProfile(context.Background(), first.UserID, user.ProfilePatch{DisplayName: &empty, AvatarURL: &empty}); err != nil {
+		t.Fatal(err)
+	}
+	mustSignInWithIdp(t, f, qqCred("", ""))
+	assertAlipayProfile(t, f, first.UserID, "", "")
+	mustSignInWithIdp(t, f, qqCred("New\n‮", "https://example.test/new.png"))
+	assertAlipayProfile(t, f, first.UserID, "New", "https://example.test/new.png")
+}
+
+func TestQQExceptionDoesNotBackfillOtherProviders(t *testing.T) {
+	for _, kind := range []enum.IdentityKind{enum.IdentityGoogle, enum.IdentityApple, enum.IdentityFacebook, corpSSO} {
+		t.Run(string(kind), func(t *testing.T) {
+			f := newFixture(t)
+			newServiceWith(t, f, func(d *user.Deps) {
+				*d = withProvider(*d, alipayProvider(kind, nil))
+				d.RequiredIdentityKinds = []enum.IdentityKind{}
+			})
+			first := requireSignInTokens(t, mustSignInWithIdp(t, f, providerCred(kind, map[string]string{"sub": "compat"})))
+			mustSignInWithIdp(t, f, providerCred(kind, map[string]string{"sub": "compat", "name": "Later", "picture": "https://example.test/later.png"}))
+			assertAlipayProfile(t, f, first.UserID, "", "")
+		})
+	}
+}
+
+func TestQQPendingConcurrentOwnershipRejectsWithoutBackfill(t *testing.T) {
+	f := newFixture(t)
+	useQQ(t, f, nil, nil)
+	owner := f.signIn(t, enum.IdentityEmail, email1, dev2)
+	pending := mustSignInWithIdp(t, f, qqCred("Must Roll Back", "https://example.test/pending.png"))
+	if pending.Pending == nil {
+		t.Fatal("expected pending")
+	}
+	if _, _, err := f.svc.BindWithIdp(context.Background(), principalOf(t, f, owner), qqCred("", ""), meta1); err != nil {
+		t.Fatal(err)
+	}
+	cred := completionCredential(t, f, pending.Pending, enum.IdentityEmail, email1)
+	if _, err := f.svc.CompleteSignIn(context.Background(), pending.Pending.SignInCompletionToken, cred, dev1, meta1); !errors.Is(err, user.ErrIdentityConflict) {
+		t.Fatalf("concurrent ownership changed: %v", err)
+	}
+	assertAlipayProfile(t, f, owner.UserID, "", "")
+}
+
+func TestQQRepeatBindingDoesNotBackfill(t *testing.T) {
+	f := newFixture(t)
+	useQQ(t, f, nil, nil)
+	phone := f.signIn(t, enum.IdentityPhone, phone1, dev1)
+	p := principalOf(t, f, phone)
+	if _, created, err := f.svc.BindWithIdp(context.Background(), p, qqCred("", ""), meta1); err != nil || !created {
+		t.Fatal(err)
+	}
+	if _, created, err := f.svc.BindWithIdp(context.Background(), p, qqCred("Later", "https://example.test/later.png"), meta1); err != nil || created {
+		t.Fatal(err)
+	}
+	assertAlipayProfile(t, f, phone.UserID, "", "")
+	rows, err := f.repo.Q().ListActiveIdentitiesByUser(context.Background(), phone.UserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := false
+	for _, row := range rows {
+		if row.Kind == enum.IdentityQQ {
+			seen = true
+			if !strings.Contains(string(row.ProviderMeta), "Later") {
+				t.Fatal("repeat binding did not refresh provider metadata")
+			}
+		}
+	}
+	if !seen {
+		t.Fatal("QQ identity missing")
+	}
 }

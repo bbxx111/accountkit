@@ -52,7 +52,7 @@ Verify(app_id, access_token)
 
 - get_token_info 用 POST 表单，令牌不进入 URL；资料接口为 GET，令牌在查询串中，因此两者都不包装底层传输错误。
 - `appkey` 必须等于请求的 `app_id`，理由同 QQ：多 AppKey 实例中不得以本 App 名义接受另一 App 的令牌。
-- `expire_in` 为负按官方说明表示已过期，映射凭证无效；非负时填 `Identity.ExpireTime`，与 Facebook 一致只作为会话来源的原始期限信息，不改变会话规则。
+- `expire_in` 为负按官方说明表示已过期，映射凭证无效；非负时填 `Identity.ExpireTime`，与 Apple/Facebook/OIDC 一致：该期限只用作 pending 登录补全流程截止时间的上限（`createPending` 取二者较早者），不改变已建立会话的刷新与过期规则。
 - 不读取 `scope`、`create_at`：不参与任何判定，读取只会增加解析失败面。
 
 ### 3. 数字/字符串双形态字段

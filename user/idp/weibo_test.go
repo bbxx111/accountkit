@@ -117,12 +117,15 @@ func TestWeiboVerify(t *testing.T) {
 }
 
 func TestWeiboHugeExpireDoesNotOverflow(t *testing.T) {
-	srv, _ := weiboServer(t, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"uid":2000000001,"appkey":"1234567890","expire_in":9223372036854775807}`)
-	}, nil)
-	id, err := newTestWeibo(t, srv, nil, nil).Verify(context.Background(), weiboCredential(weiboTestApp, "t"))
-	if err != nil || !id.ExpireTime.IsZero() && !id.ExpireTime.After(time.Now()) {
-		t.Fatalf("huge expire_in must not produce a past deadline: %v %v", id.ExpireTime, err)
+	// 0 and values beyond time.Duration or int64 are unknown expiry, never a past or immediate deadline.
+	for _, expire := range []string{"0", `"0"`, "9223372036854775807", "99999999999999999999", `"99999999999999999999"`} {
+		srv, _ := weiboServer(t, func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprintf(w, `{"uid":2000000001,"appkey":"1234567890","expire_in":%s}`, expire)
+		}, nil)
+		id, err := newTestWeibo(t, srv, nil, nil).Verify(context.Background(), weiboCredential(weiboTestApp, "t"))
+		if err != nil || !id.ExpireTime.IsZero() {
+			t.Fatalf("expire_in %s must be unknown expiry: %v %v", expire, id.ExpireTime, err)
+		}
 	}
 }
 
@@ -207,7 +210,7 @@ func TestWeiboTokenClassification(t *testing.T) {
 		{"zero uid", 200, `{"uid":0,"appkey":"1234567890","expire_in":10}`, ErrMisconfigured},
 		{"float uid", 200, `{"uid":2000000001.0,"appkey":"1234567890","expire_in":10}`, ErrMisconfigured},
 		{"bool uid", 200, `{"uid":true,"appkey":"1234567890","expire_in":10}`, ErrMisconfigured},
-		{"expire overflow", 200, `{"uid":1,"appkey":"1234567890","expire_in":99999999999999999999}`, ErrMisconfigured},
+		{"negative expire overflow", 200, `{"uid":1,"appkey":"1234567890","expire_in":-99999999999999999999}`, ErrInvalidCredential},
 		{"duplicate key", 200, `{"uid":1,"uid":2,"appkey":"1234567890","expire_in":10}`, ErrUnavailable},
 		{"trailing", 200, `{"uid":1,"appkey":"1234567890","expire_in":10}{}`, ErrUnavailable},
 		{"redirect", 302, ``, ErrUnavailable},

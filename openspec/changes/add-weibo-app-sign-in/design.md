@@ -61,7 +61,7 @@ Verify(app_id, access_token)
 
 - 值为 JSON 字符串时取其内容；为 JSON 数字时取原始字面量文本（`json.RawMessage`，不经 float64）。
 - 结果须匹配 `^-?[0-9]{1,20}$`；uid、appkey 不允许负号。浮点、指数、布尔、null、对象一律拒绝。
-- `expire_in` 解析为 int64，超范围视为响应非法。
+- `expire_in` 为负表示令牌已失效；为 0 或超出 int64 / `time.Duration` 可表示范围时按未知期限处理（`ExpireTime` 保持零值）。0 若换算为当前时刻会使 pending 补全立即失效，超大值换算会溢出成过去的截止时间；两者都不是令牌失效的证据。
 
 `error_code` 同样走该函数（官方示例为字符串）。
 

@@ -92,11 +92,10 @@ func (p *Weibo) Verify(ctx context.Context, credential json.RawMessage) (Identit
 		return Identity{}, weiboFailure(ErrAppNotAllowed, "token issued for another application")
 	}
 	expireText, expireErr := weiboDecimal(info, "expire_in")
-	expireIn, parseErr := strconv.ParseInt(expireText, 10, 64)
-	if expireErr != nil || parseErr != nil {
+	if expireErr != nil || expireText == "" {
 		return Identity{}, weiboFailure(ErrMisconfigured, "identity fields")
 	}
-	if expireIn < 0 {
+	if strings.HasPrefix(expireText, "-") {
 		return Identity{}, weiboFailure(ErrInvalidCredential, "access token expired")
 	}
 	uid, uidErr := weiboDecimal(info, "uid")
@@ -104,8 +103,9 @@ func (p *Weibo) Verify(ctx context.Context, credential json.RawMessage) (Identit
 		return Identity{}, weiboFailure(ErrMisconfigured, "identity fields")
 	}
 	id := Identity{Kind: enum.IdentityWeibo, Subject: "uid:" + uid}
-	// 超出 time.Duration 可表示范围的剩余期限按未知处理，避免溢出成过去的截止时间。
-	if expireIn <= int64(math.MaxInt64/time.Second) {
+	// 剩余期限为 0 或超出 int64 / time.Duration 可表示范围时按未知处理：
+	// 前者会让 pending 补全立即失效，后者会溢出成过去的截止时间。
+	if expireIn, err := strconv.ParseInt(expireText, 10, 64); err == nil && expireIn > 0 && expireIn <= int64(math.MaxInt64/time.Second) {
 		id.ExpireTime = time.Now().Add(time.Duration(expireIn) * time.Second)
 	}
 	name, picture, profileErr := p.profile(ctx, c.AccessToken, uid)

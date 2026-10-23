@@ -37,6 +37,16 @@ ALIPAY 与其他提供方有明确资料差异：首次及后续成功登录都�
 
 指标追加 `alipay`、`verify_alipay`、`alipay_profile_unavailable`，不输出 AppID 或秘密。禁用后历史 ALIPAY 身份仍可列出、解绑和匿名化；回退前验证目标版本处理未知历史类型的能力，不通过清库或改 subject 回退。客户端需极简 SDK、已安装支付宝和一次性 state 核对，code 兑换失败后重新授权；真实 App/应用分组由宿主另行检查，库侧采用 HTTP 自动契约验收；详情见[支付宝接入指南](alipay-sign-in.md)。
 
+## QQ App SDK 登录
+
+新增内置 `QQ`、`QQSubjectMode` 及 `Config.QQAppIDs` / `QQSubjectMode` / `QQAPIBaseURL`，沿用统一凭证信封：`{"kind":"QQ","credential":{"app_id","access_token"}}`。仅支持 QQ 互联移动 SDK；无网页回调、授权码或 AppKey 配置。
+
+服务端调用 `oauth2.0/me` 校验令牌，`client_id` 必须等于请求的 `app_id`，另一 App 的令牌为 400 `IDP_APP_NOT_ALLOWED`。QQ access_token 与 Facebook Classic 一样不做一次性限制，有效期内可重复登录；客户端须保密令牌。
+
+UNIONID 默认使用 `unionid:<unionid>`，需在 QQ 互联开通 UnionID 打通，未开通时登录返回固定 500；OPENID 使用 `openid:<app_id>:<openid>` 且不请求 UnionID。切换模式会让既有 QQ 身份无法命中，不自动迁移或合并。
+
+登录补填提供方集合现为 ALIPAY、QQ：两者首次及后续成功登录都按字段补填仍为空的显示名与头像；其他提供方仍只在首次写入身份时填充。QQ 头像仅对 `thirdqq.qlogo.cn` 的 `http://` 地址升级为 `https://`，其他 HTTP 地址丢弃。指标追加 `qq`、`verify_qq`、`qq_profile_unavailable`。无 schema/迁移变化。
+
 ## Facebook 登录与数据删除回调
 
 `IdentityKind` 追加 `FACEBOOK`（内置第三方类型）。凭证沿用统一信封，`credential` 为 `{"id_token","nonce"}`（Limited Login）或 `{"access_token"}`（Classic Login）。配置 `FacebookAppID` 与 `FacebookAppSecret` 后启用，未配置时行为与升级前一致；显式设置 `EnabledIdentityKinds` 的宿主须手动加入 `FACEBOOK`，`Required` 不能包含它。新增配置 `FacebookGraphAPIVersion`（默认 `v26.0`，默认值升级属于兼容变更）、`FacebookNonceTTL`、`FacebookGraphAPIBaseURL`、`FacebookJWKSURL`，环境变量见 README。补全指纹覆盖 Facebook 配置，升级前创建的 pending 流程在配置变化后被拒绝。

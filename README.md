@@ -260,6 +260,7 @@ r.Route("/v1", func(r chi.Router) {
 {"kind": "FACEBOOK", "credential": {"id_token": "…", "nonce": "<客户端随机原值>"}}
 {"kind": "FACEBOOK", "credential": {"access_token": "…"}}
 {"kind": "ALIPAY", "credential": {"app_id": "2026000000000001", "code": "synthetic-one-time-code"}}
+{"kind": "QQ", "credential": {"app_id": "1100000001", "access_token": "synthetic-sdk-access-token"}}
 ```
 
 所有接收凭证的端点使用同一信封；手机/邮箱为 `{"kind":"PHONE","credential":{"target","code_id","code"}}`。旧的 `phone`/`email`/`wechat`/`apple`/`google` 成员返回 400 `MALFORMED_BODY`；`kind` 或 `credential` 缺失、credential 字段缺失或未知为 400 `CREDENTIAL_INCOMPLETE`，类型不属于该端点允许的类别为 400 `CREDENTIAL_KIND_NOT_ALLOWED`。完整规则见 [OpenAPI 说明](docs/openapi.md#统一凭证信封)。
@@ -268,6 +269,7 @@ r.Route("/v1", func(r chi.Router) {
 - **Apple**：仅 RS256；校验 `iss`、`aud ∈ AppleBundleIDs`、`exp`（30s leeway）、`nonce = sha256hex(原值)`；通过后 nonce 以 `SETNX` 登记 `AppleNonceTTL`，重复 → 400 `IDP_NONCE_REPLAYED`。JWKS 懒加载、缓存，未知 kid 触发 ≥ 60s 节流的刷新。`email` 仅在 `email_verified` 为真时作为 `hint_email` 返回，**不会**自动绑定为 EMAIL 身份。
 - **Google**：仅 RS256；`iss` 为 `https://accounts.google.com` 或 `accounts.google.com`，`aud` 以及出现的 `azp` 须在 `GoogleClientIDs`。nonce 与客户端提交的原始字符串做常量时间比较，不以 Apple 的 SHA-256 十六进制代替。JWKS 默认 `https://www.googleapis.com/oauth2/v3/certs`，懒加载并缓存；无缓存时拉取失败为 503 `IDP_UNAVAILABLE`，已有密钥在刷新失败时继续验签并单独计入 `google_cached_key_fallback`。已验证 `email` 作为成功响应或 pending 的 `hint_email` 预填，不参与查号或合并。`name` / `picture` 写入该身份的 `provider_meta.profile`；仅在该 Google 身份首次写入且账号 `display_name` 或 `avatar_url` 仍为空时填充，超长名称截到 128 个码位，非法头像地址跳过。身份列表和管理面 `:reveal` 不返回 `provider_meta`。库不保存 Google access/refresh token，也不下载头像。
 - **支付宝**：仅 App 极简 SDK，客户端以 `auth_user` 授权、配置 SDK 回跳并核对一次性随机 state，再提交 `app_id/code`；需要安装支付宝，Flutter 需支持极简版的原生桥接。库无 authInfo/授权回调端点。`AlipayApps` 每个 AppID 配置应用私钥与支付宝公钥的多行 PEM（至少 2048 位 RSA，普通公钥模式）；`New` 无 I/O。`AlipaySubjectMode` 默认 UNIONID，subject 为 `unionid:<union_id>`；OPENID 为 `openid:<app_id>:<open_id>`，不回退 user_id 或自动合并。跨 App 共用账号须同分组并实测相同 UnionID；模式/信任配置改变会拒绝旧 pending。换码上限 10 秒、不重试，失败后获取新 code；资料独立最多 3 秒，可降级，外层取消终止操作。仅采信验签且 OpenID 匹配的 `nick_name/avatar`，首次与后续成功登录按字段补填本次声明对应的空昵称/头像，主动清空也可补填，非空值和其他提供方首次填充语义保持。重复绑定已有身份不触发后续补填。无 schema/迁移变更。配置、库侧自动验收和宿主真实 App/分组检查见[支付宝接入指南](docs/alipay-sign-in.md)。
+- **QQ**：仅 QQ 互联移动 SDK；客户端提交 SDK 返回的 `access_token`，不提交 openid。服务端以最多 10 秒调用 `oauth2.0/me`（`fmt=json`），`client_id` 须等于 `app_id`，否则 `IDP_APP_NOT_ALLOWED`；令牌失效为 400 `IDP_CREDENTIAL_INVALID`，网络/5xx/未知错误码为 503 `IDP_UNAVAILABLE`。令牌不做一次性限制。`QQSubjectMode` 默认 UNIONID（`unionid:<unionid>`，未开通 UnionID 为 500），OPENID 为 `openid:<app_id>:<openid>`。资料以独立 3 秒查询 `get_user_info`，取 `nickname` 与 `figureurl_qq_2`（缺失用 `figureurl_qq_1`），`thirdqq.qlogo.cn` 的 http 头像升级为 https；资料失败不阻断登录。与支付宝相同，首次及后续成功登录补填空昵称/头像。无 schema/迁移变更。见 [QQ 接入指南](docs/qq-sign-in.md)。
 - **scope**：已知账号按当前 E/R 的全部可用身份得到 `user` 或 `user:bind`；未知第三方在默认 R 下返回 pending，补全后才关联或建号。已有 user:bind 账号绑定补齐后，新一轮刷新取得 user。
 - **错误**：400 `IDP_CREDENTIAL_INVALID` / `IDP_APP_NOT_ALLOWED`（含 IdP 未启用）/ `IDP_NONCE_REPLAYED`；503 `IDP_UNAVAILABLE`（IdP 网络、JWKS 不可得、Redis 不可用；带 `Retry-After: 1`）；500（appid/secret 无效、缺 unionid）。
 - **Facebook**：同时接受 Limited Login 的 ID token（`{"id_token","nonce"}`）与 Classic Login 的 access token（`{"access_token"}`），两种字段并列、缺失或为空为 400 `CREDENTIAL_INCOMPLETE`。身份 subject 是该 App 下的 Facebook 用户 id，两种凭证命中同一身份；邮箱、姓名、头像不作主键。ID token 仅 RS256，`iss` 为 `https://www.facebook.com`，`aud` 及出现的 `azp` 须等于 `FacebookAppID`，nonce 与原始值比较并登记。access token 由服务端经 Graph API `debug_token` 确认属于本 App 的用户 token，再读 `/me` 核对 id，所有调用附 `appsecret_proof`；同一 token 在有效期内可重复登录（风险见 [Go 集成指南](docs/go-integration.md#facebook-登录)）。其他 App 的凭证为 `IDP_APP_NOT_ALLOWED`；JWKS 无缓存可用、Graph 超时或 5xx 为 503 `IDP_UNAVAILABLE`，已有缓存密钥在刷新失败时继续验签并计入 `facebook_cached_key_fallback`；Graph 拒绝 App 凭据按服务端配置错误返回固定消息 500 并记录告警。`email` 只作 `hint_email`，Facebook 不提供邮箱已验证声明，不查号不合并。`FACEBOOK` 不能放入 `RequiredIdentityKinds`。数据删除回调见 [Go 集成指南](docs/go-integration.md#facebook-数据删除回调)。
@@ -454,6 +456,9 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 | `ALIPAY_<APPID>_PUBLIC_KEY` | AppID 已配置时必填 | 多行 PEM 支付宝 RSA 公钥，PKCS#1 / SPKI，至少 2048 位；首版仅普通公钥模式，不接受证书 |
 | `ALIPAY_SUBJECT_MODE` | `UNIONID` | Go 字段 `AlipaySubjectMode`，全局固定 `UNIONID` / `OPENID`；显式空值、空白、小写或其他值非法 |
 | `ALIPAY_GATEWAY_URL` | `https://openapi.alipay.com/gateway.do` | Go 字段 `AlipayGatewayURL`；HTTPS 绝对地址，无用户信息、查询或 fragment，仅数值回环测试地址允许 HTTP |
+| `QQ_APP_IDS` | 空（未启用） | 逗号分隔的不同 QQ 互联移动应用 AppID，每项 1–20 位 ASCII 数字；Go 配置为 `QQAppIDs []string`；App SDK 校验不需要 AppKey |
+| `QQ_SUBJECT_MODE` | `UNIONID` | Go 字段 `QQSubjectMode`，全局固定 `UNIONID` / `OPENID`；显式空值、空白、小写或其他值启动失败；UNIONID 需在 QQ 互联开通 UnionID |
+| `QQ_API_BASE_URL` | `https://graph.qq.com` | Go 字段 `QQAPIBaseURL`；HTTPS 绝对地址，无用户信息、查询或 fragment；HTTP 仅限数值回环测试地址 |
 | `OIDC_PROVIDERS` | 空（未启用） | 逗号分隔的 OIDC 类型名，格式 `^[A-Z][A-Z0-9_]{1,31}$`，不得为内置类型名；一经使用不应更换 |
 | `OIDC_<KIND>_ISSUER` / `_JWKS_URL` | 必填 | 绝对 http(s) URL；issuer 与 token `iss` 精确比较；不做 discovery |
 | `OIDC_<KIND>_CLIENT_IDS` | 必填 | 逗号分隔；`aud` 及出现的 `azp` 须在其中 |

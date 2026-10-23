@@ -47,6 +47,14 @@ const (
 	AlipaySubjectModeOpenID  = idp.AlipaySubjectModeOpenID
 )
 
+// QQSubjectMode 决定实例内所有 QQ 应用的固定身份识别方式。
+type QQSubjectMode = idp.QQSubjectMode
+
+const (
+	QQSubjectModeUnionID = idp.QQSubjectModeUnionID
+	QQSubjectModeOpenID  = idp.QQSubjectModeOpenID
+)
+
 const (
 	WeChatSubjectModeUnionID = idp.WeChatSubjectModeUnionID
 	WeChatSubjectModeOpenID  = idp.WeChatSubjectModeOpenID
@@ -128,6 +136,10 @@ type Config struct {
 	AlipayApps        []AlipayApp
 	AlipaySubjectMode AlipaySubjectMode // 默认 UNIONID，所有应用固定使用同一模式。
 	AlipayGatewayURL  string            // 默认生产网关；HTTP 仅允许回环测试地址。
+	// QQAppIDs 为空表示未启用 QQ 登录；App SDK 校验 access_token 不需要 AppKey。
+	QQAppIDs      []string
+	QQSubjectMode QQSubjectMode // 默认 UNIONID，所有应用固定使用同一模式。
+	QQAPIBaseURL  string        // 默认 https://graph.qq.com；HTTP 仅允许回环测试地址。
 	// OIDCProviders 是按配置启用的 OIDC 提供方，类型名一经使用不应更换。
 	OIDCProviders []OIDCProvider
 	// WeChatAPIBaseURL / AppleJWKSURL / GoogleJWKSURL / Facebook* 供测试与代理部署覆盖；生产保持默认。
@@ -143,6 +155,7 @@ type Config struct {
 var facebookVersionPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+$`)
 
 var alipayAppIDPattern = regexp.MustCompile(`^[0-9]{16}$`)
+var qqAppIDPattern = regexp.MustCompile(`^[0-9]{1,20}$`)
 
 func cloneProfileAttributesConfig(c *user.ProfileAttributesConfig) *user.ProfileAttributesConfig {
 	if c == nil {
@@ -171,6 +184,9 @@ func (c Config) providerKinds() []enum.IdentityKind {
 	if len(c.AlipayApps) > 0 {
 		kinds = append(kinds, enum.IdentityAlipay)
 	}
+	if len(c.QQAppIDs) > 0 {
+		kinds = append(kinds, enum.IdentityQQ)
+	}
 	for _, p := range c.OIDCProviders {
 		kinds = append(kinds, p.Kind)
 	}
@@ -185,6 +201,10 @@ func boolPtr(b bool) *bool { return &b }
 
 func (c Config) alipayConfig() idp.AlipayConfig {
 	return idp.AlipayConfig{Apps: slices.Clone(c.AlipayApps), SubjectMode: c.AlipaySubjectMode, GatewayURL: c.AlipayGatewayURL}
+}
+
+func (c Config) qqConfig() idp.QQConfig {
+	return idp.QQConfig{AppIDs: slices.Clone(c.QQAppIDs), SubjectMode: c.QQSubjectMode, APIBaseURL: c.QQAPIBaseURL}
 }
 
 func (c *Config) applyDefaults() {
@@ -238,6 +258,13 @@ func (c *Config) applyDefaults() {
 	if c.AlipayGatewayURL == "" {
 		c.AlipayGatewayURL = "https://openapi.alipay.com/gateway.do"
 	}
+	c.QQAppIDs = slices.Clone(c.QQAppIDs)
+	if c.QQSubjectMode == "" {
+		c.QQSubjectMode = QQSubjectModeUnionID
+	}
+	if c.QQAPIBaseURL == "" {
+		c.QQAPIBaseURL = "https://graph.qq.com"
+	}
 	def(&c.AppleNonceTTL, 10*time.Minute)
 	def(&c.GoogleNonceTTL, 10*time.Minute)
 	def(&c.FacebookNonceTTL, 10*time.Minute)
@@ -281,6 +308,9 @@ func (c Config) Validate() error {
 func (c Config) validateBase() error {
 	c.applyDefaults()
 	if err := idp.ValidateAlipayConfig(c.alipayConfig()); err != nil {
+		return fmt.Errorf("accountkit: %w", err)
+	}
+	if err := idp.ValidateQQConfig(c.qqConfig()); err != nil {
 		return fmt.Errorf("accountkit: %w", err)
 	}
 	kinds := map[enum.IdentityKind]bool{}
@@ -642,6 +672,25 @@ func ConfigFromEnv(prefix string) (Config, error) {
 			seen[appID] = true
 			base := "ALIPAY_" + appID + "_"
 			c.AlipayApps = append(c.AlipayApps, AlipayApp{AppID: appID, PrivateKey: os.Getenv(prefix + base + "PRIVATE_KEY"), AlipayPublicKey: os.Getenv(prefix + base + "PUBLIC_KEY")})
+		}
+	}
+	if raw, ok := os.LookupEnv(prefix + "QQ_SUBJECT_MODE"); ok {
+		c.QQSubjectMode = QQSubjectMode(raw)
+		if c.QQSubjectMode != QQSubjectModeUnionID && c.QQSubjectMode != QQSubjectModeOpenID {
+			fail("QQ_SUBJECT_MODE", errors.New("must be UNIONID or OPENID"))
+		}
+	}
+	c.QQAPIBaseURL = str("QQ_API_BASE_URL")
+	if raw := str("QQ_APP_IDS"); raw != "" {
+		seen := map[string]bool{}
+		for _, item := range strings.Split(raw, ",") {
+			appID := strings.TrimSpace(item)
+			if !qqAppIDPattern.MatchString(appID) || seen[appID] {
+				fail("QQ_APP_IDS", errors.New("entries must be unique AppIDs of 1-20 ASCII digits"))
+				break
+			}
+			seen[appID] = true
+			c.QQAppIDs = append(c.QQAppIDs, appID)
 		}
 	}
 	if s := str("OIDC_PROVIDERS"); s != "" {

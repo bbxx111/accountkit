@@ -1,4 +1,4 @@
-// Package idp 把第三方登录凭证换成已验证的身份（微信/支付宝标识、Apple/Google/OIDC sub）。
+// Package idp 把第三方登录凭证换成已验证的身份（微信/支付宝/QQ 标识、Apple/Google/OIDC sub）。
 //
 // 只做校验与取值，不碰数据库；换回的第三方 access/refresh token 用完即弃，
 // 不落日志、不返回给调用方。错误以哨兵表达，HTTP 层按 errors.Is 映射。

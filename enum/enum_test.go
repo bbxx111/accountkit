@@ -152,3 +152,9 @@ func TestEventProviderDataDeletionProcessedAppended(t *testing.T) {
 		t.Fatalf("parse: %v %v", e, err)
 	}
 }
+
+func TestIdentityQQIsBuiltinThirdParty(t *testing.T) {
+	if enum.IdentityQQ != "QQ" || !enum.IdentityQQ.IsBuiltin() || !enum.IdentityQQ.Valid() || enum.IdentityQQ.IsAnchor() || enum.IdentityQQ.IsChannel() {
+		t.Fatal("QQ must be a valid builtin third-party kind")
+	}
+}

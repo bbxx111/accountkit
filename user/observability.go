@@ -61,6 +61,8 @@ func observationMethod(kind enum.IdentityKind) ob.Method {
 		return ob.MethodFacebook
 	case enum.IdentityAlipay:
 		return ob.MethodAlipay
+	case enum.IdentityQQ:
+		return ob.MethodQQ
 	case enum.IdentityKindUnspecified:
 		return ob.MethodUnknown
 	default:
@@ -485,6 +487,8 @@ func observationDependency(kind enum.IdentityKind, provider idp.Provider) ob.Dep
 		return ob.DependencyVerifyFacebook
 	case enum.IdentityAlipay:
 		return ob.DependencyVerifyAlipay
+	case enum.IdentityQQ:
+		return ob.DependencyVerifyQQ
 	}
 	if _, ok := provider.(*idp.OIDC); ok {
 		return ob.DependencyVerifyOIDC

@@ -138,3 +138,7 @@ OAuth 成功节点不强制要求通用业务接口的 `code=10000`：根据该�
 ## Open Questions
 
 无影响规格或任务拆分的待决策项。真实应用的权限开通、SDK 集成细节与分组返回结果在联调任务中核验；当前尚无真实联调证据。
+
+## Implementation Notes
+
+2026-10-24 的额外非 race 全量验证暴露既有 `TestReplaceIdentityConcurrent/same-old-identity` 的断言遗漏：赢家可能在输家读取有效会话与旧身份之间提交，输家合法返回 `ErrNotFound`，原测试只接受 `ErrInvalidToken`。[身份换绑规格](../../specs/identity-replacement/spec.md) 已明确允许并发输家按时序返回 404 或认证失效。本次仅让该测试接受这两个结果，保留恰好一个成功及身份数量检查；换绑生产代码与规格均不改变。原始失败日志保留，修复后进行真实数据库重复测试、定向 race 与全量非 race 回归，结果记入 verification.md。

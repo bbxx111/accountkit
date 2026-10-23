@@ -68,6 +68,10 @@ Facebook 登录使用 `ACCOUNTKIT_FACEBOOK_APP_ID`、`ACCOUNTKIT_FACEBOOK_APP_SE
 
 纯支付宝部署设 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS=ALIPAY`、`ACCOUNTKIT_REQUIRED_IDENTITY_KINDS=[]`，无需 SMTP；默认 Required 仍需手机/邮箱补全。客户端完成极简 SDK 的 auth_user 与一次性 state 核对后提交 `POST /v1/users:signInWithIdp` 的 `{"kind":"ALIPAY","credential":{"app_id":"2026000000000001","code":"synthetic-code"}}`，本服务无 authInfo 或回调端点。默认 UNIONID 的实际跨 App 共享由宿主核对真实应用分组；OPENID 按 AppID 隔离，不自动迁移。配置指纹改变会拒绝旧 pending，所有副本须一致。资料降级及后续成功登录空字段补填、Flutter 桥接与宿主上线前真机清单见[支付宝接入指南](alipay-sign-in.md)。本地 Compose 默认 EMAIL，须用 override 或实际部署环境显式传入上述变量并覆盖 E/R，单改 `.env` 不会自动传递任意变量。
 
+QQ App SDK 登录使用 `ACCOUNTKIT_QQ_APP_IDS`（逗号分隔的唯一 1–20 位数字 AppID）、`ACCOUNTKIT_QQ_SUBJECT_MODE`（默认 `UNIONID`）和测试用 `ACCOUNTKIT_QQ_API_BASE_URL`；不需要 AppKey。显式 Enabled 含 QQ 却未配置应用时启动失败并指出 `ACCOUNTKIT_QQ_APP_IDS`，非法值只报告变量名。
+
+纯 QQ 部署设 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS=QQ`、`ACCOUNTKIT_REQUIRED_IDENTITY_KINDS=[]`，无需 SMTP；默认 Required 仍要求手机号或邮箱补全。migrate 不需要 QQ 配置，但已提供的非法 QQ 配置会被拒绝。
+
 以下名称均加 `ACCOUNTSVC_` 前缀：
 
 | 变量 | 默认/要求 |

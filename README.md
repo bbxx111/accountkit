@@ -454,6 +454,9 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 | `ALIPAY_<APPID>_PUBLIC_KEY` | AppID 已配置时必填 | 多行 PEM 支付宝 RSA 公钥，PKCS#1 / SPKI，至少 2048 位；首版仅普通公钥模式，不接受证书 |
 | `ALIPAY_SUBJECT_MODE` | `UNIONID` | Go 字段 `AlipaySubjectMode`，全局固定 `UNIONID` / `OPENID`；显式空值、空白、小写或其他值非法 |
 | `ALIPAY_GATEWAY_URL` | `https://openapi.alipay.com/gateway.do` | Go 字段 `AlipayGatewayURL`；HTTPS 绝对地址，无用户信息、查询或 fragment，仅数值回环测试地址允许 HTTP |
+| `QQ_APP_IDS` | 空（未启用） | 逗号分隔的不同 QQ 互联移动应用 AppID，每项 1–20 位 ASCII 数字；Go 配置为 `QQAppIDs []string`；App SDK 校验不需要 AppKey |
+| `QQ_SUBJECT_MODE` | `UNIONID` | Go 字段 `QQSubjectMode`，全局固定 `UNIONID` / `OPENID`；显式空值、空白、小写或其他值启动失败；UNIONID 需在 QQ 互联开通 UnionID |
+| `QQ_API_BASE_URL` | `https://graph.qq.com` | Go 字段 `QQAPIBaseURL`；HTTPS 绝对地址，无用户信息、查询或 fragment；HTTP 仅限数值回环测试地址 |
 | `OIDC_PROVIDERS` | 空（未启用） | 逗号分隔的 OIDC 类型名，格式 `^[A-Z][A-Z0-9_]{1,31}$`，不得为内置类型名；一经使用不应更换 |
 | `OIDC_<KIND>_ISSUER` / `_JWKS_URL` | 必填 | 绝对 http(s) URL；issuer 与 token `iss` 精确比较；不做 discovery |
 | `OIDC_<KIND>_CLIENT_IDS` | 必填 | 逗号分隔；`aud` 及出现的 `azp` 须在其中 |

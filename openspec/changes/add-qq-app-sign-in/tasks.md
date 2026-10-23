@@ -2,9 +2,9 @@
 
 ## 1. 类型与应用配置
 
-- [ ] 1.1 在 `enum` 追加内置 QQ，同步 `builtinKindOrder`、`providerKinds` 与 OIDC 保留名检查，保持 FACEBOOK、ALIPAY 与其他类型；以枚举、注册表、OIDC 占用 QQ 启动失败及端点类型限制测试验证，无 SQL/schema 变化。
-- [ ] 1.2 增加 `QQAppIDs`、独立 `QQSubjectMode` 与 `QQAPIBaseURL` 库配置及纯函数静态校验；以空列表禁用、空项/重复/非数字/超长 AppID、空白/小写/AUTO 模式、非 HTTPS 非回环地址、带 userinfo/查询/fragment 地址及配置深拷贝测试验证，错误不回显配置值。
-- [ ] 1.3 在 `ConfigFromEnv(prefix)` 增加 QQ_APP_IDS、QQ_SUBJECT_MODE、QQ_API_BASE_URL 解析，更新 README 配置表；以自定义前缀、未设置、非法显式配置测试验证，确认无文件/网络 I/O。
+- [x] 1.1 在 `enum` 追加内置 QQ，同步 `builtinKindOrder`、`providerKinds` 与 OIDC 保留名检查，保持 FACEBOOK、ALIPAY 与其他类型；以枚举、注册表、OIDC 占用 QQ 启动失败及端点类型限制测试验证，无 SQL/schema 变化。
+- [x] 1.2 增加 `QQAppIDs`、独立 `QQSubjectMode` 与 `QQAPIBaseURL` 库配置及纯函数静态校验；以空列表禁用、空项/重复/非数字/超长 AppID、空白/小写/AUTO 模式、非 HTTPS 非回环地址、带 userinfo/查询/fragment 地址及配置深拷贝测试验证，错误不回显配置值。
+- [x] 1.3 在 `ConfigFromEnv(prefix)` 增加 QQ_APP_IDS、QQ_SUBJECT_MODE、QQ_API_BASE_URL 解析，更新 README 配置表；以自定义前缀、未设置、非法显式配置测试验证，确认无文件/网络 I/O。
 
 ## 2. 令牌校验
 

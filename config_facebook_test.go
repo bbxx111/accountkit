@@ -18,8 +18,17 @@ func TestFacebookRequiredKindRejected(t *testing.T) {
 	if err == nil {
 		_, err = accountkit.New(c, baseDeps(t))
 	}
-	if err == nil || strings.Contains(err.Error(), "s3cr3t-value") {
-		t.Fatalf("FACEBOOK in RequiredIdentityKinds must fail: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "RequiredIdentityKinds") || strings.Contains(err.Error(), "s3cr3t-value") {
+		t.Fatalf("FACEBOOK in RequiredIdentityKinds must fail naming RequiredIdentityKinds: %v", err)
+	}
+}
+
+func TestFacebookFieldsIgnoredWhenAppIDEmpty(t *testing.T) {
+	c := minimal()
+	c.FacebookGraphAPIVersion = "bad"
+	c.FacebookNonceTTL = time.Second
+	if err := c.Validate(); err != nil {
+		t.Fatalf("disabled facebook must not validate its other fields: %v", err)
 	}
 }
 
@@ -97,7 +106,7 @@ func TestFacebookDefaultEnablement(t *testing.T) {
 	c = minimal()
 	c.EnabledIdentityKinds = []enum.IdentityKind{enum.IdentityEmail, enum.IdentityFacebook}
 	c.RequiredIdentityKinds = []enum.IdentityKind{}
-	if _, err := accountkit.New(c, baseDeps(t)); err == nil {
-		t.Fatal("explicit FACEBOOK without App ID must fail")
+	if _, err := accountkit.New(c, baseDeps(t)); err == nil || !strings.Contains(err.Error(), "FACEBOOK") {
+		t.Fatalf("explicit FACEBOOK without App ID must fail naming FACEBOOK: %v", err)
 	}
 }

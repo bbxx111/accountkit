@@ -341,10 +341,10 @@ func (c Config) validateBase() error {
 	if c.FacebookAppID != "" && c.FacebookAppSecret == "" {
 		return errors.New("accountkit: FacebookAppSecret is required when FacebookAppID is set")
 	}
-	if !facebookVersionPattern.MatchString(c.FacebookGraphAPIVersion) {
+	if c.FacebookAppID != "" && !facebookVersionPattern.MatchString(c.FacebookGraphAPIVersion) {
 		return errors.New(`accountkit: FacebookGraphAPIVersion must match ^v[0-9]+\.[0-9]+$`)
 	}
-	if c.FacebookNonceTTL < time.Minute {
+	if c.FacebookAppID != "" && c.FacebookNonceTTL < time.Minute {
 		return errors.New("accountkit: FacebookNonceTTL must be >= 1m")
 	}
 	for name, raw := range map[string]string{"WeChatAPIBaseURL": c.WeChatAPIBaseURL, "AppleJWKSURL": c.AppleJWKSURL, "GoogleJWKSURL": c.GoogleJWKSURL,

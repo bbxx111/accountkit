@@ -307,10 +307,11 @@ func TestReplaceIdentityConcurrent(t *testing.T) {
 			close(start)
 			wg.Wait()
 			successes := 0
+			// 赢家可在预检读取会话与身份之间提交，输家因此可能看到已删除身份。
 			for _, err := range errs {
 				if err == nil {
 					successes++
-				} else if sameUser && !errors.Is(err, user.ErrInvalidToken) {
+				} else if sameUser && !errors.Is(err, user.ErrInvalidToken) && !errors.Is(err, user.ErrNotFound) {
 					t.Fatalf("same identity loser: %v", err)
 				} else if !sameUser && !errors.Is(err, user.ErrIdentityConflict) {
 					t.Fatalf("same target loser: %v", err)

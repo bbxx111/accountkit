@@ -1,6 +1,6 @@
 # 支付宝 App 极简登录
 
-本指南覆盖 Android/iOS 等原生 App 的支付宝极简 SDK 授权，以及 accountkit/accountsvc 的既有第三方登录与绑定入口。当前后端已用合成签名网关和真实 PostgreSQL 验证；尚无真实 App、授权权限和应用分组联调证据，上线前须完成本文末尾的真机验收。
+本指南覆盖 Android/iOS 等原生 App 的支付宝极简 SDK 授权，以及 accountkit/accountsvc 的既有第三方登录与绑定入口。库的自动验收使用正式 HTTP 入口、实际提供方、独立签名网关及真实 PostgreSQL/Redis，不依赖终端设备。本文末尾的真实 SDK、授权权限和应用分组检查属于宿主上线前接入清单，当前尚未执行。
 
 ## 开放平台与普通公钥
 
@@ -89,8 +89,21 @@ ALIPAY 首次和后续**成功登录**按字段补填仍为空的 `display_name`
 
 本变更无 SQL/schema 或迁移变化。禁用 ALIPAY 只停止新验证；历史身份仍可按现有规则列出、解绑和匿名化。回退前验证目标版本对未登记历史类型的兼容性，不改 subject、数据库版本/dirty 或清理 Redis 来替代身份迁移。观测口径见 [指标指南](metrics.md)。
 
-## 真机验收记录
+## 库侧自动验收
 
-上线前使用有权限的真实 App，记录平台、SDK 版本、安装/未安装、取消/拒绝、回跳 state 成功及不匹配/重复、一次性 code 消费、完整会话与 pending、资料成功/正常缺字段/权限失败后的登录结果。再用同一分组两个 AppID 的同一用户验证 UnionID 一致、命中同一账号及首次资料失败后后续补填。只保留脱敏结论，不保存授权码、token、签名或用户资料。
+`TestAlipayHTTPLoginContract` 通过正式门面与终端用户 handler，连接实际 Alipay Provider、本地独立签名网关和真实 PostgreSQL/Redis，验证登录、本人资料、刷新、错误凭证及资料降级后补填。`TestAlipayHTTPMultiAppIdentityContract` 验证两个 AppID 的独立密钥、UNIONID 共用账号、OpenID 合并、OPENID 应用隔离和不自动升级，以及跨 App 补填与非空资料保护。普通测试缺少真实依赖时明确 skip，CI 必需清单要求两项实际 PASS。
 
-当前这些真实 App 和应用分组条件尚未具备，OpenSpec 6.2/6.3 保持未完成；本地签名网关、真实数据库及 race 测试不能替代真机联调。换码协议参见官方 [alipay.system.oauth.token](https://opendocs.alipay.com/open/02ailc)，资料接口参见支付宝官方 SDK 的 [AlipayUserInfoShareRequest](https://github.com/alipay/alipay-sdk-java-all/blob/master/v2/src/main/java/com/alipay/api/request/AlipayUserInfoShareRequest.java)。
+这些证据证明库对协议声明的处理，不证明真实 SDK 回跳、支付宝权限或控制台分组配置；不会把模拟平台数据描述为实际平台返回。
+
+## 宿主上线前接入检查清单
+
+由宿主在接入或上线前完成以下检查，记录实际平台/SDK 版本和脱敏结论：
+
+- [ ] 实际 SDK 的安装/未安装、取消/拒绝、生命周期与回跳正确；随机 state 能一次性核对，错误/过期/重复回跳被拒绝。
+- [ ] 实际应用权限允许兑换授权码及获取期望昵称/头像；实际授权结果可以建立本系统会话或按业务策略进入 pending。
+- [ ] 同一控制台分组下两个 AppID 对同一测试用户返回相同 UnionID，并进入同一个 accountkit 账号。
+- [ ] 实际资料缺失/权限失败时的交互符合宿主产品要求；后续取得资料可补填空字段，非空资料不覆盖。
+
+只保留脱敏结论，不保存授权码、token、签名或用户资料。此清单是宿主责任记录，勾选状态不计入库的 OpenSpec 实施进度。
+
+当前宿主真机与应用分组检查尚未执行，保留在接入清单，不作为库 CI 或实施完成的阻塞项，也不记为已通过。原真机任务已按职责边界调整为库侧自动契约验收；模拟网关、真实数据库及 race 不替代宿主真实平台联调。换码协议参见官方 [alipay.system.oauth.token](https://opendocs.alipay.com/open/02ailc)，资料接口参见支付宝官方 SDK 的 [AlipayUserInfoShareRequest](https://github.com/alipay/alipay-sdk-java-all/blob/master/v2/src/main/java/com/alipay/api/request/AlipayUserInfoShareRequest.java)。

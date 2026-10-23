@@ -42,7 +42,7 @@ cred := user.IdpCredential{
 }
 ```
 
-App 先完成极简 SDK 的 `auth_user` 授权和一次性 state 回跳核对，再提交 code；库不提供 authInfo 或回调端点。兑换 code 不重试，超时后重新授权。资料可降级；仅 ALIPAY 的后续成功登录会补填本次可信声明对应的空昵称/头像，主动清空也可补填，非空值保留，重复绑定不增加后续补填。配置片段、Flutter 桥接、分组与真机验收见[支付宝接入指南](alipay-sign-in.md)。
+App 先完成极简 SDK 的 `auth_user` 授权和一次性 state 回跳核对，再提交 code；库不提供 authInfo 或回调端点。兑换 code 不重试，超时后重新授权。资料可降级；仅 ALIPAY 的后续成功登录会补填本次可信声明对应的空昵称/头像，主动清空也可补填，非空值保留，重复绑定不增加后续补填。配置片段、Flutter 桥接、库侧自动验收和宿主真机检查见[支付宝接入指南](alipay-sign-in.md)。
 
 ## Facebook 登录
 

@@ -33,11 +33,11 @@
 - [x] 5.3 追加固定 alipay、verify_alipay、alipay_profile_unavailable 观测取值与投影允许列表；测试两次网络请求仅一次验证器调用、资料降级登录成功、最终领域拒绝、外层取消、正常缺字段及秘密不进入标签，更新指标文档。
 - [x] 5.4 更新 `docs/go-integration.md`、`docs/accountsvc.md`、README 与 `deploy/accountsvc/.env.example`；对照测试核对多 App PEM 配置、模式默认值、配置指纹以及库 New 无 I/O，示例不包含真实凭据。
 
-## 6. App 接入与端到端验收
+## 6. App 接入说明与库侧契约验收
 
 - [x] 6.1 提供 App 极简 SDK 接入文档：auth_user、随机 state 关联/一次性核对、SDK 回跳、安装检测/取消、提交统一凭证、code 消费后重试需重新授权；核对官方接口和配置示例，明确 Flutter 需极简桥接而不是直接套用完整版 auth 方法。
-- [ ] 6.2 在具有授权能力的真实 App 环境验证极简 SDK 到账号会话的链路、昵称/头像及缺字段处理；记录实际平台/SDK 和结果到 verification.md，不记录真实凭证，未有环境时保持任务未完成并说明缺口。
-- [ ] 6.3 使用同一应用分组的两个 AppID 验证相同用户返回相同 UnionID 并登录同一账号，验证资料首次失败后可补填；保存脱敏验收结论，不能以 mock 代替实际分组能力证据。
+- [ ] 6.2 使用正式根门面和 HTTP handler、实际 Alipay Provider、本地独立签名网关与真实 PostgreSQL/Redis，验证登录、本人资料读取、刷新、凭证拒绝及资料失败后补填；TestAlipayHTTPLoginContract 实际通过且纳入必需清单，记录库侧保证范围。
+- [ ] 6.3 经正式 HTTP 入口配置两个 AppID 与独立密钥，验证 UNIONID 同号单账号/身份及 OpenID 元数据合并、OPENID 应用隔离与不自动升级，以及跨 App 空字段补填；TestAlipayHTTPMultiAppIdentityContract 实际通过且纳入必需清单，不将模拟值相同描述为真实平台分组验证。
 
 ## 7. 综合验证与交付记录
 
@@ -47,5 +47,6 @@
 
 ## Workflow follow-up
 
+- 宿主上线前独立验证真实 SDK、设备安装/取消/回跳 state、授权权限、昵称头像及同一控制台分组两个 App 的实际 UnionID 一致性；清单见 docs/alipay-sign-in.md。该宿主验收尚未执行，不作为库 CI 或本变更实施完成的阻塞任务，不计作已通过。
 - 用户明确要求后再提交、推送、创建 PR 或归档，遵守独立 merge commit 的集成规则。
 - Facebook 变更尚未归档；同步主规格时优先归档 Facebook 再处理支付宝，检查注册表类型和凭证场景没有被较旧增量覆盖。

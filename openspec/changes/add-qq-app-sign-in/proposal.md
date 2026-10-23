@@ -42,7 +42,7 @@ accountkit 尚未支持 QQ 身份，接入 QQ 互联移动应用 SDK 的 App 无
 ## Impact
 
 - 代码涉及 `enum`、`user/idp`（新增 QQ 提供方）、`user` 中补填判定（把现有支付宝判断收敛为按提供方集合判定）、`config.go`、`accountkit.go`、`internal/accountsvc` 和 `observability`；公开 HTTP 请求结构保持，新增可选配置与内置身份类型。
-- **依赖**：本变更修改 `add-alipay-app-sign-in` 新增的补填要求与代码。该变更已合入 develop 并归档，本分支已合入该 develop；delta 基于归档后的主规格编写。未归档的 `add-facebook-sign-in` 仍需一并核对，注册表、accountsvc、指标及资料的 delta 不得回退 FACEBOOK、ALIPAY 能力。
+- **依赖**：本变更修改 `add-alipay-app-sign-in` 新增的补填要求与代码。该变更已合入 develop 并归档，本分支已合入该 develop；delta 基于归档后的主规格编写。`add-facebook-sign-in` 已于 2026-10-24 先行归档；注册表、accountsvc、指标及资料的 delta 不得回退 FACEBOOK、ALIPAY 能力。
 - 实施需要补充测试：凭证形状与允许列表拒绝发生在外部调用之前、`client_id` 不符、上游错误分类（100016、100048 等）、JSONP 或异常响应拒绝、两种标识模式及跨 App 一致性、标识冲突、资料失败与 `is_lost` 降级、头像域名改写与拒绝、ALIPAY 与 QQ 的后续补填及并发资料更新、pending/绑定/匿名化与配置指纹。真实 PostgreSQL 验证事务行为；QQ 头像域名的 HTTPS 可用性、UnionID 打通及 App 真机登录需要真实应用联调，模拟测试不能替代。
 - 文档同步 README、Go 集成及 accountsvc 配置、兼容说明和无秘密配置模板，说明 SDK 接入、UnionID 申请、OPENID 适用场景、令牌可重放风险与模式切换风险。
 

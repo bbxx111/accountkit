@@ -9,7 +9,7 @@
 - `user/idp/facebook.go` 的 Classic 分支是"客户端交 access token、服务端确认令牌属于本 App"的先例，不做一次性限制。
 - 支付宝补填目前以三处 `kind == enum.IdentityAlipay` 判断实现：`user/service_idp.go` 中 pending 证明只保留本次净化资料，`user/service_signin_completion.go` 的已有身份登录与 pending 已归属身份两个分支调用 `seedEmptyProviderProfile`。
 - 提供方登记点：`config.go` 的 `providerKinds`/配置字段/`ConfigFromEnv`，`accountkit.go` 的提供方装配，`user/identity_policy.go` 的 `builtinKindOrder`，`enum` 内置类型，`user/observability.go` 的方法值与依赖值映射，`internal/accountsvc/config.go` 的显式启用校验与变量名映射。
-- 未归档的 `add-facebook-sign-in` 对注册表"身份类型以字符串表示""统一凭证格式"两条需求有 MODIFIED delta，其文本含 ALIPAY 但不含 QQ。
+- `add-facebook-sign-in` 曾对注册表"身份类型以字符串表示""统一凭证格式"两条需求有不含 QQ 的 MODIFIED delta；它已于 2026-10-24 先于本变更归档，主规格为本变更 delta 的基准。
 
 ## Goals / Non-Goals
 
@@ -113,7 +113,7 @@ QQ 互联不对响应签名，可信性依赖 HTTPS 与固定主机，因此与�
 - [头像域名名单可能不完整或 HTTPS 不可用] → 名单外直接丢弃不影响登录；宿主联调清单核验真实返回的主机与 HTTPS 可访问性，结果记入 verification.md 后再调整名单。
 - [QQ 不签名响应，信任边界仅为 HTTPS 与固定主机] → 禁止重定向、接口地址只允许 HTTPS（回环测试除外），严格解析响应。
 - [补填集合收敛可能改变支付宝行为] → 只替换判断表达式，支付宝既有测试全部保持并必须通过。
-- [未归档的 Facebook delta 晚于本变更归档会以不含 QQ 的文本覆盖注册表两条需求] → 本变更归档前 MUST 先归档 `add-facebook-sign-in`；若顺序无法保证，先在 Facebook delta 中补入 QQ 文本。
+- [Facebook delta 晚于本变更归档会以不含 QQ 的文本覆盖注册表两条需求] → 已处理：`add-facebook-sign-in` 于 2026-10-24 先行归档。
 
 ## Migration Plan
 

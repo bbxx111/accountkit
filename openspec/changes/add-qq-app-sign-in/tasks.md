@@ -43,5 +43,5 @@
 
 ## Workflow follow-up
 
-- 归档本变更前先归档 `add-facebook-sign-in`，或在其注册表 delta 中补入 QQ 文本，避免覆盖本变更的需求。
+- `add-facebook-sign-in` 已于 2026-10-24 先行归档，归档顺序前提已满足。
 - 归档作为单独步骤执行，归档后核对主规格中 ALIPAY、FACEBOOK、QQ 文本完整。

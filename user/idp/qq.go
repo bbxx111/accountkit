@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/bbxx111/accountkit/enum"
@@ -116,7 +117,53 @@ func (q *QQ) Verify(ctx context.Context, credential json.RawMessage) (Identity, 
 	return id, nil
 }
 
-// profile 在 Task 3 实现；此处保持无资料、无网络调用。
+// qqAvatarHosts 是允许从 HTTP 升级为 HTTPS 的 QQ 头像主机；名单外的 HTTP 地址直接丢弃。
+var qqAvatarHosts = map[string]bool{"thirdqq.qlogo.cn": true}
+
+// qqAvatarURL 只做协议升级，长度、字符与主机格式仍由领域层既有净化负责。
+func qqAvatarURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.User != nil || u.Opaque != "" || u.Host == "" {
+		return ""
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "https":
+		return raw
+	case "http":
+		if u.Port() == "" && qqAvatarHosts[strings.ToLower(u.Hostname())] {
+			u.Scheme = "https"
+			return u.String()
+		}
+	}
+	return ""
+}
+
+// profile 使用本次令牌查询资料；任何失败都只返回固定阶段错误，由 Verify 记为降级。
 func (q *QQ) profile(ctx context.Context, appID, token, openID string) (string, string, error) {
-	return "", "", nil
+	object, err := q.get(ctx, "/user/get_user_info", url.Values{"access_token": {token}, "oauth_consumer_key": {appID}, "openid": {openID}}, 3*time.Second)
+	if err != nil {
+		return "", "", err
+	}
+	ret, ok := object["ret"]
+	if !ok || string(ret) != "0" {
+		return "", "", qqFailure(ErrUnavailable, "profile result")
+	}
+	if lost, ok := object["is_lost"]; ok && string(lost) != "0" {
+		return "", "", qqFailure(ErrUnavailable, "profile data lost")
+	}
+	name, nameErr := alipayString(object, "nickname")
+	large, largeErr := alipayString(object, "figureurl_qq_2")
+	small, smallErr := alipayString(object, "figureurl_qq_1")
+	if nameErr != nil || largeErr != nil || smallErr != nil {
+		return "", "", qqFailure(ErrUnavailable, "profile fields")
+	}
+	picture := large
+	if strings.TrimSpace(picture) == "" {
+		picture = small
+	}
+	return name, qqAvatarURL(picture), nil
 }

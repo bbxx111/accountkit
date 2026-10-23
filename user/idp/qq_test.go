@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/observability"
 )
 
 const qqTestApp, qqTestApp2 = "1100000001", "1100000002"
@@ -244,5 +245,127 @@ func TestQQPolicyFingerprint(t *testing.T) {
 	}
 	if _, err := NewQQ(QQOptions{Config: QQConfig{AppIDs: []string{"bad"}}}); !errors.Is(err, ErrMisconfigured) {
 		t.Fatal("invalid config accepted")
+	}
+}
+
+func qqMeOK(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprint(w, `{"client_id":"1100000001","openid":"OPEN-ONE","unionid":"UID_ONE"}`)
+}
+
+func TestQQProfileMapping(t *testing.T) {
+	cases := []struct {
+		name, body, wantName, wantPicture string
+	}{
+		{"large avatar", `{"ret":0,"nickname":"QQ Nick","figureurl_qq_1":"https://thirdqq.qlogo.cn/40","figureurl_qq_2":"https://thirdqq.qlogo.cn/100","figureurl_2":"https://qzapp.qlogo.cn/zone"}`, "QQ Nick", "https://thirdqq.qlogo.cn/100"},
+		{"small fallback", `{"ret":0,"nickname":"QQ Nick","figureurl_qq_1":"https://thirdqq.qlogo.cn/40"}`, "QQ Nick", "https://thirdqq.qlogo.cn/40"},
+		{"empty large falls back", `{"ret":0,"nickname":"N","figureurl_qq_1":"https://thirdqq.qlogo.cn/40","figureurl_qq_2":""}`, "N", "https://thirdqq.qlogo.cn/40"},
+		{"listed http upgraded", `{"ret":0,"nickname":"N","figureurl_qq_2":"http://thirdqq.qlogo.cn/g?b=oidb&k=1&s=100"}`, "N", "https://thirdqq.qlogo.cn/g?b=oidb&k=1&s=100"},
+		{"listed host case", `{"ret":0,"nickname":"N","figureurl_qq_2":"http://ThirdQQ.QLogo.cn/a"}`, "N", "https://ThirdQQ.QLogo.cn/a"},
+		{"unlisted http dropped", `{"ret":0,"nickname":"N","figureurl_qq_2":"http://example.com/a.png"}`, "N", ""},
+		{"listed host with port dropped", `{"ret":0,"nickname":"N","figureurl_qq_2":"http://thirdqq.qlogo.cn:8080/a"}`, "N", ""},
+		{"userinfo dropped", `{"ret":0,"nickname":"N","figureurl_qq_2":"http://u@thirdqq.qlogo.cn/a"}`, "N", ""},
+		{"missing fields", `{"ret":0}`, "", ""},
+		{"unknown fields ignored", `{"ret":0,"msg":"","is_lost":0,"gender":"男","province":"P","nickname":"N"}`, "N", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, calls := qqServer(t, qqMeOK, func(w http.ResponseWriter, r *http.Request) {
+				q := r.URL.Query()
+				if q.Get("access_token") != "synthetic-token" || q.Get("oauth_consumer_key") != qqTestApp || q.Get("openid") != "OPEN-ONE" {
+					t.Error("profile query")
+				}
+				fmt.Fprint(w, tc.body)
+			})
+			id, err := newTestQQ(t, srv, QQSubjectModeUnionID, nil).Verify(context.Background(), qqCredential(qqTestApp, "synthetic-token"))
+			if err != nil || id.Name != tc.wantName || id.Picture != tc.wantPicture || calls.Load() != 2 {
+				t.Fatalf("id=%+v err=%v calls=%d", id, err, calls.Load())
+			}
+		})
+	}
+}
+
+func TestQQProfileFailuresAllowSignIn(t *testing.T) {
+	for name, handler := range map[string]func(http.ResponseWriter, *http.Request){
+		"ret nonzero": func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(w, `{"ret":1002,"msg":"请先登录","nickname":"Leaked"}`)
+		},
+		"missing ret": func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, `{"nickname":"Leaked"}`) },
+		"is_lost": func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(w, `{"ret":0,"is_lost":1,"nickname":"Leaked"}`)
+		},
+		"bad type":     func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, `{"ret":0,"nickname":7}`) },
+		"server error": func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(502) },
+		"not json":     func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, `<html>`) },
+		"timeout":      func(w http.ResponseWriter, r *http.Request) { time.Sleep(3500 * time.Millisecond) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			var logs bytes.Buffer
+			rec := &qqTestObserver{}
+			srv, _ := qqServer(t, qqMeOK, handler)
+			q, err := NewQQ(QQOptions{Config: QQConfig{AppIDs: []string{qqTestApp}, APIBaseURL: srv.URL}, Logger: slog.New(slog.NewTextHandler(&logs, nil)), Observer: rec})
+			if err != nil {
+				t.Fatal(err)
+			}
+			id, err := q.Verify(context.Background(), qqCredential(qqTestApp, "secret-token-value"))
+			if err != nil || id.Subject != "unionid:UID_ONE" || id.Name != "" || id.Picture != "" {
+				t.Fatalf("profile failure must allow sign-in without profile: %+v %v", id, err)
+			}
+			if rec.degradations.Load() != 1 {
+				t.Fatal("profile failure not observed")
+			}
+			for _, leaked := range []string{"secret-token-value", "Leaked", "请先登录"} {
+				if strings.Contains(logs.String(), leaked) {
+					t.Fatalf("log leaked %q", leaked)
+				}
+			}
+		})
+	}
+	t.Run("missing fields and dropped avatar are not degradation", func(t *testing.T) {
+		rec := &qqTestObserver{}
+		srv, _ := qqServer(t, qqMeOK, func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(w, `{"ret":0,"figureurl_qq_2":"http://example.com/a.png"}`)
+		})
+		q, _ := NewQQ(QQOptions{Config: QQConfig{AppIDs: []string{qqTestApp}, APIBaseURL: srv.URL}, Observer: rec})
+		if _, err := q.Verify(context.Background(), qqCredential(qqTestApp, "t")); err != nil || rec.degradations.Load() != 0 {
+			t.Fatalf("err=%v degradations=%d", err, rec.degradations.Load())
+		}
+	})
+	t.Run("caller cancel during profile", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		srv, _ := qqServer(t, qqMeOK, func(w http.ResponseWriter, r *http.Request) {
+			cancel()
+			<-r.Context().Done()
+		})
+		rec := &qqTestObserver{}
+		q, _ := NewQQ(QQOptions{Config: QQConfig{AppIDs: []string{qqTestApp}, APIBaseURL: srv.URL}, Observer: rec})
+		if _, err := q.Verify(ctx, qqCredential(qqTestApp, "t")); !errors.Is(err, context.Canceled) || rec.degradations.Load() != 0 {
+			t.Fatalf("cancel must abort verification: %v", err)
+		}
+	})
+}
+
+type qqTestObserver struct{ degradations atomic.Int32 }
+
+func (o *qqTestObserver) Observe(_ context.Context, v observability.Observation) {
+	if d, ok := v.(observability.DegradationObservation); ok && d.Scenario == observability.DegradationQQProfileUnavailable {
+		o.degradations.Add(int32(d.Count))
+	}
+}
+
+func TestQQAvatarURL(t *testing.T) {
+	for raw, want := range map[string]string{
+		"":                                    "",
+		"https://any.example.test/a.png":      "https://any.example.test/a.png",
+		"http://thirdqq.qlogo.cn/a":           "https://thirdqq.qlogo.cn/a",
+		"HTTP://thirdqq.qlogo.cn/a":           "https://thirdqq.qlogo.cn/a",
+		"http://qzapp.qlogo.cn/a":             "",
+		"http://thirdqq.qlogo.cn.evil.test/a": "",
+		"http://thirdqq.qlogo.cn:80/a":        "",
+		"ftp://thirdqq.qlogo.cn/a":            "",
+		"//thirdqq.qlogo.cn/a":                "",
+	} {
+		if got := qqAvatarURL(raw); got != want {
+			t.Fatalf("%q -> %q, want %q", raw, got, want)
+		}
 	}
 }

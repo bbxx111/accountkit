@@ -189,6 +189,7 @@ bash scripts/verify.sh
 - 合并统一保留独立 merge commit：任务分支合入 `develop`、`develop` 合入 `main` 时，本地使用 `git merge --no-ff <source-branch>`，即使可以快进也不省略合并提交；GitHub PR 使用 Create a merge commit，不使用 Squash and merge 或 Rebase and merge，除非用户明确另行指定。
 - 功能、行为、公共接口或架构变更通过 OpenSpec；纯文档维护可直接修改。先读相关 `openspec/specs/`，再读涉及的变更工件；未归档变更的 specs 仍在 `openspec/changes/<change>/specs/`，不能因主规格目录为空就忽略它们。
 - 遵循 `openspec/config.yaml`：工件正文中文，OpenSpec 结构标题和 SHALL/MUST 保留英文。使用已安装的 openspec CLI 和 `.agents/skills/` 中对应工作流，不假定其他版本的命令可用。
+- Windows 沙箱内若 `openspec` 报命令未找到，先检查 PATH 与全局 npm 安装目录的访问权限，不能据此断言未安装或要求用户手动执行。当前全局入口位于 `C:\Users\bbxx1\AppData\Roaming\npm`，沙箱可能无法读取该目录；确认是权限限制时，通过工具的正常提权审批运行当前任务所需的 OpenSpec 命令。提权不扩大任务授权范围，不因此额外修改规格或归档；版本以实际执行 `openspec --version` 为准，不重装、不擅自修改系统 PATH 或权限。
 - 每次变更的测试结果、审查结论和未验证项统一保存在 `openspec/changes/<change>/verification.md`，归档时随变更一起移动。`docs/` 保留长期维护的验证方法、开发指南和发布检查表，只引用各次验收记录，不另存重复报告；原始日志、测试输出和恢复材料保留在被忽略的 `.test-output/`。归档或移动记录时同步修复记录内的相对链接和外部引用。
 - 实施前读取 proposal、design、全部相关 specs 和 tasks；只在实际完成且验证后勾选任务。明确的设计偏离记录在该 change 的 design.md，并更新受影响规格/文档；不能以修复为由静默扩大范围或删减已确认要求。
 - 实施后的核验使用 `openspec validate --all --strict`；归档作为单独明确步骤执行，不能因 tasks 全勾选就报告已归档。

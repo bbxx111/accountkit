@@ -106,4 +106,4 @@
 - [x] **Step 2: 更新必需测试门禁。** 新增必须真实运行的顶层集成测试加入 required-tests，保留全部原条目；执行 generated和迁移历史检查，确认无生产SQL差异。
 - [x] **Step 3: 运行全套验证。** `GOWORK=off go build ./...`、`go vet ./...`、`go test -count=1 ./...`；使用一次性真实数据库运行事务/并发，再按 `scripts/verify.sh` 完成race与恢复演练，Windows缺CGO时使用项目Docker验证路径。
 - [x] **Step 4: 核对真实App条件。** 无真实App/应用分组凭据时，OpenSpec 6.2、6.3保持未勾选并明确限制；不把模拟接口当作端到端完成证据。
-- [ ] **Step 5: 独立最终评审、记录与提交。** 处理实质发现，更新verification实际命令/结果，运行OpenSpec全量strict、git diff --check；提交本任务文件，不推送/合并/归档。
+- [x] **Step 5: 独立最终评审、记录与提交。** 处理实质发现，更新verification实际命令/结果，运行OpenSpec全量strict、git diff --check；提交本任务文件，不推送/合并/归档。

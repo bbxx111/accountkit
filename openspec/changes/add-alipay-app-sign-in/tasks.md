@@ -43,7 +43,7 @@
 
 - [x] 7.1 设置 GOWORK=off，运行 `go build ./...`、`go vet ./...`、`go test -count=1 ./...`，并提供真实数据库执行相关事务/并发测试；逐项记录结果与 skip，不将缺数据库的单元测试结果当作集成通过。
 - [x] 7.2 按项目所需门禁维护 `scripts/required-tests.txt`，核对生成结果及迁移历史；若实施实际改了手写查询则执行 sqlc generate/check-generated，不修改任何历史迁移或冻结源，以差异检查和相应脚本验证。
-- [ ] 7.3 在具备环境时执行完整 `scripts/verify.sh`（含 race 和恢复演练），完成安全/兼容性审查并处理实质问题；检查 OpenSpec 全量严格校验，将命令、审查结论及未验证项统一记录到 verification.md，未完成验证不得勾选为通过。
+- [x] 7.3 在具备环境时执行完整 `scripts/verify.sh`（含 race 和恢复演练），完成安全/兼容性审查并处理实质问题；检查 OpenSpec 全量严格校验，将命令、审查结论及未验证项统一记录到 verification.md，未完成验证不得勾选为通过。
 
 ## Workflow follow-up
 

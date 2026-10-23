@@ -2,7 +2,7 @@
 
 ## 1. 枚举与观测常量
 
-- [ ] 1.1 在 `enum` 中增加内置类型 `FACEBOOK`，纳入内置判定，且不作为锚点或验证码渠道。用枚举测试验证往返、`IsBuiltin`、非锚点；用配置测试验证 Required 含 FACEBOOK 时启动失败，名为 FACEBOOK 的 OIDC 提供方被拒绝。
+- [x] 1.1 在 `enum` 中增加内置类型 `FACEBOOK`，纳入内置判定，且不作为锚点或验证码渠道。用枚举测试验证往返、`IsBuiltin`、非锚点；用配置测试验证 Required 含 FACEBOOK 时启动失败，名为 FACEBOOK 的 OIDC 提供方被拒绝。
 - [x] 1.2 追加审计事件类型 `PROVIDER_DATA_DELETION_PROCESSED`（27），只追加不重编号。用枚举测试验证名称往返、`Valid` 上界，并确认已有值不变。
 - [x] 1.3 在 `observability` 中追加认证方法 `facebook` 与降级场景 `facebook_cached_key_fallback`。用分类测试验证取值为固定常量。
 
@@ -16,10 +16,10 @@
 
 ## 3. 配置与装配
 
-- [ ] 3.1 `Config` 增加 Facebook 字段、默认值与校验（App ID 非空时 Secret 必填、版本格式 `vN.N`、NonceTTL 下限 1m、URL 为绝对 http(s)），并支持 `ConfigFromEnv` 的 `FACEBOOK_*`。在 design 记录选定的默认 Graph API 版本。用配置测试验证每个错误都指出字段名或变量名且不含 Secret；App ID 为空时不装配提供方。
-- [ ] 3.2 在提供方注册与默认 Enabled 推导中接入 FACEBOOK：仅在 App ID 非空时默认启用；显式启用但缺少 App ID 或 nonce 存储时启动失败。用装配测试验证这些规则，并验证补全配置指纹包含 Facebook 指纹。
+- [x] 3.1 `Config` 增加 Facebook 字段、默认值与校验（App ID 非空时 Secret 必填、版本格式 `vN.N`、NonceTTL 下限 1m、URL 为绝对 http(s)），并支持 `ConfigFromEnv` 的 `FACEBOOK_*`。在 design 记录选定的默认 Graph API 版本。用配置测试验证每个错误都指出字段名或变量名且不含 Secret；App ID 为空时不装配提供方。
+- [x] 3.2 在提供方注册与默认 Enabled 推导中接入 FACEBOOK：仅在 App ID 非空时默认启用；显式启用但缺少 App ID 或 nonce 存储时启动失败。用装配测试验证这些规则，并验证补全配置指纹包含 Facebook 指纹。
 - [ ] 3.3 用服务层测试（替身提供方加真实 PostgreSQL）验证：Limited 注册后 Classic 登录命中同一身份；资料首次填充与再次登录不覆盖；邮箱不合并账号；未启用返回 `IDP_APP_NOT_ALLOWED`。缺少 `SERVER_TEST_DB_DSN` 时如实记为未执行。
-- [ ] 3.4 用 HTTP 测试验证第三方登录与绑定接受 `{"kind":"FACEBOOK","credential":{...}}` 的两种形状，并列凭证返回 400 `CREDENTIAL_INCOMPLETE`，依赖故障返回 503 `IDP_UNAVAILABLE`。
+- [x] 3.4 用 HTTP 测试验证第三方登录与绑定接受 `{"kind":"FACEBOOK","credential":{...}}` 的两种形状，并列凭证返回 400 `CREDENTIAL_INCOMPLETE`，依赖故障返回 503 `IDP_UNAVAILABLE`。
 
 ## 4. 数据删除
 

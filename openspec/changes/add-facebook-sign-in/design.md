@@ -75,7 +75,7 @@ HTTP 客户端沿用微信的写法：不跟随重定向；传输错误先去掉
 库 `Config` 增加以下字段：
 
 - `FacebookAppID`、`FacebookAppSecret`
-- `FacebookGraphAPIVersion`：格式 `vN.N`，默认值在实现时按 Meta 当前的版本列表固定
+- `FacebookGraphAPIVersion`：格式 `vN.N`，默认 `v26.0`（2026-10-23 按 Meta 版本列表确定的最新版本，由 `idp.FacebookGraphAPIVersionDefault` 定义）
 - `FacebookNonceTTL`：默认 10m，下限 1m
 - `FacebookGraphAPIBaseURL`：默认 `https://graph.facebook.com`
 - `FacebookJWKSURL`
@@ -148,4 +148,4 @@ HTTP 客户端沿用微信的写法：不跟随重定向；传输错误先去掉
 
 ## Open Questions
 
-- `FacebookGraphAPIVersion` 的默认值在实现时按 Meta 当时的版本列表确定，不影响 spec 与任务划分。
+无。`FacebookGraphAPIVersion` 默认值已定为 `v26.0`（2026-10-23 按 Meta 版本列表的最新版本确定），见「配置」一节。

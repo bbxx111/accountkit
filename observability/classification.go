@@ -24,6 +24,7 @@ const (
 	MethodFacebook Method = "facebook"
 	MethodAlipay   Method = "alipay"
 	MethodQQ       Method = "qq"
+	MethodWeibo    Method = "weibo"
 	// MethodOIDC 汇总全部配置的 OIDC 类型；具体类型名不作为标签。
 	MethodOIDC Method = "oidc"
 	// MethodProvider 汇总宿主登记的其他第三方类型；具体类型名不作为标签。
@@ -172,6 +173,7 @@ const (
 	DependencyVerifyFacebook DependencyOperation = "verify_facebook"
 	DependencyVerifyAlipay   DependencyOperation = "verify_alipay"
 	DependencyVerifyQQ       DependencyOperation = "verify_qq"
+	DependencyVerifyWeibo    DependencyOperation = "verify_weibo"
 	// DependencyVerifyOIDC 汇总全部配置的 OIDC 提供方。
 	DependencyVerifyOIDC DependencyOperation = "verify_oidc"
 	// DependencyVerifyProvider 汇总宿主登记的其他第三方提供方。
@@ -192,6 +194,7 @@ const (
 	DegradationOIDCCachedKeyFallback     DegradationScenario = "oidc_cached_key_fallback"
 	DegradationAlipayProfileUnavailable  DegradationScenario = "alipay_profile_unavailable"
 	DegradationQQProfileUnavailable      DegradationScenario = "qq_profile_unavailable"
+	DegradationWeiboProfileUnavailable   DegradationScenario = "weibo_profile_unavailable"
 )
 
 // AuditKind separates event counts from omitted field counts.

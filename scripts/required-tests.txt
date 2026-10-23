@@ -948,3 +948,4 @@ github.com/bbxx111/accountkit/user/TestWeiboRefillDoesNotBackfillOtherProviders
 github.com/bbxx111/accountkit/user/TestWeiboPendingConcurrentOwnershipRejectsWithoutBackfill
 github.com/bbxx111/accountkit/user/TestWeiboRepeatBindingDoesNotBackfill
 github.com/bbxx111/accountkit/user/TestWeiboProviderObservationsAndFlowFingerprint
+github.com/bbxx111/accountkit/user/idp/TestWeiboHugeExpireDoesNotOverflow

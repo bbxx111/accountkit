@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -102,7 +103,11 @@ func (p *Weibo) Verify(ctx context.Context, credential json.RawMessage) (Identit
 	if uidErr != nil || uid == "" || uid == "0" || strings.HasPrefix(uid, "-") {
 		return Identity{}, weiboFailure(ErrMisconfigured, "identity fields")
 	}
-	id := Identity{Kind: enum.IdentityWeibo, Subject: "uid:" + uid, ExpireTime: time.Now().Add(time.Duration(expireIn) * time.Second)}
+	id := Identity{Kind: enum.IdentityWeibo, Subject: "uid:" + uid}
+	// 超出 time.Duration 可表示范围的剩余期限按未知处理，避免溢出成过去的截止时间。
+	if expireIn <= int64(math.MaxInt64/time.Second) {
+		id.ExpireTime = time.Now().Add(time.Duration(expireIn) * time.Second)
+	}
 	name, picture, profileErr := p.profile(ctx, c.AccessToken, uid)
 	if ctx.Err() != nil {
 		return Identity{}, ctx.Err()

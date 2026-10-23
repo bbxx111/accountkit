@@ -116,6 +116,16 @@ func TestWeiboVerify(t *testing.T) {
 	}
 }
 
+func TestWeiboHugeExpireDoesNotOverflow(t *testing.T) {
+	srv, _ := weiboServer(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"uid":2000000001,"appkey":"1234567890","expire_in":9223372036854775807}`)
+	}, nil)
+	id, err := newTestWeibo(t, srv, nil, nil).Verify(context.Background(), weiboCredential(weiboTestApp, "t"))
+	if err != nil || !id.ExpireTime.IsZero() && !id.ExpireTime.After(time.Now()) {
+		t.Fatalf("huge expire_in must not produce a past deadline: %v %v", id.ExpireTime, err)
+	}
+}
+
 func TestWeiboStringAndNumberFieldsAreEquivalent(t *testing.T) {
 	bodies := []string{
 		`{"uid":2000000001,"appkey":1234567890,"expire_in":100}`,

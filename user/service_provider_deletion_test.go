@@ -556,6 +556,63 @@ func TestProviderDataDeletion(t *testing.T) {
 		if me := stateOf(t, f, fbTokens.UserID); me.State != enum.UserActive {
 			t.Fatalf("me: %+v", me)
 		}
+		if _, err := f.svc.Refresh(ctx, fbAgain.RefreshToken, meta1); err != nil {
+			t.Fatalf("active identity session must stay: %v", err)
+		}
+	})
+
+	t.Run("scrub failure keeps committed side effects", func(t *testing.T) {
+		f := newFixture(t)
+		useFacebook(t, f, fb, noRequired)
+		phone := f.signIn(t, enum.IdentityPhone, phone1, dev1)
+		bindUnbindFb(t, f, phone)
+		if _, _, err := f.svc.BindWithIdp(ctx, principalOf(t, f, phone), facebookCred(`{"access_token":"a"}`), meta1); err != nil {
+			t.Fatal(err)
+		}
+		fbTokens := fbSignIn(t, f, "a", dev2)
+		// 测试缝：库内触发器只让“已软删的该 subject 行”的更新失败，主事务匿名化活动行不受影响。
+		for _, stmt := range []string{
+			`CREATE FUNCTION fail_scrub() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected scrub failure'; END $$`,
+			`CREATE TRIGGER fail_scrub BEFORE UPDATE ON identity FOR EACH ROW WHEN (OLD.delete_time IS NOT NULL AND OLD.provider_subject = 'asid-a') EXECUTE FUNCTION fail_scrub()`,
+		} {
+			if _, err := f.pool.Exec(ctx, stmt); err != nil {
+				t.Fatal(err)
+			}
+		}
+		t.Cleanup(func() {
+			_, _ = f.pool.Exec(context.Background(), `DROP TRIGGER IF EXISTS fail_scrub ON identity`)
+			_, _ = f.pool.Exec(context.Background(), `DROP FUNCTION IF EXISTS fail_scrub()`)
+		})
+		f.advance(time.Minute)
+		res, err := f.svc.DeleteProviderIdentityData(ctx, enum.IdentityFacebook, "asid-a", *f.clock, meta1)
+		if err == nil || res != (user.ProviderDeletionResult{}) {
+			t.Fatalf("scrub failure must return error: %+v %v", res, err)
+		}
+		if _, err := f.svc.Authenticate(ctx, fbTokens.AccessToken); err == nil {
+			t.Fatal("revoked session access token must be rejected")
+		}
+		if _, err := f.svc.Refresh(ctx, fbTokens.RefreshToken, meta1); err == nil {
+			t.Fatal("facebook-sourced session must be revoked")
+		}
+		if _, err := f.svc.Refresh(ctx, phone.RefreshToken, meta1); err != nil {
+			t.Fatalf("phone session must stay: %v", err)
+		}
+		if n := len(eventsOf(f, enum.EventIdentityUnbound)); n != 2 { // 先前普通解绑 + 本次
+			t.Fatalf("unbound events: %d", n)
+		}
+		revoked := 0
+		for _, e := range eventsOf(f, enum.EventSessionRevoked) {
+			if e.Reason == enum.RevokeIdentityUnbound.String() {
+				revoked++
+			}
+		}
+		if revoked != 1 {
+			t.Fatalf("session revoked events: %d", revoked)
+		}
+		evs := deletionEvents(f)
+		if len(evs) != 1 || evs[0].Result != enum.ResultFailure {
+			t.Fatalf("deletion events: %+v", evs)
+		}
 	})
 
 	t.Run("historical row created after request is kept", func(t *testing.T) {

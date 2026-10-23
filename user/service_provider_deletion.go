@@ -160,10 +160,6 @@ func (s *Service) DeleteProviderIdentityData(ctx context.Context, kind enum.Iden
 		res, err = ProviderDeletionResult{ConfirmationCode: res.ConfirmationCode, Status: ProviderDeletionBlocked}, nil
 		unbound, deleted, revoked = false, false, nil
 	}
-	if err == nil {
-		// 主事务已提交（含 BLOCKED）；历史解除行失败仍返回错误，重试时主流程幂等。
-		err = s.scrubUnboundProviderIdentities(ctx, kind, subject, requestTime)
-	}
 	hint := providerSubjectHint(subject)
 	tmpl := audit.AuthenticationEvent{Actor: enum.ActorSystem, UserID: target.UserID, IP: meta.IP, RequestID: meta.RequestID}
 	ev := tmpl
@@ -173,6 +169,8 @@ func (s *Service) DeleteProviderIdentityData(ctx context.Context, kind enum.Iden
 		s.record(ctx, ev)
 		return ProviderDeletionResult{}, err
 	}
+	// 主事务已提交：先发出其副作用（吊销集、审计），再清除历史行，
+	// 避免历史行失败时丢失无法重放的 revoked 列表。
 	switch {
 	case unbound:
 		s.afterRevokeAll(ctx, revoked, enum.RevokeIdentityUnbound, tmpl)
@@ -181,6 +179,11 @@ func (s *Service) DeleteProviderIdentityData(ctx context.Context, kind enum.Iden
 		s.record(ctx, unbind)
 	case deleted:
 		s.afterSoftDelete(ctx, revoked, tmpl)
+	}
+	if err := s.scrubUnboundProviderIdentities(ctx, kind, subject, requestTime); err != nil {
+		ev.Result = enum.ResultFailure
+		s.record(ctx, ev)
+		return ProviderDeletionResult{}, err
 	}
 	ev.Result, ev.Reason = enum.ResultSuccess, string(res.Status)
 	s.record(ctx, ev)
@@ -213,6 +216,7 @@ func (s *Service) scrubUnboundProviderIdentities(ctx context.Context, kind enum.
 			if err != nil {
 				return err
 			}
+			// 影响行数不检查：匿名化幂等，行可能已被并发处理。
 			if _, err := q.AnonymizeIdentity(ctx, db.AnonymizeIdentityParams{ID: row.ID, UserID: row.UserID, Replacement: repl, Now: sessionTime(s.now())}); err != nil {
 				return fmt.Errorf("user: anonymize unbound provider identity: %w", err)
 			}

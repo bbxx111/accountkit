@@ -96,19 +96,48 @@ type providerProfile struct {
 }
 
 type providerMeta struct {
+	UnionID string            `json:"unionid,omitempty"`
 	OpenIDs map[string]string `json:"openids,omitempty"`
 	Profile *providerProfile  `json:"profile,omitempty"`
 }
 
 // refreshProviderMeta 合并本次 openid，并按非空字段更新提供方 profile。缺省字段保持原值。
 func (s *Service) refreshProviderMeta(ctx context.Context, q *db.Queries, existing db.Identity, ident idp.Identity, now time.Time) error {
+	pm, changed, err := mergeProviderMeta(existing.ProviderMeta, ident)
+	if err != nil {
+		return err
+	}
+	if !changed {
+		return nil
+	}
+	b, err := json.Marshal(pm)
+	if err != nil {
+		return fmt.Errorf("user: encode provider meta: %w", err)
+	}
+	if _, err := q.UpdateIdentityProviderMeta(ctx, db.UpdateIdentityProviderMetaParams{ID: existing.ID, ProviderMeta: b, UpdateTime: now}); err != nil {
+		return fmt.Errorf("user: merge provider meta: %w", err)
+	}
+	return nil
+}
+
+// mergeProviderMeta 合并白名单元数据；标识矛盾拒绝整个操作。
+func mergeProviderMeta(existing []byte, ident idp.Identity) (providerMeta, bool, error) {
 	var pm providerMeta
-	if len(existing.ProviderMeta) > 0 {
-		if err := json.Unmarshal(existing.ProviderMeta, &pm); err != nil {
-			return fmt.Errorf("user: decode provider meta: %w", err)
+	if len(existing) > 0 {
+		if err := json.Unmarshal(existing, &pm); err != nil {
+			return providerMeta{}, false, fmt.Errorf("user: decode provider meta: %w", err)
 		}
 	}
 	changed := false
+	if ident.UnionID != "" {
+		if pm.UnionID != "" && pm.UnionID != ident.UnionID {
+			return providerMeta{}, false, ErrIdentityConflict
+		}
+		if pm.UnionID != ident.UnionID {
+			pm.UnionID = ident.UnionID
+			changed = true
+		}
+	}
 	for app, openid := range ident.OpenIDs {
 		if openid == "" {
 			continue
@@ -116,7 +145,10 @@ func (s *Service) refreshProviderMeta(ctx context.Context, q *db.Queries, existi
 		if pm.OpenIDs == nil {
 			pm.OpenIDs = map[string]string{}
 		}
-		if _, seen := pm.OpenIDs[app]; !seen {
+		if previous := pm.OpenIDs[app]; previous != "" && previous != openid {
+			return providerMeta{}, false, ErrIdentityConflict
+		}
+		if pm.OpenIDs[app] != openid {
 			pm.OpenIDs[app] = openid
 			changed = true
 		}
@@ -134,17 +166,7 @@ func (s *Service) refreshProviderMeta(ctx context.Context, q *db.Queries, existi
 			changed = true
 		}
 	}
-	if !changed {
-		return nil
-	}
-	b, err := json.Marshal(pm)
-	if err != nil {
-		return fmt.Errorf("user: encode provider meta: %w", err)
-	}
-	if _, err := q.UpdateIdentityProviderMeta(ctx, db.UpdateIdentityProviderMetaParams{ID: existing.ID, ProviderMeta: b, UpdateTime: now}); err != nil {
-		return fmt.Errorf("user: merge provider meta: %w", err)
-	}
-	return nil
+	return pm, changed, nil
 }
 
 // providerProfileFrom 不按类型区分：任何提供方返回的 name/picture 都按同一规则净化。

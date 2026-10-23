@@ -439,3 +439,32 @@ func TestConfigOIDCProviders(t *testing.T) {
 		}
 	})
 }
+
+func TestConfigWeChatMiniProgram(t *testing.T) {
+	serveEnvironment(t)
+	t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "WECHAT")
+	t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
+	t.Setenv("ACCOUNTKIT_WECHAT_MINI_PROGRAM_APPS", "mini:synthetic-mini-secret")
+	t.Setenv("ACCOUNTSVC_SMTP_PORT", "invalid-unused")
+	if _, err := LoadConfig("serve"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ACCOUNTSVC_ADMIN_ENABLED", "true")
+	t.Setenv("ACCOUNTSVC_ADMIN_ISSUER", "https://admin.example.org")
+	t.Setenv("ACCOUNTSVC_ADMIN_AUDIENCE", "mini")
+	if _, err := LoadConfig("serve"); err == nil || !strings.Contains(err.Error(), "ACCOUNTSVC_ADMIN_AUDIENCE") {
+		t.Fatalf("audience must be isolated: %v", err)
+	}
+	t.Setenv("ACCOUNTSVC_ADMIN_ENABLED", "false")
+	t.Setenv("ACCOUNTSVC_ADMIN_ISSUER", "")
+	t.Setenv("ACCOUNTSVC_ADMIN_AUDIENCE", "")
+	for _, tc := range []struct{ key, value string }{{"WECHAT_SUBJECT_MODE", "synthetic-mini-secret"}, {"WECHAT_MINI_PROGRAM_APPS", "invalid-synthetic-mini-secret"}} {
+		t.Run(tc.key, func(t *testing.T) {
+			t.Setenv("ACCOUNTKIT_"+tc.key, tc.value)
+			_, err := LoadConfig("serve")
+			if err == nil || !strings.Contains(err.Error(), "ACCOUNTKIT_"+tc.key) || strings.Contains(err.Error(), "synthetic-mini-secret") {
+				t.Fatalf("unsafe config error: %v", err)
+			}
+		})
+	}
+}

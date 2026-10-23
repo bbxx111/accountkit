@@ -58,3 +58,8 @@ func (a *Alipay) PolicyFingerprint() string {
 	}
 	return configurationFingerprint("alipay:"+string(a.config.subjectMode), a.config.gatewayURL, apps)
 }
+
+// PolicyFingerprint 包含应用集合、模式与接口地址；QQ 校验不使用秘密。
+func (q *QQ) PolicyFingerprint() string {
+	return configurationFingerprint("qq:"+string(q.config.subjectMode), q.config.baseURL, append([]string(nil), q.config.appIDs...))
+}

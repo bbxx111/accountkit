@@ -189,6 +189,7 @@ const (
 	DegradationFacebookCachedKeyFallback DegradationScenario = "facebook_cached_key_fallback"
 	DegradationOIDCCachedKeyFallback     DegradationScenario = "oidc_cached_key_fallback"
 	DegradationAlipayProfileUnavailable  DegradationScenario = "alipay_profile_unavailable"
+	DegradationQQProfileUnavailable      DegradationScenario = "qq_profile_unavailable"
 )
 
 // AuditKind separates event counts from omitted field counts.

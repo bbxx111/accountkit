@@ -261,13 +261,14 @@ r.Route("/v1", func(r chi.Router) {
 
 所有接收凭证的端点使用同一信封；手机/邮箱为 `{"kind":"PHONE","credential":{"target","code_id","code"}}`。旧的 `phone`/`email`/`wechat`/`apple`/`google` 成员返回 400 `MALFORMED_BODY`；`kind` 或 `credential` 缺失、credential 字段缺失或未知为 400 `CREDENTIAL_INCOMPLETE`，类型不属于该端点允许的类别为 400 `CREDENTIAL_KIND_NOT_ALLOWED`。完整规则见 [OpenAPI 说明](docs/openapi.md#统一凭证信封)。
 
-- **微信**：服务端用 `WeChatApps` 中对应的 secret 调 `sns/oauth2/access_token` 取 `unionid`（身份 subject）与 `openid`（按 app_id 存入 `provider_meta.openids`，从另一 App 登录时增量合并）。换回的微信 token 用完即弃。缺 `unionid` 视为配置错误（500 + Error 日志），不会降级用 openid。
+- **微信**：`WeChatApps` 的 OAuth 应用调用 `sns/oauth2/access_token`，`WeChatMiniProgramApps` 的小程序调用 `sns/jscode2session`；客户端均提交上述 `kind=WECHAT`、`credential.app_id/code`，不选择接口或模式。两组 AppID 必须唯一且不能含冒号，Secret 可含冒号。`WeChatSubjectMode` 对全部应用固定生效，默认为 `UNIONID`：subject 为 `unionid:<unionid>`，缺 UnionID 返回 500，不降级。`OPENID` 使用 `openid:<appid>:<openid>`，不同 AppID 相互隔离；已验证 UnionID 和 OpenID 保存到 `provider_meta.unionid/openids`，缺失不清空旧值，矛盾标识拒绝写入。微信 token、session_key 和 Secret 不保存。UnionID 模式的应用应属于同一微信开放平台。
 - **Apple**：仅 RS256；校验 `iss`、`aud ∈ AppleBundleIDs`、`exp`（30s leeway）、`nonce = sha256hex(原值)`；通过后 nonce 以 `SETNX` 登记 `AppleNonceTTL`，重复 → 400 `IDP_NONCE_REPLAYED`。JWKS 懒加载、缓存，未知 kid 触发 ≥ 60s 节流的刷新。`email` 仅在 `email_verified` 为真时作为 `hint_email` 返回，**不会**自动绑定为 EMAIL 身份。
 - **Google**：仅 RS256；`iss` 为 `https://accounts.google.com` 或 `accounts.google.com`，`aud` 以及出现的 `azp` 须在 `GoogleClientIDs`。nonce 与客户端提交的原始字符串做常量时间比较，不以 Apple 的 SHA-256 十六进制代替。JWKS 默认 `https://www.googleapis.com/oauth2/v3/certs`，懒加载并缓存；无缓存时拉取失败为 503 `IDP_UNAVAILABLE`，已有密钥在刷新失败时继续验签并单独计入 `google_cached_key_fallback`。已验证 `email` 作为成功响应或 pending 的 `hint_email` 预填，不参与查号或合并。`name` / `picture` 写入该身份的 `provider_meta.profile`；仅在该 Google 身份首次写入且账号 `display_name` 或 `avatar_url` 仍为空时填充，超长名称截到 128 个码位，非法头像地址跳过。身份列表和管理面 `:reveal` 不返回 `provider_meta`。库不保存 Google access/refresh token，也不下载头像。
 - **scope**：已知账号按当前 E/R 的全部可用身份得到 `user` 或 `user:bind`；未知第三方在默认 R 下返回 pending，补全后才关联或建号。已有 user:bind 账号绑定补齐后，新一轮刷新取得 user。
 - **错误**：400 `IDP_CREDENTIAL_INVALID` / `IDP_APP_NOT_ALLOWED`（含 IdP 未启用）/ `IDP_NONCE_REPLAYED`；503 `IDP_UNAVAILABLE`（IdP 网络、JWKS 不可得、Redis 不可用；带 `Retry-After: 1`）；500（appid/secret 无效、缺 unionid）。
 - **OIDC**：`Config.OIDCProviders` 或下表 `OIDC_*` 变量启用任意数量的配置类型。仅 RS256，`iss` 与配置精确相等，`aud` 以及出现的 `azp` 须在 client ID 列表中，`exp` 必填且允许 30 秒偏差，nonce 与原始值常量时间比较并按实例前缀与类型隔离登记（`<KeyPrefix>nonce:oidc:<KIND>:`）。生产环境的 issuer 与 JWKS 地址应使用 https；`http` 仅供测试或受信网络内代理，明文 JWKS 可被链路上的攻击者替换密钥。同一类型名不能同时出现在 `OIDCProviders` 与宿主 `user.Deps.Providers` 中，重复在 `New` 时报错。`sub` 为身份主键；`email_verified` 为真时 `email` 作为 `hint_email`；昵称与头像按配置声明名读取并与 Google 使用同一清洗与首次填充规则。JWKS 不可用为 503 `IDP_UNAVAILABLE`，缓存密钥继续验签计入 `oidc_cached_key_fallback`。指标方法统一为 `oidc`，类型名只出现在审计中。
-- **配置**：宿主前缀加 `WECHAT_APPS`、`APPLE_BUNDLE_IDS`、`APPLE_NONCE_TTL`、`GOOGLE_CLIENT_IDS`、`GOOGLE_NONCE_TTL`；`WECHAT_API_BASE_URL` / `APPLE_JWKS_URL` / `GOOGLE_JWKS_URL` 仅供测试或代理部署覆盖。空的客户端标识列表表示未启用。`Deps.HTTPClient` 默认 10 秒超时。去掉客户端标识只停止新的 Google 登录，不删除已有身份行。
+- **微信升级与模式**：带前缀 subject 不兼容历史裸 UnionID，没有旧数据转换或迁移工具；部署前须审查已有身份。模式应固定且所有实例副本一致，切换可能产生不同身份，不自动升级、降级、通过元数据关联或合并账号。切换模式或应用所属组会使未完成登录补全流程失效；只轮换 Secret 或重排列表不会。
+- **配置**：宿主前缀加 `WECHAT_APPS`、`WECHAT_MINI_PROGRAM_APPS`、`WECHAT_SUBJECT_MODE`、`APPLE_BUNDLE_IDS`、`APPLE_NONCE_TTL`、`GOOGLE_CLIENT_IDS`、`GOOGLE_NONCE_TTL`；`WECHAT_API_BASE_URL` / `APPLE_JWKS_URL` / `GOOGLE_JWKS_URL` 仅供测试或代理部署覆盖。空的客户端标识列表表示未启用。`Deps.HTTPClient` 默认 10 秒超时。去掉客户端标识只停止新的 Google 登录，不删除已有身份行。
 
 只有第三方身份的账号需要近期认证时，重新走普通 IdP 登录；同设备会话被替换，客户端更新 token pair 并确认仍为同一 user_id 后再继续敏感动作。手机/邮箱重新认证仍只更新当前会话 auth_time 和 access，不延长 refresh。纯第三方账号没有手机/邮箱自助恢复路径；普通 IdP 登录仍拒绝冷静期账号，合法管理员恢复保持。
 
@@ -427,7 +428,9 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 | `AUDIT_SOURCE` / `AUDIT_NAMESPACE` | `accountkit/<schema>` / `accountkit/<schema>/resources` | 本地默认在 New 应用；外部写侧必须显式配置稳定值，不能从请求采信 |
 | `DEFAULT_REGION` | `CN` | 无 `+` 前缀手机号的解析区域 |
 | `MAINTENANCE_INTERVAL` | `5m` | 维护 ticker 周期 |
-| `WECHAT_APPS` | 空（未启用） | `appid:secret,appid:secret`（微信登录） |
+| `WECHAT_APPS` | 空 | `appid:secret,appid:secret`（OAuth 应用） |
+| `WECHAT_MINI_PROGRAM_APPS` | 空 | 同上格式；仅配置本组也可启用微信登录 |
+| `WECHAT_SUBJECT_MODE` | `UNIONID` | 全局固定 `UNIONID` / `OPENID`；显式空值、空白或其他值非法 |
 | `APPLE_BUNDLE_IDS` | 空（未启用） | 逗号分隔（Apple 登录，id_token 的 `aud` 须在其中） |
 | `APPLE_NONCE_TTL` | `10m` | |
 | `WECHAT_API_BASE_URL` | `https://api.weixin.qq.com` | 测试/代理部署钩子 |

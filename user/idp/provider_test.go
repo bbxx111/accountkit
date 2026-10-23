@@ -73,7 +73,7 @@ func TestProvidersVerifyWellFormedCredential(t *testing.T) {
 	}
 	srv, _ := fakeWeChat(t, map[string]string{"good": `{"openid":"o_1","unionid":"u_union_1"}`})
 	w := idp.NewWeChat([]idp.App{{AppID: "wx1", Secret: "s"}}, srv.URL, srv.Client(), nil)
-	if id, err = w.Verify(ctx, json.RawMessage(`{"app_id":"wx1","code":"good"}`)); err != nil || id.Kind != enum.IdentityWeChat || id.Subject != "u_union_1" {
+	if id, err = w.Verify(ctx, json.RawMessage(`{"app_id":"wx1","code":"good"}`)); err != nil || id.Kind != enum.IdentityWeChat || id.Subject != "unionid:u_union_1" {
 		t.Fatalf("wechat verify: %+v %v", id, err)
 	}
 }

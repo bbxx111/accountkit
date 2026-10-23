@@ -241,15 +241,12 @@ func (s *Service) createProviderIdentity(ctx context.Context, q *db.Queries, use
 	}
 	subject := ident.Subject
 	var meta []byte
-	openIDs := make(map[string]string, len(ident.OpenIDs))
-	for app, oid := range ident.OpenIDs {
-		if oid != "" {
-			openIDs[app] = oid
-		}
+	pm, changed, err := mergeProviderMeta(nil, ident)
+	if err != nil {
+		return db.Identity{}, err
 	}
-	profile := providerProfileFrom(ident)
-	if len(openIDs) > 0 || profile != nil {
-		meta, err = json.Marshal(providerMeta{OpenIDs: openIDs, Profile: profile})
+	if changed {
+		meta, err = json.Marshal(pm)
 		if err != nil {
 			return db.Identity{}, fmt.Errorf("user: encode provider meta: %w", err)
 		}

@@ -807,3 +807,5 @@ github.com/bbxx111/accountkit/user/TestCompletionFlowRejectedAfterProviderConfig
 github.com/bbxx111/accountkit/user/TestUnregisteredHistoricalKind
 github.com/bbxx111/accountkit/user/TestProviderObservationLabels
 github.com/bbxx111/accountkit/TestOIDCSignInEndToEndAgainstRealDB
+github.com/bbxx111/accountkit/user/TestWeChatMetadataPersistence
+github.com/bbxx111/accountkit/user/TestWeChatPendingConfigurationFingerprint

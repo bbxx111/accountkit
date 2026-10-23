@@ -547,7 +547,7 @@ func TestIdentityBindingEndToEndAgainstRealDB(t *testing.T) {
 	const mail = "bind@shifang.co"
 
 	// Existing incomplete accounts retain user:bind under the default required policy.
-	for i, subject := range []string{"UNION-B", "UNION-C"} {
+	for i, subject := range []string{"unionid:UNION-B", "unionid:UNION-C"} {
 		uid := fmt.Sprintf("u_000000000000%d", i+1)
 		iid := fmt.Sprintf("i_000000000000%d", i+1)
 		if _, err := pool.Exec(ctx, "INSERT INTO user_account(id,state) VALUES($1,1)", uid); err != nil {

@@ -17,13 +17,17 @@ func configurationFingerprint(kind, endpoint string, applications []string) stri
 	return hex.EncodeToString(h[:])
 }
 
-// PolicyFingerprint 标识允许的应用集合，不包含 AppSecret。
+// PolicyFingerprint 标识两组应用归属、主标识模式和 API 地址，不包含 AppSecret。
 func (w *WeChat) PolicyFingerprint() string {
 	apps := make([]string, 0, len(w.secrets))
 	for app := range w.secrets {
-		apps = append(apps, app)
+		group := "oauth:"
+		if w.miniPrograms[app] {
+			group = "mini-program:"
+		}
+		apps = append(apps, group+app)
 	}
-	return configurationFingerprint("wechat", w.base, apps)
+	return configurationFingerprint("wechat:"+string(w.mode), w.base, apps)
 }
 
 // PolicyFingerprint 标识 Apple 应用允许列表和验证配置。

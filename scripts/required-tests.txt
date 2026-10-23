@@ -795,3 +795,15 @@ github.com/bbxx111/accountkit/httpapi/enduser/TestUpdateMeAvatarLegacyCapability
 github.com/bbxx111/accountkit/httpapi/enduser/TestUpdateMeAvatar
 github.com/bbxx111/accountkit/TestAvatarHTTPIntegration
 github.com/bbxx111/accountkit/TestRecoveryAvatarFixture
+github.com/bbxx111/accountkit/migrations/TestIdentityKindInitialDefinition
+github.com/bbxx111/accountkit/migrations/TestIdentityKindSmallintV1Rejected
+github.com/bbxx111/accountkit/migrations/TestIdentityKindSmallintV1WithTextColumnAccepted
+github.com/bbxx111/accountkit/migrations/TestIdentityKindDriftRejected
+github.com/bbxx111/accountkit/user/TestProviderRegistryValidation
+github.com/bbxx111/accountkit/user/TestProviderRegistryDefaultEnabledOrder
+github.com/bbxx111/accountkit/user/TestProviderDispatchErrors
+github.com/bbxx111/accountkit/user/TestProviderProfileClaimsAreKindIndependent
+github.com/bbxx111/accountkit/user/TestCompletionFlowRejectedAfterProviderConfigurationChange
+github.com/bbxx111/accountkit/user/TestUnregisteredHistoricalKind
+github.com/bbxx111/accountkit/user/TestProviderObservationLabels
+github.com/bbxx111/accountkit/TestOIDCSignInEndToEndAgainstRealDB

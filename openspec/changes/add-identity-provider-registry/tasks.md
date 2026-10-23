@@ -33,7 +33,7 @@
 - [x] 4.3 `Config.OIDCProviders` 与校验（类型格式、非内置名、不重复、issuer/JWKS 绝对 http(s)、client ID 非空、NonceTTL 默认、`NameClaims`/`PictureClaims` 的 nil 默认/空切片关闭/元素非空不重复）；OIDC 校验器按映射顺序取顶层字符串声明；`ConfigFromEnv` 读取 `OIDC_PROVIDERS` 与 `OIDC_<KIND>_*`（含 `_NAME_CLAIMS`、`_PICTURE_CLAIMS` 未设置与空串的区别）；单测覆盖缺项报错指出变量名且不泄露值、映射回退、关闭回填、非字符串声明跳过
 - [x] 4.4 观测新增 `MethodOIDC = "oidc"` 与 `oidc_cached_key_fallback`，metricdata 规范化接受新值；观测测试确认类型名不进入标签、审计记录具体类型名
 - [x] 4.5 accountsvc：读取 `ACCOUNTKIT_OIDC_*`，显式 Enabled 含未配置第三方时指出 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS`，仅 OIDC 且 Required 为空时无 SMTP 可启动，migrate 不读取；更新 `deploy/accountsvc/.env.example`、`docs/accountsvc.md`、README 配置表；accountsvc 配置测试通过
-- [ ] 4.6 数据库集成测试：OIDC 首次登录注册（Required 为空）、pending 补全、绑定、再次登录命中同一身份
+- [x] 4.6 数据库集成测试：OIDC 首次登录注册（Required 为空）、pending 补全、绑定、再次登录命中同一身份
 
 ## 5. 集成验证
 

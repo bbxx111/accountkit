@@ -29,10 +29,10 @@
 
 ## 5. 库装配、服务与观测
 
-- [ ] 5.1 在 `accountkit.go` 装配 QQ 提供方并同步 Enabled/Required 与策略指纹；集成测试验证仅 QQ 且 Required=[]、需要邮箱补全、禁用后历史 QQ 身份可列出/解绑但不能登录、配置变更拒绝旧 pending。
-- [ ] 5.2 更新 accountsvc 的 QQ 变量读取、显式启用无应用时指出 ACCOUNTKIT_QQ_APP_IDS、库错误到变量名的映射与纯第三方启动校验；配置/服务测试验证纯 QQ 无 SMTP 可启动、migrate 未配置可运行、已提供非法配置拒绝，Facebook/Alipay/OIDC 行为不变。
-- [ ] 5.3 追加 `qq`、`verify_qq`、`qq_profile_unavailable` 观测取值、`user/observability.go` 映射及 metricdata 允许列表；测试两次网络请求只计一次验证器调用、资料降级登录成功、令牌失败不计降级、外层取消、标签不含 AppID/标识/令牌，更新指标文档。
-- [ ] 5.4 更新 `docs/go-integration.md`、`docs/accountsvc.md`、README 与 `deploy/accountsvc/.env.example`；核对模式默认值、UnionID 申请、OPENID 适用场景及示例不含真实凭据。
+- [x] 5.1 在 `accountkit.go` 装配 QQ 提供方并同步 Enabled/Required 与策略指纹；集成测试验证仅 QQ 且 Required=[]、需要邮箱补全、禁用后历史 QQ 身份可列出/解绑但不能登录、配置变更拒绝旧 pending。
+- [x] 5.2 更新 accountsvc 的 QQ 变量读取、显式启用无应用时指出 ACCOUNTKIT_QQ_APP_IDS、库错误到变量名的映射与纯第三方启动校验；配置/服务测试验证纯 QQ 无 SMTP 可启动、migrate 未配置可运行、已提供非法配置拒绝，Facebook/Alipay/OIDC 行为不变。
+- [x] 5.3 追加 `qq`、`verify_qq`、`qq_profile_unavailable` 观测取值、`user/observability.go` 映射及 metricdata 允许列表；测试两次网络请求只计一次验证器调用、资料降级登录成功、令牌失败不计降级、外层取消、标签不含 AppID/标识/令牌，更新指标文档。
+- [x] 5.4 更新 `docs/go-integration.md`、`docs/accountsvc.md`、README 与 `deploy/accountsvc/.env.example`；核对模式默认值、UnionID 申请、OPENID 适用场景及示例不含真实凭据。
 
 ## 6. App 接入说明与库侧契约验收
 

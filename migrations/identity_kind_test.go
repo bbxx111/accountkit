@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -16,9 +17,25 @@ import (
 const identityKindTextDDL = `ALTER TABLE identity ALTER COLUMN kind TYPE varchar(32) COLLATE "C" USING kind::text;
 ALTER TABLE identity ADD CONSTRAINT identity_kind_format CHECK (kind ~ '^[A-Z][A-Z0-9_]{1,31}$')`
 
-// Pin the last SMALLINT definition (Google sign-in archive on develop); do not derive it
-// from today's SQL, which would silently change historical evidence.
-const smallintIdentityKindCommit = "9812144"
+// Pin SMALLINT definitions exactly: the last develop commit before this change and the
+// published v0.5.0 tag. Never derive them from today's SQL.
+var smallintIdentityKindCommits = []string{"9812144f8384683152084416a39101673b9b8ad2", "102315c3069273f7a8c3ad253c1f4ae01255f8c6"}
+
+func smallintIdentityKindV1(t *testing.T, commit string) (*pgx.ConnConfig, string, *pgx.Conn) {
+	t.Helper()
+	initial, err := exec.Command("git", "show", commit+":migrations/0001_init.up.sql").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, schema := safetyDB(t)
+	c := migrationTestConn(t, cfg, schema)
+	for _, q := range []string{"CREATE SCHEMA " + schema, string(initial), "CREATE TABLE schema_migrations(version bigint PRIMARY KEY,dirty boolean NOT NULL); INSERT INTO schema_migrations VALUES(1,false)"} {
+		if _, err := c.Exec(context.Background(), q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return cfg, schema, c
+}
 
 func TestIdentityKindInitialDefinition(t *testing.T) {
 	cfg, schema, c := consolidatedProfileAttributesInitial(t)
@@ -63,24 +80,38 @@ func TestIdentityKindInitialDefinition(t *testing.T) {
 }
 
 func TestIdentityKindSmallintV1Rejected(t *testing.T) {
-	initial, err := exec.Command("git", "show", smallintIdentityKindCommit+":migrations/0001_init.up.sql").Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, populated := range []bool{false, true} {
-		t.Run(map[bool]string{false: "empty", true: "populated"}[populated], func(t *testing.T) {
-			cfg, schema := safetyDB(t)
-			c := migrationTestConn(t, cfg, schema)
-			ctx := context.Background()
-			for _, q := range []string{"CREATE SCHEMA " + schema, string(initial), "CREATE TABLE schema_migrations(version bigint PRIMARY KEY,dirty boolean NOT NULL); INSERT INTO schema_migrations VALUES(1,false)"} {
-				if _, err := c.Exec(ctx, q); err != nil {
-					t.Fatal(err)
+	for _, commit := range smallintIdentityKindCommits {
+		for _, populated := range []bool{false, true} {
+			t.Run(commit[:7]+map[bool]string{false: "/empty", true: "/populated"}[populated], func(t *testing.T) {
+				cfg, schema, c := smallintIdentityKindV1(t, commit)
+				if populated {
+					seedRenameFlow(t, c, "sign_in_completion_flow")
 				}
+				assertIdentityKindRejected(t, cfg, schema, c, 3)
+			})
+		}
+	}
+}
+
+// Positive control: the same historical fixtures plus only the authorized column change
+// are accepted, proving the rejection above comes from the identity kind check alone.
+func TestIdentityKindSmallintV1WithTextColumnAccepted(t *testing.T) {
+	for _, commit := range smallintIdentityKindCommits {
+		t.Run(commit[:7], func(t *testing.T) {
+			cfg, schema, c := smallintIdentityKindV1(t, commit)
+			ctx := context.Background()
+			if _, err := c.Exec(ctx, identityKindTextDDL); err != nil {
+				t.Fatal(err)
 			}
-			if populated {
-				seedRenameFlow(t, c, "sign_in_completion_flow")
+			seedRenameFlow(t, c, "sign_in_completion_flow")
+			catalog, data := migrationCatalog(t, c, schema), renameDataSnapshot(t, c, "sign_in_completion_flow")
+			if err := Up(ctx, cfg, schema); err != nil {
+				t.Fatal(err)
 			}
-			assertIdentityKindRejected(t, cfg, schema, c, 3)
+			assertVersion(t, cfg, schema, 1, false)
+			if catalog != migrationCatalog(t, c, schema) || data != renameDataSnapshot(t, c, "sign_in_completion_flow") {
+				t.Fatal("accepted baseline was mutated")
+			}
 		})
 	}
 }
@@ -92,6 +123,8 @@ func TestIdentityKindDriftRejected(t *testing.T) {
 		`ALTER TABLE identity ALTER COLUMN kind TYPE varchar(32) COLLATE "default"`,
 		`ALTER TABLE identity DROP CONSTRAINT identity_kind_format`,
 		`ALTER TABLE identity DROP CONSTRAINT identity_kind_format, ADD CONSTRAINT identity_kind_format CHECK (kind ~ '^[A-Za-z]+$')`,
+		`ALTER TABLE identity DROP CONSTRAINT identity_kind_format, ADD CONSTRAINT identity_kind_format CHECK (kind ~ '^[A-Z][A-Z0-9_]{1,31}$') NOT VALID`,
+		`ALTER TABLE identity ALTER COLUMN kind DROP NOT NULL`,
 	} {
 		t.Run(ddl, func(t *testing.T) {
 			cfg, schema, c := consolidatedProfileAttributesInitial(t)
@@ -109,8 +142,8 @@ func assertIdentityKindRejected(t *testing.T, cfg *pgx.ConnConfig, schema string
 	ctx := context.Background()
 	catalog, data := migrationCatalog(t, c, schema), renameDataSnapshot(t, c, "sign_in_completion_flow")
 	for range attempts {
-		if err := Up(ctx, cfg, schema); !errors.Is(err, ErrIncompatibleBaseline) {
-			t.Fatal("incompatible identity kind accepted or lock leaked:", err)
+		if err := Up(ctx, cfg, schema); !errors.Is(err, ErrIncompatibleBaseline) || !strings.Contains(err.Error(), "identity kind") {
+			t.Fatal("incompatible identity kind accepted, rejected by another check, or lock leaked:", err)
 		}
 	}
 	assertVersion(t, cfg, schema, 1, false)

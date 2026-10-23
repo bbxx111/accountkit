@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"strings"
 	"sync"
 	"testing"
@@ -448,6 +450,12 @@ func TestProviderDataDeletion(t *testing.T) {
 				t.Fatalf("%+v: %+v %v", c, res, err)
 			}
 		}
+		for _, subject := range []string{"asid-a", "nobody"} {
+			res, err := f.svc.DeleteProviderIdentityData(ctx, enum.IdentityFacebook, subject, time.Time{}, meta1)
+			if !errors.Is(err, user.ErrInvalidArgument) || res != (user.ProviderDeletionResult{}) {
+				t.Fatalf("zero request time %s: %+v %v", subject, res, err)
+			}
+		}
 		if evs := deletionEvents(f); len(evs) != 0 {
 			t.Fatalf("invalid arguments must not be audited as processed: %+v", evs)
 		}
@@ -455,9 +463,13 @@ func TestProviderDataDeletion(t *testing.T) {
 
 	t.Run("audit failure does not change result", func(t *testing.T) {
 		f := newFixture(t)
+		// Recorder.Record 没有错误返回；失败发生在默认 Async 的底层写入，这里让 Inserter 每次失败。
+		async := audit.NewAsync(failingInserter{}, audit.AsyncOptions{QueueSize: 64, BatchSize: 1, FlushInterval: time.Millisecond, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+		async.Start(ctx)
+		defer async.Close()
 		useFacebook(t, f, fb, func(d *user.Deps) {
 			noRequired(d)
-			d.Audit = audit.Noop{}
+			d.Audit = async
 		})
 		phone := f.signIn(t, enum.IdentityPhone, phone1, dev1)
 		if _, _, err := f.svc.BindWithIdp(ctx, principalOf(t, f, phone), facebookCred(`{"access_token":"a"}`), meta1); err != nil {
@@ -471,7 +483,45 @@ func TestProviderDataDeletion(t *testing.T) {
 		if subjectRows(t, f, "asid-a") != 0 {
 			t.Fatal("identity must be anonymized regardless of audit")
 		}
+		async.Close()
+		if st := async.Stats(); st.Failed == 0 || st.Written != 0 {
+			t.Fatalf("audit write failure not exercised: %+v", st)
+		}
 	})
+
+	t.Run("unrevoked session without authentication identities", func(t *testing.T) {
+		f := newFixture(t)
+		useFacebook(t, f, fb, noRequired)
+		phone := f.signIn(t, enum.IdentityPhone, phone1, dev1)
+		if _, _, err := f.svc.BindWithIdp(ctx, principalOf(t, f, phone), facebookCred(`{"access_token":"a"}`), meta1); err != nil {
+			t.Fatal(err)
+		}
+		fbTokens := fbSignIn(t, f, "a", dev2)
+		mustExec(t, f, `DELETE FROM session_authentication_identity WHERE session_id = $1`, principalOf(t, f, phone).SessionID)
+		f.advance(time.Minute)
+		resetAuditKeep(t, f)
+		res, err := f.svc.DeleteProviderIdentityData(ctx, enum.IdentityFacebook, "asid-a", *f.clock, meta1)
+		if err == nil || !strings.Contains(err.Error(), "invariant violated") || res != (user.ProviderDeletionResult{}) {
+			t.Fatalf("%+v %v", res, err)
+		}
+		active, _ := identitiesOf(t, f, phone.UserID)
+		if !hasKind(active, enum.IdentityFacebook) || subjectRows(t, f, "asid-a") == 0 {
+			t.Fatalf("identity must stay: %+v", active)
+		}
+		if _, err := f.svc.Refresh(ctx, fbTokens.RefreshToken, meta1); err != nil {
+			t.Fatalf("facebook session must stay: %v", err)
+		}
+		evs := deletionEvents(f)
+		if len(evs) != 1 || evs[0].Result != enum.ResultFailure || len(eventsOf(f, enum.EventIdentityUnbound))+len(eventsOf(f, enum.EventSessionRevoked)) != 0 {
+			t.Fatalf("audit: %+v", f.audit.Events())
+		}
+	})
+}
+
+type failingInserter struct{}
+
+func (failingInserter) InsertBatch(context.Context, []audit.Event) (audit.BatchResult, error) {
+	return audit.BatchResult{}, errors.New("synthetic audit outage")
 }
 
 // resetAuditKeep 换上新的审计内存并保留 f.deps 中的其他修改。

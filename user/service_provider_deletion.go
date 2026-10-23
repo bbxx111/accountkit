@@ -54,6 +54,10 @@ func (s *Service) DeleteProviderIdentityData(ctx context.Context, kind enum.Iden
 	if !kind.Valid() || kind.IsAnchor() || subject == "" {
 		return ProviderDeletionResult{}, fmt.Errorf("%w: provider kind and subject are required", ErrInvalidArgument)
 	}
+	if requestTime.IsZero() {
+		// 零时间会让所有身份都显得“请求之后才创建”，请求被静默忽略。
+		return ProviderDeletionResult{}, fmt.Errorf("%w: request time is required", ErrInvalidArgument)
+	}
 	code, err := uuid.NewV7()
 	if err != nil {
 		return ProviderDeletionResult{}, fmt.Errorf("user: confirmation code: %w", err)
@@ -107,6 +111,14 @@ func (s *Service) DeleteProviderIdentityData(ctx context.Context, kind enum.Iden
 			}
 		}
 		if remaining {
+			// 与 UnbindIdentity 相同：任一未吊销会话缺少认证来源时整事务拒绝，不按未命中放行。
+			missingSources, err := q.HasSessionsWithoutAuthenticationIdentities(ctx, u.ID)
+			if err != nil {
+				return fmt.Errorf("user: check authentication source integrity: %w", err)
+			}
+			if missingSources {
+				return fmt.Errorf("user: invariant violated: unrevoked session has empty authentication identities")
+			}
 			now := sessionTime(s.now())
 			repl, err := randomHex(32)
 			if err != nil {

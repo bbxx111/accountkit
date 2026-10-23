@@ -257,6 +257,8 @@ r.Route("/v1", func(r chi.Router) {
 {"kind": "WECHAT", "credential": {"app_id": "wx…", "code": "…"}}
 {"kind": "APPLE",  "credential": {"id_token": "…", "nonce": "<客户端随机原值>"}}
 {"kind": "GOOGLE", "credential": {"id_token": "…", "nonce": "<客户端随机原值>"}}
+{"kind": "FACEBOOK", "credential": {"id_token": "…", "nonce": "<客户端随机原值>"}}
+{"kind": "FACEBOOK", "credential": {"access_token": "…"}}
 ```
 
 所有接收凭证的端点使用同一信封；手机/邮箱为 `{"kind":"PHONE","credential":{"target","code_id","code"}}`。旧的 `phone`/`email`/`wechat`/`apple`/`google` 成员返回 400 `MALFORMED_BODY`；`kind` 或 `credential` 缺失、credential 字段缺失或未知为 400 `CREDENTIAL_INCOMPLETE`，类型不属于该端点允许的类别为 400 `CREDENTIAL_KIND_NOT_ALLOWED`。完整规则见 [OpenAPI 说明](docs/openapi.md#统一凭证信封)。
@@ -266,8 +268,9 @@ r.Route("/v1", func(r chi.Router) {
 - **Google**：仅 RS256；`iss` 为 `https://accounts.google.com` 或 `accounts.google.com`，`aud` 以及出现的 `azp` 须在 `GoogleClientIDs`。nonce 与客户端提交的原始字符串做常量时间比较，不以 Apple 的 SHA-256 十六进制代替。JWKS 默认 `https://www.googleapis.com/oauth2/v3/certs`，懒加载并缓存；无缓存时拉取失败为 503 `IDP_UNAVAILABLE`，已有密钥在刷新失败时继续验签并单独计入 `google_cached_key_fallback`。已验证 `email` 作为成功响应或 pending 的 `hint_email` 预填，不参与查号或合并。`name` / `picture` 写入该身份的 `provider_meta.profile`；仅在该 Google 身份首次写入且账号 `display_name` 或 `avatar_url` 仍为空时填充，超长名称截到 128 个码位，非法头像地址跳过。身份列表和管理面 `:reveal` 不返回 `provider_meta`。库不保存 Google access/refresh token，也不下载头像。
 - **scope**：已知账号按当前 E/R 的全部可用身份得到 `user` 或 `user:bind`；未知第三方在默认 R 下返回 pending，补全后才关联或建号。已有 user:bind 账号绑定补齐后，新一轮刷新取得 user。
 - **错误**：400 `IDP_CREDENTIAL_INVALID` / `IDP_APP_NOT_ALLOWED`（含 IdP 未启用）/ `IDP_NONCE_REPLAYED`；503 `IDP_UNAVAILABLE`（IdP 网络、JWKS 不可得、Redis 不可用；带 `Retry-After: 1`）；500（appid/secret 无效、缺 unionid）。
+- **Facebook**：同时接受 Limited Login 的 ID token（`{"id_token","nonce"}`）与 Classic Login 的 access token（`{"access_token"}`），两种字段并列、缺失或为空为 400 `CREDENTIAL_INCOMPLETE`。身份 subject 是该 App 下的 Facebook 用户 id，两种凭证命中同一身份；邮箱、姓名、头像不作主键。ID token 仅 RS256，`iss` 为 `https://www.facebook.com`，`aud` 及出现的 `azp` 须等于 `FacebookAppID`，nonce 与原始值比较并登记。access token 由服务端经 Graph API `debug_token` 确认属于本 App 的用户 token，再读 `/me` 核对 id，所有调用附 `appsecret_proof`；同一 token 在有效期内可重复登录（风险见 [Go 集成指南](docs/go-integration.md#facebook-登录)）。其他 App 的凭证为 `IDP_APP_NOT_ALLOWED`；JWKS 无缓存可用、Graph 超时或 5xx 为 503 `IDP_UNAVAILABLE`，已有缓存密钥在刷新失败时继续验签并计入 `facebook_cached_key_fallback`；Graph 拒绝 App 凭据按服务端配置错误返回固定消息 500 并记录告警。`email` 只作 `hint_email`，Facebook 不提供邮箱已验证声明，不查号不合并。`FACEBOOK` 不能放入 `RequiredIdentityKinds`。数据删除回调见 [Go 集成指南](docs/go-integration.md#facebook-数据删除回调)。
 - **OIDC**：`Config.OIDCProviders` 或下表 `OIDC_*` 变量启用任意数量的配置类型。仅 RS256，`iss` 与配置精确相等，`aud` 以及出现的 `azp` 须在 client ID 列表中，`exp` 必填且允许 30 秒偏差，nonce 与原始值常量时间比较并按实例前缀与类型隔离登记（`<KeyPrefix>nonce:oidc:<KIND>:`）。生产环境的 issuer 与 JWKS 地址应使用 https；`http` 仅供测试或受信网络内代理，明文 JWKS 可被链路上的攻击者替换密钥。同一类型名不能同时出现在 `OIDCProviders` 与宿主 `user.Deps.Providers` 中，重复在 `New` 时报错。`sub` 为身份主键；`email_verified` 为真时 `email` 作为 `hint_email`；昵称与头像按配置声明名读取并与 Google 使用同一清洗与首次填充规则。JWKS 不可用为 503 `IDP_UNAVAILABLE`，缓存密钥继续验签计入 `oidc_cached_key_fallback`。指标方法统一为 `oidc`，类型名只出现在审计中。
-- **配置**：宿主前缀加 `WECHAT_APPS`、`APPLE_BUNDLE_IDS`、`APPLE_NONCE_TTL`、`GOOGLE_CLIENT_IDS`、`GOOGLE_NONCE_TTL`；`WECHAT_API_BASE_URL` / `APPLE_JWKS_URL` / `GOOGLE_JWKS_URL` 仅供测试或代理部署覆盖。空的客户端标识列表表示未启用。`Deps.HTTPClient` 默认 10 秒超时。去掉客户端标识只停止新的 Google 登录，不删除已有身份行。
+- **配置**：宿主前缀加 `WECHAT_APPS`、`APPLE_BUNDLE_IDS`、`APPLE_NONCE_TTL`、`GOOGLE_CLIENT_IDS`、`GOOGLE_NONCE_TTL`、`FACEBOOK_APP_ID`、`FACEBOOK_APP_SECRET`、`FACEBOOK_GRAPH_API_VERSION`、`FACEBOOK_NONCE_TTL`；`WECHAT_API_BASE_URL` / `APPLE_JWKS_URL` / `GOOGLE_JWKS_URL` / `FACEBOOK_GRAPH_API_BASE_URL` / `FACEBOOK_JWKS_URL` 仅供测试或代理部署覆盖。空的客户端标识列表表示未启用。`Deps.HTTPClient` 默认 10 秒超时。去掉客户端标识只停止新的 Google 登录，不删除已有身份行。
 
 只有第三方身份的账号需要近期认证时，重新走普通 IdP 登录；同设备会话被替换，客户端更新 token pair 并确认仍为同一 user_id 后再继续敏感动作。手机/邮箱重新认证仍只更新当前会话 auth_time 和 access，不延长 refresh。纯第三方账号没有手机/邮箱自助恢复路径；普通 IdP 登录仍拒绝冷静期账号，合法管理员恢复保持。
 
@@ -435,6 +438,12 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 | `GOOGLE_CLIENT_IDS` | 空（未启用） | 逗号分隔的 OAuth 客户端 ID；无客户端秘密 |
 | `GOOGLE_NONCE_TTL` | `10m` | nonce 登记下限，实际取它与 `exp` + 30s 的较大者 |
 | `GOOGLE_JWKS_URL` | `https://www.googleapis.com/oauth2/v3/certs` | 测试/代理部署钩子 |
+| `FACEBOOK_APP_ID` | 空（未启用） | Facebook App ID；非空即启用 FACEBOOK，同一实例只对接一个 App |
+| `FACEBOOK_APP_SECRET` | 空 | App ID 非空时必填；用于 Graph 调用的 `appsecret_proof` 和 `signed_request` 校验，不进入日志与响应 |
+| `FACEBOOK_GRAPH_API_VERSION` | `v26.0` | 格式 `vN.N`；仅 App ID 非空时校验。默认版本随发布升级，属于兼容变更，见发布说明 |
+| `FACEBOOK_NONCE_TTL` | `10m` | Limited Login nonce 登记下限（不小于 `1m`，仅 App ID 非空时校验），实际取它与 `exp` + 30s 的较大者 |
+| `FACEBOOK_GRAPH_API_BASE_URL` | `https://graph.facebook.com` | 测试/代理部署钩子 |
+| `FACEBOOK_JWKS_URL` | `https://www.facebook.com/.well-known/oauth/openid/jwks/` | 测试/代理部署钩子 |
 | `OIDC_PROVIDERS` | 空（未启用） | 逗号分隔的 OIDC 类型名，格式 `^[A-Z][A-Z0-9_]{1,31}$`，不得为内置类型名；一经使用不应更换 |
 | `OIDC_<KIND>_ISSUER` / `_JWKS_URL` | 必填 | 绝对 http(s) URL；issuer 与 token `iss` 精确比较；不做 discovery |
 | `OIDC_<KIND>_CLIENT_IDS` | 必填 | 逗号分隔；`aud` 及出现的 `azp` 须在其中 |

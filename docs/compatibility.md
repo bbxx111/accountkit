@@ -45,7 +45,17 @@ ALIPAY 与其他提供方有明确资料差异：首次及后续成功登录都�
 
 UNIONID 默认使用 `unionid:<unionid>`，需在 QQ 互联开通 UnionID 打通，未开通时登录返回固定 500；OPENID 使用 `openid:<app_id>:<openid>` 且不请求 UnionID。切换模式会让既有 QQ 身份无法命中，不自动迁移或合并。
 
-登录补填提供方集合现为 ALIPAY、QQ：两者首次及后续成功登录都按字段补填仍为空的显示名与头像；其他提供方仍只在首次写入身份时填充。QQ 头像仅对 `thirdqq.qlogo.cn` 的 `http://` 地址升级为 `https://`，其他 HTTP 地址丢弃。指标追加 `qq`、`verify_qq`、`qq_profile_unavailable`。无 schema/迁移变化。
+登录补填提供方集合在此版本扩展为 ALIPAY、QQ（微博登录后另加入 WEIBO）：两者首次及后续成功登录都按字段补填仍为空的显示名与头像；其他提供方仍只在首次写入身份时填充。QQ 头像仅对 `thirdqq.qlogo.cn` 的 `http://` 地址升级为 `https://`，其他 HTTP 地址丢弃。指标追加 `qq`、`verify_qq`、`qq_profile_unavailable`。无 schema/迁移变化。
+
+## 微博 App SDK 登录
+
+新增内置 `WEIBO` 及 `Config.WeiboAppIDs` / `WeiboAPIBaseURL`，沿用统一凭证信封：`{"kind":"WEIBO","credential":{"app_id","access_token"}}`，其中 `app_id` 即微博开放平台 AppKey。仅支持微博移动 SDK；无网页回调、授权码、取消授权回调或 AppSecret 配置。未配置 AppKey 时行为与升级前一致；显式设置 `EnabledIdentityKinds` 的宿主须手动加入 `WEIBO`。
+
+服务端调用 `oauth2/get_token_info` 校验令牌，`appkey` 必须等于请求的 `app_id`，另一 App 的令牌为 400 `IDP_APP_NOT_ALLOWED`；`expire_in` 为负视为令牌失效。微博 access_token 与 QQ 一样不做一次性限制，有效期内可重复登录；客户端须保密令牌。
+
+微博 uid 全局唯一且公开，subject 固定为 `uid:<uid>`，没有标识模式配置，也不写 unionid/openid 元数据；同一微博用户经任一已登记 App 登录都命中同一身份。uid 只作识别，不代表持有者证明，客户端也无法提交 uid。增删 AppKey 不改变既有身份命中，但会使未完成的登录补全失效。
+
+登录补填提供方集合现为 ALIPAY、QQ、WEIBO：三者首次及后续成功登录都按字段补填仍为空的显示名与头像；其他提供方仍只在首次写入身份时填充。微博头像只接受 HTTPS，不做协议改写，选中的头像字段为 HTTP 时丢弃头像。未审核应用超出测试用户数（21321）等应用权限错误返回固定 500。指标追加 `weibo`、`verify_weibo`、`weibo_profile_unavailable`。无 schema/迁移变化。见[微博接入指南](weibo-sign-in.md)。
 
 ## Facebook 登录与数据删除回调
 

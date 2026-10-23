@@ -4,7 +4,7 @@
 
 - [ ] 1.1 在 `enum` 中增加内置类型 `FACEBOOK`，纳入内置判定，且不作为锚点或验证码渠道。用枚举测试验证往返、`IsBuiltin`、非锚点；用配置测试验证 Required 含 FACEBOOK 时启动失败，名为 FACEBOOK 的 OIDC 提供方被拒绝。
 - [x] 1.2 追加审计事件类型 `PROVIDER_DATA_DELETION_PROCESSED`（27），只追加不重编号。用枚举测试验证名称往返、`Valid` 上界，并确认已有值不变。
-- [ ] 1.3 在 `observability` 中追加认证方法 `facebook` 与降级场景 `facebook_cached_key_fallback`。用分类测试验证取值为固定常量。
+- [x] 1.3 在 `observability` 中追加认证方法 `facebook` 与降级场景 `facebook_cached_key_fallback`。用分类测试验证取值为固定常量。
 
 ## 2. Facebook 提供方
 

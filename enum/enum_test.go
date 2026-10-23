@@ -11,7 +11,7 @@ func TestUserStateValuesArePinned(t *testing.T) {
 	if enum.UserActive != 1 || enum.UserFrozen != 2 || enum.UserPendingDeletion != 3 || enum.UserDeleted != 4 {
 		t.Fatalf("UserState values drifted: %d %d %d %d", enum.UserActive, enum.UserFrozen, enum.UserPendingDeletion, enum.UserDeleted)
 	}
-	if enum.IdentityPhone != "PHONE" || enum.IdentityEmail != "EMAIL" || enum.IdentityWeChat != "WECHAT" || enum.IdentityApple != "APPLE" || enum.IdentityGoogle != "GOOGLE" {
+	if enum.IdentityPhone != "PHONE" || enum.IdentityEmail != "EMAIL" || enum.IdentityWeChat != "WECHAT" || enum.IdentityApple != "APPLE" || enum.IdentityGoogle != "GOOGLE" || enum.IdentityFacebook != "FACEBOOK" {
 		t.Fatal("IdentityKind values drifted")
 	}
 	if enum.RevokeUserLogout != 1 || enum.RevokeReplacedByRelogin != 6 || enum.RevokeAdmin != 7 {
@@ -35,7 +35,7 @@ func TestStringAndParseRoundTrip(t *testing.T) {
 	if enum.UserPendingDeletion.String() != "PENDING_DELETION" || enum.RevokeReplacedByRelogin.String() != "REPLACED_BY_RELOGIN" || enum.EventSignIn.String() != "SIGN_IN" {
 		t.Fatal("UPPER_SNAKE spelling mismatch")
 	}
-	for _, k := range []enum.IdentityKind{enum.IdentityPhone, enum.IdentityEmail, enum.IdentityWeChat, enum.IdentityApple, enum.IdentityGoogle} {
+	for _, k := range []enum.IdentityKind{enum.IdentityPhone, enum.IdentityEmail, enum.IdentityWeChat, enum.IdentityApple, enum.IdentityGoogle, enum.IdentityFacebook} {
 		got, err := enum.ParseIdentityKind(k.String())
 		if err != nil || got != k {
 			t.Fatalf("IdentityKind %s round trip failed", k)
@@ -68,10 +68,10 @@ func TestValidAndUnknownString(t *testing.T) {
 }
 
 func TestIdentityKindHelpers(t *testing.T) {
-	if !enum.IdentityPhone.IsAnchor() || !enum.IdentityEmail.IsAnchor() || enum.IdentityWeChat.IsAnchor() || enum.IdentityApple.IsAnchor() || enum.IdentityGoogle.IsAnchor() {
+	if !enum.IdentityPhone.IsAnchor() || !enum.IdentityEmail.IsAnchor() || enum.IdentityWeChat.IsAnchor() || enum.IdentityApple.IsAnchor() || enum.IdentityGoogle.IsAnchor() || enum.IdentityFacebook.IsAnchor() {
 		t.Fatal("IsAnchor mismatch")
 	}
-	if !enum.IdentityPhone.IsChannel() || enum.IdentityWeChat.IsChannel() || enum.IdentityGoogle.IsChannel() {
+	if !enum.IdentityPhone.IsChannel() || enum.IdentityWeChat.IsChannel() || enum.IdentityGoogle.IsChannel() || enum.IdentityFacebook.IsChannel() {
 		t.Fatal("IsChannel mismatch")
 	}
 	if enum.PurposeSignIn.Key() != "signin" || enum.PurposeBind.Key() != "bind" || enum.PurposeReauth.Key() != "reauth" {
@@ -123,7 +123,7 @@ func TestIdentityKindFormat(t *testing.T) {
 }
 
 func TestIdentityKindBuiltin(t *testing.T) {
-	for _, k := range []enum.IdentityKind{enum.IdentityPhone, enum.IdentityEmail, enum.IdentityWeChat, enum.IdentityApple, enum.IdentityGoogle} {
+	for _, k := range []enum.IdentityKind{enum.IdentityPhone, enum.IdentityEmail, enum.IdentityWeChat, enum.IdentityApple, enum.IdentityGoogle, enum.IdentityFacebook} {
 		if !k.IsBuiltin() {
 			t.Fatalf("%s must be builtin", k)
 		}

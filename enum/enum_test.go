@@ -132,3 +132,20 @@ func TestIdentityKindBuiltin(t *testing.T) {
 		t.Fatal("configured kinds are neither builtin nor anchors")
 	}
 }
+
+func TestIdentityFacebookIsBuiltinThirdParty(t *testing.T) {
+	k, err := enum.ParseIdentityKind("FACEBOOK")
+	if err != nil || k != enum.IdentityFacebook || !k.IsBuiltin() || k.IsAnchor() || k.IsChannel() {
+		t.Fatalf("FACEBOOK: %v %v builtin=%v", k, err, k.IsBuiltin())
+	}
+}
+
+func TestEventProviderDataDeletionProcessedAppended(t *testing.T) {
+	if enum.EventProviderDataDeletionProcessed != 27 || enum.EventSignInCompletionRejected != 26 {
+		t.Fatal("event values must be append-only")
+	}
+	e, err := enum.ParseEventType("PROVIDER_DATA_DELETION_PROCESSED")
+	if err != nil || e != enum.EventProviderDataDeletionProcessed || !e.Valid() || enum.EventType(28).Valid() {
+		t.Fatalf("parse: %v %v", e, err)
+	}
+}

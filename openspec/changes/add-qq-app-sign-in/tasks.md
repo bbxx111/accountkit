@@ -8,10 +8,10 @@
 
 ## 2. 令牌校验
 
-- [ ] 2.1 实现 `idp.QQ` 的 credential 严格解码与允许列表检查；测试缺字段、未知字段（openid/unionid）、非对象、尾随内容及未知 AppID 均在任何 HTTP 请求前拒绝。
-- [ ] 2.2 实现 `/me` 请求：`fmt=json`、仅 UNIONID 模式附加 `unionid=1`、10 秒预算、64 KiB 上限、禁止重定向、无自动重试、传输错误去除 URL；本地 HTTP 测试覆盖取消、超时、超限、3xx/429/5xx 及日志与错误不含令牌。
-- [ ] 2.3 实现 `/me` 响应严格解析与错误分类：拒绝 JSONP、重复键、尾随内容、错误类型；按 design 表映射 100013–100016、100048、未知码、client_id 不符与缺字段；先核对官方公共返回码页面并以合成夹具固化，测试另一已登记 AppID 的令牌返回 IDP_APP_NOT_ALLOWED。
-- [ ] 2.4 实现 UNIONID/OPENID subject、标识格式校验、`UnionID`/`OpenIDs[app_id]` 与 `PolicyFingerprint`；测试跨 App 同 UnionID、OpenID 按应用隔离、UNIONID 缺失或 100048 不回退 OPENID、OPENID 模式不受 100048 影响、列表重排指纹不变而模式/地址/应用变化指纹改变。
+- [x] 2.1 实现 `idp.QQ` 的 credential 严格解码与允许列表检查；测试缺字段、未知字段（openid/unionid）、非对象、尾随内容及未知 AppID 均在任何 HTTP 请求前拒绝。
+- [x] 2.2 实现 `/me` 请求：`fmt=json`、仅 UNIONID 模式附加 `unionid=1`、10 秒预算、64 KiB 上限、禁止重定向、无自动重试、传输错误去除 URL；本地 HTTP 测试覆盖取消、超时、超限、3xx/429/5xx 及日志与错误不含令牌。
+- [x] 2.3 实现 `/me` 响应严格解析与错误分类：拒绝 JSONP、重复键、尾随内容、错误类型；按 design 表映射 100013–100016、100048、未知码、client_id 不符与缺字段；先核对官方公共返回码页面并以合成夹具固化，测试另一已登记 AppID 的令牌返回 IDP_APP_NOT_ALLOWED。
+- [x] 2.4 实现 UNIONID/OPENID subject、标识格式校验、`UnionID`/`OpenIDs[app_id]` 与 `PolicyFingerprint`；测试跨 App 同 UnionID、OpenID 按应用隔离、UNIONID 缺失或 100048 不回退 OPENID、OPENID 模式不受 100048 影响、列表重排指纹不变而模式/地址/应用变化指纹改变。
 
 ## 3. 资料查询与头像改写
 

@@ -36,6 +36,17 @@ type OIDCProvider struct {
 // WeChatSubjectMode 决定实例内所有微信应用的固定身份识别方式。
 type WeChatSubjectMode = idp.WeChatSubjectMode
 
+// AlipayApp 是普通公钥模式的支付宝应用配置。
+type AlipayApp = idp.AlipayApp
+
+// AlipaySubjectMode 决定实例内所有支付宝应用的固定身份识别方式。
+type AlipaySubjectMode = idp.AlipaySubjectMode
+
+const (
+	AlipaySubjectModeUnionID = idp.AlipaySubjectModeUnionID
+	AlipaySubjectModeOpenID  = idp.AlipaySubjectModeOpenID
+)
+
 const (
 	WeChatSubjectModeUnionID = idp.WeChatSubjectModeUnionID
 	WeChatSubjectModeOpenID  = idp.WeChatSubjectModeOpenID
@@ -113,6 +124,10 @@ type Config struct {
 	FacebookAppSecret       string
 	FacebookGraphAPIVersion string        // 默认 idp.FacebookGraphAPIVersionDefault，格式 vN.N
 	FacebookNonceTTL        time.Duration // 默认 10m
+	// AlipayApps 为空表示未启用支付宝登录；每项使用独立的应用私钥及支付宝公钥。
+	AlipayApps        []AlipayApp
+	AlipaySubjectMode AlipaySubjectMode // 默认 UNIONID，所有应用固定使用同一模式。
+	AlipayGatewayURL  string            // 默认生产网关；HTTP 仅允许回环测试地址。
 	// OIDCProviders 是按配置启用的 OIDC 提供方，类型名一经使用不应更换。
 	OIDCProviders []OIDCProvider
 	// WeChatAPIBaseURL / AppleJWKSURL / GoogleJWKSURL / Facebook* 供测试与代理部署覆盖；生产保持默认。
@@ -126,6 +141,8 @@ type Config struct {
 }
 
 var facebookVersionPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+$`)
+
+var alipayAppIDPattern = regexp.MustCompile(`^[0-9]{16}$`)
 
 func cloneProfileAttributesConfig(c *user.ProfileAttributesConfig) *user.ProfileAttributesConfig {
 	if c == nil {
@@ -151,6 +168,9 @@ func (c Config) providerKinds() []enum.IdentityKind {
 	if c.FacebookAppID != "" {
 		kinds = append(kinds, enum.IdentityFacebook)
 	}
+	if len(c.AlipayApps) > 0 {
+		kinds = append(kinds, enum.IdentityAlipay)
+	}
 	for _, p := range c.OIDCProviders {
 		kinds = append(kinds, p.Kind)
 	}
@@ -162,6 +182,10 @@ func (c Config) identityPolicy() (*user.IdentityPolicy, error) {
 }
 
 func boolPtr(b bool) *bool { return &b }
+
+func (c Config) alipayConfig() idp.AlipayConfig {
+	return idp.AlipayConfig{Apps: slices.Clone(c.AlipayApps), SubjectMode: c.AlipaySubjectMode, GatewayURL: c.AlipayGatewayURL}
+}
 
 func (c *Config) applyDefaults() {
 	def := func(d *time.Duration, v time.Duration) {
@@ -207,6 +231,13 @@ func (c *Config) applyDefaults() {
 		c.DefaultRegion = "CN"
 	}
 	c.DefaultRegion = strings.ToUpper(c.DefaultRegion)
+	c.AlipayApps = slices.Clone(c.AlipayApps)
+	if c.AlipaySubjectMode == "" {
+		c.AlipaySubjectMode = AlipaySubjectModeUnionID
+	}
+	if c.AlipayGatewayURL == "" {
+		c.AlipayGatewayURL = "https://openapi.alipay.com/gateway.do"
+	}
 	def(&c.AppleNonceTTL, 10*time.Minute)
 	def(&c.GoogleNonceTTL, 10*time.Minute)
 	def(&c.FacebookNonceTTL, 10*time.Minute)
@@ -249,6 +280,9 @@ func (c Config) Validate() error {
 
 func (c Config) validateBase() error {
 	c.applyDefaults()
+	if err := idp.ValidateAlipayConfig(c.alipayConfig()); err != nil {
+		return fmt.Errorf("accountkit: %w", err)
+	}
 	kinds := map[enum.IdentityKind]bool{}
 	for i, p := range c.OIDCProviders {
 		if field, err := validateOIDCProvider(p); err != nil {
@@ -590,6 +624,26 @@ func ConfigFromEnv(prefix string) (Config, error) {
 	dur("FACEBOOK_NONCE_TTL", &c.FacebookNonceTTL)
 	c.FacebookGraphAPIBaseURL = str("FACEBOOK_GRAPH_API_BASE_URL")
 	c.FacebookJWKSURL = str("FACEBOOK_JWKS_URL")
+	if raw, ok := os.LookupEnv(prefix + "ALIPAY_SUBJECT_MODE"); ok {
+		c.AlipaySubjectMode = AlipaySubjectMode(raw)
+		if c.AlipaySubjectMode != AlipaySubjectModeUnionID && c.AlipaySubjectMode != AlipaySubjectModeOpenID {
+			fail("ALIPAY_SUBJECT_MODE", errors.New("must be UNIONID or OPENID"))
+		}
+	}
+	c.AlipayGatewayURL = str("ALIPAY_GATEWAY_URL")
+	if raw := str("ALIPAY_APP_IDS"); raw != "" {
+		seen := map[string]bool{}
+		for _, item := range strings.Split(raw, ",") {
+			appID := strings.TrimSpace(item)
+			if !alipayAppIDPattern.MatchString(appID) || seen[appID] {
+				fail("ALIPAY_APP_IDS", errors.New("entries must be unique 16-digit ASCII AppIDs"))
+				break
+			}
+			seen[appID] = true
+			base := "ALIPAY_" + appID + "_"
+			c.AlipayApps = append(c.AlipayApps, AlipayApp{AppID: appID, PrivateKey: os.Getenv(prefix + base + "PRIVATE_KEY"), AlipayPublicKey: os.Getenv(prefix + base + "PUBLIC_KEY")})
+		}
+	}
 	if s := str("OIDC_PROVIDERS"); s != "" {
 		c.OIDCProviders = oidcProvidersFromEnv(s, str, dur, fail, func(name string) (string, bool) { return os.LookupEnv(prefix + name) })
 	}

@@ -447,6 +447,11 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 | `FACEBOOK_NONCE_TTL` | `10m` | Limited Login nonce 登记下限（不小于 `1m`，仅 App ID 非空时校验），实际取它与 `exp` + 30s 的较大者 |
 | `FACEBOOK_GRAPH_API_BASE_URL` | `https://graph.facebook.com` | 测试/代理部署钩子 |
 | `FACEBOOK_JWKS_URL` | `https://www.facebook.com/.well-known/oauth/openid/jwks/` | 测试/代理部署钩子 |
+| `ALIPAY_APP_IDS` | 空（未启用） | 逗号分隔的不同 AppID，每项为 16 位 ASCII 数字；Go 配置为 `AlipayApps []AlipayApp` |
+| `ALIPAY_<APPID>_PRIVATE_KEY` | AppID 已配置时必填 | 多行 PEM 应用 RSA 私钥，PKCS#1 / PKCS#8，至少 2048 位；不读取密钥文件 |
+| `ALIPAY_<APPID>_PUBLIC_KEY` | AppID 已配置时必填 | 多行 PEM 支付宝 RSA 公钥，PKCS#1 / SPKI，至少 2048 位；首版仅普通公钥模式，不接受证书 |
+| `ALIPAY_SUBJECT_MODE` | `UNIONID` | Go 字段 `AlipaySubjectMode`，全局固定 `UNIONID` / `OPENID`；显式空值、空白、小写或其他值非法 |
+| `ALIPAY_GATEWAY_URL` | `https://openapi.alipay.com/gateway.do` | Go 字段 `AlipayGatewayURL`；HTTPS 绝对地址，无用户信息、查询或 fragment，仅本地回环测试允许 HTTP |
 | `OIDC_PROVIDERS` | 空（未启用） | 逗号分隔的 OIDC 类型名，格式 `^[A-Z][A-Z0-9_]{1,31}$`，不得为内置类型名；一经使用不应更换 |
 | `OIDC_<KIND>_ISSUER` / `_JWKS_URL` | 必填 | 绝对 http(s) URL；issuer 与 token `iss` 精确比较；不做 discovery |
 | `OIDC_<KIND>_CLIENT_IDS` | 必填 | 逗号分隔；`aud` 及出现的 `azp` 须在其中 |

@@ -100,12 +100,12 @@
 
 **Interfaces:**
 - Consumes Tasks 1–3的实际公开类型、配置和验证行为，以实际实现核对所有示例。
-- Produces无秘密客户端/宿主说明及完整的实际验证记录；真实App外部条件缺失必须保持对应任务未完成。
+- Produces无秘密客户端/宿主说明及完整的实际验证记录；按后续 Task 5 的职责修正，真实 App 条件缺失时保持宿主清单未执行，库任务使用自动契约证据完成。
 
 - [x] **Step 1: 完成各组配套文档。** 写明App极简 SDK、auth_user/state/回跳/未安装/取消、code一次性、Flutter极简桥接、普通公钥、分组和模式切换、资料降级与空字段语义，引用官方入口，示例用合成值。
 - [x] **Step 2: 更新必需测试门禁。** 新增必须真实运行的顶层集成测试加入 required-tests，保留全部原条目；执行 generated和迁移历史检查，确认无生产SQL差异。
 - [x] **Step 3: 运行全套验证。** `GOWORK=off go build ./...`、`go vet ./...`、`go test -count=1 ./...`；使用一次性真实数据库运行事务/并发，再按 `scripts/verify.sh` 完成race与恢复演练，Windows缺CGO时使用项目Docker验证路径。
-- [x] **Step 4: 核对真实App条件。** 无真实App/应用分组凭据时，OpenSpec 6.2、6.3保持未勾选并明确限制；不把模拟接口当作端到端完成证据。
+- [x] **Step 4: 核对验收职责。** 按后续 Task 5 修正的范围，OpenSpec 6.2/6.3 以库 HTTP 自动契约验收；真实 App/分组仍属于宿主未执行清单，不把模拟接口当作真实平台端到端完成证据。
 - [x] **Step 5: 独立最终评审、记录与提交。** 处理实质发现，更新verification实际命令/结果，运行OpenSpec全量strict、git diff --check；提交本任务文件，不推送/合并/归档。
 
 ### Task 5: 库侧公共 HTTP 契约验收（2026-10-24 职责边界修正）
@@ -120,7 +120,7 @@
 - 本地签名网关独立校验每个应用的 RSA2 请求并签署真实结构响应；真实 PostgreSQL/Redis，schema/Redis 前缀按测试隔离，不调用 FLUSHDB。缺依赖普通套件明确 skip，完整门禁必须实际 PASS。
 - 测试名称：`TestAlipayHTTPLoginContract`、`TestAlipayHTTPMultiAppIdentityContract`。此任务补充现有行为的回归覆盖，无生产修改；测试可立即通过，不人为制造 RED。
 
-- [ ] **Step 1: 单 App 公共入口。** 真实 facade 装配并挂载 `/v1`，携带设备头 POST `/v1/users:signInWithIdp`，验证账号、JWT 读取 `/v1/users/me` 以及 `/v1/token` 刷新；独立网关验证请求签名且消费 code 一次。覆盖错误签名/重复code拒绝、资料故障仍成功、后续空值补填和非空字段保留；通过HTTP可见结果及必要只读SQL验证，不打印token或原始签名。
-- [ ] **Step 2: 多 App 与模式。** 配置两套独立应用私钥及支付宝验签公钥，网关按 AppID 校验签名；UNIONID 同值时经两次HTTP登录进入同账号、只一条活跃ALIPAY身份并合并两个OpenID；OPENID 模式同文本跨App分离，后续收到UnionID不升级；跨App登录仍遵循首次资料失败后补填空字段及保留非空值。
-- [ ] **Step 3: 实际验证与门禁。** 在真实PG/Redis下执行两项定向HTTP测试及root包回归，执行新增测试的Linux race；把两项完整包名追加required-tests，运行testgate确认不是skip/no-tests。root运行OpenSpec strict与文档引用检查；无生产/schema变化不重复恢复演练。
-- [ ] **Step 4: 提交与评审。** 提交本任务测试/门禁，报告准确环境、命令、结果及库侧能证明的范围。root进行独立评审后记录库验收完成，真实SDK、权限、回跳和控制台分组检查移到宿主清单且保留未执行事实，不冒充已验证真实平台。
+- [x] **Step 1: 单 App 公共入口。** 真实 facade 装配并挂载 `/v1`，携带设备头 POST `/v1/users:signInWithIdp`，验证账号、JWT 读取 `/v1/users/me` 以及 `/v1/token` 刷新；独立网关验证请求签名且消费 code 一次。覆盖错误签名/重复code拒绝、资料故障仍成功、后续空值补填和非空字段保留；通过HTTP可见结果及必要只读SQL验证，不打印token或原始签名。
+- [x] **Step 2: 多 App 与模式。** 配置两套独立应用私钥及支付宝验签公钥，网关按 AppID 校验签名；UNIONID 同值时经两次HTTP登录进入同账号、只一条活跃ALIPAY身份并合并两个OpenID；OPENID 模式同文本跨App分离，后续收到UnionID不升级；跨App登录仍遵循首次资料失败后补填空字段及保留非空值。
+- [x] **Step 3: 实际验证与门禁。** 在真实PG/Redis下执行两项定向HTTP测试及root包回归，执行新增测试的Linux race；把两项完整包名追加required-tests，运行testgate确认不是skip/no-tests。root运行OpenSpec strict与文档引用检查；无生产/schema变化不重复恢复演练。
+- [x] **Step 4: 提交与评审。** 提交本任务测试/门禁，报告准确环境、命令、结果及库侧能证明的范围。root进行独立评审后记录库验收完成，真实SDK、权限、回跳和控制台分组检查移到宿主清单且保留未执行事实，不冒充已验证真实平台。

@@ -36,8 +36,8 @@
 ## 6. App 接入说明与库侧契约验收
 
 - [x] 6.1 提供 App 极简 SDK 接入文档：auth_user、随机 state 关联/一次性核对、SDK 回跳、安装检测/取消、提交统一凭证、code 消费后重试需重新授权；核对官方接口和配置示例，明确 Flutter 需极简桥接而不是直接套用完整版 auth 方法。
-- [ ] 6.2 使用正式根门面和 HTTP handler、实际 Alipay Provider、本地独立签名网关与真实 PostgreSQL/Redis，验证登录、本人资料读取、刷新、凭证拒绝及资料失败后补填；TestAlipayHTTPLoginContract 实际通过且纳入必需清单，记录库侧保证范围。
-- [ ] 6.3 经正式 HTTP 入口配置两个 AppID 与独立密钥，验证 UNIONID 同号单账号/身份及 OpenID 元数据合并、OPENID 应用隔离与不自动升级，以及跨 App 空字段补填；TestAlipayHTTPMultiAppIdentityContract 实际通过且纳入必需清单，不将模拟值相同描述为真实平台分组验证。
+- [x] 6.2 使用正式根门面和 HTTP handler、实际 Alipay Provider、本地独立签名网关与真实 PostgreSQL/Redis，验证登录、本人资料读取、刷新、凭证拒绝及资料失败后补填；TestAlipayHTTPLoginContract 实际通过且纳入必需清单，记录库侧保证范围。
+- [x] 6.3 经正式 HTTP 入口配置两个 AppID 与独立密钥，验证 UNIONID 同号单账号/身份及 OpenID 元数据合并、OPENID 应用隔离与不自动升级，以及跨 App 空字段补填；TestAlipayHTTPMultiAppIdentityContract 实际通过且纳入必需清单，不将模拟值相同描述为真实平台分组验证。
 
 ## 7. 综合验证与交付记录
 

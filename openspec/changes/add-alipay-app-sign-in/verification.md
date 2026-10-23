@@ -62,19 +62,45 @@ docker run --name ak-alipay-20261024-task4-tests-green @common accountkit-verify
 - `check-generated.sh` 复用 root 在同一实现状态已执行的 **exit 0** 结果；本任务未改查询/schema/sqlc。`scripts/verify.sh` 再次运行 `check-migrations.sh` **exit 0**，输出 `Migration history is immutable; new versions are strictly increasing`。从 `34e953e` 比较 migrations、user/db、audit/db、source-baseline 均无差异，历史 SQL 与冻结源保持。
 - `C:/Users/bbxx1/AppData/Roaming/npm/openspec.cmd validate --all --strict --json`：**exit 0，33/33**（31 主规格、2 变更），无 issues；结果 `.test-output/alipay-task4-openspec.json`。本任务文件 `git diff --check` 与六份接入文档的本地 Markdown 目标路径检查通过。
 
-### 文档与未验证项
+### 文档与未验证项（当时的旧验收范围）
 
 新增 [支付宝接入指南](../../../docs/alipay-sign-in.md)，同步 README、Go/accountsvc 集成、兼容性、指标和 `.env.example`，明确 App 极简 SDK、auth_user/state、已安装客户端、取消/回跳、Flutter 桥接、一次性 code、普通公钥、多 App 分组、模式及指纹、资料降级和主动清空后补填。已对照官方 SDK 参数入口、当前公开 Go 类型及真实路由；Compose 默认 EMAIL，不会自动传递任意 `.env` IdP 变量，文档明确需要部署/override 注入。
 
-**真实支付宝 App/设备、授权权限和应用分组凭据缺失**，未记录平台/SDK 真机结果，也未证明控制台两个 App 实际返回相同 UnionID。因此 6.2/6.3 必须保持未勾选。合成签名网关、真实 DB、race 与恢复成功均不等于真实支付宝端到端上线验收。最终独立评审见下节。
+**真实支付宝 App/设备、授权权限和应用分组凭据缺失**，未记录平台/SDK 真机结果，也未证明控制台两个 App 实际返回相同 UnionID。当时 6.2/6.3 对应真机任务，因此保持未勾选；后续用户已确认将这两项调整为库侧自动契约，并把真实终端检查移到宿主清单，见最新 Library contract acceptance。合成签名网关、真实 DB、race 与恢复成功均不等于真实支付宝端到端上线验收。最终独立评审见下节。
 
-## Final review and handoff — 2026-10-24
+## Final review and handoff — 2026-10-24（验收职责调整前的记录）
 
 - Task 1–4 均经过独立规格/代码质量评审。配置阶段发现的 HTTP localhost 例外已收紧为数值回环地址，并通过定向测试和复核；协议与领域阶段无未解决的 Critical/Important 问题。交付阶段核实 test-only 换绑断言修正符合既有规格，原 844 项必需测试没有删除。
 - 最终整分支只读评审范围：Base `c279db5` 至 Head `b391347`。审查完整差异、需求/设计、调用上下文及原始 JSON，结论为 Critical、Important、Minor 均无新增实现问题，代码集成质量通过。审查者没有修改代码或执行合并。
 - 独立解析原始日志再次确认：全 race 和修复后非 race 各 44 个有测试包、1009 个顶层 PASS、34/34 新增支付宝选择器 PASS；服务单独验证 5 包、102 个顶层 PASS。SQL、生成目录及冻结源相对分支起点无差异。
 - 对审查中不评判的部分，控制器确认与提案非目标一致：完整版 authInfo、Web/H5/小程序授权托管、支付及证书模式；仓库外 Flutter/原生客户端实现质量。这不排除本计划内真实 SDK/分组验收，6.2/6.3 仍待完成。
 - 规划/任务文件清单中重复列出的配置解析文件已修正为复用 Task 1 实现；并发换绑断言修正的范围与依据已写入 design 的 Implementation Notes。没有借测试失败修改生产错误映射、删门禁或新增 skip。
-- 本次自动实施和验证完成后，任务进度为 **22/24**；仅 6.2 与 6.3 未完成。root 权限下文件不可读分支的额外验证缺口继续保留，未将该 skip 记为 PASS。
+- 按当时将真机任务计入库验收的旧范围，进度为 **22/24**；6.2 与 6.3 未完成。后续用户已确认改为库侧契约验收，最新结果见下节。root 权限下文件不可读分支的额外验证缺口继续保留，未将该 skip 记为 PASS。
 - 已核对本任务 PostgreSQL/Redis 容器的完整 ID 后，仅删除任务创建的两依赖容器、五个已退出验证 runner、专用网络、两缓存卷及其匿名测试卷。其他 Docker 资源未操作；原始日志和恢复合成备份继续保留在 `.test-output/`。
 - 仅完成本地提交，未推送、合并、归档、打 tag 或部署。后续真实验收和归档仍需分别执行，不能把当前自动验证结果描述为生产端到端验证完成。
+
+## Library contract acceptance — 2026-10-24
+
+用户明确指出终端验收应在宿主执行，并确认把库 6.2/6.3 调整为自动 HTTP 契约验收。原真机、权限、实际 SDK 与控制台分组检查移到 [宿主接入清单](../../../docs/alipay-sign-in.md#宿主上线前接入检查清单)，仍为未执行；没有把旧真机任务直接标为通过。
+
+### 新增证据与范围
+
+- 提交 `c7cdb1d` 新增外部 `accountkit_test` 的 `TestAlipayHTTPLoginContract` 和 `TestAlipayHTTPMultiAppIdentityContract`，仅新增测试与门禁，没有修改生产实现、SQL、schema 或生成代码。正式根门面经 New/Migrate/Start/Close、EndUserHandler 和实际 Alipay Provider，连接独立签名网关及真实 PostgreSQL/Redis；没有 fake Provider 或直接领域登录替代 HTTP。
+- 单 App 用例验证登录、独立 JWT 校验、Bearer 本人资料、刷新轮换、错误签名/重复授权码拒绝且无持久化副作用，以及资料故障放行、后续补空和非空资料保护。多 App 用例使用两套独立应用及支付宝密钥，验证 UNIONID 同账号/单身份/OpenID 合并、跨 App 补填；OPENID 同文本跨 App 分离，后续出现 UnionID 仍不升级或合并。
+- Native 定向命令：`GOWORK=off go test -json -count=1 . -run '^TestAlipayHTTP(LoginContract|MultiAppIdentityContract)$'`，使用专用真实 PG/Redis，**exit 0，两个顶层及两个子项 PASS，0 skip/fail**；证据 `.test-output/alipay-http-contract-tests.jsonl`。新增两项选择器单独 testgate 通过，不冒称重跑过全清单 gate。
+- `GOWORK=off go test -count=1 .` 使用同一真实依赖：**exit 0，31.706s**；`go vet .` **exit 0**。缺 Redis 检查使两个顶层明确 SKIP，此负向依赖检查不计作通过证据。
+- Linux 新增用例 race：`GOWORK=off go test -race -count=1 -json . -run '^TestAlipayHTTP(LoginContract|MultiAppIdentityContract)$'`，真实 PostgreSQL/Redis，**exit 0，两个顶层 PASS，0 skip/fail，包 2.343s**；证据 `.test-output/alipay-http-contract-race.jsonl`。root 独立解析 JSON，并将其输入新增选择器 testgate，exit 0。
+- 必需清单原 878 项全部保留，新增上述两项，现 880 项。每个 fixture 独立随机 schema/Redis 前缀，仅清理自己的前缀，不调用 FLUSHDB；没有终端、真实支付宝账号或产品凭据依赖。
+- `openspec validate --all --strict --json` **33/33 通过**，本地文档引用和 `git diff --check` 通过。此次仅测试/文档/门禁变化，根包回归和新增用例 race 是本次新证据；此前全库、服务、生成、迁移与恢复证据仍按上节原日期和范围保留，没有声称重新执行完整恢复演练。
+
+### 可保证与宿主责任
+
+库侧证据证明：在合法签名协议声明下，公开 HTTP 入口、配置、身份映射、资料、真实存储与会话流程符合契约。模拟两个 App 返回相同 UnionID，不证明支付宝控制台真实分组配置已正确生效。实际 SDK、Flutter/原生桥接、安装/取消/回跳 state、平台授权权限与分组仍由宿主上线前独立验证，当前未执行，不作为库 CI 的设备前提。
+
+### 增量评审结论
+
+独立审查范围为 `9da61ac..5a8d90b` 的新增测试、门禁及验收边界文档。规格合规通过、质量 Approved，无 Critical/Important；审查者独立读取 native/race 原始 JSON，确认两项顶层 PASS、0 skip/fail，且检查正式根门面/handler、实际 Provider、独立逐 App 签名网关、真实存储和清理边界。一个 Minor 为原 Task 4 的计划措辞残留，已改为按 Task 5 执行库侧契约、宿主清单保持未执行，避免新旧指令冲突。
+
+更新后的 6.2/6.3 有对应自动测试与实际通过证据，库侧任务进度为 **24/24**。这是用户确认的职责范围修正后完成库验收，不是补填真实终端或真实控制台分组的通过记录。此前完整实现评审与全量验证结果仍保留原始范围，本次无生产实现修改。
+
+已核对并清理本轮 `ak-alipay-http-20261024-pg`、`ak-alipay-http-20261024-redis` 及专用网络，未操作其他 Docker 资源。新增原始测试日志继续保留在 `.test-output/`。

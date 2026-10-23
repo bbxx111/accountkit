@@ -45,6 +45,7 @@ const (
 	IdentityWeChat          IdentityKind = "WECHAT"
 	IdentityApple           IdentityKind = "APPLE"
 	IdentityGoogle          IdentityKind = "GOOGLE"
+	IdentityFacebook        IdentityKind = "FACEBOOK"
 )
 
 var identityKindFormat = regexp.MustCompile(`^[A-Z][A-Z0-9_]{1,31}$`)
@@ -62,7 +63,7 @@ func (k IdentityKind) Valid() bool { return identityKindFormat.MatchString(strin
 // IsBuiltin 报告该 kind 是否为包内置类型；配置的 OIDC 类型不得使用这些名字。
 func (k IdentityKind) IsBuiltin() bool {
 	switch k {
-	case IdentityPhone, IdentityEmail, IdentityWeChat, IdentityApple, IdentityGoogle:
+	case IdentityPhone, IdentityEmail, IdentityWeChat, IdentityApple, IdentityGoogle, IdentityFacebook:
 		return true
 	}
 	return false
@@ -190,6 +191,7 @@ const (
 	EventSignInCompletionProofVerified           // 24
 	EventSignInCompletionCompleted               // 25
 	EventSignInCompletionRejected                // 26
+	EventProviderDataDeletionProcessed           // 27
 )
 
 var eventTypeNames = [...]string{
@@ -198,10 +200,11 @@ var eventTypeNames = [...]string{
 	"SESSION_REVOKED", "IDENTITY_BOUND", "IDENTITY_BIND_REJECTED", "IDENTITY_UNBOUND", "IDENTITY_REVEALED",
 	"USER_DELETED", "USER_UNDELETED", "USER_PURGED", "USER_FROZEN", "USER_UNFROZEN", "ADMIN_FORBIDDEN", "IDENTITY_REPLACE_REJECTED",
 	"SIGN_IN_COMPLETION_STARTED", "SIGN_IN_COMPLETION_PROOF_VERIFIED", "SIGN_IN_COMPLETION_COMPLETED", "SIGN_IN_COMPLETION_REJECTED",
+	"PROVIDER_DATA_DELETION_PROCESSED",
 }
 
 func (e EventType) String() string { return name(eventTypeNames[:], int(e)) }
-func (e EventType) Valid() bool    { return e >= EventCodeSent && e <= EventSignInCompletionRejected }
+func (e EventType) Valid() bool    { return e >= EventCodeSent && e <= EventProviderDataDeletionProcessed }
 
 func ParseEventType(v string) (EventType, error) {
 	i, err := parse(eventTypeNames[:], v, "EventType")

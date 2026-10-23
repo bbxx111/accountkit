@@ -62,7 +62,7 @@ func (p *IdentityPolicy) Complete(kinds []enum.IdentityKind) bool {
 }
 
 // builtinKindOrder 保持内置类型的历史输出顺序；配置的类型排在其后并按名称排序。
-var builtinKindOrder = []enum.IdentityKind{enum.IdentityPhone, enum.IdentityEmail, enum.IdentityWeChat, enum.IdentityApple, enum.IdentityGoogle}
+var builtinKindOrder = []enum.IdentityKind{enum.IdentityPhone, enum.IdentityEmail, enum.IdentityWeChat, enum.IdentityApple, enum.IdentityGoogle, enum.IdentityFacebook}
 
 func compareIdentityKinds(a, b enum.IdentityKind) int {
 	ia, ib := slices.Index(builtinKindOrder, a), slices.Index(builtinKindOrder, b)

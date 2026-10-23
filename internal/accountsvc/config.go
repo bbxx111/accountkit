@@ -128,6 +128,9 @@ func LoadConfig(command string) (Config, error) {
 		if c.identityEnabled(enum.IdentityGoogle) && len(c.Library.GoogleClientIDs) == 0 {
 			return Config{}, invalidConfig("ACCOUNTKIT_GOOGLE_CLIENT_IDS")
 		}
+		if c.identityEnabled(enum.IdentityFacebook) && c.Library.FacebookAppID == "" {
+			return Config{}, invalidConfig("ACCOUNTKIT_FACEBOOK_APP_ID")
+		}
 	}
 	c.Mode = defaultEnv("MODE", "production")
 	if c.Mode != "production" && c.Mode != "development" {
@@ -285,6 +288,12 @@ func safeLibraryConfigError(err error) error {
 		return invalidConfig(matches[1])
 	}
 	names := map[string]string{"Schema": "AUTH_SCHEMA", "KeyPrefix": "AUTH_KEY_PREFIX", "JWTKeys": "JWT_KEYS / ACCOUNTKIT_JWT_ACTIVE_KEY", "JWTIssuer": "JWT_ISSUER / ACCOUNTKIT_JWT_AUDIENCE", "SubjectHMACKeys": "SUBJECT_HMAC_KEYS / ACCOUNTKIT_SUBJECT_HMAC_ACTIVE_KEY", "SubjectCipherKeys": "SUBJECT_CIPHER_KEYS / ACCOUNTKIT_SUBJECT_CIPHER_ACTIVE_KEY", "AccessTokenTTL": "ACCESS_TOKEN_TTL", "RefreshTokenTTL": "REFRESH_TOKEN_TTL", "RefreshGrace": "REFRESH_GRACE", "ReauthMaxAge": "REAUTH_MAX_AGE", "CodeTTL": "CODE_TTL / ACCOUNTKIT_CODE_COOLDOWN", "Code": "CODE_MAX_ATTEMPTS / ACCOUNTKIT_CODE_DAILY_LIMIT_PER_TARGET / ACCOUNTKIT_CODE_DAILY_LIMIT_PER_IP", "MaxIdentitiesPerKind": "MAX_IDENTITIES_PER_KIND", "DeletionCoolingPeriod": "DELETION_COOLING_PERIOD / ACCOUNTKIT_AUDIT_RETENTION_DAYS", "DefaultRegion": "DEFAULT_REGION", "WeChatApps": "WECHAT_APPS", "WeChatMiniProgramApps": "WECHAT_MINI_PROGRAM_APPS", "WeChatSubjectMode": "WECHAT_SUBJECT_MODE", "AppleBundleIDs": "APPLE_BUNDLE_IDS", "AppleNonceTTL": "APPLE_NONCE_TTL", "GoogleClientIDs": "GOOGLE_CLIENT_IDS", "GoogleNonceTTL": "GOOGLE_NONCE_TTL", "WeChatAPIBaseURL": "WECHAT_API_BASE_URL", "AppleJWKSURL": "APPLE_JWKS_URL", "GoogleJWKSURL": "GOOGLE_JWKS_URL", "MaintenanceInterval": "MAINTENANCE_INTERVAL"}
+	names["FacebookAppID"] = "FACEBOOK_APP_ID"
+	names["FacebookAppSecret"] = "FACEBOOK_APP_SECRET"
+	names["FacebookGraphAPIVersion"] = "FACEBOOK_GRAPH_API_VERSION"
+	names["FacebookNonceTTL"] = "FACEBOOK_NONCE_TTL"
+	names["FacebookGraphAPIBaseURL"] = "FACEBOOK_GRAPH_API_BASE_URL"
+	names["FacebookJWKSURL"] = "FACEBOOK_JWKS_URL"
 	names["EnabledIdentityKinds"] = "ENABLED_IDENTITY_KINDS"
 	names["OIDCProviders"] = "OIDC_PROVIDERS"
 	names["RequiredIdentityKinds"] = "REQUIRED_IDENTITY_KINDS"

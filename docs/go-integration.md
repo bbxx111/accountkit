@@ -29,6 +29,64 @@ me, err := auth.Users().UpdateProfile(ctx, userID, user.ProfilePatch{
 
 `name` 和 `picture` 记在该身份的 `provider_meta.profile`。账号 `display_name`、`avatar_url` 只在该身份首次关联且对应列仍为空时填充。身份列表和 `:reveal` 不返回 `provider_meta`。宿主继续负责头像文件、默认图和后续同步。未配置客户端 ID 时 Google 登录保持关闭，配置里没有客户端秘密。
 
+## Facebook 登录
+
+配置 `FacebookAppID` 与 `FacebookAppSecret` 后启用，一个实例只对接一个 Facebook App。`SignInWithIdp` 与绑定接受两种 credential，都以 `Kind: enum.IdentityFacebook` 提交原始 JSON：
+
+```json
+{"kind":"FACEBOOK","credential":{"id_token":"…","nonce":"<客户端随机原值>"}}
+{"kind":"FACEBOOK","credential":{"access_token":"…"}}
+```
+
+第一种是 Limited Login（iOS），第二种是 Classic Login（Android/Web）。两种字段并列、缺失、为空或含未知字段，都返回 400 `CREDENTIAL_INCOMPLETE`。两种凭证的 subject 都是该 App 下的 Facebook 用户 id，同一用户用任一方式都命中同一身份和账号。
+
+- **邮箱**：Facebook 返回的 `email` 只作为 `HintEmail` 预填，Facebook 不提供“邮箱已验证”声明，因此不创建 EMAIL 身份，也不用于查找或合并账号；补全仍要显式 `target`。`FACEBOOK` 不能放入 `RequiredIdentityKinds`。
+- **Classic token 风险**：access token 可在有效期内重复用于登录（客户端常缓存它，退出后再登录不应失败），库不做一次性限制。被偷的 token 在有效期内与 refresh token 风险相当；会话层的吊销与刷新轮换不变。建议在 Meta 后台为该 App 开启 Require App Secret，使 Graph 调用必须携带 `appsecret_proof`；库的所有 Graph 调用都会附带。
+- **版本与依赖故障**：Graph API 默认 `v26.0`，随发布升级并写入发布说明，可用 `FacebookGraphAPIVersion` 固定。JWKS 无缓存可用或 Graph 超时/5xx 为 503 `IDP_UNAVAILABLE`；Graph 拒绝 App 凭据（如 Secret 错误、版本失效）为固定消息的 500 并记录告警，不表示为凭证无效。
+- **资料**：`name`、头像按通用提供方规则写入 `provider_meta.profile`，Classic 的默认剪影头像视为未提供。
+
+## Facebook 数据删除回调
+
+Meta 要求提供数据删除回调：用户在 Facebook 中移除应用时，Meta 向宿主 URL POST 表单字段 `signed_request`。库不监听端口，宿主挂载自己的路由并调用 `Auth.HandleFacebookDataDeletion`。下例中的 `clientIP`、`requestID`、`saveDeletionStatus` 为宿主自备的辅助函数，`auth` 为 `*accountkit.Auth`：
+
+```go
+mux.HandleFunc("POST /facebook/data-deletion", func(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	res, err := auth.HandleFacebookDataDeletion(r.Context(), r.PostForm.Get("signed_request"), user.Meta{IP: clientIP(r), RequestID: requestID(r)})
+	switch {
+	case errors.Is(err, idp.ErrInvalidSignedRequest):
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	case err != nil:
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	saveDeletionStatus(r.Context(), res) // 宿主持久化确认码与状态
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"url":               "https://example.com/deletion-status?code=" + res.ConfirmationCode,
+		"confirmation_code": res.ConfirmationCode,
+	})
+})
+```
+
+未配置 `FacebookAppID` 时返回 `accountkit.ErrFacebookNotConfigured`；签名无效返回 `idp.ErrInvalidSignedRequest`（回 400）；其他错误回 5xx，让 Meta 重试，重试幂等。需要直接按 subject 处理时可用 `user.Service.DeleteProviderIdentityData(ctx, kind, subject, requestTime, meta)`。
+
+`ProviderDeletionResult.Status` 有三种：
+
+| 状态 | 含义 |
+|---|---|
+| `DELETED` | 该身份已被抹除：账号仍有其他有效身份时匿名化该身份并撤销由它产生的会话，账号继续可用（不检查 Required；账号处于冷静期或冻结时同样处理，状态不变）。本就没有活动身份，或活动身份创建于请求签发之后（不处理），也返回 `DELETED`。 |
+| `SCHEDULED` | 账号本次进入注销冷静期（该身份是唯一有效身份），或已在冷静期内（不重复操作）；`PurgeTime` 为预计到期时间，到期后按既有流程匿名化。 |
+| `BLOCKED` | 活动身份与账号未改动：宿主 `BeforeDelete` 拒绝，或账号处于冻结。库不重试，需要宿主人工跟进（可检索审计）；但此前已解除的同一用户 id 历史行仍会被清除。 |
+
+此外，同一 Facebook 用户 id 先前已被普通解绑的历史行也会一并抹除；该查询没有可用索引，走顺序扫描，回调低频可接受，成为热点时再以 0002 迁移补部分索引。抹除后历史管理查询看不到原 ASID，审计只保留 hint。
+
+每次调用生成一个确认码，同时是审计事件 `PROVIDER_DATA_DELETION_PROCESSED`（系统操作者）的 ID。审计是尽力写入，确认码不保证能在审计里查到，所以宿主应自行保存 `{确认码, 状态, PurgeTime}` 供状态页使用。回退到不含 Facebook 的旧版本后，已有 FACEBOOK 身份按未登记的历史类型仍可列出、解绑和匿名化，但不能再用于登录。
+
 ## 当前会话、解绑与客户端描述
 
 使用Authenticate获取完整可信Principal，再调用auth.Users().GetCurrentSession(ctx,p)。user/user:bind可查询，user:undelete不允许。结果提供数据库最新AuthTime和非空AuthenticationIdentities；HTTP转换的name是users/{user}/identities/{identity}。与拟解绑身份的完整资源名精确匹配，不能只比较Kind。来源缺失或失效是内部错误，不返回正常空集合，不从其他身份或审计补造。重新认证成功后用新access重新Authenticate并重查；查询不会改写旧JWT或自动给它新的近期认证证明。

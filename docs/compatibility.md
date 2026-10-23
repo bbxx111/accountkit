@@ -27,6 +27,12 @@
 
 显示名上限由 32 放宽到 128 个 Unicode 码位，适用于 `PATCH /users/me` 和 Google 首次填充。把 32 写死的宿主需要同时放宽。旧二进制不能解释 kind 5；回退二进制前不能保留已写入的 Google 身份行。去掉客户端 ID 只停止新的 Google 登录。
 
+## Facebook 登录与数据删除回调
+
+`IdentityKind` 追加 `FACEBOOK`（内置第三方类型）。凭证沿用统一信封，`credential` 为 `{"id_token","nonce"}`（Limited Login）或 `{"access_token"}`（Classic Login）。配置 `FacebookAppID` 与 `FacebookAppSecret` 后启用，未配置时行为与升级前一致；显式设置 `EnabledIdentityKinds` 的宿主须手动加入 `FACEBOOK`，`Required` 不能包含它。新增配置 `FacebookGraphAPIVersion`（默认 `v26.0`，默认值升级属于兼容变更）、`FacebookNonceTTL`、`FacebookGraphAPIBaseURL`、`FacebookJWKSURL`，环境变量见 README。补全指纹覆盖 Facebook 配置，升级前创建的 pending 流程在配置变化后被拒绝。
+
+新增 `Auth.HandleFacebookDataDeletion`、`accountkit.ErrFacebookNotConfigured`、`idp.ErrInvalidSignedRequest`、`user.Service.DeleteProviderIdentityData`、`user.ProviderDeletionResult` 与审计事件 `PROVIDER_DATA_DELETION_PROCESSED`。无数据库迁移。指标新增方法值 `facebook`、依赖操作 `verify_facebook` 与 scenario `facebook_cached_key_fallback`。回退到旧版本后，已写入的 FACEBOOK 身份仍可列出、解绑和匿名化，但不能登录。
+
 ## 内置头像属性
 
 v0.5.0 新增 `user.Me`、`user.AdminUser`、`user.PublicProfile` 的 `AvatarURL string` 和对应两面 JSON `avatar_url`；未设置返回空字符串。使用结构体无字段名的位置字面量的 Go 调用者需改为带字段名的写法，HTTP 严格字段解析器需允许新字段。
@@ -366,6 +372,8 @@ HTTP 调用方继续使用原 URL（包括 `/users`）、DTO、设备头、JWT �
 | 手机/邮箱验证码、限流 | user/code、user/service_signin.go、httpapi/enduser | code/store_test.go、service_test.go、signin_test.go、TestConsumerEndToEndAgainstRealDB |
 | 验证码 HMAC 轮换 | user/code/store.go、user/code/scripts.go，库及 accountsvc 共用 | 多版本旧状态/并发测试、TestCodeKeyRotationIntegration、TestCodeRotationRedisIntegration、TestServiceIntegrationCodeKeyRotation；见[轮换验收记录](../openspec/changes/archive/2026-10-04-harden-code-key-rotation/verification.md) |
 | 微信/Apple | user/idp、service_idp.go | wechat_test.go、apple_test.go、nonce_test.go、service_idp_test.go、TestWeChatSignInEndToEndAgainstRealDB |
+| Facebook 登录（Limited/Classic） | user/idp/facebook.go、user/service_idp.go、config.go | user/idp/facebook*_test.go、user/service_facebook_test.go、httpapi/enduser/signin_facebook_test.go、config_facebook_test.go、internal/accountsvc/config_facebook_test.go |
+| Facebook 数据删除入口 | accountkit.go `HandleFacebookDataDeletion`、user/service_provider_deletion.go、user/idp/facebook_signed_request.go | accountkit_facebook_test.go、user/service_provider_deletion_test.go、user/idp/facebook_signed_request_test.go、audit/authentication/authentication_test.go |
 | 身份绑定解绑 | user/service_identity.go | service_identity_test.go、identities_test.go、TestIdentityBindingEndToEndAgainstRealDB |
 | 同类身份换绑 | user/service_identity_replacement.go、httpapi/enduser/replacement.go | 领域回滚/竞态、嵌入式及服务E2E，见[换绑验收记录](../openspec/changes/archive/2026-10-03-add-identity-replacement/verification.md) |
 | JWT、刷新、会话、重新认证 | tokens、session、service_session.go | tokens_test.go、session/*/*_test.go、service_test.go、TestConsumerEndToEndAgainstRealDB |

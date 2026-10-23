@@ -427,3 +427,20 @@ func TestIdentityUnboundRevocationReasonRoundtrip(t *testing.T) {
 		t.Fatalf("unbind revoke mapping %+v %v", projected, err)
 	}
 }
+
+func TestProviderDataDeletionEventSystemActor(t *testing.T) {
+	o := Options{Source: "accountkit", Namespace: "ns"}
+	id := uuid.Must(uuid.NewV7())
+	e, err := Map(Input{ID: id, Type: enum.EventProviderDataDeletionProcessed, Actor: enum.ActorSystem, Result: enum.ResultSuccess, Reason: "DELETED", UserID: "u_0000000000000", IdentityKind: enum.IdentityFacebook, SubjectHint: "abcd1234"}, o)
+	if err != nil || e.ID != id || e.Actor.Type != event.ActorSystem || len(e.Targets) != 1 || e.Targets[0].Type != "USER" {
+		t.Fatalf("map: %+v %v", e, err)
+	}
+	for _, typ := range []enum.EventType{enum.EventIdentityUnbound, enum.EventUserDeleted} {
+		if _, err := Map(Input{Type: typ, Actor: enum.ActorSystem, Result: enum.ResultSuccess, UserID: "u_0000000000000", IdentityID: "i_0000000000000"}, o); err != nil {
+			t.Fatalf("%s system actor: %v", typ, err)
+		}
+	}
+	if _, err := Map(Input{Type: enum.EventProviderDataDeletionProcessed, Actor: enum.ActorUser, Result: enum.ResultSuccess}, o); err == nil {
+		t.Fatal("user actor must be rejected")
+	}
+}

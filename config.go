@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -106,15 +107,25 @@ type Config struct {
 	// GoogleClientIDs 为空表示未启用 Google 登录；id_token 的 aud 以及出现的 azp 须在其中。
 	GoogleClientIDs []string
 	GoogleNonceTTL  time.Duration // 默认 10m
+	// FacebookAppID 为空表示未启用 Facebook 登录。非空时 FacebookAppSecret 必填：Classic 校验与
+	// 数据删除回调的 signed_request 都依赖它。只对接一个 App，subject 为该 App 下的用户 id。
+	FacebookAppID           string
+	FacebookAppSecret       string
+	FacebookGraphAPIVersion string        // 默认 idp.FacebookGraphAPIVersionDefault，格式 vN.N
+	FacebookNonceTTL        time.Duration // 默认 10m
 	// OIDCProviders 是按配置启用的 OIDC 提供方，类型名一经使用不应更换。
 	OIDCProviders []OIDCProvider
-	// WeChatAPIBaseURL / AppleJWKSURL / GoogleJWKSURL 供测试与代理部署覆盖；生产保持默认。
-	WeChatAPIBaseURL string
-	AppleJWKSURL     string
-	GoogleJWKSURL    string
+	// WeChatAPIBaseURL / AppleJWKSURL / GoogleJWKSURL / Facebook* 供测试与代理部署覆盖；生产保持默认。
+	WeChatAPIBaseURL        string
+	AppleJWKSURL            string
+	GoogleJWKSURL           string
+	FacebookGraphAPIBaseURL string
+	FacebookJWKSURL         string
 
 	MaintenanceInterval time.Duration // 默认 5m
 }
+
+var facebookVersionPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+$`)
 
 func cloneProfileAttributesConfig(c *user.ProfileAttributesConfig) *user.ProfileAttributesConfig {
 	if c == nil {
@@ -136,6 +147,9 @@ func (c Config) providerKinds() []enum.IdentityKind {
 	}
 	if len(c.GoogleClientIDs) > 0 {
 		kinds = append(kinds, enum.IdentityGoogle)
+	}
+	if c.FacebookAppID != "" {
+		kinds = append(kinds, enum.IdentityFacebook)
 	}
 	for _, p := range c.OIDCProviders {
 		kinds = append(kinds, p.Kind)
@@ -195,6 +209,16 @@ func (c *Config) applyDefaults() {
 	c.DefaultRegion = strings.ToUpper(c.DefaultRegion)
 	def(&c.AppleNonceTTL, 10*time.Minute)
 	def(&c.GoogleNonceTTL, 10*time.Minute)
+	def(&c.FacebookNonceTTL, 10*time.Minute)
+	if c.FacebookGraphAPIVersion == "" {
+		c.FacebookGraphAPIVersion = idp.FacebookGraphAPIVersionDefault
+	}
+	if c.FacebookGraphAPIBaseURL == "" {
+		c.FacebookGraphAPIBaseURL = "https://graph.facebook.com"
+	}
+	if c.FacebookJWKSURL == "" {
+		c.FacebookJWKSURL = "https://www.facebook.com/.well-known/oauth/openid/jwks/"
+	}
 	// 复制后再填默认值，避免写回宿主持有的切片。
 	c.OIDCProviders = slices.Clone(c.OIDCProviders)
 	for i := range c.OIDCProviders {
@@ -337,7 +361,17 @@ func (c Config) validateBase() error {
 	if c.GoogleNonceTTL < time.Minute {
 		return errors.New("accountkit: GoogleNonceTTL must be >= 1m")
 	}
-	for name, raw := range map[string]string{"WeChatAPIBaseURL": c.WeChatAPIBaseURL, "AppleJWKSURL": c.AppleJWKSURL, "GoogleJWKSURL": c.GoogleJWKSURL} {
+	if c.FacebookAppID != "" && c.FacebookAppSecret == "" {
+		return errors.New("accountkit: FacebookAppSecret is required when FacebookAppID is set")
+	}
+	if c.FacebookAppID != "" && !facebookVersionPattern.MatchString(c.FacebookGraphAPIVersion) {
+		return errors.New(`accountkit: FacebookGraphAPIVersion must match ^v[0-9]+\.[0-9]+$`)
+	}
+	if c.FacebookAppID != "" && c.FacebookNonceTTL < time.Minute {
+		return errors.New("accountkit: FacebookNonceTTL must be >= 1m")
+	}
+	for name, raw := range map[string]string{"WeChatAPIBaseURL": c.WeChatAPIBaseURL, "AppleJWKSURL": c.AppleJWKSURL, "GoogleJWKSURL": c.GoogleJWKSURL,
+		"FacebookGraphAPIBaseURL": c.FacebookGraphAPIBaseURL, "FacebookJWKSURL": c.FacebookJWKSURL} {
 		u, err := url.Parse(raw)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			return fmt.Errorf("accountkit: %s %q must be an absolute http(s) URL", name, raw)
@@ -550,6 +584,12 @@ func ConfigFromEnv(prefix string) (Config, error) {
 	c.WeChatAPIBaseURL = str("WECHAT_API_BASE_URL")
 	c.AppleJWKSURL = str("APPLE_JWKS_URL")
 	c.GoogleJWKSURL = str("GOOGLE_JWKS_URL")
+	c.FacebookAppID = str("FACEBOOK_APP_ID")
+	c.FacebookAppSecret = str("FACEBOOK_APP_SECRET")
+	c.FacebookGraphAPIVersion = str("FACEBOOK_GRAPH_API_VERSION")
+	dur("FACEBOOK_NONCE_TTL", &c.FacebookNonceTTL)
+	c.FacebookGraphAPIBaseURL = str("FACEBOOK_GRAPH_API_BASE_URL")
+	c.FacebookJWKSURL = str("FACEBOOK_JWKS_URL")
 	if s := str("OIDC_PROVIDERS"); s != "" {
 		c.OIDCProviders = oidcProvidersFromEnv(s, str, dur, fail, func(name string) (string, bool) { return os.LookupEnv(prefix + name) })
 	}

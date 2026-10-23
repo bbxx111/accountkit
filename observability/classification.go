@@ -15,12 +15,13 @@ const (
 type Method string
 
 const (
-	MethodNone   Method = "none"
-	MethodPhone  Method = "phone"
-	MethodEmail  Method = "email"
-	MethodWechat Method = "wechat"
-	MethodApple  Method = "apple"
-	MethodGoogle Method = "google"
+	MethodNone     Method = "none"
+	MethodPhone    Method = "phone"
+	MethodEmail    Method = "email"
+	MethodWechat   Method = "wechat"
+	MethodApple    Method = "apple"
+	MethodGoogle   Method = "google"
+	MethodFacebook Method = "facebook"
 	// MethodOIDC 汇总全部配置的 OIDC 类型；具体类型名不作为标签。
 	MethodOIDC Method = "oidc"
 	// MethodProvider 汇总宿主登记的其他第三方类型；具体类型名不作为标签。
@@ -156,16 +157,17 @@ const (
 type DependencyOperation string
 
 const (
-	DependencyIssue        DependencyOperation = "issue"
-	DependencyVerify       DependencyOperation = "verify"
-	DependencyDiscard      DependencyOperation = "discard"
-	DependencyGet          DependencyOperation = "get"
-	DependencyPut          DependencyOperation = "put"
-	DependencyCheck        DependencyOperation = "check"
-	DependencyRevoke       DependencyOperation = "revoke"
-	DependencyVerifyWechat DependencyOperation = "verify_wechat"
-	DependencyVerifyApple  DependencyOperation = "verify_apple"
-	DependencyVerifyGoogle DependencyOperation = "verify_google"
+	DependencyIssue          DependencyOperation = "issue"
+	DependencyVerify         DependencyOperation = "verify"
+	DependencyDiscard        DependencyOperation = "discard"
+	DependencyGet            DependencyOperation = "get"
+	DependencyPut            DependencyOperation = "put"
+	DependencyCheck          DependencyOperation = "check"
+	DependencyRevoke         DependencyOperation = "revoke"
+	DependencyVerifyWechat   DependencyOperation = "verify_wechat"
+	DependencyVerifyApple    DependencyOperation = "verify_apple"
+	DependencyVerifyGoogle   DependencyOperation = "verify_google"
+	DependencyVerifyFacebook DependencyOperation = "verify_facebook"
 	// DependencyVerifyOIDC 汇总全部配置的 OIDC 提供方。
 	DependencyVerifyOIDC DependencyOperation = "verify_oidc"
 	// DependencyVerifyProvider 汇总宿主登记的其他第三方提供方。
@@ -178,11 +180,12 @@ const (
 type DegradationScenario string
 
 const (
-	DegradationRevocationCheckFailOpen DegradationScenario = "revocation_check_fail_open"
-	DegradationRefreshGraceWriteFailed DegradationScenario = "refresh_grace_write_failed"
-	DegradationAppleCachedKeyFallback  DegradationScenario = "apple_cached_key_fallback"
-	DegradationGoogleCachedKeyFallback DegradationScenario = "google_cached_key_fallback"
-	DegradationOIDCCachedKeyFallback   DegradationScenario = "oidc_cached_key_fallback"
+	DegradationRevocationCheckFailOpen   DegradationScenario = "revocation_check_fail_open"
+	DegradationRefreshGraceWriteFailed   DegradationScenario = "refresh_grace_write_failed"
+	DegradationAppleCachedKeyFallback    DegradationScenario = "apple_cached_key_fallback"
+	DegradationGoogleCachedKeyFallback   DegradationScenario = "google_cached_key_fallback"
+	DegradationFacebookCachedKeyFallback DegradationScenario = "facebook_cached_key_fallback"
+	DegradationOIDCCachedKeyFallback     DegradationScenario = "oidc_cached_key_fallback"
 )
 
 // AuditKind separates event counts from omitted field counts.

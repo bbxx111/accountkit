@@ -10,6 +10,7 @@ import (
 
 	"github.com/bbxx111/accountkit"
 	"github.com/bbxx111/accountkit/audit"
+	"github.com/bbxx111/accountkit/enum"
 )
 
 func k(b byte) []byte     { return bytes.Repeat([]byte{b}, 32) }
@@ -354,5 +355,13 @@ func TestConfigFromEnvIdP(t *testing.T) {
 	t.Setenv("T_WECHAT_APPS", "broken")
 	if _, err := accountkit.ConfigFromEnv("T_"); err == nil {
 		t.Fatal("bad WECHAT_APPS must fail")
+	}
+}
+
+func TestFacebookCannotBeOIDCName(t *testing.T) {
+	c := minimal()
+	c.OIDCProviders = []accountkit.OIDCProvider{{Kind: enum.IdentityFacebook, Issuer: "https://i.example", JWKSURL: "https://i.example/k", ClientIDs: []string{"c"}}}
+	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "builtin") {
+		t.Fatalf("OIDC FACEBOOK: %v", err)
 	}
 }

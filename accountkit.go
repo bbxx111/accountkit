@@ -96,6 +96,7 @@ type Auth struct {
 	digester *pii.Digester
 	signer   *tokens.Signer
 	runner   *maintenance.Runner
+	facebook *idp.Facebook // 未配置时为 nil；数据删除入口使用
 
 	authAudit  *audit.AuthenticationRecorder
 	auditStore *audit.Store
@@ -110,6 +111,23 @@ type Auth struct {
 
 	startOnce sync.Once
 	closeOnce sync.Once
+}
+
+// ErrFacebookNotConfigured 表示未配置 FacebookAppID 时调用了 Facebook 数据删除入口。
+var ErrFacebookNotConfigured = errors.New("accountkit: facebook sign-in not configured")
+
+// HandleFacebookDataDeletion 处理 Meta 数据删除回调：校验 signed_request 后按 Facebook 用户 id
+// 删除对应身份数据。宿主负责 HTTP 路由、把结果编码为 {url, confirmation_code} 以及状态页；
+// 签名无效返回 idp.ErrInvalidSignedRequest，宿主应返回 400；其他错误应返回 5xx 让 Meta 重试。
+func (a *Auth) HandleFacebookDataDeletion(ctx context.Context, signedRequest string, meta user.Meta) (user.ProviderDeletionResult, error) {
+	if a.facebook == nil {
+		return user.ProviderDeletionResult{}, ErrFacebookNotConfigured
+	}
+	req, err := a.facebook.ParseSignedRequest(signedRequest)
+	if err != nil {
+		return user.ProviderDeletionResult{}, err
+	}
+	return a.users.DeleteProviderIdentityData(ctx, enum.IdentityFacebook, req.UserID, req.IssueTime, meta)
 }
 
 // New 应用默认、校验配置与依赖，构造密码学原语与维护运行器。不做任何 I/O。
@@ -221,6 +239,11 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 		return nil, err
 	}
 	a.users = users
+	for _, p := range providers {
+		if fb, ok := p.(*idp.Facebook); ok {
+			a.facebook = fb
+		}
+	}
 	h, err := enduser.New(enduser.Deps{
 		Users: users, Logger: deps.Logger, ClientIP: deps.ClientIP, ClientInfo: deps.ClientInfo, RequestID: deps.RequestID,
 		ReauthMaxAge: cfg.ReauthMaxAge, SensitiveOpVerification: *cfg.SensitiveOpVerification,
@@ -453,6 +476,13 @@ func identityProviders(cfg Config, deps Deps) ([]idp.Provider, error) {
 		providers = append(providers, idp.NewGoogle(idp.GoogleOptions{
 			ClientIDs: cfg.GoogleClientIDs, JWKSURL: cfg.GoogleJWKSURL, HTTP: deps.HTTPClient,
 			Nonces: idp.NewNonceRegistry(deps.Redis, cfg.KeyPrefix), Logger: deps.Logger, NonceTTL: cfg.GoogleNonceTTL, Observer: deps.Observer,
+		}))
+	}
+	if cfg.FacebookAppID != "" {
+		providers = append(providers, idp.NewFacebook(idp.FacebookOptions{
+			AppID: cfg.FacebookAppID, AppSecret: cfg.FacebookAppSecret, GraphAPIVersion: cfg.FacebookGraphAPIVersion,
+			GraphAPIBaseURL: cfg.FacebookGraphAPIBaseURL, JWKSURL: cfg.FacebookJWKSURL, HTTP: deps.HTTPClient,
+			Nonces: idp.NewNonceRegistry(deps.Redis, cfg.KeyPrefix), Logger: deps.Logger, NonceTTL: cfg.FacebookNonceTTL, Observer: deps.Observer,
 		}))
 	}
 	for _, p := range cfg.OIDCProviders {

@@ -254,7 +254,8 @@ type TokenResult struct {
 	Scope            string
 	UserID           string
 	IsNewUser        bool
-	// HintEmail 是已验证的第三方邮箱，仅供客户端预填绑定页，不代表已绑定。
+	// HintEmail 是第三方提供的邮箱提示，仅供客户端预填绑定页，不代表已绑定；
+	// 是否经提供方验证取决于提供方（Facebook 不提供验证声明）。
 	HintEmail string
 }
 

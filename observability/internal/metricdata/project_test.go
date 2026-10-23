@@ -205,3 +205,31 @@ func TestMetricProjectionProviderValues(t *testing.T) {
 		t.Fatal("OIDC cached-key degradation rejected")
 	}
 }
+
+func TestMetricProjectionFacebookValues(t *testing.T) {
+	if o.MethodFacebook != "facebook" || o.DependencyVerifyFacebook != "verify_facebook" || o.DegradationFacebookCachedKeyFallback != "facebook_cached_key_fallback" {
+		t.Fatal("facebook observability constants drifted")
+	}
+	got := collect(o.AuthObservation{Operation: o.AuthSignIn, Method: o.MethodFacebook, Result: o.ResultSuccess, Grant: o.GrantUser})
+	if len(got) == 0 || got[0].Labels[1].Value != "facebook" {
+		t.Fatalf("method facebook: %+v", got)
+	}
+	if got := collect(o.AuthObservation{Operation: o.AuthReauthenticate, Method: o.MethodFacebook, Result: o.ResultSuccess, Grant: o.GrantUser}); len(got) != 0 {
+		t.Fatalf("facebook must not reauthenticate: %+v", got)
+	}
+	got = collect(o.DependencyObservation{Component: o.ComponentIDP, Operation: o.DependencyVerifyFacebook, Result: o.ResultRejected})
+	if len(got) != 2 {
+		t.Fatalf("dependency facebook: %+v", got)
+	}
+	for _, m := range got {
+		for _, l := range m.Labels {
+			if l.Name == "operation" && l.Value != "verify_facebook" {
+				t.Fatalf("operation label: %+v", m)
+			}
+		}
+	}
+	got = collect(o.DegradationObservation{Scenario: o.DegradationFacebookCachedKeyFallback, Count: 1})
+	if len(got) != 1 || got[0].Labels[0].Value != "facebook_cached_key_fallback" {
+		t.Fatalf("degradation facebook: %+v", got)
+	}
+}

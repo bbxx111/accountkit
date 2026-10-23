@@ -66,3 +66,7 @@ Linux 完整验证（镜像 `accountkit-verify:local`，golang:1.26.5 加 postgr
 - 宿主（`GOWORK=off`，`SERVER_TEST_DB_DSN` 指向一次性 PostgreSQL 17）：`go build ./...`、`go vet ./...` 通过；`go test -count=1 ./...` 44 个包通过、0 失败；`bash scripts/check-generated.sh` 退出码 0；`openspec validate --all --strict` 32/32 通过。
 - Linux（镜像 `accountkit-verify:local`）：容器只挂载只读的 git bundle 并在容器内克隆 `906dd0d`，宿主仓库不进入容器。`bash scripts/verify.sh` 退出码 0：`-race` 下 2932 个测试通过、0 失败、2 个预期跳过（`TestRecoveryFixture`、`TestProfileAttributesUnreadableFile`）；`TestProviderDataDeletionConcurrentWithBind`/`WithUnbind`/`WithDeleteMe` 通过；必需测试门禁与恢复演练通过（使用新建的空库 `recovery_source_merge`、`recovery_target_merge`）。证据：`.test-output/merge-verify.log`。
 - 前述共享 `.git/config` 中的 `core.worktree=/src` 已由用户删除；`core.filemode` 是否需要还原待用户确认。
+
+## 支付宝归档后的注册表基线对齐 — 2026-10-24
+
+归档支付宝变更时，将本变更 identity-provider-registry 的两条重叠 MODIFIED 要求与同步后的主规格对齐，保留 ALIPAY 和 FACEBOOK 类型、凭证及既有场景，防止后续归档较旧增量覆盖新基线。仅协调规划工件，没有修改 Facebook 实现、任务完成状态或将本变更归档。其他 Facebook 增量保持原状。

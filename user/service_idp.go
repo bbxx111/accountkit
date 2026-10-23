@@ -53,7 +53,20 @@ func (s *Service) verifyIdp(ctx context.Context, cred IdpCredential) (idp.Identi
 	if provider == nil {
 		return idp.Identity{}, fmt.Errorf("%w: %s sign-in not configured", idp.ErrAppNotAllowed, cred.Kind)
 	}
-	return s.verifyProvider(ctx, cred.Kind, provider, cred.Credential)
+	ident, err := s.verifyProvider(ctx, cred.Kind, provider, cred.Credential)
+	if err != nil {
+		return idp.Identity{}, err
+	}
+	// Pending proofs retain only the current, sanitized Alipay claims. Other
+	// providers keep their existing proof and first-identity profile semantics.
+	if cred.Kind == enum.IdentityAlipay {
+		profile := providerProfileFrom(ident)
+		ident.Name, ident.Picture = "", ""
+		if profile != nil {
+			ident.Name, ident.Picture = profile.Name, profile.Picture
+		}
+	}
+	return ident, nil
 }
 
 // providerFailure 隔离宿主提供方的非哨兵错误：保留原文供日志，但不解包，

@@ -29,6 +29,21 @@ me, err := auth.Users().UpdateProfile(ctx, userID, user.ProfilePatch{
 
 `name` 和 `picture` 记在该身份的 `provider_meta.profile`。账号 `display_name`、`avatar_url` 只在该身份首次关联且对应列仍为空时填充。身份列表和 `:reveal` 不返回 `provider_meta`。宿主继续负责头像文件、默认图和后续同步。未配置客户端 ID 时 Google 登录保持关闭，配置里没有客户端秘密。
 
+## 支付宝 App 极简登录
+
+配置 `AlipayApps []accountkit.AlipayApp`，每项提供 `AppID`、多行 PEM `PrivateKey`（应用私钥）和 `AlipayPublicKey`（支付宝公钥）；只支持至少 2048 位 RSA 普通公钥模式。`AlipaySubjectMode` 缺省 UNIONID，OPENID 按 AppID 隔离。`New` 无文件/网络 I/O，宿主负责安全加载密钥内容。纯支付宝可设 Enabled 为 ALIPAY、Required 为显式空列表，无需发送器；Required 省略时仍需手机/邮箱补全。
+
+`SignInWithIdp` 使用以下凭证（合成值）：
+
+```go
+cred := user.IdpCredential{
+    Kind: enum.IdentityAlipay,
+    Credential: json.RawMessage(`{"app_id":"2026000000000001","code":"synthetic-code"}`),
+}
+```
+
+App 先完成极简 SDK 的 `auth_user` 授权和一次性 state 回跳核对，再提交 code；库不提供 authInfo 或回调端点。兑换 code 不重试，超时后重新授权。资料可降级；仅 ALIPAY 的后续成功登录会补填本次可信声明对应的空昵称/头像，主动清空也可补填，非空值保留，重复绑定不增加后续补填。配置片段、Flutter 桥接、库侧自动验收和宿主真机检查见[支付宝接入指南](alipay-sign-in.md)。
+
 ## Facebook 登录
 
 配置 `FacebookAppID` 与 `FacebookAppSecret` 后启用，一个实例只对接一个 Facebook App。`SignInWithIdp` 与绑定接受两种 credential，都以 `Kind: enum.IdentityFacebook` 提交原始 JSON：

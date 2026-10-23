@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -38,6 +39,69 @@ func configEnvironment(t *testing.T) {
 	t.Setenv("ACCOUNTKIT_JWT_AUDIENCE", "consumer")
 	t.Setenv("ACCOUNTSVC_DATABASE_URL", "postgres://user:synthetic-dsn-password@127.0.0.1:5432/test?sslmode=disable")
 	t.Setenv("ACCOUNTSVC_REDIS_URL", "redis://:synthetic-redis-password@127.0.0.1:6379/2")
+}
+
+func TestConfigAlipay(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	private := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}))
+	public := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PUBLIC KEY", Bytes: x509.MarshalPKCS1PublicKey(&key.PublicKey)}))
+	setAlipay := func(t *testing.T) {
+		t.Setenv("ACCOUNTKIT_ALIPAY_APP_IDS", "2026000000000001")
+		t.Setenv("ACCOUNTKIT_ALIPAY_2026000000000001_PRIVATE_KEY", private)
+		t.Setenv("ACCOUNTKIT_ALIPAY_2026000000000001_PUBLIC_KEY", public)
+	}
+	t.Run("pure Alipay without SMTP", func(t *testing.T) {
+		serveEnvironment(t)
+		setAlipay(t)
+		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "ALIPAY")
+		t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
+		for _, name := range []string{"HOST", "PORT", "FROM", "USERNAME", "PASSWORD"} {
+			t.Setenv("ACCOUNTSVC_SMTP_"+name, "")
+		}
+		c, err := LoadConfig("serve")
+		if err != nil || len(c.Library.AlipayApps) != 1 || c.SMTP.Host != "" {
+			t.Fatalf("pure Alipay service: %v", err)
+		}
+	})
+	t.Run("enabled requires provider", func(t *testing.T) {
+		serveEnvironment(t)
+		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "ALIPAY")
+		t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
+		if _, err := LoadConfig("serve"); err == nil || !strings.Contains(err.Error(), "ACCOUNTKIT_ALIPAY_APP_IDS") {
+			t.Fatalf("missing provider: %v", err)
+		}
+	})
+	t.Run("migrate no runtime or provider required", func(t *testing.T) {
+		configEnvironment(t)
+		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "ALIPAY")
+		t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
+		if _, err := LoadConfig("migrate"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	for _, field := range []string{"PRIVATE_KEY", "PUBLIC_KEY"} {
+		t.Run("safe dynamic "+field, func(t *testing.T) {
+			configEnvironment(t)
+			setAlipay(t)
+			name := "ACCOUNTKIT_ALIPAY_2026000000000001_" + field
+			t.Setenv(name, "synthetic-secret-that-must-not-appear")
+			if _, err := LoadConfig("migrate"); err == nil || !strings.Contains(err.Error(), name) || strings.Contains(err.Error(), "synthetic-secret") {
+				t.Fatalf("safe dynamic error name: %v", err)
+			}
+		})
+	}
+	for _, field := range []string{"SUBJECT_MODE", "GATEWAY_URL"} {
+		t.Run("safe static "+field, func(t *testing.T) {
+			configEnvironment(t)
+			t.Setenv("ACCOUNTKIT_ALIPAY_"+field, "invalid-sensitive-value")
+			if _, err := LoadConfig("migrate"); err == nil || !strings.Contains(err.Error(), "ACCOUNTKIT_ALIPAY_"+field) || strings.Contains(err.Error(), "sensitive") {
+				t.Fatalf("safe static error: %v", err)
+			}
+		})
+	}
 }
 
 func serveEnvironment(t *testing.T) {

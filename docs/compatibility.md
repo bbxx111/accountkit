@@ -754,3 +754,9 @@ httpapi/admin/response.go:168:		apierror.WriteInternal(w, h.d.Logger, reqid.From
 | `user/idp/wechat_test.go` | `TestWeChatNoAppsMeansNotAllowed` |
 | `user/idp/wechat_test.go` | `TestWeChatDoesNotFollowRedirects` |
 | `user/sender/log_test.go` | `TestLogSenderWritesMaskedTargetAndCode` |
+
+### 微信固定身份模式与小程序
+
+微信 OAuth 与小程序共用 `WECHAT` 身份类型。默认 `UNIONID` 模式使用 `unionid:<unionid>`；`OPENID` 模式使用 `openid:<appid>:<openid>`，OpenID 按应用隔离。历史裸 UnionID 不会自动匹配新 subject；本次不提供旧数据迁移工具。升级、回退或切换模式前须审查已有身份数据，模式变化可能产生不同身份和账号，不会自动升级、降级、合并或通过元数据查找账号。模式或应用所属验证组变化会拒绝已有 pending 登录补全流程，须重新登录。
+
+已验证的 UnionID、按 AppID 分类的 OpenID 与既有 profile 保存在 `provider_meta`。缺失字段保留旧值；既有非空 UnionID 或同一应用的 OpenID 矛盾返回现有 `user.ErrIdentityConflict` 并回滚，不创建会话。OpenID 模式后续取得 UnionID 仅补充元数据，subject 和身份 ID 保持。绑定、直接注册与 pending 完成遵循相同规则。code、令牌、session_key、Secret 和任意原始响应不保存到该元数据。Go `idp.Identity` 新增字段，位置式复合字面量调用方应改用字段名初始化。

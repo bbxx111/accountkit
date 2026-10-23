@@ -33,6 +33,14 @@ type OIDCProvider struct {
 	PictureClaims []string
 }
 
+// WeChatSubjectMode 决定实例内所有微信应用的固定身份识别方式。
+type WeChatSubjectMode = idp.WeChatSubjectMode
+
+const (
+	WeChatSubjectModeUnionID = idp.WeChatSubjectModeUnionID
+	WeChatSubjectModeOpenID  = idp.WeChatSubjectModeOpenID
+)
+
 // WeChatApp 是一个微信应用（小程序/App/公众号）的凭据；Secret 只在服务端换取 token 时使用。
 type WeChatApp struct {
 	AppID  string
@@ -87,8 +95,12 @@ type Config struct {
 	AuditRetentionDays    int           // 默认 180
 	DefaultRegion         string        // 默认 "CN"
 
-	// WeChatApps 为空表示未启用微信登录。
+	// WeChatApps 配置 OAuth 应用；两组均为空时未启用微信登录。
 	WeChatApps []WeChatApp
+	// WeChatMiniProgramApps 配置通过 jscode2session 验证的小程序。
+	WeChatMiniProgramApps []WeChatApp
+	// WeChatSubjectMode 默认为 UNIONID，实例所有微信应用使用同一固定模式。
+	WeChatSubjectMode WeChatSubjectMode
 	// AppleBundleIDs 为空表示未启用 Apple 登录；id_token 的 aud 须在其中。
 	AppleBundleIDs []string
 	AppleNonceTTL  time.Duration // 默认 10m
@@ -127,7 +139,7 @@ func cloneProfileAttributesConfig(c *user.ProfileAttributesConfig) *user.Profile
 // providerKinds 返回配置启用的第三方类型，顺序与 identityProviders 的装配一致。
 func (c Config) providerKinds() []enum.IdentityKind {
 	var kinds []enum.IdentityKind
-	if len(c.WeChatApps) > 0 {
+	if len(c.WeChatApps) > 0 || len(c.WeChatMiniProgramApps) > 0 {
 		kinds = append(kinds, enum.IdentityWeChat)
 	}
 	if len(c.AppleBundleIDs) > 0 {
@@ -211,6 +223,9 @@ func (c *Config) applyDefaults() {
 	c.OIDCProviders = slices.Clone(c.OIDCProviders)
 	for i := range c.OIDCProviders {
 		def(&c.OIDCProviders[i].NonceTTL, 10*time.Minute)
+	}
+	if c.WeChatSubjectMode == "" {
+		c.WeChatSubjectMode = WeChatSubjectModeUnionID
 	}
 	if c.WeChatAPIBaseURL == "" {
 		c.WeChatAPIBaseURL = "https://api.weixin.qq.com"
@@ -302,15 +317,23 @@ func (c Config) validateBase() error {
 	if len(c.DefaultRegion) != 2 {
 		return fmt.Errorf("accountkit: DefaultRegion %q must be an ISO 3166-1 alpha-2 code", c.DefaultRegion)
 	}
+	if c.WeChatSubjectMode != WeChatSubjectModeUnionID && c.WeChatSubjectMode != WeChatSubjectModeOpenID {
+		return errors.New("accountkit: WeChatSubjectMode must be UNIONID or OPENID")
+	}
 	seen := map[string]struct{}{}
-	for i, a := range c.WeChatApps {
-		if a.AppID == "" || a.Secret == "" {
-			return fmt.Errorf("accountkit: WeChatApps[%d]: app_id and secret are required", i)
+	for _, group := range []struct {
+		name string
+		apps []WeChatApp
+	}{{"WeChatApps", c.WeChatApps}, {"WeChatMiniProgramApps", c.WeChatMiniProgramApps}} {
+		for i, a := range group.apps {
+			if strings.TrimSpace(a.AppID) == "" || strings.TrimSpace(a.Secret) == "" || strings.Contains(a.AppID, ":") {
+				return fmt.Errorf("accountkit: %s[%d]: valid app_id and secret are required", group.name, i)
+			}
+			if _, dup := seen[a.AppID]; dup {
+				return fmt.Errorf("accountkit: %s: duplicate app_id", group.name)
+			}
+			seen[a.AppID] = struct{}{}
 		}
-		if _, dup := seen[a.AppID]; dup {
-			return fmt.Errorf("accountkit: WeChatApps: duplicate app_id %q", a.AppID)
-		}
-		seen[a.AppID] = struct{}{}
 	}
 	seenB := map[string]struct{}{}
 	for i, b := range c.AppleBundleIDs {
@@ -523,12 +546,23 @@ func ConfigFromEnv(prefix string) (Config, error) {
 	integer("AUDIT_RETENTION_DAYS", &c.AuditRetentionDays)
 	c.DefaultRegion = str("DEFAULT_REGION")
 	dur("MAINTENANCE_INTERVAL", &c.MaintenanceInterval)
-	if s := str("WECHAT_APPS"); s != "" {
-		apps, err := ParseWeChatApps(s)
-		if err != nil {
-			fail("WECHAT_APPS", err)
-		} else {
-			c.WeChatApps = apps
+	for _, group := range []struct {
+		name string
+		dst  *[]WeChatApp
+	}{{"WECHAT_APPS", &c.WeChatApps}, {"WECHAT_MINI_PROGRAM_APPS", &c.WeChatMiniProgramApps}} {
+		if raw := str(group.name); raw != "" {
+			apps, err := ParseWeChatApps(raw)
+			if err != nil {
+				fail(group.name, err)
+			} else {
+				*group.dst = apps
+			}
+		}
+	}
+	if raw, ok := os.LookupEnv(prefix + "WECHAT_SUBJECT_MODE"); ok {
+		c.WeChatSubjectMode = WeChatSubjectMode(raw)
+		if c.WeChatSubjectMode != WeChatSubjectModeUnionID && c.WeChatSubjectMode != WeChatSubjectModeOpenID {
+			fail("WECHAT_SUBJECT_MODE", errors.New("must be UNIONID or OPENID"))
 		}
 	}
 	if s := str("APPLE_BUNDLE_IDS"); s != "" {

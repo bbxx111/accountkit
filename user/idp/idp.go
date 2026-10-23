@@ -18,8 +18,10 @@ import (
 
 // Identity 是已通过第三方校验的身份。
 type Identity struct {
-	Kind      enum.IdentityKind
-	Subject   string
+	Kind    enum.IdentityKind
+	Subject string
+	// UnionID 是微信已验证的跨应用标识，仅用作白名单元数据。
+	UnionID   string
 	OpenIDs   map[string]string
 	HintEmail string
 	// Name 和 Picture 是提供方返回的资料声明。登录不因这两项失败；落库前再净化。

@@ -213,7 +213,10 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 	})
 	a.revocation = revocation.NewSet(deps.Redis, cfg.KeyPrefix)
 	a.grace = grace.NewCache(deps.Redis, cfg.KeyPrefix, cipher)
-	providers := identityProviders(cfg, deps)
+	providers, err := identityProviders(cfg, deps)
+	if err != nil {
+		return nil, err
+	}
 	users, err := user.NewService(user.Deps{
 		ProfileAttributes:           cfg.ProfileAttributes,
 		SignInCompletionFlowContext: cfg.Schema,
@@ -447,14 +450,21 @@ func defaultRequestID(r *http.Request) string {
 }
 
 // identityProviders 按配置构造已启用的第三方提供方；顺序与 Config.providerKinds 一致。
-func identityProviders(cfg Config, deps Deps) []idp.Provider {
+func identityProviders(cfg Config, deps Deps) ([]idp.Provider, error) {
 	var providers []idp.Provider
-	if len(cfg.WeChatApps) > 0 {
-		apps := make([]idp.App, len(cfg.WeChatApps))
-		for i, a := range cfg.WeChatApps {
-			apps[i] = idp.App{AppID: a.AppID, Secret: a.Secret}
+	if len(cfg.WeChatApps) > 0 || len(cfg.WeChatMiniProgramApps) > 0 {
+		convert := func(apps []WeChatApp) []idp.App {
+			out := make([]idp.App, len(apps))
+			for i, a := range apps {
+				out[i] = idp.App{AppID: a.AppID, Secret: a.Secret}
+			}
+			return out
 		}
-		providers = append(providers, idp.NewWeChat(apps, cfg.WeChatAPIBaseURL, deps.HTTPClient, deps.Logger))
+		provider, err := idp.NewWeChatWithConfig(idp.WeChatConfig{Apps: convert(cfg.WeChatApps), MiniProgramApps: convert(cfg.WeChatMiniProgramApps), SubjectMode: cfg.WeChatSubjectMode, BaseURL: cfg.WeChatAPIBaseURL}, deps.HTTPClient, deps.Logger)
+		if err != nil {
+			return nil, err
+		}
+		providers = append(providers, provider)
 	}
 	if len(cfg.AppleBundleIDs) > 0 {
 		providers = append(providers, idp.NewApple(idp.AppleOptions{
@@ -482,5 +492,5 @@ func identityProviders(cfg Config, deps Deps) []idp.Provider {
 			Nonces: idp.NewNonceRegistry(deps.Redis, cfg.KeyPrefix), Logger: deps.Logger, NonceTTL: p.NonceTTL, Observer: deps.Observer,
 		}))
 	}
-	return providers
+	return providers, nil
 }

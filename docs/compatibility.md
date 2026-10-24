@@ -25,7 +25,7 @@
 
 `IdentityKind` 追加 `GOOGLE = 5`。`POST /users:signInWithIdp` 增加与 `apple` 互斥的 `google` 成员，字段为 `id_token` 和原始 `nonce`。未配置 `GoogleClientIDs` 时该登录关闭。已验证邮箱只作为 `hint_email` 预填，补全仍要显式 `target`。`Required` 不能包含 `GOOGLE`。
 
-显示名上限由 32 放宽到 128 个 Unicode 码位，适用于 `PATCH /users/me` 和 Google 首次填充。把 32 写死的宿主需要同时放宽。旧二进制不能解释 kind 5；回退二进制前不能保留已写入的 Google 身份行。去掉客户端 ID 只停止新的 Google 登录。
+显示名上限由 32 放宽到 128 个 Unicode 码位，适用于 `PATCH /users/me` 和 Google 资料填充。把 32 写死的宿主需要同时放宽。旧二进制不能解释 kind 5；回退二进制前不能保留已写入的 Google 身份行。去掉客户端 ID 只停止新的 Google 登录。
 
 ## 支付宝 App 极简登录与空资料补填
 
@@ -33,7 +33,7 @@
 
 UNIONID 默认使用 `unionid:<union_id>`，OPENID 使用 `openid:<app_id>:<open_id>`，不在模式间回退，也不以 `user_id` 兜底。跨 App 账号共享取决于支付宝应用分组及实际相同 UnionID；模式、分组或信任配置变化不提供自动迁移/合并。pending 指纹覆盖应用集合、模式、网关、公钥材料，变化后需重新授权；重排列表、等价 PEM 表达不影响指纹。所有副本应保持一致。
 
-ALIPAY 与其他提供方有明确资料差异：首次及后续成功登录都按字段补填本次可信且净化声明对应的空显示名/头像，用户主动清空也可以补填；不覆盖非空值、不使用历史 profile 补偿本次资料失败。重复绑定已有身份不触发后续补填，GOOGLE/APPLE/FACEBOOK/OIDC 保持仅首次关联身份时填充。（已被下文“提供方资料补填统一”取代。）写入遵守账号锁、生命周期和事务回滚，pending 完成/重放不再次请求支付宝。资料查询失败可降级，外层取消终止操作。
+（已被下文“提供方资料补填统一”取代）ALIPAY 与其他提供方有明确资料差异：首次及后续成功登录都按字段补填本次可信且净化声明对应的空显示名/头像，用户主动清空也可以补填；不覆盖非空值、不使用历史 profile 补偿本次资料失败。重复绑定已有身份不触发后续补填，GOOGLE/APPLE/FACEBOOK/OIDC 保持仅首次关联身份时填充。写入遵守账号锁、生命周期和事务回滚，pending 完成/重放不再次请求支付宝。资料查询失败可降级，外层取消终止操作。
 
 指标追加 `alipay`、`verify_alipay`、`alipay_profile_unavailable`，不输出 AppID 或秘密。禁用后历史 ALIPAY 身份仍可列出、解绑和匿名化；回退前验证目标版本处理未知历史类型的能力，不通过清库或改 subject 回退。客户端需极简 SDK、已安装支付宝和一次性 state 核对，code 兑换失败后重新授权；真实 App/应用分组由宿主另行检查，库侧采用 HTTP 自动契约验收；详情见[支付宝接入指南](alipay-sign-in.md)。
 
@@ -45,7 +45,7 @@ ALIPAY 与其他提供方有明确资料差异：首次及后续成功登录都�
 
 UNIONID 默认使用 `unionid:<unionid>`，需在 QQ 互联开通 UnionID 打通，未开通时登录返回固定 500；OPENID 使用 `openid:<app_id>:<openid>` 且不请求 UnionID。切换模式会让既有 QQ 身份无法命中，不自动迁移或合并。
 
-登录补填提供方集合现为 ALIPAY、QQ：两者首次及后续成功登录都按字段补填仍为空的显示名与头像；其他提供方仍只在首次写入身份时填充（已被下文“提供方资料补填统一”取代。）QQ 头像仅对 `thirdqq.qlogo.cn` 的 `http://` 地址升级为 `https://`，其他 HTTP 地址丢弃。指标追加 `qq`、`verify_qq`、`qq_profile_unavailable`。无 schema/迁移变化。
+（已被下文“提供方资料补填统一”取代）登录补填提供方集合现为 ALIPAY、QQ：两者首次及后续成功登录都按字段补填仍为空的显示名与头像；其他提供方仍只在首次写入身份时填充。QQ 头像仅对 `thirdqq.qlogo.cn` 的 `http://` 地址升级为 `https://`，其他 HTTP 地址丢弃。指标追加 `qq`、`verify_qq`、`qq_profile_unavailable`。无 schema/迁移变化。
 
 ## 微博 App SDK 登录
 
@@ -55,7 +55,7 @@ UNIONID 默认使用 `unionid:<unionid>`，需在 QQ 互联开通 UnionID 打通
 
 微博 uid 全局唯一且公开，subject 固定为 `uid:<uid>`，没有标识模式配置，也不写 unionid/openid 元数据；同一微博用户经任一已登记 App 登录都命中同一身份。uid 只作识别，不代表持有者证明，客户端也无法提交 uid。增删 AppKey 不改变既有身份命中，但会使未完成的登录补全失效。
 
-登录补填提供方集合现为 ALIPAY、QQ、WEIBO：三者首次及后续成功登录都按字段补填仍为空的显示名与头像；其他提供方仍只在首次写入身份时填充（已被下文“提供方资料补填统一”取代。）微博头像只接受 HTTPS，不做协议改写，选中的头像字段为 HTTP 时丢弃头像。未审核应用超出测试用户数（21321）等应用权限错误返回固定 500。指标追加 `weibo`、`verify_weibo`、`weibo_profile_unavailable`。无 schema/迁移变化。见[微博接入指南](weibo-sign-in.md)。
+（已被下文“提供方资料补填统一”取代）登录补填提供方集合现为 ALIPAY、QQ、WEIBO：三者首次及后续成功登录都按字段补填仍为空的显示名与头像；其他提供方仍只在首次写入身份时填充。微博头像只接受 HTTPS，不做协议改写，选中的头像字段为 HTTP 时丢弃头像。未审核应用超出测试用户数（21321）等应用权限错误返回固定 500。指标追加 `weibo`、`verify_weibo`、`weibo_profile_unavailable`。无 schema/迁移变化。见[微博接入指南](weibo-sign-in.md)。
 
 ## 提供方资料补填统一（ProviderProfileBackfill）
 

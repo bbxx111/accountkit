@@ -135,6 +135,7 @@ func TestProviderProfileBackfillOnCompletionLink(t *testing.T) {
 			}
 			name, avatar := expectedProfile(mode.want)
 			assertAlipayProfile(t, f, owner.UserID, name, avatar)
+			assertProviderMetaHas(t, f, owner.UserID, enum.IdentityGoogle, "Later")
 		})
 		t.Run("owned-proof/"+mode.name, func(t *testing.T) {
 			ctx := context.Background()
@@ -187,4 +188,22 @@ func TestProviderProfileBackfillDisabledStillFillsNewAccounts(t *testing.T) {
 		t.Fatalf("completion did not create an account: %v", err)
 	}
 	assertAlipayProfile(t, completed, requireSignInTokens(t, done).UserID, "Later", "https://example.test/later.png")
+}
+
+func TestProviderProfileBackfillRollbackAfterSessionFailure(t *testing.T) {
+	f := newFixture(t)
+	useBackfillProvider(t, f, enum.IdentityGoogle, nil, []enum.IdentityKind{})
+	first := requireSignInTokens(t, mustSignInWithIdp(t, f, emptyCred(enum.IdentityGoogle)))
+	mustExec(t, f, `CREATE FUNCTION reject_backfill_session() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic session failure'; END $$; CREATE TRIGGER reject_backfill_session BEFORE INSERT ON session FOR EACH ROW EXECUTE FUNCTION reject_backfill_session()`)
+	if _, err := f.svc.SignInWithIdp(context.Background(), laterCred(enum.IdentityGoogle), dev2, meta1); err == nil {
+		t.Fatal("session failure succeeded")
+	}
+	assertAlipayProfile(t, f, first.UserID, "", "")
+	rows, err := f.repo.Q().ListActiveIdentitiesByUser(context.Background(), first.UserID)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("identities=%d %v", len(rows), err)
+	}
+	if strings.Contains(string(rows[0].ProviderMeta), "Later") {
+		t.Fatal("provider metadata survived rollback")
+	}
 }

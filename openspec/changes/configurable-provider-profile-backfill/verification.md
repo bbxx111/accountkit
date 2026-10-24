@@ -31,21 +31,39 @@
 
 ## 测试变更
 
-删除 6 个与“仅 GOOGLE/OIDC/FACEBOOK 等集合内提供方登录补填”旧规则绑定的测试，由配置驱动的统一规则测试取代：
+删除 6 个与“按 ALIPAY/QQ/WEIBO 补填集合区分”的旧规则绑定的测试，由配置驱动的统一规则测试取代：
 
 | 已删除 | 原因 |
 |---|---|
 | `TestAlipayExceptionDoesNotBackfillOtherProviders`、`TestQQExceptionDoesNotBackfillOtherProviders`、`TestWeiboRefillDoesNotBackfillOtherProviders` | 断言“集合外提供方登录不补填”，规则改为按 `PROVIDER_PROFILE_BACKFILL` 判定 |
 | `TestAlipayRepeatBindingDoesNotBackfill`、`TestQQRepeatBindingDoesNotBackfill`、`TestWeiboRepeatBindingDoesNotBackfill` | 断言重复绑定不补填，改为按配置判定 |
 
-替代测试：`user/service_profile_backfill_test.go` 的 5 个测试（默认与开启时各提供方补填且不覆盖非空值、`KeepsNonEmpty`、关闭时已有身份登录不写资料、绑定 `OnBinding`、补全关联 `OnCompletionLink`；关闭时仍更新 `provider_meta.profile`，新建账号始终填充），以及根包的 `TestWeiboHTTPProfileBackfillDisabled`（证明配置从 `Config` 经装配传到服务）。
+替代测试：`user/service_profile_backfill_test.go` 的 6 个测试，与函数名一一对应：
 
-`scripts/required-tests.txt`：移除 6 个已删除条目，新增 5 个 `user` 测试与 `TestWeiboHTTPProfileBackfillDisabled`；门禁通过，未放宽任何 skip 规则。
+- `TestProviderProfileBackfillOnSignIn`：默认、开启、关闭三种模式下已有身份再次登录的补填判定，覆盖各提供方；关闭时仍更新 `provider_meta.profile`。
+- `TestProviderProfileBackfillKeepsNonEmpty`：非空显示名与头像不被覆盖。
+- `TestProviderProfileBackfillOnBinding`：绑定到已有账号（含重复绑定）的补填判定。
+- `TestProviderProfileBackfillOnCompletionLink`：登录补全关联到已有账号（新身份与已拥有证明两条路径）的补填判定。
+- `TestProviderProfileBackfillDisabledStillFillsNewAccounts`：关闭时直接注册与补全创建的新账号仍被填充。
+- `TestProviderProfileBackfillRollbackAfterSessionFailure`：GOOGLE 在补填后会话创建失败，资料与 `provider_meta` 随事务回滚（最终审查新增）。
+
+另有根包 `TestWeiboHTTPProfileBackfillDisabled`（证明配置从 `Config` 经装配传到服务）。
+
+`scripts/required-tests.txt`：移除 6 个已删除条目，新增 6 个 `user` 测试与 `TestWeiboHTTPProfileBackfillDisabled`；门禁通过，未放宽任何 skip 规则。
 
 ## 审查结论
 
 - 任务 1、任务 2：首次复核通过。
 - 任务 3：经一轮文档措辞修正后通过。
+
+## 最终审查
+
+整分支最终审查要求的修复已完成：
+
+- 主规格 `user-basic-profile` “内置头像资料”与 `oidc-sign-in` “OIDC 资料声明映射”与新规则冲突，已在本变更增加对应 MODIFIED 增量（保留全部场景），proposal 补充 `oidc-sign-in`；`openspec validate configurable-provider-profile-backfill --strict` 与 `openspec validate --all --strict` 通过。
+- 补充 `TestProviderProfileBackfillRollbackAfterSessionFailure` 并加入 `scripts/required-tests.txt`，满足 tasks 2.3 对非 ALIPAY/QQ/WEIBO 提供方的原子性要求。
+- 小项：`new-identity` 子测试增加 `provider_meta` 断言；还原 `docs/compatibility.md` 的历史措辞；修正 `displayNameFromProvider` 注释；清理微博 HTTP 测试未使用的赋值。
+- 重新运行：新回滚测试（-v，PASS 非 SKIP）、`go test -run TestProviderProfileBackfill ./user/`、`TestWeiboHTTPProfileBackfillDisabled`、`go vet ./...`、gofmt 与上述 openspec 校验。
 
 ## 未验证项
 

@@ -948,4 +948,5 @@ github.com/bbxx111/accountkit/user/TestProviderProfileBackfillKeepsNonEmpty
 github.com/bbxx111/accountkit/user/TestProviderProfileBackfillOnBinding
 github.com/bbxx111/accountkit/user/TestProviderProfileBackfillOnCompletionLink
 github.com/bbxx111/accountkit/user/TestProviderProfileBackfillOnSignIn
+github.com/bbxx111/accountkit/user/TestProviderProfileBackfillRollbackAfterSessionFailure
 github.com/bbxx111/accountkit/user/idp/TestWeiboHugeExpireDoesNotOverflow

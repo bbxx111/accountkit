@@ -197,8 +197,8 @@ func TestWeiboHTTPProfileBackfillDisabled(t *testing.T) {
 	off := false
 	cfg.ProviderProfileBackfill = &off
 	f := newAlipayHTTPFixture(t, cfg)
-	token := f.tokenResult(f.call("POST", "/users:signInWithIdp", "", weiboLoginBody(app, "first"), 200))
-	token = f.tokenResult(f.call("POST", "/users:signInWithIdp", "", weiboLoginBody(app, "later"), 200))
+	f.tokenResult(f.call("POST", "/users:signInWithIdp", "", weiboLoginBody(app, "first"), 200))
+	token := f.tokenResult(f.call("POST", "/users:signInWithIdp", "", weiboLoginBody(app, "later"), 200))
 	f.assertMe(token, "", "")
 	fresh := f.tokenResult(f.call("POST", "/users:signInWithIdp", "", weiboLoginBody(app, "new"), 200))
 	f.assertMe(fresh, "New account", "https://tvax1.sinaimg.cn/new.jpg")

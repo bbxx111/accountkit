@@ -24,6 +24,7 @@
 - `user-basic-profile`：补填规则由“提供方集合”改为“新建账号始终填充 + 已有账号按配置补填”，原子性要求覆盖所有提供方。
 - `identity-provider-registry`：提供方资料声明规则不再区分补填集合，账号填充引用统一规则。
 - `google-sign-in`：“首次填充空资料”改为遵循通用规则，后续登录在配置开启时可补填空字段。
+- `oidc-sign-in`：OIDC 资料声明映射改为参与统一补填规则（新建账号填充，已有账号按配置补填）。
 - `accountsvc-runtime`：服务接受 `PROVIDER_PROFILE_BACKFILL` 并拒绝非法布尔值。
 
 ## Impact

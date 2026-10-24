@@ -123,7 +123,7 @@ func sanitizeProviderName(name string) string {
 	return out
 }
 
-// displayNameFromProvider 取已净化名称的前 128 个码位，供账号显示名首次填充。
+// displayNameFromProvider 取已净化名称的前 128 个码位，供账号显示名填充与补填。
 func displayNameFromProvider(name string) string {
 	name = sanitizeProviderName(name)
 	runes := []rune(name)

@@ -116,42 +116,6 @@ func TestAlipayClearedProfileUsesOnlyCurrentClaims(t *testing.T) {
 	assertAlipayProfile(t, f, first.UserID, "New", "https://example.test/new.png")
 }
 
-func TestAlipayExceptionDoesNotBackfillOtherProviders(t *testing.T) {
-	for _, kind := range []enum.IdentityKind{enum.IdentityGoogle, enum.IdentityApple, enum.IdentityFacebook, corpSSO} {
-		t.Run(string(kind), func(t *testing.T) {
-			f := newFixture(t)
-			newServiceWith(t, f, func(d *user.Deps) {
-				*d = withProvider(*d, alipayProvider(kind, nil))
-				d.RequiredIdentityKinds = []enum.IdentityKind{}
-			})
-			cred := providerCred(kind, map[string]string{"sub": "compat"})
-			first := requireSignInTokens(t, mustSignInWithIdp(t, f, cred))
-			mustSignInWithIdp(t, f, providerCred(kind, map[string]string{"sub": "compat", "name": "Later", "picture": "https://example.test/later.png"}))
-			assertAlipayProfile(t, f, first.UserID, "", "")
-		})
-	}
-}
-
-func TestAlipayRepeatBindingDoesNotBackfill(t *testing.T) {
-	f := newFixture(t)
-	useAlipay(t, f, nil, nil)
-	phone := f.signIn(t, enum.IdentityPhone, phone1, dev1)
-	p := principalOf(t, f, phone)
-	if _, created, err := f.svc.BindWithIdp(context.Background(), p, alipayCred("", ""), meta1); err != nil || !created {
-		t.Fatal(err)
-	}
-	if _, created, err := f.svc.BindWithIdp(context.Background(), p, alipayCred("Later", "https://example.test/later.png"), meta1); err != nil || created {
-		t.Fatal(err)
-	}
-	assertAlipayProfile(t, f, phone.UserID, "", "")
-	rows, _ := f.repo.Q().ListActiveIdentitiesByUser(context.Background(), phone.UserID)
-	for _, row := range rows {
-		if row.Kind == enum.IdentityAlipay && !strings.Contains(string(row.ProviderMeta), "Later") {
-			t.Fatal("repeat binding did not refresh provider metadata")
-		}
-	}
-}
-
 func TestAlipayLoginProfileRollbackAfterSessionFailure(t *testing.T) {
 	f := newFixture(t)
 	useAlipay(t, f, nil, []enum.IdentityKind{})

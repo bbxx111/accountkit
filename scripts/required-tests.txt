@@ -868,7 +868,6 @@ github.com/bbxx111/accountkit/user/TestAlipayConcurrentAppsShareSingleUnionIdent
 github.com/bbxx111/accountkit/user/TestAlipayConcurrentPATCHNonemptyProfileWins
 github.com/bbxx111/accountkit/user/TestAlipayConflictingMetadataRollsBackProfile
 github.com/bbxx111/accountkit/user/TestAlipayDisabledHistoricalIdentityRemainsManageable
-github.com/bbxx111/accountkit/user/TestAlipayExceptionDoesNotBackfillOtherProviders
 github.com/bbxx111/accountkit/user/TestAlipayGatewayObservationsAndFlowFingerprint
 github.com/bbxx111/accountkit/user/TestAlipayLaterLoginBackfillsOnlyEmptyFields
 github.com/bbxx111/accountkit/user/TestAlipayLoginCannotRestoreProfileAfterConcurrentPurge
@@ -878,7 +877,6 @@ github.com/bbxx111/accountkit/user/TestAlipayObservationUsesFinalDomainResult
 github.com/bbxx111/accountkit/user/TestAlipayPendingAlreadyOwnedProofBackfills
 github.com/bbxx111/accountkit/user/TestAlipayPendingConcurrentOwnershipRejectsWithoutBackfill
 github.com/bbxx111/accountkit/user/TestAlipayPendingSanitizesAndCompletesWithoutVerifyReplay
-github.com/bbxx111/accountkit/user/TestAlipayRepeatBindingDoesNotBackfill
 github.com/bbxx111/accountkit/user/TestAlipayUniqueRetryDoesNotRepeatVerification
 github.com/bbxx111/accountkit/TestAlipayHTTPLoginContract
 github.com/bbxx111/accountkit/TestAlipayHTTPMultiAppIdentityContract
@@ -910,9 +908,7 @@ github.com/bbxx111/accountkit/user/TestQQLoginCannotRestoreProfileAfterConcurren
 github.com/bbxx111/accountkit/user/TestQQConcurrentAppsShareSingleUnionIdentity
 github.com/bbxx111/accountkit/user/TestQQBindUnbindAndDisabledHistory
 github.com/bbxx111/accountkit/user/TestQQClearedProfileUsesOnlyCurrentClaims
-github.com/bbxx111/accountkit/user/TestQQExceptionDoesNotBackfillOtherProviders
 github.com/bbxx111/accountkit/user/TestQQPendingConcurrentOwnershipRejectsWithoutBackfill
-github.com/bbxx111/accountkit/user/TestQQRepeatBindingDoesNotBackfill
 github.com/bbxx111/accountkit/user/TestQQProviderObservationsAndFlowFingerprint
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigWeibo
 github.com/bbxx111/accountkit/observability/internal/metricdata/TestWeiboMetricProjection
@@ -920,6 +916,7 @@ github.com/bbxx111/accountkit/TestWeiboConfigFromEnv
 github.com/bbxx111/accountkit/TestWeiboProviderAssembly
 github.com/bbxx111/accountkit/TestWeiboHTTPLoginContract
 github.com/bbxx111/accountkit/TestWeiboHTTPMultiAppIdentityContract
+github.com/bbxx111/accountkit/TestWeiboHTTPProfileBackfillDisabled
 github.com/bbxx111/accountkit/enum/TestIdentityWeiboIsBuiltinThirdParty
 github.com/bbxx111/accountkit/user/idp/TestWeiboCredentialRejectedBeforeNetwork
 github.com/bbxx111/accountkit/user/idp/TestWeiboVerify
@@ -944,8 +941,11 @@ github.com/bbxx111/accountkit/user/TestWeiboLoginCannotRestoreProfileAfterConcur
 github.com/bbxx111/accountkit/user/TestWeiboConcurrentAppsShareSingleUIDIdentity
 github.com/bbxx111/accountkit/user/TestWeiboBindUnbindAndDisabledHistory
 github.com/bbxx111/accountkit/user/TestWeiboClearedProfileUsesOnlyCurrentClaims
-github.com/bbxx111/accountkit/user/TestWeiboRefillDoesNotBackfillOtherProviders
 github.com/bbxx111/accountkit/user/TestWeiboPendingConcurrentOwnershipRejectsWithoutBackfill
-github.com/bbxx111/accountkit/user/TestWeiboRepeatBindingDoesNotBackfill
 github.com/bbxx111/accountkit/user/TestWeiboProviderObservationsAndFlowFingerprint
+github.com/bbxx111/accountkit/user/TestProviderProfileBackfillDisabledStillFillsNewAccounts
+github.com/bbxx111/accountkit/user/TestProviderProfileBackfillKeepsNonEmpty
+github.com/bbxx111/accountkit/user/TestProviderProfileBackfillOnBinding
+github.com/bbxx111/accountkit/user/TestProviderProfileBackfillOnCompletionLink
+github.com/bbxx111/accountkit/user/TestProviderProfileBackfillOnSignIn
 github.com/bbxx111/accountkit/user/idp/TestWeiboHugeExpireDoesNotOverflow

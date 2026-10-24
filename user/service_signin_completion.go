@@ -39,7 +39,7 @@ func (s *Service) lockProofSubjects(ctx context.Context, q *db.Queries, proofs .
 	return s.lockAnchorSubjects(ctx, q, subjects...)
 }
 
-func (s *Service) createProofIdentity(ctx context.Context, q *db.Queries, uid string, p completionProof) (db.Identity, error) {
+func (s *Service) createProofIdentity(ctx context.Context, q *db.Queries, uid string, p completionProof, newAccount bool) (db.Identity, error) {
 	if p.Kind.IsChannel() {
 		norm, prefix, suffix, err := s.normalizeTarget(p.Kind, p.Target)
 		if err != nil {
@@ -47,7 +47,14 @@ func (s *Service) createProofIdentity(ctx context.Context, q *db.Queries, uid st
 		}
 		return s.createAnchorIdentity(ctx, q, uid, p.Kind, norm, prefix, suffix)
 	}
-	return s.createProviderIdentity(ctx, q, uid, *p.Provider)
+	row, err := s.createProviderIdentity(ctx, q, uid, *p.Provider)
+	if err != nil {
+		return db.Identity{}, err
+	}
+	if err := s.backfillProviderProfile(ctx, q, uid, *p.Provider, newAccount); err != nil {
+		return db.Identity{}, err
+	}
+	return row, nil
 }
 
 // signInVerified 接收已验证证明，在事务内选择已有账号、直接注册或仅保存待补全流程。
@@ -96,10 +103,8 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 				if err = s.refreshProviderMeta(ctx, q, current, *proof.Provider, s.now()); err != nil {
 					return err
 				}
-				if refillsProfileOnSignIn(proof.Kind) {
-					if err = s.seedEmptyProviderProfile(ctx, q, u.ID, *proof.Provider); err != nil {
-						return err
-					}
+				if err = s.backfillProviderProfile(ctx, q, u.ID, *proof.Provider, false); err != nil {
+					return err
 				}
 			}
 		case errors.Is(err, pgx.ErrNoRows):
@@ -115,7 +120,7 @@ func (s *Service) signInVerified(ctx context.Context, proof completionProof, exp
 			if err != nil {
 				return err
 			}
-			created, e := s.createProofIdentity(ctx, q, uid, proof)
+			created, e := s.createProofIdentity(ctx, q, uid, proof, true)
 			if e != nil {
 				return e
 			}
@@ -536,10 +541,8 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.SignI
 					if e = s.refreshProviderMeta(ctx, q, existing, *proof.Provider, s.now()); e != nil {
 						return e
 					}
-					if refillsProfileOnSignIn(proof.Kind) {
-						if e = s.seedEmptyProviderProfile(ctx, q, u.ID, *proof.Provider); e != nil {
-							return e
-						}
+					if e = s.backfillProviderProfile(ctx, q, u.ID, *proof.Provider, false); e != nil {
+						return e
 					}
 				}
 				continue
@@ -547,7 +550,7 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.SignI
 			if countKind(idents, proof.Kind) >= s.d.MaxIdentitiesPerKind {
 				return ErrIdentityKindLimit
 			}
-			created, e := s.createProofIdentity(ctx, q, u.ID, proof)
+			created, e := s.createProofIdentity(ctx, q, u.ID, proof, isNew)
 			if e != nil {
 				return e
 			}

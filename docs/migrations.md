@@ -6,7 +6,7 @@ Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史�
 
 ## 当前头像初始定义：version 1
 
-该完整初始定义已随 [v0.5.0](releases/v0.5.0.md) 发布，tag 固定为 `102315c3069273f7a8c3ad253c1f4ae01255f8c6`。以下为发布前的有限授权记录；发布后的 0001 字节保持，后续真实结构变更从 0002 递增。
+该完整初始定义已随 [v0.5.0](releases/v0.5.0.md) 发布，tag 固定为 `102315c3069273f7a8c3ad253c1f4ae01255f8c6`。以下为发布前的有限授权记录；v0.5.0 tag 内的 0001 字节保持。其后当前 0001 又按 `add-google-sign-in`、`add-identity-provider-registry` 的明确授权调整（见[当前初始基线](#当前初始基线)），将随 v0.6.0 发布；后续真实结构变更从 0002 递增。
 
 本轮用户明确要求“不新增 0002 迁移，改现有 0001”，范围仅为在当前 `user_account` 增加 `avatar_url TEXT NULL`，无默认值、业务 CHECK 或索引。同步 sqlc、当前 `initialFrozen` 与预检，新空 schema 安装仍为 version=1/dirty=false；0001 down 的整表删除定义已覆盖头像列，无需改动。此前资料单列整合与更早授权分别保留历史事实。
 

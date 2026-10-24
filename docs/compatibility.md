@@ -1,5 +1,75 @@
 # 功能与兼容对照
 
+## 统一凭证信封与身份类型字符串
+
+本节随 v0.6.0（准备中）发布，对 v0.5.0 不兼容，不提供旧数据迁移。
+
+- **HTTP 请求**：`signInWithCode`、`signInWithIdp`、`completeSignIn`、`reauthenticate`、绑定和换绑的请求体统一为 `{"kind","credential"}`。旧写法与新写法对照：
+
+  | 旧 | 新 |
+  |---|---|
+  | `{"phone":{"target":…,"code_id":…,"code":…}}` | `{"kind":"PHONE","credential":{"target":…,"code_id":…,"code":…}}` |
+  | `{"email":{…}}` | `{"kind":"EMAIL","credential":{…}}` |
+  | `{"wechat":{"app_id":…,"code":…}}` | `{"kind":"WECHAT","credential":{"app_id":…,"code":…}}` |
+  | `{"apple":{"id_token":…,"nonce":…}}` / `{"google":{…}}` | `{"kind":"APPLE"\|"GOOGLE","credential":{"id_token":…,"nonce":…}}` |
+  | `completeSignIn` 的 `phone`/`email` 成员 | 同一请求体内的 `kind` + `credential` |
+
+  旧成员返回 `400 MALFORMED_BODY`，`CREDENTIAL_ONEOF` 不再出现；缺少 `kind`/`credential` 或 credential 字段不合法为 `CREDENTIAL_INCOMPLETE`。credential 内的未知字段从 `MALFORMED_BODY` 改为 `CREDENTIAL_INCOMPLETE`。发码接口的 `channel`/`target` 不变。
+- **Go API**：`enum.IdentityKind` 改为字符串底型，常量值即 API 名，零值 `""`；`Valid()` 只检查格式 `^[A-Z][A-Z0-9_]{1,31}$`，新增 `IsBuiltin()`；`ParseIdentityKind` 不再拒绝格式合法的未知类型。按数值比较、持久化或用 `IdentityKind(5)` 构造的代码须改为字符串。`idp.WeChatVerifier`、`AppleVerifier`、`GoogleVerifier` 与 `user.Deps` 的 `WeChat`/`Apple`/`Google` 字段移除，改为 `user.Deps.Providers []idp.Provider`；`user.IdpCredential` 改为 `{Kind, Credential json.RawMessage}`；`user.IdentityCapabilities` 改为 `{Phone, Email bool; Providers []enum.IdentityKind}`。`accountkit.Config` 的微信/Apple/Google 配置不变。
+- **策略与输出**：显式 Enabled 中的非内置类型必须已登记。`EnabledIdentityKinds`/`RequiredIdentityKinds` 的输出顺序保持内置类型的历史顺序，配置类型按名称排在其后。
+- **数据库**：当前 0001 的 `identity.kind` 改为 `VARCHAR(32) COLLATE "C"` 加格式 CHECK。`identity.kind` 仍为 SMALLINT 的 version 1 被无写拒绝，须使用新空资源；旧二进制不能在新结构上运行，见[迁移手册](migrations.md#当前初始基线)。
+- **进行中的登录补全**：补全载荷中的类型编码与配置指纹都已变化，升级前创建的 pending 流程会被拒绝，客户端须重新开始。补全指纹现在也覆盖 Google 的 client ID 配置。
+- **指标**：宿主登记的其他第三方类型使用固定方法值 `provider` 与依赖操作 `verify_provider`，类型名不进入标签。
+
+## Google 登录与显示名长度
+
+`IdentityKind` 追加 `GOOGLE = 5`。`POST /users:signInWithIdp` 增加与 `apple` 互斥的 `google` 成员，字段为 `id_token` 和原始 `nonce`。未配置 `GoogleClientIDs` 时该登录关闭。已验证邮箱只作为 `hint_email` 预填，补全仍要显式 `target`。`Required` 不能包含 `GOOGLE`。
+
+显示名上限由 32 放宽到 128 个 Unicode 码位，适用于 `PATCH /users/me` 和 Google 首次填充。把 32 写死的宿主需要同时放宽。旧二进制不能解释 kind 5；回退二进制前不能保留已写入的 Google 身份行。去掉客户端 ID 只停止新的 Google 登录。
+
+## 支付宝 App 极简登录与空资料补填
+
+新增内置 `ALIPAY`、`AlipayApp`、`AlipaySubjectMode` 及 `Config.AlipayApps` / `AlipaySubjectMode` / `AlipayGatewayURL`，沿用统一 `{"kind":"ALIPAY","credential":{"app_id","code"}}`。未配置应用时关闭；显式 Enabled 的宿主需加入 ALIPAY，Required 仍只接受 PHONE/EMAIL，纯支付宝账号须显式 Required 为空。只支持普通公钥模式，无 SQL/schema 或迁移变化。
+
+UNIONID 默认使用 `unionid:<union_id>`，OPENID 使用 `openid:<app_id>:<open_id>`，不在模式间回退，也不以 `user_id` 兜底。跨 App 账号共享取决于支付宝应用分组及实际相同 UnionID；模式、分组或信任配置变化不提供自动迁移/合并。pending 指纹覆盖应用集合、模式、网关、公钥材料，变化后需重新授权；重排列表、等价 PEM 表达不影响指纹。所有副本应保持一致。
+
+（已被下文“提供方资料补填统一”取代）ALIPAY 与其他提供方有明确资料差异：首次及后续成功登录都按字段补填本次可信且净化声明对应的空显示名/头像，用户主动清空也可以补填；不覆盖非空值、不使用历史 profile 补偿本次资料失败。重复绑定已有身份不触发后续补填，GOOGLE/APPLE/FACEBOOK/OIDC 保持仅首次关联身份时填充。写入遵守账号锁、生命周期和事务回滚，pending 完成/重放不再次请求支付宝。资料查询失败可降级，外层取消终止操作。
+
+指标追加 `alipay`、`verify_alipay`、`alipay_profile_unavailable`，不输出 AppID 或秘密。禁用后历史 ALIPAY 身份仍可列出、解绑和匿名化；回退前验证目标版本处理未知历史类型的能力，不通过清库或改 subject 回退。客户端需极简 SDK、已安装支付宝和一次性 state 核对，code 兑换失败后重新授权；真实 App/应用分组由宿主另行检查，库侧采用 HTTP 自动契约验收；详情见[支付宝接入指南](alipay-sign-in.md)。
+
+## QQ App SDK 登录
+
+新增内置 `QQ`、`QQSubjectMode` 及 `Config.QQAppIDs` / `QQSubjectMode` / `QQAPIBaseURL`，沿用统一凭证信封：`{"kind":"QQ","credential":{"app_id","access_token"}}`。仅支持 QQ 互联移动 SDK；无网页回调、授权码或 AppKey 配置。
+
+服务端调用 `oauth2.0/me` 校验令牌，`client_id` 必须等于请求的 `app_id`，另一 App 的令牌为 400 `IDP_APP_NOT_ALLOWED`。QQ access_token 与 Facebook Classic 一样不做一次性限制，有效期内可重复登录；客户端须保密令牌。
+
+UNIONID 默认使用 `unionid:<unionid>`，需在 QQ 互联开通 UnionID 打通，未开通时登录返回固定 500；OPENID 使用 `openid:<app_id>:<openid>` 且不请求 UnionID。切换模式会让既有 QQ 身份无法命中，不自动迁移或合并。
+
+（已被下文“提供方资料补填统一”取代）登录补填提供方集合现为 ALIPAY、QQ：两者首次及后续成功登录都按字段补填仍为空的显示名与头像；其他提供方仍只在首次写入身份时填充。QQ 头像仅对 `thirdqq.qlogo.cn` 的 `http://` 地址升级为 `https://`，其他 HTTP 地址丢弃。指标追加 `qq`、`verify_qq`、`qq_profile_unavailable`。无 schema/迁移变化。
+
+## 微博 App SDK 登录
+
+新增内置 `WEIBO` 及 `Config.WeiboAppIDs` / `WeiboAPIBaseURL`，沿用统一凭证信封：`{"kind":"WEIBO","credential":{"app_id","access_token"}}`，其中 `app_id` 即微博开放平台 AppKey。仅支持微博移动 SDK；无网页回调、授权码、取消授权回调或 AppSecret 配置。未配置 AppKey 时行为与升级前一致；显式设置 `EnabledIdentityKinds` 的宿主须手动加入 `WEIBO`。
+
+服务端调用 `oauth2/get_token_info` 校验令牌，`appkey` 必须等于请求的 `app_id`，另一 App 的令牌为 400 `IDP_APP_NOT_ALLOWED`；`expire_in` 为负视为令牌失效。微博 access_token 与 QQ 一样不做一次性限制，有效期内可重复登录；客户端须保密令牌。
+
+微博 uid 全局唯一且公开，subject 固定为 `uid:<uid>`，没有标识模式配置，也不写 unionid/openid 元数据；同一微博用户经任一已登记 App 登录都命中同一身份。uid 只作识别，不代表持有者证明，客户端也无法提交 uid。增删 AppKey 不改变既有身份命中，但会使未完成的登录补全失效。
+
+（已被下文“提供方资料补填统一”取代）登录补填提供方集合现为 ALIPAY、QQ、WEIBO：三者首次及后续成功登录都按字段补填仍为空的显示名与头像；其他提供方仍只在首次写入身份时填充。微博头像只接受 HTTPS，不做协议改写，选中的头像字段为 HTTP 时丢弃头像。未审核应用超出测试用户数（21321）等应用权限错误返回固定 500。指标追加 `weibo`、`verify_weibo`、`weibo_profile_unavailable`。无 schema/迁移变化。见[微博接入指南](weibo-sign-in.md)。
+
+## 提供方资料补填统一（ProviderProfileBackfill）
+
+- 补填不再区分提供方。默认（`PROVIDER_PROFILE_BACKFILL=true`）下，GOOGLE、OIDC、FACEBOOK 等提供方的已有账号再次登录、绑定或补全关联，也会补填空的显示名与头像；用户主动清空的值会在下一次第三方登录时被重新填充。
+- 设为 `false` 后，已有账号的第三方登录、绑定（含同账号重复绑定）与补全关联都不写账号资料；ALIPAY、QQ、WEIBO 也不再后续补填。此前所有提供方在绑定到已有账号时都会填充空资料，关闭后不再填充。
+- 新建账号（第三方直接注册、补全新建账号）始终填充，不受配置影响。
+- `provider_meta.profile` 记录规则不变；HTTP、数据库无变化。
+
+## Facebook 登录与数据删除回调
+
+`IdentityKind` 追加 `FACEBOOK`（内置第三方类型）。凭证沿用统一信封，`credential` 为 `{"id_token","nonce"}`（Limited Login）或 `{"access_token"}`（Classic Login）。配置 `FacebookAppID` 与 `FacebookAppSecret` 后启用，未配置时行为与升级前一致；显式设置 `EnabledIdentityKinds` 的宿主须手动加入 `FACEBOOK`，`Required` 不能包含它。新增配置 `FacebookGraphAPIVersion`（默认 `v26.0`，默认值升级属于兼容变更）、`FacebookNonceTTL`、`FacebookGraphAPIBaseURL`、`FacebookJWKSURL`，环境变量见 README。补全指纹覆盖 Facebook 配置，升级前创建的 pending 流程在配置变化后被拒绝。
+
+新增 `Auth.HandleFacebookDataDeletion`、`accountkit.ErrFacebookNotConfigured`、`idp.ErrInvalidSignedRequest`、`user.Service.DeleteProviderIdentityData`、`user.ProviderDeletionResult` 与审计事件 `PROVIDER_DATA_DELETION_PROCESSED`。无数据库迁移。指标新增方法值 `facebook`、依赖操作 `verify_facebook` 与 scenario `facebook_cached_key_fallback`。回退到旧版本后，已写入的 FACEBOOK 身份仍可列出、解绑和匿名化，但不能登录。
+
 ## 内置头像属性
 
 v0.5.0 新增 `user.Me`、`user.AdminUser`、`user.PublicProfile` 的 `AvatarURL string` 和对应两面 JSON `avatar_url`；未设置返回空字符串。使用结构体无字段名的位置字面量的 Go 调用者需改为带字段名的写法，HTTP 严格字段解析器需允许新字段。
@@ -339,6 +409,9 @@ HTTP 调用方继续使用原 URL（包括 `/users`）、DTO、设备头、JWT �
 | 手机/邮箱验证码、限流 | user/code、user/service_signin.go、httpapi/enduser | code/store_test.go、service_test.go、signin_test.go、TestConsumerEndToEndAgainstRealDB |
 | 验证码 HMAC 轮换 | user/code/store.go、user/code/scripts.go，库及 accountsvc 共用 | 多版本旧状态/并发测试、TestCodeKeyRotationIntegration、TestCodeRotationRedisIntegration、TestServiceIntegrationCodeKeyRotation；见[轮换验收记录](../openspec/changes/archive/2026-10-04-harden-code-key-rotation/verification.md) |
 | 微信/Apple | user/idp、service_idp.go | wechat_test.go、apple_test.go、nonce_test.go、service_idp_test.go、TestWeChatSignInEndToEndAgainstRealDB |
+| Facebook 登录（Limited/Classic） | user/idp/facebook.go、user/service_idp.go、config.go | user/idp/facebook*_test.go、user/service_facebook_test.go、httpapi/enduser/signin_facebook_test.go、config_facebook_test.go、internal/accountsvc/config_facebook_test.go |
+| 支付宝 App 极简登录与空字段补填 | user/idp/alipay*.go、user/service_idp.go、user/service_signin_completion.go、config.go | user/idp/alipay*_test.go、user/service_alipay_test.go、config_alipay_test.go、accountkit_alipay_test.go、accountkit_alipay_http_test.go、internal/accountsvc/config_test.go；真实 App/应用分组属于宿主接入清单 |
+| Facebook 数据删除入口 | accountkit.go `HandleFacebookDataDeletion`、user/service_provider_deletion.go、user/idp/facebook_signed_request.go | accountkit_facebook_test.go、user/service_provider_deletion_test.go、user/idp/facebook_signed_request_test.go、audit/authentication/authentication_test.go |
 | 身份绑定解绑 | user/service_identity.go | service_identity_test.go、identities_test.go、TestIdentityBindingEndToEndAgainstRealDB |
 | 同类身份换绑 | user/service_identity_replacement.go、httpapi/enduser/replacement.go | 领域回滚/竞态、嵌入式及服务E2E，见[换绑验收记录](../openspec/changes/archive/2026-10-03-add-identity-replacement/verification.md) |
 | JWT、刷新、会话、重新认证 | tokens、session、service_session.go | tokens_test.go、session/*/*_test.go、service_test.go、TestConsumerEndToEndAgainstRealDB |
@@ -719,3 +792,9 @@ httpapi/admin/response.go:168:		apierror.WriteInternal(w, h.d.Logger, reqid.From
 | `user/idp/wechat_test.go` | `TestWeChatNoAppsMeansNotAllowed` |
 | `user/idp/wechat_test.go` | `TestWeChatDoesNotFollowRedirects` |
 | `user/sender/log_test.go` | `TestLogSenderWritesMaskedTargetAndCode` |
+
+### 微信固定身份模式与小程序
+
+微信 OAuth 与小程序共用 `WECHAT` 身份类型。默认 `UNIONID` 模式使用 `unionid:<unionid>`；`OPENID` 模式使用 `openid:<appid>:<openid>`，OpenID 按应用隔离。历史裸 UnionID 不会自动匹配新 subject；本次不提供旧数据迁移工具。升级、回退或切换模式前须审查已有身份数据，模式变化可能产生不同身份和账号，不会自动升级、降级、合并或通过元数据查找账号。模式或应用所属验证组变化会拒绝已有 pending 登录补全流程，须重新登录。
+
+已验证的 UnionID、按 AppID 分类的 OpenID 与既有 profile 保存在 `provider_meta`。缺失字段保留旧值；既有非空 UnionID 或同一应用的 OpenID 矛盾返回现有 `user.ErrIdentityConflict` 并回滚，不创建会话。OpenID 模式后续取得 UnionID 仅补充元数据，subject 和身份 ID 保持。绑定、直接注册与 pending 完成遵循相同规则。code、令牌、session_key、Secret 和任意原始响应不保存到该元数据。Go `idp.Identity` 新增字段，位置式复合字面量调用方应改用字段名初始化。

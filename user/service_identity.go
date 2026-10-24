@@ -80,14 +80,14 @@ type anchorSubject struct {
 // active 期间不同进程会写入不同版本的摘要。锁序：subject 锁在任何行锁之前取得，
 // 全部键在同一条语句内按升序加锁；之后才是用户行 → 身份/会话行。
 func (s *Service) lockAnchorSubjects(ctx context.Context, q *db.Queries, subjects ...anchorSubject) error {
-	var kinds []int16
+	var kinds []string
 	var digests []string
 	for _, subject := range subjects {
 		if !subject.kind.IsChannel() {
 			continue
 		}
 		for _, digest := range s.d.Digester.AllDigests(subject.norm) {
-			kinds = append(kinds, int16(subject.kind))
+			kinds = append(kinds, string(subject.kind))
 			digests = append(digests, digest)
 		}
 	}
@@ -233,7 +233,7 @@ func (s *Service) BindWithCode(ctx context.Context, p Principal, cred CodeCreden
 	return info, created, nil
 }
 
-// createProviderIdentity 创建 WECHAT/APPLE 身份行：provider_subject 明文 + provider_meta（空 openid 不落库）。
+// createProviderIdentity 创建第三方身份行。空 openid 与空 profile 不落库；账号资料由调用方按账号新旧补填。
 func (s *Service) createProviderIdentity(ctx context.Context, q *db.Queries, userID string, ident idp.Identity) (db.Identity, error) {
 	iid, err := ids.New(ids.Identity)
 	if err != nil {
@@ -241,14 +241,12 @@ func (s *Service) createProviderIdentity(ctx context.Context, q *db.Queries, use
 	}
 	subject := ident.Subject
 	var meta []byte
-	openIDs := make(map[string]string, len(ident.OpenIDs))
-	for app, oid := range ident.OpenIDs {
-		if oid != "" {
-			openIDs[app] = oid
-		}
+	pm, changed, err := mergeProviderMeta(nil, ident)
+	if err != nil {
+		return db.Identity{}, err
 	}
-	if len(openIDs) > 0 {
-		meta, err = json.Marshal(providerMeta{OpenIDs: openIDs})
+	if changed {
+		meta, err = json.Marshal(pm)
 		if err != nil {
 			return db.Identity{}, fmt.Errorf("user: encode provider meta: %w", err)
 		}
@@ -262,7 +260,7 @@ func (s *Service) createProviderIdentity(ctx context.Context, q *db.Queries, use
 
 // BindWithIdp 把第三方身份绑定到当前账号。
 func (s *Service) BindWithIdp(ctx context.Context, p Principal, cred IdpCredential, meta Meta) (IdentityInfo, bool, error) {
-	if cred.Kind != enum.IdentityWeChat && cred.Kind != enum.IdentityApple {
+	if !cred.Kind.Valid() || cred.Kind.IsAnchor() {
 		return IdentityInfo{}, false, ErrInvalidArgument
 	}
 	ev := audit.AuthenticationEvent{UserID: p.UserID, SessionID: p.SessionID, IdentityKind: cred.Kind, IP: meta.IP, RequestID: meta.RequestID}
@@ -294,7 +292,10 @@ func (s *Service) BindWithIdp(ctx context.Context, p Principal, cred IdpCredenti
 		existing, err := q.FindActiveIdentityByProviderSubject(ctx, db.FindActiveIdentityByProviderSubjectParams{Kind: ident.Kind, ProviderSubject: &subject})
 		switch {
 		case err == nil && existing.UserID == p.UserID:
-			if err := s.mergeOpenIDs(ctx, q, existing, ident.OpenIDs, now); err != nil {
+			if err := s.refreshProviderMeta(ctx, q, existing, ident, now); err != nil {
+				return err
+			}
+			if err := s.backfillProviderProfile(ctx, q, p.UserID, ident, false); err != nil {
 				return err
 			}
 			info, created = identityInfoFrom(existing), false
@@ -312,6 +313,9 @@ func (s *Service) BindWithIdp(ctx context.Context, p Principal, cred IdpCredenti
 			if IsUniqueViolation(err) {
 				return ErrIdentityConflict
 			}
+			return err
+		}
+		if err := s.backfillProviderProfile(ctx, q, p.UserID, ident, false); err != nil {
 			return err
 		}
 		info, created = identityInfoFrom(row), true

@@ -310,7 +310,7 @@ func TestAuthenticationInvalidInputs(t *testing.T) {
 			t.Fatal("invalid options accepted")
 		}
 	}
-	for _, mutate := range []func(*Input){func(in *Input) { in.Type = enum.EventTypeUnspecified }, func(in *Input) { in.Actor = 99 }, func(in *Input) { in.Result = 99 }, func(in *Input) { in.IdentityKind = 99 }, func(in *Input) { in.UserID = strings.Repeat("u", 513) }, func(in *Input) { in.Reason = "bad\x00reason" }} {
+	for _, mutate := range []func(*Input){func(in *Input) { in.Type = enum.EventTypeUnspecified }, func(in *Input) { in.Actor = 99 }, func(in *Input) { in.Result = 99 }, func(in *Input) { in.IdentityKind = "bad kind" }, func(in *Input) { in.UserID = strings.Repeat("u", 513) }, func(in *Input) { in.Reason = "bad\x00reason" }} {
 		in := fixture(enum.EventSignIn)
 		mutate(&in)
 		if _, err := Map(in, options); err == nil {
@@ -425,5 +425,22 @@ func TestIdentityUnboundRevocationReasonRoundtrip(t *testing.T) {
 	projected, err := Projection(mapped)
 	if err != nil || projected.Reason != "IDENTITY_UNBOUND" || projected.SessionID != in.SessionID || projected.UserID != in.UserID || projected.Type != in.Type {
 		t.Fatalf("unbind revoke mapping %+v %v", projected, err)
+	}
+}
+
+func TestProviderDataDeletionEventSystemActor(t *testing.T) {
+	o := Options{Source: "accountkit", Namespace: "ns"}
+	id := uuid.Must(uuid.NewV7())
+	e, err := Map(Input{ID: id, Type: enum.EventProviderDataDeletionProcessed, Actor: enum.ActorSystem, Result: enum.ResultSuccess, Reason: "DELETED", UserID: "u_0000000000000", IdentityKind: enum.IdentityFacebook, SubjectHint: "abcd1234"}, o)
+	if err != nil || e.ID != id || e.Actor.Type != event.ActorSystem || len(e.Targets) != 1 || e.Targets[0].Type != "USER" {
+		t.Fatalf("map: %+v %v", e, err)
+	}
+	for _, typ := range []enum.EventType{enum.EventIdentityUnbound, enum.EventUserDeleted} {
+		if _, err := Map(Input{Type: typ, Actor: enum.ActorSystem, Result: enum.ResultSuccess, UserID: "u_0000000000000", IdentityID: "i_0000000000000"}, o); err != nil {
+			t.Fatalf("%s system actor: %v", typ, err)
+		}
+	}
+	if _, err := Map(Input{Type: enum.EventProviderDataDeletionProcessed, Actor: enum.ActorUser, Result: enum.ResultSuccess}, o); err == nil {
+		t.Fatal("user actor must be rejected")
 	}
 }

@@ -41,7 +41,7 @@ func TestLockAnchorSubjectsLocksAfterSort(t *testing.T) {
 	}
 	var raw []byte
 	if err := pool.QueryRow(ctx, "EXPLAIN (VERBOSE, COSTS OFF, FORMAT JSON) "+query,
-		[]int16{1, 1, 2, 1}, []string{"d", "b", "a", "c"}).Scan(&raw); err != nil {
+		[]string{"PHONE", "PHONE", "EMAIL", "PHONE"}, []string{"d", "b", "a", "c"}).Scan(&raw); err != nil {
 		t.Fatal(err)
 	}
 	if err := json.Unmarshal(raw, &plan); err != nil || len(plan) != 1 {

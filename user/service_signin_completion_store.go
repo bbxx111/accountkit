@@ -9,7 +9,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -63,7 +65,7 @@ func fingerprintJSON(v any) string {
 	return hex.EncodeToString(h[:])
 }
 
-func signInCompletionFlowConfiguration(d Deps, policy *IdentityPolicy) (string, string) {
+func signInCompletionFlowConfiguration(d Deps, policy *IdentityPolicy, providers map[enum.IdentityKind]idp.Provider) (string, string) {
 	var searchPath string
 	if d.Repo.pool != nil {
 		cfg := d.Repo.pool.Config().ConnConfig
@@ -80,13 +82,12 @@ func signInCompletionFlowConfiguration(d Deps, policy *IdentityPolicy) (string, 
 	context := fingerprintJSON(struct{ SearchPath, Prefix, JWT, Extra string }{
 		searchPath, d.Codes.InstancePrefix(), d.Signer.ContextFingerprint(), extra,
 	})
-	provider := func(v any) string {
-		if p, ok := v.(interface{ PolicyFingerprint() string }); ok {
-			return p.PolicyFingerprint()
-		}
-		return fmt.Sprintf("%T", v)
+	parts := []string{policy.Fingerprint(), d.ProviderConfiguration}
+	kinds := slices.Sorted(maps.Keys(providers))
+	for _, kind := range kinds {
+		parts = append(parts, string(kind)+":"+providers[kind].PolicyFingerprint())
 	}
-	return context, fingerprintJSON([]string{policy.Fingerprint(), provider(d.WeChat), provider(d.Apple), d.ProviderConfiguration})
+	return context, fingerprintJSON(parts)
 }
 
 func (s *Service) flowAAD(id string) []byte {
@@ -146,8 +147,17 @@ func (s *Service) loadFlow(ctx context.Context, token string, dev Device) (db.Si
 	return row, p, err
 }
 
-func (s *Service) pendingResult(token string, expiry time.Time) SignInResult {
-	return SignInResult{Pending: &PendingSignIn{SignInCompletionToken: token, ExpireTime: expiry, EnabledIdentityKinds: s.policy.EnabledKinds(), RequiredIdentityKinds: s.policy.RequiredKinds()}}
+func (s *Service) pendingResult(token string, expiry time.Time, hint string) SignInResult {
+	return SignInResult{Pending: &PendingSignIn{SignInCompletionToken: token, ExpireTime: expiry, HintEmail: hint, EnabledIdentityKinds: s.policy.EnabledKinds(), RequiredIdentityKinds: s.policy.RequiredKinds()}}
+}
+
+func pendingHintEmail(proofs []completionProof) string {
+	for _, proof := range proofs {
+		if proof.Provider != nil && proof.Provider.HintEmail != "" {
+			return proof.Provider.HintEmail
+		}
+	}
+	return ""
 }
 
 func (s *Service) createPending(ctx context.Context, q *db.Queries, proof completionProof, expiry time.Time, dev Device, info *ClientInfo) (SignInResult, string, error) {
@@ -184,7 +194,7 @@ func (s *Service) createPending(ctx context.Context, q *db.Queries, proof comple
 	if err != nil {
 		return SignInResult{}, "", err
 	}
-	return s.pendingResult(token, deadline), id, nil
+	return s.pendingResult(token, deadline, pendingHintEmail([]completionProof{proof})), id, nil
 }
 
 func completionRequest(token string, cred CodeCredential) string {

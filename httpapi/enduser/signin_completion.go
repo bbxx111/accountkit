@@ -2,6 +2,7 @@ package enduser
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -24,8 +25,8 @@ type sendSignInCompletionCodeRequest struct {
 
 type completeSignInRequest struct {
 	SignInCompletionToken string          `json:"sign_in_completion_token"`
-	Phone                 *codeCredential `json:"phone"`
-	Email                 *codeCredential `json:"email"`
+	Kind                  string          `json:"kind"`
+	Credential            json.RawMessage `json:"credential"`
 }
 
 func completionNotConfigured(w http.ResponseWriter) {
@@ -80,11 +81,7 @@ func (h *Handler) completeSignIn(w http.ResponseWriter, r *http.Request) {
 		h.writeServiceError(w, r, user.ErrSignInCompletionInvalid)
 		return
 	}
-	if (req.Phone == nil) == (req.Email == nil) {
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_ONEOF", "exactly one of phone or email must be present"))
-		return
-	}
-	kind, cc, e := (credential{Phone: req.Phone, Email: req.Email}).anchor()
+	kind, cc, e := (credential{Kind: req.Kind, Credential: req.Credential}).anchor()
 	if e != nil {
 		apierror.Write(w, e)
 		return

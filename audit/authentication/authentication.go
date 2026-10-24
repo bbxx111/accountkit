@@ -200,7 +200,7 @@ func mapEvent(in Input, o Options, newID func() (uuid.UUID, error), legacyID str
 	case enum.EventIdentityBindRejected:
 		add("USER", in.UserID, true)
 		add("IDENTITY", in.IdentityID, true)
-	case enum.EventUserDeleted, enum.EventUserUndeleted, enum.EventUserPurged, enum.EventUserFrozen, enum.EventUserUnfrozen:
+	case enum.EventUserDeleted, enum.EventUserUndeleted, enum.EventUserPurged, enum.EventUserFrozen, enum.EventUserUnfrozen, enum.EventProviderDataDeletionProcessed:
 		add("USER", in.UserID, true)
 	case enum.EventSignInCompletionStarted, enum.EventSignInCompletionProofVerified, enum.EventSignInCompletionCompleted, enum.EventSignInCompletionRejected:
 		add("IDENTITY_FLOW", in.FlowID, true)
@@ -238,11 +238,15 @@ func validActorKind(typ enum.EventType, kind enum.ActorKind) bool {
 	switch typ {
 	case enum.EventIdentityRevealed, enum.EventUserFrozen, enum.EventUserUnfrozen, enum.EventAdminForbidden:
 		return kind == enum.ActorAdmin
-	case enum.EventUserPurged:
+	case enum.EventUserPurged, enum.EventProviderDataDeletionProcessed:
 		return kind == enum.ActorSystem
 	case enum.EventSessionRevoked:
 		return kind == enum.ActorUser || kind == enum.ActorAdmin || kind == enum.ActorSystem
-	case enum.EventUserDeleted, enum.EventUserUndeleted:
+	case enum.EventIdentityUnbound:
+		return kind == enum.ActorUser || kind == enum.ActorSystem
+	case enum.EventUserDeleted:
+		return kind == enum.ActorUser || kind == enum.ActorAdmin || kind == enum.ActorSystem
+	case enum.EventUserUndeleted:
 		return kind == enum.ActorUser || kind == enum.ActorAdmin
 	default:
 		return kind == enum.ActorUser

@@ -62,7 +62,7 @@ func TestWeChatVerify(t *testing.T) {
 	ctx := context.Background()
 
 	id, err := w.VerifyWeChat(ctx, "wx1", "good")
-	if err != nil || id.Kind != enum.IdentityWeChat || id.Subject != "u_union_1" || id.OpenIDs["wx1"] != "o_1" || id.HintEmail != "" {
+	if err != nil || id.Kind != enum.IdentityWeChat || id.Subject != "unionid:u_union_1" || id.OpenIDs["wx1"] != "o_1" || id.HintEmail != "" {
 		t.Fatalf("good: %+v %v", id, err)
 	}
 	if !strings.Contains(*lastQuery, "appid=wx1") || !strings.Contains(*lastQuery, "secret=s3cret") || !strings.Contains(*lastQuery, "grant_type=authorization_code") {
@@ -72,7 +72,7 @@ func TestWeChatVerify(t *testing.T) {
 	// M5：微信偶尔返回 unionid 但没有 openid（例如未走网页/小程序授权）；空字符串
 	// 不能被当成一个真实 openid 记入 OpenIDs。
 	id, err = w.VerifyWeChat(ctx, "wx1", "noopenid")
-	if err != nil || id.Subject != "u_union_noopenid" || id.OpenIDs != nil {
+	if err != nil || id.Subject != "unionid:u_union_noopenid" || id.OpenIDs != nil {
 		t.Fatalf("empty openid must not be recorded: %+v %v", id, err)
 	}
 

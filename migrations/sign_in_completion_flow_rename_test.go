@@ -35,7 +35,7 @@ func seedRenameFlow(t *testing.T, c *pgx.Conn, flowTable string) {
 	t.Helper()
 	for _, statement := range []string{
 		`INSERT INTO user_account(id,state,display_name) VALUES('u_0000000000001',1,'preserved')`,
-		`INSERT INTO identity(id,user_id,kind,provider_subject) VALUES('i_0000000000001','u_0000000000001',3,'synthetic-provider')`,
+		`INSERT INTO identity(id,user_id,kind,provider_subject) VALUES('i_0000000000001','u_0000000000001',` + wechatKindLiteral(t, c) + `,'synthetic-provider')`,
 		`INSERT INTO session(id,user_id,device_id,auth_time,refresh_token_hash,refresh_expire_time) VALUES('s_0000000000001','u_0000000000001','device',now(),decode('1234','hex'),now()+interval '1 day')`,
 		`INSERT INTO ` + flowTable + `(id,token_digest,state,policy_fingerprint,payload,cipher_version,revision,proof_user_ids,user_id,session_id,create_time,update_time,expire_time) VALUES('f_0000000000001','test-token-digest',3,'policy',decode('001234ff','hex'),1,7,ARRAY['u_0000000000001'],'u_0000000000001','s_0000000000001',now(),now(),now()+interval '5 minutes')`,
 		`INSERT INTO audit_event(id,source,action,result,actor,targets,data,occur_time) VALUES('019a0000-0000-7000-8000-000000000001','test/auth','SIGN_IN',1,'{"type":"ANONYMOUS"}','[{"type":"IDENTITY_FLOW","namespace":"urn:test:accounts","id":"f_0000000000001"}]','{"accountkit":{"flow_id":"f_0000000000001"}}','2024-03-04T05:06:07.123456Z')`,
@@ -85,6 +85,9 @@ func TestSignInCompletionFlowInitialDefinition(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := old.Exec(context.Background(), profileAttributesInitialDDL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := old.Exec(context.Background(), identityKindTextDDL); err != nil {
 		t.Fatal(err)
 	}
 	initialUp(t, cfg, schema)
@@ -184,4 +187,18 @@ func TestSignInCompletionFlowBaselineMismatch(t *testing.T) {
 			}
 		})
 	}
+}
+
+// wechatKindLiteral 返回当前连接 schema 中 identity.kind 列可接受的微信字面量：
+// 历史结构为 SMALLINT 的 3，当前结构为文本 'WECHAT'。
+func wechatKindLiteral(t *testing.T, c *pgx.Conn) string {
+	t.Helper()
+	var udt string
+	if err := c.QueryRow(context.Background(), `SELECT udt_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='identity' AND column_name='kind'`).Scan(&udt); err != nil {
+		t.Fatal(err)
+	}
+	if udt == "int2" {
+		return "3"
+	}
+	return "'WECHAT'"
 }

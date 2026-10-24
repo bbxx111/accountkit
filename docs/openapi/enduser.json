@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "accountkit 消费者 HTTP API",
-    "version": "v0.5.0",
-    "description": "已发布 v0.5.0 的内置消费者 HTTP 契约，在 v0.4.0 上增加本人资料属性 GET/PATCH 和 avatar_url；已发布 v0.4.0 不包含这些能力。宿主配置实际挂载地址。请求体为单个 JSON 对象，默认上限 64 KiB，拒绝未知字段与尾随内容。领域状态、事务、故障策略以规格与 README 为准。"
+    "version": "v0.6.0",
+    "description": "v0.6.0（准备中）的内置消费者 HTTP 契约，在 v0.5.0 上将身份凭证请求体统一为 {\"kind\",\"credential\"} 并增加各第三方提供方类型；已发布 v0.5.0 不包含这些变化。宿主配置实际挂载地址。请求体为单个 JSON 对象，默认上限 64 KiB，拒绝未知字段与尾随内容。领域状态、事务、故障策略以规格与 README 为准。"
   },
   "servers": [
     {
@@ -2449,11 +2449,14 @@
       },
       "IdentityKind": {
         "type": "string",
-        "enum": [
+        "pattern": "^[A-Z][A-Z0-9_]{1,31}$",
+        "description": "身份类型。内置 PHONE、EMAIL、WECHAT、APPLE、GOOGLE；部署可另行配置 OIDC 等第三方类型。",
+        "examples": [
           "PHONE",
           "EMAIL",
           "WECHAT",
-          "APPLE"
+          "APPLE",
+          "GOOGLE"
         ]
       },
       "Channel": {
@@ -2512,26 +2515,6 @@
         "required": [
           "app_id",
           "code"
-        ],
-        "additionalProperties": false
-      },
-      "AppleCredential": {
-        "type": "object",
-        "properties": {
-          "id_token": {
-            "type": "string",
-            "minLength": 1,
-            "description": "敏感凭证，不得写入日志、URL 或审计。"
-          },
-          "nonce": {
-            "type": "string",
-            "minLength": 1,
-            "description": "敏感凭证，不得写入日志、URL 或审计。"
-          }
-        },
-        "required": [
-          "id_token",
-          "nonce"
         ],
         "additionalProperties": false
       },
@@ -2597,6 +2580,10 @@
             "items": {
               "$ref": "#/components/schemas/Channel"
             }
+          },
+          "hint_email": {
+            "type": "string",
+            "description": "初始第三方证明中已验证的邮箱，仅供补全页预填；不表示该邮箱已绑定，发码与完成仍须提交 target。"
           }
         },
         "required": [
@@ -2816,110 +2803,92 @@
       "CodeRequest": {
         "type": "object",
         "properties": {
-          "phone": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/CodeCredential"
-              },
-              {
-                "type": "null"
-              }
+          "kind": {
+            "type": "string",
+            "enum": [
+              "PHONE",
+              "EMAIL"
             ]
           },
-          "email": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/CodeCredential"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "wechat": {
-            "type": "null"
-          },
-          "apple": {
-            "type": "null"
+          "credential": {
+            "$ref": "#/components/schemas/CodeCredential"
           }
         },
-        "required": [],
+        "required": [
+          "kind",
+          "credential"
+        ],
         "additionalProperties": false,
-        "description": "恰好一个允许的凭证成员非 null；显式 null 等同缺失，拒绝未知字段。",
-        "oneOf": [
-          {
-            "required": [
-              "phone"
-            ],
-            "properties": {
-              "phone": {
-                "$ref": "#/components/schemas/CodeCredential"
-              }
-            }
-          },
-          {
-            "required": [
-              "email"
-            ],
-            "properties": {
-              "email": {
-                "$ref": "#/components/schemas/CodeCredential"
-              }
-            }
-          }
-        ]
+        "description": "统一凭证信封：kind 为类型名，credential 为该类型的凭证对象；不接受旧的 phone/email/wechat/apple/google 成员，拒绝未知字段。 本端点只接受 PHONE、EMAIL。"
       },
       "IdpRequest": {
         "type": "object",
         "properties": {
-          "phone": {
-            "type": "null"
-          },
-          "email": {
-            "type": "null"
-          },
-          "wechat": {
-            "anyOf": [
+          "kind": {
+            "allOf": [
               {
-                "$ref": "#/components/schemas/WeChatCredential"
+                "$ref": "#/components/schemas/IdentityKind"
               },
               {
-                "type": "null"
+                "not": {
+                  "enum": [
+                    "PHONE",
+                    "EMAIL"
+                  ]
+                }
               }
             ]
           },
-          "apple": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AppleCredential"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "credential": {
+            "type": "object",
+            "description": "由 kind 对应的提供方解析，原始 JSON 不超过 16 KiB；字段缺失、未知或格式错误返回 CREDENTIAL_INCOMPLETE。"
           }
         },
-        "required": [],
+        "required": [
+          "kind",
+          "credential"
+        ],
         "additionalProperties": false,
-        "description": "恰好一个允许的凭证成员非 null；显式 null 等同缺失，拒绝未知字段。",
-        "oneOf": [
+        "description": "统一凭证信封：kind 为类型名，credential 为该类型的凭证对象；不接受旧的 phone/email/wechat/apple/google 成员，拒绝未知字段。 本端点只接受第三方类型。",
+        "allOf": [
           {
-            "required": [
-              "wechat"
-            ],
-            "properties": {
-              "wechat": {
-                "$ref": "#/components/schemas/WeChatCredential"
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "WECHAT"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "credential": {
+                  "$ref": "#/components/schemas/WeChatCredential"
+                }
               }
             }
           },
           {
-            "required": [
-              "apple"
-            ],
-            "properties": {
-              "apple": {
-                "$ref": "#/components/schemas/AppleCredential"
+            "if": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "APPLE",
+                    "GOOGLE"
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "credential": {
+                  "$ref": "#/components/schemas/IdTokenCredential"
+                }
               }
             }
           }
@@ -2928,88 +2897,80 @@
       "BindRequest": {
         "type": "object",
         "properties": {
-          "phone": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/CodeCredential"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "kind": {
+            "$ref": "#/components/schemas/IdentityKind"
           },
-          "email": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/CodeCredential"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "wechat": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/WeChatCredential"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "apple": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AppleCredential"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "credential": {
+            "type": "object"
           }
         },
-        "required": [],
+        "required": [
+          "kind",
+          "credential"
+        ],
         "additionalProperties": false,
-        "description": "恰好一个允许的凭证成员非 null；显式 null 等同缺失，拒绝未知字段。",
-        "oneOf": [
+        "description": "统一凭证信封：kind 为类型名，credential 为该类型的凭证对象；不接受旧的 phone/email/wechat/apple/google 成员，拒绝未知字段。 本端点接受 PHONE、EMAIL 与已启用的第三方类型。",
+        "allOf": [
           {
-            "required": [
-              "phone"
-            ],
-            "properties": {
-              "phone": {
-                "$ref": "#/components/schemas/CodeCredential"
+            "if": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "PHONE",
+                    "EMAIL"
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "credential": {
+                  "$ref": "#/components/schemas/CodeCredential"
+                }
               }
             }
           },
           {
-            "required": [
-              "email"
-            ],
-            "properties": {
-              "email": {
-                "$ref": "#/components/schemas/CodeCredential"
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "WECHAT"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "credential": {
+                  "$ref": "#/components/schemas/WeChatCredential"
+                }
               }
             }
           },
           {
-            "required": [
-              "wechat"
-            ],
-            "properties": {
-              "wechat": {
-                "$ref": "#/components/schemas/WeChatCredential"
-              }
-            }
-          },
-          {
-            "required": [
-              "apple"
-            ],
-            "properties": {
-              "apple": {
-                "$ref": "#/components/schemas/AppleCredential"
+            "if": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "APPLE",
+                    "GOOGLE"
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "credential": {
+                  "$ref": "#/components/schemas/IdTokenCredential"
+                }
               }
             }
           }
@@ -3018,59 +2979,29 @@
       "CompleteSignInRequest": {
         "type": "object",
         "properties": {
-          "phone": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/CodeCredential"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "email": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/CodeCredential"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "sign_in_completion_token": {
             "type": "string",
             "minLength": 1,
             "description": "敏感凭证，不得写入日志、URL 或审计。"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "PHONE",
+              "EMAIL"
+            ]
+          },
+          "credential": {
+            "$ref": "#/components/schemas/CodeCredential"
           }
         },
         "required": [
-          "sign_in_completion_token"
+          "sign_in_completion_token",
+          "kind",
+          "credential"
         ],
         "additionalProperties": false,
-        "description": "恰好一个允许的凭证成员非 null；显式 null 等同缺失，拒绝未知字段。",
-        "oneOf": [
-          {
-            "required": [
-              "phone"
-            ],
-            "properties": {
-              "phone": {
-                "$ref": "#/components/schemas/CodeCredential"
-              }
-            }
-          },
-          {
-            "required": [
-              "email"
-            ],
-            "properties": {
-              "email": {
-                "$ref": "#/components/schemas/CodeCredential"
-              }
-            }
-          }
-        ]
+        "description": "统一凭证信封：kind 为类型名，credential 为该类型的凭证对象；不接受旧的 phone/email/wechat/apple/google 成员，拒绝未知字段。 本端点只接受 PHONE、EMAIL。"
       },
       "SendCompletionCodeRequest": {
         "type": "object",
@@ -3271,17 +3202,41 @@
         "type": "object",
         "properties": {
           "display_name": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "TrimSpace 后最多 32 个 Unicode 字符；空字符串清空，禁止控制字符及指定双向格式控制符。"
           },
           "avatar_url": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "TrimSpace 后最多 2048 字节，具有非空主机的绝对 HTTPS URL；拒绝用户信息、fragment、反斜线、内部空白、控制字符及非法 UTF-8。空字符串清空，null 或省略保持。"
           }
         },
         "anyOf": [
-          {"required": ["display_name"], "properties": {"display_name": {"type": "string"}}},
-          {"required": ["avatar_url"], "properties": {"avatar_url": {"type": "string"}}}
+          {
+            "required": [
+              "display_name"
+            ],
+            "properties": {
+              "display_name": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "required": [
+              "avatar_url"
+            ],
+            "properties": {
+              "avatar_url": {
+                "type": "string"
+              }
+            }
+          }
         ],
         "additionalProperties": false
       },
@@ -3484,6 +3439,27 @@
             "description": "内层 JSON Merge Patch。任一未知属性拒绝（含 null）；此文档不静态列出部署方 Schema。"
           }
         }
+      },
+      "IdTokenCredential": {
+        "type": "object",
+        "properties": {
+          "id_token": {
+            "type": "string",
+            "minLength": 1,
+            "description": "敏感凭证，不得写入日志、URL 或审计。"
+          },
+          "nonce": {
+            "type": "string",
+            "minLength": 1,
+            "description": "敏感凭证，不得写入日志、URL 或审计。"
+          }
+        },
+        "required": [
+          "id_token",
+          "nonce"
+        ],
+        "additionalProperties": false,
+        "description": "APPLE、GOOGLE 与配置的 OIDC 类型使用的凭证；nonce 为原始值。"
       }
     }
   }

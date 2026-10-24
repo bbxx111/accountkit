@@ -21,16 +21,71 @@ type App struct {
 	Secret string
 }
 
-// WeChat 用 code 换取 UnionID（服务端持有 AppSecret）。
-type WeChat struct {
-	secrets map[string]string
-	base    string
-	hc      *http.Client
-	logger  *slog.Logger
+// WeChatSubjectMode 是整个实例固定的微信主标识模式。
+type WeChatSubjectMode string
+
+const (
+	// WeChatSubjectModeUnionID 使用 unionid:<unionid>，缺少 UnionID 时拒绝认证。
+	WeChatSubjectModeUnionID WeChatSubjectMode = "UNIONID"
+	// WeChatSubjectModeOpenID 使用 openid:<appid>:<openid>，不会自动升级到 UnionID。
+	WeChatSubjectModeOpenID WeChatSubjectMode = "OPENID"
+)
+
+// WeChatConfig 配置 OAuth 和小程序应用；零值 SubjectMode 使用 UNIONID。
+// 两组 AppID 不得重复，Secret 不参与策略指纹。
+type WeChatConfig struct {
+	Apps            []App
+	MiniProgramApps []App
+	SubjectMode     WeChatSubjectMode
+	BaseURL         string
 }
 
-// NewWeChat 构造微信校验器；apps 为空表示未启用。
+// WeChat 根据服务器应用配置交换 code，返回固定模式的主标识。
+type WeChat struct {
+	secrets      map[string]string
+	miniPrograms map[string]bool
+	mode         WeChatSubjectMode
+	base         string
+	hc           *http.Client
+	logger       *slog.Logger
+}
+
+// NewWeChat 构造默认 UNIONID 模式的 OAuth 微信校验器。
+// apps 为空或非法时保持禁用；需报告配置错误时使用 NewWeChatWithConfig。
+// 返回的 subject 带 unionid: 前缀，与历史裸 UnionID 不自动兼容。
 func NewWeChat(apps []App, baseURL string, hc *http.Client, logger *slog.Logger) *WeChat {
+	w, err := NewWeChatWithConfig(WeChatConfig{Apps: apps, BaseURL: baseURL}, hc, logger)
+	if err != nil {
+		// 兼容无 error 的旧签名；非法配置保持禁用，不能使用部分应用列表。
+		w, _ = NewWeChatWithConfig(WeChatConfig{BaseURL: baseURL}, hc, logger)
+	}
+	return w
+}
+
+// NewWeChatWithConfig 校验应用集合与主标识模式，不进行网络 I/O。
+// 配置错误不回显配置值；空应用集合表示未启用。
+func NewWeChatWithConfig(config WeChatConfig, hc *http.Client, logger *slog.Logger) (*WeChat, error) {
+	mode := config.SubjectMode
+	if mode == "" {
+		mode = WeChatSubjectModeUnionID
+	}
+	if mode != WeChatSubjectModeUnionID && mode != WeChatSubjectModeOpenID {
+		return nil, fmt.Errorf("%w: invalid wechat subject mode", ErrMisconfigured)
+	}
+	m := make(map[string]string)
+	mini := make(map[string]bool)
+	for group, apps := range [][]App{config.Apps, config.MiniProgramApps} {
+		for _, a := range apps {
+			if strings.TrimSpace(a.AppID) == "" || strings.TrimSpace(a.Secret) == "" || strings.Contains(a.AppID, ":") {
+				return nil, fmt.Errorf("%w: invalid wechat app credentials", ErrMisconfigured)
+			}
+			if _, ok := m[a.AppID]; ok {
+				return nil, fmt.Errorf("%w: duplicate wechat app", ErrMisconfigured)
+			}
+			m[a.AppID] = a.Secret
+			mini[a.AppID] = group == 1
+		}
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -42,21 +97,14 @@ func NewWeChat(apps []App, baseURL string, hc *http.Client, logger *slog.Logger)
 	// 3xx 都当成非 200 处理（下面的状态码分支）。
 	noRedirect := *hc
 	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	m := make(map[string]string, len(apps))
-	for _, a := range apps {
-		m[a.AppID] = a.Secret
-	}
-	return &WeChat{secrets: m, base: strings.TrimRight(baseURL, "/"), hc: &noRedirect, logger: logger}
+	return &WeChat{secrets: m, miniPrograms: mini, mode: mode, base: strings.TrimRight(config.BaseURL, "/"), hc: &noRedirect, logger: logger}, nil
 }
 
-// tokenResponse 是 sns/oauth2/access_token 的响应；access_token / refresh_token 只解码不使用。
+// tokenResponse 只解码验证所需的标识和错误码，不保留上游秘密或 errmsg。
 type tokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	OpenID       string `json:"openid"`
-	UnionID      string `json:"unionid"`
-	ErrCode      int    `json:"errcode"`
-	ErrMsg       string `json:"errmsg"`
+	OpenID  string `json:"openid"`
+	UnionID string `json:"unionid"`
+	ErrCode int    `json:"errcode"`
 }
 
 const maxWeChatBody = 64 << 10
@@ -76,6 +124,28 @@ func redactTransportErr(err error) error {
 }
 
 // VerifyWeChat 实现 WeChatVerifier。
+type wechatCredential struct {
+	AppID string `json:"app_id"`
+	Code  string `json:"code"`
+}
+
+// Kind 实现 Provider。
+func (w *WeChat) Kind() enum.IdentityKind { return enum.IdentityWeChat }
+
+// Verify 实现 Provider：credential 为 {"app_id","code"}。
+func (w *WeChat) Verify(ctx context.Context, credential json.RawMessage) (Identity, error) {
+	var c wechatCredential
+	if err := decodeCredential(credential, &c); err != nil {
+		return Identity{}, err
+	}
+	if c.AppID == "" || c.Code == "" {
+		return Identity{}, fmt.Errorf("%w: app_id and code are required", ErrMalformedCredential)
+	}
+	return w.VerifyWeChat(ctx, c.AppID, c.Code)
+}
+
+// VerifyWeChat 根据 appID 的服务器配置选择 OAuth 或小程序接口。
+// 不获取额外资料；仅返回验证后的主标识、UnionID 与非空 OpenID。
 func (w *WeChat) VerifyWeChat(ctx context.Context, appID, code string) (Identity, error) {
 	secret, ok := w.secrets[appID]
 	if !ok {
@@ -85,7 +155,13 @@ func (w *WeChat) VerifyWeChat(ctx context.Context, appID, code string) (Identity
 		return Identity{}, fmt.Errorf("%w: empty code", ErrInvalidCredential)
 	}
 	q := url.Values{"appid": {appID}, "secret": {secret}, "code": {code}, "grant_type": {"authorization_code"}}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, w.base+"/sns/oauth2/access_token?"+q.Encode(), nil)
+	path := "/sns/oauth2/access_token"
+	if w.miniPrograms[appID] {
+		path = "/sns/jscode2session"
+		q.Del("code")
+		q.Set("js_code", code)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, w.base+path+"?"+q.Encode(), nil)
 	if err != nil {
 		return Identity{}, fmt.Errorf("%w: build request: %v", ErrUnavailable, redactTransportErr(err))
 	}
@@ -101,26 +177,34 @@ func (w *WeChat) VerifyWeChat(ctx context.Context, appID, code string) (Identity
 	}
 	var tr tokenResponse
 	if err := json.NewDecoder(io.LimitReader(resp.Body, maxWeChatBody)).Decode(&tr); err != nil {
-		w.logger.Warn("wechat token exchange bad json", "app_id", appID, "err", err)
-		return Identity{}, fmt.Errorf("%w: wechat response: %v", ErrUnavailable, err)
+		w.logger.Warn("wechat token exchange bad json", "app_id", appID)
+		return Identity{}, fmt.Errorf("%w: invalid wechat response", ErrUnavailable)
 	}
 	switch tr.ErrCode {
 	case 0:
 	case 40029, 40163, 42003, 40226: // invalid code / code used / code expired；40226 高风险用户被微信拦截，属用户侧拒绝，重试无意义
 		return Identity{}, fmt.Errorf("%w: wechat errcode %d", ErrInvalidCredential, tr.ErrCode)
 	case 40013, 40125: // invalid appid / invalid secret
-		w.logger.Error("wechat app credentials rejected", "app_id", appID, "errcode", tr.ErrCode, "errmsg", tr.ErrMsg)
+		w.logger.Error("wechat app credentials rejected", "app_id", appID, "errcode", tr.ErrCode)
 		return Identity{}, fmt.Errorf("%w: wechat errcode %d", ErrMisconfigured, tr.ErrCode)
 	default:
-		w.logger.Warn("wechat token exchange error", "app_id", appID, "errcode", tr.ErrCode, "errmsg", tr.ErrMsg)
+		w.logger.Warn("wechat token exchange error", "app_id", appID, "errcode", tr.ErrCode)
 		return Identity{}, fmt.Errorf("%w: wechat errcode %d", ErrUnavailable, tr.ErrCode)
 	}
-	if tr.UnionID == "" {
+	if w.mode == WeChatSubjectModeUnionID && tr.UnionID == "" {
 		// §5.3：缺 unionid 是开放平台绑定问题，绝不降级用 openid。
 		w.logger.Error("wechat app did not return unionid; bind the app to an open platform account", "app_id", appID)
 		return Identity{}, fmt.Errorf("%w: wechat app %s returned no unionid", ErrMisconfigured, appID)
 	}
-	id := Identity{Kind: enum.IdentityWeChat, Subject: tr.UnionID}
+	subject := "unionid:" + tr.UnionID
+	if w.mode == WeChatSubjectModeOpenID {
+		if tr.OpenID == "" {
+			w.logger.Error("wechat app did not return openid", "app_id", appID)
+			return Identity{}, fmt.Errorf("%w: wechat response missing openid", ErrMisconfigured)
+		}
+		subject = "openid:" + appID + ":" + tr.OpenID
+	}
+	id := Identity{Kind: enum.IdentityWeChat, Subject: subject, UnionID: tr.UnionID}
 	if tr.OpenID != "" {
 		id.OpenIDs = map[string]string{appID: tr.OpenID}
 	}

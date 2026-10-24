@@ -74,7 +74,7 @@
 - **THEN** 每次逻辑校验计一次并标识正确用途；内部 Lua 命令数不增加逻辑校验次数
 
 ### Requirement: 依赖调用与降级独立观测
-系统 SHALL 对验证码存储、刷新宽限缓存、吊销集、IdP 验证器和发送器的指定逻辑调用记录次数及耗时；缓存命中／未命中、凭证拒绝和故障 SHALL 可区分。依赖指标 SHALL 不冒充单条 SQL、Redis 命令或实际网络请求指标。降级 SHALL 按固定场景单独计数，至少覆盖 access 吊销查询失败后放行，以及宽限结果写入失败但刷新轮换最终成功提交；未提交的轮换不能记录为成功后降级。内置 Apple 使用缓存密钥继续验证的故障分支 SHALL 单独可见。原业务故障策略和 HTTP 错误映射 SHALL 保持。
+系统 SHALL 对验证码存储、刷新宽限缓存、吊销集、IdP 验证器和发送器的指定逻辑调用记录次数及耗时；缓存命中／未命中、凭证拒绝和故障 SHALL 可区分。依赖指标 SHALL 不冒充单条 SQL、Redis 命令或实际网络请求指标。降级 SHALL 按固定场景单独计数，至少覆盖 access 吊销查询失败后放行，以及宽限结果写入失败但刷新轮换最终成功提交；未提交的轮换不能记录为成功后降级。内置 Apple 使用缓存密钥继续验证的故障分支 SHALL 单独可见。内置 Google 使用缓存密钥继续验证的故障分支 SHALL 以独立于 Apple 的场景可见。原业务故障策略和 HTTP 错误映射 SHALL 保持。
 
 #### Scenario: 吊销查询失败但认证通过
 - **WHEN** access 合法且吊销查询发生依赖故障，按既有策略继续放行
@@ -87,6 +87,10 @@
 #### Scenario: 宿主 IdP 本地验证
 - **WHEN** 宿主验证器或内置 Apple 在缓存命中时不进行网络请求
 - **THEN** 只记录实际发生的一次验证器逻辑调用，不宣称产生了相同数量的远端请求
+
+#### Scenario: Google 缓存密钥继续验证
+- **WHEN** Google 验证使用已缓存的签名密钥，且本次密钥刷新失败或被跳过，验证仍然成功
+- **THEN** 记录独立的 Google 缓存降级场景，不把它计为 Apple 降级或凭证无效
 
 ### Requirement: 审计按处理阶段计数
 系统 SHALL 保留现有审计 Stats，并以相同分类分别观测认证映射失败、可选字段省略、本地入队拒绝及本地写入结果。事件数量与省略字段数量 SHALL 使用不同指标；字段省略只允许固定字段类别。批量写入 SHALL 按批次实际分类数量增加，非法后端分类沿用已有整批失败规则。只有库实际拥有的处理阶段 SHALL 被记录，宿主外部 Recorder 返回不代表持久化成功。
@@ -124,3 +128,102 @@
 #### Scenario: 业务时钟跳变
 - **WHEN** 测试时钟推进以验证令牌或会话到期
 - **THEN** 认证状态遵循原业务时钟，指标耗时仍为非负真实经过时间
+
+### Requirement: OIDC 观测使用有界取值
+通过配置 OIDC 提供方完成的认证 SHALL 使用固定的认证方法值 `oidc`，SHALL 不把具体类型名作为指标标签。OIDC 使用缓存签名密钥继续验证的故障分支 SHALL 以独立于 Apple 和 Google 的降级场景计数。审计 SHALL 继续记录具体类型名。
+
+#### Scenario: 多个 OIDC 类型
+- **WHEN** 部署配置了 CORP_SSO 与 PARTNER_SSO，两者各完成一次登录
+- **THEN** 两次登录都计入方法 `oidc`，指标中不出现这两个类型名；审计分别记录两个类型名
+
+#### Scenario: OIDC 缓存密钥继续验证
+- **WHEN** OIDC 验证使用已缓存的签名密钥，且本次刷新失败或被跳过，验证仍然成功
+- **THEN** 记录 OIDC 缓存降级场景，不计为 Apple 或 Google 降级
+
+### Requirement: 支付宝认证与资料降级观测
+ALIPAY 认证 SHALL 使用固定方法值 alipay，一次验证流程 SHALL 记录一次 verify_alipay 依赖逻辑调用，不将换码与资料请求数量当作验证器调用数量。身份验证成功但资料请求超时、错误、解析或验签失败、标识不匹配时 SHALL 以固定 alipay_profile_unavailable 降级场景计数。资料正常缺字段或字段净化后省略 SHALL 不计该降级。指标 SHALL 不携带 AppID、用户标识、授权码、密钥、URL 或任意上游错误文本。
+
+#### Scenario: 身份成功资料失败
+- **WHEN** 换码验签成功，资料查询超时，外层上下文有效且领域登录成功
+- **THEN** 记录一次 alipay 登录成功、一次 verify_alipay 成功和一次 alipay_profile_unavailable，不能记为凭证无效或登录失败
+
+#### Scenario: 资料成功但领域拒绝
+- **WHEN** 提供方验证成功但身份绑定冲突或账号状态导致领域拒绝
+- **THEN** 验证器仍记录其成功，认证调用记录最终领域拒绝，不把上游成功等同于登录成功
+
+#### Scenario: 资料正常缺字段
+- **WHEN** 资料响应有效且没有昵称或头像
+- **THEN** 不计资料不可用降级；正常登录与验证器结果仍按实际记录
+
+#### Scenario: 两个网络请求
+- **WHEN** 一次提供方验证执行了换码与资料查询两个 HTTP 请求
+- **THEN** 只计一次 verify_alipay 逻辑调用及其整体耗时，不宣称该指标是 HTTP 请求计数
+
+#### Scenario: 身份验签失败
+- **WHEN** 换码响应签名错误
+- **THEN** 记录身份验证失败且不执行资料请求，不计为资料查询降级
+
+#### Scenario: 调用方取消
+- **WHEN** 资料查询因外层上下文取消而终止整个调用
+- **THEN** 按现有取消分类记录，不计为允许登录的资料降级
+
+### Requirement: Facebook 观测取值
+通过 FACEBOOK 完成的认证 SHALL 使用固定的认证方法值 `facebook`，两种凭证路径 SHALL 不作为额外标签区分。Limited 路径使用缓存签名密钥继续验证的故障分支 SHALL 以独立于 Apple、Google 与 OIDC 的降级场景计数。Classic 路径的一次校验 SHALL 记为一次 IdP 验证器逻辑调用，SHALL 不按其实际发出的 Graph 请求数计数。数据删除处理 SHALL 不新增指标。
+
+#### Scenario: 两种凭证登录
+- **WHEN** 一次 Limited 登录与一次 Classic 登录各自成功
+- **THEN** 两次都计入方法 `facebook`，指标中不出现凭证路径或 Facebook 用户 id
+
+#### Scenario: Facebook 缓存密钥继续验证
+- **WHEN** Limited 验证使用已缓存的签名密钥，且本次刷新失败或被跳过，验证仍然成功
+- **THEN** 记录 Facebook 缓存降级场景，不计为 Apple、Google 或 OIDC 降级
+
+#### Scenario: Classic 校验计数
+- **WHEN** 一次 Classic 校验依次调用了两个 Graph 接口并成功
+- **THEN** 只记录一次 IdP 验证器调用
+
+### Requirement: QQ 认证与资料降级观测
+QQ 认证 SHALL 使用固定方法值 qq，一次验证流程 SHALL 记录一次 verify_qq 依赖逻辑调用，不将令牌校验与资料请求数量当作验证器调用数量。身份校验成功但资料请求超时、错误、ret 非 0、is_lost 或解析失败时 SHALL 以固定 qq_profile_unavailable 降级场景计数。资料正常缺字段、头像因域名名单被丢弃或字段净化后省略 SHALL 不计该降级。指标 SHALL 不携带 AppID、用户标识、令牌、URL 或任意上游错误文本。
+
+#### Scenario: 身份成功资料失败
+- **WHEN** 令牌校验成功，资料查询超时，外层上下文有效且领域登录成功
+- **THEN** 记录一次 qq 登录成功、一次 verify_qq 成功和一次 qq_profile_unavailable，不记为凭证无效或登录失败
+
+#### Scenario: 两个网络请求
+- **WHEN** 一次提供方验证执行了 /me 与资料查询两个 HTTP 请求
+- **THEN** 只计一次 verify_qq 逻辑调用及其整体耗时
+
+#### Scenario: 头像被丢弃
+- **WHEN** 资料响应可信，但头像为名单外 HTTP 地址而被丢弃
+- **THEN** 不计资料不可用降级
+
+#### Scenario: 令牌校验失败
+- **WHEN** /me 返回令牌校验失败
+- **THEN** 记录身份验证失败且不执行资料请求，不计为资料查询降级
+
+#### Scenario: 调用方取消
+- **WHEN** 资料查询因外层上下文取消而终止整个调用
+- **THEN** 按现有取消分类记录，不计为允许登录的资料降级
+
+### Requirement: 微博认证与资料降级观测
+微博认证 SHALL 使用固定方法值 weibo，一次验证流程 SHALL 记录一次 verify_weibo 依赖逻辑调用，不将令牌校验与资料请求数量当作验证器调用数量。身份校验成功但资料请求超时、限流、上游错误、用户不符或解析失败时 SHALL 以固定 weibo_profile_unavailable 降级场景计数。资料正常缺字段、HTTP 头像被丢弃或字段净化后省略 SHALL 不计该降级。指标 SHALL 不携带 AppKey、uid、令牌、URL 或任意上游错误文本。
+
+#### Scenario: 身份成功资料限流
+- **WHEN** 令牌校验成功，资料查询返回频率限制错误，外层上下文有效且领域登录成功
+- **THEN** 记录一次 weibo 登录成功、一次 verify_weibo 成功和一次 weibo_profile_unavailable，不记为凭证无效或登录失败
+
+#### Scenario: 两个网络请求
+- **WHEN** 一次提供方验证执行了 get_token_info 与资料查询两个 HTTP 请求
+- **THEN** 只计一次 verify_weibo 逻辑调用及其整体耗时
+
+#### Scenario: HTTP 头像被丢弃
+- **WHEN** 资料响应可信，但选中的头像为 HTTP 地址而被丢弃
+- **THEN** 不计资料不可用降级
+
+#### Scenario: 令牌校验失败
+- **WHEN** get_token_info 返回令牌失效错误
+- **THEN** 记录身份验证失败且不执行资料请求，不计为资料查询降级
+
+#### Scenario: 调用方取消
+- **WHEN** 资料查询因外层上下文取消而终止整个调用
+- **THEN** 按现有取消分类记录，不计为允许登录的资料降级

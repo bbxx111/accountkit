@@ -6,7 +6,7 @@ Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史�
 
 ## 当前头像初始定义：version 1
 
-该完整初始定义已随 [v0.5.0](releases/v0.5.0.md) 发布，tag 固定为 `102315c3069273f7a8c3ad253c1f4ae01255f8c6`。以下为发布前的有限授权记录；发布后的 0001 字节保持，后续真实结构变更从 0002 递增。
+该完整初始定义已随 [v0.5.0](releases/v0.5.0.md) 发布，tag 固定为 `102315c3069273f7a8c3ad253c1f4ae01255f8c6`。以下为发布前的有限授权记录；v0.5.0 tag 内的 0001 字节保持。其后当前 0001 又按 `add-google-sign-in`、`add-identity-provider-registry` 的明确授权调整（见[当前初始基线](#当前初始基线)），将随 v0.6.0 发布；后续真实结构变更从 0002 递增。
 
 本轮用户明确要求“不新增 0002 迁移，改现有 0001”，范围仅为在当前 `user_account` 增加 `avatar_url TEXT NULL`，无默认值、业务 CHECK 或索引。同步 sqlc、当前 `initialFrozen` 与预检，新空 schema 安装仍为 version=1/dirty=false；0001 down 的整表删除定义已覆盖头像列，无需改动。此前资料单列整合与更早授权分别保留历史事实。
 
@@ -45,9 +45,13 @@ Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史�
 
 当前初始结构在 v0.4.0 七表会话定义之上，按各次限定授权合入资料单列和本轮头像列；生产目录只有 0001 up/down，version=1/dirty=false。0001 down 继续覆盖七表，公共 Down 拒绝；审计流程关联仍为 data.accountkit.flow_id。此前审计、流程改名、索引和会话简化授权各自限于当时范围。
 
-基线预检要求完整 sign_in_completion_flow、十列 UUIDv7 审计、必有来源/单份描述、当前资料单列和头像列。旧缺头像资料 v1、v0.4.0 v1、v0.3.0 v1、双快照/旧流程/审计、双表及各代撤回 v2 均返回可由 errors.Is 识别的 migrations.ErrIncompatibleBaseline，保持 catalog、数据和 version/dirty，dirty 优先。UnsafeReset 沿用相同预检，不接受旧基线；重复 Up 不补列或重放同号 SQL。
+`add-google-sign-in` 只改当前 0001 up 中 `identity.kind` 与 `provider_meta` 的注释，并更新当前 initialFrozen。不新增列、索引、CHECK 或 0002。已发布 tag、冻结源和 0001 down 不变。同号数据库不会重放这段注释。旧二进制不能解释 kind 5。后续真实结构增量仍从 0002 开始。
 
-冻结源、全部发布 tag/SQL、v0.4.0 旧定义与当前 initialFrozen 分别固定。实际当前哈希和校验结果记于[本轮验收](../openspec/changes/archive/2026-10-21-add-user-avatar-url/verification.md)。后续真实增量从 0002 递增；旧发布说明和归档保留原文，当前操作以本节为准。
+`add-identity-provider-registry` 经用户明确要求“直接改 0001”，只把当前 0001 中 `identity.kind` 改为 `VARCHAR(32) COLLATE "C" NOT NULL` 并加格式 CHECK `identity_kind_format`（`^[A-Z][A-Z0-9_]{1,31}$`），同步注释、sqlc、运行时预检与当前 initialFrozen。四个以 kind 开头的索引定义文本、其他列与约束、0001 down 不变，不新增 0002。`identity.kind` 仍为 SMALLINT 的 version 1（v0.5.0 及其后、本变更前的安装）与该列漂移的结构均无写拒绝，dirty 优先；不转换列、不重放同号 SQL、不 Force、改版本或清库，也不提供旧数据迁移。旧二进制（v0.5.0 及本变更前的 develop）的预检不认识这一列变化，可能接受新 version 1 后在读写 kind 时失败；部署须人工阻止新旧版本混跑，以及在新结构上回退到旧二进制。实际当前哈希记于[本变更验收](../openspec/changes/archive/2026-10-23-add-identity-provider-registry/verification.md)。
+
+基线预检要求完整 sign_in_completion_flow、十列 UUIDv7 审计、必有来源/单份描述、当前资料单列、头像列和文本身份类型列。旧缺头像资料 v1、v0.4.0 v1、v0.3.0 v1、双快照/旧流程/审计、双表及各代撤回 v2 均返回可由 errors.Is 识别的 migrations.ErrIncompatibleBaseline，保持 catalog、数据和 version/dirty，dirty 优先。UnsafeReset 沿用相同预检，不接受旧基线；重复 Up 不补列或重放同号 SQL。
+
+冻结源、全部发布 tag/SQL、v0.4.0 旧定义与当前 initialFrozen 分别固定。头像轮当时的哈希和校验结果记于[该轮验收](../openspec/changes/archive/2026-10-21-add-user-avatar-url/verification.md)。后续真实增量从 0002 递增；旧发布说明和归档保留原文，当前操作以本节为准。
 
 此前索引命名维护按用户明确要求未新增迁移：直接将未发布 0001 的 22 个普通索引命名为 `idx_<表名>_<字段或用途>`、4 个独立唯一索引命名为 `uk_<表名>_<字段或用途>`；主键索引保留 `<表名>_pkey`，索引列、唯一性、谓词及访问方法保持。当时同步更新固定校验，初始版本仍为 1；历史 SQL 和源快照未改。已有同号数据库不会重放 0001，因此不会自动得到该次命名调整；不能靠修改版本或自动重建绕过基线检查。
 

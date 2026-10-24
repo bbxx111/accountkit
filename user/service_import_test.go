@@ -86,7 +86,7 @@ func newImportService(t *testing.T, pool *pgxpool.Pool, mr *miniredis.Miniredis,
 	svc, err := user.NewService(user.Deps{
 		Repo: user.NewRepo(pool), Codes: code.NewStore(rdb, "import-test:", dig, code.Options{FailureLimitPerTarget: 10, FailureWindow: 15 * time.Minute, TTL: 5 * time.Minute, Cooldown: time.Minute, MaxAttempts: 5, DailyLimitPerTarget: 10, DailyLimitPerIP: 100}),
 		Revocation: revocation.NewSet(rdb, "import-test:"), Grace: grace.NewCache(rdb, "import-test:", ciph),
-		Signer: signer, Cipher: ciph, Digester: dig, SMS: guard, Email: guard, WeChat: guard, Apple: guard,
+		Signer: signer, Cipher: ciph, Digester: dig, SMS: guard, Email: guard, Providers: []idp.Provider{wechatProvider(guard), appleProvider(guard)},
 		Logger: slog.New(slog.NewTextHandler(logs, nil)), DefaultRegion: "CN",
 		AccessTTL: 15 * time.Minute, RefreshTTL: 720 * time.Hour, RefreshGrace: 30 * time.Second, CodeTTL: 5 * time.Minute,
 		MaxIdentitiesPerKind: 2, DeletionCoolingPeriod: 360 * time.Hour,

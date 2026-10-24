@@ -119,11 +119,26 @@ func LoadConfig(command string) (Config, error) {
 		if c.identityEnabled(enum.IdentityPhone) {
 			return Config{}, errors.New("accountsvc: PHONE requires SMS provider support; inject an SMS sender in an embedded host")
 		}
-		if c.identityEnabled(enum.IdentityWeChat) && len(c.Library.WeChatApps) == 0 {
+		if c.identityEnabled(enum.IdentityWeChat) && len(c.Library.WeChatApps) == 0 && len(c.Library.WeChatMiniProgramApps) == 0 {
 			return Config{}, invalidConfig("ACCOUNTKIT_WECHAT_APPS")
 		}
 		if c.identityEnabled(enum.IdentityApple) && len(c.Library.AppleBundleIDs) == 0 {
 			return Config{}, invalidConfig("ACCOUNTKIT_APPLE_BUNDLE_IDS")
+		}
+		if c.identityEnabled(enum.IdentityGoogle) && len(c.Library.GoogleClientIDs) == 0 {
+			return Config{}, invalidConfig("ACCOUNTKIT_GOOGLE_CLIENT_IDS")
+		}
+		if c.identityEnabled(enum.IdentityFacebook) && c.Library.FacebookAppID == "" {
+			return Config{}, invalidConfig("ACCOUNTKIT_FACEBOOK_APP_ID")
+		}
+		if c.identityEnabled(enum.IdentityAlipay) && len(c.Library.AlipayApps) == 0 {
+			return Config{}, invalidConfig("ACCOUNTKIT_ALIPAY_APP_IDS")
+		}
+		if c.identityEnabled(enum.IdentityQQ) && len(c.Library.QQAppIDs) == 0 {
+			return Config{}, invalidConfig("ACCOUNTKIT_QQ_APP_IDS")
+		}
+		if c.identityEnabled(enum.IdentityWeibo) && len(c.Library.WeiboAppIDs) == 0 {
+			return Config{}, invalidConfig("ACCOUNTKIT_WEIBO_APP_IDS")
 		}
 	}
 	c.Mode = defaultEnv("MODE", "production")
@@ -237,7 +252,7 @@ func LoadConfig(command string) (Config, error) {
 	if c.Admin.Audience == c.Library.JWTAudience {
 		return Config{}, invalidConfig("ACCOUNTSVC_ADMIN_AUDIENCE")
 	}
-	for _, app := range c.Library.WeChatApps {
+	for _, app := range append(append([]accountkit.WeChatApp(nil), c.Library.WeChatApps...), c.Library.WeChatMiniProgramApps...) {
 		if c.Admin.Audience == app.AppID {
 			return Config{}, invalidConfig("ACCOUNTSVC_ADMIN_AUDIENCE")
 		}
@@ -275,14 +290,53 @@ func validListenAddress(addr string) bool {
 var metricsInstancePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 var libraryErrorName = regexp.MustCompile(`^accountkit: (ACCOUNTKIT_[A-Z0-9_]+):`)
 var libraryErrorField = regexp.MustCompile(`^(?:accountkit|user): ([A-Za-z][A-Za-z0-9]*)`)
+var libraryAlipayAppError = regexp.MustCompile(`^accountkit: idp: AlipayApps\[([0-9]+)\]\.(AppID|PrivateKey|AlipayPublicKey)(?::| )`)
+var libraryAlipayFieldError = regexp.MustCompile(`^accountkit: idp: (AlipaySubjectMode|AlipayGatewayURL)(?::| )`)
+var libraryQQFieldError = regexp.MustCompile(`^accountkit: idp: (QQAppIDs|QQSubjectMode|QQAPIBaseURL)(?:\[| )`)
+var libraryWeiboFieldError = regexp.MustCompile(`^accountkit: idp: (WeiboAppIDs|WeiboAPIBaseURL)(?:\[| )`)
+var alipayAppIDPattern = regexp.MustCompile(`^[0-9]{16}$`)
 
 // 根 ConfigFromEnv 的解析/验证错误可含原始输入；仅取锚定的配置名称，不转出原错误。
 func safeLibraryConfigError(err error) error {
 	if matches := libraryErrorName.FindStringSubmatch(err.Error()); len(matches) == 2 {
 		return invalidConfig(matches[1])
 	}
-	names := map[string]string{"Schema": "AUTH_SCHEMA", "KeyPrefix": "AUTH_KEY_PREFIX", "JWTKeys": "JWT_KEYS / ACCOUNTKIT_JWT_ACTIVE_KEY", "JWTIssuer": "JWT_ISSUER / ACCOUNTKIT_JWT_AUDIENCE", "SubjectHMACKeys": "SUBJECT_HMAC_KEYS / ACCOUNTKIT_SUBJECT_HMAC_ACTIVE_KEY", "SubjectCipherKeys": "SUBJECT_CIPHER_KEYS / ACCOUNTKIT_SUBJECT_CIPHER_ACTIVE_KEY", "AccessTokenTTL": "ACCESS_TOKEN_TTL", "RefreshTokenTTL": "REFRESH_TOKEN_TTL", "RefreshGrace": "REFRESH_GRACE", "ReauthMaxAge": "REAUTH_MAX_AGE", "CodeTTL": "CODE_TTL / ACCOUNTKIT_CODE_COOLDOWN", "Code": "CODE_MAX_ATTEMPTS / ACCOUNTKIT_CODE_DAILY_LIMIT_PER_TARGET / ACCOUNTKIT_CODE_DAILY_LIMIT_PER_IP", "MaxIdentitiesPerKind": "MAX_IDENTITIES_PER_KIND", "DeletionCoolingPeriod": "DELETION_COOLING_PERIOD / ACCOUNTKIT_AUDIT_RETENTION_DAYS", "DefaultRegion": "DEFAULT_REGION", "WeChatApps": "WECHAT_APPS", "AppleBundleIDs": "APPLE_BUNDLE_IDS", "AppleNonceTTL": "APPLE_NONCE_TTL", "WeChatAPIBaseURL": "WECHAT_API_BASE_URL", "AppleJWKSURL": "APPLE_JWKS_URL", "MaintenanceInterval": "MAINTENANCE_INTERVAL"}
+	if matches := libraryAlipayAppError.FindStringSubmatch(err.Error()); len(matches) == 3 {
+		apps := strings.Split(os.Getenv("ACCOUNTKIT_ALIPAY_APP_IDS"), ",")
+		index, parseErr := strconv.Atoi(matches[1])
+		if parseErr == nil && index < len(apps) && matches[2] != "AppID" {
+			appID := strings.TrimSpace(apps[index])
+			if alipayAppIDPattern.MatchString(appID) {
+				suffix := "PRIVATE_KEY"
+				if matches[2] == "AlipayPublicKey" {
+					suffix = "PUBLIC_KEY"
+				}
+				return invalidConfig("ACCOUNTKIT_ALIPAY_" + appID + "_" + suffix)
+			}
+		}
+		return invalidConfig("ACCOUNTKIT_ALIPAY_APP_IDS")
+	}
+	if matches := libraryAlipayFieldError.FindStringSubmatch(err.Error()); len(matches) == 2 {
+		if matches[1] == "AlipaySubjectMode" {
+			return invalidConfig("ACCOUNTKIT_ALIPAY_SUBJECT_MODE")
+		}
+		return invalidConfig("ACCOUNTKIT_ALIPAY_GATEWAY_URL")
+	}
+	if matches := libraryQQFieldError.FindStringSubmatch(err.Error()); len(matches) == 2 {
+		return invalidConfig(map[string]string{"QQAppIDs": "ACCOUNTKIT_QQ_APP_IDS", "QQSubjectMode": "ACCOUNTKIT_QQ_SUBJECT_MODE", "QQAPIBaseURL": "ACCOUNTKIT_QQ_API_BASE_URL"}[matches[1]])
+	}
+	if matches := libraryWeiboFieldError.FindStringSubmatch(err.Error()); len(matches) == 2 {
+		return invalidConfig(map[string]string{"WeiboAppIDs": "ACCOUNTKIT_WEIBO_APP_IDS", "WeiboAPIBaseURL": "ACCOUNTKIT_WEIBO_API_BASE_URL"}[matches[1]])
+	}
+	names := map[string]string{"Schema": "AUTH_SCHEMA", "KeyPrefix": "AUTH_KEY_PREFIX", "JWTKeys": "JWT_KEYS / ACCOUNTKIT_JWT_ACTIVE_KEY", "JWTIssuer": "JWT_ISSUER / ACCOUNTKIT_JWT_AUDIENCE", "SubjectHMACKeys": "SUBJECT_HMAC_KEYS / ACCOUNTKIT_SUBJECT_HMAC_ACTIVE_KEY", "SubjectCipherKeys": "SUBJECT_CIPHER_KEYS / ACCOUNTKIT_SUBJECT_CIPHER_ACTIVE_KEY", "AccessTokenTTL": "ACCESS_TOKEN_TTL", "RefreshTokenTTL": "REFRESH_TOKEN_TTL", "RefreshGrace": "REFRESH_GRACE", "ReauthMaxAge": "REAUTH_MAX_AGE", "CodeTTL": "CODE_TTL / ACCOUNTKIT_CODE_COOLDOWN", "Code": "CODE_MAX_ATTEMPTS / ACCOUNTKIT_CODE_DAILY_LIMIT_PER_TARGET / ACCOUNTKIT_CODE_DAILY_LIMIT_PER_IP", "MaxIdentitiesPerKind": "MAX_IDENTITIES_PER_KIND", "DeletionCoolingPeriod": "DELETION_COOLING_PERIOD / ACCOUNTKIT_AUDIT_RETENTION_DAYS", "DefaultRegion": "DEFAULT_REGION", "WeChatApps": "WECHAT_APPS", "WeChatMiniProgramApps": "WECHAT_MINI_PROGRAM_APPS", "WeChatSubjectMode": "WECHAT_SUBJECT_MODE", "AppleBundleIDs": "APPLE_BUNDLE_IDS", "AppleNonceTTL": "APPLE_NONCE_TTL", "GoogleClientIDs": "GOOGLE_CLIENT_IDS", "GoogleNonceTTL": "GOOGLE_NONCE_TTL", "WeChatAPIBaseURL": "WECHAT_API_BASE_URL", "AppleJWKSURL": "APPLE_JWKS_URL", "GoogleJWKSURL": "GOOGLE_JWKS_URL", "MaintenanceInterval": "MAINTENANCE_INTERVAL"}
+	names["FacebookAppID"] = "FACEBOOK_APP_ID"
+	names["FacebookAppSecret"] = "FACEBOOK_APP_SECRET"
+	names["FacebookGraphAPIVersion"] = "FACEBOOK_GRAPH_API_VERSION"
+	names["FacebookNonceTTL"] = "FACEBOOK_NONCE_TTL"
+	names["FacebookGraphAPIBaseURL"] = "FACEBOOK_GRAPH_API_BASE_URL"
+	names["FacebookJWKSURL"] = "FACEBOOK_JWKS_URL"
 	names["EnabledIdentityKinds"] = "ENABLED_IDENTITY_KINDS"
+	names["OIDCProviders"] = "OIDC_PROVIDERS"
 	names["RequiredIdentityKinds"] = "REQUIRED_IDENTITY_KINDS"
 	if matches := libraryErrorField.FindStringSubmatch(err.Error()); len(matches) == 2 {
 		if name, ok := names[matches[1]]; ok {

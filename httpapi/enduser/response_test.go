@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -211,67 +212,69 @@ func TestDeviceFromHeaders(t *testing.T) {
 	}
 }
 
-func TestCredentialOneof(t *testing.T) {
-	kind, cc, e := credential{Phone: &codeCredential{CodeID: "0123456789abcdef0123456789abcdef", Target: "+86138", Code: "123456"}}.anchor()
-	if e != nil || kind != enum.IdentityPhone || cc.Code != "123456" {
-		t.Fatalf("%v %v %+v", e, kind, cc)
-	}
-	if kind, _, e := (credential{Email: &codeCredential{CodeID: "0123456789abcdef0123456789abcdef", Target: "a@b.co", Code: "1"}}).anchor(); e != nil || kind != enum.IdentityEmail {
-		t.Fatal("email")
-	}
-	if _, _, e := (credential{}).anchor(); e == nil || e.Reason != "CREDENTIAL_ONEOF" {
-		t.Fatal("empty")
-	}
-	if _, _, e := (credential{Phone: &codeCredential{}, Email: &codeCredential{}}).anchor(); e == nil || e.Reason != "CREDENTIAL_ONEOF" {
-		t.Fatal("two")
-	}
-	if _, _, e := (credential{Wechat: &wechatCredential{AppID: "wx", Code: "c"}}).anchor(); e == nil || e.Reason != "CREDENTIAL_KIND_NOT_ALLOWED" {
-		t.Fatal("wechat")
-	}
-	if _, _, e := (credential{Apple: &appleCredential{}}).anchor(); e == nil || e.Reason != "CREDENTIAL_KIND_NOT_ALLOWED" {
-		t.Fatal("apple")
-	}
-	if _, _, e := (credential{Phone: &codeCredential{CodeID: "0123456789abcdef0123456789abcdef", Target: "+86138"}}).anchor(); e == nil || e.Reason != "CREDENTIAL_INCOMPLETE" {
-		t.Fatal("missing code")
-	}
-}
-
-func TestCredentialExplicitNullIsAbsent(t *testing.T) {
+func decodeCredentialBody(t *testing.T, body string) credential {
+	t.Helper()
 	var c credential
-	if err := json.Unmarshal([]byte(`{"phone":{"code_id":"0123456789abcdef0123456789abcdef","target":"+86138","code":"1"},"wechat":null,"apple":null}`), &c); err != nil {
+	if err := json.Unmarshal([]byte(body), &c); err != nil {
 		t.Fatal(err)
 	}
-	if c.present() != 1 {
-		t.Fatalf("explicit null must not count as present: %d", c.present())
+	return c
+}
+
+const testCodeID = "0123456789abcdef0123456789abcdef"
+
+func TestCredentialAnchor(t *testing.T) {
+	c := decodeCredentialBody(t, `{"kind":"PHONE","credential":{"target":"+86138","code_id":"`+testCodeID+`","code":"123456"}}`)
+	kind, cc, e := c.anchor()
+	if e != nil || kind != enum.IdentityPhone || cc.Code != "123456" || cc.Target != "+86138" || !c.isAnchor() {
+		t.Fatalf("%v %v %+v", e, kind, cc)
 	}
-	if _, _, e := c.anchor(); e != nil {
-		t.Fatalf("phone with null idp members must pass anchor(): %v", e)
+	if kind, _, e := decodeCredentialBody(t, `{"kind":"EMAIL","credential":{"target":"a@b.co","code_id":"`+testCodeID+`","code":"1"}}`).anchor(); e != nil || kind != enum.IdentityEmail {
+		t.Fatal("email", e)
+	}
+	for body, reason := range map[string]string{
+		`{}`:                                  "CREDENTIAL_INCOMPLETE",
+		`{"kind":"PHONE"}`:                    "CREDENTIAL_INCOMPLETE",
+		`{"kind":"PHONE","credential":null}`:  "CREDENTIAL_INCOMPLETE",
+		`{"credential":{"target":"x"}}`:       "CREDENTIAL_INCOMPLETE",
+		`{"kind":"phone","credential":{}}`:    "INVALID_ARGUMENT",
+		`{"kind":"WECHAT","credential":{}}`:   "CREDENTIAL_KIND_NOT_ALLOWED",
+		`{"kind":"CORP_SSO","credential":{}}`: "CREDENTIAL_KIND_NOT_ALLOWED",
+		`{"kind":"PHONE","credential":[]}`:    "CREDENTIAL_INCOMPLETE",
+		`{"kind":"PHONE","credential":{"target":"+86138","code_id":"` + testCodeID + `"}}`:                  "CREDENTIAL_INCOMPLETE",
+		`{"kind":"PHONE","credential":{"target":"+86138","code_id":"` + testCodeID + `","code":"1","x":1}}`: "CREDENTIAL_INCOMPLETE",
+		`{"kind":"PHONE","credential":{"target":"+86138","code_id":"bad","code":"1"}}`:                      "INVALID_ARGUMENT",
+	} {
+		if _, _, e := decodeCredentialBody(t, body).anchor(); e == nil || e.Reason != reason {
+			t.Fatalf("%s: got %v, want %s", body, e, reason)
+		}
 	}
 }
 
-func TestCredentialIdp(t *testing.T) {
-	got, e := credential{Wechat: &wechatCredential{AppID: "wx1", Code: "c1"}}.idp()
-	if e != nil || got.Kind != enum.IdentityWeChat || got.AppID != "wx1" || got.Code != "c1" {
+func TestCredentialProvider(t *testing.T) {
+	got, e := decodeCredentialBody(t, `{"kind":"WECHAT","credential":{"app_id":"wx1","code":"c1"}}`).provider()
+	if e != nil || got.Kind != enum.IdentityWeChat || string(got.Credential) != `{"app_id":"wx1","code":"c1"}` {
 		t.Fatalf("%+v %v", got, e)
 	}
-	got, e = credential{Apple: &appleCredential{IDToken: "t", Nonce: "n"}}.idp()
-	if e != nil || got.Kind != enum.IdentityApple || got.IDToken != "t" || got.Nonce != "n" {
+	got, e = decodeCredentialBody(t, `{"kind":"CORP_SSO","credential": {"id_token":"t","nonce":"n"} }`).provider()
+	if e != nil || got.Kind != "CORP_SSO" || string(got.Credential) != `{"id_token":"t","nonce":"n"}` {
 		t.Fatalf("%+v %v", got, e)
 	}
-	if _, e := (credential{}).idp(); e == nil || e.Reason != "CREDENTIAL_ONEOF" {
-		t.Fatal("empty")
-	}
-	if _, e := (credential{Wechat: &wechatCredential{AppID: "a", Code: "c"}, Apple: &appleCredential{IDToken: "t", Nonce: "n"}}).idp(); e == nil || e.Reason != "CREDENTIAL_ONEOF" {
-		t.Fatal("two")
-	}
-	if _, e := (credential{Phone: &codeCredential{CodeID: "0123456789abcdef0123456789abcdef", Target: "x", Code: "y"}}).idp(); e == nil || e.Reason != "CREDENTIAL_KIND_NOT_ALLOWED" {
-		t.Fatal("phone on idp endpoint")
-	}
-	if _, e := (credential{Wechat: &wechatCredential{AppID: "a"}}).idp(); e == nil || e.Reason != "CREDENTIAL_INCOMPLETE" {
-		t.Fatal("wechat missing code")
-	}
-	if _, e := (credential{Apple: &appleCredential{IDToken: "t"}}).idp(); e == nil || e.Reason != "CREDENTIAL_INCOMPLETE" {
-		t.Fatal("apple missing nonce")
+	big := `{"kind":"GOOGLE","credential":{"id_token":"` + strings.Repeat("a", maxProviderCredentialBytes) + `","nonce":"n"}}`
+	for body, reason := range map[string]string{
+		`{}`:                                  "CREDENTIAL_INCOMPLETE",
+		`{"kind":"GOOGLE"}`:                   "CREDENTIAL_INCOMPLETE",
+		`{"kind":"GOOGLE","credential":null}`: "CREDENTIAL_INCOMPLETE",
+		`{"kind":"GOOGLE","credential":"x"}`:  "CREDENTIAL_INCOMPLETE",
+		`{"kind":"GOOGLE","credential":[]}`:   "CREDENTIAL_INCOMPLETE",
+		big:                                   "CREDENTIAL_INCOMPLETE",
+		`{"kind":"1BAD","credential":{}}`:     "INVALID_ARGUMENT",
+		`{"kind":"EMAIL","credential":{}}`:    "CREDENTIAL_KIND_NOT_ALLOWED",
+		`{"kind":"PHONE","credential":{}}`:    "CREDENTIAL_KIND_NOT_ALLOWED",
+	} {
+		if _, e := decodeCredentialBody(t, body).provider(); e == nil || e.Reason != reason {
+			t.Fatalf("%.80s: got %v, want %s", body, e, reason)
+		}
 	}
 }
 
@@ -308,5 +311,27 @@ func decodeInternal(t *testing.T, rec *httptest.ResponseRecorder, dst any) {
 	t.Helper()
 	if err := json.Unmarshal(rec.Body.Bytes(), dst); err != nil {
 		t.Fatalf("decode (%d): %s", rec.Code, rec.Body.String())
+	}
+}
+
+// README 的第三方登录示例必须能通过信封解析，避免文档与实现漂移。
+func TestDocumentedCredentialExamplesDecode(t *testing.T) {
+	raw, err := os.ReadFile("../../README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, line := range strings.Split(string(raw), "\n") {
+		if !strings.HasPrefix(line, `{"kind": "`) {
+			continue
+		}
+		n++
+		c := decodeCredentialBody(t, line)
+		if _, e := c.provider(); e != nil {
+			t.Fatalf("README example rejected: %s: %v", line, e)
+		}
+	}
+	if n < 3 {
+		t.Fatalf("README credential examples not found: %d", n)
 	}
 }

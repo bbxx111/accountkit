@@ -52,7 +52,7 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 
 ## 身份策略与登录补全
 
-服务读取 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS` 和 `ACCOUNTKIT_REQUIRED_IDENTITY_KINDS`。省略 E 沿用原装配，省略 R 为 PHONE/EMAIL any-of；非空 R 只能包含 PHONE/EMAIL 且为 E 子集，`[]` 显式不限定类型。仅邮件可设 E=EMAIL、R=EMAIL；纯微信可设 E=WECHAT、R=[] 并配置微信应用，无需 SMTP。显式启用 PHONE 报错，因为服务没有 SMS 服务商。配置在重启后生效，所有同实例副本须一致。
+服务读取 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS` 和 `ACCOUNTKIT_REQUIRED_IDENTITY_KINDS`。省略 E 沿用原装配，省略 R 为 PHONE/EMAIL any-of；非空 R 只能包含 PHONE/EMAIL 且为 E 子集，`[]` 显式不限定类型。仅邮件可设 E=EMAIL、R=EMAIL；纯微信可设 E=WECHAT、R=[] 并配置微信应用，无需 SMTP。仅小程序部署可配置 `ACCOUNTKIT_WECHAT_MINI_PROGRAM_APPS=appid:secret`，OAuth 应用使用 `ACCOUNTKIT_WECHAT_APPS`，两组不能重复 AppID。全局 `ACCOUNTKIT_WECHAT_SUBJECT_MODE` 缺省为 `UNIONID`，显式只接受 `UNIONID` / `OPENID`，空值非法；管理员 audience 不能等于任一组的 AppID。客户端统一提交 `{"kind":"WECHAT","credential":{"app_id":"wx…","code":"…"}}`。小程序 code 来自小程序登录，OAuth code 来自对应授权流程；接口由服务端应用分组决定。subject 使用 `unionid:<unionid>` 或 `openid:<appid>:<openid>`；与历史裸 UnionID 不兼容，不自动转换旧数据或合并账号，也无旧数据迁移工具。模式应固定，切换模式或分组可能产生不同身份并使已有 pending 失效，所有副本须一致。配置的 OIDC 类型同理：在 `ACCOUNTKIT_OIDC_PROVIDERS` 列出类型名，并为每个类型设置 `ACCOUNTKIT_OIDC_<KIND>_ISSUER`、`_JWKS_URL`、`_CLIENT_IDS`（可选 `_NONCE_TTL`、`_NAME_CLAIMS`、`_PICTURE_CLAIMS`，后两者设为空表示不读取）；缺失或非法时启动失败并指出具体变量名，不输出配置值。显式 E 中未配置的非内置类型指向 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS`。未设置任何 OIDC 变量时 migrate 不受影响；已列出类型但配置不完整或非法时，migrate 与 serve 同样失败并指出变量名。类型名本身由 OIDC 配置定义，因此引用未定义类型的静态策略在 migrate 中同样无效。未在 `ACCOUNTKIT_OIDC_PROVIDERS` 列出的类型，其 `ACCOUNTKIT_OIDC_<KIND>_*` 变量被忽略，列表拼写错误会使该提供方保持关闭。显式启用 PHONE 报错，因为服务没有 SMS 服务商。配置在重启后生效，所有同实例副本须一致。
 
 消费者沿用 `/v1/users`，管理面沿用 `/admin/v1/users`；资源 name 使用 users 及其子资源。此前未发布的 accounts 路径返回 404，不注册别名或重定向。未知第三方身份不满足 R 时返回 pending，尚不建号。客户端调用 `/v1/users:sendSignInCompletionCode` 和 `/v1/users:completeSignIn`，只用 `sign_in_completion_token` 和 PHONE/EMAIL 轮次；验证后关联已有活动账号或注册，详见 [库协议](../README.md#身份策略与登录补全)及[协议升级说明](compatibility.md#身份策略与登录补全协议升级)。
 
@@ -60,7 +60,21 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 
 ## 配置
 
-库配置按 [README](../README.md) 的变量表使用 `ACCOUNTKIT_` 前缀。例如 `ACCOUNTKIT_AUTH_SCHEMA`、`ACCOUNTKIT_AUTH_KEY_PREFIX`、`ACCOUNTKIT_JWT_KEYS`、`ACCOUNTKIT_JWT_ISSUER`。当前版本的 `ACCOUNTKIT_AUTH_SCHEMA` 未设置或为空时默认 `account`，Compose 也显式使用 `account`；合法的显式 schema 仍按配置使用。已有宿主的环境变量契约不变。
+库配置按 [README](../README.md) 的变量表使用 `ACCOUNTKIT_` 前缀。例如 `ACCOUNTKIT_AUTH_SCHEMA`、`ACCOUNTKIT_AUTH_KEY_PREFIX`、`ACCOUNTKIT_JWT_KEYS`、`ACCOUNTKIT_JWT_ISSUER`。当前版本的 `ACCOUNTKIT_AUTH_SCHEMA` 未设置或为空时默认 `account`，Compose 也显式使用 `account`；合法的显式 schema 仍按配置使用。已有宿主的环境变量契约不变。`ACCOUNTKIT_PROVIDER_PROFILE_BACKFILL`（默认 `true`）控制已有账号在第三方登录、绑定或补全关联时是否补填空的显示名与头像；非法值使 `serve` 与 `migrate` 启动失败并指出该变量名，不回显取值。
+
+Facebook 登录使用 `ACCOUNTKIT_FACEBOOK_APP_ID`、`ACCOUNTKIT_FACEBOOK_APP_SECRET`，可选 `ACCOUNTKIT_FACEBOOK_GRAPH_API_VERSION`（默认 `v26.0`）、`ACCOUNTKIT_FACEBOOK_NONCE_TTL`（默认 `10m`），以及仅供测试或代理部署的 `ACCOUNTKIT_FACEBOOK_GRAPH_API_BASE_URL`、`ACCOUNTKIT_FACEBOOK_JWKS_URL`。App ID 为空表示未启用，非空时 App Secret 必填；App Secret 只通过环境或密钥注入，不写入镜像、Compose 文件或日志。accountsvc 不提供 Facebook 数据删除回调路由：部署方须在 Meta 后台配置数据删除说明页，或另行用嵌入式库的 `HandleFacebookDataDeletion` 实现回调，见 [Go 集成指南](go-integration.md#facebook-数据删除回调)。
+
+支付宝 App 极简登录使用 `ACCOUNTKIT_ALIPAY_APP_IDS`（逗号分隔的唯一 16 位数字 AppID），每个应用分别提供 `ACCOUNTKIT_ALIPAY_<APPID>_PRIVATE_KEY` 应用私钥和 `ACCOUNTKIT_ALIPAY_<APPID>_PUBLIC_KEY` 支付宝公钥的真实多行 PEM。至少 2048 位 RSA，只支持普通公钥，不能传文件路径或字面 `\n`。`ACCOUNTKIT_ALIPAY_SUBJECT_MODE` 未设置时 UNIONID，显式仅接受 UNIONID/OPENID；`ACCOUNTKIT_ALIPAY_GATEWAY_URL` 默认生产网关。serve 缺应用或密钥会在监听前指出具体变量名，不输出内容。migrate 无需配置支付宝、不访问上游，但已配置的非法材料仍拒绝。
+
+纯支付宝部署设 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS=ALIPAY`、`ACCOUNTKIT_REQUIRED_IDENTITY_KINDS=[]`，无需 SMTP；默认 Required 仍需手机/邮箱补全。客户端完成极简 SDK 的 auth_user 与一次性 state 核对后提交 `POST /v1/users:signInWithIdp` 的 `{"kind":"ALIPAY","credential":{"app_id":"2026000000000001","code":"synthetic-code"}}`，本服务无 authInfo 或回调端点。默认 UNIONID 的实际跨 App 共享由宿主核对真实应用分组；OPENID 按 AppID 隔离，不自动迁移。配置指纹改变会拒绝旧 pending，所有副本须一致。资料降级及后续成功登录空字段补填、Flutter 桥接与宿主上线前真机清单见[支付宝接入指南](alipay-sign-in.md)。本地 Compose 默认 EMAIL，须用 override 或实际部署环境显式传入上述变量并覆盖 E/R，单改 `.env` 不会自动传递任意变量。
+
+QQ App SDK 登录使用 `ACCOUNTKIT_QQ_APP_IDS`（逗号分隔的唯一 1–20 位数字 AppID）、`ACCOUNTKIT_QQ_SUBJECT_MODE`（默认 `UNIONID`）和测试用 `ACCOUNTKIT_QQ_API_BASE_URL`；不需要 AppKey。显式 Enabled 含 QQ 却未配置应用时启动失败并指出 `ACCOUNTKIT_QQ_APP_IDS`，非法值只报告变量名。
+
+纯 QQ 部署设 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS=QQ`、`ACCOUNTKIT_REQUIRED_IDENTITY_KINDS=[]`，无需 SMTP；默认 Required 仍要求手机号或邮箱补全。migrate 不需要 QQ 配置，但已提供的非法 QQ 配置会被拒绝。
+
+微博 App SDK 登录使用 `ACCOUNTKIT_WEIBO_APP_IDS`（逗号分隔的唯一 1–20 位数字微博 AppKey）和测试用 `ACCOUNTKIT_WEIBO_API_BASE_URL`；不需要 AppSecret，也没有标识模式变量。显式 Enabled 含 WEIBO 却未配置应用时启动失败并指出 `ACCOUNTKIT_WEIBO_APP_IDS`，非法值只报告变量名。服务不提供授权回调或取消授权通知路由。
+
+纯微博部署设 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS=WEIBO`、`ACCOUNTKIT_REQUIRED_IDENTITY_KINDS=[]`，无需 SMTP；默认 Required 仍要求手机号或邮箱补全。migrate 不需要微博配置，但已提供的非法微博配置会被拒绝。
 
 以下名称均加 `ACCOUNTSVC_` 前缀：
 

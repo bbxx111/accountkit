@@ -92,7 +92,7 @@ GET 与 PATCH 成功均返回 200 和 `{"name":"users/u_0000000000001/profile","
 
 挂载内置 HTTP handler 的宿主可使用[消费者与管理面 OpenAPI 契约](docs/openapi.md)，按实际地址调整挂载前缀。
 
-本文描述 v0.5.0 已发布的公开契约：在 v0.4.0 的身份策略、登录补全、通用审计、指标及会话上下文之上，提供资料属性及本人 HTTP 读写、服务 Schema 文件配置和头像。版本范围与兼容边界见 [v0.5.0 发布说明](docs/releases/v0.5.0.md)；v0.4.0 及更早状态保留在各自发布说明。账号资源沿用 `/users`，升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
+本文描述 v0.6.0（准备中，尚未发布）的公开契约：在 v0.5.0 的资料属性、本人资料 HTTP 和头像之上，提供身份提供方注册表与统一凭证信封、Google/OIDC/Facebook/支付宝/QQ/微博登录、微信小程序和可配置的第三方资料补填。版本范围与兼容边界见 [v0.6.0 发布说明](docs/releases/v0.6.0.md)；v0.5.0 及更早状态保留在各自发布说明。账号资源沿用 `/users`，升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
 
 accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可选服务实现，使用同一套库能力；选择库集成不需要部署或调用 accountsvc。服务入口是 `cmd/accountsvc`，包含 SMTP 邮件投递、消费者远程鉴权和默认关闭的外部管理员 JWT 验证，运行与配置见 [accountsvc 服务手册](docs/accountsvc.md)。`examples/embedded` 保留为库集成开发示例。
 
@@ -117,7 +117,7 @@ accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect
 | 登出 | `Revoke(ctx, refreshToken, meta)` | RFC 7009 语义：未知 token 也返回成功 |
 | 校验 access | `Authenticate(ctx, raw)` | 验签 + id 格式 + Redis 吊销集（Redis 不可用时 fail-open） |
 | 重新认证 | `SendReauthenticationCode` / `Reauthenticate` | 只接受本账号已启用手机/邮箱身份；刷新 `auth_time` 并重签 access（不发 refresh） |
-| 资料 | `GetMe` / `UpdateProfile` / `UpdateDisplayName` | 显示名 ≤ 32 个字符；头像为最长 2048 字节的 HTTPS URL；可原子更新两字段 |
+| 资料 | `GetMe` / `UpdateProfile` / `UpdateDisplayName` | 显示名 ≤ 128 个 Unicode 码位；头像为最长 2048 字节的 HTTPS URL；可原子更新两字段 |
 | 批量公开资料 | `BatchPublicProfiles(ctx, ids)` | 一次查询返回 ID/DisplayName/AvatarURL/State；未知账号略去，待注销/已删除账号显示名和头像为空；宿主先过滤业务权限 |
 | 宿主事务保护 | `WithActiveUsers(ctx, ids, fn)` | 验证、去重并排序锁定 ACTIVE 账号后执行 `fn(pgx.Tx)`；库提交，错误或 panic 回滚 |
 | 离线导入 | `ImportAccounts(ctx, tx, accounts)` | 调用者事务中的 ACTIVE PHONE/EMAIL 锚点账号或 DELETED 匿名墓碑；调用者提交/回滚 |
@@ -226,8 +226,8 @@ r.Route("/v1", func(r chi.Router) {
 | 端点 | 认证 | 成功 | 失败 |
 |---|---|---|---|
 | `POST /users:sendSignInCode` `{channel, target}` | 无 | 200 `{code_id, expire_time}` | 429 `RESOURCE_EXHAUSTED` + `retry_after_seconds`；400 `CHANNEL_INVALID` / `INVALID_TARGET` |
-| `POST /users:signInWithCode` `{phone\|email:{target,code_id,code}}` + `X-Device-Id`/`X-Device-Name` | 无 | 200 token 或 pending | 400 `CODE_INVALID` / `CODE_EXPIRED` / `DEVICE_ID_INVALID`；429 `TARGET_VERIFY_LIMIT`；403 `USER_FROZEN` |
-| `POST /users:signInWithIdp` `{wechat\|apple:{...}}` + `X-Device-Id`/`X-Device-Name`（阶段 4a，见下） | 无 | 200 token 或 pending | 400 `IDP_CREDENTIAL_INVALID` / `IDP_APP_NOT_ALLOWED` / `IDP_NONCE_REPLAYED`；403 `USER_FROZEN`；503 `IDP_UNAVAILABLE`；403 USER_PENDING_DELETION（冷静期账号） |
+| `POST /users:signInWithCode` `{kind: PHONE\|EMAIL, credential:{target,code_id,code}}` + `X-Device-Id`/`X-Device-Name` | 无 | 200 token 或 pending | 400 `CODE_INVALID` / `CODE_EXPIRED` / `DEVICE_ID_INVALID`；429 `TARGET_VERIFY_LIMIT`；403 `USER_FROZEN` |
+| `POST /users:signInWithIdp` `{kind,credential:{...}}` + `X-Device-Id`/`X-Device-Name`（第三方类型，见下） | 无 | 200 token 或 pending | 400 `IDP_CREDENTIAL_INVALID` / `IDP_APP_NOT_ALLOWED` / `IDP_NONCE_REPLAYED`；403 `USER_FROZEN`；503 `IDP_UNAVAILABLE`；403 USER_PENDING_DELETION（冷静期账号） |
 | `POST /token` `{grant_type:"refresh_token", refresh_token}` | 无 | 200 token | RFC 6749：400 `invalid_grant`；403 `invalid_grant`+`reason:USER_FROZEN`；503 `temporarily_unavailable` |
 | `POST /revoke` `{token}` | 无 | 200 空 | 400 `invalid_request`（缺 token） |
 | `GET /users/me` | 任意 scope | 200 资源 | |
@@ -235,14 +235,14 @@ r.Route("/v1", func(r chi.Router) {
 | `DELETE /users/me` | `user` + 近期认证 | 200 账号资源（`state=PENDING_DELETION`） | 400 `REAUTHENTICATION_REQUIRED` / `INVALID_ACCOUNT_STATE` / `DELETION_BLOCKED`；403 `USER_FROZEN` |
 | `POST /users/me:undelete` | `user:undelete` | 200 账号资源（`state=ACTIVE`） | 400 `INVALID_ACCOUNT_STATE`；403 `USER_FROZEN` |
 | `POST /users/me:sendReauthenticationCode` `{channel, target}` | `user` | 200 `{code_id, expire_time}` | 400 `TARGET_NOT_ANCHOR` |
-| `POST /users/me:reauthenticate` 凭证 oneof | `user` | 200 token（无 refresh） | 400 `CODE_*`；401 会话已吊销 |
+| `POST /users/me:reauthenticate` `{kind: PHONE\|EMAIL, credential}` | `user` | 200 token（无 refresh） | 400 `CODE_*`；401 会话已吊销 |
 | `GET /users/me/sessions/current` | `user` / `user:bind` | 200 当前会话（no-store） | 401 `TOKEN_INVALID`；403 scope不足；503 `SESSION_QUERY_NOT_CONFIGURED` / 依赖不可用 |
 | `GET /users/me/sessions` | `user` | 200 `{sessions:[…]}` | |
 | `DELETE /users/me/sessions/{session}` | `user` | 204 | 400 `INVALID_ID`；404 |
 | `POST /users/me/sessions:revokeOthers` | `user` | 200 `{}` | |
 | `POST /users/me:sendBindCode` `{channel, target}` | `user` / `user:bind` | 200 `{code_id, expire_time}` | 429 限流；400 `CHANNEL_INVALID` / `INVALID_TARGET` |
 | `GET /users/me/identities` | `user` / `user:bind` | 200 `{identities:[{name, kind, masked_subject, create_time}]}` | |
-| `POST /users/me/identities` 凭证 oneof | `user` / `user:bind` | 201 新建 / 200 幂等 | 400 `CODE_*` / `IDP_*`；409 `IDENTITY_ALREADY_BOUND` / `IDENTITY_KIND_LIMIT`；403 `USER_FROZEN` |
+| `POST /users/me/identities` `{kind, credential}` | `user` / `user:bind` | 201 新建 / 200 幂等 | 400 `CODE_*` / `IDP_*`；409 `IDENTITY_ALREADY_BOUND` / `IDENTITY_KIND_LIMIT`；403 `USER_FROZEN` |
 | `DELETE /users/me/identities/{identity}` | `user` | 204 | 400 `LAST_ANCHOR_IDENTITY` / `REAUTHENTICATION_REQUIRED` / `INVALID_ID`；404 |
 
 约定：错误体 AIP-193（`/token`、`/revoke` 为 RFC 6749 §5.2）；401 只表示 bearer 缺失/无效/会话已吊销并带 `WWW-Authenticate: Bearer`；scope 不足 403 `INSUFFICIENT_SCOPE`；需重新认证 400 `FAILED_PRECONDITION` `REAUTHENTICATION_REQUIRED`；body ≤ 64 KiB、严格 JSON（未知字段 400 `MALFORMED_BODY`）；所有响应带 `X-Request-Id`。`Deps.ClientIP` 必须返回非空 IP（默认取 `RemoteAddr`；经代理部署时宿主注入可信跳数解析）。405（方法不允许）body 沿用 AIP-193 形状，但不带 `Allow` 头（RFC 9110 建议携带，这里为实现简单接受偏离）。
@@ -251,18 +251,34 @@ r.Route("/v1", func(r chi.Router) {
 
 ## IdP 登录（阶段 4a）
 
-`POST /users:signInWithIdp`，body 为凭证 oneof 的 `wechat` / `apple` 成员，设备头同验证码登录：
+`POST /users:signInWithIdp`，body 为统一凭证信封 `{"kind","credential"}`，kind 只接受第三方类型，设备头同验证码登录：
 
 ```json
-{"wechat": {"app_id": "wx…", "code": "…"}}
-{"apple":  {"id_token": "…", "nonce": "<客户端随机原值>"}}
+{"kind": "WECHAT", "credential": {"app_id": "wx…", "code": "…"}}
+{"kind": "APPLE",  "credential": {"id_token": "…", "nonce": "<客户端随机原值>"}}
+{"kind": "GOOGLE", "credential": {"id_token": "…", "nonce": "<客户端随机原值>"}}
+{"kind": "FACEBOOK", "credential": {"id_token": "…", "nonce": "<客户端随机原值>"}}
+{"kind": "FACEBOOK", "credential": {"access_token": "…"}}
+{"kind": "ALIPAY", "credential": {"app_id": "2026000000000001", "code": "synthetic-one-time-code"}}
+{"kind": "QQ", "credential": {"app_id": "1100000001", "access_token": "synthetic-sdk-access-token"}}
+{"kind": "WEIBO", "credential": {"app_id": "1234567890", "access_token": "synthetic-sdk-access-token"}}
 ```
 
-- **微信**：服务端用 `WeChatApps` 中对应的 secret 调 `sns/oauth2/access_token` 取 `unionid`（身份 subject）与 `openid`（按 app_id 存入 `provider_meta.openids`，从另一 App 登录时增量合并）。换回的微信 token 用完即弃。缺 `unionid` 视为配置错误（500 + Error 日志），不会降级用 openid。
+所有接收凭证的端点使用同一信封；手机/邮箱为 `{"kind":"PHONE","credential":{"target","code_id","code"}}`。旧的 `phone`/`email`/`wechat`/`apple`/`google` 成员返回 400 `MALFORMED_BODY`；`kind` 或 `credential` 缺失、credential 字段缺失或未知为 400 `CREDENTIAL_INCOMPLETE`，类型不属于该端点允许的类别为 400 `CREDENTIAL_KIND_NOT_ALLOWED`。完整规则见 [OpenAPI 说明](docs/openapi.md#统一凭证信封)。
+
+- **微信**：`WeChatApps` 的 OAuth 应用调用 `sns/oauth2/access_token`，`WeChatMiniProgramApps` 的小程序调用 `sns/jscode2session`；客户端均提交上述 `kind=WECHAT`、`credential.app_id/code`，不选择接口或模式。两组 AppID 必须唯一且不能含冒号，Secret 可含冒号。`WeChatSubjectMode` 对全部应用固定生效，默认为 `UNIONID`：subject 为 `unionid:<unionid>`，缺 UnionID 返回 500，不降级。`OPENID` 使用 `openid:<appid>:<openid>`，不同 AppID 相互隔离；已验证 UnionID 和 OpenID 保存到 `provider_meta.unionid/openids`，缺失不清空旧值，矛盾标识拒绝写入。微信 token、session_key 和 Secret 不保存。UnionID 模式的应用应属于同一微信开放平台。
 - **Apple**：仅 RS256；校验 `iss`、`aud ∈ AppleBundleIDs`、`exp`（30s leeway）、`nonce = sha256hex(原值)`；通过后 nonce 以 `SETNX` 登记 `AppleNonceTTL`，重复 → 400 `IDP_NONCE_REPLAYED`。JWKS 懒加载、缓存，未知 kid 触发 ≥ 60s 节流的刷新。`email` 仅在 `email_verified` 为真时作为 `hint_email` 返回，**不会**自动绑定为 EMAIL 身份。
+- **Google**：仅 RS256；`iss` 为 `https://accounts.google.com` 或 `accounts.google.com`，`aud` 以及出现的 `azp` 须在 `GoogleClientIDs`。nonce 与客户端提交的原始字符串做常量时间比较，不以 Apple 的 SHA-256 十六进制代替。JWKS 默认 `https://www.googleapis.com/oauth2/v3/certs`，懒加载并缓存；无缓存时拉取失败为 503 `IDP_UNAVAILABLE`，已有密钥在刷新失败时继续验签并单独计入 `google_cached_key_fallback`。已验证 `email` 作为成功响应或 pending 的 `hint_email` 预填，不参与查号或合并。`name` / `picture` 写入该身份的 `provider_meta.profile`；账号资料填充遵循下述“第三方资料补填”规则，超长名称截到 128 个码位，非法头像地址跳过。身份列表和管理面 `:reveal` 不返回 `provider_meta`。库不保存 Google access/refresh token，也不下载头像。
+- **支付宝**：仅 App 极简 SDK，客户端以 `auth_user` 授权、配置 SDK 回跳并核对一次性随机 state，再提交 `app_id/code`；需要安装支付宝，Flutter 需支持极简版的原生桥接。库无 authInfo/授权回调端点。`AlipayApps` 每个 AppID 配置应用私钥与支付宝公钥的多行 PEM（至少 2048 位 RSA，普通公钥模式）；`New` 无 I/O。`AlipaySubjectMode` 默认 UNIONID，subject 为 `unionid:<union_id>`；OPENID 为 `openid:<app_id>:<open_id>`，不回退 user_id 或自动合并。跨 App 共用账号须同分组并实测相同 UnionID；模式/信任配置改变会拒绝旧 pending。换码上限 10 秒、不重试，失败后获取新 code；资料独立最多 3 秒，可降级，外层取消终止操作。仅采信验签且 OpenID 匹配的 `nick_name/avatar`，资料填充遵循下述“第三方资料补填”规则。无 schema/迁移变更。配置、库侧自动验收和宿主真实 App/分组检查见[支付宝接入指南](docs/alipay-sign-in.md)。
+- **QQ**：仅 QQ 互联移动 SDK；客户端提交 SDK 返回的 `access_token`，不提交 openid。服务端以最多 10 秒调用 `oauth2.0/me`（`fmt=json`），`client_id` 须等于 `app_id`，否则 `IDP_APP_NOT_ALLOWED`；令牌失效为 400 `IDP_CREDENTIAL_INVALID`，网络/5xx/未知错误码为 503 `IDP_UNAVAILABLE`。令牌不做一次性限制。`QQSubjectMode` 默认 UNIONID（`unionid:<unionid>`，未开通 UnionID 为 500），OPENID 为 `openid:<app_id>:<openid>`。资料以独立 3 秒查询 `get_user_info`，取 `nickname` 与 `figureurl_qq_2`（缺失用 `figureurl_qq_1`），`thirdqq.qlogo.cn` 的 http 头像升级为 https；资料失败不阻断登录。资料填充遵循下述“第三方资料补填”规则。无 schema/迁移变更。见 [QQ 接入指南](docs/qq-sign-in.md)。
+- **微博**：仅微博移动 SDK；客户端提交 SDK 返回的 `access_token`，`app_id` 即微博 AppKey，不提交 uid 或 refresh_token。服务端以最多 10 秒 POST `oauth2/get_token_info`，`appkey` 须等于 `app_id`，否则 `IDP_APP_NOT_ALLOWED`；`expire_in` 为负或令牌失效类错误码为 400 `IDP_CREDENTIAL_INVALID`，应用权限受限或未审核应用超出测试用户数为固定 500，网络/429/5xx/未知错误码为 503 `IDP_UNAVAILABLE`。令牌不做一次性限制。uid 全局唯一且公开，subject 固定为 `uid:<uid>`，跨 App 自动命中同一身份，无标识模式配置。资料以独立 3 秒查询 `2/users/show.json`，取 `screen_name` 与 `avatar_hd`/`avatar_large`/`profile_image_url` 中第一个非空值，只接受 HTTPS 头像；资料失败或限流不阻断登录。资料填充遵循下述“第三方资料补填”规则。无 schema/迁移变更。见 [微博接入指南](docs/weibo-sign-in.md)。
+- **第三方资料补填**：第三方提供方返回昵称或头像时，新建账号始终填充空的显示名与头像；已有账号在 `PROVIDER_PROFILE_BACKFILL=true`（默认）时，每次第三方登录、绑定或补全关联都补填仍为空的字段，不覆盖非空值，只使用本次声明。用户主动清空也会在下一次第三方登录时被补填；不希望如此时设为 `false`。微信与 Apple 不返回资料。
 - **scope**：已知账号按当前 E/R 的全部可用身份得到 `user` 或 `user:bind`；未知第三方在默认 R 下返回 pending，补全后才关联或建号。已有 user:bind 账号绑定补齐后，新一轮刷新取得 user。
 - **错误**：400 `IDP_CREDENTIAL_INVALID` / `IDP_APP_NOT_ALLOWED`（含 IdP 未启用）/ `IDP_NONCE_REPLAYED`；503 `IDP_UNAVAILABLE`（IdP 网络、JWKS 不可得、Redis 不可用；带 `Retry-After: 1`）；500（appid/secret 无效、缺 unionid）。
-- **配置**：宿主前缀加 `WECHAT_APPS`、`APPLE_BUNDLE_IDS`、`APPLE_NONCE_TTL`；`WECHAT_API_BASE_URL` / `APPLE_JWKS_URL` 仅供测试或代理部署覆盖。`Deps.HTTPClient` 默认 10 秒超时。
+- **Facebook**：同时接受 Limited Login 的 ID token（`{"id_token","nonce"}`）与 Classic Login 的 access token（`{"access_token"}`），两种字段并列、缺失或为空为 400 `CREDENTIAL_INCOMPLETE`。身份 subject 是该 App 下的 Facebook 用户 id，两种凭证命中同一身份；邮箱、姓名、头像不作主键。ID token 仅 RS256，`iss` 为 `https://www.facebook.com`，`aud` 及出现的 `azp` 须等于 `FacebookAppID`，nonce 与原始值比较并登记。access token 由服务端经 Graph API `debug_token` 确认属于本 App 的用户 token，再读 `/me` 核对 id，所有调用附 `appsecret_proof`；同一 token 在有效期内可重复登录（风险见 [Go 集成指南](docs/go-integration.md#facebook-登录)）。其他 App 的凭证为 `IDP_APP_NOT_ALLOWED`；JWKS 无缓存可用、Graph 超时或 5xx 为 503 `IDP_UNAVAILABLE`，已有缓存密钥在刷新失败时继续验签并计入 `facebook_cached_key_fallback`；Graph 拒绝 App 凭据按服务端配置错误返回固定消息 500 并记录告警。`email` 只作 `hint_email`，Facebook 不提供邮箱已验证声明，不查号不合并。`FACEBOOK` 不能放入 `RequiredIdentityKinds`。数据删除回调见 [Go 集成指南](docs/go-integration.md#facebook-数据删除回调)。
+- **OIDC**：`Config.OIDCProviders` 或下表 `OIDC_*` 变量启用任意数量的配置类型。仅 RS256，`iss` 与配置精确相等，`aud` 以及出现的 `azp` 须在 client ID 列表中，`exp` 必填且允许 30 秒偏差，nonce 与原始值常量时间比较并按实例前缀与类型隔离登记（`<KeyPrefix>nonce:oidc:<KIND>:`）。生产环境的 issuer 与 JWKS 地址应使用 https；`http` 仅供测试或受信网络内代理，明文 JWKS 可被链路上的攻击者替换密钥。同一类型名不能同时出现在 `OIDCProviders` 与宿主 `user.Deps.Providers` 中，重复在 `New` 时报错。`sub` 为身份主键；`email_verified` 为真时 `email` 作为 `hint_email`；昵称与头像按配置声明名读取并与 Google 使用同一清洗与统一填充规则。JWKS 不可用为 503 `IDP_UNAVAILABLE`，缓存密钥继续验签计入 `oidc_cached_key_fallback`。指标方法统一为 `oidc`，类型名只出现在审计中。
+- **微信升级与模式**：带前缀 subject 不兼容历史裸 UnionID，没有旧数据转换或迁移工具；部署前须审查已有身份。模式应固定且所有实例副本一致，切换可能产生不同身份，不自动升级、降级、通过元数据关联或合并账号。切换模式或应用所属组会使未完成登录补全流程失效；只轮换 Secret 或重排列表不会。
+- **配置**：宿主前缀加 `WECHAT_APPS`、`WECHAT_MINI_PROGRAM_APPS`、`WECHAT_SUBJECT_MODE`、`APPLE_BUNDLE_IDS`、`APPLE_NONCE_TTL`、`GOOGLE_CLIENT_IDS`、`GOOGLE_NONCE_TTL`、`FACEBOOK_APP_ID`、`FACEBOOK_APP_SECRET`、`FACEBOOK_GRAPH_API_VERSION`、`FACEBOOK_NONCE_TTL`；`WECHAT_API_BASE_URL` / `APPLE_JWKS_URL` / `GOOGLE_JWKS_URL` / `FACEBOOK_GRAPH_API_BASE_URL` / `FACEBOOK_JWKS_URL` 仅供测试或代理部署覆盖。空的客户端标识列表表示未启用。`Deps.HTTPClient` 默认 10 秒超时。去掉客户端标识只停止新的 Google 登录，不删除已有身份行。
 
 只有第三方身份的账号需要近期认证时，重新走普通 IdP 登录；同设备会话被替换，客户端更新 token pair 并确认仍为同一 user_id 后再继续敏感动作。手机/邮箱重新认证仍只更新当前会话 auth_time 和 access，不延长 refresh。纯第三方账号没有手机/邮箱自助恢复路径；普通 IdP 登录仍拒绝冷静期账号，合法管理员恢复保持。
 
@@ -272,7 +288,7 @@ r.Route("/v1", func(r chi.Router) {
 |---|---|---|---|---|
 | `POST /users/me:sendBindCode` `{channel, target}` | `user` / `user:bind` | | 200 `{code_id, expire_time}` | 429 限流；400 `CHANNEL_INVALID` / `INVALID_TARGET` |
 | `GET /users/me/identities` | `user` / `user:bind` | | 200 `{identities:[{name, kind, masked_subject, create_time}]}` | |
-| `POST /users/me/identities` 凭证 oneof | `user` / `user:bind` | | 201 新建 / 200 幂等 | 400 `CODE_*` / `IDP_*`；409 `IDENTITY_ALREADY_BOUND` / `IDENTITY_KIND_LIMIT`；403 `USER_FROZEN` |
+| `POST /users/me/identities` `{kind, credential}` | `user` / `user:bind` | | 201 新建 / 200 幂等 | 400 `CODE_*` / `IDP_*`；409 `IDENTITY_ALREADY_BOUND` / `IDENTITY_KIND_LIMIT`；403 `USER_FROZEN` |
 | `DELETE /users/me/identities/{identity}` | `user` | 是 | 204 | 400 `LAST_ANCHOR_IDENTITY` / `REAUTHENTICATION_REQUIRED` / `INVALID_ID`；404 |
 
 规则：一个 subject 全局只属于一个账号（冲突 409，不合并不迁移）；每 kind 最多 `MaxIdentitiesPerKind`（默认 1）个活动身份；同一 subject 重复绑定到本账号为幂等；解绑是软删除，解绑后同一 subject 可绑到任一账号；解绑或换绑后的最终身份集合必须仍有至少一个已启用身份并满足当前 R；绑定不改变已签发 token 的 scope，客户端新一轮刷新后生效。`masked_subject` 由检索提示拼出（`+86 138****1234`、`ba***@example.com`），第三方身份为空串。
@@ -313,7 +329,7 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 
 ## 手机号与邮箱换绑
 
-`POST /v1/users/me/identities/{identity}:replace` 将指定的旧活动手机/邮箱身份替换为同类新身份。请求使用既有凭证结构，例如 `{"email":{"target":"new@example.test","code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`；成功返回200及新身份的掩码资源，身份 ID 更新、账号 ID 保持，不返回 token pair。
+`POST /v1/users/me/identities/{identity}:replace` 将指定的旧活动手机/邮箱身份替换为同类新身份。请求使用统一凭证信封，例如 `{"kind":"EMAIL","credential":{"target":"new@example.test","code_id":"0123456789abcdef0123456789abcdef","code":"123456"}}`；成功返回200及新身份的掩码资源，身份 ID 更新、账号 ID 保持，不返回 token pair。
 
 调用前须有 `user` scope 和有效当前会话，近期认证沿用 `REAUTH_MAX_AGE`（默认5分钟）及 `SENSITIVE_OP_VERIFICATION`（默认true）。需要时先走既有重新认证流程，再通过 `users/me:sendBindCode` 获取新地址 BIND 码。近期登录也满足现有新鲜度语义，不保证本次专门向旧地址发送验证码；首版不提供失去全部既有凭据的账号找回。
 
@@ -412,6 +428,7 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 | `JWT_ISSUER` / `JWT_AUDIENCE` | 必填 | |
 | `ACCESS_TOKEN_TTL` / `REFRESH_TOKEN_TTL` / `REFRESH_GRACE` | `15m` / `720h` / `30s` | |
 | `REAUTH_MAX_AGE` / `SENSITIVE_OP_VERIFICATION` | `5m` / `true` | 敏感操作要求 `auth_time` 在此时限内 |
+| `PROVIDER_PROFILE_BACKFILL` | `true` | 已有账号在第三方登录、绑定或补全关联时，用本次资料声明补填空的显示名与头像；新建账号始终填充，不受此项影响 |
 | `SUBJECT_HMAC_KEYS` / `SUBJECT_HMAC_ACTIVE_KEY` | 必填 | 手机/邮箱摘要密钥（HMAC-SHA256，≥ 32 字节） |
 | `SUBJECT_CIPHER_KEYS` / `SUBJECT_CIPHER_ACTIVE_KEY` | 必填 | 手机/邮箱密文密钥（AES-256-GCM），每个密钥**恰好 32 字节** |
 | `CODE_TTL` / `CODE_MAX_ATTEMPTS` / `CODE_COOLDOWN` | `5m` / `5` / `60s` | 验证码 |
@@ -422,11 +439,37 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 | `AUDIT_SOURCE` / `AUDIT_NAMESPACE` | `accountkit/<schema>` / `accountkit/<schema>/resources` | 本地默认在 New 应用；外部写侧必须显式配置稳定值，不能从请求采信 |
 | `DEFAULT_REGION` | `CN` | 无 `+` 前缀手机号的解析区域 |
 | `MAINTENANCE_INTERVAL` | `5m` | 维护 ticker 周期 |
-| `WECHAT_APPS` | 空（未启用） | `appid:secret,appid:secret`（微信登录） |
+| `WECHAT_APPS` | 空 | `appid:secret,appid:secret`（OAuth 应用） |
+| `WECHAT_MINI_PROGRAM_APPS` | 空 | 同上格式；仅配置本组也可启用微信登录 |
+| `WECHAT_SUBJECT_MODE` | `UNIONID` | 全局固定 `UNIONID` / `OPENID`；显式空值、空白或其他值非法 |
 | `APPLE_BUNDLE_IDS` | 空（未启用） | 逗号分隔（Apple 登录，id_token 的 `aud` 须在其中） |
 | `APPLE_NONCE_TTL` | `10m` | |
 | `WECHAT_API_BASE_URL` | `https://api.weixin.qq.com` | 测试/代理部署钩子 |
 | `APPLE_JWKS_URL` | `https://appleid.apple.com/auth/keys` | 测试/代理部署钩子 |
+| `GOOGLE_CLIENT_IDS` | 空（未启用） | 逗号分隔的 OAuth 客户端 ID；无客户端秘密 |
+| `GOOGLE_NONCE_TTL` | `10m` | nonce 登记下限，实际取它与 `exp` + 30s 的较大者 |
+| `GOOGLE_JWKS_URL` | `https://www.googleapis.com/oauth2/v3/certs` | 测试/代理部署钩子 |
+| `FACEBOOK_APP_ID` | 空（未启用） | Facebook App ID；非空即启用 FACEBOOK，同一实例只对接一个 App |
+| `FACEBOOK_APP_SECRET` | 空 | App ID 非空时必填；用于 Graph 调用的 `appsecret_proof` 和 `signed_request` 校验，不进入日志与响应 |
+| `FACEBOOK_GRAPH_API_VERSION` | `v26.0` | 格式 `vN.N`；仅 App ID 非空时校验。默认版本随发布升级，属于兼容变更，见发布说明 |
+| `FACEBOOK_NONCE_TTL` | `10m` | Limited Login nonce 登记下限（不小于 `1m`，仅 App ID 非空时校验），实际取它与 `exp` + 30s 的较大者 |
+| `FACEBOOK_GRAPH_API_BASE_URL` | `https://graph.facebook.com` | 测试/代理部署钩子 |
+| `FACEBOOK_JWKS_URL` | `https://www.facebook.com/.well-known/oauth/openid/jwks/` | 测试/代理部署钩子 |
+| `ALIPAY_APP_IDS` | 空（未启用） | 逗号分隔的不同 AppID，每项为 16 位 ASCII 数字；Go 配置为 `AlipayApps []AlipayApp` |
+| `ALIPAY_<APPID>_PRIVATE_KEY` | AppID 已配置时必填 | 多行 PEM 应用 RSA 私钥，PKCS#1 / PKCS#8，至少 2048 位；不读取密钥文件 |
+| `ALIPAY_<APPID>_PUBLIC_KEY` | AppID 已配置时必填 | 多行 PEM 支付宝 RSA 公钥，PKCS#1 / SPKI，至少 2048 位；首版仅普通公钥模式，不接受证书 |
+| `ALIPAY_SUBJECT_MODE` | `UNIONID` | Go 字段 `AlipaySubjectMode`，全局固定 `UNIONID` / `OPENID`；显式空值、空白、小写或其他值非法 |
+| `ALIPAY_GATEWAY_URL` | `https://openapi.alipay.com/gateway.do` | Go 字段 `AlipayGatewayURL`；HTTPS 绝对地址，无用户信息、查询或 fragment，仅数值回环测试地址允许 HTTP |
+| `QQ_APP_IDS` | 空（未启用） | 逗号分隔的不同 QQ 互联移动应用 AppID，每项 1–20 位 ASCII 数字；Go 配置为 `QQAppIDs []string`；App SDK 校验不需要 AppKey |
+| `QQ_SUBJECT_MODE` | `UNIONID` | Go 字段 `QQSubjectMode`，全局固定 `UNIONID` / `OPENID`；显式空值、空白、小写或其他值启动失败；UNIONID 需在 QQ 互联开通 UnionID |
+| `QQ_API_BASE_URL` | `https://graph.qq.com` | Go 字段 `QQAPIBaseURL`；HTTPS 绝对地址，无用户信息、查询或 fragment；HTTP 仅限数值回环测试地址 |
+| `WEIBO_APP_IDS` | 空（未启用） | 逗号分隔的不同微博开放平台移动应用 AppKey，每项 1–20 位 ASCII 数字；Go 配置为 `WeiboAppIDs []string`；App SDK 校验不需要 AppSecret |
+| `WEIBO_API_BASE_URL` | `https://api.weibo.com` | Go 字段 `WeiboAPIBaseURL`；HTTPS 绝对地址，无用户信息、查询或 fragment；HTTP 仅限数值回环测试地址 |
+| `OIDC_PROVIDERS` | 空（未启用） | 逗号分隔的 OIDC 类型名，格式 `^[A-Z][A-Z0-9_]{1,31}$`，不得为内置类型名；一经使用不应更换 |
+| `OIDC_<KIND>_ISSUER` / `_JWKS_URL` | 必填 | 绝对 http(s) URL；issuer 与 token `iss` 精确比较；不做 discovery |
+| `OIDC_<KIND>_CLIENT_IDS` | 必填 | 逗号分隔；`aud` 及出现的 `azp` 须在其中 |
+| `OIDC_<KIND>_NONCE_TTL` | `10m` | nonce 登记下限，实际取它与 `exp` + 30s 的较大者 |
+| `OIDC_<KIND>_NAME_CLAIMS` / `_PICTURE_CLAIMS` | `name` / `picture` | 逗号分隔、按序取第一个非空的顶层字符串声明；设为空表示不读取 |
 
 ## 密钥轮换
 
@@ -453,7 +496,7 @@ HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额
 
 ## 仓库与发布状态
 
-当前最新版本为 [v0.5.0](https://github.com/bbxx111/accountkit/releases/tag/v0.5.0)，包含资料属性、本人资料 HTTP 和头像。使用 `go get github.com/bbxx111/accountkit@v0.5.0` 接入；范围见[发布说明](docs/releases/v0.5.0.md)，候选 `102315c` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/39587858534)已通过，实际证据见[发布验收](openspec/changes/archive/2026-10-21-prepare-v0-5-0-release/verification.md)。
+当前最新版本为 [v0.5.0](https://github.com/bbxx111/accountkit/releases/tag/v0.5.0)，包含资料属性、本人资料 HTTP 和头像；下一版本 [v0.6.0](docs/releases/v0.6.0.md) 正在准备，尚未发布。使用 `go get github.com/bbxx111/accountkit@v0.5.0` 接入；范围见[发布说明](docs/releases/v0.5.0.md)，候选 `102315c` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/39587858534)已通过，实际证据见[发布验收](openspec/changes/archive/2026-10-21-prepare-v0-5-0-release/verification.md)。
 
 远程仓库：https://github.com/bbxx111/accountkit.git
 

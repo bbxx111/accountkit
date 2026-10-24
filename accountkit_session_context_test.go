@@ -67,7 +67,7 @@ func TestCurrentSessionHTTPAgainstRealDB(t *testing.T) {
 	const email = "http-context@example.test"
 	const phone = "+8613812349988"
 	request("POST", "/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": email}, nil, 200)
-	cred := map[string]any{"email": map[string]string{"code_id": sent.codeID(email), "target": email, "code": sent.code(email)}}
+	cred := map[string]any{"kind": "EMAIL", "credential": map[string]string{"code_id": sent.codeID(email), "target": email, "code": sent.code(email)}}
 	request("POST", "/users:signInWithCode", "", cred, map[string]string{"X-Device-Id": "http-context", "X-Client-Type": "INVALID"}, 400)
 	pair := request("POST", "/users:signInWithCode", "", cred, map[string]string{"X-Device-Id": "http-context", "X-Device-Name": "Original Device", "X-Client-Type": "WEB", "X-Client-OS-Name": "Initial OS", "X-Client-Browser-Name": "Firefox"}, 200)
 	access := pair["access_token"].(string)
@@ -85,11 +85,11 @@ func TestCurrentSessionHTTPAgainstRealDB(t *testing.T) {
 		t.Fatal(e)
 	}
 	request("POST", "/users/me:sendBindCode", access, map[string]string{"channel": "PHONE", "target": phone}, nil, 200)
-	bound := request("POST", "/users/me/identities", access, map[string]any{"phone": map[string]string{"code_id": sent.codeID(phone), "target": phone, "code": sent.code(phone)}}, map[string]string{"X-Client-Type": "INVALID"}, 201)
+	bound := request("POST", "/users/me/identities", access, map[string]any{"kind": "PHONE", "credential": map[string]string{"code_id": sent.codeID(phone), "target": phone, "code": sent.code(phone)}}, map[string]string{"X-Client-Type": "INVALID"}, 201)
 	mr.FastForward(2 * time.Second)
 	request("POST", "/users/me:sendReauthenticationCode", access, map[string]string{"channel": "PHONE", "target": phone}, nil, 200)
 	time.Sleep(1100 * time.Millisecond)
-	request("POST", "/users/me:reauthenticate", access, map[string]any{"phone": map[string]string{"code_id": sent.codeID(phone), "target": phone, "code": sent.code(phone)}}, map[string]string{"X-Client-Type": "NATIVE", "X-Client-App-Name": "Context App"}, 200)
+	request("POST", "/users/me:reauthenticate", access, map[string]any{"kind": "PHONE", "credential": map[string]string{"code_id": sent.codeID(phone), "target": phone, "code": sent.code(phone)}}, map[string]string{"X-Client-Type": "NATIVE", "X-Client-App-Name": "Context App"}, 200)
 	current := request("GET", "/users/me/sessions/current", access, nil, nil, 200) // The original JWT remains valid and sees the new database proof.
 	sources := current["authentication_identities"].([]any)
 	if len(sources) != 1 || sources[0].(map[string]any)["name"] != bound["name"] || sources[0].(map[string]any)["kind"] != "PHONE" || current["auth_time"] == initial["auth_time"] {
@@ -144,7 +144,7 @@ func TestSessionQueriesStayBoundedAndAuthenticationHasNoDB(t *testing.T) {
 			t.Fatal(e)
 		}
 		// Exercise root Deps.ClientInfo wiring through the real HTTP adapter.
-		raw, _ := json.Marshal(map[string]any{"email": map[string]string{"target": "bounded@example.test", "code_id": challenge.CodeID, "code": sent.code("bounded@example.test")}})
+		raw, _ := json.Marshal(map[string]any{"kind": "EMAIL", "credential": map[string]string{"target": "bounded@example.test", "code_id": challenge.CodeID, "code": sent.code("bounded@example.test")}})
 		req := httptest.NewRequest("POST", "/users:signInWithCode", bytes.NewReader(raw))
 		req.Header.Set("X-Device-Id", fmt.Sprintf("batch-%d", i))
 		w := httptest.NewRecorder()

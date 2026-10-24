@@ -162,7 +162,7 @@ func TestCodeKeyRotationIntegration(t *testing.T) {
 				targets = []string{"rotation-a@example.test", "rotation-b@example.test", "rotation-c@example.test"}
 			}
 			proof := func(target, c string) any {
-				return map[string]any{strings.ToLower(channel): map[string]string{"code_id": f.sent.codeID(target), "target": target, "code": c}}
+				return map[string]any{"kind": channel, "credential": map[string]string{"code_id": f.sent.codeID(target), "target": target, "code": c}}
 			}
 			sendBody := func(target string) any { return map[string]string{"channel": channel, "target": target} }
 			old := f.auth(1, false)

@@ -17,6 +17,114 @@ func collect(in o.Observation) []metricdata.Measurement {
 	return out
 }
 
+func TestAlipayMetricProjection(t *testing.T) {
+	for _, tc := range []struct {
+		in           o.Observation
+		label, value string
+		count        int
+	}{
+		{o.AuthObservation{Operation: o.AuthSignIn, Method: o.MethodAlipay, Result: o.ResultSuccess, Grant: o.GrantUser}, "method", "alipay", 2},
+		{o.DependencyObservation{Component: o.ComponentIDP, Operation: o.DependencyVerifyAlipay, Result: o.ResultSuccess}, "operation", "verify_alipay", 2},
+		{o.DegradationObservation{Scenario: o.DegradationAlipayProfileUnavailable, Count: 1}, "scenario", "alipay_profile_unavailable", 1},
+	} {
+		ms := collect(tc.in)
+		if len(ms) != tc.count {
+			t.Fatalf("Alipay projection %T count=%d", tc.in, len(ms))
+		}
+		for _, m := range ms {
+			found := false
+			for _, l := range m.Labels {
+				if l.Name == tc.label {
+					found = true
+					if l.Value != tc.value {
+						t.Fatalf("Alipay label=%+v", l)
+					}
+				}
+			}
+			if !found {
+				t.Fatal("missing label")
+			}
+		}
+	}
+	for _, op := range []o.AuthOperation{o.AuthCompleteSignIn, o.AuthReauthenticate} {
+		if ms := collect(o.AuthObservation{Operation: op, Method: o.MethodAlipay, Result: o.ResultSuccess, Grant: o.GrantUser}); len(ms) != 0 {
+			t.Fatal("Alipay accepted for anchor-only operation")
+		}
+	}
+}
+
+func TestQQMetricProjection(t *testing.T) {
+	for _, tc := range []struct {
+		in           o.Observation
+		label, value string
+		count        int
+	}{
+		{o.AuthObservation{Operation: o.AuthSignIn, Method: o.MethodQQ, Result: o.ResultSuccess, Grant: o.GrantUser}, "method", "qq", 2},
+		{o.DependencyObservation{Component: o.ComponentIDP, Operation: o.DependencyVerifyQQ, Result: o.ResultSuccess}, "operation", "verify_qq", 2},
+		{o.DegradationObservation{Scenario: o.DegradationQQProfileUnavailable, Count: 1}, "scenario", "qq_profile_unavailable", 1},
+	} {
+		ms := collect(tc.in)
+		if len(ms) != tc.count {
+			t.Fatalf("QQ projection %T count=%d", tc.in, len(ms))
+		}
+		for _, m := range ms {
+			found := false
+			for _, l := range m.Labels {
+				if l.Name == tc.label {
+					found = true
+					if l.Value != tc.value {
+						t.Fatalf("QQ label=%+v", l)
+					}
+				}
+			}
+			if !found {
+				t.Fatal("missing label")
+			}
+		}
+	}
+	for _, op := range []o.AuthOperation{o.AuthCompleteSignIn, o.AuthReauthenticate} {
+		if ms := collect(o.AuthObservation{Operation: op, Method: o.MethodQQ, Result: o.ResultSuccess, Grant: o.GrantUser}); len(ms) != 0 {
+			t.Fatal("QQ accepted for anchor-only operation")
+		}
+	}
+}
+
+func TestWeiboMetricProjection(t *testing.T) {
+	for _, tc := range []struct {
+		in           o.Observation
+		label, value string
+		count        int
+	}{
+		{o.AuthObservation{Operation: o.AuthSignIn, Method: o.MethodWeibo, Result: o.ResultSuccess, Grant: o.GrantUser}, "method", "weibo", 2},
+		{o.DependencyObservation{Component: o.ComponentIDP, Operation: o.DependencyVerifyWeibo, Result: o.ResultSuccess}, "operation", "verify_weibo", 2},
+		{o.DegradationObservation{Scenario: o.DegradationWeiboProfileUnavailable, Count: 1}, "scenario", "weibo_profile_unavailable", 1},
+	} {
+		ms := collect(tc.in)
+		if len(ms) != tc.count {
+			t.Fatalf("Weibo projection %T count=%d", tc.in, len(ms))
+		}
+		for _, m := range ms {
+			found := false
+			for _, l := range m.Labels {
+				if l.Name == tc.label {
+					found = true
+					if l.Value != tc.value {
+						t.Fatalf("Weibo label=%+v", l)
+					}
+				}
+			}
+			if !found {
+				t.Fatal("missing label")
+			}
+		}
+	}
+	for _, op := range []o.AuthOperation{o.AuthCompleteSignIn, o.AuthReauthenticate} {
+		if ms := collect(o.AuthObservation{Operation: op, Method: o.MethodWeibo, Result: o.ResultSuccess, Grant: o.GrantUser}); len(ms) != 0 {
+			t.Fatal("Weibo accepted for anchor-only operation")
+		}
+	}
+}
+
 func TestMetricProjection(t *testing.T) {
 	cases := []struct {
 		in      o.Observation
@@ -184,4 +292,52 @@ func TestMetricProjectionLabelValuesAndOwnership(t *testing.T) {
 			t.Fatal("counter callback corrupted histogram labels")
 		}
 	})
+}
+
+func TestMetricProjectionProviderValues(t *testing.T) {
+	for method, want := range map[o.Method]string{o.MethodOIDC: "oidc", o.MethodProvider: "provider"} {
+		got := collect(o.AuthObservation{Operation: o.AuthSignIn, Method: method, Result: o.ResultSuccess, Grant: o.GrantUser})
+		if len(got) == 0 || got[0].Labels[1].Value != want {
+			t.Fatalf("method %s: %+v", method, got)
+		}
+		if got := collect(o.AuthObservation{Operation: o.AuthReauthenticate, Method: method, Result: o.ResultSuccess, Grant: o.GrantUser}); len(got) != 0 {
+			t.Fatalf("third-party method %s must not reauthenticate: %+v", method, got)
+		}
+	}
+	for _, op := range []o.DependencyOperation{o.DependencyVerifyOIDC, o.DependencyVerifyProvider} {
+		if len(collect(o.DependencyObservation{Component: o.ComponentIDP, Operation: op, Result: o.ResultRejected})) != 2 {
+			t.Fatalf("dependency %s rejected", op)
+		}
+	}
+	if len(collect(o.DegradationObservation{Scenario: o.DegradationOIDCCachedKeyFallback, Count: 1})) == 0 {
+		t.Fatal("OIDC cached-key degradation rejected")
+	}
+}
+
+func TestMetricProjectionFacebookValues(t *testing.T) {
+	if o.MethodFacebook != "facebook" || o.DependencyVerifyFacebook != "verify_facebook" || o.DegradationFacebookCachedKeyFallback != "facebook_cached_key_fallback" {
+		t.Fatal("facebook observability constants drifted")
+	}
+	got := collect(o.AuthObservation{Operation: o.AuthSignIn, Method: o.MethodFacebook, Result: o.ResultSuccess, Grant: o.GrantUser})
+	if len(got) == 0 || got[0].Labels[1].Value != "facebook" {
+		t.Fatalf("method facebook: %+v", got)
+	}
+	if got := collect(o.AuthObservation{Operation: o.AuthReauthenticate, Method: o.MethodFacebook, Result: o.ResultSuccess, Grant: o.GrantUser}); len(got) != 0 {
+		t.Fatalf("facebook must not reauthenticate: %+v", got)
+	}
+	got = collect(o.DependencyObservation{Component: o.ComponentIDP, Operation: o.DependencyVerifyFacebook, Result: o.ResultRejected})
+	if len(got) != 2 {
+		t.Fatalf("dependency facebook: %+v", got)
+	}
+	for _, m := range got {
+		for _, l := range m.Labels {
+			if l.Name == "operation" && l.Value != "verify_facebook" {
+				t.Fatalf("operation label: %+v", m)
+			}
+		}
+	}
+	got = collect(o.DegradationObservation{Scenario: o.DegradationFacebookCachedKeyFallback, Count: 1})
+	if len(got) != 1 || got[0].Labels[0].Value != "facebook_cached_key_fallback" {
+		t.Fatalf("degradation facebook: %+v", got)
+	}
 }

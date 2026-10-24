@@ -135,3 +135,32 @@
 #### Scenario: 头像列结构漂移
 - **WHEN** avatar_url 类型、可空性或默认值与当前定义不符
 - **THEN** 无写拒绝；dirty 标记存在时优先返回 dirty 错误
+
+### Requirement: Google 身份注释并入当前初始定义
+本变更 SHALL 按用户“数据库变更直接修改 0001 即可”的授权，只修改当前 0001 中 identity.kind 与 provider_meta 的注释，使注释包含 GOOGLE 以及 profile 的 name 和 picture。SHALL 不新增列、索引、CHECK 或生产 0002，且只更新当前 initialFrozen。已发布标签、SQL、冻结源和 0001 down SHALL 保持。新安装 SHALL 仍为 version=1/dirty=false。该授权不得扩大为日常改写初始 SQL。
+
+#### Scenario: 新空库安装
+- **WHEN** 对新空 schema 执行迁移
+- **THEN** 只执行当前 0001，version=1/dirty=false，身份表的列和约束与修改注释前一致
+
+#### Scenario: 旧同号库
+- **WHEN** 已安装的 version 1 再次 Up
+- **THEN** 不重放 0001，保留原 catalog、数据和 version/dirty
+
+### Requirement: 身份类型文本列并入当前初始定义
+本变更 SHALL 按用户“直接改 0001”的明确授权，把当前 0001 中 identity.kind 改为 `VARCHAR(32) COLLATE "C" NOT NULL` 并增加格式 CHECK，同步相关注释；索引定义文本、其他列与约束及 0001 down 的整表语义 SHALL 保持。SHALL 不新增生产 0002，只更新当前 initialFrozen。新安装 SHALL 为 version=1/dirty=false。该授权不得扩大为日常改写初始 SQL。
+
+#### Scenario: 新空库安装
+- **WHEN** 对新空 schema 执行迁移
+- **THEN** identity.kind 为 VARCHAR(32) COLLATE "C" 且带格式 CHECK，version=1/dirty=false
+
+### Requirement: 整数身份类型结构无写拒绝
+运行时预检 SHALL 要求 identity.kind 为当前 VARCHAR(32) 定义，dirty 优先。identity.kind 仍为 SMALLINT 的 version 1（含 v0.5.0 及其后、本变更前的安装），以及所有既有历史拒绝结构 SHALL 无写拒绝，保留 catalog、数据和 version/dirty；不得转换列、重放同号 SQL、Force、改版本或清库。本变更 SHALL 不提供旧数据迁移。
+
+#### Scenario: v0.5.0 安装
+- **WHEN** identity.kind 为 SMALLINT 的 version 1 请求 Up，空库或含数据
+- **THEN** 无写拒绝，数据、catalog、版本及 dirty 保持；反复拒绝不泄漏锁
+
+#### Scenario: dirty 优先
+- **WHEN** 同一旧库同时带 dirty 标记
+- **THEN** 返回 dirty 错误

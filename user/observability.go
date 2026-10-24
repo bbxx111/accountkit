@@ -2,7 +2,9 @@ package user
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"time"
 
@@ -53,8 +55,20 @@ func observationMethod(kind enum.IdentityKind) ob.Method {
 		return ob.MethodWechat
 	case enum.IdentityApple:
 		return ob.MethodApple
-	default:
+	case enum.IdentityGoogle:
+		return ob.MethodGoogle
+	case enum.IdentityFacebook:
+		return ob.MethodFacebook
+	case enum.IdentityAlipay:
+		return ob.MethodAlipay
+	case enum.IdentityQQ:
+		return ob.MethodQQ
+	case enum.IdentityWeibo:
+		return ob.MethodWeibo
+	case enum.IdentityKindUnspecified:
 		return ob.MethodUnknown
+	default:
+		return ob.MethodProvider
 	}
 }
 
@@ -112,7 +126,7 @@ func classifyOperation(err error) (ob.Result, ob.Reason) {
 		return ob.ResultRejected, ob.ReasonIdentityKindDisabled
 	case errors.Is(err, sender.ErrDisabled):
 		return ob.ResultRejected, ob.ReasonChannelDisabled
-	case errors.Is(err, ErrInvalidArgument), errors.Is(err, ErrInvalidTarget), errors.Is(err, ErrInvalidClientInfo):
+	case errors.Is(err, ErrInvalidArgument), errors.Is(err, ErrInvalidTarget), errors.Is(err, ErrInvalidClientInfo), errors.Is(err, idp.ErrMalformedCredential):
 		return ob.ResultRejected, ob.ReasonInvalidArgument
 	case errors.Is(err, code.ErrInvalid):
 		return ob.ResultRejected, ob.ReasonCodeInvalid
@@ -230,7 +244,7 @@ func (s *Service) SignInWithIdp(ctx context.Context, cred IdpCredential, dev Dev
 	if result.Tokens != nil {
 		scope = result.Tokens.Scope
 	}
-	s.observeAuth(ctx, start, ob.AuthSignIn, observationMethod(cred.Kind), scope, result.Pending != nil, err, facts)
+	s.observeAuth(ctx, start, ob.AuthSignIn, s.observationMethodFor(cred.Kind), scope, result.Pending != nil, err, facts)
 	return result, err
 }
 
@@ -440,12 +454,50 @@ func (s *Service) revokeObserved(ctx context.Context, sid string, ttl time.Durat
 	return err
 }
 
-func (s *Service) verifyWeChat(ctx context.Context, cred IdpCredential) (idp.Identity, error) {
-	return observedDependency(s, ctx, ob.ComponentIDP, ob.DependencyVerifyWechat, func() (idp.Identity, error) { return s.d.WeChat.VerifyWeChat(ctx, cred.AppID, cred.Code) })
+func (s *Service) verifyProvider(ctx context.Context, kind enum.IdentityKind, provider idp.Provider, credential json.RawMessage) (idp.Identity, error) {
+	return observedDependency(s, ctx, ob.ComponentIDP, observationDependency(kind, provider), func() (idp.Identity, error) {
+		ident, err := provider.Verify(ctx, credential)
+		if err != nil {
+			return idp.Identity{}, isolateProviderError(kind, err)
+		}
+		// 宿主提供方可能返回不一致的结果；按凭证无效拒绝，由调用方统一审计。
+		if ident.Kind != kind || ident.Subject == "" {
+			return idp.Identity{}, fmt.Errorf("%w: provider %s returned a mismatched kind or empty subject", idp.ErrInvalidCredential, kind)
+		}
+		return ident, nil
+	})
 }
 
-func (s *Service) verifyApple(ctx context.Context, cred IdpCredential) (idp.Identity, error) {
-	return observedDependency(s, ctx, ob.ComponentIDP, ob.DependencyVerifyApple, func() (idp.Identity, error) { return s.d.Apple.VerifyApple(ctx, cred.IDToken, cred.Nonce) })
+// observationMethodFor 在内置类型之外区分配置 OIDC 与宿主提供方，均为固定取值。
+func (s *Service) observationMethodFor(kind enum.IdentityKind) ob.Method {
+	if _, ok := s.providers[kind].(*idp.OIDC); ok {
+		return ob.MethodOIDC
+	}
+	return observationMethod(kind)
+}
+
+// observationDependency 只使用固定取值；配置或宿主提供的类型名不进入指标标签。
+func observationDependency(kind enum.IdentityKind, provider idp.Provider) ob.DependencyOperation {
+	switch kind {
+	case enum.IdentityWeChat:
+		return ob.DependencyVerifyWechat
+	case enum.IdentityApple:
+		return ob.DependencyVerifyApple
+	case enum.IdentityGoogle:
+		return ob.DependencyVerifyGoogle
+	case enum.IdentityFacebook:
+		return ob.DependencyVerifyFacebook
+	case enum.IdentityAlipay:
+		return ob.DependencyVerifyAlipay
+	case enum.IdentityQQ:
+		return ob.DependencyVerifyQQ
+	case enum.IdentityWeibo:
+		return ob.DependencyVerifyWeibo
+	}
+	if _, ok := provider.(*idp.OIDC); ok {
+		return ob.DependencyVerifyOIDC
+	}
+	return ob.DependencyVerifyProvider
 }
 
 func (s *Service) observeDegradation(ctx context.Context, scenario ob.DegradationScenario) {

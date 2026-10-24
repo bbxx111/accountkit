@@ -1,10 +1,13 @@
-// Package enum 定义 accountkit 所有存于 SMALLINT 列的枚举（AGENTS.md：枚举在 Go 定义，
+// Package enum 定义 accountkit 的枚举。除 IdentityKind（文本，见其注释）外均存于 SMALLINT 列（AGENTS.md：枚举在 Go 定义，
 // DB 无 CHECK；值 append-only；零值 UNSPECIFIED 不存储不发出）。sqlc 通过 go_type 覆盖把列绑到这些类型。
 //
 // 数值已被 0001_init.up.sql 的注释与索引谓词钉死（如 purge 索引 WHERE state = 3），修改即破坏迁移。
 package enum
 
-import "fmt"
+import (
+	"fmt"
+	"regexp"
+)
 
 // ---- UserState ----
 
@@ -31,20 +34,43 @@ func ParseUserState(v string) (UserState, error) {
 
 // ---- IdentityKind ----
 
-type IdentityKind int16
+// IdentityKind 是唯一以文本存储的枚举：类型集合可由部署配置扩展（OIDC 提供方），
+// 因此取值即 API 名，零值 "" 为 UNSPECIFIED；存储列为 VARCHAR(32) COLLATE "C" 加格式 CHECK。
+type IdentityKind string
 
 const (
-	IdentityKindUnspecified IdentityKind = iota
-	IdentityPhone                        // 1
-	IdentityEmail                        // 2
-	IdentityWeChat                       // 3
-	IdentityApple                        // 4
+	IdentityKindUnspecified IdentityKind = ""
+	IdentityPhone           IdentityKind = "PHONE"
+	IdentityEmail           IdentityKind = "EMAIL"
+	IdentityWeChat          IdentityKind = "WECHAT"
+	IdentityApple           IdentityKind = "APPLE"
+	IdentityGoogle          IdentityKind = "GOOGLE"
+	IdentityFacebook        IdentityKind = "FACEBOOK"
+	IdentityAlipay          IdentityKind = "ALIPAY"
+	IdentityQQ              IdentityKind = "QQ"
+	IdentityWeibo           IdentityKind = "WEIBO"
 )
 
-var identityKindNames = [...]string{"UNSPECIFIED", "PHONE", "EMAIL", "WECHAT", "APPLE"}
+var identityKindFormat = regexp.MustCompile(`^[A-Z][A-Z0-9_]{1,31}$`)
 
-func (k IdentityKind) String() string { return name(identityKindNames[:], int(k)) }
-func (k IdentityKind) Valid() bool    { return k >= IdentityPhone && k <= IdentityApple }
+func (k IdentityKind) String() string {
+	if k == IdentityKindUnspecified {
+		return "UNSPECIFIED"
+	}
+	return string(k)
+}
+
+// Valid 只校验格式；类型是否存在由提供方注册表与身份策略决定。
+func (k IdentityKind) Valid() bool { return identityKindFormat.MatchString(string(k)) }
+
+// IsBuiltin 报告该 kind 是否为包内置类型；配置的 OIDC 类型不得使用这些名字。
+func (k IdentityKind) IsBuiltin() bool {
+	switch k {
+	case IdentityPhone, IdentityEmail, IdentityWeChat, IdentityApple, IdentityGoogle, IdentityFacebook, IdentityAlipay, IdentityQQ, IdentityWeibo:
+		return true
+	}
+	return false
+}
 
 // IsAnchor 报告该 kind 是否为锚点身份（账号至少需一个）。
 func (k IdentityKind) IsAnchor() bool { return k == IdentityPhone || k == IdentityEmail }
@@ -52,9 +78,13 @@ func (k IdentityKind) IsAnchor() bool { return k == IdentityPhone || k == Identi
 // IsChannel 报告该 kind 是否可作为验证码发送渠道。
 func (k IdentityKind) IsChannel() bool { return k == IdentityPhone || k == IdentityEmail }
 
+// ParseIdentityKind 只接受符合格式的 UPPER_SNAKE 名；不判断该类型是否已注册。
 func ParseIdentityKind(v string) (IdentityKind, error) {
-	i, err := parse(identityKindNames[:], v, "IdentityKind")
-	return IdentityKind(i), err
+	k := IdentityKind(v)
+	if !k.Valid() {
+		return IdentityKindUnspecified, fmt.Errorf("enum: invalid IdentityKind %q", v)
+	}
+	return k, nil
 }
 
 // ---- RevokeReason ----
@@ -164,6 +194,7 @@ const (
 	EventSignInCompletionProofVerified           // 24
 	EventSignInCompletionCompleted               // 25
 	EventSignInCompletionRejected                // 26
+	EventProviderDataDeletionProcessed           // 27
 )
 
 var eventTypeNames = [...]string{
@@ -172,10 +203,11 @@ var eventTypeNames = [...]string{
 	"SESSION_REVOKED", "IDENTITY_BOUND", "IDENTITY_BIND_REJECTED", "IDENTITY_UNBOUND", "IDENTITY_REVEALED",
 	"USER_DELETED", "USER_UNDELETED", "USER_PURGED", "USER_FROZEN", "USER_UNFROZEN", "ADMIN_FORBIDDEN", "IDENTITY_REPLACE_REJECTED",
 	"SIGN_IN_COMPLETION_STARTED", "SIGN_IN_COMPLETION_PROOF_VERIFIED", "SIGN_IN_COMPLETION_COMPLETED", "SIGN_IN_COMPLETION_REJECTED",
+	"PROVIDER_DATA_DELETION_PROCESSED",
 }
 
 func (e EventType) String() string { return name(eventTypeNames[:], int(e)) }
-func (e EventType) Valid() bool    { return e >= EventCodeSent && e <= EventSignInCompletionRejected }
+func (e EventType) Valid() bool    { return e >= EventCodeSent && e <= EventProviderDataDeletionProcessed }
 
 func ParseEventType(v string) (EventType, error) {
 	i, err := parse(eventTypeNames[:], v, "EventType")

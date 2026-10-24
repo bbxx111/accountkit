@@ -123,6 +123,7 @@ type pendingSignInResponse struct {
 	ExpireTime            string   `json:"expire_time"`
 	EnabledIdentityKinds  []string `json:"enabled_identity_kinds"`
 	RequiredIdentityKinds []string `json:"required_identity_kinds"`
+	HintEmail             string   `json:"hint_email,omitempty"`
 }
 
 func identityKindNames(kinds []enum.IdentityKind) []string {
@@ -151,6 +152,7 @@ func (h *Handler) writeSignIn(w http.ResponseWriter, r *http.Request, res user.S
 		ExpireTime:            fmtTime(p.ExpireTime),
 		EnabledIdentityKinds:  identityKindNames(p.EnabledIdentityKinds),
 		RequiredIdentityKinds: identityKindNames(p.RequiredIdentityKinds),
+		HintEmail:             p.HintEmail,
 	})
 }
 
@@ -168,6 +170,8 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, r *http.Request, err 
 		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "IDENTITY_KIND_NOT_ENABLED", "this identity kind is not enabled"))
 	case errors.As(err, &rl):
 		apierror.Write(w, &apierror.Error{Status: apierror.StatusResourceExhausted, Reason: rl.Dimension, Message: "too many requests, retry later", RetryAfterSeconds: retryAfterSeconds(rl.RetryAfter)})
+	case errors.Is(err, idp.ErrMalformedCredential):
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_INCOMPLETE", "credential is malformed or incomplete"))
 	case errors.Is(err, idp.ErrNonceReplayed):
 		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "IDP_NONCE_REPLAYED", "this sign-in attempt was already used; start again"))
 	case errors.Is(err, idp.ErrAppNotAllowed):

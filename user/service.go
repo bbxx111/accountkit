@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/bbxx111/accountkit/anonymize"
@@ -48,8 +49,8 @@ type Deps struct {
 	SignInCompletionFlowContext string
 	// Deprecated: use SignInCompletionFlowContext. Used only when that field is empty.
 	IdentityFlowContext string
-	// ProviderConfiguration 是自定义 IdP 验证器的稳定配置标识，应用允许列表变化时应变化。
-	// 内置验证器自动提供 PolicyFingerprint；此字段不含秘密。
+	// ProviderConfiguration 是宿主附加的稳定配置标识，并入登录补全配置指纹；不含秘密。
+	// 已登记提供方的 PolicyFingerprint 会自动并入。
 	ProviderConfiguration string
 	EnabledIdentityKinds  []enum.IdentityKind
 	RequiredIdentityKinds []enum.IdentityKind
@@ -69,9 +70,9 @@ type Deps struct {
 	// Observer 可选，以尽力语义记录本地运行观测；宿主负责其生命周期。
 	Observer observability.Observer
 
-	// WeChat / Apple 为 nil 表示未启用对应 IdP。
-	WeChat idp.WeChatVerifier
-	Apple  idp.AppleVerifier
+	// Providers 是已登记的第三方身份提供方，装配后不可变。类型须格式合法、互不重复，
+	// 且不得为 PHONE/EMAIL；未登记的第三方类型不能用于登录或新绑定。
+	Providers []idp.Provider
 
 	AccessTTL     time.Duration
 	RefreshTTL    time.Duration
@@ -83,6 +84,8 @@ type Deps struct {
 	ReauthMaxAge time.Duration
 	// SensitiveOpVerification 为 nil 时默认启用；false 只跳过近期认证检查。
 	SensitiveOpVerification *bool
+	// ProviderProfileBackfill 为 nil 时默认启用；false 时已有账号不因第三方登录、绑定或补全关联改写资料。
+	ProviderProfileBackfill *bool
 
 	// MaxIdentitiesPerKind 是每个用户、每种身份 kind 的活动身份数上限，必须 ≥ 1。
 	MaxIdentitiesPerKind int
@@ -99,10 +102,13 @@ type Service struct {
 	profileAttributes *profileattributes.Policy
 	observer          *observability.Recorder
 	authAudit         *audit.AuthenticationRecorder
-	d                 Deps
-	policy            *IdentityPolicy
-	flowContext       string
-	flowPolicy        string
+	// providerProfileBackfill 为 true 时，已有账号在第三方登录、绑定或补全关联时补填空资料。
+	providerProfileBackfill bool
+	d                       Deps
+	policy                  *IdentityPolicy
+	providers               map[enum.IdentityKind]idp.Provider
+	flowContext             string
+	flowPolicy              string
 }
 
 // IdentityPolicy 返回策略值的副本，避免调用方整体覆盖服务内的策略。
@@ -125,13 +131,11 @@ func NewService(d Deps) (*Service, error) {
 			return nil, ErrInvalidArgument
 		}
 	}
-	var providers []enum.IdentityKind
-	if d.WeChat != nil {
-		providers = append(providers, enum.IdentityWeChat)
+	registry, providers, err := newProviderRegistry(d.Providers)
+	if err != nil {
+		return nil, err
 	}
-	if d.Apple != nil {
-		providers = append(providers, enum.IdentityApple)
-	}
+	d.Providers = slices.Clone(d.Providers)
 	policy, err := NewIdentityPolicy(d.EnabledIdentityKinds, d.RequiredIdentityKinds, providers...)
 	if err != nil {
 		return nil, err
@@ -146,7 +150,7 @@ func NewService(d Deps) (*Service, error) {
 			}
 			return true
 		}
-		if err := policy.ValidateCapabilities(IdentityCapabilities{Phone: available(d.SMS), Email: available(d.Email), WeChat: d.WeChat != nil, Apple: d.Apple != nil}); err != nil {
+		if err := policy.ValidateCapabilities(IdentityCapabilities{Phone: available(d.SMS), Email: available(d.Email), Providers: providers}); err != nil {
 			return nil, err
 		}
 		if d.SMS == nil {
@@ -182,6 +186,8 @@ func NewService(d Deps) (*Service, error) {
 		enabled := *d.SensitiveOpVerification
 		d.SensitiveOpVerification = &enabled
 	}
+	backfill := d.ProviderProfileBackfill == nil || *d.ProviderProfileBackfill
+	d.ProviderProfileBackfill = &backfill
 	if d.DeletionCoolingPeriod <= 0 {
 		return nil, errors.New("user: Deps.DeletionCoolingPeriod must be positive")
 	}
@@ -219,8 +225,8 @@ func NewService(d Deps) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	flowContext, flowPolicy := signInCompletionFlowConfiguration(d, policy)
-	return &Service{profileAttributes: profileAttributes, observer: observer, authAudit: mapper, d: d, policy: policy, flowContext: flowContext, flowPolicy: flowPolicy}, nil
+	flowContext, flowPolicy := signInCompletionFlowConfiguration(d, policy, registry)
+	return &Service{profileAttributes: profileAttributes, observer: observer, authAudit: mapper, providerProfileBackfill: *d.ProviderProfileBackfill, d: d, policy: policy, providers: registry, flowContext: flowContext, flowPolicy: flowPolicy}, nil
 }
 
 // Device 是客户端设备身份（X-Device-Id / X-Device-Name）。
@@ -254,7 +260,8 @@ type TokenResult struct {
 	Scope            string
 	UserID           string
 	IsNewUser        bool
-	// HintEmail 是 Apple 已验证的邮箱（含 Apple 私密转发地址），仅供客户端预填绑定页，不代表已绑定。
+	// HintEmail 是第三方提供的邮箱提示，仅供客户端预填绑定页，不代表已绑定；
+	// 是否经提供方验证取决于提供方（Facebook 不提供验证声明）。
 	HintEmail string
 }
 
@@ -268,6 +275,7 @@ type SignInResult struct {
 type PendingSignIn struct {
 	SignInCompletionToken string
 	ExpireTime            time.Time
+	HintEmail             string
 	EnabledIdentityKinds  []enum.IdentityKind
 	RequiredIdentityKinds []enum.IdentityKind
 }

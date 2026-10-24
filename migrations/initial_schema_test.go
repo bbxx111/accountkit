@@ -199,6 +199,9 @@ END $$`); err != nil {
 	if _, err := old.Exec(ctx, profileAttributesInitialDDL); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := old.Exec(ctx, identityKindTextDDL); err != nil {
+		t.Fatal(err)
+	}
 	initialUp(t, cfg, newSchema)
 	current := migrationTestConn(t, cfg, newSchema)
 	if before, after := strings.ReplaceAll(sessionContextUnchangedCatalog(t, migrationCatalogForTables(t, old, oldSchema, true)), "identity_flow", "sign_in_completion_flow"), sessionContextUnchangedCatalog(t, migrationCatalogForTables(t, current, newSchema, true)); sortedRenameCatalog(t, before) != sortedRenameCatalog(t, after) {

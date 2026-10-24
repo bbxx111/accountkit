@@ -2,7 +2,7 @@
 
 本指南面向在自己的 Go 进程中嵌入 `github.com/bbxx111/accountkit` 的宿主。可以挂载内置 HTTP handler，也可以直接调用 `auth.Users()`；两者使用同一个领域服务，不需要启动 accountsvc。
 
-内容依据 v0.5.0 公开契约，包含 v0.2.0 未提供的登录补全和通用审计 API、v0.3.0 未提供的当前会话、按来源撤销和客户端描述，以及 v0.4.0 后新增的资料属性和头像。实际集成应固定包含所需接口的已验证版本；不要把新签名直接套到旧发布。升级边界见[兼容指南](compatibility.md)。
+内容依据 v0.6.0（准备中）公开契约，包含 v0.2.0 未提供的登录补全和通用审计 API、v0.3.0 未提供的当前会话、按来源撤销和客户端描述、v0.4.0 后新增的资料属性和头像，以及 v0.5.0 后新增的身份提供方注册表、统一凭证和各第三方提供方。实际集成应固定包含所需接口的已验证版本；不要把新签名直接套到旧发布。升级边界见[兼容指南](compatibility.md)。
 
 ## 基础资料与头像
 
@@ -17,11 +17,94 @@ me, err := auth.Users().UpdateProfile(ctx, userID, user.ProfilePatch{
 })
 ```
 
-指针 nil 保持字段，指向空字符串清空；至少提供一个字段。更新在账号行锁内确认 ACTIVE 并原子保存，任一字段非法则整次拒绝。错误沿用 `ErrInvalidArgument`、`ErrNotFound`、`ErrInvalidState`；头像校验边界见 [HTTP 契约](openapi.md#基础资料与头像)。`UpdateDisplayName` 保留既有签名和行为，新代码需要原子更新或锁后状态检查时使用 `UpdateProfile`。
+指针 nil 保持字段，指向空字符串清空；至少提供一个字段。更新在账号行锁内确认 ACTIVE 并原子保存，任一字段非法则整次拒绝。显示名最多 128 个 Unicode 码位。此前把 32 写死在客户端校验里的宿主需要接受 128。错误沿用 `ErrInvalidArgument`、`ErrNotFound`、`ErrInvalidState`；头像校验边界见 [HTTP 契约](openapi.md#基础资料与头像)。`UpdateDisplayName` 保留既有签名和行为，新代码需要原子更新或锁后状态检查时使用 `UpdateProfile`。
 
 `BatchPublicProfiles` 返回 ID、DisplayName、AvatarURL 和 State；宿主先按业务权限过滤 ID，待注销和已删除账号的显示名与头像均为空。图片文件的上传、公开访问、默认图及删除由宿主管理；头像清空只清除账号中的引用。
 
 自定义 `enduser.Service` 仍满足原必需方法集；实现可选 `enduser.ProfileUpdater` 的 `UpdateProfile` 方法即可支持头像。仅实现旧方法时，原显示名 PATCH 继续工作，含头像的 PATCH 返回 `503 PROFILE_UPDATE_NOT_CONFIGURED`，不会先修改显示名。
+
+## Google 登录
+
+配置 `GoogleClientIDs` 后，`SignInWithIdp` 接受 `IdpCredential{Kind: enum.IdentityGoogle, Credential: json.RawMessage(`{"id_token":"…","nonce":"…"}`)}`；`Credential` 是客户端 credential 对象的原始 JSON，由对应提供方严格解析。nonce 是客户端原始字符串。已验证邮箱出现在成功 `TokenResult.HintEmail` 或 pending `PendingSignIn.HintEmail`，补全时仍要传入明确的 `target`。`GOOGLE` 不能放入 `RequiredIdentityKinds`。只启用 Google 且 Required 为空时，不要求短信或邮件发送器。
+
+`name` 和 `picture` 记在该身份的 `provider_meta.profile`。账号 `display_name`、`avatar_url` 的填充遵循统一规则：新建账号始终填充空列；已有账号在 `Config.ProviderProfileBackfill`（默认开启）下补填仍为空的字段，不覆盖非空值，只使用本次声明。身份列表和 `:reveal` 不返回 `provider_meta`。宿主继续负责头像文件、默认图和后续同步。未配置客户端 ID 时 Google 登录保持关闭，配置里没有客户端秘密。
+
+## 支付宝 App 极简登录
+
+配置 `AlipayApps []accountkit.AlipayApp`，每项提供 `AppID`、多行 PEM `PrivateKey`（应用私钥）和 `AlipayPublicKey`（支付宝公钥）；只支持至少 2048 位 RSA 普通公钥模式。`AlipaySubjectMode` 缺省 UNIONID，OPENID 按 AppID 隔离。`New` 无文件/网络 I/O，宿主负责安全加载密钥内容。纯支付宝可设 Enabled 为 ALIPAY、Required 为显式空列表，无需发送器；Required 省略时仍需手机/邮箱补全。
+
+`SignInWithIdp` 使用以下凭证（合成值）：
+
+```go
+cred := user.IdpCredential{
+    Kind: enum.IdentityAlipay,
+    Credential: json.RawMessage(`{"app_id":"2026000000000001","code":"synthetic-code"}`),
+}
+```
+
+App 先完成极简 SDK 的 `auth_user` 授权和一次性 state 回跳核对，再提交 code；库不提供 authInfo 或回调端点。兑换 code 不重试，超时后重新授权。资料可降级；资料填充遵循统一规则，由 `Config.ProviderProfileBackfill` 控制已有账号的补填（默认开启，新建账号始终填充）。配置片段、Flutter 桥接、库侧自动验收和宿主真机检查见[支付宝接入指南](alipay-sign-in.md)。
+
+配置 `QQAppIDs []string`（QQ 互联移动应用 AppID）启用 QQ；App SDK 校验 access_token 不需要 AppKey。`QQSubjectMode` 缺省 UNIONID（需在 QQ 互联开通 UnionID 打通），OPENID 按 AppID 隔离且不请求 UnionID。`New` 无网络 I/O。QQ access_token 在有效期内可重复用于登录，客户端只经 HTTPS 提交并且不得记录它。纯 QQ 可设 Enabled 为 QQ、Required 为显式空列表，无需发送器。详见 [QQ 接入指南](qq-sign-in.md)。
+
+配置 `WeiboAppIDs []string`（微博开放平台移动应用 AppKey）启用微博；凭证字段 `app_id` 即 AppKey，App SDK 校验 access_token 不需要 AppSecret。微博 uid 全局唯一，subject 固定为 `uid:<uid>`，没有标识模式配置。`New` 无网络 I/O。微博 access_token 在有效期内可重复用于登录，客户端只经 HTTPS 提交并且不得记录它。纯微博可设 Enabled 为 WEIBO、Required 为显式空列表，无需发送器。详见 [微博接入指南](weibo-sign-in.md)。
+
+## Facebook 登录
+
+配置 `FacebookAppID` 与 `FacebookAppSecret` 后启用，一个实例只对接一个 Facebook App。`SignInWithIdp` 与绑定接受两种 credential，都以 `Kind: enum.IdentityFacebook` 提交原始 JSON：
+
+```json
+{"kind":"FACEBOOK","credential":{"id_token":"…","nonce":"<客户端随机原值>"}}
+{"kind":"FACEBOOK","credential":{"access_token":"…"}}
+```
+
+第一种是 Limited Login（iOS），第二种是 Classic Login（Android/Web）。两种字段并列、缺失、为空或含未知字段，都返回 400 `CREDENTIAL_INCOMPLETE`。两种凭证的 subject 都是该 App 下的 Facebook 用户 id，同一用户用任一方式都命中同一身份和账号。
+
+- **邮箱**：Facebook 返回的 `email` 只作为 `HintEmail` 预填，Facebook 不提供“邮箱已验证”声明，因此不创建 EMAIL 身份，也不用于查找或合并账号；补全仍要显式 `target`。`FACEBOOK` 不能放入 `RequiredIdentityKinds`。
+- **Classic token 风险**：access token 可在有效期内重复用于登录（客户端常缓存它，退出后再登录不应失败），库不做一次性限制。被偷的 token 在有效期内与 refresh token 风险相当；会话层的吊销与刷新轮换不变。建议在 Meta 后台为该 App 开启 Require App Secret，使 Graph 调用必须携带 `appsecret_proof`；库的所有 Graph 调用都会附带。
+- **版本与依赖故障**：Graph API 默认 `v26.0`，随发布升级并写入发布说明，可用 `FacebookGraphAPIVersion` 固定。JWKS 无缓存可用或 Graph 超时/5xx 为 503 `IDP_UNAVAILABLE`；Graph 拒绝 App 凭据（如 Secret 错误、版本失效）为固定消息的 500 并记录告警，不表示为凭证无效。
+- **资料**：`name`、头像按通用提供方规则写入 `provider_meta.profile`，Classic 的默认剪影头像视为未提供。
+
+## Facebook 数据删除回调
+
+Meta 要求提供数据删除回调：用户在 Facebook 中移除应用时，Meta 向宿主 URL POST 表单字段 `signed_request`。库不监听端口，宿主挂载自己的路由并调用 `Auth.HandleFacebookDataDeletion`。下例中的 `clientIP`、`requestID`、`saveDeletionStatus` 为宿主自备的辅助函数，`auth` 为 `*accountkit.Auth`：
+
+```go
+mux.HandleFunc("POST /facebook/data-deletion", func(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	res, err := auth.HandleFacebookDataDeletion(r.Context(), r.PostForm.Get("signed_request"), user.Meta{IP: clientIP(r), RequestID: requestID(r)})
+	switch {
+	case errors.Is(err, idp.ErrInvalidSignedRequest):
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	case err != nil:
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	saveDeletionStatus(r.Context(), res) // 宿主持久化确认码与状态
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"url":               "https://example.com/deletion-status?code=" + res.ConfirmationCode,
+		"confirmation_code": res.ConfirmationCode,
+	})
+})
+```
+
+未配置 `FacebookAppID` 时返回 `accountkit.ErrFacebookNotConfigured`；签名无效返回 `idp.ErrInvalidSignedRequest`（回 400）；其他错误回 5xx，让 Meta 重试，重试幂等。需要直接按 subject 处理时可用 `user.Service.DeleteProviderIdentityData(ctx, kind, subject, requestTime, meta)`。
+
+`ProviderDeletionResult.Status` 有三种：
+
+| 状态 | 含义 |
+|---|---|
+| `DELETED` | 该身份已被抹除：账号仍有其他有效身份时匿名化该身份并撤销由它产生的会话，账号继续可用（不检查 Required；账号处于冷静期或冻结时同样处理，状态不变）。本就没有活动身份，或活动身份创建于请求签发之后（不处理），也返回 `DELETED`。 |
+| `SCHEDULED` | 账号本次进入注销冷静期（该身份是唯一有效身份），或已在冷静期内（不重复操作）；`PurgeTime` 为预计到期时间，到期后按既有流程匿名化。 |
+| `BLOCKED` | 活动身份与账号未改动：宿主 `BeforeDelete` 拒绝，或账号处于冻结。库不重试，需要宿主人工跟进（可检索审计）；但此前已解除的同一用户 id 历史行仍会被清除。 |
+
+此外，同一 Facebook 用户 id 先前已被普通解绑的历史行也会一并抹除；该查询没有可用索引，走顺序扫描，回调低频可接受，成为热点时再以 0002 迁移补部分索引。抹除后历史管理查询看不到原 ASID，审计只保留 hint。
+
+每次调用生成一个确认码，同时是审计事件 `PROVIDER_DATA_DELETION_PROCESSED`（系统操作者）的 ID。审计是尽力写入，确认码不保证能在审计里查到，所以宿主应自行保存 `{确认码, 状态, PurgeTime}` 供状态页使用。回退到不含 Facebook 的旧版本后，已有 FACEBOOK 身份按未登记的历史类型仍可列出、解绑和匿名化，但不能再用于登录。
 
 ## 当前会话、解绑与客户端描述
 

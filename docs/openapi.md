@@ -1,6 +1,6 @@
 # HTTP OpenAPI 契约
 
-本契约描述已发布 v0.5.0 的内置 HTTP handler，基于 v0.4.0 增加本人资料属性接口及内置头像字段；已发布 v0.4.0 不包含这些能力。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
+本契约描述 v0.6.0（准备中）的内置 HTTP handler，基于 v0.5.0 将身份凭证请求体统一为 `{"kind","credential"}` 并增加各第三方提供方类型；已发布 v0.5.0 不包含这些变化。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
 
 ## 两个独立 HTTP 面
 
@@ -11,7 +11,7 @@
 
 两份文件各自独立，使用 [OpenAPI 3.1.0](https://spec.openapis.org/oas/v3.1.0.html) 与 JSON Schema 描述。所有 paths 均为相对 handler 路由，`servers[0].variables.basePath.default` 由宿主调整为实际挂载前缀或完整服务 URL。路径中的 `user` / `session` / `identity` 是原始 `u_` / `s_` / `i_` ID；响应 `name` 才是 `users/{id}` 等资源名。
 
-`info.version` 标识当前已发布 v0.5.0 的接口契约。文件不包含 accountsvc 专属的 `/v1/introspect`、探针或管理员登录流程，也不描述宿主自有业务接口；这些不能由库契约自动推导。
+`info.version` 标识准备中的 v0.6.0 接口契约。文件不包含 accountsvc 专属的 `/v1/introspect`、探针或管理员登录流程，也不描述宿主自有业务接口；这些不能由库契约自动推导。
 
 消费者使用自己的 Bearer access token。`x-allowed-scopes` 表示允许的 scope 列表，`x-recent-authentication` 表示现有近期认证要求；这些扩展与说明用于接入核对，代码生成器不会自动替宿主实施授权。未标 scope 的 `GET /users/me` 接受任何有效消费者 Bearer scope。
 
@@ -24,10 +24,22 @@
 - 身份绑定新增返回 201，幂等命中返回 200。单会话撤销和解绑返回 204 无内容；`revoke` 返回 200 无内容；`revokeOthers` 返回 200 `{}`。账号注销返回更新后的资源。
 - 普通错误为 `{"error":{"code":400,"message":"…","status":"INVALID_ARGUMENT","reason":"…"}}`；`code` 是数字 HTTP 状态，`reason` 才是细分原因。`token` / `revoke` 使用独立 OAuth 错误体，不能按普通错误解析。
 - 消费者 Bearer 401 带 `WWW-Authenticate`；限流 429 带 `Retry-After` 和 `retry_after_seconds`，部分 503 也带等待提示。凭证响应包含 `Cache-Control: no-store`，token/pending/OAuth 错误还带 `Pragma: no-cache`。
-- PHONE/EMAIL/WECHAT/APPLE 等枚举使用大写字符串。凭证 oneOf 恰好一个允许成员非 null；显式 null 等同缺失，未知字段拒绝。POST token/revoke 也使用 JSON，不使用表单编码。
+- 枚举使用大写字符串。身份类型为 `^[A-Z][A-Z0-9_]{1,31}$`：内置 PHONE、EMAIL、WECHAT、APPLE、GOOGLE，部署可另配 OIDC 等类型。凭证请求统一为 `{"kind","credential"}`，见下节；未知字段拒绝。POST token/revoke 也使用 JSON，不使用表单编码。
 - nullable 字段和 optional 字段不同：例如 `delete_time` 必须出现但可以为 null；审计 `flow_id` 可以省略。管理 DTO 与消费者 DTO 独立，管理会话没有 `is_current`。
 
 示例 token、验证码和票据只能使用合成值，不应把真实响应导入公开文档。刷新重放、验证码失败预算、事务回滚、账号状态及外部审计治理仍以 [README](../README.md)、[主规格](../openspec/specs)和对应实现为准，schema 不能表达或证明所有行为。
+
+## 统一凭证信封
+
+`signInWithCode`、`signInWithIdp`、`completeSignIn`、`reauthenticate`、绑定和换绑的请求体都是顶层 `kind` 加 `credential` 对象（`completeSignIn` 另带 `sign_in_completion_token`）。不再接受 `phone`、`email`、`wechat`、`apple`、`google` 成员，带这些字段返回 `400 MALFORMED_BODY`。
+
+| kind | credential | 可用端点 |
+|---|---|---|
+| PHONE / EMAIL | `{"target","code_id","code"}` | 验证码登录、重新认证、换绑、登录补全、绑定 |
+| WECHAT | `{"app_id","code"}` | 第三方登录、绑定 |
+| APPLE / GOOGLE / 配置的 OIDC 类型 | `{"id_token","nonce"}`，nonce 为原始值 | 第三方登录、绑定 |
+
+`kind` 或 `credential` 缺失、`credential` 不是对象、第三方 credential 原始 JSON 超过 16 KiB，或 credential 字段缺失、未知、类型错误时返回 `400 CREDENTIAL_INCOMPLETE`；kind 格式非法为 `400 INVALID_ARGUMENT`；类型不属于该端点允许的类别为 `400 CREDENTIAL_KIND_NOT_ALLOWED`。这些拒绝都发生在消费验证码、访问提供方和登记 nonce 之前。未配置的第三方类型在未显式设置 Enabled 时为 `400 IDP_APP_NOT_ALLOWED`，显式设置时为 `IDENTITY_KIND_NOT_ENABLED`。PHONE/EMAIL 的 `code_id` 缺失或格式错误沿用原分类 `400 INVALID_ARGUMENT`，其 credential 只受 64 KiB 请求体上限约束。同一对象内的重复键按标准 JSON 解码取最后一个值，客户端不应发送重复键。旧格式迁移见[兼容说明](compatibility.md#统一凭证信封与身份类型字符串)。
 
 ## 基础资料与头像
 
@@ -35,7 +47,7 @@
 
 省略或 `null` 保持原字段，`""` 清空；两个字段都没有非 null 值时为 `400 NO_FIELDS`。头像去除首尾空白后最长 2048 **字节**，必须是具有非空主机的绝对 HTTPS URL，无用户信息、fragment、反斜线、内部空白或控制字符且为合法 UTF-8；允许普通查询参数。库不请求该地址，上传和存储由宿主提供。
 
-地址错误为 `400 INVALID_ARGUMENT`，JSON 类型/格式错误为 `400 MALFORMED_BODY`，锁后非 ACTIVE 为 `400 FAILED_PRECONDITION / INVALID_ACCOUNT_STATE`，目标不存在为 404。自定义旧 Service 没有可选 `ProfileUpdater` 时，显示名请求仍可处理，含非 null 头像的请求返回 `503 PROFILE_UPDATE_NOT_CONFIGURED`，两字段都不写入。头像是内置公开资料，不依赖资料扩展 Schema，不能在 profile_attributes 顶层重复声明。
+地址错误为 `400 INVALID_ARGUMENT`，JSON 类型/格式错误为 `400 MALFORMED_BODY`，锁后非 ACTIVE 为 `400 FAILED_PRECONDITION / INVALID_ACCOUNT_STATE`，目标不存在为 404。显示名去掉首尾空白后最多 128 个 Unicode 码位；超出或含有控制字符、双向格式符时整次拒绝，原值不变。自定义旧 Service 没有可选 `ProfileUpdater` 时，显示名请求仍可处理，含非 null 头像的请求返回 `503 PROFILE_UPDATE_NOT_CONFIGURED`，两字段都不写入。头像是内置公开资料，不依赖资料扩展 Schema，不能在 profile_attributes 顶层重复声明。
 
 ## 本人资料属性
 

@@ -105,7 +105,7 @@ WHERE (sqlc.narg('state')::smallint IS NULL OR u.state = sqlc.narg('state')::sma
   AND (NOT @by_identity::bool OR EXISTS (
         SELECT 1 FROM identity i
         WHERE i.user_id = u.id AND i.delete_time IS NULL
-          AND (sqlc.narg('identity_kind')::smallint IS NULL OR i.kind = sqlc.narg('identity_kind')::smallint)
+          AND (sqlc.narg('identity_kind')::text IS NULL OR i.kind = sqlc.narg('identity_kind')::text)
           AND (cardinality(@digests::text[]) = 0 OR i.subject_digest = ANY(@digests::text[]))
           AND (sqlc.narg('hint_prefix')::text IS NULL OR i.hint_prefix = sqlc.narg('hint_prefix')::text)
           AND (sqlc.narg('hint_suffix')::text IS NULL OR i.hint_suffix = sqlc.narg('hint_suffix')::text)))
@@ -138,7 +138,7 @@ LIMIT 1;
 -- （TestLockAnchorSubjectsLocksAfterSort 固定这一计划形状）。
 WITH keys AS (
  SELECT DISTINCT hashtextextended(jsonb_build_array(
-  'accountkit.identity.subject', 'identity'::regclass::oid, (@kinds::smallint[])[d.n], d.digest)::text, 0)::bigint AS lock_key
+  'accountkit.identity.subject', 'identity'::regclass::oid, (@kinds::text[])[d.n], d.digest)::text, 0)::bigint AS lock_key
  FROM unnest(@digests::text[]) WITH ORDINALITY AS d(digest, n)
 )
 SELECT pg_advisory_xact_lock(lock_key) FROM keys ORDER BY lock_key;
@@ -173,6 +173,13 @@ SET subject_digest     = CASE WHEN subject_digest   IS NULL THEN NULL ELSE @repl
     provider_meta = NULL, hint_prefix = NULL, hint_suffix = NULL,
     delete_time = COALESCE(delete_time, @now::timestamptz), update_time = @now::timestamptz
 WHERE id = @id AND user_id = @user_id;
+
+-- name: ListDeletedIdentitiesByProviderSubject :many
+-- 第三方数据删除专用：已解除（软删）但仍保存原 subject 的同一第三方身份。
+-- 部分唯一索引只覆盖活动行，此查询走顺序扫描；删除回调低频，接受该代价（见 design）。
+SELECT * FROM identity
+WHERE kind = @kind AND provider_subject = @provider_subject AND delete_time IS NOT NULL
+ORDER BY user_id, id;
 
 -- name: ListIdentitiesByDigestKeyVersion :many
 -- 维护任务 rekey_digests：仍用旧 HMAC 版本的活跃锚点身份；按 idx_identity_digest_key_version_create_time_id 索引序取批。

@@ -67,7 +67,7 @@ func TestRekeyDigestsRecomputesOnlyActiveOldVersionRows(t *testing.T) {
 	if err := f.svc.UnbindIdentity(ctx, p, mail.ID, meta1); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := f.svc.BindWithIdp(ctx, p, user.IdpCredential{Kind: enum.IdentityWeChat, AppID: "wx1", Code: "union:U-REKEY@o1"}, meta1); err != nil {
+	if _, _, err := f.svc.BindWithIdp(ctx, p, wechatCred("wx1", "union:U-REKEY@o1"), meta1); err != nil {
 		t.Fatal(err)
 	}
 	dig, _, _ := rotate(t, f)

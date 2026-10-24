@@ -1,6 +1,9 @@
 package enduser
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -58,93 +61,102 @@ func parseDevice(r *http.Request, required bool) (user.Device, *apierror.Error) 
 	return user.Device{ID: id, Name: name}, nil
 }
 
-// codeCredential 是 phone/email 凭证成员。
+// codeCredential 是 PHONE/EMAIL 的 credential 对象。
 type codeCredential struct {
 	Target string `json:"target"`
 	CodeID string `json:"code_id"`
 	Code   string `json:"code"`
 }
 
-// wechatCredential / appleCredential 是 §2.1 的第三方成员；解析留给 idp 包。
-type wechatCredential struct {
-	AppID string `json:"app_id"`
-	Code  string `json:"code"`
-}
+// maxProviderCredentialBytes 是第三方 credential 对象的原始 JSON 上限。
+const maxProviderCredentialBytes = 16 << 10
 
-type appleCredential struct {
-	IDToken string `json:"id_token"`
-	Nonce   string `json:"nonce"`
-}
-
-// credential 是 §2.1 的凭证 oneof；成员为指针，显式 null 等同缺失。
+// credential 是统一凭证信封：kind 为类型名，credential 为该类型的凭证对象。
 type credential struct {
-	Phone  *codeCredential   `json:"phone"`
-	Email  *codeCredential   `json:"email"`
-	Wechat *wechatCredential `json:"wechat"`
-	Apple  *appleCredential  `json:"apple"`
+	Kind       string          `json:"kind"`
+	Credential json.RawMessage `json:"credential"`
 }
 
-func (c credential) present() int {
-	n := 0
-	for _, p := range []bool{c.Phone != nil, c.Email != nil, c.Wechat != nil, c.Apple != nil} {
-		if p {
-			n++
-		}
+func credentialIncomplete(msg string) *apierror.Error {
+	return apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_INCOMPLETE", msg)
+}
+
+// parseKind 校验信封完整与 kind 格式，不判断该类型是否已登记。
+func (c credential) parseKind() (enum.IdentityKind, *apierror.Error) {
+	raw := bytes.TrimSpace(c.Credential)
+	if c.Kind == "" || len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+		return "", credentialIncomplete("kind and credential are required")
 	}
-	return n
+	kind, err := enum.ParseIdentityKind(c.Kind)
+	if err != nil {
+		return "", apierror.New(apierror.StatusInvalidArgument, "INVALID_ARGUMENT", "kind must match ^[A-Z][A-Z0-9_]{1,31}$")
+	}
+	return kind, nil
 }
 
-func oneofError() *apierror.Error {
-	return apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_ONEOF", "exactly one of phone, email, wechat, apple must be present")
-}
+// isAnchor 报告信封是否声明 PHONE/EMAIL；用于同时接受两类凭证的端点分流。
+func (c credential) isAnchor() bool { return enum.IdentityKind(c.Kind).IsAnchor() }
 
-// anchor 校验恰好一个成员，且只接受 phone/email。
+// anchor 只接受 PHONE/EMAIL，并严格解码 {target, code_id, code}。
 func (c credential) anchor() (enum.IdentityKind, codeCredential, *apierror.Error) {
-	if c.present() != 1 {
-		return 0, codeCredential{}, oneofError()
+	kind, e := c.parseKind()
+	if e != nil {
+		return "", codeCredential{}, e
 	}
-	if c.Wechat != nil || c.Apple != nil {
-		return 0, codeCredential{}, apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_KIND_NOT_ALLOWED", "only phone or email credentials are accepted here")
+	if !kind.IsAnchor() {
+		return "", codeCredential{}, apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_KIND_NOT_ALLOWED", "only PHONE or EMAIL credentials are accepted here")
 	}
-	kind, cc := enum.IdentityPhone, c.Phone
-	if c.Email != nil {
-		kind, cc = enum.IdentityEmail, c.Email
+	var cc codeCredential
+	if err := decodeObject(c.Credential, &cc); err != nil {
+		return "", codeCredential{}, credentialIncomplete("credential must be an object with target, code_id and code")
 	}
-
 	if cc.Target == "" || cc.Code == "" {
-		return 0, codeCredential{}, apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_INCOMPLETE", "target and code are required")
+		return "", codeCredential{}, credentialIncomplete("target and code are required")
 	}
 	if !codeIDRe.MatchString(cc.CodeID) {
-		return 0, codeCredential{}, apierror.New(apierror.StatusInvalidArgument, "INVALID_ARGUMENT", "code_id must be 32 lowercase hexadecimal characters")
+		return "", codeCredential{}, apierror.New(apierror.StatusInvalidArgument, "INVALID_ARGUMENT", "code_id must be 32 lowercase hexadecimal characters")
 	}
-	return kind, *cc, nil
+	return kind, cc, nil
 }
 
-// idp 校验恰好一个成员，且只接受 wechat/apple。
-func (c credential) idp() (user.IdpCredential, *apierror.Error) {
-	if c.present() != 1 {
-		return user.IdpCredential{}, oneofError()
+// provider 只接受第三方类型；credential 原样交给该类型的提供方解析。
+func (c credential) provider() (user.IdpCredential, *apierror.Error) {
+	kind, e := c.parseKind()
+	if e != nil {
+		return user.IdpCredential{}, e
 	}
-	switch {
-	case c.Wechat != nil:
-		if c.Wechat.AppID == "" || c.Wechat.Code == "" {
-			return user.IdpCredential{}, apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_INCOMPLETE", "app_id and code are required")
-		}
-		return user.IdpCredential{Kind: enum.IdentityWeChat, AppID: c.Wechat.AppID, Code: c.Wechat.Code}, nil
-	case c.Apple != nil:
-		if c.Apple.IDToken == "" || c.Apple.Nonce == "" {
-			return user.IdpCredential{}, apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_INCOMPLETE", "id_token and nonce are required")
-		}
-		return user.IdpCredential{Kind: enum.IdentityApple, IDToken: c.Apple.IDToken, Nonce: c.Apple.Nonce}, nil
+	if kind.IsAnchor() {
+		return user.IdpCredential{}, apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_KIND_NOT_ALLOWED", "only third-party credentials are accepted here")
 	}
-	return user.IdpCredential{}, apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_KIND_NOT_ALLOWED", "only wechat or apple credentials are accepted here")
+	raw := bytes.TrimSpace(c.Credential)
+	if raw[0] != '{' || len(raw) > maxProviderCredentialBytes {
+		return user.IdpCredential{}, credentialIncomplete("credential must be a JSON object of at most 16 KiB")
+	}
+	return user.IdpCredential{Kind: kind, Credential: json.RawMessage(bytes.Clone(raw))}, nil
+}
+
+// decodeObject 严格解码单个 JSON 对象：拒绝非对象、未知字段与尾随内容。
+func decodeObject(raw json.RawMessage, dst any) error {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return errMalformedBody
+	}
+	dec := json.NewDecoder(bytes.NewReader(trimmed))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(dst); err != nil {
+		return err
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return errMalformedBody
+	}
+	return nil
 }
 
 // parseChannel 解析 "PHONE" / "EMAIL"。
 func parseChannel(s string) (enum.IdentityKind, *apierror.Error) {
 	k, err := enum.ParseIdentityKind(s)
 	if err != nil || !k.IsChannel() {
-		return 0, apierror.New(apierror.StatusInvalidArgument, "CHANNEL_INVALID", "channel must be PHONE or EMAIL")
+		return "", apierror.New(apierror.StatusInvalidArgument, "CHANNEL_INVALID", "channel must be PHONE or EMAIL")
 	}
 	return k, nil
 }

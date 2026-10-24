@@ -584,7 +584,7 @@ func (f *integrationFixture) login(p *serviceProcess, target string) map[string]
 		f.t.Fatal("wrong SMTP recipient or purpose")
 	}
 	f.secrets = append(f.secrets, target, m.code)
-	out := f.call("POST", p.baseURL+"/v1/users:signInWithCode", "", map[string]any{"email": map[string]string{"code_id": f.codeID(target), "target": target, "code": m.code}}, 200)
+	out := f.call("POST", p.baseURL+"/v1/users:signInWithCode", "", map[string]any{"kind": "EMAIL", "credential": map[string]string{"code_id": f.codeID(target), "target": target, "code": m.code}}, 200)
 	f.secrets = append(f.secrets, out["access_token"].(string), out["refresh_token"].(string))
 	return out
 }

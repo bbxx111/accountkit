@@ -1,10 +1,11 @@
 -- accountkit 初始 schema。所有对象位于连接 search_path 首位的 schema（由 migrations.Up 设置），
 -- 因此表名不带前缀。账号/身份/会话/流程主键采用带类型前缀的 TSID，审计采用 UUIDv7；_time 时间戳，
--- SMALLINT 枚举无 CHECK（值由 Go 定义），全部表不设外键（一致性由 service 层与测试保证）。
+-- SMALLINT 枚举无 CHECK（值由 Go 定义；身份类型例外，为可扩展的文本），全部表不设外键（一致性由 service 层与测试保证）。
 --
 -- User-authorized generic audit definition is included in this initial version.
 -- User-authorized session context consolidation is also included directly here.
 -- User-authorized database review index adjustments are likewise included directly here.
+-- User-authorized text identity kinds (identity provider registry) are likewise included directly here.
 -- Published release SQL remains independently pinned in Git history.
 -- Future changes must use version 0002 or higher; historical source snapshots remain frozen.
 
@@ -32,20 +33,21 @@ CREATE INDEX idx_user_account_purge_time ON user_account (purge_time) WHERE stat
 CREATE INDEX idx_user_account_create_time_id ON user_account (create_time, id);
 
 -- 身份：一行一个。锚点类（PHONE/EMAIL）存 subject_digest + subject_ciphertext；
--- 第三方类（WECHAT/APPLE）存 provider_subject 明文。二者恰好一个非空。
+-- 第三方类（WECHAT/APPLE/GOOGLE 及配置的 OIDC 类型）存 provider_subject 明文。二者恰好一个非空。
 CREATE TABLE identity (
     id                  TEXT COLLATE "C" PRIMARY KEY
                         CONSTRAINT identity_id_format CHECK (id ~ '^i_[0-9a-hjkmnp-tv-z]{13}$'),
     user_id             TEXT COLLATE "C" NOT NULL,
-    kind                SMALLINT NOT NULL,              -- PHONE / EMAIL / WECHAT / APPLE，Go 定义
+    kind                VARCHAR(32) COLLATE "C" NOT NULL -- PHONE / EMAIL / WECHAT / APPLE / GOOGLE 或配置的 OIDC 类型，格式由 Go 定义
+                        CONSTRAINT identity_kind_format CHECK (kind ~ '^[A-Z][A-Z0-9_]{1,31}$'),
     subject_digest      TEXT COLLATE "C",               -- HMAC-SHA256 hex（锚点类）
     digest_key_version  SMALLINT,
-    provider_subject    TEXT COLLATE "C",               -- UnionID / Apple sub（第三方类）
+    provider_subject    TEXT COLLATE "C",               -- UnionID / Apple、Google、OIDC sub（第三方类）
     subject_ciphertext  BYTEA,                          -- AES-GCM 密文（锚点类）
     cipher_key_version  SMALLINT,
     hint_prefix         TEXT COLLATE "C",               -- 掩码可见的前缀（§3.3）
     hint_suffix         TEXT COLLATE "C",               -- 掩码可见的后缀
-    provider_meta       JSONB,                          -- 微信：{"openids": {"<appid>": "<openid>"}}
+    provider_meta       JSONB,                          -- 微信：{"openids": {"<appid>": "<openid>"}}；Google：{"profile":{"name","picture"}}
     create_time         TIMESTAMPTZ NOT NULL DEFAULT now(),
     update_time         TIMESTAMPTZ NOT NULL DEFAULT now(),
     delete_time         TIMESTAMPTZ,                    -- 解绑 = 软删

@@ -96,6 +96,7 @@ type Auth struct {
 	digester *pii.Digester
 	signer   *tokens.Signer
 	runner   *maintenance.Runner
+	facebook *idp.Facebook // 未配置时为 nil；数据删除入口使用
 
 	authAudit  *audit.AuthenticationRecorder
 	auditStore *audit.Store
@@ -110,6 +111,23 @@ type Auth struct {
 
 	startOnce sync.Once
 	closeOnce sync.Once
+}
+
+// ErrFacebookNotConfigured 表示未配置 FacebookAppID 时调用了 Facebook 数据删除入口。
+var ErrFacebookNotConfigured = errors.New("accountkit: facebook sign-in not configured")
+
+// HandleFacebookDataDeletion 处理 Meta 数据删除回调：校验 signed_request 后按 Facebook 用户 id
+// 删除对应身份数据。宿主负责 HTTP 路由、把结果编码为 {url, confirmation_code} 以及状态页；
+// 签名无效返回 idp.ErrInvalidSignedRequest，宿主应返回 400；其他错误应返回 5xx 让 Meta 重试。
+func (a *Auth) HandleFacebookDataDeletion(ctx context.Context, signedRequest string, meta user.Meta) (user.ProviderDeletionResult, error) {
+	if a.facebook == nil {
+		return user.ProviderDeletionResult{}, ErrFacebookNotConfigured
+	}
+	req, err := a.facebook.ParseSignedRequest(signedRequest)
+	if err != nil {
+		return user.ProviderDeletionResult{}, err
+	}
+	return a.users.DeleteProviderIdentityData(ctx, enum.IdentityFacebook, req.UserID, req.IssueTime, meta)
 }
 
 // New 应用默认、校验配置与依赖，构造密码学原语与维护运行器。不做任何 I/O。
@@ -195,20 +213,9 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 	})
 	a.revocation = revocation.NewSet(deps.Redis, cfg.KeyPrefix)
 	a.grace = grace.NewCache(deps.Redis, cfg.KeyPrefix, cipher)
-	var wechat idp.WeChatVerifier
-	if len(cfg.WeChatApps) > 0 {
-		apps := make([]idp.App, len(cfg.WeChatApps))
-		for i, a := range cfg.WeChatApps {
-			apps[i] = idp.App{AppID: a.AppID, Secret: a.Secret}
-		}
-		wechat = idp.NewWeChat(apps, cfg.WeChatAPIBaseURL, deps.HTTPClient, deps.Logger)
-	}
-	var apple idp.AppleVerifier
-	if len(cfg.AppleBundleIDs) > 0 {
-		apple = idp.NewApple(idp.AppleOptions{
-			BundleIDs: cfg.AppleBundleIDs, JWKSURL: cfg.AppleJWKSURL, HTTP: deps.HTTPClient,
-			Nonces: idp.NewNonceRegistry(deps.Redis, cfg.KeyPrefix), Logger: deps.Logger, NonceTTL: cfg.AppleNonceTTL, Observer: deps.Observer,
-		})
+	providers, err := identityProviders(cfg, deps)
+	if err != nil {
+		return nil, err
 	}
 	users, err := user.NewService(user.Deps{
 		ProfileAttributes:           cfg.ProfileAttributes,
@@ -218,11 +225,12 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 		Signer: signer, Cipher: cipher, Digester: digester,
 		AuditSource: cfg.AuditSource, AuditNamespace: cfg.AuditNamespace,
 		SMS: deps.SMSSender, Email: deps.EmailSender, Audit: deps.Audit, Logger: deps.Logger, Observer: deps.Observer,
-		WeChat: wechat, Apple: apple,
+		Providers: providers,
 		AccessTTL: cfg.AccessTokenTTL, RefreshTTL: cfg.RefreshTokenTTL, RefreshGrace: cfg.RefreshGrace, CodeTTL: cfg.CodeTTL,
 		DefaultRegion:           cfg.DefaultRegion,
 		ReauthMaxAge:            cfg.ReauthMaxAge,
 		SensitiveOpVerification: cfg.SensitiveOpVerification,
+		ProviderProfileBackfill: cfg.ProviderProfileBackfill,
 		MaxIdentitiesPerKind:    cfg.MaxIdentitiesPerKind,
 		DeletionCoolingPeriod:   cfg.DeletionCoolingPeriod,
 		Anonymizers:             deps.Anonymizers,
@@ -232,6 +240,11 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 		return nil, err
 	}
 	a.users = users
+	for _, p := range providers {
+		if fb, ok := p.(*idp.Facebook); ok {
+			a.facebook = fb
+		}
+	}
 	h, err := enduser.New(enduser.Deps{
 		Users: users, Logger: deps.Logger, ClientIP: deps.ClientIP, ClientInfo: deps.ClientInfo, RequestID: deps.RequestID,
 		ReauthMaxAge: cfg.ReauthMaxAge, SensitiveOpVerification: *cfg.SensitiveOpVerification,
@@ -435,4 +448,71 @@ func defaultRequestID(r *http.Request) string {
 		return "00000000000000000000000000000000"
 	}
 	return hex.EncodeToString(b[:])
+}
+
+// identityProviders 按配置构造已启用的第三方提供方；顺序与 Config.providerKinds 一致。
+func identityProviders(cfg Config, deps Deps) ([]idp.Provider, error) {
+	var providers []idp.Provider
+	if len(cfg.WeChatApps) > 0 || len(cfg.WeChatMiniProgramApps) > 0 {
+		convert := func(apps []WeChatApp) []idp.App {
+			out := make([]idp.App, len(apps))
+			for i, a := range apps {
+				out[i] = idp.App{AppID: a.AppID, Secret: a.Secret}
+			}
+			return out
+		}
+		provider, err := idp.NewWeChatWithConfig(idp.WeChatConfig{Apps: convert(cfg.WeChatApps), MiniProgramApps: convert(cfg.WeChatMiniProgramApps), SubjectMode: cfg.WeChatSubjectMode, BaseURL: cfg.WeChatAPIBaseURL}, deps.HTTPClient, deps.Logger)
+		if err != nil {
+			return nil, err
+		}
+		providers = append(providers, provider)
+	}
+	if len(cfg.AppleBundleIDs) > 0 {
+		providers = append(providers, idp.NewApple(idp.AppleOptions{
+			BundleIDs: cfg.AppleBundleIDs, JWKSURL: cfg.AppleJWKSURL, HTTP: deps.HTTPClient,
+			Nonces: idp.NewNonceRegistry(deps.Redis, cfg.KeyPrefix), Logger: deps.Logger, NonceTTL: cfg.AppleNonceTTL, Observer: deps.Observer,
+		}))
+	}
+	if len(cfg.GoogleClientIDs) > 0 {
+		providers = append(providers, idp.NewGoogle(idp.GoogleOptions{
+			ClientIDs: cfg.GoogleClientIDs, JWKSURL: cfg.GoogleJWKSURL, HTTP: deps.HTTPClient,
+			Nonces: idp.NewNonceRegistry(deps.Redis, cfg.KeyPrefix), Logger: deps.Logger, NonceTTL: cfg.GoogleNonceTTL, Observer: deps.Observer,
+		}))
+	}
+	if cfg.FacebookAppID != "" {
+		providers = append(providers, idp.NewFacebook(idp.FacebookOptions{
+			AppID: cfg.FacebookAppID, AppSecret: cfg.FacebookAppSecret, GraphAPIVersion: cfg.FacebookGraphAPIVersion,
+			GraphAPIBaseURL: cfg.FacebookGraphAPIBaseURL, JWKSURL: cfg.FacebookJWKSURL, HTTP: deps.HTTPClient,
+			Nonces: idp.NewNonceRegistry(deps.Redis, cfg.KeyPrefix), Logger: deps.Logger, NonceTTL: cfg.FacebookNonceTTL, Observer: deps.Observer,
+		}))
+	}
+	if len(cfg.AlipayApps) > 0 {
+		provider, err := idp.NewAlipay(idp.AlipayOptions{Config: cfg.alipayConfig(), HTTP: deps.HTTPClient, Logger: deps.Logger, Observer: deps.Observer})
+		if err != nil {
+			return nil, err
+		}
+		providers = append(providers, provider)
+	}
+	if len(cfg.QQAppIDs) > 0 {
+		provider, err := idp.NewQQ(idp.QQOptions{Config: cfg.qqConfig(), HTTP: deps.HTTPClient, Logger: deps.Logger, Observer: deps.Observer})
+		if err != nil {
+			return nil, err
+		}
+		providers = append(providers, provider)
+	}
+	if len(cfg.WeiboAppIDs) > 0 {
+		provider, err := idp.NewWeibo(idp.WeiboOptions{Config: cfg.weiboConfig(), HTTP: deps.HTTPClient, Logger: deps.Logger, Observer: deps.Observer})
+		if err != nil {
+			return nil, err
+		}
+		providers = append(providers, provider)
+	}
+	for _, p := range cfg.OIDCProviders {
+		providers = append(providers, idp.NewOIDC(idp.OIDCOptions{
+			Kind: p.Kind, Issuer: p.Issuer, JWKSURL: p.JWKSURL, ClientIDs: p.ClientIDs,
+			NameClaims: p.NameClaims, PictureClaims: p.PictureClaims, HTTP: deps.HTTPClient,
+			Nonces: idp.NewNonceRegistry(deps.Redis, cfg.KeyPrefix), Logger: deps.Logger, NonceTTL: p.NonceTTL, Observer: deps.Observer,
+		}))
+	}
+	return providers, nil
 }

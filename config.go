@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -16,6 +17,47 @@ import (
 	"github.com/bbxx111/accountkit/pii"
 	"github.com/bbxx111/accountkit/tokens"
 	"github.com/bbxx111/accountkit/user"
+	"github.com/bbxx111/accountkit/user/idp"
+)
+
+// OIDCProvider 是一个按配置启用的 OIDC 身份提供方。Kind 须符合身份类型格式且不得为内置类型名；
+// Issuer 与 JWKSURL 为绝对 http(s) URL，Issuer 与 ID token 的 iss 精确比较；ClientIDs 非空。
+// NameClaims/PictureClaims 为 nil 时默认 ["name"]/["picture"]，非 nil 空切片表示不读取。
+type OIDCProvider struct {
+	Kind          enum.IdentityKind
+	Issuer        string
+	JWKSURL       string
+	ClientIDs     []string
+	NonceTTL      time.Duration // 默认 10m，须 >= 1m
+	NameClaims    []string
+	PictureClaims []string
+}
+
+// WeChatSubjectMode 决定实例内所有微信应用的固定身份识别方式。
+type WeChatSubjectMode = idp.WeChatSubjectMode
+
+// AlipayApp 是普通公钥模式的支付宝应用配置。
+type AlipayApp = idp.AlipayApp
+
+// AlipaySubjectMode 决定实例内所有支付宝应用的固定身份识别方式。
+type AlipaySubjectMode = idp.AlipaySubjectMode
+
+const (
+	AlipaySubjectModeUnionID = idp.AlipaySubjectModeUnionID
+	AlipaySubjectModeOpenID  = idp.AlipaySubjectModeOpenID
+)
+
+// QQSubjectMode 决定实例内所有 QQ 应用的固定身份识别方式。
+type QQSubjectMode = idp.QQSubjectMode
+
+const (
+	QQSubjectModeUnionID = idp.QQSubjectModeUnionID
+	QQSubjectModeOpenID  = idp.QQSubjectModeOpenID
+)
+
+const (
+	WeChatSubjectModeUnionID = idp.WeChatSubjectModeUnionID
+	WeChatSubjectModeOpenID  = idp.WeChatSubjectModeOpenID
 )
 
 // WeChatApp 是一个微信应用（小程序/App/公众号）的凭据；Secret 只在服务端换取 token 时使用。
@@ -53,6 +95,9 @@ type Config struct {
 	ReauthMaxAge    time.Duration // 默认 5m
 	// SensitiveOpVerification 为 nil 时视为 true。
 	SensitiveOpVerification *bool
+	// ProviderProfileBackfill 为 nil 时视为 true：已有账号在第三方登录、绑定或补全关联时
+	// 用本次资料声明补填空的显示名与头像。新建账号始终填充，不受此项影响。
+	ProviderProfileBackfill *bool
 
 	SubjectHMACKeys        map[uint16][]byte
 	SubjectHMACActiveKey   uint16
@@ -72,17 +117,52 @@ type Config struct {
 	AuditRetentionDays    int           // 默认 180
 	DefaultRegion         string        // 默认 "CN"
 
-	// WeChatApps 为空表示未启用微信登录。
+	// WeChatApps 配置 OAuth 应用；两组均为空时未启用微信登录。
 	WeChatApps []WeChatApp
+	// WeChatMiniProgramApps 配置通过 jscode2session 验证的小程序。
+	WeChatMiniProgramApps []WeChatApp
+	// WeChatSubjectMode 默认为 UNIONID，实例所有微信应用使用同一固定模式。
+	WeChatSubjectMode WeChatSubjectMode
 	// AppleBundleIDs 为空表示未启用 Apple 登录；id_token 的 aud 须在其中。
 	AppleBundleIDs []string
 	AppleNonceTTL  time.Duration // 默认 10m
-	// WeChatAPIBaseURL / AppleJWKSURL 供测试与代理部署覆盖；生产保持默认。
-	WeChatAPIBaseURL string
-	AppleJWKSURL     string
+	// GoogleClientIDs 为空表示未启用 Google 登录；id_token 的 aud 以及出现的 azp 须在其中。
+	GoogleClientIDs []string
+	GoogleNonceTTL  time.Duration // 默认 10m
+	// FacebookAppID 为空表示未启用 Facebook 登录。非空时 FacebookAppSecret 必填：Classic 校验与
+	// 数据删除回调的 signed_request 都依赖它。只对接一个 App，subject 为该 App 下的用户 id。
+	FacebookAppID           string
+	FacebookAppSecret       string
+	FacebookGraphAPIVersion string        // 默认 idp.FacebookGraphAPIVersionDefault，格式 vN.N
+	FacebookNonceTTL        time.Duration // 默认 10m
+	// AlipayApps 为空表示未启用支付宝登录；每项使用独立的应用私钥及支付宝公钥。
+	AlipayApps        []AlipayApp
+	AlipaySubjectMode AlipaySubjectMode // 默认 UNIONID，所有应用固定使用同一模式。
+	AlipayGatewayURL  string            // 默认生产网关；HTTP 仅允许回环测试地址。
+	// QQAppIDs 为空表示未启用 QQ 登录；App SDK 校验 access_token 不需要 AppKey。
+	QQAppIDs      []string
+	QQSubjectMode QQSubjectMode // 默认 UNIONID，所有应用固定使用同一模式。
+	QQAPIBaseURL  string        // 默认 https://graph.qq.com；HTTP 仅允许回环测试地址。
+	// WeiboAppIDs 是允许的微博 AppKey，为空表示未启用；App SDK 校验 access_token 不需要 AppSecret。
+	WeiboAppIDs     []string
+	WeiboAPIBaseURL string // 默认 https://api.weibo.com；HTTP 仅允许回环测试地址。
+	// OIDCProviders 是按配置启用的 OIDC 提供方，类型名一经使用不应更换。
+	OIDCProviders []OIDCProvider
+	// WeChatAPIBaseURL / AppleJWKSURL / GoogleJWKSURL / Facebook* 供测试与代理部署覆盖；生产保持默认。
+	WeChatAPIBaseURL        string
+	AppleJWKSURL            string
+	GoogleJWKSURL           string
+	FacebookGraphAPIBaseURL string
+	FacebookJWKSURL         string
 
 	MaintenanceInterval time.Duration // 默认 5m
 }
+
+var facebookVersionPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+$`)
+
+var alipayAppIDPattern = regexp.MustCompile(`^[0-9]{16}$`)
+var qqAppIDPattern = regexp.MustCompile(`^[0-9]{1,20}$`)
+var weiboAppIDPattern = regexp.MustCompile(`^[0-9]{1,20}$`)
 
 func cloneProfileAttributesConfig(c *user.ProfileAttributesConfig) *user.ProfileAttributesConfig {
 	if c == nil {
@@ -93,18 +173,53 @@ func cloneProfileAttributesConfig(c *user.ProfileAttributesConfig) *user.Profile
 	return &snapshot
 }
 
-func (c Config) identityPolicy() (*user.IdentityPolicy, error) {
-	var providers []enum.IdentityKind
-	if len(c.WeChatApps) > 0 {
-		providers = append(providers, enum.IdentityWeChat)
+// providerKinds 返回配置启用的第三方类型，顺序与 identityProviders 的装配一致。
+func (c Config) providerKinds() []enum.IdentityKind {
+	var kinds []enum.IdentityKind
+	if len(c.WeChatApps) > 0 || len(c.WeChatMiniProgramApps) > 0 {
+		kinds = append(kinds, enum.IdentityWeChat)
 	}
 	if len(c.AppleBundleIDs) > 0 {
-		providers = append(providers, enum.IdentityApple)
+		kinds = append(kinds, enum.IdentityApple)
 	}
-	return user.NewIdentityPolicy(c.EnabledIdentityKinds, c.RequiredIdentityKinds, providers...)
+	if len(c.GoogleClientIDs) > 0 {
+		kinds = append(kinds, enum.IdentityGoogle)
+	}
+	if c.FacebookAppID != "" {
+		kinds = append(kinds, enum.IdentityFacebook)
+	}
+	if len(c.AlipayApps) > 0 {
+		kinds = append(kinds, enum.IdentityAlipay)
+	}
+	if len(c.QQAppIDs) > 0 {
+		kinds = append(kinds, enum.IdentityQQ)
+	}
+	if len(c.WeiboAppIDs) > 0 {
+		kinds = append(kinds, enum.IdentityWeibo)
+	}
+	for _, p := range c.OIDCProviders {
+		kinds = append(kinds, p.Kind)
+	}
+	return kinds
+}
+
+func (c Config) identityPolicy() (*user.IdentityPolicy, error) {
+	return user.NewIdentityPolicy(c.EnabledIdentityKinds, c.RequiredIdentityKinds, c.providerKinds()...)
 }
 
 func boolPtr(b bool) *bool { return &b }
+
+func (c Config) alipayConfig() idp.AlipayConfig {
+	return idp.AlipayConfig{Apps: slices.Clone(c.AlipayApps), SubjectMode: c.AlipaySubjectMode, GatewayURL: c.AlipayGatewayURL}
+}
+
+func (c Config) qqConfig() idp.QQConfig {
+	return idp.QQConfig{AppIDs: slices.Clone(c.QQAppIDs), SubjectMode: c.QQSubjectMode, APIBaseURL: c.QQAPIBaseURL}
+}
+
+func (c Config) weiboConfig() idp.WeiboConfig {
+	return idp.WeiboConfig{AppIDs: slices.Clone(c.WeiboAppIDs), APIBaseURL: c.WeiboAPIBaseURL}
+}
 
 func (c *Config) applyDefaults() {
 	def := func(d *time.Duration, v time.Duration) {
@@ -136,6 +251,9 @@ func (c *Config) applyDefaults() {
 	if c.SensitiveOpVerification == nil {
 		c.SensitiveOpVerification = boolPtr(true)
 	}
+	if c.ProviderProfileBackfill == nil {
+		c.ProviderProfileBackfill = boolPtr(true)
+	}
 	def(&c.CodeTTL, 5*time.Minute)
 	defi(&c.CodeMaxAttempts, 5)
 	def(&c.CodeCooldown, 60*time.Second)
@@ -150,12 +268,52 @@ func (c *Config) applyDefaults() {
 		c.DefaultRegion = "CN"
 	}
 	c.DefaultRegion = strings.ToUpper(c.DefaultRegion)
+	c.AlipayApps = slices.Clone(c.AlipayApps)
+	if c.AlipaySubjectMode == "" {
+		c.AlipaySubjectMode = AlipaySubjectModeUnionID
+	}
+	if c.AlipayGatewayURL == "" {
+		c.AlipayGatewayURL = "https://openapi.alipay.com/gateway.do"
+	}
+	c.QQAppIDs = slices.Clone(c.QQAppIDs)
+	if c.QQSubjectMode == "" {
+		c.QQSubjectMode = QQSubjectModeUnionID
+	}
+	if c.QQAPIBaseURL == "" {
+		c.QQAPIBaseURL = "https://graph.qq.com"
+	}
+	c.WeiboAppIDs = slices.Clone(c.WeiboAppIDs)
+	if c.WeiboAPIBaseURL == "" {
+		c.WeiboAPIBaseURL = "https://api.weibo.com"
+	}
 	def(&c.AppleNonceTTL, 10*time.Minute)
+	def(&c.GoogleNonceTTL, 10*time.Minute)
+	def(&c.FacebookNonceTTL, 10*time.Minute)
+	if c.FacebookGraphAPIVersion == "" {
+		c.FacebookGraphAPIVersion = idp.FacebookGraphAPIVersionDefault
+	}
+	if c.FacebookGraphAPIBaseURL == "" {
+		c.FacebookGraphAPIBaseURL = "https://graph.facebook.com"
+	}
+	if c.FacebookJWKSURL == "" {
+		c.FacebookJWKSURL = "https://www.facebook.com/.well-known/oauth/openid/jwks/"
+	}
+	// 复制后再填默认值，避免写回宿主持有的切片。
+	c.OIDCProviders = slices.Clone(c.OIDCProviders)
+	for i := range c.OIDCProviders {
+		def(&c.OIDCProviders[i].NonceTTL, 10*time.Minute)
+	}
+	if c.WeChatSubjectMode == "" {
+		c.WeChatSubjectMode = WeChatSubjectModeUnionID
+	}
 	if c.WeChatAPIBaseURL == "" {
 		c.WeChatAPIBaseURL = "https://api.weixin.qq.com"
 	}
 	if c.AppleJWKSURL == "" {
 		c.AppleJWKSURL = "https://appleid.apple.com/auth/keys"
+	}
+	if c.GoogleJWKSURL == "" {
+		c.GoogleJWKSURL = "https://www.googleapis.com/oauth2/v3/certs"
 	}
 	def(&c.MaintenanceInterval, 5*time.Minute)
 }
@@ -170,6 +328,25 @@ func (c Config) Validate() error {
 
 func (c Config) validateBase() error {
 	c.applyDefaults()
+	if err := idp.ValidateAlipayConfig(c.alipayConfig()); err != nil {
+		return fmt.Errorf("accountkit: %w", err)
+	}
+	if err := idp.ValidateQQConfig(c.qqConfig()); err != nil {
+		return fmt.Errorf("accountkit: %w", err)
+	}
+	if err := idp.ValidateWeiboConfig(c.weiboConfig()); err != nil {
+		return fmt.Errorf("accountkit: %w", err)
+	}
+	kinds := map[enum.IdentityKind]bool{}
+	for i, p := range c.OIDCProviders {
+		if field, err := validateOIDCProvider(p); err != nil {
+			return fmt.Errorf("accountkit: OIDCProviders[%d].%s: %w", i, field, err)
+		}
+		if kinds[p.Kind] {
+			return fmt.Errorf("accountkit: OIDCProviders[%d].Kind: duplicate %s", i, p.Kind)
+		}
+		kinds[p.Kind] = true
+	}
 	if _, err := c.identityPolicy(); err != nil {
 		return err
 	}
@@ -228,15 +405,23 @@ func (c Config) validateBase() error {
 	if len(c.DefaultRegion) != 2 {
 		return fmt.Errorf("accountkit: DefaultRegion %q must be an ISO 3166-1 alpha-2 code", c.DefaultRegion)
 	}
+	if c.WeChatSubjectMode != WeChatSubjectModeUnionID && c.WeChatSubjectMode != WeChatSubjectModeOpenID {
+		return errors.New("accountkit: WeChatSubjectMode must be UNIONID or OPENID")
+	}
 	seen := map[string]struct{}{}
-	for i, a := range c.WeChatApps {
-		if a.AppID == "" || a.Secret == "" {
-			return fmt.Errorf("accountkit: WeChatApps[%d]: app_id and secret are required", i)
+	for _, group := range []struct {
+		name string
+		apps []WeChatApp
+	}{{"WeChatApps", c.WeChatApps}, {"WeChatMiniProgramApps", c.WeChatMiniProgramApps}} {
+		for i, a := range group.apps {
+			if strings.TrimSpace(a.AppID) == "" || strings.TrimSpace(a.Secret) == "" || strings.Contains(a.AppID, ":") {
+				return fmt.Errorf("accountkit: %s[%d]: valid app_id and secret are required", group.name, i)
+			}
+			if _, dup := seen[a.AppID]; dup {
+				return fmt.Errorf("accountkit: %s: duplicate app_id", group.name)
+			}
+			seen[a.AppID] = struct{}{}
 		}
-		if _, dup := seen[a.AppID]; dup {
-			return fmt.Errorf("accountkit: WeChatApps: duplicate app_id %q", a.AppID)
-		}
-		seen[a.AppID] = struct{}{}
 	}
 	seenB := map[string]struct{}{}
 	for i, b := range c.AppleBundleIDs {
@@ -251,7 +436,30 @@ func (c Config) validateBase() error {
 	if c.AppleNonceTTL < time.Minute {
 		return errors.New("accountkit: AppleNonceTTL must be >= 1m")
 	}
-	for name, raw := range map[string]string{"WeChatAPIBaseURL": c.WeChatAPIBaseURL, "AppleJWKSURL": c.AppleJWKSURL} {
+	seenG := map[string]struct{}{}
+	for i, id := range c.GoogleClientIDs {
+		if id == "" {
+			return fmt.Errorf("accountkit: GoogleClientIDs[%d] must not be empty", i)
+		}
+		if _, dup := seenG[id]; dup {
+			return fmt.Errorf("accountkit: GoogleClientIDs: duplicate %q", id)
+		}
+		seenG[id] = struct{}{}
+	}
+	if c.GoogleNonceTTL < time.Minute {
+		return errors.New("accountkit: GoogleNonceTTL must be >= 1m")
+	}
+	if c.FacebookAppID != "" && c.FacebookAppSecret == "" {
+		return errors.New("accountkit: FacebookAppSecret is required when FacebookAppID is set")
+	}
+	if c.FacebookAppID != "" && !facebookVersionPattern.MatchString(c.FacebookGraphAPIVersion) {
+		return errors.New(`accountkit: FacebookGraphAPIVersion must match ^v[0-9]+\.[0-9]+$`)
+	}
+	if c.FacebookAppID != "" && c.FacebookNonceTTL < time.Minute {
+		return errors.New("accountkit: FacebookNonceTTL must be >= 1m")
+	}
+	for name, raw := range map[string]string{"WeChatAPIBaseURL": c.WeChatAPIBaseURL, "AppleJWKSURL": c.AppleJWKSURL, "GoogleJWKSURL": c.GoogleJWKSURL,
+		"FacebookGraphAPIBaseURL": c.FacebookGraphAPIBaseURL, "FacebookJWKSURL": c.FacebookJWKSURL} {
 		u, err := url.Parse(raw)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			return fmt.Errorf("accountkit: %s %q must be an absolute http(s) URL", name, raw)
@@ -410,6 +618,14 @@ func ConfigFromEnv(prefix string) (Config, error) {
 			c.SensitiveOpVerification = boolPtr(b)
 		}
 	}
+	if s := str("PROVIDER_PROFILE_BACKFILL"); s != "" {
+		b, err := strconv.ParseBool(s)
+		if err != nil {
+			fail("PROVIDER_PROFILE_BACKFILL", err)
+		} else {
+			c.ProviderProfileBackfill = boolPtr(b)
+		}
+	}
 	keylist("SUBJECT_HMAC_KEYS", &c.SubjectHMACKeys)
 	u16("SUBJECT_HMAC_ACTIVE_KEY", &c.SubjectHMACActiveKey)
 	keylist("SUBJECT_CIPHER_KEYS", &c.SubjectCipherKeys)
@@ -426,12 +642,23 @@ func ConfigFromEnv(prefix string) (Config, error) {
 	integer("AUDIT_RETENTION_DAYS", &c.AuditRetentionDays)
 	c.DefaultRegion = str("DEFAULT_REGION")
 	dur("MAINTENANCE_INTERVAL", &c.MaintenanceInterval)
-	if s := str("WECHAT_APPS"); s != "" {
-		apps, err := ParseWeChatApps(s)
-		if err != nil {
-			fail("WECHAT_APPS", err)
-		} else {
-			c.WeChatApps = apps
+	for _, group := range []struct {
+		name string
+		dst  *[]WeChatApp
+	}{{"WECHAT_APPS", &c.WeChatApps}, {"WECHAT_MINI_PROGRAM_APPS", &c.WeChatMiniProgramApps}} {
+		if raw := str(group.name); raw != "" {
+			apps, err := ParseWeChatApps(raw)
+			if err != nil {
+				fail(group.name, err)
+			} else {
+				*group.dst = apps
+			}
+		}
+	}
+	if raw, ok := os.LookupEnv(prefix + "WECHAT_SUBJECT_MODE"); ok {
+		c.WeChatSubjectMode = WeChatSubjectMode(raw)
+		if c.WeChatSubjectMode != WeChatSubjectModeUnionID && c.WeChatSubjectMode != WeChatSubjectModeOpenID {
+			fail("WECHAT_SUBJECT_MODE", errors.New("must be UNIONID or OPENID"))
 		}
 	}
 	if s := str("APPLE_BUNDLE_IDS"); s != "" {
@@ -442,8 +669,78 @@ func ConfigFromEnv(prefix string) (Config, error) {
 		}
 	}
 	dur("APPLE_NONCE_TTL", &c.AppleNonceTTL)
+	if s := str("GOOGLE_CLIENT_IDS"); s != "" {
+		for _, id := range strings.Split(s, ",") {
+			if id = strings.TrimSpace(id); id != "" {
+				c.GoogleClientIDs = append(c.GoogleClientIDs, id)
+			}
+		}
+	}
+	dur("GOOGLE_NONCE_TTL", &c.GoogleNonceTTL)
 	c.WeChatAPIBaseURL = str("WECHAT_API_BASE_URL")
 	c.AppleJWKSURL = str("APPLE_JWKS_URL")
+	c.GoogleJWKSURL = str("GOOGLE_JWKS_URL")
+	c.FacebookAppID = str("FACEBOOK_APP_ID")
+	c.FacebookAppSecret = str("FACEBOOK_APP_SECRET")
+	c.FacebookGraphAPIVersion = str("FACEBOOK_GRAPH_API_VERSION")
+	dur("FACEBOOK_NONCE_TTL", &c.FacebookNonceTTL)
+	c.FacebookGraphAPIBaseURL = str("FACEBOOK_GRAPH_API_BASE_URL")
+	c.FacebookJWKSURL = str("FACEBOOK_JWKS_URL")
+	if raw, ok := os.LookupEnv(prefix + "ALIPAY_SUBJECT_MODE"); ok {
+		c.AlipaySubjectMode = AlipaySubjectMode(raw)
+		if c.AlipaySubjectMode != AlipaySubjectModeUnionID && c.AlipaySubjectMode != AlipaySubjectModeOpenID {
+			fail("ALIPAY_SUBJECT_MODE", errors.New("must be UNIONID or OPENID"))
+		}
+	}
+	c.AlipayGatewayURL = str("ALIPAY_GATEWAY_URL")
+	if raw := str("ALIPAY_APP_IDS"); raw != "" {
+		seen := map[string]bool{}
+		for _, item := range strings.Split(raw, ",") {
+			appID := strings.TrimSpace(item)
+			if !alipayAppIDPattern.MatchString(appID) || seen[appID] {
+				fail("ALIPAY_APP_IDS", errors.New("entries must be unique 16-digit ASCII AppIDs"))
+				break
+			}
+			seen[appID] = true
+			base := "ALIPAY_" + appID + "_"
+			c.AlipayApps = append(c.AlipayApps, AlipayApp{AppID: appID, PrivateKey: os.Getenv(prefix + base + "PRIVATE_KEY"), AlipayPublicKey: os.Getenv(prefix + base + "PUBLIC_KEY")})
+		}
+	}
+	if raw, ok := os.LookupEnv(prefix + "QQ_SUBJECT_MODE"); ok {
+		c.QQSubjectMode = QQSubjectMode(raw)
+		if c.QQSubjectMode != QQSubjectModeUnionID && c.QQSubjectMode != QQSubjectModeOpenID {
+			fail("QQ_SUBJECT_MODE", errors.New("must be UNIONID or OPENID"))
+		}
+	}
+	c.QQAPIBaseURL = str("QQ_API_BASE_URL")
+	if raw := str("QQ_APP_IDS"); raw != "" {
+		seen := map[string]bool{}
+		for _, item := range strings.Split(raw, ",") {
+			appID := strings.TrimSpace(item)
+			if !qqAppIDPattern.MatchString(appID) || seen[appID] {
+				fail("QQ_APP_IDS", errors.New("entries must be unique AppIDs of 1-20 ASCII digits"))
+				break
+			}
+			seen[appID] = true
+			c.QQAppIDs = append(c.QQAppIDs, appID)
+		}
+	}
+	c.WeiboAPIBaseURL = str("WEIBO_API_BASE_URL")
+	if raw := str("WEIBO_APP_IDS"); raw != "" {
+		seen := map[string]bool{}
+		for _, item := range strings.Split(raw, ",") {
+			appID := strings.TrimSpace(item)
+			if !weiboAppIDPattern.MatchString(appID) || seen[appID] {
+				fail("WEIBO_APP_IDS", errors.New("entries must be unique AppKeys of 1-20 ASCII digits"))
+				break
+			}
+			seen[appID] = true
+			c.WeiboAppIDs = append(c.WeiboAppIDs, appID)
+		}
+	}
+	if s := str("OIDC_PROVIDERS"); s != "" {
+		c.OIDCProviders = oidcProvidersFromEnv(s, str, dur, fail, func(name string) (string, bool) { return os.LookupEnv(prefix + name) })
+	}
 
 	if firstErr != nil {
 		return Config{}, firstErr
@@ -456,4 +753,87 @@ func ConfigFromEnv(prefix string) (Config, error) {
 		return Config{}, err
 	}
 	return c, nil
+}
+
+// validateOIDCProvider 返回出错的字段名，供 Validate 报字段、ConfigFromEnv 报变量名。
+// NonceTTL 为零表示使用默认值。
+func validateOIDCProvider(p OIDCProvider) (string, error) {
+	if !p.Kind.Valid() {
+		return "Kind", errors.New("must match ^[A-Z][A-Z0-9_]{1,31}$")
+	}
+	if p.Kind.IsBuiltin() {
+		return "Kind", fmt.Errorf("%s is a builtin identity kind", p.Kind)
+	}
+	for _, f := range []struct{ field, raw string }{{"Issuer", p.Issuer}, {"JWKSURL", p.JWKSURL}} {
+		field, raw := f.field, f.raw
+		u, err := url.Parse(raw)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return field, errors.New("must be an absolute http(s) URL")
+		}
+	}
+	if len(p.ClientIDs) == 0 {
+		return "ClientIDs", errors.New("at least one client ID is required")
+	}
+	for _, f := range []struct {
+		field string
+		list  []string
+	}{{"ClientIDs", p.ClientIDs}, {"NameClaims", p.NameClaims}, {"PictureClaims", p.PictureClaims}} {
+		field, list := f.field, f.list
+		seen := map[string]bool{}
+		for _, v := range list {
+			if v == "" || seen[v] {
+				return field, errors.New("entries must be non-empty and unique")
+			}
+			seen[v] = true
+		}
+	}
+	if p.NonceTTL != 0 && p.NonceTTL < time.Minute {
+		return "NonceTTL", errors.New("must be >= 1m")
+	}
+	return "", nil
+}
+
+// oidcEnvSuffix 把 OIDCProvider 字段映射到 OIDC_<KIND>_ 之后的变量名后缀。
+var oidcEnvSuffix = map[string]string{"Issuer": "ISSUER", "JWKSURL": "JWKS_URL", "ClientIDs": "CLIENT_IDS", "NonceTTL": "NONCE_TTL", "NameClaims": "NAME_CLAIMS", "PictureClaims": "PICTURE_CLAIMS"}
+
+// oidcProvidersFromEnv 解析 OIDC_PROVIDERS 及每个类型的 OIDC_<KIND>_* 变量，错误指出具体变量名。
+func oidcProvidersFromEnv(list string, str func(string) string, dur func(string, *time.Duration), fail func(string, error), lookup func(string) (string, bool)) []OIDCProvider {
+	split := func(raw string) []string {
+		out := []string{}
+		for _, v := range strings.Split(raw, ",") {
+			if v = strings.TrimSpace(v); v != "" {
+				out = append(out, v)
+			}
+		}
+		return out
+	}
+	names := split(list)
+	seen := map[enum.IdentityKind]bool{}
+	for _, name := range names {
+		kind := enum.IdentityKind(name)
+		if !kind.Valid() || kind.IsBuiltin() || seen[kind] {
+			fail("OIDC_PROVIDERS", errors.New("entries must be unique, non-builtin and match ^[A-Z][A-Z0-9_]{1,31}$"))
+			return nil
+		}
+		seen[kind] = true
+	}
+	var providers []OIDCProvider
+	for _, name := range names {
+		kind := enum.IdentityKind(name)
+		base := "OIDC_" + name + "_"
+		p := OIDCProvider{Kind: kind, Issuer: str(base + "ISSUER"), JWKSURL: str(base + "JWKS_URL"), ClientIDs: split(str(base + "CLIENT_IDS"))}
+		dur(base+"NONCE_TTL", &p.NonceTTL)
+		if raw, ok := lookup(base + "NAME_CLAIMS"); ok {
+			p.NameClaims = split(raw)
+		}
+		if raw, ok := lookup(base + "PICTURE_CLAIMS"); ok {
+			p.PictureClaims = split(raw)
+		}
+		if field, err := validateOIDCProvider(p); err != nil {
+			fail(base+oidcEnvSuffix[field], err)
+			return nil
+		}
+		providers = append(providers, p)
+	}
+	return providers
 }

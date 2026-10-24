@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -38,6 +39,69 @@ func configEnvironment(t *testing.T) {
 	t.Setenv("ACCOUNTKIT_JWT_AUDIENCE", "consumer")
 	t.Setenv("ACCOUNTSVC_DATABASE_URL", "postgres://user:synthetic-dsn-password@127.0.0.1:5432/test?sslmode=disable")
 	t.Setenv("ACCOUNTSVC_REDIS_URL", "redis://:synthetic-redis-password@127.0.0.1:6379/2")
+}
+
+func TestConfigAlipay(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	private := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}))
+	public := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PUBLIC KEY", Bytes: x509.MarshalPKCS1PublicKey(&key.PublicKey)}))
+	setAlipay := func(t *testing.T) {
+		t.Setenv("ACCOUNTKIT_ALIPAY_APP_IDS", "2026000000000001")
+		t.Setenv("ACCOUNTKIT_ALIPAY_2026000000000001_PRIVATE_KEY", private)
+		t.Setenv("ACCOUNTKIT_ALIPAY_2026000000000001_PUBLIC_KEY", public)
+	}
+	t.Run("pure Alipay without SMTP", func(t *testing.T) {
+		serveEnvironment(t)
+		setAlipay(t)
+		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "ALIPAY")
+		t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
+		for _, name := range []string{"HOST", "PORT", "FROM", "USERNAME", "PASSWORD"} {
+			t.Setenv("ACCOUNTSVC_SMTP_"+name, "")
+		}
+		c, err := LoadConfig("serve")
+		if err != nil || len(c.Library.AlipayApps) != 1 || c.SMTP.Host != "" {
+			t.Fatalf("pure Alipay service: %v", err)
+		}
+	})
+	t.Run("enabled requires provider", func(t *testing.T) {
+		serveEnvironment(t)
+		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "ALIPAY")
+		t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
+		if _, err := LoadConfig("serve"); err == nil || !strings.Contains(err.Error(), "ACCOUNTKIT_ALIPAY_APP_IDS") {
+			t.Fatalf("missing provider: %v", err)
+		}
+	})
+	t.Run("migrate no runtime or provider required", func(t *testing.T) {
+		configEnvironment(t)
+		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "ALIPAY")
+		t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
+		if _, err := LoadConfig("migrate"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	for _, field := range []string{"PRIVATE_KEY", "PUBLIC_KEY"} {
+		t.Run("safe dynamic "+field, func(t *testing.T) {
+			configEnvironment(t)
+			setAlipay(t)
+			name := "ACCOUNTKIT_ALIPAY_2026000000000001_" + field
+			t.Setenv(name, "synthetic-secret-that-must-not-appear")
+			if _, err := LoadConfig("migrate"); err == nil || !strings.Contains(err.Error(), name) || strings.Contains(err.Error(), "synthetic-secret") {
+				t.Fatalf("safe dynamic error name: %v", err)
+			}
+		})
+	}
+	for _, field := range []string{"SUBJECT_MODE", "GATEWAY_URL"} {
+		t.Run("safe static "+field, func(t *testing.T) {
+			configEnvironment(t)
+			t.Setenv("ACCOUNTKIT_ALIPAY_"+field, "invalid-sensitive-value")
+			if _, err := LoadConfig("migrate"); err == nil || !strings.Contains(err.Error(), "ACCOUNTKIT_ALIPAY_"+field) || strings.Contains(err.Error(), "sensitive") {
+				t.Fatalf("safe static error: %v", err)
+			}
+		})
+	}
 }
 
 func serveEnvironment(t *testing.T) {
@@ -160,6 +224,7 @@ func TestConfigExplicitIdentityProviderDependencies(t *testing.T) {
 	for _, provider := range []struct{ kind, key, value string }{
 		{"WECHAT", "ACCOUNTKIT_WECHAT_APPS", "test-app:synthetic-provider-secret"},
 		{"APPLE", "ACCOUNTKIT_APPLE_BUNDLE_IDS", "com.example.synthetic-app"},
+		{"GOOGLE", "ACCOUNTKIT_GOOGLE_CLIENT_IDS", "synthetic-client.apps.googleusercontent.com"},
 	} {
 		for _, configured := range []bool{false, true} {
 			for _, command := range []string{"serve", "migrate"} {
@@ -379,5 +444,203 @@ func TestConfigAdministratorAudienceSeparation(t *testing.T) {
 	t.Setenv("ACCOUNTKIT_APPLE_BUNDLE_IDS", "apple-app")
 	if _, err = LoadConfig("serve"); err == nil {
 		t.Fatal("ID token audience accepted for admin API")
+	}
+}
+
+func TestConfigOIDCProviders(t *testing.T) {
+	oidcEnv := func(t *testing.T) {
+		t.Setenv("ACCOUNTKIT_OIDC_PROVIDERS", "CORP_SSO")
+		t.Setenv("ACCOUNTKIT_OIDC_CORP_SSO_ISSUER", "https://sso.corp.example")
+		t.Setenv("ACCOUNTKIT_OIDC_CORP_SSO_JWKS_URL", "https://sso.corp.example/jwks")
+		t.Setenv("ACCOUNTKIT_OIDC_CORP_SSO_CLIENT_IDS", "synthetic-corp-client")
+	}
+	noSMTP := func(t *testing.T) {
+		for _, key := range []string{"HOST", "PORT", "FROM", "USERNAME", "PASSWORD", "TLS_MODE", "TIMEOUT"} {
+			t.Setenv("ACCOUNTSVC_SMTP_"+key, "")
+		}
+	}
+	t.Run("OIDC only without SMTP", func(t *testing.T) {
+		serveEnvironment(t)
+		oidcEnv(t)
+		noSMTP(t)
+		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "CORP_SSO")
+		t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
+		c, err := LoadConfig("serve")
+		if err != nil || len(c.Library.OIDCProviders) != 1 || c.Library.OIDCProviders[0].Kind != "CORP_SSO" {
+			t.Fatalf("OIDC-only service: %+v %v", c.Library.OIDCProviders, err)
+		}
+	})
+	t.Run("missing issuer names the variable", func(t *testing.T) {
+		serveEnvironment(t)
+		oidcEnv(t)
+		t.Setenv("ACCOUNTKIT_OIDC_CORP_SSO_ISSUER", "synthetic-secret-host")
+		_, err := LoadConfig("serve")
+		if err == nil || !strings.Contains(err.Error(), "ACCOUNTKIT_OIDC_CORP_SSO_ISSUER") || strings.Contains(err.Error(), "synthetic-secret-host") {
+			t.Fatalf("issuer error: %v", err)
+		}
+	})
+	t.Run("enabled kind without OIDC configuration", func(t *testing.T) {
+		serveEnvironment(t)
+		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "EMAIL,CORP_SSO")
+		t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "EMAIL")
+		_, err := LoadConfig("serve")
+		if err == nil || !strings.Contains(err.Error(), "ACCOUNTKIT_ENABLED_IDENTITY_KINDS") {
+			t.Fatalf("unconfigured enabled kind: %v", err)
+		}
+	})
+	t.Run("migrate does not need OIDC variables", func(t *testing.T) {
+		configEnvironment(t)
+		if _, err := LoadConfig("migrate"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("migrate rejects incomplete OIDC configuration", func(t *testing.T) {
+		configEnvironment(t)
+		t.Setenv("ACCOUNTKIT_OIDC_PROVIDERS", "CORP_SSO")
+		_, err := LoadConfig("migrate")
+		if err == nil || !strings.Contains(err.Error(), "ACCOUNTKIT_OIDC_CORP_SSO_ISSUER") {
+			t.Fatalf("incomplete OIDC during migrate: %v", err)
+		}
+	})
+}
+
+func TestConfigQQ(t *testing.T) {
+	t.Run("pure QQ without SMTP", func(t *testing.T) {
+		serveEnvironment(t)
+		t.Setenv("ACCOUNTKIT_QQ_APP_IDS", "1100000001,1100000002")
+		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "QQ")
+		t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
+		for _, name := range []string{"HOST", "PORT", "FROM", "USERNAME", "PASSWORD"} {
+			t.Setenv("ACCOUNTSVC_SMTP_"+name, "")
+		}
+		c, err := LoadConfig("serve")
+		if err != nil || len(c.Library.QQAppIDs) != 2 || c.SMTP.Host != "" {
+			t.Fatalf("pure QQ service: %v", err)
+		}
+	})
+	t.Run("enabled without apps", func(t *testing.T) {
+		serveEnvironment(t)
+		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "QQ")
+		t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
+		if _, err := LoadConfig("serve"); err == nil || !strings.Contains(err.Error(), "ACCOUNTKIT_QQ_APP_IDS") {
+			t.Fatalf("missing apps: %v", err)
+		}
+	})
+	for name, env := range map[string][2]string{
+		"ACCOUNTKIT_QQ_APP_IDS":      {"ACCOUNTKIT_QQ_APP_IDS", "1100000001,sensitive-app"},
+		"ACCOUNTKIT_QQ_SUBJECT_MODE": {"ACCOUNTKIT_QQ_SUBJECT_MODE", "sensitive-mode"},
+		"ACCOUNTKIT_QQ_API_BASE_URL": {"ACCOUNTKIT_QQ_API_BASE_URL", "http://sensitive.example.test"},
+	} {
+		for _, mode := range []string{"serve", "migrate"} {
+			t.Run(mode+"_"+name, func(t *testing.T) {
+				serveEnvironment(t)
+				t.Setenv("ACCOUNTKIT_QQ_APP_IDS", "1100000001")
+				t.Setenv(env[0], env[1])
+				_, err := LoadConfig(mode)
+				if err == nil || !strings.Contains(err.Error(), name) || strings.Contains(err.Error(), "sensitive") {
+					t.Fatalf("%s: %v", name, err)
+				}
+			})
+		}
+	}
+	t.Run("migrate without QQ", func(t *testing.T) {
+		configEnvironment(t)
+		if _, err := LoadConfig("migrate"); err != nil {
+			t.Fatalf("migrate must not require QQ: %v", err)
+		}
+	})
+}
+
+func TestConfigWeibo(t *testing.T) {
+	t.Run("pure Weibo without SMTP", func(t *testing.T) {
+		serveEnvironment(t)
+		t.Setenv("ACCOUNTKIT_WEIBO_APP_IDS", "1234567890,1234567891")
+		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "WEIBO")
+		t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
+		for _, name := range []string{"HOST", "PORT", "FROM", "USERNAME", "PASSWORD"} {
+			t.Setenv("ACCOUNTSVC_SMTP_"+name, "")
+		}
+		c, err := LoadConfig("serve")
+		if err != nil || len(c.Library.WeiboAppIDs) != 2 || c.SMTP.Host != "" {
+			t.Fatalf("pure Weibo service: %v", err)
+		}
+	})
+	t.Run("enabled without apps", func(t *testing.T) {
+		serveEnvironment(t)
+		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "WEIBO")
+		t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
+		if _, err := LoadConfig("serve"); err == nil || !strings.Contains(err.Error(), "ACCOUNTKIT_WEIBO_APP_IDS") {
+			t.Fatalf("missing apps: %v", err)
+		}
+	})
+	for name, env := range map[string][2]string{
+		"ACCOUNTKIT_WEIBO_APP_IDS":      {"ACCOUNTKIT_WEIBO_APP_IDS", "1234567890,sensitive-app"},
+		"ACCOUNTKIT_WEIBO_API_BASE_URL": {"ACCOUNTKIT_WEIBO_API_BASE_URL", "http://sensitive.example.test"},
+	} {
+		for _, mode := range []string{"serve", "migrate"} {
+			t.Run(mode+"_"+name, func(t *testing.T) {
+				serveEnvironment(t)
+				t.Setenv("ACCOUNTKIT_WEIBO_APP_IDS", "1234567890")
+				t.Setenv(env[0], env[1])
+				_, err := LoadConfig(mode)
+				if err == nil || !strings.Contains(err.Error(), name) || strings.Contains(err.Error(), "sensitive") {
+					t.Fatalf("%s: %v", name, err)
+				}
+			})
+		}
+	}
+	t.Run("migrate without Weibo", func(t *testing.T) {
+		configEnvironment(t)
+		if _, err := LoadConfig("migrate"); err != nil {
+			t.Fatalf("migrate must not require Weibo: %v", err)
+		}
+	})
+}
+
+func TestConfigWeChatMiniProgram(t *testing.T) {
+	serveEnvironment(t)
+	t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "WECHAT")
+	t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
+	t.Setenv("ACCOUNTKIT_WECHAT_MINI_PROGRAM_APPS", "mini:synthetic-mini-secret")
+	t.Setenv("ACCOUNTSVC_SMTP_PORT", "invalid-unused")
+	if _, err := LoadConfig("serve"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ACCOUNTSVC_ADMIN_ENABLED", "true")
+	t.Setenv("ACCOUNTSVC_ADMIN_ISSUER", "https://admin.example.org")
+	t.Setenv("ACCOUNTSVC_ADMIN_AUDIENCE", "mini")
+	if _, err := LoadConfig("serve"); err == nil || !strings.Contains(err.Error(), "ACCOUNTSVC_ADMIN_AUDIENCE") {
+		t.Fatalf("audience must be isolated: %v", err)
+	}
+	t.Setenv("ACCOUNTSVC_ADMIN_ENABLED", "false")
+	t.Setenv("ACCOUNTSVC_ADMIN_ISSUER", "")
+	t.Setenv("ACCOUNTSVC_ADMIN_AUDIENCE", "")
+	for _, tc := range []struct{ key, value string }{{"WECHAT_SUBJECT_MODE", "synthetic-mini-secret"}, {"WECHAT_MINI_PROGRAM_APPS", "invalid-synthetic-mini-secret"}} {
+		t.Run(tc.key, func(t *testing.T) {
+			t.Setenv("ACCOUNTKIT_"+tc.key, tc.value)
+			_, err := LoadConfig("serve")
+			if err == nil || !strings.Contains(err.Error(), "ACCOUNTKIT_"+tc.key) || strings.Contains(err.Error(), "synthetic-mini-secret") {
+				t.Fatalf("unsafe config error: %v", err)
+			}
+		})
+	}
+}
+
+func TestConfigProviderProfileBackfill(t *testing.T) {
+	serveEnvironment(t)
+	t.Setenv("ACCOUNTKIT_PROVIDER_PROFILE_BACKFILL", "false")
+	c, err := LoadConfig("serve")
+	if err != nil || c.Library.ProviderProfileBackfill == nil || *c.Library.ProviderProfileBackfill {
+		t.Fatalf("backfill switch not loaded: %v", err)
+	}
+	for _, mode := range []string{"serve", "migrate"} {
+		t.Run(mode, func(t *testing.T) {
+			serveEnvironment(t)
+			t.Setenv("ACCOUNTKIT_PROVIDER_PROFILE_BACKFILL", "sensitive-bool")
+			_, err := LoadConfig(mode)
+			if err == nil || !strings.Contains(err.Error(), "ACCOUNTKIT_PROVIDER_PROFILE_BACKFILL") || strings.Contains(err.Error(), "sensitive") {
+				t.Fatalf("invalid switch: %v", err)
+			}
+		})
 	}
 }

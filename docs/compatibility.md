@@ -2,7 +2,7 @@
 
 ## 统一凭证信封与身份类型字符串
 
-本节随 v0.6.0（准备中）发布，对 v0.5.0 不兼容，不提供旧数据迁移。
+本节随 v0.6.0 发布，对 v0.5.0 不兼容，不提供旧数据迁移。
 
 - **HTTP 请求**：`signInWithCode`、`signInWithIdp`、`completeSignIn`、`reauthenticate`、绑定和换绑的请求体统一为 `{"kind","credential"}`。旧写法与新写法对照：
 

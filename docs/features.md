@@ -1,6 +1,6 @@
 # 功能清单与候选功能
 
-更新日期：2026-10-24。Go 集成与 HTTP 文档面向准备中的 v0.6.0（尚未发布，最新已发布版本为 v0.5.0）；标准化指标实现与验证状态见[库指标验收](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)，accountsvc 采集端点见[服务指标验收](../openspec/changes/archive/2026-10-19-add-accountsvc-prometheus/verification.md)。版本交付状态以[v0.6.0 发布说明](releases/v0.6.0.md)为准。
+更新日期：2026-10-24。Go 集成与 HTTP 文档面向已发布的 v0.6.0；标准化指标实现与验证状态见[库指标验收](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)，accountsvc 采集端点见[服务指标验收](../openspec/changes/archive/2026-10-19-add-accountsvc-prometheus/verification.md)。版本交付状态以[v0.6.0 发布说明](releases/v0.6.0.md)为准。
 
 本文统一记录 v0.6.0 候选已支持能力、已实现但待真实环境验证的项目，以及尚未立项的候选功能。版本发布不表示产品环境已验收；历史版本不包含本表全部能力。目前尚无实际产品接入，正式部署暂不安排。
 

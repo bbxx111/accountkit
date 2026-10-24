@@ -7,7 +7,7 @@
 ## Requirements
 
 ### Requirement: 内置头像资料
-账号 SHALL 保存可选 avatar_url；未设置以数据库 NULL 表示，Go 和 HTTP 读取返回空字符串。本人资料、管理列表及详情 SHALL 返回该字段。头像 SHALL 独立于可选 profile_attributes Schema，扩展顶层不得重复声明 avatar_url。头像文件上传、存储、默认头像和第三方头像的持续同步由宿主负责。其他规格规定的一次性填充以及登录补填提供方（ALIPAY、QQ）后续成功登录的空字段补填，可以把已通过地址校验的 URL 写入仍为空的 avatar_url；库 SHALL 不访问该地址。
+账号 SHALL 保存可选 avatar_url；未设置以数据库 NULL 表示，Go 和 HTTP 读取返回空字符串。本人资料、管理列表及详情 SHALL 返回该字段。头像 SHALL 独立于可选 profile_attributes Schema，扩展顶层不得重复声明 avatar_url。头像文件上传、存储、默认头像和第三方头像的持续同步由宿主负责。其他规格规定的一次性填充以及登录补填提供方（ALIPAY、QQ、WEIBO）后续成功登录的空字段补填，可以把已通过地址校验的 URL 写入仍为空的 avatar_url；库 SHALL 不访问该地址。
 
 #### Scenario: 新账号和已设置头像
 - **WHEN** 读取新账号或已设置头像的账号
@@ -24,6 +24,10 @@
 #### Scenario: QQ 补填头像
 - **WHEN** QQ 后续登录取得可信且经改写、净化后合法的头像 URL，写入时账号头像仍为空
 - **THEN** 可以保存该 HTTPS URL，不下载图片，不对非空头像做持续同步
+
+#### Scenario: 微博补填头像
+- **WHEN** 微博后续登录取得可信且净化后合法的 HTTPS 头像 URL，写入时账号头像仍为空
+- **THEN** 可以保存该 URL，不下载图片，不对非空头像做持续同步
 
 ### Requirement: 有界 HTTPS 地址
 
@@ -73,10 +77,10 @@ PATCH /users/me SHALL 支持 display_name 和 avatar_url，省略或 null 不修
 - **THEN** 返回 400 INVALID_ARGUMENT，原显示名和 update_time 保持
 
 ### Requirement: 提供方登录按字段补填空资料
-登录补填提供方集合 SHALL 为 ALIPAY 与 QQ。集合内提供方的首次及后续成功登录 SHALL 使用本次可信并净化后的 name/picture 声明分别填充仍为空的 display_name/avatar_url，不覆盖任一非空字段。空值 SHALL 按现有 NULL 或空字符串表示判断；用户主动清空也属于可补填空值，不新增自动补填开关或来源标记。资料缺失或无效时 SHALL 保持对应字段和既有元数据，不使用历史元数据替代本次失败的资料结果。集合外的提供方 SHALL 保持仅首次写入身份时填充。
+登录补填提供方集合 SHALL 为 ALIPAY、QQ 与 WEIBO。集合内提供方的首次及后续成功登录 SHALL 使用本次可信并净化后的 name/picture 声明分别填充仍为空的 display_name/avatar_url，不覆盖任一非空字段。空值 SHALL 按现有 NULL 或空字符串表示判断；用户主动清空也属于可补填空值，不新增自动补填开关或来源标记。资料缺失或无效时 SHALL 保持对应字段和既有元数据，不使用历史元数据替代本次失败的资料结果。集合外的提供方 SHALL 保持仅首次写入身份时填充。
 
 #### Scenario: 首次失败后成功
-- **WHEN** 首次支付宝或 QQ 登录资料接口失败但身份登录成功，后续登录取得有效昵称及头像
+- **WHEN** 首次支付宝、QQ 或微博登录资料接口失败但身份登录成功，后续登录取得有效昵称及头像
 - **THEN** 在后续登录提交时补填仍为空的字段，既有用户 ID 和该提供方身份 ID 不变
 
 #### Scenario: 已有昵称只有头像为空
@@ -84,7 +88,7 @@ PATCH /users/me SHALL 支持 display_name 和 avatar_url，省略或 null 不修
 - **THEN** 仅补填头像，不将提供方昵称覆盖到账号显示名
 
 #### Scenario: 主动清空后的登录
-- **WHEN** 用户主动清空头像，之后一次支付宝或 QQ 登录取得合法头像
+- **WHEN** 用户主动清空头像，之后一次支付宝、QQ 或微博登录取得合法头像
 - **THEN** 按空字段规则补填，文档明确主动清空不表示永久关闭提供方补填
 
 #### Scenario: 资料失败不使用旧缓存
@@ -107,7 +111,7 @@ PATCH /users/me SHALL 支持 display_name 和 avatar_url，省略或 null 不修
 - **THEN** 按既有账号状态规则拒绝对应操作，未提交的资料补填回滚，不在匿名化后补回资料
 
 #### Scenario: pending 关联到已有账号
-- **WHEN** 首次支付宝或 QQ 登录进入 pending，完成时关联到已有 ACTIVE 账号
+- **WHEN** 首次支付宝、QQ 或微博登录进入 pending，完成时关联到已有 ACTIVE 账号
 - **THEN** 在完成事务内仅填充目标账号的空字段，保留并发或此前设置的非空资料
 
 #### Scenario: pending 并发取得同一身份

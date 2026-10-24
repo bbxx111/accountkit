@@ -6,7 +6,7 @@
 
 **Architecture:** 与 QQ（[计划](2026-10-24-add-qq-app-sign-in.md)）同构：`idp.Weibo` 实现 `Provider`，网络调用在领域事务之前；补填由 `refillsProfileOnSignIn` 控制；配置走根 `Config` / `ConfigFromEnv(prefix)`，accountsvc 只做错误名映射与显式启用校验。分叉点见 design.md：无标识模式与元数据、`expire_in`、非 200 带 `error_code` 的错误体、字符串/整数双形态字段、头像仅 HTTPS。
 
-**Spec:** [`openspec/changes/add-weibo-app-sign-in/`](../../../openspec/changes/add-weibo-app-sign-in/) 的 proposal、design、六份 spec 与 tasks。本计划不复述需求。
+**Spec:** [`openspec/changes/archive/2026-10-24-add-weibo-app-sign-in/`](../../../openspec/changes/archive/2026-10-24-add-weibo-app-sign-in/) 的 proposal、design、五份 spec 与 tasks。本计划不复述需求。
 
 ## Global Constraints
 

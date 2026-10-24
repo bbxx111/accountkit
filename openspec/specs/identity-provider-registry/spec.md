@@ -6,7 +6,7 @@
 ## Requirements
 
 ### Requirement: 身份类型以字符串表示
-身份类型 SHALL 以 UPPER_SNAKE_CASE 字符串在 Go、存储、HTTP 与审计中表示，格式为 `^[A-Z][A-Z0-9_]{1,31}$`，即 2 至 32 个 ASCII 字符。内置类型为 PHONE、EMAIL、WECHAT、APPLE、GOOGLE、FACEBOOK、ALIPAY、QQ。空字符串 SHALL 表示未指定，不得存储或输出。存储层 SHALL 按区分大小写的二进制比较存储类型，拒绝不符合格式的值，但 SHALL 不枚举合法值。
+身份类型 SHALL 以 UPPER_SNAKE_CASE 字符串在 Go、存储、HTTP 与审计中表示，格式为 `^[A-Z][A-Z0-9_]{1,31}$`，即 2 至 32 个 ASCII 字符。内置类型为 PHONE、EMAIL、WECHAT、APPLE、GOOGLE、FACEBOOK、ALIPAY、QQ、WEIBO。空字符串 SHALL 表示未指定，不得存储或输出。存储层 SHALL 按区分大小写的二进制比较存储类型，拒绝不符合格式的值，但 SHALL 不枚举合法值。
 
 #### Scenario: 存储格式
 - **WHEN** 新空库创建一个微信身份
@@ -28,6 +28,10 @@
 - **WHEN** 配置一个类型名为 QQ 的 OIDC 提供方
 - **THEN** 启动失败并指出该配置项，不把 QQ 互联当作标准 OIDC 验证器
 
+#### Scenario: 配置 OIDC 不能占用 WEIBO
+- **WHEN** 配置一个类型名为 WEIBO 的 OIDC 提供方
+- **THEN** 启动失败并指出该配置项，不把微博当作标准 OIDC 验证器
+
 ### Requirement: 提供方注册
 系统 SHALL 在装配时一次性登记全部第三方提供方，之后不可变。登记的类型 SHALL 格式合法、互不重复，且不得为 PHONE 或 EMAIL；配置驱动的提供方 SHALL 不得使用任何内置类型名。不满足时 SHALL 在启动前失败并指出配置项，不输出秘密。
 
@@ -40,7 +44,7 @@
 - **THEN** 启动失败并指出该配置项
 
 ### Requirement: 统一凭证格式
-所有接收身份凭证的 C 端请求 SHALL 使用顶层 `kind` 与 `credential` 两个字段：`kind` 为类型名，`credential` 为 JSON 对象。系统 SHALL 不再接受 `phone`、`email`、`wechat`、`apple`、`google` 成员。PHONE、EMAIL 的 `credential` SHALL 为 `target`、`code_id`、`code`；WECHAT、ALIPAY 为 `app_id`、`code`；QQ 为 `app_id`、`access_token`；APPLE、GOOGLE 与 OIDC 类型为 `id_token`、`nonce`；FACEBOOK 为 `id_token`、`nonce` 或单独的 `access_token`，二者择一。第三方类型的 `credential` SHALL 原样交给对应提供方解析。
+所有接收身份凭证的 C 端请求 SHALL 使用顶层 `kind` 与 `credential` 两个字段：`kind` 为类型名，`credential` 为 JSON 对象。系统 SHALL 不再接受 `phone`、`email`、`wechat`、`apple`、`google` 成员。PHONE、EMAIL 的 `credential` SHALL 为 `target`、`code_id`、`code`；WECHAT、ALIPAY 为 `app_id`、`code`；QQ、WEIBO 为 `app_id`、`access_token`；APPLE、GOOGLE 与 OIDC 类型为 `id_token`、`nonce`；FACEBOOK 为 `id_token`、`nonce` 或单独的 `access_token`，二者择一。第三方类型的 `credential` SHALL 原样交给对应提供方解析。
 
 #### Scenario: 微信登录
 - **WHEN** 客户端向第三方登录提交 `{"kind":"WECHAT","credential":{"app_id":"wx1","code":"c"}}` 且凭证有效
@@ -73,6 +77,14 @@
 #### Scenario: QQ 不能用于锚点端点
 - **WHEN** 验证码登录、重新认证、换绑或登录补全的补充证明提交 kind=QQ
 - **THEN** 按既有端点类型限制返回 400 CREDENTIAL_KIND_NOT_ALLOWED，不访问 QQ
+
+#### Scenario: 微博登录与普通绑定
+- **WHEN** 客户端向第三方登录或普通绑定接口提交有效 WEIBO app_id/access_token
+- **THEN** 分派微博提供方并使用原端点响应结构；不新增微博专用登录接口
+
+#### Scenario: 微博不能用于锚点端点
+- **WHEN** 验证码登录、重新认证、换绑或登录补全的补充证明提交 kind=WEIBO
+- **THEN** 按既有端点类型限制返回 400 CREDENTIAL_KIND_NOT_ALLOWED，不访问微博
 
 ### Requirement: 各端点接受的类型
 验证码登录、重新认证、换绑与登录补全 SHALL 只接受 PHONE、EMAIL；第三方登录 SHALL 只接受第三方类型；绑定 SHALL 两类都接受。类型不在端点允许范围内 SHALL 返回 400 `CREDENTIAL_KIND_NOT_ALLOWED`，且不消费验证码、不访问提供方。
@@ -119,7 +131,7 @@
 - **THEN** 身份列表返回该身份且类型为 ACME_SSO；使用该类型登录被拒绝
 
 ### Requirement: 提供方资料声明不按类型区分
-任何提供方返回的 name 与 picture SHALL 采用同一净化及元数据规则：记入该身份的提供方元数据、后续非空值覆盖、身份第一次写入账号时填充仍为空的显示名与头像。规则内容与 Google 身份声明和首次填充要求一致。未返回这两项的提供方 SHALL 不写入资料声明。登录补填提供方集合（ALIPAY、QQ）SHALL 额外允许后续成功登录补填账号仍为空的字段，遵循 user-basic-profile；其他提供方 SHALL 保持仅首次写入身份时填充的契约。
+任何提供方返回的 name 与 picture SHALL 采用同一净化及元数据规则：记入该身份的提供方元数据、后续非空值覆盖、身份第一次写入账号时填充仍为空的显示名与头像。规则内容与 Google 身份声明和首次填充要求一致。未返回这两项的提供方 SHALL 不写入资料声明。登录补填提供方集合（ALIPAY、QQ、WEIBO）SHALL 额外允许后续成功登录补填账号仍为空的字段，遵循 user-basic-profile；其他提供方 SHALL 保持仅首次写入身份时填充的契约。
 
 #### Scenario: 微信不写资料
 - **WHEN** 首次微信登录创建账号
@@ -135,6 +147,10 @@
 
 #### Scenario: QQ 后续补填
 - **WHEN** QQ 首次登录资料查询失败，后续成功登录取得合法昵称且账号显示名仍为空
+- **THEN** 可以补填显示名，已有头像不覆盖
+
+#### Scenario: 微博后续补填
+- **WHEN** 微博首次登录资料查询被限流，后续成功登录取得合法昵称且账号显示名仍为空
 - **THEN** 可以补填显示名，已有头像不覆盖
 
 #### Scenario: 其他提供方保持兼容

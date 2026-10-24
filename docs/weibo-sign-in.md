@@ -65,7 +65,7 @@ ACCOUNTKIT_REQUIRED_IDENTITY_KINDS=[]
 
 每次验证先以最多 10 秒 POST `oauth2/get_token_info`，再以独立最多 3 秒 GET `2/users/show.json`，均受调用方更早 deadline 限制；每份响应最多 64 KiB，不跟随重定向，不重试。官方文档对 `uid`、`appkey`、`expire_in` 的类型说明与示例不一致，库同时接受 JSON 字符串与整数并按十进制文本比较，不经浮点转换。`expire_in` 为正时作为凭证剩余期限，会限制 pending 登录补全的最长有效期；为 0 或超出可表示范围时按未知期限处理。资料失败、限流、返回用户与 uid 不符或解析失败不阻断登录，仅记 `weibo_profile_unavailable` 降级。外层取消/超时终止整体操作，不会降级继续建会话。
 
-昵称取 `screen_name`；头像依次取 `avatar_hd`、`avatar_large`、`profile_image_url` 中第一个非空值，只接受 HTTPS，不做协议改写。选中的字段为 HTTP 时丢弃头像，不回退到其他尺寸，也不计降级。首次及后续成功登录按字段补填仍为空的显示名和头像，不覆盖非空值；两个字段均非空时不更新资料时间。重复绑定已有身份只更新元数据，不触发补填。库不下载头像，不保存微博 token 或 refresh_token，不负责头像持续同步。观测口径见 [指标指南](metrics.md)。
+昵称取 `screen_name`；头像依次取 `avatar_hd`、`avatar_large`、`profile_image_url` 中第一个非空值，只接受 HTTPS，不做协议改写。选中的字段为 HTTP 时丢弃头像，不回退到其他尺寸，也不计降级。资料填充遵循统一规则：新建账号始终填充；已有账号的后续登录在 `PROVIDER_PROFILE_BACKFILL` 开启（默认）时补填空字段。不覆盖非空值；两个字段均非空时不更新资料时间。库不下载头像，不保存微博 token 或 refresh_token，不负责头像持续同步。观测口径见 [指标指南](metrics.md)。
 
 本变更无 SQL/schema 或迁移变化。禁用微博只停止新验证；历史身份仍可按现有规则列出、解绑和匿名化。
 

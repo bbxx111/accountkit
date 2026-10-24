@@ -59,7 +59,7 @@ UNIONID → `unionid:<unionid>`；OPENID → `openid:<app_id>:<openid>`，不在
 
 每次验证先以最多 10 秒调用 `oauth2.0/me`，再以独立最多 3 秒调用 `get_user_info`，均受调用方更早 deadline 限制；每份响应最多 64 KiB，不跟随重定向，不重试。资料失败、`ret` 非 0 或 `is_lost=1` 不阻断登录，仅记 `qq_profile_unavailable` 降级。外层取消/超时终止整体操作，不会降级继续建会话。
 
-头像优先 100px `figureurl_qq_2`，缺失时用 40px `figureurl_qq_1`；`thirdqq.qlogo.cn` 的 http 地址升级为 https，其他 http 地址丢弃，名单以内部常量维护，不开放配置。首次及后续成功登录按字段补填仍为空的显示名和头像，不覆盖非空值；两个字段均非空时不更新资料时间。重复绑定已有身份只更新元数据，不触发补填。库不下载头像，不保存 QQ token，不负责头像持续同步。观测口径见 [指标指南](metrics.md)。
+头像优先 100px `figureurl_qq_2`，缺失时用 40px `figureurl_qq_1`；`thirdqq.qlogo.cn` 的 http 地址升级为 https，其他 http 地址丢弃，名单以内部常量维护，不开放配置。资料填充遵循统一规则：新建账号始终填充；已有账号的后续登录在 `PROVIDER_PROFILE_BACKFILL` 开启（默认）时补填空字段。不覆盖非空值；两个字段均非空时不更新资料时间。库不下载头像，不保存 QQ token，不负责头像持续同步。观测口径见 [指标指南](metrics.md)。
 
 本变更无 SQL/schema 或迁移变化。禁用 QQ 只停止新验证；历史身份仍可按现有规则列出、解绑和匿名化。
 

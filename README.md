@@ -496,7 +496,7 @@ HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额
 
 ## 仓库与发布状态
 
-当前最新版本为 [v0.6.0](https://github.com/bbxx111/accountkit/releases/tag/v0.6.0)，包含身份提供方注册表与统一凭证、Google/OIDC/Facebook/支付宝/QQ/微博登录、微信小程序和可配置的第三方资料补填。使用 `go get github.com/bbxx111/accountkit@v0.6.0` 接入；范围与升级边界见[发布说明](docs/releases/v0.6.0.md)，候选 `ec6802c` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/40093942831)已通过，实际证据见[发布验收](openspec/changes/prepare-v0-6-0-release/verification.md)。
+当前最新版本为 [v0.6.0](https://github.com/bbxx111/accountkit/releases/tag/v0.6.0)，包含身份提供方注册表与统一凭证、Google/OIDC/Facebook/支付宝/QQ/微博登录、微信小程序和可配置的第三方资料补填。使用 `go get github.com/bbxx111/accountkit@v0.6.0` 接入；范围与升级边界见[发布说明](docs/releases/v0.6.0.md)，候选 `ec6802c` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/40093942831)已通过，实际证据见[发布验收](openspec/changes/archive/2026-10-24-prepare-v0-6-0-release/verification.md)。
 
 远程仓库：https://github.com/bbxx111/accountkit.git
 

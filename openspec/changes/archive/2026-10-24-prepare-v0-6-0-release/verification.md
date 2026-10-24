@@ -5,7 +5,7 @@
 ## 准备范围
 
 - develop `0871422`（含 `configurable-provider-profile-backfill` 归档合并）之上，分支 `docs/prepare-v0-6-0-release` 只修改文档、两份 OpenAPI 的 `info.version`/`info.description` 与本变更工件；准备提交 `0d26f3a` 相对 develop 无 Go、SQL、生成代码或脚本改动。
-- 盘点 v0.5.0..develop：八项已归档变更，见 [v0.6.0 发布说明](../../../docs/releases/v0.6.0.md)。go.mod/go.sum 无变化；当前 `migrations/0001_init.up.sql` SHA256 为 `4c6b565e336aba88db5f6bf219407b026a7c1b438057b61470377005ed2509c5`，v0.5.0 为 `491068d7577ca33a94dc9d3f74b02acdbc95662aa954c693b63a3fd7b196b12c`。
+- 盘点 v0.5.0..develop：八项已归档变更，见 [v0.6.0 发布说明](../../../../docs/releases/v0.6.0.md)。go.mod/go.sum 无变化；当前 `migrations/0001_init.up.sql` SHA256 为 `4c6b565e336aba88db5f6bf219407b026a7c1b438057b61470377005ed2509c5`，v0.5.0 为 `491068d7577ca33a94dc9d3f74b02acdbc95662aa954c693b63a3fd7b196b12c`。
 
 ## 静态检查（通过）
 

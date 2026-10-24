@@ -4,7 +4,7 @@
 
 ## 执行方式
 
-按 [实现计划](../../../docs/superpowers/plans/2026-10-24-add-weibo-app-sign-in.md) 顺序执行，未使用逐任务子代理：各任务共享 `config.go`、`enum`、观测与文档等写入点，且与 QQ 实现逐项同构，顺序实施更少冲突。每组先写失败测试再实现（TDD）；全部实现后由一个独立审查代理复核整条分支。
+按 [实现计划](../../../../docs/superpowers/plans/2026-10-24-add-weibo-app-sign-in.md) 顺序执行，未使用逐任务子代理：各任务共享 `config.go`、`enum`、观测与文档等写入点，且与 QQ 实现逐项同构，顺序实施更少冲突。每组先写失败测试再实现（TDD）；全部实现后由一个独立审查代理复核整条分支。
 
 测试依赖为本机 Docker 中的 PostgreSQL 17.5 与 Redis 7：专为本任务创建的一次性数据库 `accountkit_weibo_test_20261024`，Redis 使用空的 DB 14，HTTP 契约测试使用随机键前缀并只删除自身键。
 
@@ -37,4 +37,4 @@
 ## 未验证项
 
 - `bash scripts/verify.sh` **未执行**：需要三个一次性数据库（含恢复源/目标）、CGO 工具链（race）与 PostgreSQL 17 客户端；因此 race、pg_dump/pg_restore 恢复演练、`check-migrations.sh` 与完整必需测试门禁未在本任务运行，不能宣称完整发布验证通过。
-- 宿主联调清单（见 [微博接入指南](../../../docs/weibo-sign-in.md#宿主联调清单未执行)）全部**未执行**：真机 SDK 登录、`get_token_info` 真实字段类型与 `appkey`、令牌失效时的真实状态码与错误码、`users/show` 权限与限流、头像协议。模拟接口测试不代表真实平台行为。
+- 宿主联调清单（见 [微博接入指南](../../../../docs/weibo-sign-in.md#宿主联调清单未执行)）全部**未执行**：真机 SDK 登录、`get_token_info` 真实字段类型与 `appkey`、令牌失效时的真实状态码与错误码、`users/show` 权限与限流、头像协议。模拟接口测试不代表真实平台行为。

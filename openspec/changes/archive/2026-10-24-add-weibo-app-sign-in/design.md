@@ -2,7 +2,7 @@
 
 ## Context
 
-动机与范围见 [proposal.md](proposal.md)，行为契约见 `specs/`。本变更的结构几乎是 QQ App 登录（[归档变更](../archive/2026-10-24-add-qq-app-sign-in/design.md)）的同构复制，可直接复用的现状：
+动机与范围见 [proposal.md](proposal.md)，行为契约见 `specs/`。本变更的结构几乎是 QQ App 登录（[归档变更](../2026-10-24-add-qq-app-sign-in/design.md)）的同构复制，可直接复用的现状：
 
 - `user/idp/qq.go`、`qq_api.go`、`qq_config.go`：令牌校验 → 独立预算资料查询 → 资料失败记降级但登录继续；宿主 HTTPClient 浅拷贝并禁用重定向；传输错误只返回固定阶段字符串；响应 64 KiB 上限。
 - `user/idp/alipay_json.go` 的 `alipayObject` / `alipayString`：包内通用严格 JSON 解析（拒绝重复键、尾随内容、非对象），QQ 已直接调用。

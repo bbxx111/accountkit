@@ -23,8 +23,8 @@
 用户确认版本号 v0.6.0 并授权开始发布准备；准备授权不扩展为合并 main、推送、tag 或 Release。说明见 [v0.6.0](releases/v0.6.0.md)，证据集中在[发布准备验收](../openspec/changes/prepare-v0-6-0-release/verification.md)；历史版本勾选不适用于本版本。
 
 - [x] 八项功能变更已完成、归档并合入 develop；盘点公开 Go API、HTTP 凭证信封、配置、指标/审计、依赖与当前 0001 差异。
-- [ ] 发布说明及迁移/回退边界（统一凭证、`IdentityKind`、提供方装配、`identity.kind` 列类型、微信 subject、资料补填、显示名长度）完成独立审查。
-- [ ] 准备快照的 OpenSpec strict、生成一致性、迁移历史、OpenAPI、完整库/服务 race、必需门禁及恢复 seed/verify/source-unchanged 通过，结果写入准备验收。
+- [x] 发布说明及迁移/回退边界（统一凭证、`IdentityKind`、提供方装配、`identity.kind` 列类型、微信 subject、资料补填、显示名长度）完成独立审查。
+- [x] 准备快照的 OpenSpec strict、生成一致性、迁移历史、OpenAPI、完整库/服务 race、必需门禁及恢复 seed/verify/source-unchanged 通过，结果写入准备验收。
 - [ ] 以 `--no-ff` 将准备内容合入 develop，再将 develop 合入 main 并推送；记录干净的最终 main 候选 SHA。
 - [ ] 最终 main 候选在线 CI 的 check-generated.sh、verify.sh、verify-accountsvc.sh 全部成功，head_sha 精确匹配。
 - [ ] 确认远端 v0.6.0 不存在，创建并推送 annotated tag，发布 GitHub Release；历史 tag 不移动。

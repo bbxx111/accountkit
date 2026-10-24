@@ -62,7 +62,7 @@
 - **THEN** 跳过对应字段并继续登录
 
 ### Requirement: 首次填充空资料
-该 Google 身份第一次写入账号时，display_name 仍为空 SHALL 写入整理后 name 的前 128 个码位；avatar_url 仍为空且 picture 已通过头像地址校验 SHALL 写入该地址。已有值 SHALL 保持。之后的登录 SHALL 不修改这两列。整理结果为空或地址非法 SHALL 跳过对应列，且不因此拒绝登录。直接注册、补全创建、补全关联和绑定都 SHALL 遵守同一规则。放弃的补全 SHALL 不写入资料。
+Google 身份的账号资料填充 SHALL 遵循 user-basic-profile 的通用补填规则。display_name 为空时 SHALL 写入整理后 name 的前 128 个码位；avatar_url 为空且 picture 已通过头像地址校验时 SHALL 写入该地址。已有值 SHALL 保持。新建账号时始终填充；直接注册以外的已有账号路径（再次登录、绑定、补全关联）SHALL 仅在资料补填配置开启时补填。整理结果为空或地址非法 SHALL 跳过对应列，且不因此拒绝登录。放弃的补全 SHALL 不写入资料。
 
 #### Scenario: 新账号填充
 - **WHEN** 首次创建账号并写入该 Google 身份，两列为空，且 token 含可整理的 name 与合法 picture
@@ -73,8 +73,12 @@
 - **THEN** 两列保持原值，身份声明仍按元数据规则记录
 
 #### Scenario: 再次登录不覆盖资料
-- **WHEN** 同一 Google 身份再次登录且 token 中的 name 已变化
+- **WHEN** 同一 Google 身份再次登录且 token 中的 name 已变化，账号显示名非空
 - **THEN** 账号显示名保持首次填充或用户后来设置的值
+
+#### Scenario: 再次登录补填空字段
+- **WHEN** 配置开启，同一 Google 身份再次登录，账号头像为空且 token 含合法 picture
+- **THEN** 补填账号头像
 
 ### Requirement: 邮箱只作为提示
 email_verified 为真时，系统 SHALL 把 email 作为 hint_email 返回。缺失或未验证时 SHALL 省略。hint_email SHALL 不创建 EMAIL 身份，也不用于查找或合并已有账号。

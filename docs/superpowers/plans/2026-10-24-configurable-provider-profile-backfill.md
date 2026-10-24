@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、pgx/v5、PostgreSQL 17、Redis（miniredis / 真实 Redis）。
 
-**Spec:** [OpenSpec 变更 configurable-provider-profile-backfill](../../../openspec/changes/configurable-provider-profile-backfill/proposal.md)（另见同目录 design.md、specs/、tasks.md）。
+**Spec:** [OpenSpec 变更 configurable-provider-profile-backfill](../../../openspec/changes/archive/2026-10-24-configurable-provider-profile-backfill/proposal.md)（另见同目录 design.md、specs/、tasks.md）。
 
 ## Global Constraints
 

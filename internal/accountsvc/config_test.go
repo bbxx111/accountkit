@@ -551,6 +551,52 @@ func TestConfigQQ(t *testing.T) {
 	})
 }
 
+func TestConfigWeibo(t *testing.T) {
+	t.Run("pure Weibo without SMTP", func(t *testing.T) {
+		serveEnvironment(t)
+		t.Setenv("ACCOUNTKIT_WEIBO_APP_IDS", "1234567890,1234567891")
+		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "WEIBO")
+		t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
+		for _, name := range []string{"HOST", "PORT", "FROM", "USERNAME", "PASSWORD"} {
+			t.Setenv("ACCOUNTSVC_SMTP_"+name, "")
+		}
+		c, err := LoadConfig("serve")
+		if err != nil || len(c.Library.WeiboAppIDs) != 2 || c.SMTP.Host != "" {
+			t.Fatalf("pure Weibo service: %v", err)
+		}
+	})
+	t.Run("enabled without apps", func(t *testing.T) {
+		serveEnvironment(t)
+		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "WEIBO")
+		t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
+		if _, err := LoadConfig("serve"); err == nil || !strings.Contains(err.Error(), "ACCOUNTKIT_WEIBO_APP_IDS") {
+			t.Fatalf("missing apps: %v", err)
+		}
+	})
+	for name, env := range map[string][2]string{
+		"ACCOUNTKIT_WEIBO_APP_IDS":      {"ACCOUNTKIT_WEIBO_APP_IDS", "1234567890,sensitive-app"},
+		"ACCOUNTKIT_WEIBO_API_BASE_URL": {"ACCOUNTKIT_WEIBO_API_BASE_URL", "http://sensitive.example.test"},
+	} {
+		for _, mode := range []string{"serve", "migrate"} {
+			t.Run(mode+"_"+name, func(t *testing.T) {
+				serveEnvironment(t)
+				t.Setenv("ACCOUNTKIT_WEIBO_APP_IDS", "1234567890")
+				t.Setenv(env[0], env[1])
+				_, err := LoadConfig(mode)
+				if err == nil || !strings.Contains(err.Error(), name) || strings.Contains(err.Error(), "sensitive") {
+					t.Fatalf("%s: %v", name, err)
+				}
+			})
+		}
+	}
+	t.Run("migrate without Weibo", func(t *testing.T) {
+		configEnvironment(t)
+		if _, err := LoadConfig("migrate"); err != nil {
+			t.Fatalf("migrate must not require Weibo: %v", err)
+		}
+	})
+}
+
 func TestConfigWeChatMiniProgram(t *testing.T) {
 	serveEnvironment(t)
 	t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "WECHAT")

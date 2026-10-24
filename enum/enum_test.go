@@ -158,3 +158,9 @@ func TestIdentityQQIsBuiltinThirdParty(t *testing.T) {
 		t.Fatal("QQ must be a valid builtin third-party kind")
 	}
 }
+
+func TestIdentityWeiboIsBuiltinThirdParty(t *testing.T) {
+	if enum.IdentityWeibo != "WEIBO" || !enum.IdentityWeibo.IsBuiltin() || !enum.IdentityWeibo.Valid() || enum.IdentityWeibo.IsAnchor() || enum.IdentityWeibo.IsChannel() {
+		t.Fatal("WEIBO must be a valid builtin third-party kind")
+	}
+}

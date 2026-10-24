@@ -115,14 +115,14 @@ accountsvc 默认不装配 Observer 或指标路由。设置 `ACCOUNTSVC_METRICS
 | 分类 | 允许值与解释 |
 |---|---|
 | 认证 operation | `sign_in`、`complete_sign_in`、`refresh`、`reauthenticate`、`authenticate` |
-| method | `phone`、`email`、`wechat`、`apple`、`facebook`、`google`、`alipay`、`qq`、`oidc`（全部配置 OIDC 类型）、`provider`（宿主登记的其他第三方类型）、`unknown`；refresh/authenticate 固定 `none`；具体类型名不作为标签 |
+| method | `phone`、`email`、`wechat`、`apple`、`facebook`、`google`、`alipay`、`qq`、`weibo`、`oidc`（全部配置 OIDC 类型）、`provider`（宿主登记的其他第三方类型）、`unknown`；refresh/authenticate 固定 `none`；具体类型名不作为标签 |
 | 业务 result | `success`、`pending`、`rejected`、`dependency_error`、`internal_error`、`canceled`、`deadline_exceeded`；pending 仅登录/补全 |
 | grant | `user`、`bind`、`undelete`、`none`、`unknown`；bind/undelete 对应受限 scope，pending/失败为 none |
 | mode | 成功刷新为 `rotation` 或 `grace`；其他情况 `none` |
 | 验证码 operation/channel/purpose | operation=`send`/`verify`；channel=`phone`/`email`/`unknown`；purpose=`sign_in`/`bind`/`reauth`/`sign_in_complete`/`unknown` |
-| 依赖 component/operation | `code_store`：issue/verify/discard；`grace_cache`：get/put；`revocation`：check/revoke；`idp`：verify_wechat/verify_apple/verify_facebook/verify_google/verify_alipay/verify_qq/verify_oidc/verify_provider；`sender`：sms/email |
+| 依赖 component/operation | `code_store`：issue/verify/discard；`grace_cache`：get/put；`revocation`：check/revoke；`idp`：verify_wechat/verify_apple/verify_facebook/verify_google/verify_alipay/verify_qq/verify_weibo/verify_oidc/verify_provider；`sender`：sms/email |
 | 依赖 result | `success`、`miss`（grace get）、`rejected`（验证码 issue/verify 或 IdP）、`error`、`canceled`、`deadline_exceeded` |
-| scenario | `revocation_check_fail_open`、`refresh_grace_write_failed`、`apple_cached_key_fallback`、`google_cached_key_fallback`、`facebook_cached_key_fallback`、`oidc_cached_key_fallback`、`alipay_profile_unavailable`、`qq_profile_unavailable` |
+| scenario | `revocation_check_fail_open`、`refresh_grace_write_failed`、`apple_cached_key_fallback`、`google_cached_key_fallback`、`facebook_cached_key_fallback`、`oidc_cached_key_fallback`、`alipay_profile_unavailable`、`qq_profile_unavailable`、`weibo_profile_unavailable` |
 | 审计 stage/result | mapping/failed；admission/invalid 或 dropped；write/written、duplicate、failed、invalid、conflict |
 | 审计 field | `request_id`、`device_id`、`subject_hint`、`actor_name`、`client_ip`、`unknown`；只表示被省略字段类别 |
 | 维护轮次 result | `acquired`、`skipped`、`error`、`canceled`、`deadline_exceeded`；acquired 仅表示已取得锁 |
@@ -140,6 +140,8 @@ reason 为固定业务原因，不从错误文本生成：`none`、`invalid_argu
 支付宝一次 Verify 包含换码和可选资料请求，仍只计一次 `verify_alipay` 逻辑调用及整体耗时。资料失败但身份可信时依赖可为 success，另计 `alipay_profile_unavailable`；最终认证 success/pending/rejected 由领域结果决定。正常缺昵称/头像或净化后省略不记资料故障；外层取消终止整体调用并计取消，不作为允许登录的降级。AppID、用户标识、code、token、密钥、URL 和上游原文均不进入标签。
 
 QQ 一次 Verify 包含 `/oauth2.0/me` 校验和可选资料请求，只计一次 `verify_qq` 逻辑调用及整体耗时。资料失败、`ret` 非 0 或 `is_lost=1` 但身份可信时依赖可为 success，另计 `qq_profile_unavailable`；正常缺昵称/头像或头像因域名名单被丢弃不计降级；外层取消按取消计。AppID、openid、unionid、access_token、URL 和上游原文均不进入标签。
+
+微博一次 Verify 包含 `oauth2/get_token_info` 校验和可选资料请求，只计一次 `verify_weibo` 逻辑调用及整体耗时。资料超时、限流、上游错误码、返回用户与 uid 不符或解析失败但身份可信时依赖可为 success，另计 `weibo_profile_unavailable`；正常缺昵称/头像或 HTTP 头像被丢弃不计降级；外层取消按取消计。AppKey、uid、access_token、URL 和上游原文均不进入标签。
 
 ## 周期、查询和盲区
 

@@ -89,6 +89,42 @@ func TestQQMetricProjection(t *testing.T) {
 	}
 }
 
+func TestWeiboMetricProjection(t *testing.T) {
+	for _, tc := range []struct {
+		in           o.Observation
+		label, value string
+		count        int
+	}{
+		{o.AuthObservation{Operation: o.AuthSignIn, Method: o.MethodWeibo, Result: o.ResultSuccess, Grant: o.GrantUser}, "method", "weibo", 2},
+		{o.DependencyObservation{Component: o.ComponentIDP, Operation: o.DependencyVerifyWeibo, Result: o.ResultSuccess}, "operation", "verify_weibo", 2},
+		{o.DegradationObservation{Scenario: o.DegradationWeiboProfileUnavailable, Count: 1}, "scenario", "weibo_profile_unavailable", 1},
+	} {
+		ms := collect(tc.in)
+		if len(ms) != tc.count {
+			t.Fatalf("Weibo projection %T count=%d", tc.in, len(ms))
+		}
+		for _, m := range ms {
+			found := false
+			for _, l := range m.Labels {
+				if l.Name == tc.label {
+					found = true
+					if l.Value != tc.value {
+						t.Fatalf("Weibo label=%+v", l)
+					}
+				}
+			}
+			if !found {
+				t.Fatal("missing label")
+			}
+		}
+	}
+	for _, op := range []o.AuthOperation{o.AuthCompleteSignIn, o.AuthReauthenticate} {
+		if ms := collect(o.AuthObservation{Operation: op, Method: o.MethodWeibo, Result: o.ResultSuccess, Grant: o.GrantUser}); len(ms) != 0 {
+			t.Fatal("Weibo accepted for anchor-only operation")
+		}
+	}
+}
+
 func TestMetricProjection(t *testing.T) {
 	cases := []struct {
 		in      o.Observation

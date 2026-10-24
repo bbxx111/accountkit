@@ -35,7 +35,8 @@
 
 | 已删除 | 原因 |
 |---|---|
-| 支付宝、QQ、微博中断言“集合外提供方登录不补填”的对照用例（合计 6 个，见任务 2 报告） | 规则改为按 `PROVIDER_PROFILE_BACKFILL` 判定 |
+| `TestAlipayExceptionDoesNotBackfillOtherProviders`、`TestQQExceptionDoesNotBackfillOtherProviders`、`TestWeiboRefillDoesNotBackfillOtherProviders` | 断言“集合外提供方登录不补填”，规则改为按 `PROVIDER_PROFILE_BACKFILL` 判定 |
+| `TestAlipayRepeatBindingDoesNotBackfill`、`TestQQRepeatBindingDoesNotBackfill`、`TestWeiboRepeatBindingDoesNotBackfill` | 断言重复绑定不补填，改为按配置判定 |
 
 替代测试：`user/service_profile_backfill_test.go` 的 5 个测试（默认与开启时各提供方补填且不覆盖非空值、`KeepsNonEmpty`、关闭时已有身份登录不写资料、绑定 `OnBinding`、补全关联 `OnCompletionLink`；关闭时仍更新 `provider_meta.profile`，新建账号始终填充），以及根包的 `TestWeiboHTTPProfileBackfillDisabled`（证明配置从 `Config` 经装配传到服务）。
 

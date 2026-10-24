@@ -34,7 +34,15 @@
 
 - design §2 原称 `ExpireTime` "只作为会话来源的原始期限信息"，实际该值限制 pending 登录补全的截止时间上限；已更正 design 描述，行为与 Apple/Facebook/OIDC 一致，规格无需变化。
 
+## 完整验证（归档后补充）
+
+在 develop `0274ea3`（微博合并与归档之后）上使用 `tests/Dockerfile` 构建的 Linux 验证镜像（golang:1.26.5、PostgreSQL 17.11 客户端）运行 `bash scripts/verify.sh`。依赖为本机 Docker 的 PostgreSQL 17.5 与 Redis 7：专为本次创建的一次性数据库 `accountkit_verify_20261024`（集成测试）、`accountkit_recsrc_20261024` / `accountkit_recdst_20261024`（恢复源/目标，均为空库），Redis 使用空的 DB 14；结束后三个库均已删除，DB 14 为空。
+
+- 第一次运行失败：`migrations` 的 `TestOldMigrationBaselineRejected/old_incremental` 以 1 秒期限重连时，经 `host.docker.internal` 转发拨号超时（`dial error: timeout`），其余顶层测试通过，恢复演练因 `set -e` 未执行。原始日志：`.test-output/verify-20261024-run1.log`。
+- 改为容器直接加入数据库所在 Docker 网络、按容器名连接后重跑：**退出码 0**。迁移历史校验、build、vet 通过；`go test -race` 44 个包通过，1078 个顶层测试通过，0 fail；必需测试门禁通过；pg_dump/pg_restore 恢复演练 seed、verify、source-unchanged 三阶段通过。日志：`.test-output/verify-20261024.log`。
+- 两个 skip：预期的 `TestRecoveryFixture`；`TestProfileAttributesUnreadableFile` 因容器以 root 运行可读取 0000 权限文件而自行 skip，该用例不在必需列表中。
+- 第一次失败与本变更无关，判断为宿主转发网络在 race 负载下的连接延迟；重跑未改动代码。
+
 ## 未验证项
 
-- `bash scripts/verify.sh` **未执行**：需要三个一次性数据库（含恢复源/目标）、CGO 工具链（race）与 PostgreSQL 17 客户端；因此 race、pg_dump/pg_restore 恢复演练、`check-migrations.sh` 与完整必需测试门禁未在本任务运行，不能宣称完整发布验证通过。
 - 宿主联调清单（见 [微博接入指南](../../../../docs/weibo-sign-in.md#宿主联调清单未执行)）全部**未执行**：真机 SDK 登录、`get_token_info` 真实字段类型与 `appkey`、令牌失效时的真实状态码与错误码、`users/show` 权限与限流、头像协议。模拟接口测试不代表真实平台行为。

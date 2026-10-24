@@ -95,6 +95,9 @@ type Config struct {
 	ReauthMaxAge    time.Duration // 默认 5m
 	// SensitiveOpVerification 为 nil 时视为 true。
 	SensitiveOpVerification *bool
+	// ProviderProfileBackfill 为 nil 时视为 true：已有账号在第三方登录、绑定或补全关联时
+	// 用本次资料声明补填空的显示名与头像。新建账号始终填充，不受此项影响。
+	ProviderProfileBackfill *bool
 
 	SubjectHMACKeys        map[uint16][]byte
 	SubjectHMACActiveKey   uint16
@@ -247,6 +250,9 @@ func (c *Config) applyDefaults() {
 	def(&c.ReauthMaxAge, 5*time.Minute)
 	if c.SensitiveOpVerification == nil {
 		c.SensitiveOpVerification = boolPtr(true)
+	}
+	if c.ProviderProfileBackfill == nil {
+		c.ProviderProfileBackfill = boolPtr(true)
 	}
 	def(&c.CodeTTL, 5*time.Minute)
 	defi(&c.CodeMaxAttempts, 5)
@@ -610,6 +616,14 @@ func ConfigFromEnv(prefix string) (Config, error) {
 			fail("SENSITIVE_OP_VERIFICATION", err)
 		} else {
 			c.SensitiveOpVerification = boolPtr(b)
+		}
+	}
+	if s := str("PROVIDER_PROFILE_BACKFILL"); s != "" {
+		b, err := strconv.ParseBool(s)
+		if err != nil {
+			fail("PROVIDER_PROFILE_BACKFILL", err)
+		} else {
+			c.ProviderProfileBackfill = boolPtr(b)
 		}
 	}
 	keylist("SUBJECT_HMAC_KEYS", &c.SubjectHMACKeys)

@@ -130,6 +130,7 @@ func TestValidateAppliesDefaults(t *testing.T) {
 	if got.Schema != "account" || got.KeyPrefix != "auth:" || got.AccessTokenTTL != 15*time.Minute ||
 		got.RefreshTokenTTL != 720*time.Hour || got.RefreshGrace != 30*time.Second || got.ReauthMaxAge != 5*time.Minute ||
 		got.SensitiveOpVerification == nil || !*got.SensitiveOpVerification ||
+		got.ProviderProfileBackfill == nil || !*got.ProviderProfileBackfill ||
 		got.CodeTTL != 5*time.Minute || got.CodeMaxAttempts != 5 || got.CodeCooldown != 60*time.Second ||
 		got.CodeDailyLimitPerTarget != 10 || got.CodeDailyLimitPerIP != 100 || got.MaxIdentitiesPerKind != 1 ||
 		got.CodeFailureLimitPerTarget != 10 || got.CodeFailureWindow != 15*time.Minute ||
@@ -152,6 +153,7 @@ func TestConfigFromEnvOverridesAndParses(t *testing.T) {
 	t.Setenv("T_AUTH_KEY_PREFIX", "stg:")
 	t.Setenv("T_ACCESS_TOKEN_TTL", "10m")
 	t.Setenv("T_SENSITIVE_OP_VERIFICATION", "false")
+	t.Setenv("T_PROVIDER_PROFILE_BACKFILL", "false")
 	t.Setenv("T_CODE_MAX_ATTEMPTS", "3")
 	t.Setenv("T_CODE_FAILURE_LIMIT_PER_TARGET", "12")
 	t.Setenv("T_CODE_FAILURE_WINDOW", "20m")
@@ -161,7 +163,7 @@ func TestConfigFromEnvOverridesAndParses(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got.Schema != "auth_staging" || got.KeyPrefix != "stg:" || got.AccessTokenTTL != 10*time.Minute ||
-		got.JWTActiveKey != 2 || len(got.JWTKeys) != 2 || *got.SensitiveOpVerification || got.CodeMaxAttempts != 3 || got.DefaultRegion != "US" || got.CodeFailureLimitPerTarget != 12 || got.CodeFailureWindow != 20*time.Minute {
+		got.JWTActiveKey != 2 || len(got.JWTKeys) != 2 || *got.SensitiveOpVerification || got.ProviderProfileBackfill == nil || *got.ProviderProfileBackfill || got.CodeMaxAttempts != 3 || got.DefaultRegion != "US" || got.CodeFailureLimitPerTarget != 12 || got.CodeFailureWindow != 20*time.Minute {
 		t.Fatalf("overrides not applied: %+v", got)
 	}
 }
@@ -254,6 +256,11 @@ func TestConfigFromEnvReportsBadValues(t *testing.T) {
 	t.Setenv("T_ACCESS_TOKEN_TTL", "fifteen")
 	if _, err := accountkit.ConfigFromEnv("T_"); err == nil || !strings.Contains(err.Error(), "T_ACCESS_TOKEN_TTL") {
 		t.Fatalf("bad duration must name the variable: %v", err)
+	}
+	t.Setenv("T_ACCESS_TOKEN_TTL", "")
+	t.Setenv("T_PROVIDER_PROFILE_BACKFILL", "maybe")
+	if _, err := accountkit.ConfigFromEnv("T_"); err == nil || !strings.Contains(err.Error(), "T_PROVIDER_PROFILE_BACKFILL") {
+		t.Fatalf("bad boolean must name the variable: %v", err)
 	}
 }
 

@@ -1,11 +1,11 @@
 # v0.6.0 发布准备验收
 
-日期：2026-10-24。用户确认版本号 v0.6.0，要求归档 `configurable-provider-profile-backfill` 并开始发布准备。当前结论：发布材料已完成并经独立审查，准备快照的静态检查与完整本地验证全部通过；首个 main 候选 CI 因 v0.5.0 初始定义未固定而失败，修复见下文；tag、Release 与远端消费尚未执行。
+日期：2026-10-24。用户确认版本号 v0.6.0，要求归档 `configurable-provider-profile-backfill` 并开始发布准备。当前结论：v0.6.0 已发布。首个 main 候选 CI 因 v0.5.0 初始定义未固定而失败，修复后最终候选 `ec6802c` 在线 CI 全部通过；annotated tag 与 GitHub Release 已核验，两个独立宿主从远端无 replace 消费通过。产品部署与本变更归档另行执行。
 
 ## 准备范围
 
 - develop `0871422`（含 `configurable-provider-profile-backfill` 归档合并）之上，分支 `docs/prepare-v0-6-0-release` 只修改文档、两份 OpenAPI 的 `info.version`/`info.description` 与本变更工件；准备提交 `0d26f3a` 相对 develop 无 Go、SQL、生成代码或脚本改动。
-- 盘点 v0.5.0..develop：八项已归档变更，见 [v0.6.0 发布说明](../../../docs/releases/v0.6.0.md)。go.mod/go.sum 无变化；当前 `migrations/0001_init.up.sql` SHA256 为 `4c6b565e336aba88db5f6bf219407b026a7c1b438057b61470377005ed2509c5`，v0.5.0 为 `491068d7577ca33a94dc9d3f74b02acdbc95662aa954c693b63a3fd7b196b12c`。
+- 盘点 v0.5.0..develop：八项已归档变更，见 [v0.6.0 发布说明](../../../../docs/releases/v0.6.0.md)。go.mod/go.sum 无变化；当前 `migrations/0001_init.up.sql` SHA256 为 `4c6b565e336aba88db5f6bf219407b026a7c1b438057b61470377005ed2509c5`，v0.5.0 为 `491068d7577ca33a94dc9d3f74b02acdbc95662aa954c693b63a3fd7b196b12c`。
 
 ## 静态检查（通过）
 
@@ -29,6 +29,17 @@
 - 修复（`fix/migrationcheck-pin-v0-5-0`）：`publishedInitialReleases` 增加 v0.5.0 精确提交 `102315c3069273f7a8c3ad253c1f4ae01255f8c6` 与已发布哈希（up `491068d7…`，down `2f26c7dc…`），新增 `TestPublishedV050Pinned`、`TestCurrentInitialDiffersFromPublishedV050`（先失败后通过）；AGENTS.md 与迁移手册的固定基线列表补 v0.5.0。不改 tag、历史 SQL、冻结源或当前 initialFrozen，不放宽其他检查；移动/删除 v0.5.0 tag 仍失败。
 - 验证：`go test ./internal/migrationcheck/` 与 `go vet` 通过；修复分支 `check-migrations.sh` 通过；在 main 上复现失败（exit 1），把修复试合并到 main 的临时工作树后 `check-migrations.sh` 通过。最终判定以新 main 候选的在线 CI 为准。
 
+## 发布与远端消费（2026-10-24）
+
+- 修复经 `--no-ff` 合入 develop（`55b1946386170193b5fc632a14511898da966781`），develop 合入 main（`ec6802cd221db3ce107e79bac92174bc35a0ba7d`）并推送；main 树与 develop 一致，本地 `check-migrations.sh` 在 main 上通过。
+- 最终候选 [CI run 40093942831](https://github.com/bbxx111/accountkit/actions/runs/40093942831)：head_sha 精确为 `ec6802c…`，结论 success；check-generated、Linux 镜像构建、`verify.sh`（含迁移历史、race、必需门禁与恢复演练）、`verify-accountsvc.sh` 各步骤均成功。
+- 创建前远端无 v0.6.0；annotated tag `v0.6.0`（对象 `8009c5dcc4622deec6655b1080d254eae41f782d`，消息 `Release v0.6.0`）指向 `ec6802c…`，`git ls-remote` 核验；历史 tag 未移动。
+- [GitHub Release v0.6.0](https://github.com/bbxx111/accountkit/releases/tag/v0.6.0) 于 2026-10-24T12:38:27Z 发布，非 draft/prerelease，为 latest；正文取自发布说明，状态改为已发布，相对链接固定到 `ec6802c` 的 blob 地址。
+- 远端消费：`.test-output/release-v060/` 下两个独立宿主（`facade`、`enduser`），`GOWORK=off`、`GOPROXY=https://goproxy.cn,direct`、`GOSUMDB=sum.golang.org`、独立 GOMODCACHE，`go get github.com/bbxx111/accountkit@v0.6.0`，无 replace；均 `go mod tidy`、`go vet`、构建并运行通过。
+  - `facade`：自定义 `idp.Provider` 装入 `user.Deps.Providers`；`accountkit.Config` 的 Google/QQ/微博与 `ProviderProfileBackfill` 配置；`IdentityKind` 为字符串 API 名，`ParseIdentityKind` 接受格式合法的未知类型、拒绝非法格式；`IdentityCapabilities`、`IdpCredential`、`HandleFacebookDataDeletion` 与 `ProviderDeletionStatus` 编译通过。
+  - `enduser`：直接 `httpapi/enduser` 装配，`POST /users:signInWithIdp` 旧 `wechat` 成员返回 400 `MALFORMED_BODY`，缺少 credential 返回 400 `CREDENTIAL_INCOMPLETE`。
+  - 两者 `go list -m -json` 版本为 v0.6.0、无 Replace；模块内 `migrations/0001_init.up.sql` SHA256 为 `4c6b565e…`，与当前固定哈希一致。日志见 `consumption.log`。
+
 ## 独立审查
 
 发布说明与版本表述经独立审查：Critical 0、Important 3、Minor 5。已处理：
@@ -42,6 +53,5 @@
 
 ## 未验证范围
 
-- 最终 main 候选的在线 CI、tag、GitHub Release 与两个独立宿主的远端消费尚未执行。
 - Google、OIDC、Facebook、微信小程序、支付宝、QQ、微博均未与真实平台、SDK 或真机联调；产品部署、实际服务商、网关/监控与目标环境验收由集成方负责。
 - 本地验证使用共享开发 PostgreSQL 容器中的一次性数据库，不等同于 CI 环境。

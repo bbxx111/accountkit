@@ -230,6 +230,7 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 		DefaultRegion:           cfg.DefaultRegion,
 		ReauthMaxAge:            cfg.ReauthMaxAge,
 		SensitiveOpVerification: cfg.SensitiveOpVerification,
+		ProviderProfileBackfill: cfg.ProviderProfileBackfill,
 		MaxIdentitiesPerKind:    cfg.MaxIdentitiesPerKind,
 		DeletionCoolingPeriod:   cfg.DeletionCoolingPeriod,
 		Anonymizers:             deps.Anonymizers,

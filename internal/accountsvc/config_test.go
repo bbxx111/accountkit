@@ -625,3 +625,22 @@ func TestConfigWeChatMiniProgram(t *testing.T) {
 		})
 	}
 }
+
+func TestConfigProviderProfileBackfill(t *testing.T) {
+	serveEnvironment(t)
+	t.Setenv("ACCOUNTKIT_PROVIDER_PROFILE_BACKFILL", "false")
+	c, err := LoadConfig("serve")
+	if err != nil || c.Library.ProviderProfileBackfill == nil || *c.Library.ProviderProfileBackfill {
+		t.Fatalf("backfill switch not loaded: %v", err)
+	}
+	for _, mode := range []string{"serve", "migrate"} {
+		t.Run(mode, func(t *testing.T) {
+			serveEnvironment(t)
+			t.Setenv("ACCOUNTKIT_PROVIDER_PROFILE_BACKFILL", "sensitive-bool")
+			_, err := LoadConfig(mode)
+			if err == nil || !strings.Contains(err.Error(), "ACCOUNTKIT_PROVIDER_PROFILE_BACKFILL") || strings.Contains(err.Error(), "sensitive") {
+				t.Fatalf("invalid switch: %v", err)
+			}
+		})
+	}
+}

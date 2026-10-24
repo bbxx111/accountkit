@@ -233,7 +233,7 @@ func (s *Service) BindWithCode(ctx context.Context, p Principal, cred CodeCreden
 	return info, created, nil
 }
 
-// createProviderIdentity 创建第三方身份行。空 openid 与空 profile 不落库。
+// createProviderIdentity 创建第三方身份行。空 openid 与空 profile 不落库；账号资料由调用方按账号新旧补填。
 func (s *Service) createProviderIdentity(ctx context.Context, q *db.Queries, userID string, ident idp.Identity) (db.Identity, error) {
 	iid, err := ids.New(ids.Identity)
 	if err != nil {
@@ -253,9 +253,6 @@ func (s *Service) createProviderIdentity(ctx context.Context, q *db.Queries, use
 	}
 	row, err := q.CreateIdentity(ctx, db.CreateIdentityParams{ID: iid, UserID: userID, Kind: ident.Kind, ProviderSubject: &subject, ProviderMeta: meta})
 	if err != nil {
-		return db.Identity{}, err
-	}
-	if err := s.seedEmptyProviderProfile(ctx, q, userID, ident); err != nil {
 		return db.Identity{}, err
 	}
 	return row, nil
@@ -298,6 +295,9 @@ func (s *Service) BindWithIdp(ctx context.Context, p Principal, cred IdpCredenti
 			if err := s.refreshProviderMeta(ctx, q, existing, ident, now); err != nil {
 				return err
 			}
+			if err := s.backfillProviderProfile(ctx, q, p.UserID, ident, false); err != nil {
+				return err
+			}
 			info, created = identityInfoFrom(existing), false
 			return nil
 		case err == nil:
@@ -313,6 +313,9 @@ func (s *Service) BindWithIdp(ctx context.Context, p Principal, cred IdpCredenti
 			if IsUniqueViolation(err) {
 				return ErrIdentityConflict
 			}
+			return err
+		}
+		if err := s.backfillProviderProfile(ctx, q, p.UserID, ident, false); err != nil {
 			return err
 		}
 		info, created = identityInfoFrom(row), true

@@ -184,3 +184,22 @@ func TestWeiboHTTPMultiAppIdentityContract(t *testing.T) {
 		t.Fatal("two uids did not keep two accounts/identities")
 	}
 }
+
+func TestWeiboHTTPProfileBackfillDisabled(t *testing.T) {
+	requireAlipayHTTPDependencies(t)
+	const app = "1234567890"
+	s := newWeiboHTTPServer(t, map[string]weiboHTTPGrant{
+		"first": {app: app, uid: "2000000001", profileUnavailable: true},
+		"later": {app: app, uid: "2000000001", name: "Weibo name", avatar: "https://tvax1.sinaimg.cn/hd.jpg"},
+		"new":   {app: app, uid: "2000000002", name: "New account", avatar: "https://tvax1.sinaimg.cn/new.jpg"},
+	})
+	cfg := s.config(app)
+	off := false
+	cfg.ProviderProfileBackfill = &off
+	f := newAlipayHTTPFixture(t, cfg)
+	f.tokenResult(f.call("POST", "/users:signInWithIdp", "", weiboLoginBody(app, "first"), 200))
+	token := f.tokenResult(f.call("POST", "/users:signInWithIdp", "", weiboLoginBody(app, "later"), 200))
+	f.assertMe(token, "", "")
+	fresh := f.tokenResult(f.call("POST", "/users:signInWithIdp", "", weiboLoginBody(app, "new"), 200))
+	f.assertMe(fresh, "New account", "https://tvax1.sinaimg.cn/new.jpg")
+}

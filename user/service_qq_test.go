@@ -302,21 +302,6 @@ func TestQQClearedProfileUsesOnlyCurrentClaims(t *testing.T) {
 	assertAlipayProfile(t, f, first.UserID, "New", "https://example.test/new.png")
 }
 
-func TestQQExceptionDoesNotBackfillOtherProviders(t *testing.T) {
-	for _, kind := range []enum.IdentityKind{enum.IdentityGoogle, enum.IdentityApple, enum.IdentityFacebook, corpSSO} {
-		t.Run(string(kind), func(t *testing.T) {
-			f := newFixture(t)
-			newServiceWith(t, f, func(d *user.Deps) {
-				*d = withProvider(*d, alipayProvider(kind, nil))
-				d.RequiredIdentityKinds = []enum.IdentityKind{}
-			})
-			first := requireSignInTokens(t, mustSignInWithIdp(t, f, providerCred(kind, map[string]string{"sub": "compat"})))
-			mustSignInWithIdp(t, f, providerCred(kind, map[string]string{"sub": "compat", "name": "Later", "picture": "https://example.test/later.png"}))
-			assertAlipayProfile(t, f, first.UserID, "", "")
-		})
-	}
-}
-
 func TestQQPendingConcurrentOwnershipRejectsWithoutBackfill(t *testing.T) {
 	f := newFixture(t)
 	useQQ(t, f, nil, nil)
@@ -333,34 +318,4 @@ func TestQQPendingConcurrentOwnershipRejectsWithoutBackfill(t *testing.T) {
 		t.Fatalf("concurrent ownership changed: %v", err)
 	}
 	assertAlipayProfile(t, f, owner.UserID, "", "")
-}
-
-func TestQQRepeatBindingDoesNotBackfill(t *testing.T) {
-	f := newFixture(t)
-	useQQ(t, f, nil, nil)
-	phone := f.signIn(t, enum.IdentityPhone, phone1, dev1)
-	p := principalOf(t, f, phone)
-	if _, created, err := f.svc.BindWithIdp(context.Background(), p, qqCred("", ""), meta1); err != nil || !created {
-		t.Fatal(err)
-	}
-	if _, created, err := f.svc.BindWithIdp(context.Background(), p, qqCred("Later", "https://example.test/later.png"), meta1); err != nil || created {
-		t.Fatal(err)
-	}
-	assertAlipayProfile(t, f, phone.UserID, "", "")
-	rows, err := f.repo.Q().ListActiveIdentitiesByUser(context.Background(), phone.UserID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	seen := false
-	for _, row := range rows {
-		if row.Kind == enum.IdentityQQ {
-			seen = true
-			if !strings.Contains(string(row.ProviderMeta), "Later") {
-				t.Fatal("repeat binding did not refresh provider metadata")
-			}
-		}
-	}
-	if !seen {
-		t.Fatal("QQ identity missing")
-	}
 }

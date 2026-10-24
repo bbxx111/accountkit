@@ -1,6 +1,6 @@
 # v0.6.0 发布准备验收
 
-日期：2026-10-24。用户确认版本号 v0.6.0，要求归档 `configurable-provider-profile-backfill` 并开始发布准备。当前结论：发布材料已完成并经独立审查，准备快照的静态检查与完整本地验证全部通过；合并 develop/main、最终候选 CI、tag、Release 与远端消费尚未执行，须分别取得明确授权。
+日期：2026-10-24。用户确认版本号 v0.6.0，要求归档 `configurable-provider-profile-backfill` 并开始发布准备。当前结论：发布材料已完成并经独立审查，准备快照的静态检查与完整本地验证全部通过；首个 main 候选 CI 因 v0.5.0 初始定义未固定而失败，修复见下文；tag、Release 与远端消费尚未执行。
 
 ## 准备范围
 
@@ -21,6 +21,13 @@
 - `bash scripts/verify.sh` 退出 0：迁移历史检查、独立构建、vet、race；44 个包全部通过，1080 个顶层测试通过、0 失败、2 个预期 skip（`TestRecoveryFixture` 在普通套件中按规则 skip，`TestProfileAttributesUnreadableFile` 以 root 运行时 skip）；必需测试门禁（`scripts/required-tests.txt` 948 项）通过；pg_dump/pg_restore 17.11 恢复演练 seed/verify/source-unchanged 通过。
 - `bash scripts/verify-accountsvc.sh` 退出 0：5 个包全部通过，105 个顶层测试通过、0 失败、1 个预期 skip（`TestProfileAttributesUnreadableFile`）；包含服务进程 race、传输模式与网关边界集成用例。
 - 准备快照之后的提交只修改发布说明、OpenAPI 描述文本与本记录；修改后重新运行 `check-openapi.cjs` 与 `go test ./httpapi/enduser` 通过。
+
+## 首个 main 候选 CI 失败与修复
+
+- 准备分支经 `--no-ff` 合入 develop（`ea14828`）、develop 合入 main（`08c4a4a`）并推送。develop [CI](https://github.com/bbxx111/accountkit/actions/runs/40091175248) 通过；main [CI](https://github.com/bbxx111/accountkit/actions/runs/40091175160) 在 `verify.sh` 的迁移历史检查失败：`release initial migration changed or missing: refs/tags/v0.5.0: 0001_init.up.sql`。未创建 tag 或 Release。
+- 原因：`add-identity-provider-registry` 与 `add-google-sign-in` 按授权修改了当前 0001，但未像 v0.4.0 那样把 v0.5.0 已发布初始定义独立固定。v0.5.0 tag 提交 `102315c` 只在 main 上，develop 与准备分支上 `tag --merged HEAD` 不包含它，因此本地准备检查与 develop CI 均未暴露。
+- 修复（`fix/migrationcheck-pin-v0-5-0`）：`publishedInitialReleases` 增加 v0.5.0 精确提交 `102315c3069273f7a8c3ad253c1f4ae01255f8c6` 与已发布哈希（up `491068d7…`，down `2f26c7dc…`），新增 `TestPublishedV050Pinned`、`TestCurrentInitialDiffersFromPublishedV050`（先失败后通过）；AGENTS.md 与迁移手册的固定基线列表补 v0.5.0。不改 tag、历史 SQL、冻结源或当前 initialFrozen，不放宽其他检查；移动/删除 v0.5.0 tag 仍失败。
+- 验证：`go test ./internal/migrationcheck/` 与 `go vet` 通过；修复分支 `check-migrations.sh` 通过；在 main 上复现失败（exit 1），把修复试合并到 main 的临时工作树后 `check-migrations.sh` 通过。最终判定以新 main 候选的在线 CI 为准。
 
 ## 独立审查
 

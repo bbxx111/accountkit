@@ -119,6 +119,6 @@ err := migrations.UnsafeReset(ctx, connCfg, schema,
 
 Redis 验证码状态不在数据库备份中；恢复后的 PENDING 流程缺少验证码轮次时必须拒绝，不能仅凭数据库票据放行。COMPLETED 的相同请求只有在原期限内、账号和会话有效且 refresh 未轮换时可读取原结果；期限自然经过后应拒绝票据，仍可验证已完成会话的 refresh。演练不延长5分钟流程期限，也不宣称数据库备份实现零数据损失。
 
-bash scripts/check-migrations.sh 校验固定源快照、v0.1.0/v0.2.0 的精确提交与原 SQL、v0.3.0 的精确提交与旧初始 SQL，v0.4.0 的精确提交与原始 SQL，以及当前整合基线和全部可达新正式 vX.Y.Z tag，包括合并分支及 HEAD。三代基线使用独立固定 LF 字节哈希；发布过的增量不能被后续 tag 覆盖或删除，新标签不能借用历史基线例外。浅克隆须获取完整历史和 tags。
+bash scripts/check-migrations.sh 校验固定源快照、v0.1.0/v0.2.0 的精确提交与原 SQL、v0.3.0 的精确提交与旧初始 SQL，v0.4.0、v0.5.0 的精确提交与原始 SQL，以及当前整合基线和全部可达新正式 vX.Y.Z tag，包括合并分支及 HEAD。各代基线使用独立固定 LF 字节哈希；发布过的增量不能被后续 tag 覆盖或删除，新标签不能借用历史基线例外。浅克隆须获取完整历史和 tags。
 
 bash scripts/verify-recovery.sh需要psql/pg_dump/pg_restore 17、Go和两个明确指定的独立空测试库。脚本通过集群system_identifier和实际数据库名称判断同库，要求具备读取pg_control_system的测试权限，并拒绝非空库。只生成合成数据，不删除或覆盖既有库。恢复后检查七个业务表、版本、解密和旧访问/刷新令牌；核对每个会话有效非空来源、双身份来源、单份nested客户端描述的app/browser并存、制造商/build、extensions及原观察时间。完整备份包含两个上下文子表，并在source-unchanged阶段验证源库未改变。普通TestRecoveryFixture仍预期skip，只有脚本三阶段强制运行才是恢复演练证据。历史凭证夹具须显式建立有效来源，不能将测试补关联描述成生产自动迁移。证据保留在被Git忽略的.test-output/recovery.*下；重跑需提供新的空库。当前简化版本的实际门禁结果见[验收记录](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)，历史记录不代表当前验证通过。

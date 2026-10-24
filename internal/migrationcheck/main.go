@@ -38,9 +38,17 @@ type pinnedInitialRelease struct {
 }
 
 // Published initial definitions remain pinned independently. v0.3.0 predates
-// session consolidation; v0.4.0 pins the current initial definition. Moving a
-// tag or rewriting its SQL never receives a historical-baseline exception.
+// session consolidation; v0.4.0 predates profile attributes; v0.5.0 predates
+// the text identity kind. Moving a tag or rewriting its SQL never receives a
+// historical-baseline exception.
 var publishedInitialReleases = map[string]pinnedInitialRelease{
+	"refs/tags/v0.5.0": {
+		Commit: "102315c3069273f7a8c3ad253c1f4ae01255f8c6",
+		Hashes: map[string]string{
+			"0001_init.up.sql":   "491068d7577ca33a94dc9d3f74b02acdbc95662aa954c693b63a3fd7b196b12c",
+			"0001_init.down.sql": "2f26c7dc5f5c5cfe2ee5a9967884fc70c7f213418a602fb2535621904f251f9b",
+		},
+	},
 	"refs/tags/v0.4.0": {
 		Commit: "62f0799b6c6ef1603b33f81834d39033dd0d0c4d",
 		Hashes: map[string]string{

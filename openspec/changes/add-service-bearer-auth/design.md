@@ -73,7 +73,7 @@ accountsvc 有两个只供内部业务服务调用的接口：
 - **授权决策留在 accountsvc 配置**：IdP 只证明「你是谁」，不决定「你能调用什么」；Keycloak 的 default client scope、realm 角色继承等容易让权限意外扩散。
 - **天然排除人类管理员令牌**：管理员经前端客户端登录，其令牌 `azp` 是前端客户端 ID，不在列表中——即使 audience mapper 配错让 `aud` 含服务 audience，仍为 403。
 
-代价：`azp` 来自 OIDC Core，RFC 9068（JWT access token profile）使用 `client_id`。Keycloak 的访问令牌同时带 `azp`，首版只认 `azp`；若将来接入只发 `client_id` 的 IdP，再增加可选的声明名配置（列入 Open Questions）。
+代价：`azp` 来自 OIDC Core，RFC 9068（JWT access token profile）使用 `client_id`。Keycloak 的访问令牌同时带 `azp`，首版只认 `azp`；若将来接入只发 `client_id` 的 IdP，再增加可选的声明名配置（见 Review Decisions 1）。
 
 `azp` 必须为非空字符串；缺失、非字符串或为空 → 401（令牌不满足服务令牌格式），不是 403。
 
@@ -141,10 +141,14 @@ WWW-Authenticate: Bearer realm="accountsvc-introspection", error="invalid_token"
 管理员认证保持 `Eager`：管理面启用时 IdP 不可达仍启动失败（现有行为，不在本次范围）。若服务 issuer 与管理员 issuer 相同且管理面启用，启动实际仍依赖该 IdP，文档写明。
 
 **运行期**：
-- discovery 未成功前，每个 Bearer 请求触发（单飞）discovery+JWKS；失败后进入冷却。
-- 冷却期：失败后 10 秒内不再请求 IdP，期间 Bearer 请求直接 503。管理员的 1 分钟冷却保持不变；服务使用更短冷却以尽快恢复，参数由公共层按实例配置。
-- 已加载的密钥在 1 小时内有效；未知 kid 触发刷新（受同一冷却约束），刷新成功但仍无该 kid → 401；刷新失败 → 503。
-- 密钥过期后刷新失败 → 503（不继续使用过期密钥）。
+冷却语义与 adminauth 的 `key()` 完全一致，只把间隔参数化（管理员 1 分钟不变，服务 10 秒）：
+
+- **任何一次**对 IdP 的刷新尝试（discovery 和/或 JWKS），**无论成功还是失败**，都记录尝试时间；此后 10 秒内不再发起新的尝试。并发请求共享同一次在途刷新（单飞），刷新由 verifier 自己的有界上下文执行，不随某个调用方取消。
+- 窗口内需要密钥（未缓存的 kid、密钥已过期、discovery 尚未成功）时：上次尝试成功 → 401（kid 确实未知）；上次尝试失败 → 503。
+- 因此带随机 kid 的令牌每 10 秒最多让每个 verifier 访问 IdP 一次，无法把每个请求放大为一次 JWKS 拉取。
+- discovery 未成功前，Bearer 请求在窗口外触发 discovery+JWKS；失败按上条返回 503。
+- 已加载的密钥在 1 小时内有效；过期后刷新失败 → 503（不继续使用过期密钥）。
+- 已知影响：IdP 轮换签名密钥时，若新 kid 的首个令牌恰好落在上次成功刷新后的 10 秒窗口内，会短暂返回 401；调用方换令牌重试仍可能在同一窗口内失败。应对方式是 IdP 先把新密钥发布进 JWKS（Keycloak：先以 passive 状态加入或先进入 JWKS），确认已被拉取后再切为 active，文档写明。
 - discovery 返回的 `issuer` 与配置不一致：视为依赖配置错误，503 并记 ERROR，不是 401。
 - 服务 issuer 与管理员 issuer 相同时两个 verifier 各自缓存，互不影响；故障分类各自独立。
 - 认证阶段单独设 3 秒上限（现有 3 秒超时只覆盖认证之后的查询）；等待密钥超时 → 503。
@@ -177,7 +181,7 @@ WWW-Authenticate: Bearer realm="accountsvc-introspection", error="invalid_token"
 - [服务 audience 被 IdP 管理员误加到人类客户端 mapper] → `azp` 列表兜底（D2）。
 - [两个 verifier 对同一 IdP 重复拉取 JWKS] → 量很小（每小时一次），换取故障隔离，接受。
 - [抽取公共层改动管理员认证代码] → 平移不改语义，以现有 adminauth 测试全部不改通过为准。
-- [`azp` 非 RFC 9068 标准声明] → 记录为 Open Question，需要时加声明名配置。
+- [`azp` 非 RFC 9068 标准声明] → 评审确认首版不支持，需要时加声明名配置（Review Decisions 1）。
 
 ## Migration Plan
 
@@ -207,6 +211,8 @@ WWW-Authenticate: Bearer realm="accountsvc-introspection", error="invalid_token"
 | 12 | 缺 `kid`；未知 `kid` 刷新后仍无 | 401 | 401 |
 | 13 | JWKS/discovery 不可用（启动后首次、冷却期内、密钥过期后） | 503 `temporarily_unavailable` | 503 `DEPENDENCY_UNAVAILABLE` + `Retry-After: 1` |
 | 14 | IdP 恢复后冷却结束 | 恢复正常 | 恢复正常 |
+| 14b | 随机 kid 令牌在 10 秒窗口内连续并发请求 | 401；测试 IdP 收到的 JWKS 请求 ≤1 次/窗口 | 同左 |
+| 14c | 上次刷新成功后窗口内出现新 kid；窗口过后同一令牌 | 401；随后通过 | 同左 |
 | 15 | 两个 Authorization 头（Basic+Bearer 或两个 Bearer） | 401 `invalid_client`，无 `error` 属性 | 401 `INVALID_CLIENT` |
 | 16 | 无 Authorization，两种都启用 | 401，两条 challenge，无 `error` | 同左 |
 | 17 | 仅 Basic 启用时携带 Bearer | 401 `invalid_client`，仅 Basic challenge | 同左 |
@@ -222,15 +228,18 @@ WWW-Authenticate: Bearer realm="accountsvc-introspection", error="invalid_token"
 
 ## 文档（回答问题 5）
 
-- `docs/accountsvc.md`：「业务服务错误与配置契约」增加服务调用认证小节（两种方式、D5 错误表、D6 challenge、调用方处理建议：`TOKEN_INVALID` 换令牌重试一次，`CLIENT_NOT_AUTHORIZED` 不重试，503 退避）；配置表增加 D9 变量；IdP 故障与撤销延迟说明；Keycloak 配置要点（仅服务账号的机密客户端、audience mapper、访问令牌寿命建议 ≤5 分钟）作为示例而非依赖。
+- `docs/accountsvc.md`：「业务服务错误与配置契约」增加服务调用认证小节（两种方式、D5 错误表、D6 challenge、调用方处理建议：`TOKEN_INVALID` 换令牌重试一次，`CLIENT_NOT_AUTHORIZED` 不重试，503 退避）；配置表增加 D9 变量；IdP 故障与撤销延迟说明；Keycloak 配置要点作为示例而非依赖：仅开服务账号的机密客户端；服务 audience mapper 只勾选 "Add to access token"，不勾选 "Add to ID token"（与 D4「aud 不得等于任何 azp」互为部署侧与服务侧防线）；访问令牌寿命建议 ≤5 分钟；签名密钥轮换先发布新密钥进 JWKS（passive）再切 active，以免 10 秒刷新窗口内短暂 401（D7）。
 - `docs/gateway-integration.md`：内部入口须透传 `Authorization: Bearer`，不得在网关剥离或替换；网关不得用自身令牌调用这两个接口。
 - `deploy/accountsvc/.env.example`：新增变量的空模板。
 - `docs/compatibility.md`：内省「必须配置 Basic」放宽为「至少一种」的说明。
 - `examples/remoteauth`：README/注释说明调用内省可使用 Bearer，示例代码保持 Basic。
 
-## Open Questions
+## Review Decisions
 
-1. 是否需要支持 RFC 9068 的 `client_id` 声明（可配置声明名 `azp`|`client_id`）？首版建议不做。
-2. `exp - iat` 上限固定 1 小时是否合适，或改为可配置？
-3. 403 拉取错误码 `CLIENT_NOT_AUTHORIZED` 是否接受（需求方原提议 `INSUFFICIENT_SCOPE`）？
-4. 服务 JWKS 失败冷却 10 秒是否合适（管理员为 1 分钟）？
+2026-10-27 经需求方与用户评审确认：
+
+1. 首版只认 `azp`，不支持 RFC 9068 `client_id`；以后需要时再加声明名配置。
+2. `exp - iat` 上限固定 1 小时，不提供配置项。
+3. 拉取接口 403 使用 `CLIENT_NOT_AUTHORIZED`。
+4. 服务刷新冷却 10 秒，语义同 adminauth：任何尝试（成功或失败）后窗口内不再拉取（D7）。
+5. 评审补充：D7 写明冷却适用范围并加随机 kid 放大测试；文档写明 IdP 轮换签名密钥的影响与先发布后启用；Keycloak 示例要求 audience mapper 只加到访问令牌。

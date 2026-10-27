@@ -21,7 +21,7 @@
 ### Modified Capabilities
 - `consumer-token-introspection`：「独立服务调用认证」由只接受 Basic 改为接受 Basic 或服务 Bearer 令牌，补充 Bearer 的 401/403/503 OAuth 错误。
 - `purged-user-feed`：「服务鉴权与暴露边界」同上，补充 AIP-193 错误码与未配置判定。
-- `accountsvc-runtime`：「生产发送与内省凭据要求」改为至少一种内省调用认证；「已清理用户拉取凭据」补充 token 客户端列表及跨列表不相交校验。
+- `accountsvc-runtime`：「生产发送与内省凭据要求」改为至少一种内省调用认证；「已清理用户拉取凭据」补充 token 客户端列表及跨列表不相交校验；「HTTP 边界与可信请求元信息」的单地址场景不再限定 Basic。
 
 ## Impact
 

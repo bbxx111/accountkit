@@ -17,7 +17,7 @@ v0.4.0 的0001包含完整会话上下文；部署须按[迁移手册](migration
 | 嵌入 accountkit | 连接、发送器、HTTP 挂载、管理员验证和业务匿名化回调 | 需要同库业务事务或定制装配 |
 | 运行 accountsvc | 运行配置、TLS、SMTP、外部管理员提供方、业务端授权 | 通过消费者 API、JWKS 本地验签及关键路由内省接入 |
 
-服务提供可选 SMTP 邮件验证码；显式身份策略启用 EMAIL 时要求 SMTP，禁用 EMAIL 时不解析或要求 SMTP。未设置新策略保留原 SMTP 装配，短信显式禁用；禁用渠道请求返回 400 `CHANNEL_NOT_ENABLED`，不生成验证码、不扣发送额度。库宿主原有短信/邮件发送器继续可用。
+服务提供可选 SMTP 邮件验证码与可选阿里云短信验证码；显式身份策略启用 EMAIL 时要求 SMTP，禁用 EMAIL 时不解析或要求 SMTP；显式启用 PHONE 时要求配置短信服务商（见[短信服务商](#短信服务商)）。未设置新策略保留原 SMTP 装配，短信显式禁用（即使配置了短信服务商也不自动启用 PHONE）；禁用渠道请求返回 400 `CHANNEL_NOT_ENABLED`，不生成验证码、不扣发送额度。库宿主原有短信/邮件发送器继续可用。
 
 服务默认使用库管理的本地有界异步审计及本地管理查询，`Auth.Start/Close` 管理 worker，服务管理连接。`ACCOUNTKIT_AUDIT_SOURCE` / `ACCOUNTKIT_AUDIT_NAMESPACE` 可显式设置，默认分别为 `accountkit/<schema>` / `accountkit/<schema>/resources`；同库共享审计时保持实例范围稳定。服务未内置远端审计适配器或任意业务审计 HTTP 写入接口。嵌入宿主的读写接管与仅写入模式见 [examples/audit](../examples/audit/main.go) 和[库装配说明](../README.md#宿主审计装配与清理责任)。
 
@@ -52,7 +52,7 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 
 ## 身份策略与登录补全
 
-服务读取 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS` 和 `ACCOUNTKIT_REQUIRED_IDENTITY_KINDS`。省略 E 沿用原装配，省略 R 为 PHONE/EMAIL any-of；非空 R 只能包含 PHONE/EMAIL 且为 E 子集，`[]` 显式不限定类型。仅邮件可设 E=EMAIL、R=EMAIL；纯微信可设 E=WECHAT、R=[] 并配置微信应用，无需 SMTP。仅小程序部署可配置 `ACCOUNTKIT_WECHAT_MINI_PROGRAM_APPS=appid:secret`，OAuth 应用使用 `ACCOUNTKIT_WECHAT_APPS`，两组不能重复 AppID。全局 `ACCOUNTKIT_WECHAT_SUBJECT_MODE` 缺省为 `UNIONID`，显式只接受 `UNIONID` / `OPENID`，空值非法；管理员 audience 不能等于任一组的 AppID。客户端统一提交 `{"kind":"WECHAT","credential":{"app_id":"wx…","code":"…"}}`。小程序 code 来自小程序登录，OAuth code 来自对应授权流程；接口由服务端应用分组决定。subject 使用 `unionid:<unionid>` 或 `openid:<appid>:<openid>`；与历史裸 UnionID 不兼容，不自动转换旧数据或合并账号，也无旧数据迁移工具。模式应固定，切换模式或分组可能产生不同身份并使已有 pending 失效，所有副本须一致。配置的 OIDC 类型同理：在 `ACCOUNTKIT_OIDC_PROVIDERS` 列出类型名，并为每个类型设置 `ACCOUNTKIT_OIDC_<KIND>_ISSUER`、`_JWKS_URL`、`_CLIENT_IDS`（可选 `_NONCE_TTL`、`_NAME_CLAIMS`、`_PICTURE_CLAIMS`，后两者设为空表示不读取）；缺失或非法时启动失败并指出具体变量名，不输出配置值。显式 E 中未配置的非内置类型指向 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS`。未设置任何 OIDC 变量时 migrate 不受影响；已列出类型但配置不完整或非法时，migrate 与 serve 同样失败并指出变量名。类型名本身由 OIDC 配置定义，因此引用未定义类型的静态策略在 migrate 中同样无效。未在 `ACCOUNTKIT_OIDC_PROVIDERS` 列出的类型，其 `ACCOUNTKIT_OIDC_<KIND>_*` 变量被忽略，列表拼写错误会使该提供方保持关闭。显式启用 PHONE 报错，因为服务没有 SMS 服务商。配置在重启后生效，所有同实例副本须一致。
+服务读取 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS` 和 `ACCOUNTKIT_REQUIRED_IDENTITY_KINDS`。省略 E 沿用原装配，省略 R 为 PHONE/EMAIL any-of；非空 R 只能包含 PHONE/EMAIL 且为 E 子集，`[]` 显式不限定类型。仅邮件可设 E=EMAIL、R=EMAIL；纯微信可设 E=WECHAT、R=[] 并配置微信应用，无需 SMTP。仅小程序部署可配置 `ACCOUNTKIT_WECHAT_MINI_PROGRAM_APPS=appid:secret`，OAuth 应用使用 `ACCOUNTKIT_WECHAT_APPS`，两组不能重复 AppID。全局 `ACCOUNTKIT_WECHAT_SUBJECT_MODE` 缺省为 `UNIONID`，显式只接受 `UNIONID` / `OPENID`，空值非法；管理员 audience 不能等于任一组的 AppID。客户端统一提交 `{"kind":"WECHAT","credential":{"app_id":"wx…","code":"…"}}`。小程序 code 来自小程序登录，OAuth code 来自对应授权流程；接口由服务端应用分组决定。subject 使用 `unionid:<unionid>` 或 `openid:<appid>:<openid>`；与历史裸 UnionID 不兼容，不自动转换旧数据或合并账号，也无旧数据迁移工具。模式应固定，切换模式或分组可能产生不同身份并使已有 pending 失效，所有副本须一致。配置的 OIDC 类型同理：在 `ACCOUNTKIT_OIDC_PROVIDERS` 列出类型名，并为每个类型设置 `ACCOUNTKIT_OIDC_<KIND>_ISSUER`、`_JWKS_URL`、`_CLIENT_IDS`（可选 `_NONCE_TTL`、`_NAME_CLAIMS`、`_PICTURE_CLAIMS`，后两者设为空表示不读取）；缺失或非法时启动失败并指出具体变量名，不输出配置值。显式 E 中未配置的非内置类型指向 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS`。未设置任何 OIDC 变量时 migrate 不受影响；已列出类型但配置不完整或非法时，migrate 与 serve 同样失败并指出变量名。类型名本身由 OIDC 配置定义，因此引用未定义类型的静态策略在 migrate 中同样无效。未在 `ACCOUNTKIT_OIDC_PROVIDERS` 列出的类型，其 `ACCOUNTKIT_OIDC_<KIND>_*` 变量被忽略，列表拼写错误会使该提供方保持关闭。显式启用 PHONE 时须配置短信服务商，否则启动失败并指出 `ACCOUNTSVC_SMS_PROVIDER`。配置在重启后生效，所有同实例副本须一致。
 
 消费者沿用 `/v1/users`，管理面沿用 `/admin/v1/users`；资源 name 使用 users 及其子资源。此前未发布的 accounts 路径返回 404，不注册别名或重定向。未知第三方身份不满足 R 时返回 pending，尚不建号。客户端调用 `/v1/users:sendSignInCompletionCode` 和 `/v1/users:completeSignIn`，只用 `sign_in_completion_token` 和 PHONE/EMAIL 轮次；验证后关联已有活动账号或注册，详见 [库协议](../README.md#身份策略与登录补全)及[协议升级说明](compatibility.md#身份策略与登录补全协议升级)。
 
@@ -96,6 +96,8 @@ QQ App SDK 登录使用 `ACCOUNTKIT_QQ_APP_IDS`（逗号分隔的唯一 1–20 �
 | `SMTP_TLS_MODE` | implicit；可选 starttls；none 仅限 development |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | 成对配置，生产必填 |
 | `SMTP_TIMEOUT` | 10s，包含连接、TLS、认证和提交 |
+| `SMTP_BRAND` | 可选，内置中文邮件的品牌前缀：标题为“<品牌><用途>验证码”，正文以“【品牌】”开头；1–32 个字符，不得含换行/控制字符或首尾空白；EMAIL 禁用时不解析 |
+| `SMS_PROVIDER` | 空表示未配置短信；首版只接受 `aliyun`，见[短信服务商](#短信服务商) |
 | `INTROSPECTION_CLIENTS` | serve 必填；JSON：客户端 ID → base64 秘密数组 |
 | `ADMIN_ENABLED` | false |
 | `ADMIN_ISSUER` / `ADMIN_AUDIENCE` | 启用时必填；issuer 是 HTTPS URL，audience 为管理员 API 专用标识 |
@@ -127,6 +129,21 @@ openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 | openssl pkcs8 -
 | false | 任一合法模式 | 任一非空 | 配置冲突，拒绝启动 |
 
 启用服务 TLS 时最低 TLS1.2。显式 false 可供受控外部 TLS 终止使用，但开关本身不证明网关或网格提供了加密。启用 EMAIL 时生产 SMTP 仍要求认证与经过证书验证的 TLS，外部 OIDC 仍使用 HTTPS；PostgreSQL/Redis 的 TLS 分别由 DSN/URI 控制。`migrate` 不读取监听地址、TLS 开关/证书、SMTP、内省或管理员设置，因此这些服务设置即使无效也不影响它。传输部署方式、可信代理与验收职责统一见[网关接入手册](gateway-integration.md)。
+
+## 短信服务商
+
+`ACCOUNTSVC_SMS_PROVIDER=aliyun` 时使用库的 `user/sender/aliyun` 发送器（阿里云 SendSms，RPC 签名，不依赖阿里云 SDK）。以下变量均为必填，缺失或非法时 serve 启动失败并指出变量名、不回显值；migrate 不解析：
+
+| 变量（`ACCOUNTSVC_` 前缀） | 说明 |
+|---|---|
+| `SMS_ALIYUN_ACCESS_KEY_ID` / `SMS_ALIYUN_ACCESS_KEY_SECRET` | AccessKey；Secret 只通过环境或密钥系统注入，不写入镜像、Compose 文件或日志 |
+| `SMS_ALIYUN_SIGN_NAME` | 短信签名名称（一个） |
+| `SMS_ALIYUN_TEMPLATE_SIGN_IN` / `_BIND` / `_REAUTH` / `_SIGN_IN_COMPLETE` | 四个用途的模板 code，模板变量固定为 `${code}`；允许共用同一模板，但建议补全用途使用可区分的文案 |
+| `SMS_ALIYUN_ENDPOINT` | 可选，默认 `https://dysmsapi.aliyuncs.com/`；仅供测试或代理部署，production 只接受 HTTPS |
+
+只设置 `SMS_ALIYUN_*` 而未设置 `SMS_PROVIDER` 会被拒绝，以发现拼写错误。配置服务商后还须在 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS` 中显式加入 PHONE 才会发送短信。
+
+首版**只发送中国大陆手机号**（`+86` 后 1 开头的 11 位号码）：其他号码在占用验证码轮次、冷却与额度之前返回 400 `TARGET_NOT_SUPPORTED`，不调用服务商。将来的国际短信会使用独立的签名与模板变量。只有服务商返回 `Code=OK` 才算发送成功；频控（如 `isv.BUSINESS_LIMIT_CONTROL`）、其他业务错误、网络错误与超时（默认 10 秒）一律按发送失败返回 503，已占额度与冷却不退还，不自动重发，也不映射为 429。发送失败以 Warn 记录阶段、HTTP 状态、服务商错误码与 RequestId（含签名或 AccessKey 错误等网关错误），便于区分频控、余额、模板与凭据问题；日志不含手机号、验证码、Secret 或服务商消息原文。设置了 `SMS_PROVIDER` 时，拼写错误的 `SMS_ALIYUN_*` 变量同样会被拒绝。真实发送需部署方用真实凭据与已审核模板验收。
 
 ## 身份密钥与验证码轮换
 

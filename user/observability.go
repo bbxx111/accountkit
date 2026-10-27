@@ -126,7 +126,7 @@ func classifyOperation(err error) (ob.Result, ob.Reason) {
 		return ob.ResultRejected, ob.ReasonIdentityKindDisabled
 	case errors.Is(err, sender.ErrDisabled):
 		return ob.ResultRejected, ob.ReasonChannelDisabled
-	case errors.Is(err, ErrInvalidArgument), errors.Is(err, ErrInvalidTarget), errors.Is(err, ErrInvalidClientInfo), errors.Is(err, idp.ErrMalformedCredential):
+	case errors.Is(err, ErrInvalidArgument), errors.Is(err, ErrInvalidTarget), errors.Is(err, sender.ErrTargetNotSupported), errors.Is(err, ErrInvalidClientInfo), errors.Is(err, idp.ErrMalformedCredential):
 		return ob.ResultRejected, ob.ReasonInvalidArgument
 	case errors.Is(err, code.ErrInvalid):
 		return ob.ResultRejected, ob.ReasonCodeInvalid

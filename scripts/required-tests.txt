@@ -486,6 +486,7 @@ github.com/bbxx111/accountkit/examples/codeemail/TestRendererTTL
 github.com/bbxx111/accountkit/examples/codeemail/TestRendererRejectsInvalidInput
 github.com/bbxx111/accountkit/examples/codeemail/TestRendererCancellation
 github.com/bbxx111/accountkit/user/sender/smtp/TestSMTPRendererFoldsLongSubject
+github.com/bbxx111/accountkit/user/sender/smtp/TestLegacyChineseRendererBrand
 github.com/bbxx111/accountkit/audit/TestMemoryFreezesInputAndOutput
 github.com/bbxx111/accountkit/audit/TestAsyncFreezesQueueAndAccountsClassifications
 github.com/bbxx111/accountkit/audit/TestStoreScrubbedReplay
@@ -827,6 +828,7 @@ github.com/bbxx111/accountkit/enum/TestEventProviderDataDeletionProcessedAppende
 github.com/bbxx111/accountkit/enum/TestIdentityFacebookIsBuiltinThirdParty
 github.com/bbxx111/accountkit/httpapi/enduser/TestBindFacebookIdentity
 github.com/bbxx111/accountkit/httpapi/enduser/TestSignInWithIdpFacebook
+github.com/bbxx111/accountkit/httpapi/enduser/TestUnsupportedTargetResponse
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigFacebook
 github.com/bbxx111/accountkit/observability/internal/metricdata/TestMetricProjectionFacebookValues
 github.com/bbxx111/accountkit/user/TestCompletionFlowRejectedAfterFacebookConfigurationChange
@@ -916,6 +918,8 @@ github.com/bbxx111/accountkit/user/TestQQClearedProfileUsesOnlyCurrentClaims
 github.com/bbxx111/accountkit/user/TestQQPendingConcurrentOwnershipRejectsWithoutBackfill
 github.com/bbxx111/accountkit/user/TestQQProviderObservationsAndFlowFingerprint
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigWeibo
+github.com/bbxx111/accountkit/internal/accountsvc/TestConfigSMSProvider
+github.com/bbxx111/accountkit/internal/accountsvc/TestConfigSMTPBrand
 github.com/bbxx111/accountkit/observability/internal/metricdata/TestWeiboMetricProjection
 github.com/bbxx111/accountkit/TestWeiboConfigFromEnv
 github.com/bbxx111/accountkit/TestWeiboProviderAssembly
@@ -957,5 +961,15 @@ github.com/bbxx111/accountkit/user/TestProviderProfileBackfillOnSignIn
 github.com/bbxx111/accountkit/user/TestProviderProfileBackfillRollbackAfterSessionFailure
 github.com/bbxx111/accountkit/user/TestAuthenticateStrictWithoutDatabase
 github.com/bbxx111/accountkit/user/TestAuthenticateStrictDatabaseState
+github.com/bbxx111/accountkit/user/TestUnsupportedTargetRejectedBeforeIssuing
+github.com/bbxx111/accountkit/user/TestUnsupportedTargetRejectedForSignInCompletion
 github.com/bbxx111/accountkit/user/idp/TestWeiboHugeExpireDoesNotOverflow
 github.com/bbxx111/accountkit/internal/testkeys/TestJWTDeterministicAndDistinct
+github.com/bbxx111/accountkit/user/sender/aliyun/TestSignOfficialVector
+github.com/bbxx111/accountkit/user/sender/aliyun/TestPercentEncode
+github.com/bbxx111/accountkit/user/sender/aliyun/TestNewValidatesConfiguration
+github.com/bbxx111/accountkit/user/sender/aliyun/TestSendSMSRequest
+github.com/bbxx111/accountkit/user/sender/aliyun/TestSendSMSErrorsAreUnavailableAndPrivate
+github.com/bbxx111/accountkit/user/sender/aliyun/TestSendSMSTimeoutAndCancellation
+github.com/bbxx111/accountkit/user/sender/aliyun/TestSendSMSFailureLoggingAndGatewayErrors
+github.com/bbxx111/accountkit/user/sender/aliyun/TestSupportsTargetMobileOnly

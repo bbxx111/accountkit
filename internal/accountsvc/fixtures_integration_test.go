@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"mime"
 	"mime/quotedprintable"
 	"net"
 	"net/http"
@@ -57,7 +58,7 @@ func (b *safeBuffer) Write(p []byte) (int, error) {
 }
 func (b *safeBuffer) String() string { b.mu.Lock(); defer b.mu.Unlock(); return b.b.String() }
 
-type deliveredMail struct{ target, code, body string }
+type deliveredMail struct{ target, code, body, subject string }
 type smtpFixture struct {
 	ln       net.Listener
 	messages chan deliveredMail
@@ -150,7 +151,8 @@ func (s *smtpFixture) serve(c net.Conn) {
 				return
 			}
 			code := regexp.MustCompile(`[0-9]{6}`).FindString(string(body))
-			s.messages <- deliveredMail{target, code, string(body)}
+			subject, _ := new(mime.WordDecoder).DecodeHeader(msg.Header.Get("Subject"))
+			s.messages <- deliveredMail{target, code, string(body), subject}
 			if s.hold.Load() {
 				s.entered <- struct{}{}
 				<-s.release

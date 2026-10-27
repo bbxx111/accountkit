@@ -57,6 +57,17 @@ func NewWithRenderer(cfg Config, renderer Renderer) (*Sender, error) {
 			return nil, errors.New("smtp: invalid Renderer")
 		}
 	}
+	// 内置渲染器的品牌在构造时校验，避免每次发送都在占用额度之后才失败。
+	switch r := renderer.(type) {
+	case LegacyChineseRenderer:
+		if ValidateBrand(r.Brand) != nil {
+			return nil, errors.New("smtp: invalid Renderer Brand")
+		}
+	case *LegacyChineseRenderer:
+		if ValidateBrand(r.Brand) != nil {
+			return nil, errors.New("smtp: invalid Renderer Brand")
+		}
+	}
 
 	if cfg.Host == "" || strings.ContainsAny(cfg.Host, "\r\n\t /\\") {
 		return nil, errors.New("smtp: invalid Host")

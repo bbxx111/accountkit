@@ -20,11 +20,11 @@ func TestServiceIntegrationCodeKeyRotation(t *testing.T) {
 	f := newIntegration(t)
 	key2 := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{2}, 32))
 	f.secrets = append(f.secrets, key2)
-	f.env["ACCOUNTKIT_SUBJECT_HMAC_KEYS"] += ",2:" + key2
-	f.env["ACCOUNTKIT_CODE_COOLDOWN"] = "2s"
-	f.env["ACCOUNTKIT_CODE_DAILY_LIMIT_PER_TARGET"] = "3"
-	f.env["ACCOUNTKIT_CODE_DAILY_LIMIT_PER_IP"] = "5"
-	keys, err := pii.ParseKeyList(f.env["ACCOUNTKIT_SUBJECT_HMAC_KEYS"])
+	f.env["ACCOUNTSVC_SUBJECT_HMAC_KEYS"] += ",2:" + key2
+	f.env["ACCOUNTSVC_CODE_COOLDOWN"] = "2s"
+	f.env["ACCOUNTSVC_CODE_DAILY_LIMIT_PER_TARGET"] = "3"
+	f.env["ACCOUNTSVC_CODE_DAILY_LIMIT_PER_IP"] = "5"
+	keys, err := pii.ParseKeyList(f.env["ACCOUNTSVC_SUBJECT_HMAC_KEYS"])
 	if err != nil {
 		t.Fatal("invalid synthetic rotation keys")
 	}
@@ -138,8 +138,8 @@ func TestServiceIntegrationCodeKeyRotation(t *testing.T) {
 
 	// All processes first receive the same complete key set; only active
 	// differs. JWT/cipher keys, policies, schema and Redis prefix stay equal.
-	p1 := f.start(map[string]string{"ACCOUNTKIT_SUBJECT_HMAC_ACTIVE_KEY": "1"})
-	p2 := f.start(map[string]string{"ACCOUNTKIT_SUBJECT_HMAC_ACTIVE_KEY": "2"})
+	p1 := f.start(map[string]string{"ACCOUNTSVC_SUBJECT_HMAC_ACTIVE_KEY": "1"})
+	p2 := f.start(map[string]string{"ACCOUNTSVC_SUBJECT_HMAC_ACTIVE_KEY": "2"})
 	t.Logf("started actual accountsvc processes: K1 pid=%d, K2 pid=%d", p1.cmd.Process.Pid, p2.cmd.Process.Pid)
 	const target = "rotation-service@example.test"
 	code1 := send(p1, target)
@@ -163,7 +163,7 @@ func TestServiceIntegrationCodeKeyRotation(t *testing.T) {
 	oldCode := send(p1, target)
 	assertCounts(target, 2, 1, 3)
 	p1.stop()
-	p1 = f.start(map[string]string{"ACCOUNTKIT_SUBJECT_HMAC_ACTIVE_KEY": "2"})
+	p1 = f.start(map[string]string{"ACCOUNTSVC_SUBJECT_HMAC_ACTIVE_KEY": "2"})
 	t.Logf("restarted accountsvc with only active changed to K2: pid=%d", p1.cmd.Process.Pid)
 	afterRestart := signIn(p1, target, oldCode)
 	if afterRestart["user_id"] != uid || afterRestart["is_new_user"] != false {
@@ -188,7 +188,7 @@ func TestServiceIntegrationCodeKeyRotation(t *testing.T) {
 	send(p2, otherK2)
 	assertCounts(otherK2, 0, 1, 4)
 	// A K1 process also sees the same IP budget after the rolling restart.
-	p3 := f.start(map[string]string{"ACCOUNTKIT_SUBJECT_HMAC_ACTIVE_KEY": "1"})
+	p3 := f.start(map[string]string{"ACCOUNTSVC_SUBJECT_HMAC_ACTIVE_KEY": "1"})
 	t.Logf("started accountsvc K1 quota peer: pid=%d", p3.cmd.Process.Pid)
 	limited(p3, target, "TARGET_LIMIT")
 	assertCounts(target, 2, 1, 4)

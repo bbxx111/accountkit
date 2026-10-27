@@ -17,8 +17,8 @@ import (
 
 func TestServiceIntegrationIdentityReplacement(t *testing.T) {
 	f := newIntegration(t)
-	f.env["ACCOUNTKIT_REAUTH_MAX_AGE"] = "5s"
-	f.env["ACCOUNTKIT_MAX_IDENTITIES_PER_KIND"] = "2"
+	f.env["ACCOUNTSVC_REAUTH_MAX_AGE"] = "5s"
+	f.env["ACCOUNTSVC_MAX_IDENTITIES_PER_KIND"] = "2"
 	p := f.start(nil)
 	const oldTarget, newTarget, retainedTarget = "replace-old@example.test", "replace-new@example.test", "replace-retained@example.test"
 	f.secrets = append(f.secrets, oldTarget, newTarget, retainedTarget)

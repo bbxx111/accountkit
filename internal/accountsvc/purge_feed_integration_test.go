@@ -42,8 +42,8 @@ func TestServiceIntegrationPurgedUserFeed(t *testing.T) {
 	f.secrets = append(f.secrets, feedSecret)
 	p := f.start(map[string]string{
 		"ACCOUNTSVC_PURGE_FEED_CLIENTS":      `{"ai-food":["` + feedSecret + `"]}`,
-		"ACCOUNTKIT_DELETION_COOLING_PERIOD": "1s",
-		"ACCOUNTKIT_MAINTENANCE_INTERVAL":    "1s",
+		"ACCOUNTSVC_DELETION_COOLING_PERIOD": "1s",
+		"ACCOUNTSVC_MAINTENANCE_INTERVAL":    "1s",
 	})
 	// 内省凭据不能读取已清理清单。
 	f.purgedUsers(p, f.secrets[1], "", 401)

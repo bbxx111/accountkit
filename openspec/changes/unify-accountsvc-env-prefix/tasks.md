@@ -1,9 +1,9 @@
 ## 1. 配置读取
 
-- [ ] 1.1 先写失败测试：非空 `ACCOUNTKIT_*` 变量使 serve 与 migrate 的 `LoadConfig` 失败、错误含旧名与新名且不含值；以 `ACCOUNTSVC_` 提供库配置时可正常加载。验证：测试在改动前失败
-- [ ] 1.2 `config.go` 引入 `envPrefix`，`ConfigFromEnv`、`env()`、错误名映射、`safeLibraryConfigError` 改用该前缀；`LoadConfig` 开头拒绝旧前缀；`run.go` 错误名改名。验证：1.1 测试通过，`go vet ./internal/accountsvc/...` 通过
-- [ ] 1.3 重名检测测试（design D3）：收集服务配置名，断言不以 `ALIPAY_`/`OIDC_` 开头且库 `ConfigFromEnv("ACCOUNTSVC_")` 不读取它们；对一个已知库名做反向对照证明测试有效。验证：测试通过，临时加入同名配置时失败
-- [ ] 1.4 accountsvc 与 `cmd/accountsvc` 测试中的库配置变量改名；`configEnvironment` 与进程夹具 `environment()` 继续清除 `ACCOUNTKIT_*`。验证：`GOWORK=off go test -count=1 ./internal/accountsvc/... ./cmd/...` 通过（无数据库时数据库用例 skip，另见 3.1）
+- [x] 1.1 先写失败测试：非空 `ACCOUNTKIT_*` 变量使 serve 与 migrate 的 `LoadConfig` 失败、错误含旧名与新名且不含值；以 `ACCOUNTSVC_` 提供库配置时可正常加载。验证：测试在改动前失败
+- [x] 1.2 `config.go` 引入 `envPrefix`，`ConfigFromEnv`、`env()`、错误名映射、`safeLibraryConfigError` 改用该前缀；`LoadConfig` 开头拒绝旧前缀；`run.go` 错误名改名。验证：1.1 测试通过，`go vet ./internal/accountsvc/...` 通过
+- [x] 1.3 重名检测测试（design D3）：收集服务配置名，断言不以 `ALIPAY_`/`OIDC_` 开头且库 `ConfigFromEnv("ACCOUNTSVC_")` 不读取它们；对一个已知库名做反向对照证明测试有效。验证：测试通过，临时加入同名配置时失败
+- [x] 1.4 accountsvc 与 `cmd/accountsvc` 测试中的库配置变量改名；`configEnvironment` 与进程夹具 `environment()` 继续清除 `ACCOUNTKIT_*`。验证：`GOWORK=off go test -count=1 ./internal/accountsvc/... ./cmd/...` 通过（无数据库时数据库用例 skip，另见 3.1）
 
 ## 2. 部署与文档
 

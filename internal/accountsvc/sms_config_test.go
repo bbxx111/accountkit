@@ -30,7 +30,7 @@ func TestConfigSMSProvider(t *testing.T) {
 	t.Run("explicit PHONE with provider", func(t *testing.T) {
 		serveEnvironment(t)
 		aliyunEnvironment(t)
-		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "PHONE,EMAIL")
+		t.Setenv("ACCOUNTSVC_ENABLED_IDENTITY_KINDS", "PHONE,EMAIL")
 		cfg, err := LoadConfig("serve")
 		if err != nil {
 			t.Fatal(err)
@@ -48,7 +48,7 @@ func TestConfigSMSProvider(t *testing.T) {
 	})
 	t.Run("explicit PHONE without provider", func(t *testing.T) {
 		serveEnvironment(t)
-		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "PHONE,EMAIL")
+		t.Setenv("ACCOUNTSVC_ENABLED_IDENTITY_KINDS", "PHONE,EMAIL")
 		_, err := LoadConfig("serve")
 		if err == nil || !strings.Contains(err.Error(), "ACCOUNTSVC_SMS_PROVIDER") {
 			t.Fatalf("expected missing SMS provider, got %v", err)
@@ -72,8 +72,8 @@ func TestConfigSMSProvider(t *testing.T) {
 	t.Run("explicit Enabled without PHONE leaves provider unused", func(t *testing.T) {
 		serveEnvironment(t)
 		aliyunEnvironment(t)
-		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "EMAIL")
-		t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "EMAIL")
+		t.Setenv("ACCOUNTSVC_ENABLED_IDENTITY_KINDS", "EMAIL")
+		t.Setenv("ACCOUNTSVC_REQUIRED_IDENTITY_KINDS", "EMAIL")
 		cfg, err := LoadConfig("serve")
 		if err != nil {
 			t.Fatal(err)
@@ -155,9 +155,9 @@ func TestConfigSMTPBrand(t *testing.T) {
 		}
 	}
 	// EMAIL 显式禁用时不解析品牌。
-	t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "WECHAT")
-	t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
-	t.Setenv("ACCOUNTKIT_WECHAT_APPS", "test-app:synthetic-provider-secret")
+	t.Setenv("ACCOUNTSVC_ENABLED_IDENTITY_KINDS", "WECHAT")
+	t.Setenv("ACCOUNTSVC_REQUIRED_IDENTITY_KINDS", "[]")
+	t.Setenv("ACCOUNTSVC_WECHAT_APPS", "test-app:synthetic-provider-secret")
 	if cfg, err := LoadConfig("serve"); err != nil || cfg.SMTPBrand != "" {
 		t.Fatalf("disabled EMAIL must ignore brand: %q %v", cfg.SMTPBrand, err)
 	}

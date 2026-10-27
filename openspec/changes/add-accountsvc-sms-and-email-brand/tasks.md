@@ -14,12 +14,12 @@
 
 - [x] 3.1 解析 `ACCOUNTSVC_SMS_PROVIDER` 与 `ACCOUNTSVC_SMS_ALIYUN_*`：未知服务商、缺少必填项、非法 endpoint 时启动失败并指出变量名，不回显值；production 下 endpoint 只接受 HTTPS；migrate 不解析。验证：config 测试。
 - [x] 3.2 修改 PHONE 规则：显式启用 PHONE 时须已配置服务商，否则沿用原拒绝；省略 Enabled 时短信渠道保持禁用；装配时只在 PHONE 已启用时注入阿里云发送器。验证：config 与 run 测试覆盖以上组合。
-- [ ] 3.3 进程级集成测试：在 PHONE 启用、endpoint 指向本地假服务时，发码与登录成功；假服务返回频控时为 503；非 +86 号码为 400 `TARGET_NOT_SUPPORTED`。验证：`verify-accountsvc.sh`。
+- [x] 3.3 进程级集成测试：在 PHONE 启用、endpoint 指向本地假服务时，发码与登录成功；假服务返回频控时为 503；非 +86 号码为 400 `TARGET_NOT_SUPPORTED`。验证：`verify-accountsvc.sh`。
 
 ## 4. 邮件品牌前缀
 
 - [x] 4.1 给 `LegacyChineseRenderer` 增加 `Brand` 字段，新增 `smtp.ValidateBrand`；`Render` 遇到不合法品牌时返回 `ErrUnavailable`。验证：渲染测试确认四种用途在空品牌时逐字不变，带品牌时标题与正文首行正确；CR/LF、控制字符、超长、首尾空白被拒绝。
-- [ ] 4.2 accountsvc 读取 `ACCOUNTSVC_SMTP_BRAND` 并校验后传入渲染器，EMAIL 禁用时不解析。验证：config 测试与 SMTP 集成测试中的邮件标题。
+- [x] 4.2 accountsvc 读取 `ACCOUNTSVC_SMTP_BRAND` 并校验后传入渲染器，EMAIL 禁用时不解析。验证：config 测试与 SMTP 集成测试中的邮件标题。
 
 ## 5. 文档
 
@@ -27,6 +27,6 @@
 
 ## 6. 验证与记录
 
-- [ ] 6.1 运行 `go build`、`go vet`、`go test ./...`（连接真实数据库）、`check-generated.sh`、`check-migrations.sh`、`openspec validate --all --strict`。
-- [ ] 6.2 在 Linux 镜像中运行 `verify.sh` 与 `verify-accountsvc.sh`，新增的必需测试同步写入 required-tests 列表。
-- [ ] 6.3 编写 `verification.md`，写明真实阿里云发送需由部署方用真实凭据与模板验收。
+- [x] 6.1 运行 `go build`、`go vet`、`go test ./...`（连接真实数据库）、`check-generated.sh`、`check-migrations.sh`、`openspec validate --all --strict`。
+- [x] 6.2 在 Linux 镜像中运行 `verify.sh` 与 `verify-accountsvc.sh`，新增的必需测试同步写入 required-tests 列表。
+- [x] 6.3 编写 `verification.md`，写明真实阿里云发送需由部署方用真实凭据与模板验收。

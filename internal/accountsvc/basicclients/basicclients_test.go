@@ -45,3 +45,20 @@ func TestMatcherAndSharedSecret(t *testing.T) {
 		t.Fatal("SharedSecret mismatch")
 	}
 }
+
+func TestMatchReturnsClientID(t *testing.T) {
+	m, err := basicclients.NewMatcher(map[string][]string{"svc": {secret(1)}, "other": {secret(2)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest("GET", "/", nil)
+	r.SetBasicAuth("other", secret(2))
+	if id, ok := m.Match(r); !ok || id != "other" {
+		t.Fatalf("Match = %q, %v", id, ok)
+	}
+	r = httptest.NewRequest("GET", "/", nil)
+	r.SetBasicAuth("svc", secret(2))
+	if id, ok := m.Match(r); ok || id != "" {
+		t.Fatalf("secret of another client matched: %q, %v", id, ok)
+	}
+}

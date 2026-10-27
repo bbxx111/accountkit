@@ -95,23 +95,32 @@ func NewMatcher(clients map[string][]string) (*Matcher, error) {
 	return m, nil
 }
 
-// Authorized requires exactly one Authorization header with Basic credentials matching a
-// configured secret of that client ID. It compares fixed-size hashes and inspects every
-// rotation entry rather than returning on the first match.
+// Authorized reports whether Match succeeds.
 func (m *Matcher) Authorized(r *http.Request) bool {
+	_, ok := m.Match(r)
+	return ok
+}
+
+// Match requires exactly one Authorization header with Basic credentials matching a
+// configured secret of that client ID, and returns the client ID. It compares fixed-size
+// hashes and inspects every rotation entry rather than returning on the first match.
+func (m *Matcher) Match(r *http.Request) (string, bool) {
 	if len(r.Header.Values("Authorization")) != 1 {
-		return false
+		return "", false
 	}
 	id, password, ok := r.BasicAuth()
 	if !ok {
-		return false
+		return "", false
 	}
 	digest := sha256.Sum256([]byte(password))
 	match := 0
 	for _, expected := range m.clients[id] {
 		match |= subtle.ConstantTimeCompare(digest[:], expected[:])
 	}
-	return match == 1
+	if match != 1 {
+		return "", false
+	}
+	return id, true
 }
 
 // SharedSecret reports whether any secret appears in both lists, so one credential cannot

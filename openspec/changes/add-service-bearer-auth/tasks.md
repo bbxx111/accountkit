@@ -5,9 +5,9 @@
 
 ## 2. 服务调用认证层
 
-- [ ] 2.1 `basicclients.Matcher` 新增 `Match(r) (clientID, ok)`，`Authorized` 改为其包装。验证：basicclients 测试覆盖返回的客户端 ID，introspection/purgefeed 现有测试通过
-- [ ] 2.2 新建 `internal/accountsvc/serviceauth`：按 Authorization 方案分流 Basic/Bearer，Bearer 额外校验 `exp-iat≤1h`、非空 `azp` 与本接口允许列表，返回 Outcome（OK/Unauthenticated/Forbidden/Unavailable）、ClientID、Method、BearerAttempted；认证阶段 3 秒上限；共享的 challenge 生成函数实现 D6 规则；服务 verifier 延迟加载、10 秒冷却。验证：serviceauth 单元测试覆盖 design 测试矩阵 #1–#20 及 14b/14c 的判定与 challenge（含随机 kid 并发时测试 IdP 请求次数上限）
-- [ ] 2.3 日志：403 记 INFO（client_id、endpoint、auth_method），刷新失败记 WARN（issuer），discovery issuer 不一致记 ERROR；不记录令牌或 Authorization。验证：日志断言测试检查不含令牌与秘密
+- [x] 2.1 `basicclients.Matcher` 新增 `Match(r) (clientID, ok)`，`Authorized` 改为其包装。验证：basicclients 测试覆盖返回的客户端 ID，introspection/purgefeed 现有测试通过
+- [x] 2.2 新建 `internal/accountsvc/serviceauth`：按 Authorization 方案分流 Basic/Bearer，Bearer 额外校验 `exp-iat≤1h`、非空 `azp` 与本接口允许列表，返回 Outcome（OK/Unauthenticated/Forbidden/Unavailable）、ClientID、Method、BearerAttempted；认证阶段 3 秒上限；共享的 challenge 生成函数实现 D6 规则；服务 verifier 延迟加载、10 秒冷却。验证：serviceauth 单元测试覆盖 design 测试矩阵 #1–#20 及 14b/14c 的判定与 challenge（含随机 kid 并发时测试 IdP 请求次数上限）
+- [x] 2.3 日志：403 记 INFO（client_id、endpoint、auth_method），刷新失败记 WARN（issuer），discovery issuer 不一致记 ERROR；不记录令牌或 Authorization。验证：日志断言测试检查不含令牌与秘密
 
 ## 3. 接口接入
 

@@ -18,7 +18,7 @@
 
 - [x] 4.1 config.go 解析 D9 四个变量及校验：数组格式、两列表不相交、半配置、issuer HTTPS 且≠消费者 issuer、audience ≠ 消费者/管理员 audience/全部第三方应用与客户端 ID/任一 azp；内省改为至少一种认证；错误只指出变量名；migrate 不解析。验证：config 测试逐条覆盖并断言不回显值
 - [x] 4.2 run.go 装配：两个接口共享一个服务 verifier，启动时尝试预加载、失败只记 WARN，不影响启动与 `/readyz`。验证：run 测试在签发方不可达时服务就绪、Bearer 503、Basic 可用
-- [ ] 4.3 进程级集成测试（Linux 真实二进制 + 本地 HTTPS 测试 IdP）：两个接口 Bearer 端到端各一条；签发方关闭时启动成功、Bearer 503、Basic 正常；日志不含令牌。新增顶层测试加入 `scripts/accountsvc-required-tests.txt`。验证：`scripts/verify-accountsvc.sh` 通过
+- [x] 4.3 进程级集成测试（Linux 真实二进制 + 本地 HTTPS 测试 IdP）：两个接口 Bearer 端到端各一条；签发方关闭时启动成功、Bearer 503、Basic 正常；日志不含令牌。新增顶层测试加入 `scripts/accountsvc-required-tests.txt`。验证：`scripts/verify-accountsvc.sh` 通过
 
 ## 5. 文档
 
@@ -27,4 +27,4 @@
 
 ## 6. 验收
 
-- [ ] 6.1 运行 `go build ./...`、`go vet ./...`、`go test -count=1 ./...`（GOWORK=off）、`bash scripts/verify-accountsvc.sh`、`openspec validate --all --strict`，独立代码审查无 Critical；结果与未验证项（真实 Keycloak 未验收，由接入方负责）写入本变更 `verification.md`
+- [x] 6.1 运行 `go build ./...`、`go vet ./...`、`go test -count=1 ./...`（GOWORK=off）、`bash scripts/verify-accountsvc.sh`、`openspec validate --all --strict`，独立代码审查无 Critical；结果与未验证项（真实 Keycloak 未验收，由接入方负责）写入本变更 `verification.md`

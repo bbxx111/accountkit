@@ -19,8 +19,8 @@
 
 ## 4. accountsvc 路由
 
-- [ ] 4.1 把内省 handler 的客户端校验抽成内部共享函数；新增 `ACCOUNTSVC_PURGE_FEED_CLIENTS` 解析，拒绝与内省列表重复的秘密，migrate 不解析。验证：config 测试与内省回归测试。
-- [ ] 4.2 新增 handler 与路由 `GET /v1/purgedUsers`：Basic 鉴权（401 带 challenge、AIP 错误体）、未配置时返回 503 `PURGE_FEED_NOT_CONFIGURED`、`page_token` 与 `page_size` 校验、`no-store`、`next_page_token` 始终返回。验证：handler 单元测试；内省凭据访问返回 401。
+- [x] 4.1 把内省 handler 的客户端校验抽成内部共享函数；新增 `ACCOUNTSVC_PURGE_FEED_CLIENTS` 解析，拒绝与内省列表重复的秘密，migrate 不解析。验证：config 测试与内省回归测试。
+- [x] 4.2 新增 handler 与路由 `GET /v1/purgedUsers`：Basic 鉴权（401 带 challenge、AIP 错误体）、未配置时返回 503 `PURGE_FEED_NOT_CONFIGURED`、`page_token` 与 `page_size` 校验、`no-store`、`next_page_token` 始终返回。验证：handler 单元测试；内省凭据访问返回 401。
 - [ ] 4.3 进程级集成测试：账号注销并到期清理后，用拉取凭据读到该 user_id，续拉为空，游标稳定。验证：`verify-accountsvc.sh`。
 
 ## 5. 文档

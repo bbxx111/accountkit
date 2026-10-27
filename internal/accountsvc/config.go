@@ -17,6 +17,7 @@ import (
 	"github.com/bbxx111/accountkit"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/internal/accountsvc/adminauth"
+	"github.com/bbxx111/accountkit/internal/accountsvc/basicclients"
 	"github.com/bbxx111/accountkit/internal/accountsvc/introspection"
 	"github.com/bbxx111/accountkit/user/sender"
 	"github.com/bbxx111/accountkit/user/sender/aliyun"
@@ -42,6 +43,7 @@ type Config struct {
 	SMS                  *aliyun.Config // nil 表示未配置短信服务商
 	SMTPBrand            string         // 内置中文邮件的可选品牌前缀
 	IntrospectionClients map[string][]string
+	PurgeFeedClients     map[string][]string // nil 时 /v1/purgedUsers 返回 503 PURGE_FEED_NOT_CONFIGURED
 	AdminEnabled         bool
 	Admin                adminauth.Config
 	MetricsEnabled       bool
@@ -243,6 +245,15 @@ func LoadConfig(command string) (Config, error) {
 	c.IntrospectionClients, err = introspection.ParseClients(os.Getenv("ACCOUNTSVC_INTROSPECTION_CLIENTS"))
 	if err != nil {
 		return Config{}, invalidConfig("ACCOUNTSVC_INTROSPECTION_CLIENTS")
+	}
+	if raw := os.Getenv("ACCOUNTSVC_PURGE_FEED_CLIENTS"); strings.TrimSpace(raw) != "" {
+		if c.PurgeFeedClients, err = basicclients.Parse(raw, "ACCOUNTSVC_PURGE_FEED_CLIENTS"); err != nil {
+			return Config{}, invalidConfig("ACCOUNTSVC_PURGE_FEED_CLIENTS")
+		}
+		// 一份凭据不能同时打开内省与已清理用户拉取两个独立授权的接口。
+		if basicclients.SharedSecret(c.IntrospectionClients, c.PurgeFeedClients) {
+			return Config{}, invalidConfig("ACCOUNTSVC_PURGE_FEED_CLIENTS (secret shared with ACCOUNTSVC_INTROSPECTION_CLIENTS)")
+		}
 	}
 	if raw := env("ADMIN_ENABLED"); raw != "" {
 		c.AdminEnabled, err = strconv.ParseBool(raw)

@@ -4,7 +4,7 @@
 
 ## 执行方式
 
-- 按[实现计划](../../../docs/superpowers/plans/2026-10-27-add-accountsvc-sms-and-email-brand.md)在本会话内顺序实施，未使用逐任务子代理：号码支持能力 → 阿里云发送器 → accountsvc 装配 → 邮件品牌之间依赖紧密。
+- 按[实现计划](../../../../docs/superpowers/plans/2026-10-27-add-accountsvc-sms-and-email-brand.md)在本会话内顺序实施，未使用逐任务子代理：号码支持能力 → 阿里云发送器 → accountsvc 装配 → 邮件品牌之间依赖紧密。
 - 每组都先写失败测试，再写实现（TDD）。
 - 全部实现完成后，由一个独立审查代理复核整条分支。
 - 依赖使用本任务专门创建的一次性 Docker 资源：PostgreSQL 17.4 容器 `accountkit-verify-pg-sms`（合成凭据，只绑定回环端口；库 `accountkit_strict`、`accountkit_recsrc`、`accountkit_recdst`）和 Redis 7 容器 `accountkit-verify-redis-sms`。Linux 验证镜像由 `tests/Dockerfile` 构建（golang:1.26.5，PostgreSQL 17.11 客户端）。

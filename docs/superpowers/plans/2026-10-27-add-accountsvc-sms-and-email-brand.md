@@ -12,7 +12,7 @@
 
 **Tech Stack:** Go 1.26 标准库（crypto/hmac、crypto/sha1、net/http），不新增依赖。
 
-**Spec:** `openspec/changes/add-accountsvc-sms-and-email-brand/`（proposal.md、design.md、specs/、tasks.md）
+**Spec:** `openspec/changes/archive/2026-10-27-add-accountsvc-sms-and-email-brand/`（proposal.md、design.md、specs/、tasks.md）
 
 ## Global Constraints
 

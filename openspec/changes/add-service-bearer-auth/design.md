@@ -87,6 +87,8 @@ accountsvc 有两个只供内部业务服务调用的接口：
 
 令牌长度上限沿用 16 KiB。
 
+实施偏离（2026-10-28）：adminauth 现有行为只在 `iat` 存在时校验它，并不要求必须有。为保持管理员行为不变，`oidcjwt` 公共层只要求 `exp`、存在时校验 `iat`；「`iat` 必需」与 `exp - iat` 上限一起放在 serviceauth 中执行。服务令牌的外部行为与规范一致。
+
 ### D4 audience 与 issuer 隔离（约束 2）
 
 serve 启动时，配置任一 token 客户端列表即要求：

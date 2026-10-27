@@ -1,5 +1,14 @@
 # 功能与兼容对照
 
+## 服务调用 Bearer 认证
+
+本节随下一个版本发布。
+
+- **新增能力**：内省与已清理用户拉取在 HTTP Basic 之外可接受客户端凭据 Bearer 令牌（`ACCOUNTSVC_SERVICE_TOKEN_ISSUER`、`ACCOUNTSVC_SERVICE_TOKEN_AUDIENCE`、`ACCOUNTSVC_INTROSPECTION_TOKEN_CLIENTS`、`ACCOUNTSVC_PURGE_FEED_TOKEN_CLIENTS`），规则见[服务调用认证](accountsvc.md#服务调用认证内省与已清理用户拉取)。仅配置 Basic 的部署行为不变。
+- **放宽**：serve 原先要求 `ACCOUNTSVC_INTROSPECTION_CLIENTS`，现在要求它与 `ACCOUNTSVC_INTROSPECTION_TOKEN_CLIENTS` 至少配置一项；拉取在两种方式都未配置时才返回 503 `PURGE_FEED_NOT_CONFIGURED`。
+- **新错误码**：内省新增 401 `invalid_token`、403 `insufficient_scope`；拉取新增 401 `TOKEN_INVALID`、403 `CLIENT_NOT_AUTHORIZED`；签发方不可用时分别为 503 `temporarily_unavailable`、503 `DEPENDENCY_UNAVAILABLE`（`Retry-After: 1`）。启用两种方式时 401 返回两行 `WWW-Authenticate`。
+- **回退**：调用方切回 Basic，或移除 token 配置后重启；无数据迁移。管理员认证行为不变。
+
 ## accountsvc 配置前缀统一
 
 本节随下一个版本发布。

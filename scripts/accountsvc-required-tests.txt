@@ -35,3 +35,13 @@ github.com/bbxx111/accountkit/internal/accountsvc/TestConfigPurgeFeedClients
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigRejectsLegacyPrefix
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigReadsLibrarySettingsWithServicePrefix
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceAndLibraryEnvNamesDoNotOverlap
+github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationServiceBearerTokens
+github.com/bbxx111/accountkit/internal/accountsvc/TestRuntimeStartsWhenServiceIssuerUnavailable
+github.com/bbxx111/accountkit/internal/accountsvc/TestConfigServiceTokenRejections
+github.com/bbxx111/accountkit/internal/accountsvc/serviceauth/TestBearerDecisions
+github.com/bbxx111/accountkit/internal/accountsvc/serviceauth/TestRandomKidsAreBounded
+github.com/bbxx111/accountkit/internal/accountsvc/serviceauth/TestHeaderHandling
+github.com/bbxx111/accountkit/internal/accountsvc/introspection/TestBearerIntrospectionErrors
+github.com/bbxx111/accountkit/internal/accountsvc/purgefeed/TestPurgeFeedBearerErrors
+github.com/bbxx111/accountkit/internal/accountsvc/oidcjwt/TestCooldownAfterSuccessfulAttempt
+github.com/bbxx111/accountkit/internal/accountsvc/oidcjwt/TestCooldownAfterFailedAttempt

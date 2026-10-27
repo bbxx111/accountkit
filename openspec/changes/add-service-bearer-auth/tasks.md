@@ -22,8 +22,8 @@
 
 ## 5. 文档
 
-- [ ] 5.1 `docs/accountsvc.md`：「业务服务错误与配置契约」增加服务调用认证小节（两种方式、错误表、challenge、调用方处理建议、签发方故障与停用客户端延迟、签名密钥轮换先发布后启用）；配置表加四个变量；Keycloak 示例（仅服务账号机密客户端、audience mapper 只勾选 "Add to access token"、令牌寿命建议 ≤5 分钟）。验证：人工核对与 specs 一致、链接有效
-- [ ] 5.2 `docs/gateway-integration.md`（内部入口原样透传 Bearer，网关不得用自身令牌调用）、`docs/compatibility.md`（内省放宽为至少一种认证）、`deploy/accountsvc/.env.example`（空模板）、`examples/remoteauth` 说明。验证：人工核对，`git diff --check` 无误
+- [x] 5.1 `docs/accountsvc.md`：「业务服务错误与配置契约」增加服务调用认证小节（两种方式、错误表、challenge、调用方处理建议、签发方故障与停用客户端延迟、签名密钥轮换先发布后启用）；配置表加四个变量；Keycloak 示例（仅服务账号机密客户端、audience mapper 只勾选 "Add to access token"、令牌寿命建议 ≤5 分钟）。验证：人工核对与 specs 一致、链接有效
+- [x] 5.2 `docs/gateway-integration.md`（内部入口原样透传 Bearer，网关不得用自身令牌调用）、`docs/compatibility.md`（内省放宽为至少一种认证）、`deploy/accountsvc/.env.example`（空模板）、`examples/remoteauth` 说明。验证：人工核对，`git diff --check` 无误
 
 ## 6. 验收
 

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -74,7 +75,15 @@ func TestServiceIntegrationAliyunSMS(t *testing.T) {
 		"ACCOUNTSVC_SMS_ALIYUN_TEMPLATE_REAUTH":           "SMS_REAUTH",
 		"ACCOUNTSVC_SMS_ALIYUN_TEMPLATE_SIGN_IN_COMPLETE": "SMS_COMPLETE",
 		"ACCOUNTSVC_SMS_ALIYUN_ENDPOINT":                  server.URL + "/",
+		"ACCOUNTSVC_SMTP_BRAND":                           "食方",
 	})
+	// 品牌前缀作用于内置中文邮件的标题与正文开头。
+	f.call("POST", p.baseURL+"/v1/users:sendSignInCode", "", map[string]string{"channel": "EMAIL", "target": "brand@example.test"}, 200)
+	m := f.smtp.mail(t)
+	f.secrets = append(f.secrets, m.target, m.code)
+	if m.subject != "食方登录验证码" || !strings.HasPrefix(m.body, "【食方】您正在进行登录。") {
+		t.Fatalf("branded mail: subject=%q body prefix=%q", m.subject, m.body[:min(len(m.body), 40)])
+	}
 	target := "+8613812345678"
 	f.call("POST", p.baseURL+"/v1/users:sendSignInCode", "", map[string]string{"channel": "PHONE", "target": target}, 200)
 	code := fake.code("13812345678")

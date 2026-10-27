@@ -18,7 +18,7 @@
 
 ## 4. 邮件品牌前缀
 
-- [ ] 4.1 给 `LegacyChineseRenderer` 增加 `Brand` 字段，新增 `smtp.ValidateBrand`；`Render` 遇到不合法品牌时返回 `ErrUnavailable`。验证：渲染测试确认四种用途在空品牌时逐字不变，带品牌时标题与正文首行正确；CR/LF、控制字符、超长、首尾空白被拒绝。
+- [x] 4.1 给 `LegacyChineseRenderer` 增加 `Brand` 字段，新增 `smtp.ValidateBrand`；`Render` 遇到不合法品牌时返回 `ErrUnavailable`。验证：渲染测试确认四种用途在空品牌时逐字不变，带品牌时标题与正文首行正确；CR/LF、控制字符、超长、首尾空白被拒绝。
 - [ ] 4.2 accountsvc 读取 `ACCOUNTSVC_SMTP_BRAND` 并校验后传入渲染器，EMAIL 禁用时不解析。验证：config 测试与 SMTP 集成测试中的邮件标题。
 
 ## 5. 文档

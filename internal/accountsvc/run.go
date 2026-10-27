@@ -134,7 +134,7 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 		return nil, err
 	}
 	if cfg.identityEnabled(enum.IdentityEmail) {
-		s, err := smtp.NewWithRenderer(cfg.SMTP, smtp.LegacyChineseRenderer{})
+		s, err := smtp.NewWithRenderer(cfg.SMTP, smtp.LegacyChineseRenderer{Brand: cfg.SMTPBrand})
 		if err != nil {
 			return nil, errors.New("accountsvc: SMTP configuration failed")
 		}

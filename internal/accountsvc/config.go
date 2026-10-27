@@ -39,6 +39,7 @@ type Config struct {
 	TrustedProxyCIDRs    []netip.Prefix
 	SMTP                 smtp.Config
 	SMS                  *aliyun.Config // nil 表示未配置短信服务商
+	SMTPBrand            string         // 内置中文邮件的可选品牌前缀
 	IntrospectionClients map[string][]string
 	AdminEnabled         bool
 	Admin                adminauth.Config
@@ -223,6 +224,11 @@ func LoadConfig(command string) (Config, error) {
 		}
 		if c.Mode == "production" && c.SMTP.TLSMode == "none" {
 			return Config{}, invalidConfig("ACCOUNTSVC_SMTP_TLS_MODE")
+		}
+		// 不裁剪空白：首尾空白须被拒绝而非静默去除。
+		c.SMTPBrand = os.Getenv("ACCOUNTSVC_SMTP_BRAND")
+		if smtp.ValidateBrand(c.SMTPBrand) != nil {
+			return Config{}, invalidConfig("ACCOUNTSVC_SMTP_BRAND")
 		}
 		if _, err = smtp.New(c.SMTP); err != nil {
 			for _, field := range []struct{ token, name string }{{"Host", "HOST"}, {"From", "FROM"}, {"TLSMode", "TLS_MODE"}, {"Timeout", "TIMEOUT"}} {

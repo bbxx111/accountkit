@@ -430,3 +430,54 @@ func TestSMTPRendererFoldsLongSubject(t *testing.T) {
 		})
 	}
 }
+
+func TestLegacyChineseRendererBrand(t *testing.T) {
+	ctx := context.Background()
+	purposes := map[enum.CodePurpose]string{
+		enum.PurposeSignIn:         "登录",
+		enum.PurposeBind:           "绑定",
+		enum.PurposeReauth:         "重新认证",
+		enum.PurposeSignInComplete: "完成登录并关联身份，未注册时自动注册",
+	}
+	for purpose, label := range purposes {
+		m := sender.CodeMessage{Purpose: purpose, Code: "123456", TTL: 5 * time.Minute}
+		// 空品牌：与既有文案逐字一致。
+		plain, err := (delivery.LegacyChineseRenderer{}).Render(ctx, m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantText := "您正在进行" + label + "。\r\n\r\n验证码：123456\r\n有效期：5 分钟。\r\n\r\n请勿向他人透露验证码。如非本人操作，请忽略此邮件。\r\n"
+		if plain.Subject != label+"验证码" || plain.Text != wantText {
+			t.Fatalf("%v: unbranded output changed: %q / %q", purpose, plain.Subject, plain.Text)
+		}
+		branded, err := (delivery.LegacyChineseRenderer{Brand: "食方"}).Render(ctx, m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if branded.Subject != "食方"+label+"验证码" || branded.Text != "【食方】"+wantText {
+			t.Fatalf("%v: branded output: %q / %q", purpose, branded.Subject, branded.Text)
+		}
+	}
+	for name, brand := range map[string]string{
+		"crlf":        "食方\r\nBcc: x@example.org",
+		"lf":          "食\n方",
+		"tab":         "食\t方",
+		"nul":         "食\x00方",
+		"del":         "食\x7f方",
+		"too long":    strings.Repeat("食", 33),
+		"leading sp":  " 食方",
+		"trailing sp": "食方 ",
+	} {
+		if delivery.ValidateBrand(brand) == nil {
+			t.Errorf("%s: ValidateBrand must reject %q", name, brand)
+		}
+		if _, err := (delivery.LegacyChineseRenderer{Brand: brand}).Render(ctx, validCodeMessage()); err != sender.ErrUnavailable {
+			t.Errorf("%s: Render must refuse invalid brand: %v", name, err)
+		}
+	}
+	for _, ok := range []string{"", "食方", strings.Repeat("食", 32), "Zavelo App"} {
+		if err := delivery.ValidateBrand(ok); err != nil {
+			t.Errorf("ValidateBrand(%q) = %v", ok, err)
+		}
+	}
+}

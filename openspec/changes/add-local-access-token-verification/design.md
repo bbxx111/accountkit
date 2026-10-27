@@ -62,7 +62,7 @@
 
 查询复用已有的 sqlc 查询 `GetActiveSessionByIDAndUser`（`id = $1 AND user_id = $2 AND revoke_time IS NULL`，走主键，不加锁，不开事务，不判刷新期限），未命中即视为无效。实施时发现该查询语义与需求完全一致，因此不再新增查询，也无需重新生成 sqlc 代码（对原计划的偏离）。观测沿用 `Authenticate` 的认证操作观测（`authenticate` 操作，吊销时记 `session_revoked` 原因）；现有观测体系没有数据库依赖组件，其他数据库查询也不单独观测，本变更不新增组件或指标名。
 
-内省装配从 `auth.Users().Authenticate` 改为 `AuthenticateStrict`。handler 的协议映射不变，因为它已经把非 `ErrInvalidToken` 的错误映射为 503。
+内省装配从 `auth.Users().Authenticate` 改为 `AuthenticateStrict`，并在内省 handler 中为校验设置 3 秒上限（审查后补充），使数据库挂起时返回 503，而不是一直占用请求直到调用方放弃；嵌入式宿主的请求超时仍由宿主控制。handler 的协议映射不变，因为它已经把非 `ErrInvalidToken` 的错误映射为 503。
 
 备选方案是在内省 handler 中直接查库，被否决：违反“业务规则集中在 `user.Service`”的约定，嵌入式宿主也无法复用。
 
@@ -90,6 +90,8 @@
 - [业务端漏校验 `alg`、`typ`、`aud`，导致接受伪造或跨实例的令牌] → 规范列出必需的校验项，示例给出参考实现和负面测试。
 - [升级瞬间所有已签发的 access 失效] → 客户端收到 401 后用 refresh token 刷新，refresh token 不受影响；当前没有正式部署，影响限于开发环境。
 - [ES256 私钥泄露] → 沿用现有的密钥注入方式和不记日志的约束；轮换流程不变。
+
+- [严格认证与普通认证共用 `authenticate` 观测操作] → 同一请求先经 `RequireScope` 再经 `RequireScopeStrict` 会被计数两次，指标上无法区分两者；这是 D5 的有意取舍，不新增指标名，需要区分时另行设计。
 
 ## Migration Plan
 

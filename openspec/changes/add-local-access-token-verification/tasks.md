@@ -79,4 +79,4 @@
 
 - [ ] 7.1 运行 `GOWORK=off go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`bash scripts/check-generated.sh`、`bash scripts/check-migrations.sh` 和 `openspec validate --all --strict`，确认全部通过。
 - [ ] 7.2 提供三个一次性数据库，运行 `bash scripts/verify.sh`（Windows 下用 `tests/Dockerfile` 镜像跑 race）；新增的必需顶层测试同步写入 `scripts/required-tests.txt`。
-- [ ] 7.3 编写 `verification.md`，记录实际运行的检查、结果和未验证项。
+- [x] 7.3 编写 `verification.md`，记录实际运行的检查、结果和未验证项。

@@ -24,7 +24,9 @@ type handler struct {
 }
 
 // New snapshots validated client credentials and delegates token validation to the
-// existing consumer service. It neither parses JWT claims nor queries account state.
+// consumer service's strict authenticator, which checks the committed session row
+// (revocation is immediate, dependency failures map to 503). It never parses JWT
+// claims itself and does not query account state.
 func New(clients map[string][]string, authenticate func(context.Context, string) (user.Principal, error)) (http.Handler, error) {
 	if err := validateClients(clients); err != nil {
 		return nil, err

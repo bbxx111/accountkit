@@ -43,7 +43,7 @@
 
 ## 4. accountsvc
 
-- [ ] 4.1 将内省装配从 `Users().Authenticate` 改为 `AuthenticateStrict`，同步更新 handler 注释。
+- [x] 4.1 将内省装配从 `Users().Authenticate` 改为 `AuthenticateStrict`，同步更新 handler 注释。
   - 验证：introspection 测试覆盖数据库错误返回 503 `temporarily_unavailable` 并带 no-store、已吊销返回 `active:false`、有效时返回最小上下文；同步更新 `compatibility_test.go` 中关于 Redis fail-open 的断言。
 - [ ] 4.2 在单监听器上挂载 `/.well-known/jwks.json`。
   - 验证：`http_test.go` 确认无需认证即可访问、内省仍要求 Basic、旧内部路径仍返回 404；gateway/transport 集成测试覆盖 JWKS 路由。

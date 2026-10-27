@@ -67,7 +67,7 @@ func TestApplicationMetrics(t *testing.T) {
 	if w.Code != 200 || strings.TrimSpace(w.Body.String()) != `{"active":false}` {
 		t.Fatalf("authentication status=%d body=%s", w.Code, w.Body.String())
 	}
-	h := serviceHandler(Config{MetricsEnabled: true}, app.endUser, app.admin, app.introspect, &healthState{}, app.metrics)
+	h := serviceHandler(Config{MetricsEnabled: true}, app.endUser, app.admin, app.introspect, app.jwks, &healthState{}, app.metrics)
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	if w.Code != 200 {
@@ -136,7 +136,7 @@ func TestMetricsHTTP(t *testing.T) {
 			} else if observer != nil || metrics != nil {
 				t.Fatal("disabled metrics allocated observer or handler")
 			}
-			h := serviceHandler(cfg, http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), &healthState{}, metrics)
+			h := serviceHandler(cfg, http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), nil, &healthState{}, metrics)
 			for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodHead, http.MethodOptions} {
 				w := httptest.NewRecorder()
 				h.ServeHTTP(w, httptest.NewRequest(method, "/metrics", nil))

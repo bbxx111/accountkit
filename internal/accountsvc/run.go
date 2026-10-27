@@ -39,6 +39,7 @@ type application struct {
 	start                      func(context.Context)
 	close                      func()
 	endUser, admin, introspect http.Handler
+	jwks                       http.Handler
 	metrics                    http.Handler
 }
 type runtimeFactory struct {
@@ -151,9 +152,9 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 	if err != nil {
 		return nil, errors.New("accountsvc: accountkit construction failed")
 	}
-	app := &application{migrate: auth.Migrate, start: auth.Start, close: auth.Close, endUser: auth.EndUserHandler(), admin: auth.AdminHandler(), metrics: metrics}
+	app := &application{migrate: auth.Migrate, start: auth.Start, close: auth.Close, endUser: auth.EndUserHandler(), admin: auth.AdminHandler(), jwks: auth.JWKSHandler(), metrics: metrics}
 	if cfg.command == "serve" {
-		app.introspect, err = introspection.New(cfg.IntrospectionClients, auth.Users().Authenticate)
+		app.introspect, err = introspection.New(cfg.IntrospectionClients, auth.Users().AuthenticateStrict)
 		if err != nil {
 			auth.Close()
 			return nil, errors.New("accountsvc: introspection configuration failed")
@@ -267,7 +268,7 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 	defer cancelRequests()
 	tracker := newRequestTracker()
 	state := &healthState{database: d.databasePing, redis: d.redisPing}
-	handler := serviceHandler(cfg, app.endUser, app.admin, app.introspect, state, app.metrics)
+	handler := serviceHandler(cfg, app.endUser, app.admin, app.introspect, app.jwks, state, app.metrics)
 	server := newHTTPServer(cfg.HTTPAddr, requestMetadata(cfg.TrustedProxyCIDRs, tracker.wrap(handler)), requestCtx)
 	if cfg.TLSEnabled {
 		server.TLSConfig = cfg.tlsConfig.Clone()

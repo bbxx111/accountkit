@@ -29,6 +29,7 @@ func TestServiceIntegrationEmailLifecycle(t *testing.T) {
 	tokens := f.login(p, "lifecycle@example.test")
 	access, refresh := tokens["access_token"].(string), tokens["refresh_token"].(string)
 	f.introspect(p, access, true)
+	f.verifyLocally(p, access)
 	rotated := f.call("POST", p.baseURL+"/v1/token", "", map[string]string{"grant_type": "refresh_token", "refresh_token": refresh}, 200)
 	replay := f.call("POST", p.baseURL+"/v1/token", "", map[string]string{"grant_type": "refresh_token", "refresh_token": refresh}, 200)
 	if rotated["access_token"] != replay["access_token"] || rotated["refresh_token"] != replay["refresh_token"] {

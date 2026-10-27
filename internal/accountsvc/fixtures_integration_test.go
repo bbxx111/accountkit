@@ -14,6 +14,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -609,6 +610,45 @@ func (f *integrationFixture) introspect(p *serviceProcess, token string, active 
 	}
 	if !active && len(out) != 1 {
 		f.t.Fatal("inactive response exposed details")
+	}
+}
+
+// verifyLocally 模拟业务服务：只用公开 JWKS 校验 access（ES256、typ、kid、iss、aud），不调用内省。
+func (f *integrationFixture) verifyLocally(p *serviceProcess, token string) {
+	f.t.Helper()
+	resp, err := f.client.Get(p.baseURL + "/.well-known/jwks.json")
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var set struct {
+		Keys []struct{ Kty, Crv, X, Y, Kid, Alg string } `json:"keys"`
+	}
+	if resp.StatusCode != 200 || resp.Header.Get("Cache-Control") != "public, max-age=300" || json.NewDecoder(resp.Body).Decode(&set) != nil || len(set.Keys) == 0 {
+		f.t.Fatalf("JWKS unavailable: %d", resp.StatusCode)
+	}
+	keys := map[string]*ecdsa.PublicKey{}
+	for _, k := range set.Keys {
+		x, _ := base64.RawURLEncoding.DecodeString(k.X)
+		y, _ := base64.RawURLEncoding.DecodeString(k.Y)
+		pub, err := ecdsa.ParseUncompressedPublicKey(elliptic.P256(), append(append([]byte{4}, x...), y...))
+		if err != nil || k.Kty != "EC" || k.Crv != "P-256" || k.Alg != "ES256" {
+			f.t.Fatalf("bad JWK %s", k.Kid)
+		}
+		keys[k.Kid] = pub
+	}
+	_, err = jwt.Parse(token, func(t *jwt.Token) (any, error) {
+		if t.Header["typ"] != "at+jwt" {
+			return nil, errors.New("typ")
+		}
+		kid, _ := t.Header["kid"].(string)
+		if k, ok := keys[kid]; ok {
+			return k, nil
+		}
+		return nil, errors.New("unknown kid")
+	}, jwt.WithValidMethods([]string{"ES256"}), jwt.WithIssuer(f.env["ACCOUNTKIT_JWT_ISSUER"]), jwt.WithAudience(f.env["ACCOUNTKIT_JWT_AUDIENCE"]), jwt.WithExpirationRequired())
+	if err != nil {
+		f.t.Fatalf("local verification with JWKS failed: %v", err)
 	}
 }
 

@@ -562,11 +562,52 @@ func (p *serviceProcess) wait(wantSuccess bool, max time.Duration) {
 func (p *serviceProcess) stop() { p.signal(); p.wait(true, 20*time.Second) }
 func (f *integrationFixture) assertSafe(output string) {
 	f.t.Helper()
-	for _, secret := range f.secrets {
-		if secret != "" && strings.Contains(output, secret) {
-			f.t.Fatal("process output exposed a test credential or private identity")
+	for i, secret := range f.secrets {
+		if at := secretIndex(output, secret); at >= 0 {
+			f.t.Fatalf("process output exposed test secret #%d: %s", i, redactedContext(output, at, len(secret), f.secrets))
 		}
 	}
+}
+
+// secretIndex returns where secret occurs in output, or -1. Short all-digit secrets
+// (six-digit verification codes) count only as a standalone number: as substrings they
+// collide by chance with digit runs such as the nanosecond fraction of every JSON log
+// timestamp, while a real leak is delimited by non-digits ("验证码：123456", "code=123456").
+func secretIndex(output, secret string) int {
+	if secret == "" {
+		return -1
+	}
+	if len(secret) > 8 || strings.IndexFunc(secret, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
+		return strings.Index(output, secret)
+	}
+	for from := 0; from <= len(output)-len(secret); {
+		i := strings.Index(output[from:], secret)
+		if i < 0 {
+			return -1
+		}
+		i += from
+		end := i + len(secret)
+		if (i == 0 || !isASCIIDigit(output[i-1])) && (end == len(output) || !isASCIIDigit(output[end])) {
+			return i
+		}
+		from = i + 1
+	}
+	return -1
+}
+
+func isASCIIDigit(b byte) bool { return b >= '0' && b <= '9' }
+
+// redactedContext shows the text around a match with every known secret masked, so a
+// failure explains itself without copying credentials into CI logs.
+func redactedContext(output string, at, n int, secrets []string) string {
+	start, end := max(0, at-60), min(len(output), at+n+60)
+	window := output[start:end]
+	for i, secret := range secrets {
+		if secret != "" {
+			window = strings.ReplaceAll(window, secret, fmt.Sprintf("<secret#%d>", i))
+		}
+	}
+	return strings.ToValidUTF8(window, "?")
 }
 
 func (f *integrationFixture) call(method, address, bearer string, body any, want int) map[string]any {

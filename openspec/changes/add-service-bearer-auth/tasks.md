@@ -1,7 +1,7 @@
 ## 1. 公共 JWT 层（管理员行为不变）
 
-- [ ] 1.1 新建 `internal/accountsvc/oidcjwt`，从 adminauth 平移 discovery、JWKS 加载与校验、按 kid 缓存、单飞刷新及 RS256 解析（拒绝 jku/x5u、必需 kid、exp+iat、30 秒偏差、16 KiB 上限）；刷新间隔与初始化模式（启动即加载/延迟加载）按实例配置；冷却语义保持「任何尝试后窗口内不再拉取，上次成功 401、上次失败 503」。验证：oidcjwt 单元测试覆盖两种模式、冷却两种分支、密钥 1 小时过期、discovery issuer 不一致
-- [ ] 1.2 adminauth 改用 oidcjwt（启动即加载、1 分钟冷却），角色规则与 `ADMIN_*` 错误保留在 adminauth。验证：adminauth 现有测试不改断言全部通过，`go vet ./internal/accountsvc/...` 通过
+- [x] 1.1 新建 `internal/accountsvc/oidcjwt`，从 adminauth 平移 discovery、JWKS 加载与校验、按 kid 缓存、单飞刷新及 RS256 解析（拒绝 jku/x5u、必需 kid、exp+iat、30 秒偏差、16 KiB 上限）；刷新间隔与初始化模式（启动即加载/延迟加载）按实例配置；冷却语义保持「任何尝试后窗口内不再拉取，上次成功 401、上次失败 503」。验证：oidcjwt 单元测试覆盖两种模式、冷却两种分支、密钥 1 小时过期、discovery issuer 不一致
+- [x] 1.2 adminauth 改用 oidcjwt（启动即加载、1 分钟冷却），角色规则与 `ADMIN_*` 错误保留在 adminauth。验证：adminauth 现有测试不改断言全部通过，`go vet ./internal/accountsvc/...` 通过
 
 ## 2. 服务调用认证层
 

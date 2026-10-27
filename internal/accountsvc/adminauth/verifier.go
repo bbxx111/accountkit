@@ -6,12 +6,11 @@ import (
 	"errors"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/bbxx111/accountkit"
 	"github.com/bbxx111/accountkit/httpapi/apierror"
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/bbxx111/accountkit/internal/accountsvc/oidcjwt"
 )
 
 // Options customize networking, time and the existing forbidden-audit hook.
@@ -21,20 +20,13 @@ type Options struct {
 	OnForbidden func(*http.Request, accountkit.AdminPrincipal)
 }
 
-var (
-	errUnavailable = errors.New("adminauth: identity provider unavailable")
-	errInvalid     = errors.New("adminauth: invalid access token")
-)
+var errInvalid = errors.New("adminauth: invalid access token")
 
-// Verifier verifies administrator JWTs and keeps a bounded, instance-local JWKS cache.
+// Verifier verifies administrator JWTs through a shared, instance-local JWKS cache.
 type Verifier struct {
 	cfg         Config
-	client      *http.Client
-	now         func() time.Time
+	tokens      *oidcjwt.Verifier
 	onForbidden func(*http.Request, accountkit.AdminPrincipal)
-	jwksURL     string
-	mu          sync.Mutex
-	cache       keyCache
 }
 
 // New discovers the configured HTTPS issuer and loads its signing keys before startup.
@@ -48,41 +40,14 @@ func New(ctx context.Context, cfg Config, opts Options) (*Verifier, error) {
 	if cfg.UsernameClaim == "" {
 		cfg.UsernameClaim = "/preferred_username"
 	}
-	if opts.Now == nil {
-		opts.Now = time.Now
-	}
-	client := http.Client{Timeout: 10 * time.Second}
-	if opts.HTTPClient != nil {
-		client = *opts.HTTPClient
-	}
-	if client.Timeout <= 0 || client.Timeout > 10*time.Second {
-		client.Timeout = 10 * time.Second
-	}
-	// Discovery/JWKS endpoints must be explicit HTTPS URLs, including when the
-	// caller supplies a client with a permissive redirect policy.
-	client.CheckRedirect = func(*http.Request, []*http.Request) error { return errors.New("adminauth: redirects are not allowed") }
-	v := &Verifier{cfg: cfg, client: &client, now: opts.Now, onForbidden: opts.OnForbidden}
-	var discovery struct {
-		Issuer  string `json:"issuer"`
-		JWKSURI string `json:"jwks_uri"`
-	}
-	if err := v.fetchJSON(ctx, strings.TrimRight(cfg.Issuer, "/")+"/.well-known/openid-configuration", &discovery); err != nil {
-		return nil, err
-	}
-	if discovery.Issuer != cfg.Issuer {
-		return nil, errors.New("adminauth: discovered issuer mismatch")
-	}
-	if err := validateHTTPS(discovery.JWKSURI); err != nil {
-		return nil, errors.New("adminauth: invalid JWKS URI")
-	}
-	v.jwksURL = discovery.JWKSURI
-	keys, err := v.loadKeys(ctx)
+	tokens, err := oidcjwt.New(cfg.Issuer, cfg.Audience, oidcjwt.Options{HTTPClient: opts.HTTPClient, Now: opts.Now, RefreshInterval: time.Minute})
 	if err != nil {
 		return nil, err
 	}
-	v.cache.keys = keys
-	v.cache.loadedAt = v.now()
-	return v, nil
+	if err := tokens.Load(ctx); err != nil {
+		return nil, err
+	}
+	return &Verifier{cfg: cfg, tokens: tokens, onForbidden: opts.OnForbidden}, nil
 }
 
 type principalKey struct{}
@@ -111,25 +76,9 @@ func (v *Verifier) Middleware(next http.Handler) http.Handler {
 			writeUnauthorized(w)
 			return
 		}
-		claims := jwt.MapClaims{}
-		_, err := jwt.ParseWithClaims(parts[1], claims, func(token *jwt.Token) (any, error) {
-			if token.Method != jwt.SigningMethodRS256 {
-				return nil, errInvalid
-			}
-			if _, ok := token.Header["jku"]; ok {
-				return nil, errInvalid
-			}
-			if _, ok := token.Header["x5u"]; ok {
-				return nil, errInvalid
-			}
-			kid, ok := token.Header["kid"].(string)
-			if !ok || kid == "" || len(kid) > 256 {
-				return nil, errInvalid
-			}
-			return v.key(r.Context(), kid)
-		}, jwt.WithValidMethods([]string{"RS256"}), jwt.WithIssuer(v.cfg.Issuer), jwt.WithAudience(v.cfg.Audience), jwt.WithExpirationRequired(), jwt.WithIssuedAt(), jwt.WithLeeway(30*time.Second), jwt.WithTimeFunc(v.now))
+		claims, err := v.tokens.Parse(r.Context(), parts[1])
 		if err != nil {
-			if errors.Is(err, errUnavailable) {
+			if errors.Is(err, oidcjwt.ErrUnavailable) {
 				apierror.Write(w, apierror.New(apierror.StatusUnavailable, "ADMIN_AUTH_UNAVAILABLE", "administrator authentication is unavailable"))
 			} else {
 				writeUnauthorized(w)

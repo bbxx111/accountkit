@@ -971,3 +971,5 @@ github.com/bbxx111/accountkit/user/sender/aliyun/TestNewValidatesConfiguration
 github.com/bbxx111/accountkit/user/sender/aliyun/TestSendSMSRequest
 github.com/bbxx111/accountkit/user/sender/aliyun/TestSendSMSErrorsAreUnavailableAndPrivate
 github.com/bbxx111/accountkit/user/sender/aliyun/TestSendSMSTimeoutAndCancellation
+github.com/bbxx111/accountkit/user/sender/aliyun/TestSendSMSFailureLoggingAndGatewayErrors
+github.com/bbxx111/accountkit/user/sender/aliyun/TestSupportsTargetMobileOnly

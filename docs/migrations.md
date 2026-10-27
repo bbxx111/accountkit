@@ -43,13 +43,15 @@ Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史�
 
 ## 当前初始基线
 
-当前初始结构在 v0.4.0 七表会话定义之上，按各次限定授权合入资料单列和本轮头像列；生产目录只有 0001 up/down，version=1/dirty=false。0001 down 继续覆盖七表，公共 Down 拒绝；审计流程关联仍为 data.accountkit.flow_id。此前审计、流程改名、索引和会话简化授权各自限于当时范围。
+当前初始结构在 v0.4.0 七表会话定义之上，按各次限定授权合入资料单列、头像列，以及 `add-purged-user-feed` 的 `purged_user` 表（共八表）；生产目录只有 0001 up/down，version=1/dirty=false。0001 down 覆盖八表，公共 Down 拒绝；审计流程关联仍为 data.accountkit.flow_id。此前审计、流程改名、索引和会话简化授权各自限于当时范围。
+
+`add-purged-user-feed` 经用户明确要求“直接改 0001，不新增 0002”，在当前 0001 末尾新增 `purged_user`（`user_id` 主键与格式 CHECK、`seq BIGINT GENERATED ALWAYS AS IDENTITY` 唯一约束 `uk_purged_user_seq`、`purge_time` 默认 `clock_timestamp()`）及 `idx_purged_user_purge_time`，0001 down 最先删除该表。其他表、列、索引与约束不变，不新增 0002，新安装仍为 version=1/dirty=false。v0.6.0 发布的 0001 与此前当前定义逐字节相同，现作为独立 pin（tag `ec6802cd221db3ce107e79bac92174bc35a0ba7d`），当前 initialFrozen 更新为新哈希。已安装 v0.6.0 或更早版本的同号数据库缺少该表，预检无写拒绝（`migrations.ErrIncompatibleBaseline`，dirty 优先）；不补表、不 Force、不改版本、不清库，使用新版本须经人工核验后改用新空资源。
 
 `add-google-sign-in` 只改当前 0001 up 中 `identity.kind` 与 `provider_meta` 的注释，并更新当前 initialFrozen。不新增列、索引、CHECK 或 0002。已发布 tag、冻结源和 0001 down 不变。同号数据库不会重放这段注释。旧二进制不能解释 kind 5。后续真实结构增量仍从 0002 开始。
 
 `add-identity-provider-registry` 经用户明确要求“直接改 0001”，只把当前 0001 中 `identity.kind` 改为 `VARCHAR(32) COLLATE "C" NOT NULL` 并加格式 CHECK `identity_kind_format`（`^[A-Z][A-Z0-9_]{1,31}$`），同步注释、sqlc、运行时预检与当前 initialFrozen。四个以 kind 开头的索引定义文本、其他列与约束、0001 down 不变，不新增 0002。`identity.kind` 仍为 SMALLINT 的 version 1（v0.5.0 及其后、本变更前的安装）与该列漂移的结构均无写拒绝，dirty 优先；不转换列、不重放同号 SQL、不 Force、改版本或清库，也不提供旧数据迁移。旧二进制（v0.5.0 及本变更前的 develop）的预检不认识这一列变化，可能接受新 version 1 后在读写 kind 时失败；部署须人工阻止新旧版本混跑，以及在新结构上回退到旧二进制。实际当前哈希记于[本变更验收](../openspec/changes/archive/2026-10-23-add-identity-provider-registry/verification.md)。
 
-基线预检要求完整 sign_in_completion_flow、十列 UUIDv7 审计、必有来源/单份描述、当前资料单列、头像列和文本身份类型列。旧缺头像资料 v1、v0.4.0 v1、v0.3.0 v1、双快照/旧流程/审计、双表及各代撤回 v2 均返回可由 errors.Is 识别的 migrations.ErrIncompatibleBaseline，保持 catalog、数据和 version/dirty，dirty 优先。UnsafeReset 沿用相同预检，不接受旧基线；重复 Up 不补列或重放同号 SQL。
+基线预检要求完整 sign_in_completion_flow、十列 UUIDv7 审计、必有来源/单份描述、当前资料单列、头像列、文本身份类型列和完整 purged_user 表。旧缺头像资料 v1、v0.4.0 v1、v0.3.0 v1、双快照/旧流程/审计、双表及各代撤回 v2 均返回可由 errors.Is 识别的 migrations.ErrIncompatibleBaseline，保持 catalog、数据和 version/dirty，dirty 优先。UnsafeReset 沿用相同预检，不接受旧基线；重复 Up 不补列或重放同号 SQL。
 
 冻结源、全部发布 tag/SQL、v0.4.0 旧定义与当前 initialFrozen 分别固定。头像轮当时的哈希和校验结果记于[该轮验收](../openspec/changes/archive/2026-10-21-add-user-avatar-url/verification.md)。后续真实增量从 0002 递增；旧发布说明和归档保留原文，当前操作以本节为准。
 

@@ -166,3 +166,13 @@ CREATE INDEX idx_sign_in_completion_flow_expire_time_id ON sign_in_completion_fl
 -- Account deletion/anonymization removes every proof owner and completed result reference.
 CREATE INDEX idx_sign_in_completion_flow_proof_user_ids ON sign_in_completion_flow USING GIN(proof_user_ids);
 CREATE INDEX idx_sign_in_completion_flow_user_id ON sign_in_completion_flow(user_id);
+
+-- Purged-user feed: external services page by seq and idempotently clean their own user_id data.
+-- seq is assigned under a table lock inside the purge transaction, so seq order equals commit order.
+CREATE TABLE purged_user (
+ user_id TEXT COLLATE "C" PRIMARY KEY CONSTRAINT purged_user_user_id_format CHECK (user_id ~ '^u_[0-9a-hjkmnp-tv-z]{13}$'),
+ seq BIGINT GENERATED ALWAYS AS IDENTITY CONSTRAINT uk_purged_user_seq UNIQUE,
+ purge_time TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
+);
+-- Optional retention cleanup deletes by write time.
+CREATE INDEX idx_purged_user_purge_time ON purged_user(purge_time);

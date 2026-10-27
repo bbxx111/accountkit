@@ -1,9 +1,9 @@
 ## 1. 迁移与基线（直接修改 0001）
 
-- [ ] 1.1 在当前 `0001_init.up.sql` 末尾新增 `purged_user` 表与 `idx_purged_user_purge_time`（定义见 design D1），并在 `0001_init.down.sql` 中最先 `DROP TABLE IF EXISTS purged_user`。验证：新空 schema Up 后为 version=1/dirty=false，表结构与 design 一致，重复 Up 无变化。
-- [ ] 1.2 新增 `migrations/purged_user_baseline.go`（只读预检）并接入 `checkBaseline`。验证：数据库测试用 `git show v0.6.0:migrations/0001_init.up.sql` 安装旧结构后 Up 被拒绝（`ErrIncompatibleBaseline`），catalog、数据与 version/dirty 不变；缺列、类型错误、缺约束的结构同样被拒绝；dirty 优先。
-- [ ] 1.3 `internal/migrationcheck`：`publishedInitialReleases` 增加 v0.6.0 pin（提交 `ec6802cd221db3ce107e79bac92174bc35a0ba7d`，使用原 `initialFrozen` 的两个哈希），`initialFrozen` 更新为新文件的哈希；补充 `published_initial_test` 断言。验证：`bash scripts/check-migrations.sh` 与 migrationcheck 测试通过。
-- [ ] 1.4 AGENTS.md“迁移安全”新增本轮限定授权条目，并同步 `docs/migrations.md` 的当前初始基线说明。验证：内容与 migration-safety 增量规格一致。
+- [x] 1.1 在当前 `0001_init.up.sql` 末尾新增 `purged_user` 表与 `idx_purged_user_purge_time`（定义见 design D1），并在 `0001_init.down.sql` 中最先 `DROP TABLE IF EXISTS purged_user`。验证：新空 schema Up 后为 version=1/dirty=false，表结构与 design 一致，重复 Up 无变化。
+- [x] 1.2 新增 `migrations/purged_user_baseline.go`（只读预检）并接入 `checkBaseline`。验证：数据库测试用 `git show v0.6.0:migrations/0001_init.up.sql` 安装旧结构后 Up 被拒绝（`ErrIncompatibleBaseline`），catalog、数据与 version/dirty 不变；缺列、类型错误、缺约束的结构同样被拒绝；dirty 优先。
+- [x] 1.3 `internal/migrationcheck`：`publishedInitialReleases` 增加 v0.6.0 pin（提交 `ec6802cd221db3ce107e79bac92174bc35a0ba7d`，使用原 `initialFrozen` 的两个哈希），`initialFrozen` 更新为新文件的哈希；补充 `published_initial_test` 断言。验证：`bash scripts/check-migrations.sh` 与 migrationcheck 测试通过。
+- [x] 1.4 AGENTS.md“迁移安全”新增本轮限定授权条目，并同步 `docs/migrations.md` 的当前初始基线说明。验证：内容与 migration-safety 增量规格一致。
 
 ## 2. 库：写入与读取
 

@@ -12,4 +12,4 @@
 
 ## 3. 验收
 
-- [ ] 3.1 Linux 镜像 + 一次性 PG/Redis 运行 `scripts/verify-accountsvc.sh`；运行 `go build ./...`、`go vet ./...`、`openspec validate --all --strict`；结果写入 `verification.md`
+- [x] 3.1 Linux 镜像 + 一次性 PG/Redis 运行 `scripts/verify-accountsvc.sh`；运行 `go build ./...`、`go vet ./...`、`openspec validate --all --strict`；结果写入 `verification.md`

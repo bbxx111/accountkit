@@ -1,5 +1,23 @@
 # 功能与兼容对照
 
+## 消费者 access 改用 ES256 与严格内省
+
+本节随 v0.6.0 之后的下一个版本发布（版本号在发布时确定），对 v0.6.0 不兼容，不提供旧配置、旧令牌或旧数据迁移。
+
+- **签名算法**：消费者 access token 由 HS256 改为 ES256（P-256），header 增加 `typ: at+jwt`（RFC 9068），`kid` 仍为十进制版本号，claims 不变。HS256 完全移除，accountkit 自身验签也拒绝 HS256、`none` 与缺少/错误的 `typ`。
+- **配置**：`accountkit.Config.JWTKeys` 由 `map[uint16][]byte` 改为 `map[uint16]*ecdsa.PrivateKey`（只接受 P-256），`tokens.Options.Keys` 同理，`tokens.MinKeyLen` 移除；Go 宿主在编译期即可发现。环境变量 `JWT_KEYS` 名称与 `版本:base64` 列表格式不变，值改为 PKCS#8 DER 的 base64；旧的 HMAC 随机字节值会被拒绝并指出变量名，不回显密钥。生成命令（`genpkey` 默认输出 PEM，须经 `pkcs8 -topk8` 转为 DER）：
+
+  ```bash
+  openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 | openssl pkcs8 -topk8 -nocrypt -outform DER | base64 -w0
+  ```
+
+  宿主测试可直接用 `ecdsa.GenerateKey(elliptic.P256(), rand.Reader)` 构造密钥，库不导出测试辅助包。
+- **已签发令牌**：升级后旧 HS256 access 全部失效，客户端收到 401 后用 refresh token 刷新一次即可；refresh token 是数据库中的不透明凭据，不受影响。回退到旧版本时须同时恢复旧的 HS256 配置，此时 ES256 access 同样失效，客户端刷新即可。
+- **新增能力**：`Auth.JWKSHandler()` 输出验签公钥集，accountsvc 挂载于 `GET /.well-known/jwks.json`；`user.Service.AuthenticateStrict` 与 `Auth.RequireScopeStrict`（`httpapi/authn.RequireScopeStrict`）以已提交的数据库会话判定吊销，供关键路由使用。`Authenticate`、`RequireScope` 的 JWT + Redis 吊销及 fail-open 行为不变。
+- **内省语义（BREAKING）**：`POST /v1/introspect` 改为在 JWT 校验后查询数据库会话，不再读取 Redis 吊销集。吊销提交后立即返回 `active:false`，不受 Redis 写入/读取失败影响；数据库不可用时返回503 `temporarily_unavailable`，不再 fail-open 返回 `active:true`。刷新期限已到但未吊销的会话仍为 active。依赖“Redis 故障时内省仍放行”的调用方须按依赖不可用处理503。
+- **接入方式**：业务服务由“每个受保护请求都内省”改为分级：普通接口用 JWKS 本地验签，关键接口每次内省，见 [accountsvc 接入说明](accountsvc.md#分级校验)。只使用嵌入库的宿主无需改动路由，可按需把关键路由换成 `RequireScopeStrict`。
+- **数据库**：无结构变化、无迁移；内省与严格认证每次多一次按主键的会话查询。
+
 ## 统一凭证信封与身份类型字符串
 
 本节随 v0.6.0 发布，对 v0.5.0 不兼容，不提供旧数据迁移。

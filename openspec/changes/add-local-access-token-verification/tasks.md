@@ -63,16 +63,16 @@
 
 ## 6. 文档
 
-- [ ] 6.1 更新 README。
+- [x] 6.1 更新 README。
   - `JWT_KEYS` 配置说明改为 ES256 PKCS#8，并给出生成方法。
   - 令牌格式加入 `typ`。
   - 补充 `JWKSHandler`、`AuthenticateStrict`、`RequireScopeStrict` 的 API 说明。
   - 为嵌入式宿主单列一段：Redis 正常时 RequireScope 的吊销已是即时的，严格认证只在 Redis 读写失败时多一层保证；关键写接口本来就要写库，fail-closed 的额外代价很小。
   - Redis 失败模式表区分 Authenticate 与严格认证。
   - 会话过期一节修正“内省按 Redis 判断”的表述。
-- [ ] 6.2 更新 `docs/accountsvc.md`：内省语义（以数据库为准、fail-closed）、分级接入方式、JWKS 路由、密钥生成与五步轮换顺序，并删除“每个请求都内省”和“不发放签名密钥”的旧表述。
-- [ ] 6.3 更新 `docs/gateway-integration.md`，加入 JWKS 入口策略；更新 `docs/compatibility.md` 的破坏性变更说明：移除 HS256、`Config.JWTKeys` 类型变化、旧 access 失效需要刷新、内省 fail-closed，以及不提供迁移。写明完整的密钥生成命令，输出须为 PKCS#8 DER 的 base64，例如 `openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 | openssl pkcs8 -topk8 -nocrypt -outform DER | base64 -w0`。
-- [ ] 6.4 同步 AGENTS.md 中“Redis 失败模式”一条，说明严格认证和内省以数据库为准，并检查文档中的相对链接。
+- [x] 6.2 更新 `docs/accountsvc.md`：内省语义（以数据库为准、fail-closed）、分级接入方式、JWKS 路由、密钥生成与五步轮换顺序，并删除“每个请求都内省”和“不发放签名密钥”的旧表述。
+- [x] 6.3 更新 `docs/gateway-integration.md`，加入 JWKS 入口策略；更新 `docs/compatibility.md` 的破坏性变更说明：移除 HS256、`Config.JWTKeys` 类型变化、旧 access 失效需要刷新、内省 fail-closed，以及不提供迁移。写明完整的密钥生成命令，输出须为 PKCS#8 DER 的 base64，例如 `openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 | openssl pkcs8 -topk8 -nocrypt -outform DER | base64 -w0`。
+- [x] 6.4 同步 AGENTS.md 中“Redis 失败模式”一条，说明严格认证和内省以数据库为准，并检查文档中的相对链接。
   - 验证：`rg "HS256|每次受保护业务请求查询内省"` 只在历史记录中出现。
 
 ## 7. 验证与记录

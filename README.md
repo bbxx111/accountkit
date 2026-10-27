@@ -116,6 +116,7 @@ accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect
 | 刷新 | `Refresh(ctx, refreshToken, meta)` | 行锁 + CAS 轮换；30s 宽限内重放返回同一 pair；宽限外重放吊销会话 |
 | 登出 | `Revoke(ctx, refreshToken, meta)` | RFC 7009 语义：未知 token 也返回成功 |
 | 校验 access | `Authenticate(ctx, raw)` | 验签 + id 格式 + Redis 吊销集（Redis 不可用时 fail-open） |
+| 严格校验 access | `AuthenticateStrict(ctx, raw)` | 验签 + id 格式 + 按 sid 查数据库会话（存在、属于 sub、未吊销）；不读 Redis，不判刷新期限；数据库不可用返回 `ErrUnavailable`，不放行。内省与关键路由使用 |
 | 重新认证 | `SendReauthenticationCode` / `Reauthenticate` | 只接受本账号已启用手机/邮箱身份；刷新 `auth_time` 并重签 access（不发 refresh） |
 | 资料 | `GetMe` / `UpdateProfile` / `UpdateDisplayName` | 显示名 ≤ 128 个 Unicode 码位；头像为最长 2048 字节的 HTTPS URL；可原子更新两字段 |
 | 批量公开资料 | `BatchPublicProfiles(ctx, ids)` | 一次查询返回 ID/DisplayName/AvatarURL/State；未知账号略去，待注销/已删除账号显示名和头像为空；宿主先过滤业务权限 |
@@ -165,7 +166,7 @@ HTTP 新增 `POST /users:sendSignInCompletionCode`（`{sign_in_completion_token,
 
 宽限资格取会话读取后的时间；缓存返回后再检查会话/pair期限并计算剩余有效期。已符合宽限的请求不会仅因缓存等待跨过宽限而被认定为重放，仍返回同一pair。缓存不可用或到期拒绝不会被误记为已遏制的重放。
 
-刷新期限与access有效性独立：自然到期不写撤销集，原access和内省仍按JWT及Redis吊销规则判断；“不在会话列表中”不等于“所有已发access都已失效”。显式单个/批量撤销、同设备重登和账号生命周期操作仍覆盖未清理的过期会话。列表读取不删除数据，原30天会话清理保留期不变。实际验证见[会话过期验收记录](openspec/changes/archive/2026-10-04-harden-session-expiry/verification.md)。
+刷新期限与access有效性独立：自然到期不写撤销集，原access仍有效——`Authenticate` 按JWT及Redis吊销规则判断，严格认证与内省按数据库吊销状态判断，两者都不按刷新期限拒绝；“不在会话列表中”不等于“所有已发access都已失效”。显式单个/批量撤销、同设备重登和账号生命周期操作仍覆盖未清理的过期会话。列表读取不删除数据，原30天会话清理保留期不变。实际验证见[会话过期验收记录](openspec/changes/archive/2026-10-04-harden-session-expiry/verification.md)。
 
 ### Redis 键与失败模式
 
@@ -175,7 +176,8 @@ HTTP 新增 `POST /users:sendSignInCompletionCode`（`{sign_in_completion_token,
 |---|---|
 | 发码、验证码登录/重新认证 | fail-closed：`user.ErrUnavailable` |
 | 宽限期查询 | 退化为拒绝（`ErrInvalidGrant`），不吊销会话 |
-| 吊销检查 | fail-open：按签名与过期校验，记 Warn 日志 |
+| 吊销检查（`Authenticate`/`RequireScope`） | fail-open：按签名与过期校验，记 Warn 日志 |
+| 严格认证（`AuthenticateStrict`/`RequireScopeStrict`/内省） | 不读 Redis，不受影响；吊销以已提交的数据库会话为准，数据库不可用时 fail-closed（503） |
 | 重放检测 / 冻结 / 待删除时的吊销 | 数据库写失败向上返回错误（不记"已遏制"审计），吊销集仍尽力写入 |
 
 ### 发送器
@@ -222,6 +224,20 @@ r.Route("/v1", func(r chi.Router) {
 ```
 
 示例中的 `device.ConsumerHandler()` 是宿主设备业务模块的示意接口，不属于 accountkit 的公开门面。
+
+### 关键路由的严格认证
+
+`auth.RequireScope` 的吊销检查读取 Redis 吊销集：Redis 正常时撤销即时生效，Redis 读写失败时按 fail-open 放行，最长到 access 自然过期（`AccessTokenTTL` 加验签偏差）。少数要求“撤销后立即失效”的关键路由（如支付、资金或权限变更）可改用 `auth.RequireScopeStrict(...)`：401/403 响应、challenge 与 `RequireScope` 一致，但以已提交的数据库会话为准，不读 Redis，数据库不可用时返回 503 `DEPENDENCY_UNAVAILABLE`，可与 `RequireRecentAuth` 串联。即使外层已挂 `RequireScope`，严格中间件也会重新认证。
+
+```go
+r.With(auth.RequireScopeStrict("user"), auth.RequireRecentAuth()).Post("/payments", payments.Create)
+```
+
+对嵌入式宿主，严格认证的额外保证只在 Redis 读写失败时体现；关键写接口本来就要写数据库，数据库故障时 fail-closed 几乎没有额外可用性代价。每次请求多一次按主键的会话查询，不建议用于全部路由。
+
+### 消费者 access 与 JWKS
+
+access token 使用 ES256（P-256）签发，header 为 `alg=ES256`、`typ=at+jwt`（RFC 9068）和十进制版本号 `kid`，claims 为 `iss`、`aud`、`sub`、`sid`、`scope`、`auth_time`、`jti`、`iat`、`exp`。`auth.JWKSHandler()` 输出全部已配置版本的公钥（JWK Set，不含私钥参数），只支持 GET/HEAD，`Cache-Control: public, max-age=300`，不访问数据库或 Redis；宿主可挂载到 `/.well-known/jwks.json` 供其他服务本地验签。本地验签的校验要求、吊销延迟边界与轮换顺序见 [accountsvc 接入说明](docs/accountsvc.md#分级校验)。
 
 | 端点 | 认证 | 成功 | 失败 |
 |---|---|---|---|
@@ -424,7 +440,7 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 | `REQUIRED_IDENTITY_KINDS` | PHONE,EMAIL | PHONE/EMAIL any-of；`[]` 表示不限定类型 |
 | `AUTH_SCHEMA` | `account` | PostgreSQL schema，`^[a-z][a-z0-9_]{0,62}$` |
 | `AUTH_KEY_PREFIX` | `auth:` | Redis 键前缀，须以 `:` 结尾 |
-| `JWT_KEYS` / `JWT_ACTIVE_KEY` | 必填 | `1:<base64>,2:<base64>` 版本化 HS256 密钥（≥ 32 字节）与签发版本 |
+| `JWT_KEYS` / `JWT_ACTIVE_KEY` | 必填 | `1:<base64>,2:<base64>` 版本化 ES256（P-256）私钥（PKCS#8 DER 的 base64）与签发版本；生成：`openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 \| openssl pkcs8 -topk8 -nocrypt -outform DER \| base64 -w0` |
 | `JWT_ISSUER` / `JWT_AUDIENCE` | 必填 | |
 | `ACCESS_TOKEN_TTL` / `REFRESH_TOKEN_TTL` / `REFRESH_GRACE` | `15m` / `720h` / `30s` | |
 | `REAUTH_MAX_AGE` / `SENSITIVE_OP_VERIFICATION` | `5m` / `true` | 敏感操作要求 `auth_time` 在此时限内 |

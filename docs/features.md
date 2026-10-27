@@ -14,7 +14,7 @@
 | 身份策略 | EnabledIdentityKinds 控制可用类型；RequiredIdentityKinds 控制账号完整性 | Required 仅 PHONE/EMAIL、any-of；显式空列表允许纯第三方账号；配置在装配时固定，不热加载 |
 | 登录补全 | 身份不足时返回 pending；独立发码与完成端点；验证后自动关联已有活动账号或注册；受约束幂等重试 | pending 尚无 user_id、identity、session 或 token pair；补全只接受已启用的手机/邮箱证明 |
 | 身份管理 | 身份列表、手机/邮箱/第三方绑定、解绑、同类手机或邮箱换绑 | 解绑保护至少一个可用身份和 Required 条件；普通绑定拒绝占用身份；换绑保留当前会话并撤销其他会话 |
-| 令牌与会话 | JWT access、refresh 轮换、宽限重试、重放处理、同设备会话替换、会话列表和撤销 | 宽限内返回同一 token pair；可撤销单个、其他或管理端全部会话；业务仍需检查 scope 和资源归属 |
+| 令牌与会话 | ES256 JWT access 与 JWKS 公钥发布、关键路由严格认证、refresh 轮换、宽限重试、重放处理、同设备会话替换、会话列表和撤销 | 宽限内返回同一 token pair；可撤销单个、其他或管理端全部会话；业务仍需检查 scope 和资源归属 |
 | 敏感操作认证 | 手机/邮箱重新认证、近期认证检查；第三方通过正常重新登录取得新的认证状态 | 手机/邮箱重新认证不更新 refresh；第三方重新登录替换同设备会话，客户端须保存新 pair 并核对账号 |
 | 资料与生命周期 | 显示名与头像更新、可配置资料属性及本人 `GET/PATCH /users/me/profile`、批量公开资料、冻结/解冻、注销冷静期、恢复、到期匿名化 | 手机/邮箱与管理员恢复保留；普通第三方登录不能恢复冷静期账号；资料属性按宿主 Schema，头像只保存 HTTPS 地址；最终匿名化后不可恢复 |
 | 管理接口 | 用户筛选与游标分页、账号状态操作、身份掩码/授权查看、会话撤销、审计查询 | 消费者与管理员身份体系独立；管理员验证由宿主提供，未配置时管理面返回 503 |
@@ -22,7 +22,7 @@
 | 标准化指标 | 可选类型化 Observer、OTel/原生 Prometheus、认证/验证码/依赖/降级/审计/维护的 13 项指标；accountsvc 可选 Prometheus 采集端点 | 默认 no-op；嵌入宿主负责 Provider/Registry、导出与端点，见[指标指南](metrics.md)；accountsvc 默认关闭指标，启用后提供同址 GET /metrics，部署方落实采集访问控制，见[服务配置](accountsvc.md#prometheus-指标)；合成示例不替代真实联调 |
 | 宿主事务集成 | 注销前检查、同库业务匿名化回调、活动账号事务保护、受控离线导入 | 导入仅 Go 接口，不发令牌或自动合并；业务表和业务授权仍由宿主负责 |
 | 存储与维护 | PostgreSQL + Redis、schema/键前缀/令牌域隔离、版本迁移、迁移锁、dirty 阻断、定期清理、备份恢复验证 | 新库由 0001 直接定义 sign_in_completion_flow，初始化版本为 1；旧表名 v1、双表和已撤回旧 v2 拒绝接管，见[迁移手册](migrations.md#当前初始基线)；公开 Down 拒绝执行 |
-| 集成与运行形式 | 嵌入式 Go 包；可选 accountsvc，提供 SMTP、TLS、远程令牌内省、外部管理员 OIDC 验证、探针和优雅关闭 | accountsvc 尚未装配短信服务商；网关、入口流量控制和实际网络隔离由部署方负责 |
+| 集成与运行形式 | 嵌入式 Go 包；可选 accountsvc，提供 SMTP、TLS、JWKS 本地验签、以数据库为准的远程令牌内省、外部管理员 OIDC 验证、探针和优雅关闭 | accountsvc 尚未装配短信服务商；网关、入口流量控制和实际网络隔离由部署方负责 |
 | Go 接入文档与示例 | 集成指南、生命周期、token/pending 分流、刷新与重新认证、调用层授权、事务回调和错误处理 | [指南](go-integration.md)及[可编译片段](../examples/gointegration/example_test.go)；无 Output 片段不执行依赖 I/O，合成输出不替代产品联调 |
 | HTTP 契约文档 | 消费者与管理面分别提供 OpenAPI 3.1，覆盖现有 24/11 个操作 | [契约与维护说明](openapi.md)；不包含 accountsvc 专属内省/探针，不代表已有完整客户端 SDK |
 

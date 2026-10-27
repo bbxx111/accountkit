@@ -25,7 +25,7 @@
 
 ## 5. 文档
 
-- [ ] 5.1 更新以下文档：
+- [x] 5.1 更新以下文档：
   - `docs/accountsvc.md`：已清理用户拉取契约、凭据、保留期、业务方幂等清理与补拉要求；
   - `docs/gateway-integration.md`：内部入口阻断；
   - `docs/compatibility.md`：0001 调整与旧库拒绝；

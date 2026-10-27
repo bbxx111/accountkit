@@ -99,6 +99,7 @@ QQ App SDK 登录使用 `ACCOUNTKIT_QQ_APP_IDS`（逗号分隔的唯一 1–20 �
 | `SMTP_BRAND` | 可选，内置中文邮件的品牌前缀：标题为“<品牌><用途>验证码”，正文以“【品牌】”开头；1–32 个字符，不得含换行/控制字符或首尾空白；EMAIL 禁用时不解析 |
 | `SMS_PROVIDER` | 空表示未配置短信；首版只接受 `aliyun`，见[短信服务商](#短信服务商) |
 | `INTROSPECTION_CLIENTS` | serve 必填；JSON：客户端 ID → base64 秘密数组 |
+| `PURGE_FEED_CLIENTS` | 可选；格式同 `INTROSPECTION_CLIENTS`，供业务服务拉取已清理用户（见[已清理用户拉取](#已清理用户拉取)）；秘密不得与内省凭据重复；未设置时该路由返回 503 |
 | `ADMIN_ENABLED` | false |
 | `ADMIN_ISSUER` / `ADMIN_AUDIENCE` | 启用时必填；issuer 是 HTTPS URL，audience 为管理员 API 专用标识 |
 | `ADMIN_ROLES_CLAIM` / `ADMIN_USERNAME_CLAIM` | /roles / /preferred_username，JSON Pointer |
@@ -160,6 +161,7 @@ openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 | openssl pkcs8 -
 | HTTP_ADDR | /v1 | 原消费者登录、身份、会话与生命周期接口 |
 | HTTP_ADDR | /admin/v1 | 独立外部管理员 JWT，关闭时503 |
 | HTTP_ADDR | POST /v1/introspect | 独立服务调用 Basic 凭据 |
+| HTTP_ADDR | GET /v1/purgedUsers | 已清理用户拉取，独立 Basic 凭据（`PURGE_FEED_CLIENTS`）；内部入口 |
 | HTTP_ADDR | GET /.well-known/jwks.json | 无认证；只含消费者 access 验签公钥，可公共缓存 5 分钟 |
 | HTTP_ADDR | GET /healthz、GET /readyz | 无认证探针；访问范围由部署策略限制 |
 | HTTP_ADDR | GET /metrics | 指标开关启用时提供，无内建鉴权；仅允许监控来源 |
@@ -249,9 +251,29 @@ EMAIL 启用时，服务显式调用 `smtp.NewWithRenderer(cfg.SMTP, smtp.Legacy
 
 SMTP 认证使用 AUTH PLAIN，并在生产模式要求证书验证和加密；首版不支持 OAuth SMTP 凭据。提交被接受不代表邮件最终进入收件箱。发送器不自动重发；超时/拒绝返回503且保留已经占用的额度和冷却，避免故障时产生发送风暴。生产日志不包含验证码或完整邮箱。
 
-accountsvc 只匿名化自己拥有的认证数据，不知道使用方的业务表。额外 user_id 关联数据需选择嵌入式同库回调，或独立制定业务清理方案。切换部署前，不得让 accountsvc 与依赖业务匿名化回调的宿主同时运行同一实例的维护任务，否则服务可能先取得锁并跳过业务清理责任。
+accountsvc 只匿名化自己拥有的认证数据，不知道使用方的业务表。额外 user_id 关联数据需选择嵌入式同库回调，或使用下文的[已清理用户拉取](#已清理用户拉取)由业务服务自行清理。切换部署前，不得让 accountsvc 与依赖业务匿名化回调的宿主同时运行同一实例的维护任务，否则服务可能先取得锁并跳过业务清理责任。
 
 SIGINT/SIGTERM 触发撤销就绪、统一监听器 HTTP 排空、维护停止/审计刷新、连接关闭。进程管理器的终止宽限应大于 SHUTDOWN_TIMEOUT；超时非零退出，不能据此声称全部审计已落库。回退须成套恢复二进制、监听/证书配置、调用方和网关策略，步骤见[兼容迁移说明](compatibility.md#服务单监听与传输迁移)；不调用数据库 Down 或 UnsafeReset。
+
+## 已清理用户拉取
+
+账号冷静期结束、被维护任务匿名化（purge）时，同一事务内写入一条已清理记录（只含 user_id 与时间），与匿名化同提交、同回滚。业务服务据此清理自己库中以 user_id 关联的数据：
+
+```http
+GET /v1/purgedUsers?page_token=<上次保存的 next_page_token>&page_size=100
+Authorization: Basic <PURGE_FEED_CLIENTS 中的客户端 ID 与秘密>
+```
+
+```json
+{"purged_users":[{"user_id":"u_…","purge_time":"2026-10-27T08:00:00Z"}],"next_page_token":"…"}
+```
+
+- 首次拉取省略 `page_token`，从最早的记录开始；`page_size` 默认 100、最大 1000，非法值返回 400 `INVALID_ARGUMENT`，篡改的游标返回 400 `INVALID_PAGE_TOKEN`。
+- `next_page_token` **始终返回**当前位置；空列表表示已追平。业务服务在完成本页清理后持久化该游标，下次从这里续拉。接口没有确认语义，重复拉取同一位置返回相同记录，因此清理必须按 user_id **幂等**。
+- 记录在表锁下按提交顺序分配游标序号：并发清理时也不会出现“较早的记录较晚可见而被游标跳过”，按游标持续拉取不会漏读。
+- 默认长期保留记录。`ACCOUNTKIT_PURGED_USER_RETENTION` 可设置保留期（不得短于 720h），超期记录由维护任务删除；业务服务须在保留期内完成拉取，否则可能遗漏清理。建议每 5 分钟拉取一次，并对落后超过 24 小时告警。
+- 鉴权使用独立的 `ACCOUNTSVC_PURGE_FEED_CLIENTS`（HTTP Basic，格式同内省客户端，支持新旧秘密重叠轮换），内省凭据、消费者或管理员令牌均返回 401；未配置时返回 503 `PURGE_FEED_NOT_CONFIGURED`，数据库不可用时返回 503 `DEPENDENCY_UNAVAILABLE`（单次读取限时 3 秒）。响应 `Cache-Control: no-store`。
+- 该路由与内省一样是内部入口，网关不得对公网开放，见[网关接入手册](gateway-integration.md)。
 
 ## 本人资料属性
 

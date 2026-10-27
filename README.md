@@ -123,6 +123,7 @@ accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect
 | 宿主事务保护 | `WithActiveUsers(ctx, ids, fn)` | 验证、去重并排序锁定 ACTIVE 账号后执行 `fn(pgx.Tx)`；库提交，错误或 panic 回滚 |
 | 离线导入 | `ImportAccounts(ctx, tx, accounts)` | 调用者事务中的 ACTIVE PHONE/EMAIL 锚点账号或 DELETED 匿名墓碑；调用者提交/回滚 |
 | 会话 | `ListSessions` / `RevokeSession` / `RevokeOtherSessions` | 他人的会话一律 `ErrNotFound` |
+| 已清理用户 | `ListPurgedUsers(ctx, after, limit)` | 返回游标 `after` 之后按清理提交顺序排列的 `PurgedUser{UserID, PurgeTime}` 与新游标（从头读传 0，追平时游标不变，`limit` 1–1000）；记录在 purge 事务内写入，供无法使用同事务匿名化回调的业务方幂等清理 |
 
 ### 身份策略与登录补全
 
@@ -457,6 +458,7 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 | `AUDIT_SOURCE` / `AUDIT_NAMESPACE` | `accountkit/<schema>` / `accountkit/<schema>/resources` | 本地默认在 New 应用；外部写侧必须显式配置稳定值，不能从请求采信 |
 | `DEFAULT_REGION` | `CN` | 无 `+` 前缀手机号的解析区域 |
 | `MAINTENANCE_INTERVAL` | `5m` | 维护 ticker 周期 |
+| `PURGED_USER_RETENTION` | `0`（长期保留） | 已清理用户记录保留期；大于 0 时不得短于 `720h`，由维护任务 `cleanup_purged_users` 删除超期记录 |
 | `WECHAT_APPS` | 空 | `appid:secret,appid:secret`（OAuth 应用） |
 | `WECHAT_MINI_PROGRAM_APPS` | 空 | 同上格式；仅配置本组也可启用微信登录 |
 | `WECHAT_SUBJECT_MODE` | `UNIONID` | 全局固定 `UNIONID` / `OPENID`；显式空值、空白或其他值非法 |

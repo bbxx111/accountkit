@@ -1,5 +1,13 @@
 # 功能与兼容对照
 
+## 已清理用户拉取与初始结构调整
+
+本节随下一个版本发布。
+
+- **数据库（BREAKING，无迁移）**：经用户明确授权，当前 0001 直接新增 `purged_user` 表，不新增 0002。新安装仍为 version=1。已由 v0.6.0 或更早版本安装的数据库缺少该表，迁移预检以 `migrations.ErrIncompatibleBaseline` 无写拒绝（dirty 优先），不补表、不改版本；需使用经人工核验的新空资源，详见[迁移手册](migrations.md#当前初始基线)。不提供旧数据迁移工具。
+- **新增能力**：purge 事务内写入已清理记录；`user.Service.ListPurgedUsers` 按游标读取；accountsvc 新增 `GET /v1/purgedUsers`（`ACCOUNTSVC_PURGE_FEED_CLIENTS`）。`Config.PurgedUserRetention` / `PURGED_USER_RETENTION` 默认 0（长期保留）。purge 本身的语义、时机与宿主 Anonymizer 契约不变。
+- **宿主覆盖检查**：`user.PurgeCoveredTables` 新增 `purged_user` 豁免项；宿主自己的 user_id 覆盖性测试若枚举库内表，需要知道这张表只含 user_id 与时间。
+
 ## accountsvc 阿里云短信与邮件品牌
 
 本节随下一个版本发布，新增能力均为可选，未配置时行为不变，无数据库迁移。

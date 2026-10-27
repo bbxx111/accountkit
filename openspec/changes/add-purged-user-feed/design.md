@@ -83,7 +83,8 @@ func (s *Service) ListPurgedUsers(ctx context.Context, after int64, limit int) (
 
 - `Config.PurgedUserRetention`（`time.Duration`），环境变量 `PURGED_USER_RETENTION`。
 - 值为 0 表示长期保留（默认）；大于 0 时必须不小于 720h（30 天）。
-- 大于 0 时，维护任务注册 `cleanup_purged_users`，按 `purge_time` 分批删除过期记录，沿用其他清理任务的批量方式。
+- 维护任务 `cleanup_purged_users` 始终注册，保留期为 0 时空跑；大于 0 时按 `purge_time` 分批删除过期记录，沿用其他清理任务的批量方式。
+- 指标：标准化指标规范把内置任务标签固定为六个，未知名称归入 `other`。本任务不扩展该标签集合（那需要修改指标规范与适配器），因此当前归入 `other`；docs/metrics.md 已注明。需要单独观测时另行变更指标规范。
 
 ### D7 迁移安全
 

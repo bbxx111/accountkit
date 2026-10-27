@@ -104,10 +104,19 @@ func TestUnsupportedTargetRejectedForSignInCompletion(t *testing.T) {
 		t.Fatalf("pending: %+v %v", r, err)
 	}
 	before := f.mr.Keys()
+	auditBefore := len(f.audit.Events())
 	if _, err := f.svc.SendSignInCompletionCode(ctx, r.Pending.SignInCompletionToken, enum.IdentityPhone, foreignPhone, dev1, meta1); !errors.Is(err, sender.ErrTargetNotSupported) {
 		t.Fatalf("completion: %v", err)
 	}
 	if !reflect.DeepEqual(before, f.mr.Keys()) || sms.calls.Load() != 0 {
 		t.Fatal("completion with unsupported target changed state or reached the sender")
+	}
+	// 完成流程的拒绝审计须使用具体原因，不能落入 INTERNAL。
+	reasons := map[enum.EventType]string{}
+	for _, e := range f.audit.Events()[auditBefore:] {
+		reasons[e.Type] = e.Reason
+	}
+	if reasons[enum.EventCodeSendRejected] != "TARGET_NOT_SUPPORTED" || reasons[enum.EventSignInCompletionRejected] != "TARGET_NOT_SUPPORTED" {
+		t.Fatalf("completion audit reasons: %v", reasons)
 	}
 }

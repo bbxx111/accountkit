@@ -129,7 +129,7 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 		return nil, err
 	}
 	var email sender.EmailCodeSender
-	sms, err := smsSender(cfg)
+	sms, err := smsSender(cfg, logger)
 	if err != nil {
 		return nil, err
 	}

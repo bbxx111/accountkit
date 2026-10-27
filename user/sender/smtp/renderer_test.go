@@ -475,6 +475,21 @@ func TestLegacyChineseRendererBrand(t *testing.T) {
 			t.Errorf("%s: Render must refuse invalid brand: %v", name, err)
 		}
 	}
+	for name, brand := range map[string]string{"bidi override": "食\u202e方", "zero width": "食\u200b方", "line separator": "食\u2028方"} {
+		if delivery.ValidateBrand(brand) == nil {
+			t.Errorf("%s: ValidateBrand must reject %q", name, brand)
+		}
+	}
+	// 内置渲染器的非法品牌在构造时即被拒绝，而不是在占用额度后的每次发送时失败。
+	f := newSMTPFixture(t, "implicit", nil)
+	for _, r := range []delivery.Renderer{delivery.LegacyChineseRenderer{Brand: "食\r\n方"}, &delivery.LegacyChineseRenderer{Brand: " 食方"}} {
+		if _, err := delivery.NewWithRenderer(f.config(), r); err == nil {
+			t.Errorf("NewWithRenderer accepted invalid brand renderer %#v", r)
+		}
+	}
+	if _, err := delivery.NewWithRenderer(f.config(), delivery.LegacyChineseRenderer{Brand: "食方"}); err != nil {
+		t.Fatalf("valid brand renderer: %v", err)
+	}
 	for _, ok := range []string{"", "食方", strings.Repeat("食", 32), "Zavelo App"} {
 		if err := delivery.ValidateBrand(ok); err != nil {
 			t.Errorf("ValidateBrand(%q) = %v", ok, err)

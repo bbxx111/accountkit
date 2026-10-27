@@ -202,7 +202,7 @@ _ = deps
 
 渲染与 SMTP 共用一次总超时预算，派生 context 保留宿主值。宿主回调必须及时响应取消，避免无界 I/O；库不会通过遗留 goroutine 强制中断不合作的回调。渲染失败、非法内容或取消返回固定 `sender.ErrUnavailable`，沿用 503 和额度/冷却保留契约，不回退默认模板、不自动重试。宿主不得在日志中输出验证码、完整地址、正文或原始渲染错误。示例只做本地渲染与构造，不发送网络请求、不读取真实凭据，输出仅为非敏感标题或装配结果。
 
-库提供可选的阿里云短信发送器 `github.com/bbxx111/accountkit/user/sender/aliyun`：`aliyun.New(aliyun.Config{AccessKeyID, AccessKeySecret, SignName, Templates: map[enum.CodePurpose]string{…四个用途…}})`，构造不做网络 I/O，只发中国大陆号码，发送失败返回 `sender.ErrUnavailable`（503），错误只含服务商错误码与 RequestId。发送器可选实现 `SupportsTarget(e164 string) bool`：返回 false 的号码在占用验证码轮次、冷却与额度之前以 `sender.ErrTargetNotSupported` 拒绝，HTTP 为 400 `TARGET_NOT_SUPPORTED`，未实现该方法的发送器行为不变。内置 `smtp.LegacyChineseRenderer{Brand: "品牌"}` 可为标题和正文添加品牌前缀（先用 `smtp.ValidateBrand` 校验），零值文案不变。
+库提供可选的阿里云短信发送器 `github.com/bbxx111/accountkit/user/sender/aliyun`：`aliyun.New(aliyun.Config{AccessKeyID, AccessKeySecret, SignName, Templates: map[enum.CodePurpose]string{…四个用途…}})`，构造不做网络 I/O，只发中国大陆手机号，发送失败返回 `sender.ErrUnavailable`（503），错误只含服务商错误码与 RequestId；可选 `Logger` 以 Warn 记录同样脱敏的失败信息。发送器可选实现 `SupportsTarget(e164 string) bool`：返回 false 的号码在占用验证码轮次、冷却与额度之前以 `sender.ErrTargetNotSupported` 拒绝，HTTP 为 400 `TARGET_NOT_SUPPORTED`，未实现该方法的发送器行为不变。宿主若用日志或指标装饰器包装发送器，须同时转发 `SupportsTarget`（及 `Enabled`），否则预检失效，不支持的号码会在占用额度后才失败。内置 `smtp.LegacyChineseRenderer{Brand: "品牌"}` 可为标题和正文添加品牌前缀（先用 `smtp.ValidateBrand` 校验），零值文案不变。
 
 使用服务商托管模板时，直接实现 `EmailCodeSender.SendEmail(ctx, target, message)` 或 `SMSCodeSender.SendSMS(ctx, target, message)` 并注入原 Deps 字段。宿主把 `message.Purpose` 映射到服务商模板 ID，把 `message.Code`、`message.TTL` 转换为模板参数，并自行选择语言、处理取消及安全错误；这种适配无需 SMTP Renderer，也无需先生成正文。不要将模板 ID 或服务商参数加入核心 CodeMessage。
 

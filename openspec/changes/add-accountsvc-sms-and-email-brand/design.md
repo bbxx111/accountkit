@@ -50,7 +50,7 @@ SendSms（API 版本 2017-05-25）支持 RPC 风格签名，ai-food 现有实现
 
 在库中新增可选能力 `interface{ SupportsTarget(e164 string) bool }`，由发码流程在 `Enabled()` 检查之后、`issueChallenge` 之前调用；不支持时返回新的错误 `sender.ErrTargetNotSupported`。HTTP 层映射为 400 `FAILED_PRECONDITION` / `TARGET_NOT_SUPPORTED`，与 `CHANNEL_NOT_ENABLED` 属于同类“部署能力不满足”。审计原因为 `TARGET_NOT_SUPPORTED`；指标归入既有的参数拒绝分类，不新增标签值，因此不改变指标规范。
 
-阿里云发送器只对 `+86` 前缀返回 true。`SendSMS` 自身也会做同样的检查，防止宿主绕过发码流程直接调用。
+阿里云发送器只对 `+86` 后 1 开头的 11 位手机号返回 true（审查后补充：排除同长度的固定电话，避免占用额度后才被服务商拒绝）。宿主的装饰器须转发 `SupportsTarget`，否则预检失效。`SendSMS` 自身也会做同样的检查，防止宿主绕过发码流程直接调用。
 
 备选方案及否决理由：
 - 复用 `INVALID_TARGET`：客户端无法区分号码写错与地区不支持。
@@ -58,7 +58,7 @@ SendSms（API 版本 2017-05-25）支持 RPC 风格签名，ai-food 现有实现
 
 ### D4 错误分类与隐私
 
-只有 HTTP 200 且 `Code=OK` 才算成功。其余情况统一包装为 `sender.ErrUnavailable`，包括业务错误码、频控、网络错误、超时、非 JSON 与超限响应，响应体上限 64 KiB，不跟随重定向，不自动重试。错误链只附加阶段、服务商 `Code` 与 `RequestId`，便于运维排查，不包含 `Message` 原文、手机号、验证码、Secret 或签名串。调用方取消保持 `context.Canceled` 语义。
+只有 HTTP 200 且 `Code=OK` 才算成功。其余情况统一包装为 `sender.ErrUnavailable`，包括业务错误码、频控、网络错误、超时、非 JSON 与超限响应，响应体上限 64 KiB，不跟随重定向，不自动重试。错误链只附加阶段、HTTP 状态、服务商 `Code` 与 `RequestId`，不包含 `Message` 原文、手机号、验证码、Secret 或签名串。审查后补充：服务的发码流程会把投递错误收敛为通用 `ErrUnavailable`，不记录宿主发送器的错误文本（宿主错误可能含敏感信息），因此阿里云发送器自带可选 `Logger`，由它以 Warn 记录上述脱敏信息，accountsvc 注入服务日志器；非 200 响应（如 `SignatureDoesNotMatch`）的 JSON 错误码同样被解析。调用方取消保持 `context.Canceled` 语义。
 
 ### D5 accountsvc 环境变量
 
@@ -78,7 +78,7 @@ SendSms（API 版本 2017-05-25）支持 RPC 风格签名，ai-food 现有实现
 
 ### D6 品牌前缀
 
-`LegacyChineseRenderer` 增加可选字段 `Brand string`，零值行为不变，现有的 `LegacyChineseRenderer{}` 字面量保持兼容。新增 `smtp.ValidateBrand(string) error`，供配置阶段调用。`Render` 在品牌不合法时返回 `sender.ErrUnavailable`，作为最后防线，不输出未经校验的值。
+`LegacyChineseRenderer` 增加可选字段 `Brand string`，零值行为不变，现有的 `LegacyChineseRenderer{}` 字面量保持兼容。新增 `smtp.ValidateBrand(string) error`，供配置阶段调用；`smtp.NewWithRenderer` 对内置渲染器的品牌在构造时校验（审查后补充），嵌入式宿主不会在占用额度后才失败。品牌另拒绝格式字符与行/段分隔符，防止标题伪装。`Render` 在品牌不合法时返回 `sender.ErrUnavailable`，作为最后防线，不输出未经校验的值。
 
 - 标题：`brand + purpose + "验证码"`；
 - 正文：首行前加“【brand】”。

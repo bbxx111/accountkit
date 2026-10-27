@@ -143,7 +143,7 @@ openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 | openssl pkcs8 -
 
 只设置 `SMS_ALIYUN_*` 而未设置 `SMS_PROVIDER` 会被拒绝，以发现拼写错误。配置服务商后还须在 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS` 中显式加入 PHONE 才会发送短信。
 
-首版**只发送中国大陆号码**（`+86`）：其他号码在占用验证码轮次、冷却与额度之前返回 400 `TARGET_NOT_SUPPORTED`，不调用服务商。将来的国际短信会使用独立的签名与模板变量。只有服务商返回 `Code=OK` 才算发送成功；频控（如 `isv.BUSINESS_LIMIT_CONTROL`）、其他业务错误、网络错误与超时（默认 10 秒）一律按发送失败返回 503，已占额度与冷却不退还，不自动重发，也不映射为 429。日志只包含服务商错误码与 RequestId，不含手机号、验证码或 Secret。真实发送需部署方用真实凭据与已审核模板验收。
+首版**只发送中国大陆手机号**（`+86` 后 1 开头的 11 位号码）：其他号码在占用验证码轮次、冷却与额度之前返回 400 `TARGET_NOT_SUPPORTED`，不调用服务商。将来的国际短信会使用独立的签名与模板变量。只有服务商返回 `Code=OK` 才算发送成功；频控（如 `isv.BUSINESS_LIMIT_CONTROL`）、其他业务错误、网络错误与超时（默认 10 秒）一律按发送失败返回 503，已占额度与冷却不退还，不自动重发，也不映射为 429。发送失败以 Warn 记录阶段、HTTP 状态、服务商错误码与 RequestId（含签名或 AccessKey 错误等网关错误），便于区分频控、余额、模板与凭据问题；日志不含手机号、验证码、Secret 或服务商消息原文。设置了 `SMS_PROVIDER` 时，拼写错误的 `SMS_ALIYUN_*` 变量同样会被拒绝。真实发送需部署方用真实凭据与已审核模板验收。
 
 ## 身份密钥与验证码轮换
 

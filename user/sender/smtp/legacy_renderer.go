@@ -32,7 +32,8 @@ func ValidateBrand(brand string) error {
 		return errors.New("smtp: invalid Brand")
 	}
 	for _, r := range brand {
-		if unicode.IsControl(r) {
+		// 控制字符（含换行）、格式字符（双向覆盖、零宽字符）与行/段分隔符均拒绝，防止头注入与标题伪装。
+		if unicode.IsControl(r) || unicode.In(r, unicode.Cf, unicode.Zl, unicode.Zp) {
 			return errors.New("smtp: invalid Brand")
 		}
 	}

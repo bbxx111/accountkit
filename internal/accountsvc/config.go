@@ -4,6 +4,7 @@ package accountsvc
 import (
 	"crypto/tls"
 	"errors"
+	"log/slog"
 	"net"
 	"net/netip"
 	"net/url"
@@ -303,6 +304,16 @@ func loadSMS(mode string) (*aliyun.Config, error) {
 	if provider != "aliyun" {
 		return nil, invalidConfig("ACCOUNTSVC_SMS_PROVIDER")
 	}
+	known := map[string]bool{"ACCESS_KEY_ID": true, "ACCESS_KEY_SECRET": true, "SIGN_NAME": true, "ENDPOINT": true}
+	for _, key := range aliyunTemplateKeys {
+		known[key.suffix] = true
+	}
+	for _, entry := range os.Environ() {
+		name, _, _ := strings.Cut(entry, "=")
+		if suffix, ok := strings.CutPrefix(name, "ACCOUNTSVC_SMS_ALIYUN_"); ok && !known[suffix] && env(strings.TrimPrefix(name, "ACCOUNTSVC_")) != "" {
+			return nil, invalidConfig(name + " (unknown variable)")
+		}
+	}
 	cfg := &aliyun.Config{
 		AccessKeyID:     env("SMS_ALIYUN_ACCESS_KEY_ID"),
 		AccessKeySecret: env("SMS_ALIYUN_ACCESS_KEY_SECRET"),
@@ -335,14 +346,16 @@ func loadSMS(mode string) (*aliyun.Config, error) {
 
 // smsSender 返回服务注入的短信发送器：省略 Enabled 时显式禁用（不因配置服务商而自动启用 PHONE）；
 // 显式启用 PHONE 时使用已校验的服务商；显式集合不含 PHONE 时不注入。
-func smsSender(cfg Config) (sender.SMSCodeSender, error) {
+func smsSender(cfg Config, logger *slog.Logger) (sender.SMSCodeSender, error) {
 	if cfg.Library.EnabledIdentityKinds == nil {
 		return sender.Disabled{}, nil
 	}
 	if !cfg.identityEnabled(enum.IdentityPhone) || cfg.SMS == nil {
 		return nil, nil
 	}
-	s, err := aliyun.New(*cfg.SMS)
+	smsCfg := *cfg.SMS
+	smsCfg.Logger = logger
+	s, err := aliyun.New(smsCfg)
 	if err != nil {
 		return nil, errors.New("accountsvc: SMS configuration failed")
 	}

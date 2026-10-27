@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -41,6 +42,9 @@ type Config struct {
 	Endpoint        string
 	HTTPClient      *http.Client
 	Timeout         time.Duration // 单次请求，默认 10s
+	// Logger 可选；发送失败时以 Warn 记录阶段、HTTP 状态、服务商错误码与 RequestId，
+	// 不记录手机号、验证码、Secret 或服务商消息原文。nil 时不记录。
+	Logger *slog.Logger
 }
 
 // Sender 复用不可变配置，并发安全。
@@ -114,10 +118,11 @@ func isLoopback(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-// mainland 返回 +86 后的 11 位号码；非中国大陆号码返回空串。
+// mainland 返回 +86 后的 11 位手机号；非中国大陆手机号返回空串。
 func mainland(e164 string) string {
 	rest, ok := strings.CutPrefix(e164, mainlandPrefix)
-	if !ok || len(rest) != 11 {
+	// 中国大陆手机号为 1 开头的 11 位；固定电话等同长号码不能接收短信。
+	if !ok || len(rest) != 11 || rest[0] != '1' {
 		return ""
 	}
 	for _, c := range rest {
@@ -193,7 +198,7 @@ func (s *Sender) SendSMS(ctx context.Context, e164 string, m sender.CodeMessage)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, s.endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
-		return fmt.Errorf("%w: build request", sender.ErrUnavailable)
+		return s.fail(ctx, failure{stage: "build request"})
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
@@ -203,26 +208,54 @@ func (s *Sender) SendSMS(ctx context.Context, e164 string, m sender.CodeMessage)
 			return fmt.Errorf("%w: %w", sender.ErrUnavailable, ctxErr)
 		}
 		// 传输错误文本可能包含 endpoint 等细节，只返回阶段。
-		return fmt.Errorf("%w: transport", sender.ErrUnavailable)
+		return s.fail(ctx, failure{stage: "transport"})
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%w: http status %d", sender.ErrUnavailable, resp.StatusCode)
-	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse+1))
 	if err != nil || len(body) > maxResponse {
-		return fmt.Errorf("%w: read response", sender.ErrUnavailable)
+		return s.fail(ctx, failure{stage: "read response", status: resp.StatusCode})
 	}
+	// 网关的鉴权与签名错误（如 SignatureDoesNotMatch）以非 200 状态返回同样的 JSON 结构，一并解析以便定位。
 	var result struct {
 		Code      string `json:"Code"`
 		RequestID string `json:"RequestId"`
 	}
-	if json.Unmarshal(body, &result) != nil || result.Code == "" {
-		return fmt.Errorf("%w: malformed response", sender.ErrUnavailable)
+	parsed := json.Unmarshal(body, &result) == nil && result.Code != ""
+	switch {
+	case resp.StatusCode == http.StatusOK && parsed && result.Code == "OK":
+		return nil
+	case !parsed:
+		return s.fail(ctx, failure{stage: "malformed response", status: resp.StatusCode})
+	default:
+		// 只保留错误码与 RequestId；Message 可能包含号码等信息，不读取。
+		return s.fail(ctx, failure{stage: "provider", status: resp.StatusCode, code: token(result.Code), requestID: token(result.RequestID)})
 	}
-	if result.Code != "OK" {
-		// 只保留错误码与 RequestId；Message 可能包含号码等信息，不输出。
-		return fmt.Errorf("%w: provider code %s request %s", sender.ErrUnavailable, token(result.Code), token(result.RequestID))
+}
+
+type failure struct {
+	stage           string
+	status          int
+	code, requestID string
+}
+
+// fail 记录脱敏的失败信息并返回投递不可用错误；错误与日志都不含号码、验证码或 Secret。
+func (s *Sender) fail(ctx context.Context, f failure) error {
+	if s.cfg.Logger != nil {
+		attrs := []any{"stage", f.stage}
+		if f.status != 0 {
+			attrs = append(attrs, "http_status", f.status)
+		}
+		if f.code != "" {
+			attrs = append(attrs, "provider_code", f.code, "request_id", f.requestID)
+		}
+		s.cfg.Logger.WarnContext(ctx, "aliyun: SMS delivery failed", attrs...)
 	}
-	return nil
+	switch {
+	case f.code != "":
+		return fmt.Errorf("%w: provider code %s request %s (http status %d)", sender.ErrUnavailable, f.code, f.requestID, f.status)
+	case f.status != 0 && f.status != http.StatusOK:
+		return fmt.Errorf("%w: %s (http status %d)", sender.ErrUnavailable, f.stage, f.status)
+	default:
+		return fmt.Errorf("%w: %s", sender.ErrUnavailable, f.stage)
+	}
 }

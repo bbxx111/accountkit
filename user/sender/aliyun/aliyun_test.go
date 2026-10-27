@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -257,5 +258,62 @@ func TestSendSMSTimeoutAndCancellation(t *testing.T) {
 	cancel()
 	if err := s.SendSMS(ctx, "+8613812345678", msg(enum.PurposeSignIn)); !errors.Is(err, context.Canceled) {
 		t.Fatalf("caller cancellation must stay canceled: %v", err)
+	}
+}
+
+func TestSendSMSFailureLoggingAndGatewayErrors(t *testing.T) {
+	const phone = "13812345678"
+	f := newFake(t)
+	var logs strings.Builder
+	cfg := baseConfig(f.URL+"/", f.Client())
+	cfg.Logger = slog.New(slog.NewTextHandler(&logs, nil))
+	s, err := aliyun.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 网关签名错误以 400 返回 JSON：错误与日志都应保留错误码与 RequestId。
+	f.setResponse(func(w http.ResponseWriter) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(400)
+		_, _ = io.WriteString(w, `{"Code":"SignatureDoesNotMatch","Message":"bad signature for `+phone+`","RequestId":"REQ-SIG"}`)
+	})
+	err = s.SendSMS(context.Background(), "+86"+phone, msg(enum.PurposeSignIn))
+	if !errors.Is(err, sender.ErrUnavailable) || !strings.Contains(err.Error(), "SignatureDoesNotMatch") || !strings.Contains(err.Error(), "REQ-SIG") {
+		t.Fatalf("gateway error: %v", err)
+	}
+	for _, want := range []string{"SignatureDoesNotMatch", "REQ-SIG", "http_status=400"} {
+		if !strings.Contains(logs.String(), want) {
+			t.Fatalf("log missing %q: %s", want, logs.String())
+		}
+	}
+	for _, private := range []string{phone, "246810", secret, "bad signature"} {
+		if strings.Contains(logs.String(), private) || strings.Contains(err.Error(), private) {
+			t.Fatalf("leaked %q: %s / %v", private, logs.String(), err)
+		}
+	}
+	// 成功不记录告警。
+	logs.Reset()
+	f.setResponse(func(w http.ResponseWriter) { _, _ = io.WriteString(w, `{"Code":"OK","RequestId":"REQ-OK"}`) })
+	if err := s.SendSMS(context.Background(), "+86"+phone, msg(enum.PurposeSignIn)); err != nil || logs.Len() != 0 {
+		t.Fatalf("success: %v %q", err, logs.String())
+	}
+}
+
+func TestSupportsTargetMobileOnly(t *testing.T) {
+	s, err := aliyun.New(baseConfig("", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for number, want := range map[string]bool{
+		"+8613812345678": true,
+		"+8619912345678": true,
+		"+8675512345678": false, // 深圳固话，11 位但非手机号
+		"+86138123456":   false,
+		"+447911123456":  false,
+		"+86138123456ab": false,
+	} {
+		if got := s.SupportsTarget(number); got != want {
+			t.Errorf("SupportsTarget(%s) = %v, want %v", number, got, want)
+		}
 	}
 }

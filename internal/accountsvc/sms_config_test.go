@@ -38,7 +38,7 @@ func TestConfigSMSProvider(t *testing.T) {
 		if cfg.SMS == nil || cfg.SMS.SignName != "食方" || len(cfg.SMS.Templates) != 4 {
 			t.Fatalf("SMS config = %+v", cfg.SMS)
 		}
-		s, err := smsSender(cfg)
+		s, err := smsSender(cfg, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -61,7 +61,7 @@ func TestConfigSMSProvider(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		s, err := smsSender(cfg)
+		s, err := smsSender(cfg, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -78,7 +78,7 @@ func TestConfigSMSProvider(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if s, err := smsSender(cfg); err != nil || s != nil {
+		if s, err := smsSender(cfg, nil); err != nil || s != nil {
 			t.Fatalf("PHONE disabled must not inject an SMS sender: %T %v", s, err)
 		}
 	})
@@ -93,6 +93,14 @@ func TestConfigSMSProvider(t *testing.T) {
 			}
 		})
 	}
+	t.Run("unknown Aliyun variable with provider", func(t *testing.T) {
+		serveEnvironment(t)
+		aliyunEnvironment(t)
+		t.Setenv("ACCOUNTSVC_SMS_ALIYUN_ENDPOINTS", "https://dysms.example/")
+		if _, err := LoadConfig("serve"); err == nil || !strings.Contains(err.Error(), "ACCOUNTSVC_SMS_ALIYUN_ENDPOINTS") {
+			t.Fatalf("misspelled variable must be rejected: %v", err)
+		}
+	})
 	t.Run("unknown provider", func(t *testing.T) {
 		serveEnvironment(t)
 		t.Setenv("ACCOUNTSVC_SMS_PROVIDER", "tencent")

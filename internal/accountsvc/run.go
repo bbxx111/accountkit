@@ -15,7 +15,9 @@ import (
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/internal/accountsvc/adminauth"
 	"github.com/bbxx111/accountkit/internal/accountsvc/introspection"
+	"github.com/bbxx111/accountkit/internal/accountsvc/oidcjwt"
 	"github.com/bbxx111/accountkit/internal/accountsvc/purgefeed"
+	"github.com/bbxx111/accountkit/internal/accountsvc/serviceauth"
 	"github.com/bbxx111/accountkit/migrations"
 	"github.com/bbxx111/accountkit/pii"
 	"github.com/bbxx111/accountkit/user"
@@ -35,8 +37,10 @@ type dependencies struct {
 	closePool    func()
 }
 type application struct {
-	migrate                    func(context.Context) error
-	initAdmin                  func(context.Context) error
+	migrate   func(context.Context) error
+	initAdmin func(context.Context) error
+	// preloadServiceTokens 在监听前尝试加载服务令牌签发方的密钥；失败只记录警告。
+	preloadServiceTokens       func(context.Context) error
 	start                      func(context.Context)
 	close                      func()
 	endUser, admin, introspect http.Handler
@@ -156,12 +160,18 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 	}
 	app := &application{migrate: auth.Migrate, start: auth.Start, close: auth.Close, endUser: auth.EndUserHandler(), admin: auth.AdminHandler(), jwks: auth.JWKSHandler(), metrics: metrics}
 	if cfg.command == "serve" {
-		app.introspect, err = introspection.New(cfg.IntrospectionClients, auth.Users().AuthenticateStrict)
+		intro, purge, preload, err := serviceAuthenticators(cfg, logger, nil)
+		if err != nil {
+			auth.Close()
+			return nil, err
+		}
+		app.preloadServiceTokens = preload
+		app.introspect, err = introspection.NewWithAuthenticator(intro, auth.Users().AuthenticateStrict)
 		if err != nil {
 			auth.Close()
 			return nil, errors.New("accountsvc: introspection configuration failed")
 		}
-		app.purgeFeed, err = purgefeed.New(cfg.PurgeFeedClients, auth.Users().ListPurgedUsers)
+		app.purgeFeed, err = purgefeed.NewWithAuthenticator(purge, auth.Users().ListPurgedUsers)
 		if err != nil {
 			auth.Close()
 			return nil, errors.New("accountsvc: purged user feed configuration failed")
@@ -237,6 +247,42 @@ func startupCleanup(cfg Config, d *dependencies, app *application, listeners []n
 	return shutdownRuntime(ctx, 0, nil, &healthState{}, newRequestTracker(), func() {}, closeLibrary, closeRedis, closePool)
 }
 
+// serviceTokenRefreshInterval 是服务令牌签发方的刷新冷却：任何一次尝试后窗口内不再拉取。
+const serviceTokenRefreshInterval = 10 * time.Second
+
+// serviceTokenPreloadTimeout 限制启动时预加载签发方密钥的等待。
+const serviceTokenPreloadTimeout = 10 * time.Second
+
+// serviceAuthenticators 为内省与已清理用户拉取构造调用认证。两个接口共享一个服务令牌
+// verifier（延迟加载）；preload 为 nil 表示未启用 Bearer。client 仅供测试注入。
+func serviceAuthenticators(cfg Config, logger *slog.Logger, client *http.Client) (intro, purge *serviceauth.Authenticator, preload func(context.Context) error, err error) {
+	var tokens *oidcjwt.Verifier
+	if cfg.ServiceToken.Enabled() {
+		tokens, err = oidcjwt.New(cfg.ServiceToken.Issuer, cfg.ServiceToken.Audience, oidcjwt.Options{HTTPClient: client, RefreshInterval: serviceTokenRefreshInterval, Logger: logger})
+		if err != nil {
+			return nil, nil, nil, errors.New("accountsvc: service token configuration failed")
+		}
+		preload = tokens.Load
+	}
+	build := func(realm, endpoint string, basic map[string][]string, clients []string) (*serviceauth.Authenticator, error) {
+		c := serviceauth.Config{Realm: realm, Endpoint: endpoint, Logger: logger}
+		if len(basic) > 0 {
+			c.Basic = basic
+		}
+		if len(clients) > 0 {
+			c.TokenClients, c.Tokens = clients, tokens
+		}
+		return serviceauth.New(c)
+	}
+	if intro, err = build(introspection.Realm, "introspect", cfg.IntrospectionClients, cfg.ServiceToken.IntrospectionClients); err != nil {
+		return nil, nil, nil, errors.New("accountsvc: introspection configuration failed")
+	}
+	if purge, err = build(purgefeed.Realm, "purged_users", cfg.PurgeFeedClients, cfg.ServiceToken.PurgeFeedClients); err != nil {
+		return nil, nil, nil, errors.New("accountsvc: purged user feed configuration failed")
+	}
+	return intro, purge, preload, nil
+}
+
 func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory runtimeFactory) error {
 	startup, cancelStartup := context.WithTimeout(ctx, cfg.StartupTimeout)
 	defer cancelStartup()
@@ -262,6 +308,14 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 			_ = startupCleanup(cfg, d, app, nil)
 			return errors.New("accountsvc: administrator initialization failed")
 		}
+	}
+	if app.preloadServiceTokens != nil {
+		// 签发方不可达不阻止启动：Bearer 调用返回 503，消费者路由与 Basic 调用照常可用。
+		preloadCtx, cancelPreload := context.WithTimeout(startup, serviceTokenPreloadTimeout)
+		if err = app.preloadServiceTokens(preloadCtx); err != nil {
+			logger.Warn("accountsvc: service token issuer unavailable at startup; bearer calls answer 503 until it recovers", "issuer", cfg.ServiceToken.Issuer)
+		}
+		cancelPreload()
 	}
 	ln, err := factory.listen(startup, cfg.HTTPAddr)
 	if err != nil {

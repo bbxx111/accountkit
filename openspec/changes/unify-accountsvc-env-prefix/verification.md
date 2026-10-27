@@ -18,6 +18,8 @@
 | `openspec validate --all --strict` | 41 项通过 |
 | `git diff --check` | 无问题 |
 
+PR #12 首次 CI 失败：`cmd/accountsvc` 的 `TestMainConfigErrorDoesNotLeakInvalidValue`。原因是 CI 作业为恢复演练导出 `ACCOUNTKIT_RECOVERY_*`，新的旧前缀拒绝先于预期的 TTL 错误触发；本地与容器验证没有这些变量，未复现。修复：该测试先清空 `ACCOUNTKIT_*`（与 `internal/accountsvc` 的 `configEnvironment` 一致）。复验：设置 `ACCOUNTKIT_RECOVERY_SOURCE_DSN/TARGET_DSN` 后本地复现失败、修复后 `GOWORK=off go test -count=1 ./...` 全部通过。
+
 唯一 skip：`TestProfileAttributesUnreadableFile`（容器内以 root 运行，可读取无权限文件；与本变更无关的既有行为）。
 
 一次性容器、网络、卷与镜像已删除；未触碰其他项目的 `postgres`、`redis` 容器。

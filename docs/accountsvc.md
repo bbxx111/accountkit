@@ -211,6 +211,34 @@ healthz 只表示进程存活。readyz 要求启动完成、未停机且 Postgre
 
 本地验签必须全部满足：只接受 `alg=ES256` 与 `typ=at+jwt`；按 header `kid` 从 JWKS 选公钥；`iss`、`aud` 与服务配置的 `ACCOUNTKIT_JWT_ISSUER`、`ACCOUNTKIT_JWT_AUDIENCE` 完全相等；`exp` 必须存在，时钟偏差不超过 30 秒；`sub`、`sid` 分别为 `u_`、`s_` 资源 ID。遇到未知 `kid` 时节流刷新 JWKS（例如至多每分钟一次，失败的尝试同样计入节流，并发请求共享一次拉取，拉取期间不阻塞已缓存密钥的验签），刷新失败按依赖不可用拒绝。缓存的密钥集有最长信任期（建议与服务端 `max-age=300` 一致），过期后重新拉取；拉取持续失败时只在有限宽限期内沿用旧密钥，之后按依赖不可用拒绝，使被移除或泄露的密钥不会被无限期接受。返回空密钥集的响应视为拉取失败，不覆盖已有缓存。参考实现见 [examples/remoteauth](../examples/remoteauth) 的 `Verifier` 与 `ProtectedHandler`（`Critical` 字段区分两级）。
 
+### 业务服务错误与配置契约
+
+以下内容是外部业务服务可依赖的稳定契约，与库的 `RequireScope` / `RequireRecentAuth` 中间件逐字一致（由 `examples/remoteauth` 的 `TestExampleErrorsMatchLibraryMiddleware` 校验），客户端可用同一套逻辑处理 accountsvc 与业务服务的响应。变更任何一项都属于兼容性变更，须在[兼容说明](compatibility.md)中给出迁移说明。
+
+错误体均为 `{"error":{"code","message","status","reason"[,"retry_after_seconds"]}}`，`code` 为 HTTP 状态码，`status` 为 google.rpc.Code 名称：
+
+| 情形 | HTTP | status / reason | 额外响应头 | 客户端处理 |
+|---|---|---|---|---|
+| 缺少或格式错误的 Bearer | 401 | `UNAUTHENTICATED` / `TOKEN_MISSING` | `WWW-Authenticate: Bearer realm="user"` | 登录 |
+| access 无效、过期、已吊销（关键接口经内省）或其他实例签发 | 401 | `UNAUTHENTICATED` / `TOKEN_INVALID` | `WWW-Authenticate: Bearer realm="user", error="invalid_token"` | 用 refresh token 刷新一次，失败则重新登录 |
+| scope 不允许（如 `user:bind`、`user:undelete` 访问普通业务） | 403 | `PERMISSION_DENIED` / `INSUFFICIENT_SCOPE` | — | 刷新一次以取得最新 scope；仍为 403 时按业务提示（补全绑定或恢复账号） |
+| 需要近期认证 | 400 | `FAILED_PRECONDITION` / `REAUTHENTICATION_REQUIRED` | — | 走重新认证（`users/me:reauthenticate`）后重试 |
+| 鉴权依赖不可用（JWKS 拉取失败、内省超时或 503） | 503 | `UNAVAILABLE` / `DEPENDENCY_UNAVAILABLE`，`retry_after_seconds: 1` | `Retry-After: 1` | 稍后重试，不刷新、不退出登录 |
+
+`message` 是给开发者的英文说明，不作为客户端分支依据；分支只依据 HTTP 状态与 `reason`。
+
+**近期认证判定**：当 `now − auth_time > REAUTH_MAX_AGE`（默认 `5m`），或 `auth_time` 缺失时，判定为需要近期认证（400 `REAUTHENTICATION_REQUIRED`）。`ACCOUNTKIT_SENSITIVE_OP_VERIFICATION=false` 只关闭这项新鲜度检查，Bearer 认证本身仍是必需的。业务服务可以对自身时钟早于 `auth_time` 的情况额外拒绝（示例实现如此），但不能放宽上述判定。
+
+**业务服务须与 accountsvc 保持一致的配置**：
+
+| accountsvc 配置 | 业务服务用途 |
+|---|---|
+| `ACCOUNTKIT_JWT_ISSUER` / `ACCOUNTKIT_JWT_AUDIENCE` | 本地验签时精确比较 `iss`、`aud` |
+| `ACCOUNTKIT_REAUTH_MAX_AGE` / `ACCOUNTKIT_SENSITIVE_OP_VERIFICATION` | 近期认证判定 |
+| `ACCOUNTKIT_ACCESS_TOKEN_TTL` | 评估本地验签的吊销延迟上限（TTL 加 30 秒偏差） |
+
+验签允许的时钟偏差固定为 **30 秒**，不可配置。scope 取值固定为 `user`、`user:bind`、`user:undelete`。
+
 ### 签名密钥轮换
 
 1. 新增版本（如 `1:<旧>,2:<新>`，active 仍为 1）并重启全部副本，确认 JWKS 已包含新版本；

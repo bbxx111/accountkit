@@ -23,7 +23,7 @@
 
 ## 5. 文档
 
-- [ ] 5.1 更新 `docs/accountsvc.md`（短信配置、PHONE 启用规则、品牌前缀）、`deploy/accountsvc/.env.example`、README 发送器一节、`docs/openapi/enduser.json` 中发码端点的 `TARGET_NOT_SUPPORTED`，以及 `docs/compatibility.md`。验证：链接检查；`rg TARGET_NOT_SUPPORTED` 在规格、代码、OpenAPI、文档中一致。
+- [x] 5.1 更新 `docs/accountsvc.md`（短信配置、PHONE 启用规则、品牌前缀）、`deploy/accountsvc/.env.example`、README 发送器一节、`docs/openapi/enduser.json` 中发码端点的 `TARGET_NOT_SUPPORTED`，以及 `docs/compatibility.md`。验证：链接检查；`rg TARGET_NOT_SUPPORTED` 在规格、代码、OpenAPI、文档中一致。
 
 ## 6. 验证与记录
 

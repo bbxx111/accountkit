@@ -1,5 +1,13 @@
 # 功能与兼容对照
 
+## accountsvc 阿里云短信与邮件品牌
+
+本节随下一个版本发布，新增能力均为可选，未配置时行为不变，无数据库迁移。
+
+- **短信**：accountsvc 新增 `ACCOUNTSVC_SMS_PROVIDER=aliyun` 与 `ACCOUNTSVC_SMS_ALIYUN_*`（见[服务手册](accountsvc.md#短信服务商)）。显式启用 PHONE 的错误由“服务没有 SMS 服务商”改为要求配置 `ACCOUNTSVC_SMS_PROVIDER`；省略身份策略时短信仍保持禁用。
+- **新错误原因**：发送器可选实现 `SupportsTarget(e164 string) bool`；声明不支持的号码在占用额度前返回 400 `FAILED_PRECONDITION` / `TARGET_NOT_SUPPORTED`（Go 为 `sender.ErrTargetNotSupported`），审计 `CODE_SEND_REJECTED` 原因 `TARGET_NOT_SUPPORTED`。阿里云发送器首版只支持中国大陆号码，客户端可据此提示改用其他登录方式。未实现该方法的宿主发送器不受影响。
+- **邮件品牌**：`smtp.LegacyChineseRenderer` 由空结构体改为含可选 `Brand` 字段的结构体，`LegacyChineseRenderer{}` 字面量与零值文案不变；accountsvc 新增 `ACCOUNTSVC_SMTP_BRAND`。
+
 ## 消费者 access 改用 ES256 与严格内省
 
 本节随 v0.6.0 之后的下一个版本发布（版本号在发布时确定），对 v0.6.0 不兼容，不提供旧配置、旧令牌或旧数据迁移。

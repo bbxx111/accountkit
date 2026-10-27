@@ -3,8 +3,6 @@ package introspection
 
 import (
 	"context"
-	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"io"
@@ -14,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bbxx111/accountkit/internal/accountsvc/basicclients"
 	"github.com/bbxx111/accountkit/user"
 )
 
@@ -24,7 +23,7 @@ const maxBody = 64 * 1024
 const lookupTimeout = 3 * time.Second
 
 type handler struct {
-	clients      map[string][][sha256.Size]byte
+	clients      *basicclients.Matcher
 	authenticate func(context.Context, string) (user.Principal, error)
 }
 
@@ -33,25 +32,20 @@ type handler struct {
 // (revocation is immediate, dependency failures map to 503). It never parses JWT
 // claims itself and does not query account state.
 func New(clients map[string][]string, authenticate func(context.Context, string) (user.Principal, error)) (http.Handler, error) {
-	if err := validateClients(clients); err != nil {
-		return nil, err
+	matcher, err := basicclients.NewMatcher(clients)
+	if err != nil {
+		return nil, errors.New("accountsvc: ACCOUNTSVC_INTROSPECTION_CLIENTS must contain unique nonempty client IDs and lists of base64 secrets of at least 32 bytes")
 	}
 	if authenticate == nil {
 		return nil, errors.New("accountsvc: introspection authenticator is required")
 	}
-	h := &handler{clients: make(map[string][][sha256.Size]byte, len(clients)), authenticate: authenticate}
-	for id, secrets := range clients {
-		for _, secret := range secrets {
-			h.clients[id] = append(h.clients[id], sha256.Sum256([]byte(secret)))
-		}
-	}
-	return h, nil
+	return &handler{clients: matcher, authenticate: authenticate}, nil
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
-	if !h.authorized(r) {
+	if !h.clients.Authorized(r) {
 		w.Header().Set("WWW-Authenticate", `Basic realm="accountsvc-introspection"`)
 		oauthError(w, http.StatusUnauthorized, "invalid_client")
 		return
@@ -102,24 +96,6 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		SID      string `json:"sid"`
 		AuthTime int64  `json:"auth_time"`
 	}{true, principal.UserID, principal.Scope, principal.SessionID, principal.AuthTime.Unix()})
-}
-
-func (h *handler) authorized(r *http.Request) bool {
-	if len(r.Header.Values("Authorization")) != 1 {
-		return false
-	}
-	id, password, ok := r.BasicAuth()
-	if !ok {
-		return false
-	}
-	digest := sha256.Sum256([]byte(password))
-	match := 0
-	// Compare fixed-size hashes and inspect every rotation entry, never return on
-	// the first match. The public client ID selects its permitted secrets.
-	for _, expected := range h.clients[id] {
-		match |= subtle.ConstantTimeCompare(digest[:], expected[:])
-	}
-	return match == 1
 }
 
 func oauthError(w http.ResponseWriter, status int, code string) {

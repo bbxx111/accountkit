@@ -127,7 +127,7 @@ accountsvc 默认不装配 Observer 或指标路由。设置 `ACCOUNTSVC_METRICS
 | 审计 field | `request_id`、`device_id`、`subject_hint`、`actor_name`、`client_ip`、`unknown`；只表示被省略字段类别 |
 | 维护轮次 result | `acquired`、`skipped`、`error`、`canceled`、`deadline_exceeded`；acquired 仅表示已取得锁 |
 | 维护任务 result | `success`、`error`、`canceled`、`deadline_exceeded`、`panic` |
-| task | `cleanup_sign_in_completion_flows`、`purge_users`、`cleanup_sessions`、`audit_retention`、`rekey_digests`、`reencrypt_subjects`；自定义名归入 `other` |
+| task | `cleanup_sign_in_completion_flows`、`purge_users`、`cleanup_sessions`、`audit_retention`、`rekey_digests`、`reencrypt_subjects`；自定义名归入 `other`。内置的 `cleanup_purged_users`（已清理用户记录保留期清理）当前同样归入 `other`，不扩展固定的六个任务标签 |
 
 reason 为固定业务原因，不从错误文本生成：`none`、`invalid_argument`、`identity_kind_disabled`、`channel_disabled`、`invalid_credential`、`code_invalid`、`code_expired`、`code_attempts_exhausted`、`cooldown`、`target_limit`、`ip_limit`、`target_verify_limit`、`user_frozen`、`user_pending_deletion`、`invalid_account_state`、`identity_conflict`、`identity_required`、`identity_limit`、`flow_invalid`、`flow_expired`、`flow_conflict`、`unknown_token`、`session_revoked`、`session_expired`、`token_reuse`、`containment_failed`、`grace_read_error`、`grace_miss`、`grace_pair_expired`、`send_failed`、`dependency_unavailable`、`internal`、`canceled`、`deadline_exceeded`、`unknown`。保留常量不表示当前协议必然会返回该原因。分类常量以 [classification.go](../observability/classification.go) 为准；reason 不复制到耗时直方图。
 

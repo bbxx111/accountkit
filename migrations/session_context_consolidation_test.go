@@ -80,6 +80,9 @@ func TestSessionContextConsolidatedCatalog(t *testing.T) {
 	if _, err := old.Exec(context.Background(), identityKindTextDDL); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := old.Exec(context.Background(), purgedUserDDL); err != nil {
+		t.Fatal(err)
+	}
 	initialUp(t, cfg, schema)
 	current := migrationTestConn(t, cfg, schema)
 	assertVersion(t, cfg, schema, 1, false)

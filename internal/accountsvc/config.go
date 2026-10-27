@@ -17,6 +17,7 @@ import (
 	"github.com/bbxx111/accountkit"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/internal/accountsvc/adminauth"
+	"github.com/bbxx111/accountkit/internal/accountsvc/basicclients"
 	"github.com/bbxx111/accountkit/internal/accountsvc/introspection"
 	"github.com/bbxx111/accountkit/user/sender"
 	"github.com/bbxx111/accountkit/user/sender/aliyun"
@@ -42,6 +43,7 @@ type Config struct {
 	SMS                  *aliyun.Config // nil 表示未配置短信服务商
 	SMTPBrand            string         // 内置中文邮件的可选品牌前缀
 	IntrospectionClients map[string][]string
+	PurgeFeedClients     map[string][]string // nil 时 /v1/purgedUsers 返回 503 PURGE_FEED_NOT_CONFIGURED
 	AdminEnabled         bool
 	Admin                adminauth.Config
 	MetricsEnabled       bool
@@ -244,6 +246,15 @@ func LoadConfig(command string) (Config, error) {
 	if err != nil {
 		return Config{}, invalidConfig("ACCOUNTSVC_INTROSPECTION_CLIENTS")
 	}
+	if raw := os.Getenv("ACCOUNTSVC_PURGE_FEED_CLIENTS"); strings.TrimSpace(raw) != "" {
+		if c.PurgeFeedClients, err = basicclients.Parse(raw, "ACCOUNTSVC_PURGE_FEED_CLIENTS"); err != nil {
+			return Config{}, invalidConfig("ACCOUNTSVC_PURGE_FEED_CLIENTS")
+		}
+		// 一份凭据不能同时打开内省与已清理用户拉取两个独立授权的接口。
+		if basicclients.SharedSecret(c.IntrospectionClients, c.PurgeFeedClients) {
+			return Config{}, invalidConfig("ACCOUNTSVC_PURGE_FEED_CLIENTS (secret shared with ACCOUNTSVC_INTROSPECTION_CLIENTS)")
+		}
+	}
 	if raw := env("ADMIN_ENABLED"); raw != "" {
 		c.AdminEnabled, err = strconv.ParseBool(raw)
 		if err != nil {
@@ -425,7 +436,7 @@ func safeLibraryConfigError(err error) error {
 	if matches := libraryWeiboFieldError.FindStringSubmatch(err.Error()); len(matches) == 2 {
 		return invalidConfig(map[string]string{"WeiboAppIDs": "ACCOUNTKIT_WEIBO_APP_IDS", "WeiboAPIBaseURL": "ACCOUNTKIT_WEIBO_API_BASE_URL"}[matches[1]])
 	}
-	names := map[string]string{"Schema": "AUTH_SCHEMA", "KeyPrefix": "AUTH_KEY_PREFIX", "JWTKeys": "JWT_KEYS / ACCOUNTKIT_JWT_ACTIVE_KEY", "JWTIssuer": "JWT_ISSUER / ACCOUNTKIT_JWT_AUDIENCE", "SubjectHMACKeys": "SUBJECT_HMAC_KEYS / ACCOUNTKIT_SUBJECT_HMAC_ACTIVE_KEY", "SubjectCipherKeys": "SUBJECT_CIPHER_KEYS / ACCOUNTKIT_SUBJECT_CIPHER_ACTIVE_KEY", "AccessTokenTTL": "ACCESS_TOKEN_TTL", "RefreshTokenTTL": "REFRESH_TOKEN_TTL", "RefreshGrace": "REFRESH_GRACE", "ReauthMaxAge": "REAUTH_MAX_AGE", "CodeTTL": "CODE_TTL / ACCOUNTKIT_CODE_COOLDOWN", "Code": "CODE_MAX_ATTEMPTS / ACCOUNTKIT_CODE_DAILY_LIMIT_PER_TARGET / ACCOUNTKIT_CODE_DAILY_LIMIT_PER_IP", "MaxIdentitiesPerKind": "MAX_IDENTITIES_PER_KIND", "DeletionCoolingPeriod": "DELETION_COOLING_PERIOD / ACCOUNTKIT_AUDIT_RETENTION_DAYS", "DefaultRegion": "DEFAULT_REGION", "WeChatApps": "WECHAT_APPS", "WeChatMiniProgramApps": "WECHAT_MINI_PROGRAM_APPS", "WeChatSubjectMode": "WECHAT_SUBJECT_MODE", "AppleBundleIDs": "APPLE_BUNDLE_IDS", "AppleNonceTTL": "APPLE_NONCE_TTL", "GoogleClientIDs": "GOOGLE_CLIENT_IDS", "GoogleNonceTTL": "GOOGLE_NONCE_TTL", "WeChatAPIBaseURL": "WECHAT_API_BASE_URL", "AppleJWKSURL": "APPLE_JWKS_URL", "GoogleJWKSURL": "GOOGLE_JWKS_URL", "MaintenanceInterval": "MAINTENANCE_INTERVAL"}
+	names := map[string]string{"Schema": "AUTH_SCHEMA", "KeyPrefix": "AUTH_KEY_PREFIX", "JWTKeys": "JWT_KEYS / ACCOUNTKIT_JWT_ACTIVE_KEY", "JWTIssuer": "JWT_ISSUER / ACCOUNTKIT_JWT_AUDIENCE", "SubjectHMACKeys": "SUBJECT_HMAC_KEYS / ACCOUNTKIT_SUBJECT_HMAC_ACTIVE_KEY", "SubjectCipherKeys": "SUBJECT_CIPHER_KEYS / ACCOUNTKIT_SUBJECT_CIPHER_ACTIVE_KEY", "AccessTokenTTL": "ACCESS_TOKEN_TTL", "RefreshTokenTTL": "REFRESH_TOKEN_TTL", "RefreshGrace": "REFRESH_GRACE", "ReauthMaxAge": "REAUTH_MAX_AGE", "CodeTTL": "CODE_TTL / ACCOUNTKIT_CODE_COOLDOWN", "Code": "CODE_MAX_ATTEMPTS / ACCOUNTKIT_CODE_DAILY_LIMIT_PER_TARGET / ACCOUNTKIT_CODE_DAILY_LIMIT_PER_IP", "MaxIdentitiesPerKind": "MAX_IDENTITIES_PER_KIND", "DeletionCoolingPeriod": "DELETION_COOLING_PERIOD / ACCOUNTKIT_AUDIT_RETENTION_DAYS", "PurgedUserRetention": "PURGED_USER_RETENTION", "DefaultRegion": "DEFAULT_REGION", "WeChatApps": "WECHAT_APPS", "WeChatMiniProgramApps": "WECHAT_MINI_PROGRAM_APPS", "WeChatSubjectMode": "WECHAT_SUBJECT_MODE", "AppleBundleIDs": "APPLE_BUNDLE_IDS", "AppleNonceTTL": "APPLE_NONCE_TTL", "GoogleClientIDs": "GOOGLE_CLIENT_IDS", "GoogleNonceTTL": "GOOGLE_NONCE_TTL", "WeChatAPIBaseURL": "WECHAT_API_BASE_URL", "AppleJWKSURL": "APPLE_JWKS_URL", "GoogleJWKSURL": "GOOGLE_JWKS_URL", "MaintenanceInterval": "MAINTENANCE_INTERVAL"}
 	names["FacebookAppID"] = "FACEBOOK_APP_ID"
 	names["FacebookAppSecret"] = "FACEBOOK_APP_SECRET"
 	names["FacebookGraphAPIVersion"] = "FACEBOOK_GRAPH_API_VERSION"

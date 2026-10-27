@@ -781,6 +781,8 @@ github.com/bbxx111/accountkit/migrations/TestProfileAttributesConsolidatedV1Repe
 github.com/bbxx111/accountkit/migrations/TestProfileAttributesInitialCatalogEquivalent
 github.com/bbxx111/accountkit/migrations/TestProfileAttributesWithdrawnV2Rejected
 github.com/bbxx111/accountkit/internal/migrationcheck/TestCurrentInitialDiffersFromPublishedV040
+github.com/bbxx111/accountkit/internal/migrationcheck/TestPublishedV060Pinned
+github.com/bbxx111/accountkit/internal/migrationcheck/TestCurrentInitialDiffersFromPublishedV060
 github.com/bbxx111/accountkit/httpapi/enduser/TestProfileAttributesEndpoint
 github.com/bbxx111/accountkit/httpapi/enduser/TestProfileAttributesRequest
 github.com/bbxx111/accountkit/httpapi/enduser/TestProfileAttributesErrors
@@ -805,6 +807,10 @@ github.com/bbxx111/accountkit/migrations/TestIdentityKindInitialDefinition
 github.com/bbxx111/accountkit/migrations/TestIdentityKindSmallintV1Rejected
 github.com/bbxx111/accountkit/migrations/TestIdentityKindSmallintV1WithTextColumnAccepted
 github.com/bbxx111/accountkit/migrations/TestIdentityKindDriftRejected
+github.com/bbxx111/accountkit/migrations/TestPurgedUserInitialDefinition
+github.com/bbxx111/accountkit/migrations/TestPurgedUserMissingV060Rejected
+github.com/bbxx111/accountkit/migrations/TestPurgedUserV060WithTableAccepted
+github.com/bbxx111/accountkit/migrations/TestPurgedUserDriftRejected
 github.com/bbxx111/accountkit/user/TestProviderRegistryValidation
 github.com/bbxx111/accountkit/user/TestProviderRegistryDefaultEnabledOrder
 github.com/bbxx111/accountkit/user/TestProviderDispatchErrors
@@ -920,6 +926,7 @@ github.com/bbxx111/accountkit/user/TestQQProviderObservationsAndFlowFingerprint
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigWeibo
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigSMSProvider
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigSMTPBrand
+github.com/bbxx111/accountkit/internal/accountsvc/TestConfigPurgeFeedClients
 github.com/bbxx111/accountkit/observability/internal/metricdata/TestWeiboMetricProjection
 github.com/bbxx111/accountkit/TestWeiboConfigFromEnv
 github.com/bbxx111/accountkit/TestWeiboProviderAssembly
@@ -927,6 +934,7 @@ github.com/bbxx111/accountkit/TestWeiboHTTPLoginContract
 github.com/bbxx111/accountkit/TestWeiboHTTPMultiAppIdentityContract
 github.com/bbxx111/accountkit/TestWeiboHTTPProfileBackfillDisabled
 github.com/bbxx111/accountkit/TestJWKSHandler
+github.com/bbxx111/accountkit/TestConfigPurgedUserRetention
 github.com/bbxx111/accountkit/enum/TestIdentityWeiboIsBuiltinThirdParty
 github.com/bbxx111/accountkit/user/idp/TestWeiboCredentialRejectedBeforeNetwork
 github.com/bbxx111/accountkit/user/idp/TestWeiboVerify
@@ -963,6 +971,13 @@ github.com/bbxx111/accountkit/user/TestAuthenticateStrictWithoutDatabase
 github.com/bbxx111/accountkit/user/TestAuthenticateStrictDatabaseState
 github.com/bbxx111/accountkit/user/TestUnsupportedTargetRejectedBeforeIssuing
 github.com/bbxx111/accountkit/user/TestUnsupportedTargetRejectedForSignInCompletion
+github.com/bbxx111/accountkit/user/TestPurgeWritesPurgedUserRecord
+github.com/bbxx111/accountkit/user/TestPurgedUserRecordRollsBackWithAnonymizer
+github.com/bbxx111/accountkit/user/TestListPurgedUsersPaging
+github.com/bbxx111/accountkit/user/TestPurgedUserFeedConcurrentPurgeNoGaps
+github.com/bbxx111/accountkit/user/TestCleanupPurgedUsersRetention
+github.com/bbxx111/accountkit/user/TestListPurgedUsersRejectsCursorAheadOfFeed
+github.com/bbxx111/accountkit/user/TestPurgeWaitsForPurgedUserLock
 github.com/bbxx111/accountkit/user/idp/TestWeiboHugeExpireDoesNotOverflow
 github.com/bbxx111/accountkit/internal/testkeys/TestJWTDeterministicAndDistinct
 github.com/bbxx111/accountkit/user/sender/aliyun/TestSignOfficialVector

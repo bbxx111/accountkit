@@ -354,6 +354,9 @@ func TestProfileAttributesConsolidatedV1Repeat(t *testing.T) {
 	if _, err := c.Exec(ctx, identityKindTextDDL); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := c.Exec(ctx, purgedUserDDL); err != nil {
+		t.Fatal(err)
+	}
 	seedRenameFlow(t, c, "sign_in_completion_flow")
 	catalog, data := migrationCatalog(t, c, schema), profileAttributesOldData(t, c)
 	for range 2 {
@@ -384,6 +387,9 @@ func TestProfileAttributesInitialCatalogEquivalent(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := old.Exec(context.Background(), identityKindTextDDL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := old.Exec(context.Background(), purgedUserDDL); err != nil {
 		t.Fatal(err)
 	}
 	_, schema, current := consolidatedProfileAttributesInitial(t)

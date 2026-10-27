@@ -216,6 +216,8 @@ func TestConfigFromEnvSchema(t *testing.T) {
 func TestValidateRejects(t *testing.T) {
 	cases := map[string]func(*accountkit.Config){
 		"missing jwt keys":          func(c *accountkit.Config) { c.JWTKeys = nil },
+		"purged retention short":    func(c *accountkit.Config) { c.PurgedUserRetention = 7 * 24 * time.Hour },
+		"purged retention negative": func(c *accountkit.Config) { c.PurgedUserRetention = -time.Hour },
 		"jwt active missing":        func(c *accountkit.Config) { c.JWTActiveKey = 9 },
 		"jwt key wrong curve":       func(c *accountkit.Config) { c.JWTKeys = map[uint16]*ecdsa.PrivateKey{1: p384Key(t)} },
 		"jwt key nil":               func(c *accountkit.Config) { c.JWTKeys = map[uint16]*ecdsa.PrivateKey{1: nil} },
@@ -391,4 +393,30 @@ func p384Key(t *testing.T) *ecdsa.PrivateKey {
 		t.Fatal(err)
 	}
 	return k
+}
+
+func TestConfigPurgedUserRetention(t *testing.T) {
+	c := minimal()
+	if err := c.Validate(); err != nil || c.PurgedUserRetention != 0 {
+		t.Fatalf("default must keep purged users forever: %v %v", c.PurgedUserRetention, err)
+	}
+	for _, name := range []string{"T_JWT_KEYS"} {
+		t.Setenv(name, "1:"+testkeys.JWTBase64(1))
+	}
+	t.Setenv("T_JWT_ACTIVE_KEY", "1")
+	t.Setenv("T_JWT_ISSUER", "i")
+	t.Setenv("T_JWT_AUDIENCE", "a")
+	t.Setenv("T_SUBJECT_HMAC_KEYS", "1:"+b64(k(2)))
+	t.Setenv("T_SUBJECT_HMAC_ACTIVE_KEY", "1")
+	t.Setenv("T_SUBJECT_CIPHER_KEYS", "1:"+b64(k(3)))
+	t.Setenv("T_SUBJECT_CIPHER_ACTIVE_KEY", "1")
+	t.Setenv("T_PURGED_USER_RETENTION", "2160h")
+	got, err := accountkit.ConfigFromEnv("T_")
+	if err != nil || got.PurgedUserRetention != 2160*time.Hour {
+		t.Fatalf("env: %v %v", got.PurgedUserRetention, err)
+	}
+	t.Setenv("T_PURGED_USER_RETENTION", "168h")
+	if _, err := accountkit.ConfigFromEnv("T_"); err == nil || !strings.Contains(err.Error(), "PurgedUserRetention") {
+		t.Fatalf("short retention must be rejected by name: %v", err)
+	}
 }

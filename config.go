@@ -116,8 +116,11 @@ type Config struct {
 	MaxIdentitiesPerKind      int           // 默认 1
 
 	DeletionCoolingPeriod time.Duration // 默认 360h（15 天）
-	AuditRetentionDays    int           // 默认 180
-	DefaultRegion         string        // 默认 "CN"
+	// PurgedUserRetention 是已清理用户记录（purged_user）的保留期：0 表示长期保留（默认）；
+	// 大于 0 时不得短于 720h，由维护任务删除超出保留期的记录，外部业务服务须在保留期内完成拉取。
+	PurgedUserRetention time.Duration
+	AuditRetentionDays  int    // 默认 180
+	DefaultRegion       string // 默认 "CN"
 
 	// WeChatApps 配置 OAuth 应用；两组均为空时未启用微信登录。
 	WeChatApps []WeChatApp
@@ -401,6 +404,9 @@ func (c Config) validateBase() error {
 	if c.MaxIdentitiesPerKind <= 0 {
 		return errors.New("accountkit: MaxIdentitiesPerKind must be >= 1")
 	}
+	if c.PurgedUserRetention < 0 || (c.PurgedUserRetention > 0 && c.PurgedUserRetention < user.MinPurgedUserRetention) {
+		return fmt.Errorf("accountkit: PurgedUserRetention must be 0 (keep forever) or at least %s", user.MinPurgedUserRetention)
+	}
 	if c.DeletionCoolingPeriod <= 0 || c.AuditRetentionDays <= 0 {
 		return errors.New("accountkit: DeletionCoolingPeriod and AuditRetentionDays must be positive")
 	}
@@ -639,6 +645,7 @@ func ConfigFromEnv(prefix string) (Config, error) {
 	keylist("SUBJECT_CIPHER_KEYS", &c.SubjectCipherKeys)
 	u16("SUBJECT_CIPHER_ACTIVE_KEY", &c.SubjectCipherActiveKey)
 	dur("CODE_TTL", &c.CodeTTL)
+	dur("PURGED_USER_RETENTION", &c.PurgedUserRetention)
 	integer("CODE_MAX_ATTEMPTS", &c.CodeMaxAttempts)
 	dur("CODE_COOLDOWN", &c.CodeCooldown)
 	integer("CODE_DAILY_LIMIT_PER_TARGET", &c.CodeDailyLimitPerTarget)

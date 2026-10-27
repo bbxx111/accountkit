@@ -15,6 +15,7 @@ import (
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/internal/accountsvc/adminauth"
 	"github.com/bbxx111/accountkit/internal/accountsvc/introspection"
+	"github.com/bbxx111/accountkit/internal/accountsvc/purgefeed"
 	"github.com/bbxx111/accountkit/migrations"
 	"github.com/bbxx111/accountkit/pii"
 	"github.com/bbxx111/accountkit/user"
@@ -39,6 +40,7 @@ type application struct {
 	start                      func(context.Context)
 	close                      func()
 	endUser, admin, introspect http.Handler
+	purgeFeed                  http.Handler
 	jwks                       http.Handler
 	metrics                    http.Handler
 }
@@ -159,6 +161,11 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 			auth.Close()
 			return nil, errors.New("accountsvc: introspection configuration failed")
 		}
+		app.purgeFeed, err = purgefeed.New(cfg.PurgeFeedClients, auth.Users().ListPurgedUsers)
+		if err != nil {
+			auth.Close()
+			return nil, errors.New("accountsvc: purged user feed configuration failed")
+		}
 	}
 	app.initAdmin = func(ctx context.Context) error {
 		if !cfg.AdminEnabled {
@@ -268,7 +275,7 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 	defer cancelRequests()
 	tracker := newRequestTracker()
 	state := &healthState{database: d.databasePing, redis: d.redisPing}
-	handler := serviceHandler(cfg, app.endUser, app.admin, app.introspect, app.jwks, state, app.metrics)
+	handler := serviceHandler(cfg, app.endUser, app.admin, app.introspect, app.purgeFeed, app.jwks, state, app.metrics)
 	server := newHTTPServer(cfg.HTTPAddr, requestMetadata(cfg.TrustedProxyCIDRs, tracker.wrap(handler)), requestCtx)
 	if cfg.TLSEnabled {
 		server.TLSConfig = cfg.tlsConfig.Clone()

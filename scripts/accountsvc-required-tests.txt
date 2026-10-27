@@ -30,3 +30,5 @@ github.com/bbxx111/accountkit/internal/accountsvc/TestProfileAttributesReadFailu
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationAliyunSMS
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigSMSProvider
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigSMTPBrand
+github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationPurgedUserFeed
+github.com/bbxx111/accountkit/internal/accountsvc/TestConfigPurgeFeedClients

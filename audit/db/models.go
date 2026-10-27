@@ -41,6 +41,12 @@ type Identity struct {
 	DeleteTime        *time.Time
 }
 
+type PurgedUser struct {
+	UserID    string
+	Seq       int64
+	PurgeTime time.Time
+}
+
 type Session struct {
 	ID                       string
 	UserID                   string

@@ -28,7 +28,7 @@
   - 数据库错误包装后返回，不得是 `ErrInvalidToken`；不读取 Redis。
   - 数据库访问沿用既有依赖观测包装。
   - 验证：单元测试覆盖签名无效时不访问数据库。
-- [ ] 3.3 为严格认证编写真实数据库测试，需要 `SERVER_TEST_DB_DSN`。
+- [x] 3.3 为严格认证编写真实数据库测试，需要 `SERVER_TEST_DB_DSN`。
   - 已吊销会话返回无效。
   - Redis 吊销集写入失败后：严格认证判为无效，而 `Authenticate` 仍按 fail-open 通过。
   - 会话已清理或 `sub` 不匹配时返回无效。
@@ -38,16 +38,16 @@
   - 测试还须确认不读写来源、客户端描述或会话字段。
 - [x] 3.4 在 `httpapi/authn` 中新增 `StrictAuthenticator` 和 `RequireScopeStrict`，在门面新增 `Auth.RequireScopeStrict`。该中间件始终执行严格认证，不跳过上下文中已有的 Principal。
   - 验证：中间件测试覆盖 401 challenge、403 scope、`ErrUnavailable` 返回 503 且不调用下游、外层 RequireScope 注入后内层仍执行严格认证、与 RequireRecentAuth 串联。
-- [ ] 3.5 回归 `Authenticate` 与消费者中间件。
+- [x] 3.5 回归 `Authenticate` 与消费者中间件。
   - 验证：既有 Redis fail-open 测试保持不变且通过，普通认证路径不新增数据库查询。
 
 ## 4. accountsvc
 
 - [x] 4.1 将内省装配从 `Users().Authenticate` 改为 `AuthenticateStrict`，同步更新 handler 注释。
   - 验证：introspection 测试覆盖数据库错误返回 503 `temporarily_unavailable` 并带 no-store、已吊销返回 `active:false`、有效时返回最小上下文；同步更新 `compatibility_test.go` 中关于 Redis fail-open 的断言。
-- [ ] 4.2 在单监听器上挂载 `/.well-known/jwks.json`。
+- [x] 4.2 在单监听器上挂载 `/.well-known/jwks.json`。
   - 验证：`http_test.go` 确认无需认证即可访问、内省仍要求 Basic、旧内部路径仍返回 404；gateway/transport 集成测试覆盖 JWKS 路由。
-- [ ] 4.3 更新 `deploy/accountsvc` 的 Compose 和配置模板：用 PKCS#8 base64 生成 JWT 密钥（给出 `openssl genpkey` 示例），不提交真实密钥。
+- [x] 4.3 更新 `deploy/accountsvc` 的 Compose 和配置模板：用 PKCS#8 base64 生成 JWT 密钥（给出 `openssl genpkey` 示例），不提交真实密钥。
   - 验证：按模板生成的密钥能让 serve 在本地启动，并且 JWKS 返回该公钥。
 
 ## 5. 业务端示例
@@ -78,5 +78,5 @@
 ## 7. 验证与记录
 
 - [ ] 7.1 运行 `GOWORK=off go build ./...`、`go vet ./...`、`go test -count=1 ./...`、`bash scripts/check-generated.sh`、`bash scripts/check-migrations.sh` 和 `openspec validate --all --strict`，确认全部通过。
-- [ ] 7.2 提供三个一次性数据库，运行 `bash scripts/verify.sh`（Windows 下用 `tests/Dockerfile` 镜像跑 race）；新增的必需顶层测试同步写入 `scripts/required-tests.txt`。
+- [x] 7.2 提供三个一次性数据库，运行 `bash scripts/verify.sh`（Windows 下用 `tests/Dockerfile` 镜像跑 race）；新增的必需顶层测试同步写入 `scripts/required-tests.txt`。
 - [x] 7.3 编写 `verification.md`，记录实际运行的检查、结果和未验证项。

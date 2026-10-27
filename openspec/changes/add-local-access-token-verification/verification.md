@@ -66,20 +66,51 @@
 
 **严格认证没有新增 sqlc 查询**，改为复用已有的 `GetActiveSessionByIDAndUser`（`id`、`user_id`，`revoke_time IS NULL`，不加锁、不判刷新期限），语义与需求一致。因此 `user/db/` 无变化。design.md 的 D5 已更新。
 
+## 数据库与完整验证（Docker 启动后补充）
+
+**环境**
+
+- 专为本任务创建的一次性 Docker 资源：PostgreSQL 17.4 容器 `accountkit-verify-pg-20261027`，以及 Redis 7 容器 `accountkit-verify-redis-20261027`，使用合成凭据，只绑定回环端口。
+- 库内建了 `accountkit_strict`（集成测试）、`accountkit_recsrc` 和 `accountkit_recdst`（恢复源与恢复目标，均为空库）。
+- 没有使用本机其他项目的数据库容器。
+- Linux 验证镜像由 `tests/Dockerfile` 构建（golang:1.26.5，PostgreSQL 17.11 客户端）。
+
+**Windows 本机全量测试**
+
+`SERVER_TEST_DB_DSN` 指向真实库，执行 `go test -count=1 -json ./...`。结果：1086 通过，0 失败，14 skip。skip 包括 13 个需在 Linux 上由 `verify-accountsvc.sh` 运行的进程测试，以及预期 skip 的 `TestRecoveryFixture`。`TestAuthenticateStrictDatabaseState` 的全部子测试均实际执行并通过，包括：
+
+- 吊销集写入失败时严格认证拒绝，而 `Authenticate` 仍 fail-open；
+- 刷新期限已到但未吊销的会话仍有效；
+- `sub` 不符，或会话已被清理；
+- revokeOthers、冻结、注销后立即失效；
+- 严格认证不写库。
+
+换绑断言（`TestReplaceIdentityRedisRevocationFailure`）与既有的 Redis fail-open 回归测试也全部通过。
+
+**首轮 Linux 运行发现两个问题，均已修复**
+
+1. `TestServiceIntegrationDependencyFailure` 仍要求“Redis 故障时内省日志中出现 fail-open 警告”。这是旧契约，内省已不读 Redis。测试改为：
+   - 用普通 Bearer 请求（`GET /v1/users/me`）断言 fail-open 警告；
+   - 在 Redis 故障期间调用 `POST /v1/revoke` 后，断言内省立即返回 `active:false`。
+
+   修复提交为 `c4523c6`，并在端到端层面验证了核心保证。
+2. 恢复演练的 verify 阶段失败（`restored durable result replay`）。原因是 `internal/testkeys` 在每个进程中随机生成签名密钥，而演练的 seed、verify、source-unchanged 是三个独立进程，需要相同的密钥。修复提交为 `4f63610`：改为按序号经 SHA-256 确定性派生，并新增 `TestJWTDeterministicAndDistinct`，已列为必需测试。
+
+**最终提交 `4f63610` 上的 Linux 运行**（重建了空的恢复库）
+
+- `bash scripts/verify.sh`：退出码 0。依次通过：
+  - 迁移历史检查；
+  - build 与 vet；
+  - `go test -race`：1100 通过，0 失败，无数据竞争。2 个 skip，分别为预期 skip 的 `TestRecoveryFixture`，以及 `TestProfileAttributesUnreadableFile`（容器以 root 运行，文件权限无法制造不可读）；
+  - 必需测试门禁；
+  - pg_dump/pg_restore 恢复演练三阶段（“Recovery drill passed”）。
+- `bash scripts/verify-accountsvc.sh`：退出码 0。`internal/accountsvc`、`examples/remoteauth` 与 SMTP 共 114 个测试在 race 下通过，同样只 skip `TestProfileAttributesUnreadableFile`，必需测试门禁通过。其中进程级集成测试验证了：
+  - 生产模式 serve 加载 PKCS#8 ES256 密钥；
+  - 通过真实的 `/.well-known/jwks.json` 本地验签登录所得 access（`verifyLocally`）；
+  - 撤销后内省返回 `active:false`。
+
+原始输出位于 `.test-output/verify/`、`.test-output/tests.jsonl`、`.test-output/accountsvc-tests.jsonl` 和 `.test-output/recovery.1ERavt/`。
+
 ## 未验证项
 
-本机没有可用的 PostgreSQL（Docker Desktop 报告 “unable to start”，WSL 中未安装 PostgreSQL），也没有 sqlc 和 cgo 工具链。以下各项**未实际执行**，对应任务保持未勾选：
-
-- **任务 3.3、3.5**：`TestAuthenticateStrictDatabaseState` 全部子测试，涵盖以下场景：
-  - Redis 写失败时严格认证拒绝，而 `Authenticate` 仍 fail-open；
-  - 刷新期限已到但未吊销的会话仍有效；
-  - `sub` 不符或会话已清理；
-  - revokeOthers、冻结、注销后立即失效；
-  - 严格认证不写库。
-
-  另外还有换绑断言，以及既有的 Redis fail-open 数据库回归测试。
-- **任务 4.2、4.3**：accountsvc 进程集成测试未执行，包括：JWKS 拉取与本地验签、真实内省撤销后返回 `active:false`、按模板密钥启动 serve。
-- **任务 7.1**：`bash scripts/check-generated.sh` 未运行。sqlc 未安装，下载发布二进制被权限策略拒绝。本变更未改动 SQL 或 sqlc 配置，`user/db/` 无差异。
-- **任务 7.2**：`bash scripts/verify.sh`（race、必需测试门禁、pg_dump/pg_restore 恢复演练）未运行。Windows 缺少 cgo 工具链，`tests/Dockerfile` 镜像也依赖 Docker。
-
-补跑方法：启动 Docker Desktop 后提供三个一次性数据库，在 `tests/Dockerfile` 镜像中运行 `bash scripts/verify.sh` 与 `bash scripts/verify-accountsvc.sh`，再回填本记录并勾选对应任务。
+- `bash scripts/check-generated.sh`：本机没有 sqlc（下载发布二进制被权限策略拒绝），由 CI 执行。本变更未改动 SQL 或 sqlc 配置，`user/db/` 无差异。任务 7.1 因此保持未勾选。

@@ -12,11 +12,16 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/bbxx111/accountkit/user"
 )
 
 const maxBody = 64 * 1024
+
+// lookupTimeout bounds token validation (including the session lookup), so a hung
+// database yields 503 instead of holding the request until the caller gives up.
+const lookupTimeout = 3 * time.Second
 
 type handler struct {
 	clients      map[string][][sha256.Size]byte
@@ -77,7 +82,9 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
-	principal, err := h.authenticate(r.Context(), form.Get("token"))
+	ctx, cancel := context.WithTimeout(r.Context(), lookupTimeout)
+	defer cancel()
+	principal, err := h.authenticate(ctx, form.Get("token"))
 	if errors.Is(err, user.ErrInvalidToken) {
 		writeJSON(w, http.StatusOK, struct {
 			Active bool `json:"active"`

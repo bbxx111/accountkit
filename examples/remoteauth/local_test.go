@@ -246,3 +246,148 @@ func TestTieredProtectedHandler(t *testing.T) {
 		t.Fatalf("ordinary route during introspection outage: %d", code)
 	}
 }
+
+// JWKS outages must not trigger a fetch per request (random kid amplification).
+func TestVerifierThrottlesFailedFetches(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+	s := signer(t, 1)
+	srv := newJWKSServer(t, s)
+	srv.set([]byte("down"), 503)
+	v := verifier(t, srv, &now)
+	tok := access(t, s, now)
+	for range 20 {
+		if _, err := v.Verify(ctx, tok); !errors.Is(err, remoteauth.ErrUnavailable) {
+			t.Fatalf("startup outage must be unavailable: %v", err)
+		}
+	}
+	if srv.hits.Load() != 1 {
+		t.Fatalf("failed fetches not throttled: %d requests", srv.hits.Load())
+	}
+	srv.set(s.JWKS(), 200)
+	now = now.Add(61 * time.Second)
+	if r, err := v.Verify(ctx, tok); err != nil || !r.Active || srv.hits.Load() != 2 {
+		t.Fatalf("recovery after throttle window: %+v %v hits=%d", r, err, srv.hits.Load())
+	}
+}
+
+// A slow JWKS fetch for an unknown kid must not block requests with cached keys,
+// and concurrent unknown-kid requests share one fetch.
+func TestVerifierDoesNotHoldLockDuringFetch(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+	s := signer(t, 1)
+	release := make(chan struct{})
+	var hits atomic.Int32
+	var slow atomic.Bool
+	var offset atomic.Int64 // advances the verifier clock past the default throttle window
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		if slow.Load() {
+			<-release
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(s.JWKS())
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	})
+	v, err := remoteauth.NewVerifier(remoteauth.VerifierConfig{JWKSURL: srv.URL, Issuer: "consumer.example", Audience: "business.example", HTTPClient: srv.Client(), Now: func() time.Time { return time.Now().Add(time.Duration(offset.Load())) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	good := access(t, s, now)
+	if r, err := v.Verify(ctx, good); err != nil || !r.Active {
+		t.Fatalf("warm cache: %+v %v", r, err)
+	}
+	slow.Store(true)
+	offset.Store(int64(2 * time.Minute))
+	unknown := access(t, signer(t, 7), now)
+	var wg sync.WaitGroup
+	for range 5 {
+		wg.Go(func() { _, _ = v.Verify(ctx, unknown) })
+	}
+	time.Sleep(100 * time.Millisecond) // let the unknown-kid fetch start and block
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if r, err := v.Verify(ctx, good); err != nil || !r.Active {
+			t.Errorf("cached key during slow fetch: %+v %v", r, err)
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("cached-key verification blocked behind JWKS fetch")
+	}
+	close(release)
+	wg.Wait()
+	if hits.Load() != 2 {
+		t.Fatalf("concurrent unknown-kid requests must share one fetch: %d", hits.Load())
+	}
+}
+
+// Keys removed from the JWKS stop being accepted after MaxCacheAge, and when the
+// JWKS stays unreachable cached keys are dropped after MaxCacheAge+StaleGrace.
+func TestVerifierBoundsCacheAge(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+	old := signer(t, 1)
+	srv := newJWKSServer(t, old)
+	v, err := remoteauth.NewVerifier(remoteauth.VerifierConfig{JWKSURL: srv.URL, Issuer: "consumer.example", Audience: "business.example", HTTPClient: srv.Client(), Now: func() time.Time { return now }, MaxCacheAge: 5 * time.Minute, StaleGrace: 10 * time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok := func() string { return access(t, old, now) }
+	if r, err := v.Verify(ctx, tok()); err != nil || !r.Active {
+		t.Fatalf("initial: %+v %v", r, err)
+	}
+	// Operator removed version 1 (rotation step 5 or compromise).
+	srv.set(signer(t, 2).JWKS(), 200)
+	now = now.Add(4 * time.Minute)
+	if r, _ := v.Verify(ctx, tok()); !r.Active {
+		t.Fatal("within MaxCacheAge the cached key is still used")
+	}
+	now = now.Add(2 * time.Minute)
+	if r, err := v.Verify(ctx, tok()); err != nil || r.Active {
+		t.Fatalf("removed key must be rejected after refresh: %+v %v", r, err)
+	}
+
+	// Outage case: stale keys survive only within the grace period.
+	v2, _ := remoteauth.NewVerifier(remoteauth.VerifierConfig{JWKSURL: srv.URL, Issuer: "consumer.example", Audience: "business.example", HTTPClient: srv.Client(), Now: func() time.Time { return now }, MaxCacheAge: 5 * time.Minute, StaleGrace: 10 * time.Minute})
+	s2 := signer(t, 2)
+	if r, err := v2.Verify(ctx, access(t, s2, now)); err != nil || !r.Active {
+		t.Fatalf("v2 initial: %+v %v", r, err)
+	}
+	srv.set([]byte("down"), 503)
+	now = now.Add(10 * time.Minute)
+	if r, err := v2.Verify(ctx, access(t, s2, now)); err != nil || !r.Active {
+		t.Fatalf("stale key within grace: %+v %v", r, err)
+	}
+	now = now.Add(6 * time.Minute)
+	if _, err := v2.Verify(ctx, access(t, s2, now)); !errors.Is(err, remoteauth.ErrUnavailable) {
+		t.Fatalf("keys beyond grace must fail closed: %v", err)
+	}
+}
+
+// A 200 response without usable keys must not wipe the cached set.
+func TestVerifierKeepsKeysOnEmptySet(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Second)
+	s := signer(t, 1)
+	srv := newJWKSServer(t, s)
+	v := verifier(t, srv, &now)
+	if r, err := v.Verify(ctx, access(t, s, now)); err != nil || !r.Active {
+		t.Fatalf("initial: %+v %v", r, err)
+	}
+	srv.set([]byte(`{"keys":[]}`), 200)
+	now = now.Add(6 * time.Minute) // past MaxCacheAge → refresh returns an empty set
+	if r, err := v.Verify(ctx, access(t, s, now)); err != nil || !r.Active {
+		t.Fatalf("empty set must be treated as a failed refresh: %+v %v", r, err)
+	}
+}

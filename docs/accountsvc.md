@@ -190,7 +190,7 @@ healthz 只表示进程存活。readyz 要求启动完成、未停机且 Postgre
 
 哪些接口属于关键接口由业务服务认定并写入其接入说明，例如支付、资金、权限或安全设置变更。两级都由业务服务继续校验 scope、必要的近期认证（`auth_time`）及资源所属；`user:bind`、`user:undelete` 不能访问普通业务。
 
-本地验签必须全部满足：只接受 `alg=ES256` 与 `typ=at+jwt`；按 header `kid` 从 JWKS 选公钥；`iss`、`aud` 与服务配置的 `ACCOUNTKIT_JWT_ISSUER`、`ACCOUNTKIT_JWT_AUDIENCE` 完全相等；`exp` 必须存在，时钟偏差不超过 30 秒；`sub`、`sid` 分别为 `u_`、`s_` 资源 ID。遇到未知 `kid` 时节流刷新 JWKS（例如至多每分钟一次），刷新失败按依赖不可用拒绝，不无限信任旧缓存。参考实现见 [examples/remoteauth](../examples/remoteauth) 的 `Verifier` 与 `ProtectedHandler`（`Critical` 字段区分两级）。
+本地验签必须全部满足：只接受 `alg=ES256` 与 `typ=at+jwt`；按 header `kid` 从 JWKS 选公钥；`iss`、`aud` 与服务配置的 `ACCOUNTKIT_JWT_ISSUER`、`ACCOUNTKIT_JWT_AUDIENCE` 完全相等；`exp` 必须存在，时钟偏差不超过 30 秒；`sub`、`sid` 分别为 `u_`、`s_` 资源 ID。遇到未知 `kid` 时节流刷新 JWKS（例如至多每分钟一次，失败的尝试同样计入节流，并发请求共享一次拉取，拉取期间不阻塞已缓存密钥的验签），刷新失败按依赖不可用拒绝。缓存的密钥集有最长信任期（建议与服务端 `max-age=300` 一致），过期后重新拉取；拉取持续失败时只在有限宽限期内沿用旧密钥，之后按依赖不可用拒绝，使被移除或泄露的密钥不会被无限期接受。返回空密钥集的响应视为拉取失败，不覆盖已有缓存。参考实现见 [examples/remoteauth](../examples/remoteauth) 的 `Verifier` 与 `ProtectedHandler`（`Critical` 字段区分两级）。
 
 ### 签名密钥轮换
 
@@ -200,7 +200,7 @@ healthz 只表示进程存活。readyz 要求启动完成、未停机且 Postgre
 4. 至少再等待 `ACCESS_TOKEN_TTL` 加验签偏差；
 5. 移除旧版本并重启。
 
-同一实例的全部副本须使用一致的密钥集合与 active 版本。过早切换时业务服务会因未知 `kid` 额外刷新一次 JWKS，不会永久拒绝新令牌。
+同一实例的全部副本须使用一致的密钥集合与 active 版本。过早切换时业务服务会因未知 `kid` 额外刷新一次 JWKS，不会永久拒绝新令牌；但若此前刚拉取过，节流期（如 60 秒）内携带新 `kid` 的令牌会被判为无效（401），因此应按上述顺序等待后再切换 active。
 
 ### 内省
 

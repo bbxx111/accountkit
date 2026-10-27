@@ -453,4 +453,11 @@ func TestReplaceIdentityRedisRevocationFailure(t *testing.T) {
 	if _, err := f.svc.Authenticate(ctx, other.AccessToken); err != nil {
 		t.Fatalf("existing access fail-open changed: %v", err)
 	}
+	// 严格认证以数据库为准：换绑撤销的会话立即失效，即使吊销集写入失败；保留的当前会话仍有效。
+	if _, err := f.svc.AuthenticateStrict(ctx, other.AccessToken); !errors.Is(err, user.ErrInvalidToken) {
+		t.Fatalf("strict authentication must reject replaced-identity session: %v", err)
+	}
+	if _, err := f.svc.AuthenticateStrict(ctx, current.AccessToken); err != nil {
+		t.Fatalf("strict authentication must keep current session: %v", err)
+	}
 }

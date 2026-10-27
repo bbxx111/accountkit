@@ -5,6 +5,7 @@
 package tokens
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -75,14 +76,24 @@ func CheckKeys(keys map[uint16]*ecdsa.PrivateKey, active uint16) error {
 		return errors.New("tokens: no signing keys configured")
 	}
 	for v, k := range keys {
-		if k == nil || k.Curve != elliptic.P256() {
-			return fmt.Errorf("tokens: key version %d must be a P-256 private key", v)
+		if k == nil || k.Curve != elliptic.P256() || !consistent(k) {
+			return fmt.Errorf("tokens: key version %d must be a valid P-256 private key", v)
 		}
 	}
 	if _, ok := keys[active]; !ok {
 		return fmt.Errorf("tokens: active key version %d not configured", active)
 	}
 	return nil
+}
+
+// consistent 确认私钥标量有效且公钥与之匹配，避免签出自身 JWKS 无法验证的令牌。
+func consistent(k *ecdsa.PrivateKey) bool {
+	d, err := k.ECDH()
+	if err != nil {
+		return false
+	}
+	pub, err := k.PublicKey.Bytes()
+	return err == nil && bytes.Equal(d.PublicKey().Bytes(), pub)
 }
 
 // NewSigner 校验密钥、iss/aud 非空，并预生成 JWKS。

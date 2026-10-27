@@ -22,13 +22,18 @@ import (
 
 // VerifierConfig configures local access-token verification against the
 // accountsvc JWKS. Issuer and Audience must equal the service's JWT settings.
-// MinRefreshInterval throttles JWKS refreshes triggered by unknown key IDs.
+// MinRefreshInterval throttles every JWKS fetch attempt, successful or not.
+// MaxCacheAge bounds how long a fetched key set is trusted: older sets are
+// refreshed, and if refreshing keeps failing they are dropped after
+// MaxCacheAge+StaleGrace so removed or compromised keys stop being accepted.
 type VerifierConfig struct {
 	JWKSURL, Issuer, Audience string
 	HTTPClient                *http.Client
 	Timeout                   time.Duration // per JWKS request, default 5s
 	Leeway                    time.Duration // clock skew, default 30s
 	MinRefreshInterval        time.Duration // default 60s
+	MaxCacheAge               time.Duration // default 5m, matching the service's Cache-Control
+	StaleGrace                time.Duration // default 10m
 	AllowHTTP                 bool
 	Now                       func() time.Time
 }
@@ -40,10 +45,13 @@ type Verifier struct {
 	cfg        VerifierConfig
 	httpClient http.Client
 
-	mu        sync.Mutex
-	keys      map[string]*ecdsa.PublicKey
-	fetched   bool
-	lastFetch time.Time
+	mu          sync.Mutex // guards the fields below; never held during network I/O
+	keys        map[string]*ecdsa.PublicKey
+	keysTime    time.Time // when keys were last successfully fetched
+	lastAttempt time.Time // last fetch attempt, successful or not
+	attempted   bool
+	lastFailed  bool          // whether the last attempt failed
+	inflight    chan struct{} // non-nil while a fetch is running; closed when it ends
 }
 
 var (
@@ -66,6 +74,12 @@ func NewVerifier(cfg VerifierConfig) (*Verifier, error) {
 	}
 	if cfg.MinRefreshInterval == 0 {
 		cfg.MinRefreshInterval = time.Minute
+	}
+	if cfg.MaxCacheAge <= 0 {
+		cfg.MaxCacheAge = 5 * time.Minute
+	}
+	if cfg.StaleGrace <= 0 {
+		cfg.StaleGrace = 10 * time.Minute
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -113,29 +127,66 @@ func (v *Verifier) Verify(ctx context.Context, raw string) (Result, error) {
 	return Result{Active: true, Subject: c.Subject, SessionID: c.SessionID, Scope: c.Scope, AuthTime: time.Unix(*c.AuthTime, 0)}, nil
 }
 
-// key returns the cached key, refreshing the JWKS at most once per
-// MinRefreshInterval when the key ID is unknown.
+// key returns a cached key. Unknown key IDs and expired key sets trigger a
+// refresh; attempts are throttled by MinRefreshInterval whether they succeed or
+// fail, concurrent callers share one fetch, and no lock is held during I/O.
 func (v *Verifier) key(ctx context.Context, kid string) (*ecdsa.PublicKey, error) {
 	if kid == "" {
 		return nil, errUnknownKey
 	}
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	if k, ok := v.keys[kid]; ok {
-		return k, nil
+	for {
+		v.mu.Lock()
+		now := v.cfg.Now()
+		age := now.Sub(v.keysTime)
+		usable := v.keys != nil && age < v.cfg.MaxCacheAge+v.cfg.StaleGrace
+		k, known := v.keys[kid]
+		if usable && known && age < v.cfg.MaxCacheAge {
+			v.mu.Unlock()
+			return k, nil
+		}
+		if wait := v.inflight; wait != nil {
+			v.mu.Unlock()
+			select {
+			case <-wait:
+				continue // re-evaluate with the fetch result
+			case <-ctx.Done():
+				return nil, errJWKSUnavailable
+			}
+		}
+		if v.attempted && now.Sub(v.lastAttempt) < v.cfg.MinRefreshInterval {
+			v.mu.Unlock()
+			switch {
+			case usable && known:
+				return k, nil // stale but within grace while refresh is throttled
+			case usable && !v.lastFailed:
+				return nil, errUnknownKey // the set fetched moments ago lacks this kid
+			default:
+				return nil, errJWKSUnavailable
+			}
+		}
+		done := make(chan struct{})
+		v.inflight, v.attempted, v.lastAttempt = done, true, now
+		v.mu.Unlock()
+
+		// The shared fetch must not fail just because this caller went away.
+		keys, err := v.fetch(context.WithoutCancel(ctx))
+
+		v.mu.Lock()
+		if err == nil {
+			v.keys, v.keysTime = keys, v.cfg.Now()
+		}
+		v.lastFailed = err != nil
+		v.inflight = nil
+		close(done)
+		v.mu.Unlock()
+		if err != nil {
+			if usable && known {
+				return k, nil // refresh failed; stale key still within grace
+			}
+			return nil, errJWKSUnavailable
+		}
+		// Loop once more to read the refreshed set under the lock.
 	}
-	if v.fetched && v.cfg.Now().Sub(v.lastFetch) < v.cfg.MinRefreshInterval {
-		return nil, errUnknownKey
-	}
-	keys, err := v.fetch(ctx)
-	if err != nil {
-		return nil, errJWKSUnavailable
-	}
-	v.keys, v.fetched, v.lastFetch = keys, true, v.cfg.Now()
-	if k, ok := v.keys[kid]; ok {
-		return k, nil
-	}
-	return nil, errUnknownKey
 }
 
 func (v *Verifier) fetch(ctx context.Context) (map[string]*ecdsa.PublicKey, error) {
@@ -184,6 +235,11 @@ func (v *Verifier) fetch(ctx context.Context) (map[string]*ecdsa.PublicKey, erro
 			continue
 		}
 		keys[k.Kid] = pub
+	}
+	if len(keys) == 0 {
+		// A set without usable keys (e.g. a misconfigured proxy) must not wipe
+		// the previous cache.
+		return nil, errJWKSUnavailable
 	}
 	return keys, nil
 }

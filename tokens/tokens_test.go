@@ -171,11 +171,14 @@ func TestParseRejects(t *testing.T) {
 
 func TestNewSignerValidates(t *testing.T) {
 	p384, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	mismatched := *testkeys.JWT(1)
+	mismatched.PublicKey = testkeys.JWT(2).PublicKey
 	bad := map[string]tokens.Options{
 		"no keys":        {Keys: nil, Active: 1, Issuer: "i", Audience: "a"},
 		"active missing": {Keys: keys(1), Active: 2, Issuer: "i", Audience: "a"},
 		"nil key":        {Keys: map[uint16]*ecdsa.PrivateKey{1: nil}, Active: 1, Issuer: "i", Audience: "a"},
 		"p384":           {Keys: map[uint16]*ecdsa.PrivateKey{1: p384}, Active: 1, Issuer: "i", Audience: "a"},
+		"mismatched pub": {Keys: map[uint16]*ecdsa.PrivateKey{1: &mismatched}, Active: 1, Issuer: "i", Audience: "a"},
 		"no issuer":      {Keys: keys(1), Active: 1, Issuer: "", Audience: "a"},
 		"no audience":    {Keys: keys(1), Active: 1, Issuer: "i", Audience: ""},
 	}

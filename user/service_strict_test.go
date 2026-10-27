@@ -6,6 +6,7 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"log/slog"
+	"os"
 	"testing"
 	"time"
 
@@ -89,6 +90,10 @@ func (f *fixture) sessionSnapshot(t *testing.T) string {
 }
 
 func TestAuthenticateStrictDatabaseState(t *testing.T) {
+	// 父测试本身须在缺库时 skip，否则子测试全部 skip 而父测试 PASS，会绕过必需测试门禁。
+	if os.Getenv("SERVER_TEST_DB_DSN") == "" {
+		t.Skip("SERVER_TEST_DB_DSN not set")
+	}
 	ctx := context.Background()
 	dev2 := user.Device{ID: "22222222-2222-2222-2222-222222222222", Name: "iPad"}
 	invalid := func(t *testing.T, f *fixture, tok, why string) {

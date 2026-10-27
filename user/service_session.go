@@ -327,7 +327,7 @@ func (s *Service) authenticateStrict(ctx context.Context, rawAccess string) (Pri
 		return Principal{}, fmt.Errorf("%w: session revoked or not found", ErrInvalidToken)
 	}
 	if err != nil {
-		return Principal{}, fmt.Errorf("%w: session state: %v", ErrUnavailable, err)
+		return Principal{}, fmt.Errorf("%w: session state: %w", ErrUnavailable, err)
 	}
 	return Principal{UserID: c.UserID, SessionID: c.SessionID, Scope: c.Scope, AuthTime: c.AuthTime}, nil
 }

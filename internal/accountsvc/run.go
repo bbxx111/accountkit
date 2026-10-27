@@ -250,7 +250,11 @@ func startupCleanup(cfg Config, d *dependencies, app *application, listeners []n
 // serviceTokenRefreshInterval 是服务令牌签发方的刷新冷却：任何一次尝试后窗口内不再拉取。
 const serviceTokenRefreshInterval = 10 * time.Second
 
-// serviceTokenPreloadTimeout 限制启动时预加载签发方密钥的等待。
+// serviceTokenRefreshTimeout 小于冷却间隔，使挂起的签发方在窗口内就判定失败，
+// 后续 Bearer 请求立即得到 503，而不是每次都等满认证上限。
+const serviceTokenRefreshTimeout = 5 * time.Second
+
+// serviceTokenPreloadTimeout 限制后台预加载签发方密钥的等待。
 const serviceTokenPreloadTimeout = 10 * time.Second
 
 // serviceAuthenticators 为内省与已清理用户拉取构造调用认证。两个接口共享一个服务令牌
@@ -258,7 +262,7 @@ const serviceTokenPreloadTimeout = 10 * time.Second
 func serviceAuthenticators(cfg Config, logger *slog.Logger, client *http.Client) (intro, purge *serviceauth.Authenticator, preload func(context.Context) error, err error) {
 	var tokens *oidcjwt.Verifier
 	if cfg.ServiceToken.Enabled() {
-		tokens, err = oidcjwt.New(cfg.ServiceToken.Issuer, cfg.ServiceToken.Audience, oidcjwt.Options{HTTPClient: client, RefreshInterval: serviceTokenRefreshInterval, Logger: logger})
+		tokens, err = oidcjwt.New(cfg.ServiceToken.Issuer, cfg.ServiceToken.Audience, oidcjwt.Options{HTTPClient: client, RefreshInterval: serviceTokenRefreshInterval, RefreshTimeout: serviceTokenRefreshTimeout, Logger: logger})
 		if err != nil {
 			return nil, nil, nil, errors.New("accountsvc: service token configuration failed")
 		}
@@ -281,6 +285,28 @@ func serviceAuthenticators(cfg Config, logger *slog.Logger, client *http.Client)
 		return nil, nil, nil, errors.New("accountsvc: purged user feed configuration failed")
 	}
 	return intro, purge, preload, nil
+}
+
+// preloadServiceTokens 在就绪后于后台尝试加载服务令牌签发方的密钥，返回的函数取消并等待它。
+// 签发方故障（含挂起）既不消耗启动预算也不推迟就绪：Bearer 调用在恢复前返回 503，消费者路由与
+// Basic 调用照常可用。
+func preloadServiceTokens(preload func(context.Context) error, issuer string, logger *slog.Logger) (stop func()) {
+	if preload == nil {
+		return func() {}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), serviceTokenPreloadTimeout)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if err := preload(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			if errors.Is(err, oidcjwt.ErrIssuerMismatch) {
+				logger.Error("accountsvc: service token issuer discovery does not match ACCOUNTSVC_SERVICE_TOKEN_ISSUER", "issuer", issuer)
+				return
+			}
+			logger.Warn("accountsvc: service token issuer unavailable at startup; bearer calls answer 503 until it recovers", "issuer", issuer)
+		}
+	}()
+	return func() { cancel(); <-done }
 }
 
 func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory runtimeFactory) error {
@@ -308,14 +334,6 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 			_ = startupCleanup(cfg, d, app, nil)
 			return errors.New("accountsvc: administrator initialization failed")
 		}
-	}
-	if app.preloadServiceTokens != nil {
-		// 签发方不可达不阻止启动：Bearer 调用返回 503，消费者路由与 Basic 调用照常可用。
-		preloadCtx, cancelPreload := context.WithTimeout(startup, serviceTokenPreloadTimeout)
-		if err = app.preloadServiceTokens(preloadCtx); err != nil {
-			logger.Warn("accountsvc: service token issuer unavailable at startup; bearer calls answer 503 until it recovers", "issuer", cfg.ServiceToken.Issuer)
-		}
-		cancelPreload()
 	}
 	ln, err := factory.listen(startup, cfg.HTTPAddr)
 	if err != nil {
@@ -349,12 +367,14 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 	}
 	state.ready.Store(true)
 	cancelStartup()
+	stopPreload := preloadServiceTokens(app.preloadServiceTokens, cfg.ServiceToken.Issuer, logger)
 	var serveError error
 	select {
 	case <-ctx.Done():
 	case <-errorsFromServers:
 		serveError = errors.New("accountsvc: HTTP listener stopped unexpectedly")
 	}
+	stopPreload()
 	shutdown, cancelShutdown := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancelShutdown()
 	closeLibrary := func() {

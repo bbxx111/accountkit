@@ -379,3 +379,27 @@ func TestNewValidatesIssuer(t *testing.T) {
 		t.Fatal("accepted blank audience")
 	}
 }
+
+// A hanging provider must fail within RefreshTimeout, so requests inside the cooldown
+// window answer unavailable immediately instead of each waiting for its own deadline.
+func TestHangingProviderFailsFastInsideCooldown(t *testing.T) {
+	p := newProvider(t)
+	release := make(chan struct{})
+	p.set(func() { p.entered, p.release = make(chan struct{}, 64), release })
+	t.Cleanup(func() { close(release) })
+	now := time.Now().Truncate(time.Second)
+	v, err := New(p.server.URL, "svc", Options{HTTPClient: p.server.Client(), Now: newClock(now).now, RefreshInterval: 10 * time.Second, RefreshTimeout: 200 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := p.token(p.claims(now), "initial")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := v.Parse(ctx, token); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("hanging provider: %v", err)
+	}
+	start := time.Now()
+	if _, err := v.Parse(ctx, token); !errors.Is(err, ErrUnavailable) || time.Since(start) > 100*time.Millisecond {
+		t.Fatalf("request inside the failed window must be unavailable at once: %v after %v", err, time.Since(start))
+	}
+}

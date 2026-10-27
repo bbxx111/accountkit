@@ -17,8 +17,6 @@ const (
 	maxKeys         = 128
 )
 
-var errIssuerMismatch = errors.New("oidcjwt: discovered issuer mismatch")
-
 func (v *Verifier) fetchJSON(ctx context.Context, address string, dest any) error {
 	if err := validateHTTPS(address); err != nil {
 		return err
@@ -56,7 +54,7 @@ func (v *Verifier) discover(ctx context.Context) (string, error) {
 		return "", err
 	}
 	if discovery.Issuer != v.issuer {
-		return "", errIssuerMismatch
+		return "", ErrIssuerMismatch
 	}
 	if err := validateHTTPS(discovery.JWKSURI); err != nil {
 		return "", errors.New("oidcjwt: invalid JWKS URI")

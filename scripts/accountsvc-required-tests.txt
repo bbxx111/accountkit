@@ -45,3 +45,4 @@ github.com/bbxx111/accountkit/internal/accountsvc/introspection/TestBearerIntros
 github.com/bbxx111/accountkit/internal/accountsvc/purgefeed/TestPurgeFeedBearerErrors
 github.com/bbxx111/accountkit/internal/accountsvc/oidcjwt/TestCooldownAfterSuccessfulAttempt
 github.com/bbxx111/accountkit/internal/accountsvc/oidcjwt/TestCooldownAfterFailedAttempt
+github.com/bbxx111/accountkit/internal/accountsvc/TestRuntimeStartsWhenServiceIssuerHangs

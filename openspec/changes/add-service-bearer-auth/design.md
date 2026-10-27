@@ -155,6 +155,8 @@ WWW-Authenticate: Bearer realm="accountsvc-introspection", error="invalid_token"
 - 服务 issuer 与管理员 issuer 相同时两个 verifier 各自缓存，互不影响；故障分类各自独立。
 - 认证阶段单独设 3 秒上限（现有 3 秒超时只覆盖认证之后的查询）；等待密钥超时 → 503。
 
+实施偏离（2026-10-28，独立审查发现）：启动阶段同步预加载在签发方**挂起**（丢包、DNS 黑洞）时会耗尽 `STARTUP_TIMEOUT` 预算，使 serve 启动失败，违反「签发方故障不阻止启动」。改为监听就绪后在后台预加载（上限 10 秒），关停时取消并等待；失败记 WARN，issuer 不一致记 ERROR。另为服务 verifier 设单次刷新超时 5 秒（小于 10 秒冷却），使挂起的签发方在冷却窗口内即判失败，后续 Bearer 请求立即 503；管理员保持原 10 秒超时与 1 分钟冷却。
+
 ### D8 可观测性（约束 7）
 
 - 不记录令牌、Basic 秘密或 Authorization 头；日志只出现 `client_id`（Basic 用户名或 `azp`）与 `auth_method`（`basic`/`bearer`）。

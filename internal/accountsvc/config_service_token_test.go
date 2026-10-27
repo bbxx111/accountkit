@@ -77,6 +77,7 @@ func TestConfigServiceTokenRejections(t *testing.T) {
 		{"trailing data", map[string]string{"ACCOUNTSVC_PURGE_FEED_TOKEN_CLIENTS": `["purge-client"] []`}, "ACCOUNTSVC_PURGE_FEED_TOKEN_CLIENTS"},
 		{"issuer not HTTPS", map[string]string{"ACCOUNTSVC_SERVICE_TOKEN_ISSUER": "http://" + secretish}, "ACCOUNTSVC_SERVICE_TOKEN_ISSUER"},
 		{"issuer equals consumer issuer", map[string]string{"ACCOUNTSVC_SERVICE_TOKEN_ISSUER": "https://consumer.example.test", "ACCOUNTSVC_JWT_ISSUER": "https://consumer.example.test"}, "ACCOUNTSVC_SERVICE_TOKEN_ISSUER"},
+		{"issuer equals consumer issuer up to a trailing slash", map[string]string{"ACCOUNTSVC_SERVICE_TOKEN_ISSUER": "https://consumer.example.test/", "ACCOUNTSVC_JWT_ISSUER": "https://consumer.example.test"}, "ACCOUNTSVC_SERVICE_TOKEN_ISSUER"},
 		{"audience equals consumer audience", map[string]string{"ACCOUNTSVC_SERVICE_TOKEN_AUDIENCE": "consumer"}, "ACCOUNTSVC_SERVICE_TOKEN_AUDIENCE"},
 		{"audience equals an allowed azp", map[string]string{"ACCOUNTSVC_SERVICE_TOKEN_AUDIENCE": "purge-client"}, "ACCOUNTSVC_SERVICE_TOKEN_AUDIENCE"},
 		{"audience equals Google client ID", map[string]string{"ACCOUNTSVC_GOOGLE_CLIENT_IDS": "web.apps.googleusercontent.com", "ACCOUNTSVC_SERVICE_TOKEN_AUDIENCE": "web.apps.googleusercontent.com"}, "ACCOUNTSVC_SERVICE_TOKEN_AUDIENCE"},

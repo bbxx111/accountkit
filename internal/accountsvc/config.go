@@ -372,7 +372,7 @@ func (c *Config) loadServiceToken() error {
 			return invalidConfig("ACCOUNTSVC_PURGE_FEED_TOKEN_CLIENTS (client shared with ACCOUNTSVC_INTROSPECTION_TOKEN_CLIENTS)")
 		}
 	}
-	if !oidcjwt.ValidIssuer(s.Issuer) || s.Issuer == c.Library.JWTIssuer {
+	if !oidcjwt.ValidIssuer(s.Issuer) || strings.TrimRight(s.Issuer, "/") == strings.TrimRight(c.Library.JWTIssuer, "/") {
 		return invalidConfig("ACCOUNTSVC_SERVICE_TOKEN_ISSUER")
 	}
 	if s.Audience == "" || strings.TrimSpace(s.Audience) != s.Audience || slices.Contains(c.reservedAudiences(), s.Audience) {

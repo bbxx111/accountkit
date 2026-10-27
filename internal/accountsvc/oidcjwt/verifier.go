@@ -30,6 +30,9 @@ var (
 	ErrUnavailable = errors.New("oidcjwt: identity provider unavailable")
 	// ErrInvalid means the token itself was rejected; callers answer 401.
 	ErrInvalid = errors.New("oidcjwt: invalid access token")
+	// ErrIssuerMismatch is returned by Load when discovery names another issuer: a
+	// configuration error, reported as unavailable to token callers.
+	ErrIssuerMismatch = errors.New("oidcjwt: discovered issuer mismatch")
 )
 
 // Options customize networking, time, the refresh cooldown and failure logging.
@@ -38,6 +41,9 @@ type Options struct {
 	Now        func() time.Time
 	// RefreshInterval is the cooldown after any provider attempt; zero means one minute.
 	RefreshInterval time.Duration
+	// RefreshTimeout bounds one discovery+JWKS attempt; zero means ten seconds. Keeping it
+	// below RefreshInterval lets a hanging provider fail fast inside the cooldown window.
+	RefreshTimeout time.Duration
 	// Logger receives provider failures (WARN) and issuer mismatches (ERROR); nil disables logging.
 	Logger *slog.Logger
 }
@@ -56,6 +62,7 @@ type Verifier struct {
 	client           *http.Client
 	now              func() time.Time
 	interval         time.Duration
+	refreshTimeout   time.Duration
 	logger           *slog.Logger
 	mu               sync.Mutex
 	jwksURL          string
@@ -77,6 +84,9 @@ func New(issuer, audience string, opts Options) (*Verifier, error) {
 	if opts.RefreshInterval <= 0 {
 		opts.RefreshInterval = defaultRefreshInterval
 	}
+	if opts.RefreshTimeout <= 0 || opts.RefreshTimeout > refreshTimeout {
+		opts.RefreshTimeout = refreshTimeout
+	}
 	client := http.Client{Timeout: refreshTimeout}
 	if opts.HTTPClient != nil {
 		client = *opts.HTTPClient
@@ -87,7 +97,7 @@ func New(issuer, audience string, opts Options) (*Verifier, error) {
 	// Discovery/JWKS endpoints must be explicit HTTPS URLs, including when the
 	// caller supplies a client with a permissive redirect policy.
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return errors.New("oidcjwt: redirects are not allowed") }
-	return &Verifier{issuer: issuer, audience: audience, client: &client, now: opts.Now, interval: opts.RefreshInterval, logger: opts.Logger}, nil
+	return &Verifier{issuer: issuer, audience: audience, client: &client, now: opts.Now, interval: opts.RefreshInterval, refreshTimeout: opts.RefreshTimeout, logger: opts.Logger}, nil
 }
 
 // Load discovers the provider and loads its keys now. It does not count as a refresh
@@ -197,14 +207,14 @@ func (v *Verifier) key(ctx context.Context, kid string) (*rsa.PublicKey, error) 
 func (v *Verifier) refresh(active chan struct{}) {
 	// One bounded download may outlive a disconnected caller. Caller cancellation
 	// must never become a provider failure or cancel other callers' shared work.
-	ctx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), v.refreshTimeout)
 	defer cancel()
 	jwksURL, keys, err := v.fetch(ctx)
 	// Log before waking waiters so a caller that observed the failure also observes the log.
 	// The cooldown bounds this to one line per window; the cause is omitted because it may
 	// echo provider responses.
 	if err != nil && v.logger != nil {
-		if errors.Is(err, errIssuerMismatch) {
+		if errors.Is(err, ErrIssuerMismatch) {
 			v.logger.Error("oidcjwt: discovered issuer does not match configuration", "issuer", v.issuer)
 		} else {
 			v.logger.Warn("oidcjwt: identity provider unavailable", "issuer", v.issuer)

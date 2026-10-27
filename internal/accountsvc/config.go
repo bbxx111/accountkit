@@ -3,13 +3,16 @@ package accountsvc
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net"
 	"net/netip"
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,6 +23,8 @@ import (
 	"github.com/bbxx111/accountkit/internal/accountsvc/adminauth"
 	"github.com/bbxx111/accountkit/internal/accountsvc/basicclients"
 	"github.com/bbxx111/accountkit/internal/accountsvc/introspection"
+	"github.com/bbxx111/accountkit/internal/accountsvc/oidcjwt"
+	"github.com/bbxx111/accountkit/internal/accountsvc/serviceauth"
 	"github.com/bbxx111/accountkit/user/sender"
 	"github.com/bbxx111/accountkit/user/sender/aliyun"
 	"github.com/bbxx111/accountkit/user/sender/smtp"
@@ -44,7 +49,8 @@ type Config struct {
 	SMS                  *aliyun.Config // nil 表示未配置短信服务商
 	SMTPBrand            string         // 内置中文邮件的可选品牌前缀
 	IntrospectionClients map[string][]string
-	PurgeFeedClients     map[string][]string // nil 时 /v1/purgedUsers 返回 503 PURGE_FEED_NOT_CONFIGURED
+	PurgeFeedClients     map[string][]string // 与 ServiceToken.PurgeFeedClients 都为空时 /v1/purgedUsers 返回 503 PURGE_FEED_NOT_CONFIGURED
+	ServiceToken         ServiceTokenConfig
 	AdminEnabled         bool
 	Admin                adminauth.Config
 	MetricsEnabled       bool
@@ -267,9 +273,10 @@ func LoadConfig(command string) (Config, error) {
 			return Config{}, invalidConfig("ACCOUNTSVC_SMTP configuration")
 		}
 	}
-	c.IntrospectionClients, err = introspection.ParseClients(os.Getenv("ACCOUNTSVC_INTROSPECTION_CLIENTS"))
-	if err != nil {
-		return Config{}, invalidConfig("ACCOUNTSVC_INTROSPECTION_CLIENTS")
+	if raw := os.Getenv("ACCOUNTSVC_INTROSPECTION_CLIENTS"); strings.TrimSpace(raw) != "" {
+		if c.IntrospectionClients, err = introspection.ParseClients(raw); err != nil {
+			return Config{}, invalidConfig("ACCOUNTSVC_INTROSPECTION_CLIENTS")
+		}
 	}
 	if raw := os.Getenv("ACCOUNTSVC_PURGE_FEED_CLIENTS"); strings.TrimSpace(raw) != "" {
 		if c.PurgeFeedClients, err = basicclients.Parse(raw, "ACCOUNTSVC_PURGE_FEED_CLIENTS"); err != nil {
@@ -280,38 +287,150 @@ func LoadConfig(command string) (Config, error) {
 			return Config{}, invalidConfig("ACCOUNTSVC_PURGE_FEED_CLIENTS (secret shared with ACCOUNTSVC_INTROSPECTION_CLIENTS)")
 		}
 	}
+	if err = c.loadAdmin(); err != nil {
+		return Config{}, err
+	}
+	if err = c.loadServiceToken(); err != nil {
+		return Config{}, err
+	}
+	if len(c.IntrospectionClients) == 0 && len(c.ServiceToken.IntrospectionClients) == 0 {
+		return Config{}, invalidConfig("ACCOUNTSVC_INTROSPECTION_CLIENTS / ACCOUNTSVC_INTROSPECTION_TOKEN_CLIENTS (introspection needs at least one)")
+	}
+	return c, nil
+}
+
+func (c *Config) loadAdmin() error {
+	var err error
 	if raw := env("ADMIN_ENABLED"); raw != "" {
 		c.AdminEnabled, err = strconv.ParseBool(raw)
 		if err != nil {
-			return Config{}, invalidConfig("ACCOUNTSVC_ADMIN_ENABLED")
+			return invalidConfig("ACCOUNTSVC_ADMIN_ENABLED")
 		}
 	}
 	if !c.AdminEnabled {
 		for _, name := range []string{"ADMIN_ISSUER", "ADMIN_AUDIENCE", "ADMIN_ROLES_CLAIM", "ADMIN_USERNAME_CLAIM"} {
 			if env(name) != "" {
-				return Config{}, invalidConfig("ACCOUNTSVC_" + name + " (ADMIN_ENABLED is false)")
+				return invalidConfig("ACCOUNTSVC_" + name + " (ADMIN_ENABLED is false)")
 			}
 		}
-		return c, nil
+		return nil
 	}
 	c.Admin = adminauth.Config{Issuer: env("ADMIN_ISSUER"), Audience: env("ADMIN_AUDIENCE"), RolesClaim: defaultEnv("ADMIN_ROLES_CLAIM", "/roles"), UsernameClaim: defaultEnv("ADMIN_USERNAME_CLAIM", "/preferred_username")}
 	if err = c.Admin.Validate(); err != nil {
-		return Config{}, invalidConfig("ACCOUNTSVC_ADMIN_ISSUER / ADMIN_AUDIENCE / ADMIN_ROLES_CLAIM / ADMIN_USERNAME_CLAIM")
+		return invalidConfig("ACCOUNTSVC_ADMIN_ISSUER / ADMIN_AUDIENCE / ADMIN_ROLES_CLAIM / ADMIN_USERNAME_CLAIM")
 	}
 	if c.Admin.Audience == c.Library.JWTAudience {
-		return Config{}, invalidConfig("ACCOUNTSVC_ADMIN_AUDIENCE")
+		return invalidConfig("ACCOUNTSVC_ADMIN_AUDIENCE")
 	}
 	for _, app := range append(append([]accountkit.WeChatApp(nil), c.Library.WeChatApps...), c.Library.WeChatMiniProgramApps...) {
 		if c.Admin.Audience == app.AppID {
-			return Config{}, invalidConfig("ACCOUNTSVC_ADMIN_AUDIENCE")
+			return invalidConfig("ACCOUNTSVC_ADMIN_AUDIENCE")
 		}
 	}
 	for _, id := range c.Library.AppleBundleIDs {
 		if c.Admin.Audience == id {
-			return Config{}, invalidConfig("ACCOUNTSVC_ADMIN_AUDIENCE")
+			return invalidConfig("ACCOUNTSVC_ADMIN_AUDIENCE")
 		}
 	}
-	return c, nil
+	return nil
+}
+
+// ServiceTokenConfig 是业务服务客户端凭据 Bearer 令牌的签发方、受众与逐接口 azp 允许列表。
+type ServiceTokenConfig struct {
+	Issuer, Audience     string
+	IntrospectionClients []string
+	PurgeFeedClients     []string
+}
+
+// Enabled 报告是否有任一接口接受 Bearer 令牌。
+func (s ServiceTokenConfig) Enabled() bool {
+	return len(s.IntrospectionClients) > 0 || len(s.PurgeFeedClients) > 0
+}
+
+// loadServiceToken 读取服务令牌配置并校验：两列表不相交、不得半配置，issuer 与消费者
+// issuer 不同，audience 不得与消费者/管理员 audience、任一第三方应用或客户端 ID、任一 azp 相同
+// （否则那个客户端自己的 ID token 可冒充访问令牌）。错误只含变量名。
+func (c *Config) loadServiceToken() error {
+	s := &c.ServiceToken
+	var err error
+	if s.IntrospectionClients, err = parseTokenClients(env("INTROSPECTION_TOKEN_CLIENTS"), "ACCOUNTSVC_INTROSPECTION_TOKEN_CLIENTS"); err != nil {
+		return err
+	}
+	if s.PurgeFeedClients, err = parseTokenClients(env("PURGE_FEED_TOKEN_CLIENTS"), "ACCOUNTSVC_PURGE_FEED_TOKEN_CLIENTS"); err != nil {
+		return err
+	}
+	// audience 不经 env() 去空白，以便拒绝首尾空白。
+	s.Issuer, s.Audience = env("SERVICE_TOKEN_ISSUER"), os.Getenv("ACCOUNTSVC_SERVICE_TOKEN_AUDIENCE")
+	if !s.Enabled() {
+		if s.Issuer != "" || s.Audience != "" {
+			return invalidConfig("ACCOUNTSVC_SERVICE_TOKEN_ISSUER / ACCOUNTSVC_SERVICE_TOKEN_AUDIENCE (no token clients configured)")
+		}
+		return nil
+	}
+	for _, id := range s.PurgeFeedClients {
+		if slices.Contains(s.IntrospectionClients, id) {
+			return invalidConfig("ACCOUNTSVC_PURGE_FEED_TOKEN_CLIENTS (client shared with ACCOUNTSVC_INTROSPECTION_TOKEN_CLIENTS)")
+		}
+	}
+	if !oidcjwt.ValidIssuer(s.Issuer) || s.Issuer == c.Library.JWTIssuer {
+		return invalidConfig("ACCOUNTSVC_SERVICE_TOKEN_ISSUER")
+	}
+	if s.Audience == "" || strings.TrimSpace(s.Audience) != s.Audience || slices.Contains(c.reservedAudiences(), s.Audience) {
+		return invalidConfig("ACCOUNTSVC_SERVICE_TOKEN_AUDIENCE")
+	}
+	return nil
+}
+
+// reservedAudiences 是服务 audience 不得使用的值：其他令牌的受众、第三方登录的应用与客户端 ID，
+// 以及服务令牌允许的 azp。
+func (c *Config) reservedAudiences() []string {
+	l := c.Library
+	out := []string{l.JWTAudience, l.FacebookAppID}
+	if c.AdminEnabled {
+		out = append(out, c.Admin.Audience)
+	}
+	for _, app := range append(append([]accountkit.WeChatApp(nil), l.WeChatApps...), l.WeChatMiniProgramApps...) {
+		out = append(out, app.AppID)
+	}
+	for _, app := range l.AlipayApps {
+		out = append(out, app.AppID)
+	}
+	for _, p := range l.OIDCProviders {
+		out = append(out, p.ClientIDs...)
+	}
+	out = append(out, l.AppleBundleIDs...)
+	out = append(out, l.GoogleClientIDs...)
+	out = append(out, l.QQAppIDs...)
+	out = append(out, l.WeiboAppIDs...)
+	out = append(out, c.ServiceToken.IntrospectionClients...)
+	return append(out, c.ServiceToken.PurgeFeedClients...)
+}
+
+// parseTokenClients 解析 JSON 字符串数组；未设置或空数组表示不启用。variable 只用于错误信息。
+func parseTokenClients(raw, variable string) ([]string, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	invalid := invalidConfig(variable)
+	d := json.NewDecoder(strings.NewReader(raw))
+	var ids []string
+	if !strings.HasPrefix(raw, "[") || d.Decode(&ids) != nil {
+		return nil, invalid
+	}
+	if _, err := d.Token(); err != io.EOF {
+		return nil, invalid
+	}
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if !serviceauth.ValidClientID(id) || seen[id] {
+			return nil, invalid
+		}
+		seen[id] = true
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	return ids, nil
 }
 
 // aliyunTemplateKeys 是阿里云短信模板变量后缀与验证码用途的对应；将来的国际短信使用独立变量。

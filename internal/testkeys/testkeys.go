@@ -1,12 +1,15 @@
-// Package testkeys 为本模块测试提供按序号缓存的合成 ES256 签名密钥，不用于生产。
+// Package testkeys 为本模块测试提供按序号确定的合成 ES256 签名密钥，不用于生产。
+//
+// 同一序号在不同进程中得到相同密钥：恢复演练等多进程测试依赖跨进程一致的签名密钥。
 package testkeys
 
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"fmt"
 	"sync"
 )
 
@@ -15,14 +18,15 @@ var (
 	keys = map[int]*ecdsa.PrivateKey{}
 )
 
-// JWT 返回序号 i 对应的 P-256 私钥；同一进程内同一序号返回同一密钥，不同序号互不相同。
+// JWT 返回序号 i 对应的 P-256 私钥；私钥标量由序号经 SHA-256 确定性派生，不同序号互不相同。
 func JWT(i int) *ecdsa.PrivateKey {
 	mu.Lock()
 	defer mu.Unlock()
 	if k, ok := keys[i]; ok {
 		return k
 	}
-	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	seed := sha256.Sum256(fmt.Appendf(nil, "accountkit-synthetic-test-jwt-key-%d", i))
+	k, err := ecdsa.ParseRawPrivateKey(elliptic.P256(), seed[:])
 	if err != nil {
 		panic(err)
 	}

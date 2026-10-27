@@ -23,7 +23,7 @@ var frozen = map[string]string{
 // The user-authorized current initial definition has its own immutable baseline. The source
 // snapshot and the published v0.3.0 initial definition remain independently pinned.
 var initialFrozen = map[string]string{
-	"0001_init.up.sql":   "125720dbc1d3e5a4efef7241df4f1d9a59519f4645e745bc5ba19b5b8580989f",
+	"0001_init.up.sql":   "ef2d1f229fa15b660cc7ecb4f417615b76866c19494641c96faf25bab24188b6",
 	"0001_init.down.sql": "812541721471025056edd1f655d876b2f4d938fffd8f4f7ee2cfa9a97ff490d5",
 }
 

@@ -29,7 +29,7 @@
 CREATE TABLE purged_user (
     user_id    TEXT COLLATE "C" PRIMARY KEY
                CONSTRAINT purged_user_user_id_format CHECK (user_id ~ '^u_[0-9a-hjkmnp-tv-z]{13}$'),
-    seq        BIGINT GENERATED ALWAYS AS IDENTITY CONSTRAINT uk_purged_user_seq UNIQUE,
+    seq        BIGINT NOT NULL GENERATED ALWAYS AS IDENTITY CONSTRAINT uk_purged_user_seq UNIQUE,
     purge_time TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
 );
 -- 保留期清理：按写入时间删除过期记录

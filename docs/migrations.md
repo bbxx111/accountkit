@@ -45,7 +45,7 @@ Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史�
 
 当前初始结构在 v0.4.0 七表会话定义之上，按各次限定授权合入资料单列、头像列，以及 `add-purged-user-feed` 的 `purged_user` 表（共八表）；生产目录只有 0001 up/down，version=1/dirty=false。0001 down 覆盖八表，公共 Down 拒绝；审计流程关联仍为 data.accountkit.flow_id。此前审计、流程改名、索引和会话简化授权各自限于当时范围。
 
-`add-purged-user-feed` 经用户明确要求“直接改 0001，不新增 0002”，在当前 0001 末尾新增 `purged_user`（`user_id` 主键与格式 CHECK、`seq BIGINT GENERATED ALWAYS AS IDENTITY` 唯一约束 `uk_purged_user_seq`、`purge_time` 默认 `clock_timestamp()`）及 `idx_purged_user_purge_time`，0001 down 最先删除该表。其他表、列、索引与约束不变，不新增 0002，新安装仍为 version=1/dirty=false。v0.6.0 发布的 0001 与此前当前定义逐字节相同，现作为独立 pin（tag `ec6802cd221db3ce107e79bac92174bc35a0ba7d`），当前 initialFrozen 更新为新哈希。已安装 v0.6.0 或更早版本的同号数据库缺少该表，预检无写拒绝（`migrations.ErrIncompatibleBaseline`，dirty 优先）；不补表、不 Force、不改版本、不清库，使用新版本须经人工核验后改用新空资源。
+`add-purged-user-feed` 经用户明确要求“直接改 0001，不新增 0002”，在当前 0001 末尾新增 `purged_user`（`user_id` 主键与格式 CHECK、`seq BIGINT NOT NULL GENERATED ALWAYS AS IDENTITY` 唯一约束 `uk_purged_user_seq`、`purge_time` 默认 `clock_timestamp()`）及 `idx_purged_user_purge_time`，0001 down 最先删除该表。其他表、列、索引与约束不变，不新增 0002，新安装仍为 version=1/dirty=false。v0.6.0 发布的 0001 与此前当前定义逐字节相同，现作为独立 pin（tag `ec6802cd221db3ce107e79bac92174bc35a0ba7d`），当前 initialFrozen 更新为新哈希。已安装 v0.6.0 或更早版本的同号数据库缺少该表，预检无写拒绝（`migrations.ErrIncompatibleBaseline`，dirty 优先）；不补表、不 Force、不改版本、不清库，使用新版本须经人工核验后改用新空资源。
 
 `add-google-sign-in` 只改当前 0001 up 中 `identity.kind` 与 `provider_meta` 的注释，并更新当前 initialFrozen。不新增列、索引、CHECK 或 0002。已发布 tag、冻结源和 0001 down 不变。同号数据库不会重放这段注释。旧二进制不能解释 kind 5。后续真实结构增量仍从 0002 开始。
 

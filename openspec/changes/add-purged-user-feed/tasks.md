@@ -7,10 +7,10 @@
 
 ## 2. 库：写入与读取
 
-- [ ] 2.1 `user/query.sql` 新增 `InsertPurgedUser`、`ListPurgedUsersAfter`、`DeletePurgedUsersBefore`（分批）；执行 `sqlc generate`。验证：`bash scripts/check-generated.sh` 通过，生成差异只包含这三个查询。
-- [ ] 2.2 在 `purgeOne` 事务末尾（宿主 Anonymizer 之后）先 `LOCK TABLE purged_user IN SHARE ROW EXCLUSIVE MODE`，再插入记录。验证：数据库测试覆盖清理成功写入一条记录、Anonymizer 失败时整体回滚且无记录、记录不含身份数据。
-- [ ] 2.3 实现 `Service.ListPurgedUsers(ctx, after, limit)`。验证：数据库测试覆盖从头读取、续读、追平后返回等价游标、limit 边界（0 与 1001 被拒绝）。
-- [ ] 2.4 并发正确性：并发执行多个清理，同时用游标循环拉取。验证：数据库测试确认最终读到全部记录，序号顺序与提交顺序一致，没有遗漏。
+- [x] 2.1 `user/query.sql` 新增 `InsertPurgedUser`、`ListPurgedUsersAfter`、`DeletePurgedUsersBefore`（分批）；执行 `sqlc generate`。验证：`bash scripts/check-generated.sh` 通过，生成差异只包含这三个查询。
+- [x] 2.2 在 `purgeOne` 事务末尾（宿主 Anonymizer 之后）先 `LOCK TABLE purged_user IN SHARE ROW EXCLUSIVE MODE`，再插入记录。验证：数据库测试覆盖清理成功写入一条记录、Anonymizer 失败时整体回滚且无记录、记录不含身份数据。
+- [x] 2.3 实现 `Service.ListPurgedUsers(ctx, after, limit)`。验证：数据库测试覆盖从头读取、续读、追平后返回等价游标、limit 边界（0 与 1001 被拒绝）。
+- [x] 2.4 并发正确性：并发执行多个清理，同时用游标循环拉取。验证：数据库测试确认最终读到全部记录，序号顺序与提交顺序一致，没有遗漏。
 
 ## 3. 保留期
 

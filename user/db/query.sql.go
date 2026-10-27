@@ -410,6 +410,26 @@ func (q *Queries) DeleteExpiredSignInCompletionFlows(ctx context.Context, arg De
 	return result.RowsAffected(), nil
 }
 
+const deletePurgedUsersBefore = `-- name: DeletePurgedUsersBefore :execrows
+DELETE FROM purged_user WHERE user_id IN (
+  SELECT user_id FROM purged_user WHERE purge_time < $1::timestamptz ORDER BY purge_time LIMIT $2
+)
+`
+
+type DeletePurgedUsersBeforeParams struct {
+	Before    time.Time
+	BatchSize int32
+}
+
+// 保留期清理：按写入时间分批删除。
+func (q *Queries) DeletePurgedUsersBefore(ctx context.Context, arg DeletePurgedUsersBeforeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deletePurgedUsersBefore, arg.Before, arg.BatchSize)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteSessionAuthenticationIdentities = `-- name: DeleteSessionAuthenticationIdentities :execrows
 DELETE FROM session_authentication_identity a USING session s
 WHERE a.session_id = s.id AND s.user_id = $1 AND s.id = $2
@@ -949,6 +969,21 @@ func (q *Queries) ImportUser(ctx context.Context, arg ImportUserParams) error {
 	return err
 }
 
+const insertPurgedUser = `-- name: InsertPurgedUser :exec
+INSERT INTO purged_user (user_id, purge_time) VALUES ($1, $2::timestamptz)
+`
+
+type InsertPurgedUserParams struct {
+	UserID    string
+	PurgeTime time.Time
+}
+
+// purge_time 与账号行 purge_time 使用同一执行时刻；排序与游标只依赖 seq。
+func (q *Queries) InsertPurgedUser(ctx context.Context, arg InsertPurgedUserParams) error {
+	_, err := q.db.Exec(ctx, insertPurgedUser, arg.UserID, arg.PurgeTime)
+	return err
+}
+
 const listActiveCipherKeyVersions = `-- name: ListActiveCipherKeyVersions :many
 SELECT DISTINCT cipher_key_version::smallint AS version FROM identity
 WHERE delete_time IS NULL AND cipher_key_version IS NOT NULL
@@ -1261,6 +1296,38 @@ func (q *Queries) ListIdentitiesByUserIncludingDeleted(ctx context.Context, user
 			&i.UpdateTime,
 			&i.DeleteTime,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPurgedUsersAfter = `-- name: ListPurgedUsersAfter :many
+SELECT user_id, seq, purge_time FROM purged_user
+WHERE seq > $1::bigint
+ORDER BY seq
+LIMIT $2
+`
+
+type ListPurgedUsersAfterParams struct {
+	After    int64
+	PageSize int32
+}
+
+func (q *Queries) ListPurgedUsersAfter(ctx context.Context, arg ListPurgedUsersAfterParams) ([]PurgedUser, error) {
+	rows, err := q.db.Query(ctx, listPurgedUsersAfter, arg.After, arg.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PurgedUser
+	for rows.Next() {
+		var i PurgedUser
+		if err := rows.Scan(&i.UserID, &i.Seq, &i.PurgeTime); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1589,6 +1656,19 @@ func (q *Queries) LockCurrentSessionForRead(ctx context.Context, arg LockCurrent
 		&i.UpdateTime,
 	)
 	return i, err
+}
+
+const lockPurgedUserForInsert = `-- name: LockPurgedUserForInsert :exec
+
+LOCK TABLE purged_user IN SHARE ROW EXCLUSIVE MODE
+`
+
+// purged_user：已清理用户记录（外部业务服务按 seq 游标拉取）
+// 在清理事务末尾取得自冲突表锁，使 seq 分配与提交串行：序号小的记录一定先提交，按游标拉取不会漏读。
+// 读取只持 ACCESS SHARE，不被阻塞。
+func (q *Queries) LockPurgedUserForInsert(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, lockPurgedUserForInsert)
+	return err
 }
 
 const lockSessionByID = `-- name: LockSessionByID :one

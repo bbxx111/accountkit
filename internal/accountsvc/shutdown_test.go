@@ -44,7 +44,7 @@ func testShutdownDrainsServiceHandler(t *testing.T, path string) {
 		trace.add("last request audit")
 		w.WriteHeader(200)
 	})
-	srv := httptest.NewUnstartedServer(tracker.wrap(serviceHandler(Config{}, blocking, blocking, blocking, state)))
+	srv := httptest.NewUnstartedServer(tracker.wrap(serviceHandler(Config{}, blocking, blocking, blocking, nil, state)))
 	srv.Config.BaseContext = newHTTPServer("", nil, requestCtx).BaseContext
 	srv.Start()
 	defer srv.Close()

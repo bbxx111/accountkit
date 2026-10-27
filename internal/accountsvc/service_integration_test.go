@@ -29,6 +29,7 @@ func TestServiceIntegrationEmailLifecycle(t *testing.T) {
 	tokens := f.login(p, "lifecycle@example.test")
 	access, refresh := tokens["access_token"].(string), tokens["refresh_token"].(string)
 	f.introspect(p, access, true)
+	f.verifyLocally(p, access)
 	rotated := f.call("POST", p.baseURL+"/v1/token", "", map[string]string{"grant_type": "refresh_token", "refresh_token": refresh}, 200)
 	replay := f.call("POST", p.baseURL+"/v1/token", "", map[string]string{"grant_type": "refresh_token", "refresh_token": refresh}, 200)
 	if rotated["access_token"] != replay["access_token"] || rotated["refresh_token"] != replay["refresh_token"] {
@@ -133,7 +134,14 @@ func TestServiceIntegrationDependencyFailure(t *testing.T) {
 		t.Fatal("readiness exceeded two-second budget with scheduling margin")
 	}
 	f.call("GET", p.baseURL+"/healthz", "", nil, 200)
+	// Introspection is database-backed and does not read Redis: still active.
 	f.introspect(p, access, true)
+	// Ordinary Bearer authentication keeps its Redis fail-open contract (warning asserted below).
+	f.call("GET", p.baseURL+"/v1/users/me", access, nil, 200)
+	// Revocation committed while the revocation-set write fails takes effect in
+	// introspection immediately; the plain Bearer path may still accept the access.
+	f.call("POST", p.baseURL+"/v1/revoke", "", map[string]string{"token": tokens["refresh_token"].(string)}, 200)
+	f.introspect(p, access, false)
 	proxy.fail(false)
 	f.call("GET", p.baseURL+"/readyz", "", nil, 200)
 	// SMTP rejection is isolated to send-code and must not make the process unready.

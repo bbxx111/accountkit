@@ -3,6 +3,7 @@ package user_test
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"crypto/sha256"
 	"errors"
 	"log/slog"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/bbxx111/accountkit/email"
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/testkeys"
 	"github.com/bbxx111/accountkit/phone"
 	"github.com/bbxx111/accountkit/pii"
 	"github.com/bbxx111/accountkit/session/grace"
@@ -84,7 +86,7 @@ func newFixture(t *testing.T) *fixture {
 	t.Cleanup(func() { _ = rdb.Close() })
 	dig, _ := pii.NewDigester(map[uint16][]byte{1: bytes.Repeat([]byte{1}, 32)}, 1)
 	ciph, _ := pii.NewCipher(map[uint16][]byte{1: bytes.Repeat([]byte{2}, 32)}, 1)
-	signer, _ := tokens.NewSigner(tokens.Options{Keys: map[uint16][]byte{1: bytes.Repeat([]byte{3}, 32)}, Active: 1, Issuer: "shifang", Audience: "app"})
+	signer, _ := tokens.NewSigner(tokens.Options{Keys: map[uint16]*ecdsa.PrivateKey{1: testkeys.JWT(3)}, Active: 1, Issuer: "shifang", Audience: "app"})
 	now := time.Now().Truncate(time.Second)
 	clock := &now
 	sent := &capture{}

@@ -311,6 +311,27 @@ func (s *Service) authenticate(ctx context.Context, rawAccess string) (Principal
 	return Principal{UserID: c.UserID, SessionID: c.SessionID, Scope: c.Scope, AuthTime: c.AuthTime}, nil
 }
 
+// authenticateStrict 与 authenticate 共用 JWT 与 ID 校验，但吊销以已提交的数据库会话为准：
+// 会话须存在、属于 sub 且未吊销；不读 Redis，不判刷新期限。数据库失败包装为 ErrUnavailable（fail-closed）。
+func (s *Service) authenticateStrict(ctx context.Context, rawAccess string) (Principal, error) {
+	c, err := s.d.Signer.Parse(rawAccess)
+	if err != nil {
+		return Principal{}, fmt.Errorf("%w: %v", ErrInvalidToken, err)
+	}
+	if !ids.Valid(ids.User, c.UserID) || !ids.Valid(ids.Session, c.SessionID) {
+		return Principal{}, fmt.Errorf("%w: malformed sub/sid", ErrInvalidToken)
+	}
+	_, err = s.d.Repo.Q().GetActiveSessionByIDAndUser(ctx, db.GetActiveSessionByIDAndUserParams{ID: c.SessionID, UserID: c.UserID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		s.observationReason(ctx, ob.ReasonSessionRevoked)
+		return Principal{}, fmt.Errorf("%w: session revoked or not found", ErrInvalidToken)
+	}
+	if err != nil {
+		return Principal{}, fmt.Errorf("%w: session state: %w", ErrUnavailable, err)
+	}
+	return Principal{UserID: c.UserID, SessionID: c.SessionID, Scope: c.Scope, AuthTime: c.AuthTime}, nil
+}
+
 // SessionInfo 是会话列表项。
 type SessionInfo struct {
 	ClientInfo           *ClientInfo

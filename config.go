@@ -1,6 +1,7 @@
 package accountkit
 
 import (
+	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"net/url"
@@ -68,6 +69,7 @@ type WeChatApp struct {
 
 // Config 是 accountkit 的全部配置。New 应用默认值并校验；Validate 可独立提前校验。
 // 密钥只来自配置：JWT/HMAC/加密三组都是"版本 → 密钥"映射加一个 active 版本。
+// JWT 签名密钥为 P-256 私钥（ES256），公钥经 JWKSHandler 发布。
 type Config struct {
 	// ProfileAttributes 为 nil 时关闭用户资料属性；启用后内置 HTTP 允许本人完整读写。
 	// 宿主负责资料用途及 Go 直接调用授权，不应存放本人不可见或不可改的字段。
@@ -84,7 +86,7 @@ type Config struct {
 	// AuditNamespace 默认 accountkit/<schema>/resources，持久化后变更须迁移。
 	AuditNamespace string
 
-	JWTKeys      map[uint16][]byte
+	JWTKeys      map[uint16]*ecdsa.PrivateKey
 	JWTActiveKey uint16
 	JWTIssuer    string
 	JWTAudience  string
@@ -359,8 +361,8 @@ func (c Config) validateBase() error {
 	if err := (authentication.Options{Source: c.AuditSource, Namespace: c.AuditNamespace}).Validate(); err != nil {
 		return fmt.Errorf("accountkit: audit configuration: %w", err)
 	}
-	if err := checkKeySet("JWTKeys", c.JWTKeys, c.JWTActiveKey, tokens.MinKeyLen, false); err != nil {
-		return err
+	if err := tokens.CheckKeys(c.JWTKeys, c.JWTActiveKey); err != nil {
+		return fmt.Errorf("accountkit: JWTKeys: %w", err)
 	}
 	if c.JWTIssuer == "" || c.JWTAudience == "" {
 		return errors.New("accountkit: JWTIssuer and JWTAudience are required")
@@ -602,7 +604,13 @@ func ConfigFromEnv(prefix string) (Config, error) {
 	c.KeyPrefix = str("AUTH_KEY_PREFIX")
 	c.AuditSource = str("AUDIT_SOURCE")
 	c.AuditNamespace = str("AUDIT_NAMESPACE")
-	keylist("JWT_KEYS", &c.JWTKeys)
+	if s := str("JWT_KEYS"); s != "" {
+		if m, err := tokens.ParseKeyList(s); err != nil {
+			fail("JWT_KEYS", err)
+		} else {
+			c.JWTKeys = m
+		}
+	}
 	u16("JWT_ACTIVE_KEY", &c.JWTActiveKey)
 	c.JWTIssuer = str("JWT_ISSUER")
 	c.JWTAudience = str("JWT_AUDIENCE")

@@ -2,9 +2,11 @@ package accountkit_test
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"testing"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/testkeys"
 	"github.com/bbxx111/accountkit/user"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -20,7 +22,7 @@ func TestIndependentInstances(t *testing.T) {
 	cb.JWTIssuer = "b"
 	ca.JWTAudience = "a-app"
 	cb.JWTAudience = "b-app"
-	cb.JWTKeys = map[uint16][]byte{1: k(9)}
+	cb.JWTKeys = map[uint16]*ecdsa.PrivateKey{1: testkeys.JWT(9)}
 	a, pa, sa := integrationInstance(t, ca, rdb)
 	b, pb, sb := integrationInstance(t, cb, rdb)
 	fa, accessA := seedFormatFixture(t, pa, a.Config())

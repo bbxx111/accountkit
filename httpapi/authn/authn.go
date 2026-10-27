@@ -82,9 +82,14 @@ func bearerToken(r *http.Request) string {
 
 // Bearer 解析 access token 并把 Principal 放入 ctx；已带 Principal 的请求直接放行。
 func Bearer(o Options) func(http.Handler) http.Handler {
+	return bearer(o.Auth.Authenticate, true)
+}
+
+// bearer 是 Bearer 与严格认证共用的实现；reuseExisting=false 时总是重新认证并覆盖 ctx 中的 Principal。
+func bearer(authenticate func(context.Context, string) (user.Principal, error), reuseExisting bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if _, ok := PrincipalFrom(r.Context()); ok {
+			if _, ok := PrincipalFrom(r.Context()); ok && reuseExisting {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -93,7 +98,7 @@ func Bearer(o Options) func(http.Handler) http.Handler {
 				WriteUnauthenticated(w, ReasonTokenMissing, "bearer token required")
 				return
 			}
-			p, err := o.Auth.Authenticate(r.Context(), raw)
+			p, err := authenticate(r.Context(), raw)
 			switch {
 			case err == nil:
 				next.ServeHTTP(w, r.WithContext(WithPrincipal(r.Context(), p)))
@@ -109,13 +114,27 @@ func Bearer(o Options) func(http.Handler) http.Handler {
 
 // RequireScope 确保已认证且 scope 在 allowed 中。
 func RequireScope(o Options, allowed ...string) func(http.Handler) http.Handler {
+	return requireScope(Bearer(o), allowed)
+}
+
+// StrictAuthenticator 以已提交的数据库会话状态校验 access token。*user.Service 满足此接口。
+type StrictAuthenticator interface {
+	AuthenticateStrict(ctx context.Context, rawAccess string) (user.Principal, error)
+}
+
+// RequireScopeStrict 与 RequireScope 的 401/403 行为一致，但用严格认证判定吊销：不读 Redis，
+// 依赖失败返回 503。即使外层已注入 Principal 也会重新认证，供需要撤销后立即失效的关键路由使用。
+func RequireScopeStrict(a StrictAuthenticator, allowed ...string) func(http.Handler) http.Handler {
+	return requireScope(bearer(a.AuthenticateStrict, false), allowed)
+}
+
+func requireScope(authenticate func(http.Handler) http.Handler, allowed []string) func(http.Handler) http.Handler {
 	set := make(map[string]struct{}, len(allowed))
 	for _, s := range allowed {
 		set[s] = struct{}{}
 	}
-	bearer := Bearer(o)
 	return func(next http.Handler) http.Handler {
-		return bearer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		return authenticate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			p, _ := PrincipalFrom(r.Context())
 			if _, ok := set[p.Scope]; !ok {
 				apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, "INSUFFICIENT_SCOPE", "token scope does not permit this operation"))

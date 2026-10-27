@@ -3,6 +3,7 @@ package user_test
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"errors"
 	"log/slog"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
+	"github.com/bbxx111/accountkit/internal/testkeys"
 	"github.com/bbxx111/accountkit/pii"
 	"github.com/bbxx111/accountkit/session/grace"
 	"github.com/bbxx111/accountkit/session/revocation"
@@ -78,7 +80,7 @@ func newImportService(t *testing.T, pool *pgxpool.Pool, mr *miniredis.Miniredis,
 	if err != nil {
 		t.Fatal(err)
 	}
-	signer, err := tokens.NewSigner(tokens.Options{Keys: map[uint16][]byte{1: bytes.Repeat([]byte{3}, 32)}, Active: 1, Issuer: "import-test", Audience: "import-test"})
+	signer, err := tokens.NewSigner(tokens.Options{Keys: map[uint16]*ecdsa.PrivateKey{1: testkeys.JWT(3)}, Active: 1, Issuer: "import-test", Audience: "import-test"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -92,7 +92,7 @@ func TestServiceProfileAttributesHTTP(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(app.close)
-		return serviceHandler(cfg, app.endUser, app.admin, app.introspect, &healthState{})
+		return serviceHandler(cfg, app.endUser, app.admin, app.introspect, app.jwks, &healthState{})
 	}
 	call := func(h http.Handler, method, path, body string, status int) *httptest.ResponseRecorder {
 		t.Helper()

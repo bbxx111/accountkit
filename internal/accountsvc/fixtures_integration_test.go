@@ -14,6 +14,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -38,6 +39,7 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit"
+	"github.com/bbxx111/accountkit/internal/testkeys"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -361,9 +363,10 @@ func newIntegration(t *testing.T) *integrationFixture {
 	smtp := newSMTP(t, cert)
 	_, port, _ := net.SplitHostPort(smtp.ln.Addr().String())
 	key := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))
+	jwtKey := testkeys.JWTBase64(1)
 	clientSecret := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{4}, 32))
-	f := &integrationFixture{t: t, binary: binary, dir: dir, schema: schema, prefix: prefix, dsn: dsn, redisURL: redisURL, pool: pool, redis: rc, client: client, smtp: smtp, cert: cert, secrets: []string{"fixture-smtp-password", clientSecret, key}}
-	f.env = map[string]string{"SSL_CERT_FILE": certFile, "ACCOUNTSVC_MODE": "production", "ACCOUNTSVC_DATABASE_URL": dsn, "ACCOUNTSVC_REDIS_URL": redisURL, "ACCOUNTSVC_TLS_CERT_FILE": certFile, "ACCOUNTSVC_TLS_KEY_FILE": keyFile, "ACCOUNTSVC_SMTP_HOST": "127.0.0.1", "ACCOUNTSVC_SMTP_PORT": port, "ACCOUNTSVC_SMTP_FROM": "account@example.test", "ACCOUNTSVC_SMTP_TLS_MODE": "implicit", "ACCOUNTSVC_SMTP_USERNAME": "fixture-user", "ACCOUNTSVC_SMTP_PASSWORD": "fixture-smtp-password", "ACCOUNTSVC_SMTP_TIMEOUT": "30s", "ACCOUNTSVC_INTROSPECTION_CLIENTS": `{"business":["` + clientSecret + `"]}`, "ACCOUNTSVC_STARTUP_TIMEOUT": "10s", "ACCOUNTSVC_SHUTDOWN_TIMEOUT": "18s", "ACCOUNTKIT_AUTH_SCHEMA": schema, "ACCOUNTKIT_AUTH_KEY_PREFIX": prefix, "ACCOUNTKIT_JWT_KEYS": "1:" + key, "ACCOUNTKIT_JWT_ACTIVE_KEY": "1", "ACCOUNTKIT_JWT_ISSUER": "integration-consumer", "ACCOUNTKIT_JWT_AUDIENCE": "integration-business", "ACCOUNTKIT_SUBJECT_HMAC_KEYS": "1:" + key, "ACCOUNTKIT_SUBJECT_HMAC_ACTIVE_KEY": "1", "ACCOUNTKIT_SUBJECT_CIPHER_KEYS": "1:" + key, "ACCOUNTKIT_SUBJECT_CIPHER_ACTIVE_KEY": "1", "ACCOUNTKIT_CODE_COOLDOWN": "1s", "ACCOUNTKIT_MAINTENANCE_INTERVAL": "1h"}
+	f := &integrationFixture{t: t, binary: binary, dir: dir, schema: schema, prefix: prefix, dsn: dsn, redisURL: redisURL, pool: pool, redis: rc, client: client, smtp: smtp, cert: cert, secrets: []string{"fixture-smtp-password", clientSecret, key, jwtKey}}
+	f.env = map[string]string{"SSL_CERT_FILE": certFile, "ACCOUNTSVC_MODE": "production", "ACCOUNTSVC_DATABASE_URL": dsn, "ACCOUNTSVC_REDIS_URL": redisURL, "ACCOUNTSVC_TLS_CERT_FILE": certFile, "ACCOUNTSVC_TLS_KEY_FILE": keyFile, "ACCOUNTSVC_SMTP_HOST": "127.0.0.1", "ACCOUNTSVC_SMTP_PORT": port, "ACCOUNTSVC_SMTP_FROM": "account@example.test", "ACCOUNTSVC_SMTP_TLS_MODE": "implicit", "ACCOUNTSVC_SMTP_USERNAME": "fixture-user", "ACCOUNTSVC_SMTP_PASSWORD": "fixture-smtp-password", "ACCOUNTSVC_SMTP_TIMEOUT": "30s", "ACCOUNTSVC_INTROSPECTION_CLIENTS": `{"business":["` + clientSecret + `"]}`, "ACCOUNTSVC_STARTUP_TIMEOUT": "10s", "ACCOUNTSVC_SHUTDOWN_TIMEOUT": "18s", "ACCOUNTKIT_AUTH_SCHEMA": schema, "ACCOUNTKIT_AUTH_KEY_PREFIX": prefix, "ACCOUNTKIT_JWT_KEYS": "1:" + jwtKey, "ACCOUNTKIT_JWT_ACTIVE_KEY": "1", "ACCOUNTKIT_JWT_ISSUER": "integration-consumer", "ACCOUNTKIT_JWT_AUDIENCE": "integration-business", "ACCOUNTKIT_SUBJECT_HMAC_KEYS": "1:" + key, "ACCOUNTKIT_SUBJECT_HMAC_ACTIVE_KEY": "1", "ACCOUNTKIT_SUBJECT_CIPHER_KEYS": "1:" + key, "ACCOUNTKIT_SUBJECT_CIPHER_ACTIVE_KEY": "1", "ACCOUNTKIT_CODE_COOLDOWN": "1s", "ACCOUNTKIT_MAINTENANCE_INTERVAL": "1h"}
 	// Validate actual library environment parsing before any service process can
 	// migrate or send a request. A misspelled key must never fall back to auth.
 	for name, value := range f.env {
@@ -607,6 +610,45 @@ func (f *integrationFixture) introspect(p *serviceProcess, token string, active 
 	}
 	if !active && len(out) != 1 {
 		f.t.Fatal("inactive response exposed details")
+	}
+}
+
+// verifyLocally 模拟业务服务：只用公开 JWKS 校验 access（ES256、typ、kid、iss、aud），不调用内省。
+func (f *integrationFixture) verifyLocally(p *serviceProcess, token string) {
+	f.t.Helper()
+	resp, err := f.client.Get(p.baseURL + "/.well-known/jwks.json")
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var set struct {
+		Keys []struct{ Kty, Crv, X, Y, Kid, Alg string } `json:"keys"`
+	}
+	if resp.StatusCode != 200 || resp.Header.Get("Cache-Control") != "public, max-age=300" || json.NewDecoder(resp.Body).Decode(&set) != nil || len(set.Keys) == 0 {
+		f.t.Fatalf("JWKS unavailable: %d", resp.StatusCode)
+	}
+	keys := map[string]*ecdsa.PublicKey{}
+	for _, k := range set.Keys {
+		x, _ := base64.RawURLEncoding.DecodeString(k.X)
+		y, _ := base64.RawURLEncoding.DecodeString(k.Y)
+		pub, err := ecdsa.ParseUncompressedPublicKey(elliptic.P256(), append(append([]byte{4}, x...), y...))
+		if err != nil || k.Kty != "EC" || k.Crv != "P-256" || k.Alg != "ES256" {
+			f.t.Fatalf("bad JWK %s", k.Kid)
+		}
+		keys[k.Kid] = pub
+	}
+	_, err = jwt.Parse(token, func(t *jwt.Token) (any, error) {
+		if t.Header["typ"] != "at+jwt" {
+			return nil, errors.New("typ")
+		}
+		kid, _ := t.Header["kid"].(string)
+		if k, ok := keys[kid]; ok {
+			return k, nil
+		}
+		return nil, errors.New("unknown kid")
+	}, jwt.WithValidMethods([]string{"ES256"}), jwt.WithIssuer(f.env["ACCOUNTKIT_JWT_ISSUER"]), jwt.WithAudience(f.env["ACCOUNTKIT_JWT_AUDIENCE"]), jwt.WithExpirationRequired())
+	if err != nil {
+		f.t.Fatalf("local verification with JWKS failed: %v", err)
 	}
 }
 

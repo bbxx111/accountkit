@@ -4,7 +4,7 @@ accountsvc 是 accountkit 的可选官方宿主。同一个 Go module 同时支�
 
 ## 会话上下文部署
 
-v0.4.0 提供GET /v1/users/me/sessions/current，允许user/user:bind的Bearer，返回数据库最新的非空具体身份来源，以及可选单份nested client_info和client_info_update_time；所有响应no-store。user:undelete不允许；数据库无效会话401 TOKEN_INVALID，依赖故障503；来源缺失或失效、已存客户端描述非法均为固定500内部错误，不能统一映射为401或正常空集合。普通access/内省仍只做JWT/Redis验证，不增加数据库热路径，Redis故障边界保持。
+v0.4.0 提供GET /v1/users/me/sessions/current，允许user/user:bind的Bearer，返回数据库最新的非空具体身份来源，以及可选单份nested client_info和client_info_update_time；所有响应no-store。user:undelete不允许；数据库无效会话401 TOKEN_INVALID，依赖故障503；来源缺失或失效、已存客户端描述非法均为固定500内部错误，不能统一映射为401或正常空集合。普通access验证仍只做JWT/Redis验证，不增加数据库热路径，Redis故障边界保持；内省按 sid 读取会话吊销状态（见[内省](#内省)），不读取来源或客户端描述。
 
 默认HTTP解析已装配，无新增必需配置、任意JSON输入或制造商/build显式头；显式可选头、UA与Client Hints由[网关/CORS清单](gateway-integration.md#客户端描述透传与-cors)按实际使用透传。只在成功登录、补全、重新认证和新轮refresh观察；规范化非空描述整体替换单行JSONB，nil/空描述保留已有值与时间，孤立version/build合法，app/browser可以并存。pending完成本次非空描述优先，否则整体沿用加密首次描述及原观察时间；失败、回滚和重放不更新。业务读写校验而非数据库JSON对象/业务CHECK。不收集业务请求活动，不保存原始UA/IP/位置；原设备头仍有独立设备合并与pending一致性语义，描述不构成可信设备证明。嵌入式宿主可通过Deps.ClientInfo覆盖解析并提供Extensions，但须管理来源、语义和隐私白名单，详见[Go指南](go-integration.md#当前会话解绑与客户端描述)；accountsvc不提供任意转发UA信任配置。
 
@@ -15,7 +15,7 @@ v0.4.0 的0001包含完整会话上下文；部署须按[迁移手册](migration
 | 方式 | 使用方负责 | 适用边界 |
 |---|---|---|
 | 嵌入 accountkit | 连接、发送器、HTTP 挂载、管理员验证和业务匿名化回调 | 需要同库业务事务或定制装配 |
-| 运行 accountsvc | 运行配置、TLS、SMTP、外部管理员提供方、业务端授权 | 通过消费者 API 和内部令牌内省接入 |
+| 运行 accountsvc | 运行配置、TLS、SMTP、外部管理员提供方、业务端授权 | 通过消费者 API、JWKS 本地验签及关键路由内省接入 |
 
 服务提供可选 SMTP 邮件验证码；显式身份策略启用 EMAIL 时要求 SMTP，禁用 EMAIL 时不解析或要求 SMTP。未设置新策略保留原 SMTP 装配，短信显式禁用；禁用渠道请求返回 400 `CHANNEL_NOT_ENABLED`，不生成验证码、不扣发送额度。库宿主原有短信/邮件发送器继续可用。
 
@@ -101,13 +101,19 @@ QQ App SDK 登录使用 `ACCOUNTKIT_QQ_APP_IDS`（逗号分隔的唯一 1–20 �
 | `ADMIN_ISSUER` / `ADMIN_AUDIENCE` | 启用时必填；issuer 是 HTTPS URL，audience 为管理员 API 专用标识 |
 | `ADMIN_ROLES_CLAIM` / `ADMIN_USERNAME_CLAIM` | /roles / /preferred_username，JSON Pointer |
 
-生成独立随机秘密，例如 `openssl rand -base64 32`。JWT、身份摘要、身份加密和服务调用秘密分别生成；不复用。内省 JSON 示例中的值是占位符，须替换为至少32随机字节的 base64 编码：
+身份摘要、身份加密和服务调用秘密分别生成独立随机值，例如 `openssl rand -base64 32`，不复用。消费者 JWT 签名密钥是 ES256（P-256）私钥，`ACCOUNTKIT_JWT_KEYS` 的值为 PKCS#8 DER 的 base64：
+
+```bash
+openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 | openssl pkcs8 -topk8 -nocrypt -outform DER | base64 -w0
+```
+
+旧的 HS256 随机字节密钥会在启动时被拒绝并指出变量名。内省 JSON 示例中的值是占位符，须替换为至少32随机字节的 base64 编码：
 
 ```json
 {"business-service":["<base64-secret>"]}
 ```
 
-调用内省时 HTTP Basic 的 password 使用同一 base64 文本。轮换时先同时配置旧、新秘密并重启，再更新调用方，最后移除旧秘密重启。服务不发放消费者签名密钥给业务服务。
+调用内省时 HTTP Basic 的 password 使用同一 base64 文本。轮换时先同时配置旧、新秘密并重启，再更新调用方，最后移除旧秘密重启。签名私钥只留在 accountsvc，业务服务只通过 JWKS 取得公钥。
 
 `TLS_ENABLED` 的输入与有效协议如下，非法布尔值拒绝启动，不自动降级：
 
@@ -137,6 +143,7 @@ QQ App SDK 登录使用 `ACCOUNTKIT_QQ_APP_IDS`（逗号分隔的唯一 1–20 �
 | HTTP_ADDR | /v1 | 原消费者登录、身份、会话与生命周期接口 |
 | HTTP_ADDR | /admin/v1 | 独立外部管理员 JWT，关闭时503 |
 | HTTP_ADDR | POST /v1/introspect | 独立服务调用 Basic 凭据 |
+| HTTP_ADDR | GET /.well-known/jwks.json | 无认证；只含消费者 access 验签公钥，可公共缓存 5 分钟 |
 | HTTP_ADDR | GET /healthz、GET /readyz | 无认证探针；访问范围由部署策略限制 |
 | HTTP_ADDR | GET /metrics | 指标开关启用时提供，无内建鉴权；仅允许监控来源 |
 
@@ -168,9 +175,34 @@ healthz 只表示进程存活。readyz 要求启动完成、未停机且 Postgre
 
 会话列表和管理员活跃计数不展示已到刷新期限的会话。到期refresh返回400 `invalid_grant`；到期重新认证返回401 `TOKEN_INVALID`并带Bearer challenge，应重新登录。有效重新认证不会延长refresh期限，显式关闭新鲜度检查也不会让到期会话恢复可用。
 
-原access可能仍在自身有效期内，内省继续按既有JWT/Redis规则判断；自然到期不会自动写入吊销集。需要使这些access失效时，仍可按原接口明确撤销未清理的会话，Redis fail-open边界不变。期限判断与码消费细节见 [README](../README.md#会话过期语义)。
+原access可能仍在自身有效期内：本地验签和内省都不按刷新期限拒绝，自然到期也不会写入吊销集。需要使这些access失效时，仍可按原接口明确撤销未清理的会话；撤销提交后内省立即返回 `active:false`，本地验签仍要等 access 过期。期限判断与码消费细节见 [README](../README.md#会话过期语义)。
 
 ## 业务服务远程鉴权
+
+### 分级校验
+
+业务服务按接口对撤销实时性的要求分两级接入：
+
+| 级别 | 做法 | 撤销生效 | 依赖 |
+|---|---|---|---|
+| 普通接口 | 用 JWKS 本地验签 | 最长 `ACCESS_TOKEN_TTL` 加验签偏差（默认约 15 分 30 秒） | 仅缓存的 JWKS |
+| 关键接口 | 先本地验签，再每次调用内省，不缓存结果 | 撤销事务提交后立即生效 | accountsvc 与其数据库 |
+
+哪些接口属于关键接口由业务服务认定并写入其接入说明，例如支付、资金、权限或安全设置变更。两级都由业务服务继续校验 scope、必要的近期认证（`auth_time`）及资源所属；`user:bind`、`user:undelete` 不能访问普通业务。
+
+本地验签必须全部满足：只接受 `alg=ES256` 与 `typ=at+jwt`；按 header `kid` 从 JWKS 选公钥；`iss`、`aud` 与服务配置的 `ACCOUNTKIT_JWT_ISSUER`、`ACCOUNTKIT_JWT_AUDIENCE` 完全相等；`exp` 必须存在，时钟偏差不超过 30 秒；`sub`、`sid` 分别为 `u_`、`s_` 资源 ID。遇到未知 `kid` 时节流刷新 JWKS（例如至多每分钟一次，失败的尝试同样计入节流，并发请求共享一次拉取，拉取期间不阻塞已缓存密钥的验签），刷新失败按依赖不可用拒绝。缓存的密钥集有最长信任期（建议与服务端 `max-age=300` 一致），过期后重新拉取；拉取持续失败时只在有限宽限期内沿用旧密钥，之后按依赖不可用拒绝，使被移除或泄露的密钥不会被无限期接受。返回空密钥集的响应视为拉取失败，不覆盖已有缓存。参考实现见 [examples/remoteauth](../examples/remoteauth) 的 `Verifier` 与 `ProtectedHandler`（`Critical` 字段区分两级）。
+
+### 签名密钥轮换
+
+1. 新增版本（如 `1:<旧>,2:<新>`，active 仍为 1）并重启全部副本，确认 JWKS 已包含新版本；
+2. 等待不短于 JWKS 公共缓存期限（5 分钟）与业务服务自身缓存期限的时间；
+3. 把 `ACCOUNTKIT_JWT_ACTIVE_KEY` 切到新版本并重启全部副本；
+4. 至少再等待 `ACCESS_TOKEN_TTL` 加验签偏差；
+5. 移除旧版本并重启。
+
+同一实例的全部副本须使用一致的密钥集合与 active 版本。过早切换时业务服务会因未知 `kid` 额外刷新一次 JWKS，不会永久拒绝新令牌；但若此前刚拉取过，节流期（如 60 秒）内携带新 `kid` 的令牌会被判为无效（401），因此应按上述顺序等待后再切换 active。
+
+### 内省
 
 向统一地址的 `POST /v1/introspect` 发送表单 `token=<消费者access_token>`，HTTP Basic 使用独立客户端凭据。生产调用链必须提供经过证书校验的 TLS 保护，外部 TLS 终止的边界见[网关接入手册](gateway-integration.md)。成功时返回最小主体上下文：
 
@@ -178,15 +210,13 @@ healthz 只表示进程存活。readyz 要求启动完成、未停机且 Postgre
 {"active":true,"sub":"u_...","scope":"user","sid":"s_...","auth_time":1791000000}
 ```
 
-无效、过期、确认吊销、其他实例或 refresh token 返回200 `{"active":false}`。无效调用凭据是401；请求格式错误是400；请求体超限是413；错误内容类型是415。内省响应禁止缓存；接入示例见 [examples/remoteauth](../examples/remoteauth)。
+无效、过期、已吊销、会话不存在、其他实例或 refresh token 返回200 `{"active":false}`。无效调用凭据是401；请求格式错误是400；请求体超限是413；错误内容类型是415。内省响应禁止缓存；接入示例见 [examples/remoteauth](../examples/remoteauth)。
+
+内省在签名、claims 与 ID 格式校验后按 `sid` 查询数据库会话：会话存在、属于 `sub` 且未吊销才返回 `active:true`。它不读取 Redis 吊销集，因此吊销集写入或读取失败都不影响结果；刷新期限已到但未吊销的会话仍为 active。**数据库不可用时返回503 `temporarily_unavailable`（fail-closed）**，不会放行。内省不实时重算账号状态或 scope；冻结、注销、换绑等生命周期操作在同一事务内吊销会话，提交后立即反映。
 
 示例客户端默认要求 HTTPS 并校验证书。只有调用方明确设置 `AllowHTTP=true` 才接受 HTTP URL，适用于本地开发或部署方保障传输的受控代理/网格应用段；客户端不根据服务开关、转发头或重定向自动降级。`TLS_ENABLED=false` 不取消 Basic 认证，也不自动设置调用方的 `AllowHTTP`。
 
-每次受保护业务请求查询内省，然后由业务服务校验 scope、必要的近期认证及资源所属。`active:true` 只表示认证通过，不授予全部业务权限；`user:bind`、`user:undelete` 不能访问普通业务。
-
-查询超时、网络错误、非200或畸形响应应拒绝业务请求并报告依赖不可用，不用旧结果放行，也不要把依赖故障当作用户凭据过期。
-
-内省复用当前库认证语义：签名/claims、ID格式及 Redis 吊销检查，不实时查询数据库重新计算账号状态或 scope。**Redis 吊销查询故障仍 fail-open 并记录警告**；因此即使 readyz 为503，已经到达的有效令牌内省仍可能返回 active:true。需要更强吊销一致性的接入方不能把本服务当作故障时立即拒绝所有旧凭据的保证。
+`active:true` 只表示认证通过，不授予全部业务权限。查询超时、网络错误、非200（含503）或畸形响应应拒绝业务请求并报告依赖不可用，不用旧结果或本地验签结果放行，也不要把依赖故障当作用户凭据过期。
 
 ## 管理员认证
 

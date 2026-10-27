@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/testkeys"
 )
 
 func TestQQConfigFromEnv(t *testing.T) {
@@ -14,6 +15,7 @@ func TestQQConfigFromEnv(t *testing.T) {
 	for _, name := range []string{"JWT_KEYS", "SUBJECT_HMAC_KEYS", "SUBJECT_CIPHER_KEYS"} {
 		t.Setenv(prefix+name, "1:"+base64.StdEncoding.EncodeToString([]byte(strings.Repeat("k", 32))))
 	}
+	t.Setenv(prefix+"JWT_KEYS", "1:"+testkeys.JWTBase64(1))
 	for _, name := range []string{"JWT_ACTIVE_KEY", "SUBJECT_HMAC_ACTIVE_KEY", "SUBJECT_CIPHER_ACTIVE_KEY"} {
 		t.Setenv(prefix+name, "1")
 	}

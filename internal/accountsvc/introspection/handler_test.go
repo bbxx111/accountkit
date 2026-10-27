@@ -290,3 +290,27 @@ func TestChunkedBodyCannotBypassLimit(t *testing.T) {
 		t.Fatalf("chunked limit: %d", w.Code)
 	}
 }
+
+// TestLookupIsBounded: validation runs under its own deadline, and a dependency
+// that times out is reported as 503, never as active or inactive.
+func TestLookupIsBounded(t *testing.T) {
+	var deadline time.Duration
+	h, err := introspection.New(map[string][]string{"business": {secret(1)}}, func(ctx context.Context, _ string) (user.Principal, error) {
+		d, ok := ctx.Deadline()
+		if !ok {
+			t.Error("lookup context has no deadline")
+		}
+		deadline = time.Until(d)
+		return user.Principal{}, fmt.Errorf("%w: %w", user.ErrUnavailable, context.DeadlineExceeded)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := request(h, "token=x", secret(1))
+	if w.Code != 503 || strings.TrimSpace(w.Body.String()) != `{"error":"temporarily_unavailable"}` {
+		t.Fatalf("timeout: %d %s", w.Code, w.Body)
+	}
+	if deadline <= 0 || deadline > 3*time.Second {
+		t.Fatalf("deadline %v not bounded to 3s", deadline)
+	}
+}

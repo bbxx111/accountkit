@@ -1,5 +1,7 @@
-// Package remoteauth demonstrates per-request authentication for a business
-// service. It is optional example code, not a dependency of the accountkit library.
+// Package remoteauth demonstrates how a business service authenticates accountsvc
+// consumer tokens: local ES256 verification against the JWKS for ordinary routes,
+// plus per-request introspection for critical routes that need immediate
+// revocation. It is optional example code, not a dependency of the accountkit library.
 package remoteauth
 
 import (

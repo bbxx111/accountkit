@@ -58,7 +58,7 @@ services:
       ACCOUNTKIT_REQUIRED_IDENTITY_KINDS: EMAIL
       ACCOUNTKIT_JWT_ISSUER: accountsvc-dev
       ACCOUNTKIT_JWT_AUDIENCE: accountsvc-dev-api
-      ACCOUNTKIT_JWT_KEYS: "1:${JWT_KEY:?Generate a JWT key}"
+      ACCOUNTKIT_JWT_KEYS: "1:${JWT_KEY:?Generate an ES256 PKCS#8 JWT key}"
       ACCOUNTKIT_JWT_ACTIVE_KEY: "1"
       ACCOUNTKIT_SUBJECT_HMAC_KEYS: "1:${SUBJECT_HMAC_KEY:?Generate a subject digest key}"
       ACCOUNTKIT_SUBJECT_HMAC_ACTIVE_KEY: "1"

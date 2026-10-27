@@ -45,7 +45,7 @@ Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史�
 
 当前初始结构在 v0.4.0 七表会话定义之上，按各次限定授权合入资料单列、头像列，以及 `add-purged-user-feed` 的 `purged_user` 表（共八表）；生产目录只有 0001 up/down，version=1/dirty=false。0001 down 覆盖八表，公共 Down 拒绝；审计流程关联仍为 data.accountkit.flow_id。此前审计、流程改名、索引和会话简化授权各自限于当时范围。
 
-`add-purged-user-feed` 经用户明确要求“直接改 0001，不新增 0002”，在当前 0001 末尾新增 `purged_user`（`user_id` 主键与格式 CHECK、`seq BIGINT NOT NULL GENERATED ALWAYS AS IDENTITY` 唯一约束 `uk_purged_user_seq`、`purge_time` 默认 `clock_timestamp()`）及 `idx_purged_user_purge_time`，0001 down 最先删除该表。其他表、列、索引与约束不变，不新增 0002，新安装仍为 version=1/dirty=false。v0.6.0 发布的 0001 与此前当前定义逐字节相同，现作为独立 pin（tag `ec6802cd221db3ce107e79bac92174bc35a0ba7d`），当前 initialFrozen 更新为新哈希。已安装 v0.6.0 或更早版本的同号数据库缺少该表，预检无写拒绝（`migrations.ErrIncompatibleBaseline`，dirty 优先）；不补表、不 Force、不改版本、不清库，使用新版本须经人工核验后改用新空资源。
+`add-purged-user-feed` 经用户明确要求“直接改 0001，不新增 0002”，在当前 0001 末尾新增 `purged_user`（`user_id` 主键与格式 CHECK、`seq BIGINT NOT NULL GENERATED ALWAYS AS IDENTITY` 唯一约束 `uk_purged_user_seq`、`purge_time` 默认 `clock_timestamp()`）及 `idx_purged_user_purge_time`，0001 down 最先删除该表。其他表、列、索引与约束不变，不新增 0002，新安装仍为 version=1/dirty=false。v0.6.0 发布的 0001 与此前当前定义逐字节相同，现作为独立 pin（tag `ec6802cd221db3ce107e79bac92174bc35a0ba7d`），当前 initialFrozen 更新为新哈希。已安装 v0.6.0 或更早版本的同号数据库缺少该表，预检无写拒绝（`migrations.ErrIncompatibleBaseline`，dirty 优先）；不补表、不 Force、不改版本、不清库，使用新版本须经人工核验后改用新空资源。**旧二进制（v0.6.0 及本变更前的 develop）的预检不检查这张新表，会接受新 version 1 结构；若让旧二进制或旧嵌入宿主对新结构运行维护任务，其 purge 不写已清理记录，该账号永远不会出现在拉取清单中，外部业务数据也就不会被清理。部署须人工阻止新旧版本混跑，以及在新结构上回退到旧二进制。**数据库从备份恢复或重新部署后，已清理记录的序号可能回退到业务方已保存的游标之下：拉取接口会对这类超前游标返回 400 `INVALID_PAGE_TOKEN`，业务方须清空游标从头重拉（清理按 user_id 幂等）。
 
 `add-google-sign-in` 只改当前 0001 up 中 `identity.kind` 与 `provider_meta` 的注释，并更新当前 initialFrozen。不新增列、索引、CHECK 或 0002。已发布 tag、冻结源和 0001 down 不变。同号数据库不会重放这段注释。旧二进制不能解释 kind 5。后续真实结构增量仍从 0002 开始。
 
@@ -121,6 +121,6 @@ err := migrations.UnsafeReset(ctx, connCfg, schema,
 
 Redis 验证码状态不在数据库备份中；恢复后的 PENDING 流程缺少验证码轮次时必须拒绝，不能仅凭数据库票据放行。COMPLETED 的相同请求只有在原期限内、账号和会话有效且 refresh 未轮换时可读取原结果；期限自然经过后应拒绝票据，仍可验证已完成会话的 refresh。演练不延长5分钟流程期限，也不宣称数据库备份实现零数据损失。
 
-bash scripts/check-migrations.sh 校验固定源快照、v0.1.0/v0.2.0 的精确提交与原 SQL、v0.3.0 的精确提交与旧初始 SQL，v0.4.0、v0.5.0 的精确提交与原始 SQL，以及当前整合基线和全部可达新正式 vX.Y.Z tag，包括合并分支及 HEAD。各代基线使用独立固定 LF 字节哈希；发布过的增量不能被后续 tag 覆盖或删除，新标签不能借用历史基线例外。浅克隆须获取完整历史和 tags。
+bash scripts/check-migrations.sh 校验固定源快照、v0.1.0/v0.2.0 的精确提交与原 SQL、v0.3.0 的精确提交与旧初始 SQL，v0.4.0、v0.5.0、v0.6.0 的精确提交与原始 SQL，以及当前整合基线和全部可达新正式 vX.Y.Z tag，包括合并分支及 HEAD。各代基线使用独立固定 LF 字节哈希；发布过的增量不能被后续 tag 覆盖或删除，新标签不能借用历史基线例外。浅克隆须获取完整历史和 tags。
 
 bash scripts/verify-recovery.sh需要psql/pg_dump/pg_restore 17、Go和两个明确指定的独立空测试库。脚本通过集群system_identifier和实际数据库名称判断同库，要求具备读取pg_control_system的测试权限，并拒绝非空库。只生成合成数据，不删除或覆盖既有库。恢复后检查七个业务表、版本、解密和旧访问/刷新令牌；核对每个会话有效非空来源、双身份来源、单份nested客户端描述的app/browser并存、制造商/build、extensions及原观察时间。完整备份包含两个上下文子表，并在source-unchanged阶段验证源库未改变。普通TestRecoveryFixture仍预期skip，只有脚本三阶段强制运行才是恢复演练证据。历史凭证夹具须显式建立有效来源，不能将测试补关联描述成生产自动迁移。证据保留在被Git忽略的.test-output/recovery.*下；重跑需提供新的空库。当前简化版本的实际门禁结果见[验收记录](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)，历史记录不代表当前验证通过。

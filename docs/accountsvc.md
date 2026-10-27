@@ -268,9 +268,10 @@ Authorization: Basic <PURGE_FEED_CLIENTS 中的客户端 ID 与秘密>
 {"purged_users":[{"user_id":"u_…","purge_time":"2026-10-27T08:00:00Z"}],"next_page_token":"…"}
 ```
 
-- 首次拉取省略 `page_token`，从最早的记录开始；`page_size` 默认 100、最大 1000，非法值返回 400 `INVALID_ARGUMENT`，篡改的游标返回 400 `INVALID_PAGE_TOKEN`。
+- 首次拉取省略 `page_token`，从最早的记录开始；`page_size` 默认 100、最大 1000，非法值返回 400 `INVALID_ARGUMENT`。游标对调用方不透明（不保证格式稳定，也不防伪造，只供授权的内部服务使用）；格式非法或超过当前清单末尾的游标返回 400 `INVALID_PAGE_TOKEN`。
 - `next_page_token` **始终返回**当前位置；空列表表示已追平。业务服务在完成本页清理后持久化该游标，下次从这里续拉。接口没有确认语义，重复拉取同一位置返回相同记录，因此清理必须按 user_id **幂等**。
 - 记录在表锁下按提交顺序分配游标序号：并发清理时也不会出现“较早的记录较晚可见而被游标跳过”，按游标持续拉取不会漏读。
+- 收到 `INVALID_PAGE_TOKEN` 时（典型原因是 accountsvc 数据库从较早备份恢复或重新部署，序号回退到已保存游标之下），业务方须清空游标、从头重拉；因为清理按 user_id 幂等，重放是安全的。
 - 默认长期保留记录。`ACCOUNTKIT_PURGED_USER_RETENTION` 可设置保留期（不得短于 720h），超期记录由维护任务删除；业务服务须在保留期内完成拉取，否则可能遗漏清理。建议每 5 分钟拉取一次，并对落后超过 24 小时告警。
 - 鉴权使用独立的 `ACCOUNTSVC_PURGE_FEED_CLIENTS`（HTTP Basic，格式同内省客户端，支持新旧秘密重叠轮换），内省凭据、消费者或管理员令牌均返回 401；未配置时返回 503 `PURGE_FEED_NOT_CONFIGURED`，数据库不可用时返回 503 `DEPENDENCY_UNAVAILABLE`（单次读取限时 3 秒）。响应 `Cache-Control: no-store`。
 - 该路由与内省一样是内部入口，网关不得对公网开放，见[网关接入手册](gateway-integration.md)。

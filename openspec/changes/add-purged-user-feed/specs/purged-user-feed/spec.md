@@ -27,15 +27,19 @@
 - `page_token`：不透明游标，省略表示从最早的记录开始；
 - `page_size`：默认 100，最大 1000，超出范围返回 400。
 
-响应体为 `{"purged_users":[{"user_id","purge_time"}],"next_page_token"}`。`next_page_token` SHALL 始终返回当前读取位置，空列表表示已追平；业务方保存它并在下次拉取时传回。非法 `page_token` SHALL 返回 400 `INVALID_PAGE_TOKEN`。响应 SHALL 设置 `Cache-Control: no-store`。接口没有确认语义，重复拉取同一位置返回相同记录（已被保留期清理的除外）。
+响应体为 `{"purged_users":[{"user_id","purge_time"}],"next_page_token"}`。`next_page_token` SHALL 始终返回当前读取位置，空列表表示已追平；业务方保存它并在下次拉取时传回。格式非法或超过当前已分配最大序号的 `page_token` SHALL 返回 400 `INVALID_PAGE_TOKEN`；后者表示数据库被恢复或重新部署导致序号回退，业务方 SHALL 清空游标从头重拉。游标对调用方不透明，不保证格式稳定，也不提供防伪造保护。响应 SHALL 设置 `Cache-Control: no-store`。接口没有确认语义，重复拉取同一位置返回相同记录（已被保留期清理的除外）。
 
 #### Scenario: 从头拉取与续拉
 - **WHEN** 业务方首次不带 page_token 拉取，随后用返回的 next_page_token 继续拉取
 - **THEN** 第一次按序返回最早的记录；第二次只返回其后的记录；没有新记录时返回空列表和与传入位置等价的游标
 
 #### Scenario: 非法参数
-- **WHEN** page_token 被篡改或 page_size 为 0、负数或超过 1000
-- **THEN** 返回 400，且不泄露内部游标结构
+- **WHEN** page_token 格式非法，或 page_size 为 0、负数或超过 1000
+- **THEN** 返回 400，不调用读取
+
+#### Scenario: 数据库恢复后游标超前
+- **WHEN** accountsvc 数据库从较早备份恢复，业务方保存的游标大于当前已分配的最大序号
+- **THEN** 返回 400 `INVALID_PAGE_TOKEN`；业务方清空游标从头重拉，不会静默跳过之后写入的记录
 
 ### Requirement: 保留期与清理
 

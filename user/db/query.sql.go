@@ -754,6 +754,19 @@ func (q *Queries) GetProfileAttributes(ctx context.Context, id string) (GetProfi
 	return i, err
 }
 
+const getPurgedUserSeqLastValue = `-- name: GetPurgedUserSeqLastValue :one
+SELECT COALESCE(pg_sequence_last_value(pg_get_serial_sequence('purged_user', 'seq')::regclass), 0)::bigint AS last_value
+`
+
+// 序号已分配的最大值（含回滚产生的空洞；从未分配时为 0）。正常游标不会超过它；超过说明数据库被恢复或
+// 重新部署导致序号回退，拉取方须从头重拉。
+func (q *Queries) GetPurgedUserSeqLastValue(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, getPurgedUserSeqLastValue)
+	var last_value int64
+	err := row.Scan(&last_value)
+	return last_value, err
+}
+
 const getSessionByPreviousRefreshHash = `-- name: GetSessionByPreviousRefreshHash :one
 SELECT id, user_id, device_id, device_name, auth_time, refresh_token_hash, previous_refresh_token_hash, rotate_time, refresh_expire_time, last_used_time, revoke_time, revoke_reason, create_time, update_time FROM session WHERE previous_refresh_token_hash = $1
 `

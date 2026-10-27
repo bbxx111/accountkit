@@ -234,6 +234,11 @@ WHERE seq > @after::bigint
 ORDER BY seq
 LIMIT @page_size;
 
+-- name: GetPurgedUserSeqLastValue :one
+-- 序号已分配的最大值（含回滚产生的空洞；从未分配时为 0）。正常游标不会超过它；超过说明数据库被恢复或
+-- 重新部署导致序号回退，拉取方须从头重拉。
+SELECT COALESCE(pg_sequence_last_value(pg_get_serial_sequence('purged_user', 'seq')::regclass), 0)::bigint AS last_value;
+
 -- name: DeletePurgedUsersBefore :execrows
 -- 保留期清理：按写入时间分批删除。
 DELETE FROM purged_user WHERE user_id IN (

@@ -100,6 +100,10 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	records, next, err := h.list(ctx, after, size)
 	switch {
+	case errors.Is(err, user.ErrPurgedUserCursorAhead):
+		// 数据库恢复或重新部署后序号回退：要求从头重拉，而不是静默跳过新记录。
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_PAGE_TOKEN", "page_token is ahead of the feed (the service database was restored or re-provisioned); restart from the beginning"))
+		return
 	case errors.Is(err, user.ErrInvalidArgument):
 		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_ARGUMENT", "invalid page request"))
 		return

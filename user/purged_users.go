@@ -8,6 +8,11 @@ import (
 	"github.com/bbxx111/accountkit/user/db"
 )
 
+// ErrPurgedUserCursorAhead 表示游标超过了已分配的最大序号：数据库被恢复到较早备份或重新部署后，
+// 序号回退到业务方保存的游标之下。拉取方应丢弃游标从头重拉（清理按 user_id 幂等）。它同时满足
+// errors.Is(err, ErrInvalidArgument)。
+var ErrPurgedUserCursorAhead = fmt.Errorf("%w: purged user cursor is ahead of the feed; restart from the beginning", ErrInvalidArgument)
+
 // MaxPurgedUserPage 是 ListPurgedUsers 单页的最大条数。
 const MaxPurgedUserPage = 1000
 
@@ -30,7 +35,17 @@ func (s *Service) ListPurgedUsers(ctx context.Context, after int64, limit int) (
 	if after < 0 || limit < 1 || limit > MaxPurgedUserPage {
 		return nil, after, fmt.Errorf("%w: cursor must be non-negative and limit within 1..%d", ErrInvalidArgument, MaxPurgedUserPage)
 	}
-	rows, err := s.d.Repo.Q().ListPurgedUsersAfter(ctx, db.ListPurgedUsersAfterParams{After: after, PageSize: int32(limit)})
+	q := s.d.Repo.Q()
+	if after > 0 {
+		last, err := q.GetPurgedUserSeqLastValue(ctx)
+		if err != nil {
+			return nil, after, fmt.Errorf("user: read purged user sequence: %w", err)
+		}
+		if after > last {
+			return nil, after, ErrPurgedUserCursorAhead
+		}
+	}
+	rows, err := q.ListPurgedUsersAfter(ctx, db.ListPurgedUsersAfterParams{After: after, PageSize: int32(limit)})
 	if err != nil {
 		return nil, after, fmt.Errorf("user: list purged users: %w", err)
 	}

@@ -93,6 +93,14 @@ func (s *Service) ListPurgedUsers(ctx context.Context, after int64, limit int) (
 - 测试使用 `git show v0.6.0:migrations/0001_init.up.sql` 安装旧结构，断言 Up 被拒绝，且 catalog、数据、version/dirty 不变；不用今天的 SQL 推导旧结构。
 - AGENTS.md 在“迁移安全”中新增本轮限定授权条目，并同步 `docs/migrations.md`。
 
+### D8 游标回退检测（审查后补充）
+
+游标是裸序号，没有实例纪元。数据库从较早备份恢复或重新部署后，identity 序号会回退到业务方已保存的游标之下，之后写入的记录序号不大于旧游标，将被永久跳过。处理方式：`ListPurgedUsers` 在 `after > 0` 时读取序号已分配的最大值（`pg_sequence_last_value`，含回滚空洞），游标超过它即返回 `ErrPurgedUserCursorAhead`，HTTP 映射为 400 `INVALID_PAGE_TOKEN`，业务方清空游标从头重拉（清理幂等）。
+
+- 正常运行时，业务方保存的游标都来自已提交记录，不会超过已分配最大值，因此不会误报。
+- 这种检测不是绝对的：恢复后如果新清理的数量已追上旧游标，业务方才拉取，检测会失效。这是在不改表结构（不引入实例纪元）前提下的折中；文档同时要求恢复或重新部署后业务方主动清空游标。
+- 预检同时校验 identity 序号的 increment=1、cache=1、no cycle，防止序号选项漂移破坏“序号顺序 = 提交顺序”。
+
 ## Risks / Trade-offs
 
 - [已安装 v0.6.0 的数据库无法直接升级] → 用户已确认当前无正式部署；兼容说明与迁移手册写明须使用经人工核验的新空资源，不 Force、不改版本。

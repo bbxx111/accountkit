@@ -138,8 +138,13 @@ func TestPurgedUserFeedConcurrentPurgeNoGaps(t *testing.T) {
 	ctx := context.Background()
 	ids := deletedUsers(t, f, 12)
 	var wg sync.WaitGroup
+	errs := make(chan error, 4)
 	for range 4 {
-		wg.Go(func() { _, _ = f.svc.PurgeDueUsers(ctx) })
+		wg.Go(func() {
+			if _, err := f.svc.PurgeDueUsers(ctx); err != nil {
+				errs <- err
+			}
+		})
 	}
 	seen := map[string]int64{}
 	var cursor int64
@@ -173,6 +178,10 @@ func TestPurgedUserFeedConcurrentPurgeNoGaps(t *testing.T) {
 		}
 	}
 	poll()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("concurrent purge failed: %v", err)
+	}
 	if len(seen) != len(ids) {
 		t.Fatalf("feed returned %d of %d purged users", len(seen), len(ids))
 	}
@@ -213,5 +222,86 @@ func TestCleanupPurgedUsersRetention(t *testing.T) {
 	d.PurgedUserRetention = 7 * 24 * time.Hour
 	if _, err := user.NewService(d); err == nil {
 		t.Fatal("retention shorter than 30 days must be rejected")
+	}
+}
+
+// 数据库从较早备份恢复或重新部署后，序号回退到业务方已保存游标之下；超前的游标必须被拒绝，
+// 让业务方从头重拉（清理幂等），而不是静默跳过之后的新记录。
+func TestListPurgedUsersRejectsCursorAheadOfFeed(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	if _, _, err := f.svc.ListPurgedUsers(ctx, 5, 10); !errors.Is(err, user.ErrPurgedUserCursorAhead) || !errors.Is(err, user.ErrInvalidArgument) {
+		t.Fatalf("cursor on empty feed: %v", err)
+	}
+	deletedUsers(t, f, 2)
+	if _, err := f.svc.PurgeDueUsers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	_, last, err := f.svc.ListPurgedUsers(ctx, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, next, err := f.svc.ListPurgedUsers(ctx, last, 10); err != nil || next != last {
+		t.Fatalf("cursor at the end must stay valid: %d %v", next, err)
+	}
+	if _, _, err := f.svc.ListPurgedUsers(ctx, last+1, 10); !errors.Is(err, user.ErrPurgedUserCursorAhead) {
+		t.Fatalf("cursor ahead of feed: %v", err)
+	}
+	// 模拟恢复：序号重置到更早的位置，旧游标随即失效。
+	mustExec(t, f, `ALTER TABLE purged_user ALTER COLUMN seq RESTART WITH 1`)
+	mustExec(t, f, `DELETE FROM purged_user`)
+	if _, _, err := f.svc.ListPurgedUsers(ctx, last, 10); !errors.Is(err, user.ErrPurgedUserCursorAhead) {
+		t.Fatalf("rewound feed must reject the saved cursor: %v", err)
+	}
+}
+
+// 确定性验证表锁：另一事务已插入记录（分配了较小序号）但尚未提交时，purge 的 SHARE ROW EXCLUSIVE 锁与其
+// ROW EXCLUSIVE 冲突，必须等待其提交，之后分配的序号更大。若去掉锁，purge 会以更大的序号先提交而先于
+// 前者可见，游标越过后前者被永久跳过。
+func TestPurgeWaitsForPurgedUserLock(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	ids := deletedUsers(t, f, 1)
+	holder, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Rollback(ctx)
+	// 持有者只插入、不取表锁：它已分配较小的序号但尚未提交，代表一个进行中的写入。
+	var heldSeq int64
+	if err := holder.QueryRow(ctx, `INSERT INTO purged_user(user_id, purge_time) VALUES('u_0000000000099', now()) RETURNING seq`).Scan(&heldSeq); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { _, err := f.svc.PurgeDueUsers(ctx); done <- err }()
+	// purge 必须阻塞在表锁上。
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var waiting bool
+		if err := f.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_locks l JOIN pg_class c ON c.oid=l.relation WHERE c.relname='purged_user' AND NOT l.granted)`).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("purge finished while the purged_user lock was held: %v", err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("purge never waited for the purged_user lock")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := holder.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	var purgedSeq int64
+	if err := f.pool.QueryRow(ctx, `SELECT seq FROM purged_user WHERE user_id=$1`, ids[0]).Scan(&purgedSeq); err != nil || purgedSeq <= heldSeq {
+		t.Fatalf("purge seq %d must follow the held seq %d: %v", purgedSeq, heldSeq, err)
 	}
 }

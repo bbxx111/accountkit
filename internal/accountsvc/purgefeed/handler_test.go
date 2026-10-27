@@ -36,6 +36,9 @@ func (f *fakeFeed) list(ctx context.Context, after int64, limit int) ([]user.Pur
 	if after < 0 || limit < 1 || limit > user.MaxPurgedUserPage {
 		return nil, after, fmt.Errorf("%w: bad", user.ErrInvalidArgument)
 	}
+	if after > int64(len(f.records)) {
+		return nil, after, user.ErrPurgedUserCursorAhead
+	}
 	var out []user.PurgedUser
 	next := after
 	for i := int(after); i < len(f.records) && len(out) < limit; i++ {
@@ -218,5 +221,18 @@ func TestPurgeFeedNotConfiguredAndDependencyFailure(t *testing.T) {
 	}
 	if _, err := purgefeed.New(map[string][]string{"ai-food": {secret(1)}}, nil); err == nil {
 		t.Fatal("nil lister accepted")
+	}
+}
+
+// 数据库恢复后序号回退：已保存的游标超前，返回 INVALID_PAGE_TOKEN 让业务方从头重拉。
+func TestPurgeFeedCursorAheadAfterRestore(t *testing.T) {
+	feed := &fakeFeed{records: records(2)}
+	h, _ := purgefeed.New(map[string][]string{"ai-food": {secret(1)}}, feed.list)
+	ahead := base64.RawURLEncoding.EncodeToString([]byte("v1:9"))
+	if w := get(h, "?page_token="+ahead, "ai-food", secret(1)); w.Code != 400 || reason(t, w) != "INVALID_ARGUMENT/INVALID_PAGE_TOKEN" {
+		t.Fatalf("cursor ahead: %d %s", w.Code, w.Body)
+	}
+	if w := get(h, "", "ai-food", secret(1)); w.Code != 200 || len(decode(t, w).PurgedUsers) != 2 {
+		t.Fatalf("restart from the beginning: %d %s", w.Code, w.Body)
 	}
 }

@@ -444,8 +444,8 @@ func (a *Auth) Close() {
 	})
 }
 
-// RunMaintenanceOnce 立即执行一轮维护任务（抢 advisory lock → purge_users → cleanup_sessions → audit_retention →
-// rekey_digests → reencrypt_subjects），返回是否抢到锁。供宿主的一次性作业与测试使用；Start 的 ticker 每轮做的就是这件事。
+// RunMaintenanceOnce 立即执行一轮维护任务（抢 advisory lock → cleanup_sign_in_completion_flows → purge_users →
+// cleanup_purged_users → cleanup_sessions → audit_retention → rekey_digests → reencrypt_subjects），返回是否抢到锁。供宿主的一次性作业与测试使用；Start 的 ticker 每轮做的就是这件事。
 // 须在 Close 之前调用：Close 之后维护任务产生的审计事件会被丢弃并计数。
 func (a *Auth) RunMaintenanceOnce(ctx context.Context) bool { return a.runner.RunOnce(ctx) }
 

@@ -118,6 +118,10 @@ func TestPurgedUserDriftRejected(t *testing.T) {
 		`ALTER TABLE purged_user ALTER COLUMN user_id TYPE varchar(32)`,
 		`DROP INDEX idx_purged_user_purge_time`,
 		`ALTER TABLE purged_user ADD COLUMN extra text`,
+		// 序号选项漂移会破坏“序号顺序 = 提交顺序”。
+		`ALTER TABLE purged_user ALTER COLUMN seq SET CACHE 10`,
+		`ALTER TABLE purged_user ALTER COLUMN seq SET INCREMENT BY 2`,
+		`ALTER TABLE purged_user ALTER COLUMN seq SET CYCLE`,
 	} {
 		t.Run(ddl, func(t *testing.T) {
 			cfg, schema, c := consolidatedProfileAttributesInitial(t)

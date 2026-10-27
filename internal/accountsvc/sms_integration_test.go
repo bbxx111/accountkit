@@ -65,7 +65,7 @@ func TestServiceIntegrationAliyunSMS(t *testing.T) {
 	const secret = "integration-aliyun-secret"
 	f.secrets = append(f.secrets, secret, "13812345678", "+8613812345678")
 	p := f.start(map[string]string{
-		"ACCOUNTKIT_ENABLED_IDENTITY_KINDS":               "PHONE,EMAIL",
+		"ACCOUNTSVC_ENABLED_IDENTITY_KINDS":               "PHONE,EMAIL",
 		"ACCOUNTSVC_SMS_PROVIDER":                         "aliyun",
 		"ACCOUNTSVC_SMS_ALIYUN_ACCESS_KEY_ID":             "integration-id",
 		"ACCOUNTSVC_SMS_ALIYUN_ACCESS_KEY_SECRET":         secret,

@@ -12,7 +12,7 @@ import (
 
 func TestServiceIntegrationCurrentSessionContext(t *testing.T) {
 	f := newIntegration(t)
-	f.env["ACCOUNTKIT_MAX_IDENTITIES_PER_KIND"] = "2"
+	f.env["ACCOUNTSVC_MAX_IDENTITIES_PER_KIND"] = "2"
 	p := f.start(map[string]string{"ACCOUNTSVC_TLS_ENABLED": "false", "ACCOUNTSVC_TLS_CERT_FILE": "", "ACCOUNTSVC_TLS_KEY_FILE": "", "ACCOUNTSVC_TRUSTED_PROXY_CIDRS": "127.0.0.1/32"})
 	g := newTestGateway(t, p.baseURL, f.cert, false)
 	call := func(method, path, token string, body any, headers map[string]string, want int) map[string]any {

@@ -368,15 +368,15 @@ func newIntegration(t *testing.T) *integrationFixture {
 	jwtKey := testkeys.JWTBase64(1)
 	clientSecret := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{4}, 32))
 	f := &integrationFixture{t: t, binary: binary, dir: dir, schema: schema, prefix: prefix, dsn: dsn, redisURL: redisURL, pool: pool, redis: rc, client: client, smtp: smtp, cert: cert, secrets: []string{"fixture-smtp-password", clientSecret, key, jwtKey}}
-	f.env = map[string]string{"SSL_CERT_FILE": certFile, "ACCOUNTSVC_MODE": "production", "ACCOUNTSVC_DATABASE_URL": dsn, "ACCOUNTSVC_REDIS_URL": redisURL, "ACCOUNTSVC_TLS_CERT_FILE": certFile, "ACCOUNTSVC_TLS_KEY_FILE": keyFile, "ACCOUNTSVC_SMTP_HOST": "127.0.0.1", "ACCOUNTSVC_SMTP_PORT": port, "ACCOUNTSVC_SMTP_FROM": "account@example.test", "ACCOUNTSVC_SMTP_TLS_MODE": "implicit", "ACCOUNTSVC_SMTP_USERNAME": "fixture-user", "ACCOUNTSVC_SMTP_PASSWORD": "fixture-smtp-password", "ACCOUNTSVC_SMTP_TIMEOUT": "30s", "ACCOUNTSVC_INTROSPECTION_CLIENTS": `{"business":["` + clientSecret + `"]}`, "ACCOUNTSVC_STARTUP_TIMEOUT": "10s", "ACCOUNTSVC_SHUTDOWN_TIMEOUT": "18s", "ACCOUNTKIT_AUTH_SCHEMA": schema, "ACCOUNTKIT_AUTH_KEY_PREFIX": prefix, "ACCOUNTKIT_JWT_KEYS": "1:" + jwtKey, "ACCOUNTKIT_JWT_ACTIVE_KEY": "1", "ACCOUNTKIT_JWT_ISSUER": "integration-consumer", "ACCOUNTKIT_JWT_AUDIENCE": "integration-business", "ACCOUNTKIT_SUBJECT_HMAC_KEYS": "1:" + key, "ACCOUNTKIT_SUBJECT_HMAC_ACTIVE_KEY": "1", "ACCOUNTKIT_SUBJECT_CIPHER_KEYS": "1:" + key, "ACCOUNTKIT_SUBJECT_CIPHER_ACTIVE_KEY": "1", "ACCOUNTKIT_CODE_COOLDOWN": "1s", "ACCOUNTKIT_MAINTENANCE_INTERVAL": "1h"}
+	f.env = map[string]string{"SSL_CERT_FILE": certFile, "ACCOUNTSVC_MODE": "production", "ACCOUNTSVC_DATABASE_URL": dsn, "ACCOUNTSVC_REDIS_URL": redisURL, "ACCOUNTSVC_TLS_CERT_FILE": certFile, "ACCOUNTSVC_TLS_KEY_FILE": keyFile, "ACCOUNTSVC_SMTP_HOST": "127.0.0.1", "ACCOUNTSVC_SMTP_PORT": port, "ACCOUNTSVC_SMTP_FROM": "account@example.test", "ACCOUNTSVC_SMTP_TLS_MODE": "implicit", "ACCOUNTSVC_SMTP_USERNAME": "fixture-user", "ACCOUNTSVC_SMTP_PASSWORD": "fixture-smtp-password", "ACCOUNTSVC_SMTP_TIMEOUT": "30s", "ACCOUNTSVC_INTROSPECTION_CLIENTS": `{"business":["` + clientSecret + `"]}`, "ACCOUNTSVC_STARTUP_TIMEOUT": "10s", "ACCOUNTSVC_SHUTDOWN_TIMEOUT": "18s", "ACCOUNTSVC_AUTH_SCHEMA": schema, "ACCOUNTSVC_AUTH_KEY_PREFIX": prefix, "ACCOUNTSVC_JWT_KEYS": "1:" + jwtKey, "ACCOUNTSVC_JWT_ACTIVE_KEY": "1", "ACCOUNTSVC_JWT_ISSUER": "integration-consumer", "ACCOUNTSVC_JWT_AUDIENCE": "integration-business", "ACCOUNTSVC_SUBJECT_HMAC_KEYS": "1:" + key, "ACCOUNTSVC_SUBJECT_HMAC_ACTIVE_KEY": "1", "ACCOUNTSVC_SUBJECT_CIPHER_KEYS": "1:" + key, "ACCOUNTSVC_SUBJECT_CIPHER_ACTIVE_KEY": "1", "ACCOUNTSVC_CODE_COOLDOWN": "1s", "ACCOUNTSVC_MAINTENANCE_INTERVAL": "1h"}
 	// Validate actual library environment parsing before any service process can
 	// migrate or send a request. A misspelled key must never fall back to auth.
 	for name, value := range f.env {
-		if strings.HasPrefix(name, "ACCOUNTKIT_") {
+		if strings.HasPrefix(name, "ACCOUNTSVC_") {
 			t.Setenv(name, value)
 		}
 	}
-	parsed, err := accountkit.ConfigFromEnv("ACCOUNTKIT_")
+	parsed, err := accountkit.ConfigFromEnv("ACCOUNTSVC_")
 	if err != nil || parsed.Schema != schema || parsed.KeyPrefix != prefix {
 		t.Fatal("integration fixture did not configure isolated schema and Redis prefix")
 	}
@@ -673,7 +673,7 @@ func (f *integrationFixture) verifyLocally(p *serviceProcess, token string) {
 			return k, nil
 		}
 		return nil, errors.New("unknown kid")
-	}, jwt.WithValidMethods([]string{"ES256"}), jwt.WithIssuer(f.env["ACCOUNTKIT_JWT_ISSUER"]), jwt.WithAudience(f.env["ACCOUNTKIT_JWT_AUDIENCE"]), jwt.WithExpirationRequired())
+	}, jwt.WithValidMethods([]string{"ES256"}), jwt.WithIssuer(f.env["ACCOUNTSVC_JWT_ISSUER"]), jwt.WithAudience(f.env["ACCOUNTSVC_JWT_AUDIENCE"]), jwt.WithExpirationRequired())
 	if err != nil {
 		f.t.Fatalf("local verification with JWKS failed: %v", err)
 	}

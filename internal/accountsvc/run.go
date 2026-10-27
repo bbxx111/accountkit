@@ -81,7 +81,7 @@ func Run(ctx context.Context, args []string, logger *slog.Logger) error {
 func openDependencies(ctx context.Context, cfg Config, _ *slog.Logger) (*dependencies, error) {
 	pc, err := accountkit.PoolConfig(cfg.DatabaseURL, cfg.Library.Schema)
 	if err != nil {
-		return nil, invalidConfig("ACCOUNTSVC_DATABASE_URL / ACCOUNTKIT_AUTH_SCHEMA")
+		return nil, invalidConfig("ACCOUNTSVC_DATABASE_URL / ACCOUNTSVC_AUTH_SCHEMA")
 	}
 	pool, err := pgxpool.NewWithConfig(ctx, pc)
 	if err != nil {
@@ -189,11 +189,11 @@ func newMigrationApplication(cfg Config, d *dependencies) (*application, error) 
 	}
 	digester, err := pii.NewDigester(cfg.Library.SubjectHMACKeys, cfg.Library.SubjectHMACActiveKey)
 	if err != nil {
-		return nil, invalidConfig("ACCOUNTKIT_SUBJECT_HMAC_KEYS / ACCOUNTKIT_SUBJECT_HMAC_ACTIVE_KEY")
+		return nil, invalidConfig("ACCOUNTSVC_SUBJECT_HMAC_KEYS / ACCOUNTSVC_SUBJECT_HMAC_ACTIVE_KEY")
 	}
 	cipher, err := pii.NewCipher(cfg.Library.SubjectCipherKeys, cfg.Library.SubjectCipherActiveKey)
 	if err != nil {
-		return nil, invalidConfig("ACCOUNTKIT_SUBJECT_CIPHER_KEYS / ACCOUNTKIT_SUBJECT_CIPHER_ACTIVE_KEY")
+		return nil, invalidConfig("ACCOUNTSVC_SUBJECT_CIPHER_KEYS / ACCOUNTSVC_SUBJECT_CIPHER_ACTIVE_KEY")
 	}
 	return &application{migrate: func(ctx context.Context) error {
 		var path string

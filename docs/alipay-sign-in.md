@@ -58,22 +58,22 @@ cfg.RequiredIdentityKinds = []enum.IdentityKind{}
 
 ## accountsvc 与环境变量
 
-库使用 `ConfigFromEnv(prefix)` 的宿主前缀；accountsvc 固定为 `ACCOUNTKIT_`。以下展示变量名与合成 AppID，省略密钥值，不能直接作为完整运行配置：
+库使用 `ConfigFromEnv(prefix)` 的宿主前缀；accountsvc 固定为 `ACCOUNTSVC_`。以下展示变量名与合成 AppID，省略密钥值，不能直接作为完整运行配置：
 
 ```text
-ACCOUNTKIT_ALIPAY_APP_IDS=2026000000000001,2026000000000002
-ACCOUNTKIT_ALIPAY_2026000000000001_PRIVATE_KEY=<安全注入的多行 PEM 应用私钥>
-ACCOUNTKIT_ALIPAY_2026000000000001_PUBLIC_KEY=<安全注入的多行 PEM 支付宝公钥>
-ACCOUNTKIT_ALIPAY_2026000000000002_PRIVATE_KEY=<另一应用的多行 PEM 私钥>
-ACCOUNTKIT_ALIPAY_2026000000000002_PUBLIC_KEY=<对应的多行 PEM 支付宝公钥>
-ACCOUNTKIT_ALIPAY_SUBJECT_MODE=UNIONID
-ACCOUNTKIT_ENABLED_IDENTITY_KINDS=ALIPAY
-ACCOUNTKIT_REQUIRED_IDENTITY_KINDS=[]
+ACCOUNTSVC_ALIPAY_APP_IDS=2026000000000001,2026000000000002
+ACCOUNTSVC_ALIPAY_2026000000000001_PRIVATE_KEY=<安全注入的多行 PEM 应用私钥>
+ACCOUNTSVC_ALIPAY_2026000000000001_PUBLIC_KEY=<安全注入的多行 PEM 支付宝公钥>
+ACCOUNTSVC_ALIPAY_2026000000000002_PRIVATE_KEY=<另一应用的多行 PEM 私钥>
+ACCOUNTSVC_ALIPAY_2026000000000002_PUBLIC_KEY=<对应的多行 PEM 支付宝公钥>
+ACCOUNTSVC_ALIPAY_SUBJECT_MODE=UNIONID
+ACCOUNTSVC_ENABLED_IDENTITY_KINDS=ALIPAY
+ACCOUNTSVC_REQUIRED_IDENTITY_KINDS=[]
 ```
 
 PEM 必须包含真实换行，库不展开字面 `\n`，不读取文件路径。由密钥注入工具或宿主预先加载内容。应用列表缺省/空表示不配置，已配置列表不允许重复或空项。模式未设置时 UNIONID；显式空白、小写和其他值拒绝。网关缺省 `https://openapi.alipay.com/gateway.do`，覆盖项 `ALIPAY_GATEWAY_URL` 必须为无 userinfo、查询或 fragment 的 HTTPS 绝对地址；HTTP 仅允许数值回环测试地址。
 
-serve 显式 Enabled=ALIPAY 却无应用时指出 `ACCOUNTKIT_ALIPAY_APP_IDS`；缺密钥指出对应 AppID 的变量名，错误不输出配置值。migrate 无需配置支付宝、不调用支付宝，但显式提供的非法配置仍会被静态校验拒绝。
+serve 显式 Enabled=ALIPAY 却无应用时指出 `ACCOUNTSVC_ALIPAY_APP_IDS`；缺密钥指出对应 AppID 的变量名，错误不输出配置值。migrate 无需配置支付宝、不调用支付宝，但显式提供的非法配置仍会被静态校验拒绝。
 
 [本地 Compose](../deploy/accountsvc/compose.yaml) 默认 EMAIL；仅编辑 `.env` 不会自动把任意 IdP 变量传进容器。切换时用 Compose override 或实际部署的环境注入，显式覆盖 Enabled/Required 并传入每个 ALIPAY 配置；不要把密钥写入 Compose 或镜像。
 

@@ -138,7 +138,7 @@ func TestGatewayUsersCompletionAllowlist(t *testing.T) {
 
 func TestServiceIntegrationGatewayBoundary(t *testing.T) {
 	f := newIntegration(t)
-	f.env["ACCOUNTKIT_CODE_COOLDOWN"] = "1m"
+	f.env["ACCOUNTSVC_CODE_COOLDOWN"] = "1m"
 	p := f.start(map[string]string{
 		"ACCOUNTSVC_TLS_ENABLED": "false", "ACCOUNTSVC_TLS_CERT_FILE": "", "ACCOUNTSVC_TLS_KEY_FILE": "",
 		"ACCOUNTSVC_TRUSTED_PROXY_CIDRS": "127.0.0.1/32",

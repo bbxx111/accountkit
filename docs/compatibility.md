@@ -1,5 +1,13 @@
 # 功能与兼容对照
 
+## accountsvc 配置前缀统一
+
+本节随下一个版本发布。
+
+- **accountsvc 环境变量（BREAKING）**：服务的库配置改为以 `ACCOUNTSVC_` 读取，与服务配置共用一个前缀。部署方把每个 `ACCOUNTKIT_` 变量改为 `ACCOUNTSVC_` 加相同后缀，例如 `ACCOUNTKIT_JWT_KEYS` → `ACCOUNTSVC_JWT_KEYS`、`ACCOUNTKIT_ENABLED_IDENTITY_KINDS` → `ACCOUNTSVC_ENABLED_IDENTITY_KINDS`、`ACCOUNTKIT_ALIPAY_<APPID>_PRIVATE_KEY` → `ACCOUNTSVC_ALIPAY_<APPID>_PRIVATE_KEY`；原有 `ACCOUNTSVC_` 服务配置名不变。不提供旧名回退读取。
+- **启动拒绝**：serve 与 migrate 发现任何非空 `ACCOUNTKIT_` 变量时失败并列出旧名与对应新名，不回显值，避免可选配置改名后被静默忽略。删除旧变量后重启。回退到旧版本需要把变量名改回。
+- **不受影响**：直接嵌入库的宿主继续用 `ConfigFromEnv(prefix)` 自选前缀；`examples/embedded`、`examples/audit` 与 README 仍以 `ACCOUNTKIT_` 为示例前缀。测试基础设施变量 `ACCOUNTKIT_RECOVERY_*` 只供恢复演练脚本使用，不传给 accountsvc 进程。
+
 ## 已清理用户拉取与初始结构调整
 
 本节随下一个版本发布。

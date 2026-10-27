@@ -90,9 +90,9 @@ accountsvc 有两个只供内部业务服务调用的接口：
 ### D4 audience 与 issuer 隔离（约束 2）
 
 serve 启动时，配置任一 token 客户端列表即要求：
-- `ACCOUNTSVC_SERVICE_TOKEN_ISSUER`：绝对 HTTPS URL，规则同 `adminauth.Config.Validate`；可以等于 `ACCOUNTSVC_ADMIN_ISSUER`；SHALL 不等于 `ACCOUNTKIT_JWT_ISSUER`。
+- `ACCOUNTSVC_SERVICE_TOKEN_ISSUER`：绝对 HTTPS URL，规则同 `adminauth.Config.Validate`；可以等于 `ACCOUNTSVC_ADMIN_ISSUER`；SHALL 不等于 `ACCOUNTSVC_JWT_ISSUER`。
 - `ACCOUNTSVC_SERVICE_TOKEN_AUDIENCE`：非空、无首尾空白；SHALL 不等于：
-  - `ACCOUNTKIT_JWT_AUDIENCE`（消费者）；
+  - `ACCOUNTSVC_JWT_AUDIENCE`（消费者）；
   - `ACCOUNTSVC_ADMIN_AUDIENCE`（管理员启用时）；
   - 任一第三方应用/客户端 ID：微信与小程序 AppID、Apple Bundle ID、Google Client ID、Facebook App ID、QQ、微博、支付宝 AppID、OIDC 提供方 client ID（比现有管理员检查更全，管理员检查本次不改）；
   - 任一允许的 `azp`——否则该客户端自身的 ID token（`aud`=`azp`=客户端 ID）可冒充访问令牌。

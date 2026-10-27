@@ -7,8 +7,8 @@
 
 ## 2. 部署与文档
 
-- [ ] 2.1 `deploy/accountsvc/compose.yaml`、`.env.example` 改名。验证：`grep ACCOUNTKIT_ deploy/` 无结果
-- [ ] 2.2 `docs/accountsvc.md`、`docs/alipay-sign-in.md`、`docs/qq-sign-in.md`、`docs/weibo-sign-in.md` 中 accountsvc 变量改名，库示例前缀保持；`docs/compatibility.md` 增加迁移小节；`add-service-bearer-auth` 设计中的消费者 issuer/audience 变量名同步。验证：人工核对，`grep -rn ACCOUNTKIT_` 剩余结果均为库/示例/测试基础设施用途
+- [x] 2.1 `deploy/accountsvc/compose.yaml`、`.env.example` 改名。验证：`grep ACCOUNTKIT_ deploy/` 无结果
+- [x] 2.2 `docs/accountsvc.md`、`docs/alipay-sign-in.md`、`docs/qq-sign-in.md`、`docs/weibo-sign-in.md` 中 accountsvc 变量改名，库示例前缀保持；`docs/compatibility.md` 增加迁移小节；`add-service-bearer-auth` 设计中的消费者 issuer/audience 变量名同步。验证：人工核对，`grep -rn ACCOUNTKIT_` 剩余结果均为库/示例/测试基础设施用途
 
 ## 3. 验收
 

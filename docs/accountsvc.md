@@ -19,7 +19,7 @@ v0.4.0 的0001包含完整会话上下文；部署须按[迁移手册](migration
 
 服务提供可选 SMTP 邮件验证码与可选阿里云短信验证码；显式身份策略启用 EMAIL 时要求 SMTP，禁用 EMAIL 时不解析或要求 SMTP；显式启用 PHONE 时要求配置短信服务商（见[短信服务商](#短信服务商)）。未设置新策略保留原 SMTP 装配，短信显式禁用（即使配置了短信服务商也不自动启用 PHONE）；禁用渠道请求返回 400 `CHANNEL_NOT_ENABLED`，不生成验证码、不扣发送额度。库宿主原有短信/邮件发送器继续可用。
 
-服务默认使用库管理的本地有界异步审计及本地管理查询，`Auth.Start/Close` 管理 worker，服务管理连接。`ACCOUNTKIT_AUDIT_SOURCE` / `ACCOUNTKIT_AUDIT_NAMESPACE` 可显式设置，默认分别为 `accountkit/<schema>` / `accountkit/<schema>/resources`；同库共享审计时保持实例范围稳定。服务未内置远端审计适配器或任意业务审计 HTTP 写入接口。嵌入宿主的读写接管与仅写入模式见 [examples/audit](../examples/audit/main.go) 和[库装配说明](../README.md#宿主审计装配与清理责任)。
+服务默认使用库管理的本地有界异步审计及本地管理查询，`Auth.Start/Close` 管理 worker，服务管理连接。`ACCOUNTSVC_AUDIT_SOURCE` / `ACCOUNTSVC_AUDIT_NAMESPACE` 可显式设置，默认分别为 `accountkit/<schema>` / `accountkit/<schema>/resources`；同库共享审计时保持实例范围稳定。服务未内置远端审计适配器或任意业务审计 HTTP 写入接口。嵌入宿主的读写接管与仅写入模式见 [examples/audit](../examples/audit/main.go) 和[库装配说明](../README.md#宿主审计装配与清理责任)。
 
 当前审计使用UUIDv7标准字符串，管理HTTP仍返回认证投影；result未知时为null。旧审计page_token返回400，客户端清除后重新翻页。已发布v0.3.0和v0.4.0均安装为version=1，但v0.4.0的0001额外包含简化后的完整会话上下文，不能根据版本号直接接管旧库。旧identity_flow、旧十七列审计、双表并存、缺少会话结构的v0.3.0 v1、前一`b414fef`双快照v1和撤回v2均拒绝；重复migrate不自动改名、转换或补表。新部署使用经人工核验的新空资源，保留数据需求另行制定迁移方案，见[迁移手册](migrations.md#会话认证依据初始整合)。外部清理须有持久化流程和完成核验，`USER_PURGED`不能独立证明清理完成；切换后旧本地副本仍受保留和匿名化责任约束，详见[审计迁移说明](compatibility.md#通用审计公开接口与协议迁移)。
 
@@ -52,7 +52,7 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 
 ## 身份策略与登录补全
 
-服务读取 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS` 和 `ACCOUNTKIT_REQUIRED_IDENTITY_KINDS`。省略 E 沿用原装配，省略 R 为 PHONE/EMAIL any-of；非空 R 只能包含 PHONE/EMAIL 且为 E 子集，`[]` 显式不限定类型。仅邮件可设 E=EMAIL、R=EMAIL；纯微信可设 E=WECHAT、R=[] 并配置微信应用，无需 SMTP。仅小程序部署可配置 `ACCOUNTKIT_WECHAT_MINI_PROGRAM_APPS=appid:secret`，OAuth 应用使用 `ACCOUNTKIT_WECHAT_APPS`，两组不能重复 AppID。全局 `ACCOUNTKIT_WECHAT_SUBJECT_MODE` 缺省为 `UNIONID`，显式只接受 `UNIONID` / `OPENID`，空值非法；管理员 audience 不能等于任一组的 AppID。客户端统一提交 `{"kind":"WECHAT","credential":{"app_id":"wx…","code":"…"}}`。小程序 code 来自小程序登录，OAuth code 来自对应授权流程；接口由服务端应用分组决定。subject 使用 `unionid:<unionid>` 或 `openid:<appid>:<openid>`；与历史裸 UnionID 不兼容，不自动转换旧数据或合并账号，也无旧数据迁移工具。模式应固定，切换模式或分组可能产生不同身份并使已有 pending 失效，所有副本须一致。配置的 OIDC 类型同理：在 `ACCOUNTKIT_OIDC_PROVIDERS` 列出类型名，并为每个类型设置 `ACCOUNTKIT_OIDC_<KIND>_ISSUER`、`_JWKS_URL`、`_CLIENT_IDS`（可选 `_NONCE_TTL`、`_NAME_CLAIMS`、`_PICTURE_CLAIMS`，后两者设为空表示不读取）；缺失或非法时启动失败并指出具体变量名，不输出配置值。显式 E 中未配置的非内置类型指向 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS`。未设置任何 OIDC 变量时 migrate 不受影响；已列出类型但配置不完整或非法时，migrate 与 serve 同样失败并指出变量名。类型名本身由 OIDC 配置定义，因此引用未定义类型的静态策略在 migrate 中同样无效。未在 `ACCOUNTKIT_OIDC_PROVIDERS` 列出的类型，其 `ACCOUNTKIT_OIDC_<KIND>_*` 变量被忽略，列表拼写错误会使该提供方保持关闭。显式启用 PHONE 时须配置短信服务商，否则启动失败并指出 `ACCOUNTSVC_SMS_PROVIDER`。配置在重启后生效，所有同实例副本须一致。
+服务读取 `ACCOUNTSVC_ENABLED_IDENTITY_KINDS` 和 `ACCOUNTSVC_REQUIRED_IDENTITY_KINDS`。省略 E 沿用原装配，省略 R 为 PHONE/EMAIL any-of；非空 R 只能包含 PHONE/EMAIL 且为 E 子集，`[]` 显式不限定类型。仅邮件可设 E=EMAIL、R=EMAIL；纯微信可设 E=WECHAT、R=[] 并配置微信应用，无需 SMTP。仅小程序部署可配置 `ACCOUNTSVC_WECHAT_MINI_PROGRAM_APPS=appid:secret`，OAuth 应用使用 `ACCOUNTSVC_WECHAT_APPS`，两组不能重复 AppID。全局 `ACCOUNTSVC_WECHAT_SUBJECT_MODE` 缺省为 `UNIONID`，显式只接受 `UNIONID` / `OPENID`，空值非法；管理员 audience 不能等于任一组的 AppID。客户端统一提交 `{"kind":"WECHAT","credential":{"app_id":"wx…","code":"…"}}`。小程序 code 来自小程序登录，OAuth code 来自对应授权流程；接口由服务端应用分组决定。subject 使用 `unionid:<unionid>` 或 `openid:<appid>:<openid>`；与历史裸 UnionID 不兼容，不自动转换旧数据或合并账号，也无旧数据迁移工具。模式应固定，切换模式或分组可能产生不同身份并使已有 pending 失效，所有副本须一致。配置的 OIDC 类型同理：在 `ACCOUNTSVC_OIDC_PROVIDERS` 列出类型名，并为每个类型设置 `ACCOUNTSVC_OIDC_<KIND>_ISSUER`、`_JWKS_URL`、`_CLIENT_IDS`（可选 `_NONCE_TTL`、`_NAME_CLAIMS`、`_PICTURE_CLAIMS`，后两者设为空表示不读取）；缺失或非法时启动失败并指出具体变量名，不输出配置值。显式 E 中未配置的非内置类型指向 `ACCOUNTSVC_ENABLED_IDENTITY_KINDS`。未设置任何 OIDC 变量时 migrate 不受影响；已列出类型但配置不完整或非法时，migrate 与 serve 同样失败并指出变量名。类型名本身由 OIDC 配置定义，因此引用未定义类型的静态策略在 migrate 中同样无效。未在 `ACCOUNTSVC_OIDC_PROVIDERS` 列出的类型，其 `ACCOUNTSVC_OIDC_<KIND>_*` 变量被忽略，列表拼写错误会使该提供方保持关闭。显式启用 PHONE 时须配置短信服务商，否则启动失败并指出 `ACCOUNTSVC_SMS_PROVIDER`。配置在重启后生效，所有同实例副本须一致。
 
 消费者沿用 `/v1/users`，管理面沿用 `/admin/v1/users`；资源 name 使用 users 及其子资源。此前未发布的 accounts 路径返回 404，不注册别名或重定向。未知第三方身份不满足 R 时返回 pending，尚不建号。客户端调用 `/v1/users:sendSignInCompletionCode` 和 `/v1/users:completeSignIn`，只用 `sign_in_completion_token` 和 PHONE/EMAIL 轮次；验证后关联已有活动账号或注册，详见 [库协议](../README.md#身份策略与登录补全)及[协议升级说明](compatibility.md#身份策略与登录补全协议升级)。
 
@@ -60,21 +60,21 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 
 ## 配置
 
-库配置按 [README](../README.md) 的变量表使用 `ACCOUNTKIT_` 前缀。例如 `ACCOUNTKIT_AUTH_SCHEMA`、`ACCOUNTKIT_AUTH_KEY_PREFIX`、`ACCOUNTKIT_JWT_KEYS`、`ACCOUNTKIT_JWT_ISSUER`。当前版本的 `ACCOUNTKIT_AUTH_SCHEMA` 未设置或为空时默认 `account`，Compose 也显式使用 `account`；合法的显式 schema 仍按配置使用。已有宿主的环境变量契约不变。`ACCOUNTKIT_PROVIDER_PROFILE_BACKFILL`（默认 `true`）控制已有账号在第三方登录、绑定或补全关联时是否补填空的显示名与头像；非法值使 `serve` 与 `migrate` 启动失败并指出该变量名，不回显取值。
+服务的全部配置只使用 `ACCOUNTSVC_` 前缀：库配置项沿用 [README](../README.md) 变量表中的名称，只是前缀为 `ACCOUNTSVC_`；服务配置项名称与库配置项不重叠。环境中出现任何非空的 `ACCOUNTKIT_` 变量时，serve 与 migrate 都会启动失败并指出旧名与对应新名（不回显值），迁移见[兼容指南](compatibility.md#accountsvc-配置前缀统一)。例如 `ACCOUNTSVC_AUTH_SCHEMA`、`ACCOUNTSVC_AUTH_KEY_PREFIX`、`ACCOUNTSVC_JWT_KEYS`、`ACCOUNTSVC_JWT_ISSUER`。当前版本的 `ACCOUNTSVC_AUTH_SCHEMA` 未设置或为空时默认 `account`，Compose 也显式使用 `account`；合法的显式 schema 仍按配置使用。已有宿主的环境变量契约不变。`ACCOUNTSVC_PROVIDER_PROFILE_BACKFILL`（默认 `true`）控制已有账号在第三方登录、绑定或补全关联时是否补填空的显示名与头像；非法值使 `serve` 与 `migrate` 启动失败并指出该变量名，不回显取值。
 
-Facebook 登录使用 `ACCOUNTKIT_FACEBOOK_APP_ID`、`ACCOUNTKIT_FACEBOOK_APP_SECRET`，可选 `ACCOUNTKIT_FACEBOOK_GRAPH_API_VERSION`（默认 `v26.0`）、`ACCOUNTKIT_FACEBOOK_NONCE_TTL`（默认 `10m`），以及仅供测试或代理部署的 `ACCOUNTKIT_FACEBOOK_GRAPH_API_BASE_URL`、`ACCOUNTKIT_FACEBOOK_JWKS_URL`。App ID 为空表示未启用，非空时 App Secret 必填；App Secret 只通过环境或密钥注入，不写入镜像、Compose 文件或日志。accountsvc 不提供 Facebook 数据删除回调路由：部署方须在 Meta 后台配置数据删除说明页，或另行用嵌入式库的 `HandleFacebookDataDeletion` 实现回调，见 [Go 集成指南](go-integration.md#facebook-数据删除回调)。
+Facebook 登录使用 `ACCOUNTSVC_FACEBOOK_APP_ID`、`ACCOUNTSVC_FACEBOOK_APP_SECRET`，可选 `ACCOUNTSVC_FACEBOOK_GRAPH_API_VERSION`（默认 `v26.0`）、`ACCOUNTSVC_FACEBOOK_NONCE_TTL`（默认 `10m`），以及仅供测试或代理部署的 `ACCOUNTSVC_FACEBOOK_GRAPH_API_BASE_URL`、`ACCOUNTSVC_FACEBOOK_JWKS_URL`。App ID 为空表示未启用，非空时 App Secret 必填；App Secret 只通过环境或密钥注入，不写入镜像、Compose 文件或日志。accountsvc 不提供 Facebook 数据删除回调路由：部署方须在 Meta 后台配置数据删除说明页，或另行用嵌入式库的 `HandleFacebookDataDeletion` 实现回调，见 [Go 集成指南](go-integration.md#facebook-数据删除回调)。
 
-支付宝 App 极简登录使用 `ACCOUNTKIT_ALIPAY_APP_IDS`（逗号分隔的唯一 16 位数字 AppID），每个应用分别提供 `ACCOUNTKIT_ALIPAY_<APPID>_PRIVATE_KEY` 应用私钥和 `ACCOUNTKIT_ALIPAY_<APPID>_PUBLIC_KEY` 支付宝公钥的真实多行 PEM。至少 2048 位 RSA，只支持普通公钥，不能传文件路径或字面 `\n`。`ACCOUNTKIT_ALIPAY_SUBJECT_MODE` 未设置时 UNIONID，显式仅接受 UNIONID/OPENID；`ACCOUNTKIT_ALIPAY_GATEWAY_URL` 默认生产网关。serve 缺应用或密钥会在监听前指出具体变量名，不输出内容。migrate 无需配置支付宝、不访问上游，但已配置的非法材料仍拒绝。
+支付宝 App 极简登录使用 `ACCOUNTSVC_ALIPAY_APP_IDS`（逗号分隔的唯一 16 位数字 AppID），每个应用分别提供 `ACCOUNTSVC_ALIPAY_<APPID>_PRIVATE_KEY` 应用私钥和 `ACCOUNTSVC_ALIPAY_<APPID>_PUBLIC_KEY` 支付宝公钥的真实多行 PEM。至少 2048 位 RSA，只支持普通公钥，不能传文件路径或字面 `\n`。`ACCOUNTSVC_ALIPAY_SUBJECT_MODE` 未设置时 UNIONID，显式仅接受 UNIONID/OPENID；`ACCOUNTSVC_ALIPAY_GATEWAY_URL` 默认生产网关。serve 缺应用或密钥会在监听前指出具体变量名，不输出内容。migrate 无需配置支付宝、不访问上游，但已配置的非法材料仍拒绝。
 
-纯支付宝部署设 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS=ALIPAY`、`ACCOUNTKIT_REQUIRED_IDENTITY_KINDS=[]`，无需 SMTP；默认 Required 仍需手机/邮箱补全。客户端完成极简 SDK 的 auth_user 与一次性 state 核对后提交 `POST /v1/users:signInWithIdp` 的 `{"kind":"ALIPAY","credential":{"app_id":"2026000000000001","code":"synthetic-code"}}`，本服务无 authInfo 或回调端点。默认 UNIONID 的实际跨 App 共享由宿主核对真实应用分组；OPENID 按 AppID 隔离，不自动迁移。配置指纹改变会拒绝旧 pending，所有副本须一致。资料降级及后续成功登录空字段补填、Flutter 桥接与宿主上线前真机清单见[支付宝接入指南](alipay-sign-in.md)。本地 Compose 默认 EMAIL，须用 override 或实际部署环境显式传入上述变量并覆盖 E/R，单改 `.env` 不会自动传递任意变量。
+纯支付宝部署设 `ACCOUNTSVC_ENABLED_IDENTITY_KINDS=ALIPAY`、`ACCOUNTSVC_REQUIRED_IDENTITY_KINDS=[]`，无需 SMTP；默认 Required 仍需手机/邮箱补全。客户端完成极简 SDK 的 auth_user 与一次性 state 核对后提交 `POST /v1/users:signInWithIdp` 的 `{"kind":"ALIPAY","credential":{"app_id":"2026000000000001","code":"synthetic-code"}}`，本服务无 authInfo 或回调端点。默认 UNIONID 的实际跨 App 共享由宿主核对真实应用分组；OPENID 按 AppID 隔离，不自动迁移。配置指纹改变会拒绝旧 pending，所有副本须一致。资料降级及后续成功登录空字段补填、Flutter 桥接与宿主上线前真机清单见[支付宝接入指南](alipay-sign-in.md)。本地 Compose 默认 EMAIL，须用 override 或实际部署环境显式传入上述变量并覆盖 E/R，单改 `.env` 不会自动传递任意变量。
 
-QQ App SDK 登录使用 `ACCOUNTKIT_QQ_APP_IDS`（逗号分隔的唯一 1–20 位数字 AppID）、`ACCOUNTKIT_QQ_SUBJECT_MODE`（默认 `UNIONID`）和测试用 `ACCOUNTKIT_QQ_API_BASE_URL`；不需要 AppKey。显式 Enabled 含 QQ 却未配置应用时启动失败并指出 `ACCOUNTKIT_QQ_APP_IDS`，非法值只报告变量名。
+QQ App SDK 登录使用 `ACCOUNTSVC_QQ_APP_IDS`（逗号分隔的唯一 1–20 位数字 AppID）、`ACCOUNTSVC_QQ_SUBJECT_MODE`（默认 `UNIONID`）和测试用 `ACCOUNTSVC_QQ_API_BASE_URL`；不需要 AppKey。显式 Enabled 含 QQ 却未配置应用时启动失败并指出 `ACCOUNTSVC_QQ_APP_IDS`，非法值只报告变量名。
 
-纯 QQ 部署设 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS=QQ`、`ACCOUNTKIT_REQUIRED_IDENTITY_KINDS=[]`，无需 SMTP；默认 Required 仍要求手机号或邮箱补全。migrate 不需要 QQ 配置，但已提供的非法 QQ 配置会被拒绝。
+纯 QQ 部署设 `ACCOUNTSVC_ENABLED_IDENTITY_KINDS=QQ`、`ACCOUNTSVC_REQUIRED_IDENTITY_KINDS=[]`，无需 SMTP；默认 Required 仍要求手机号或邮箱补全。migrate 不需要 QQ 配置，但已提供的非法 QQ 配置会被拒绝。
 
-微博 App SDK 登录使用 `ACCOUNTKIT_WEIBO_APP_IDS`（逗号分隔的唯一 1–20 位数字微博 AppKey）和测试用 `ACCOUNTKIT_WEIBO_API_BASE_URL`；不需要 AppSecret，也没有标识模式变量。显式 Enabled 含 WEIBO 却未配置应用时启动失败并指出 `ACCOUNTKIT_WEIBO_APP_IDS`，非法值只报告变量名。服务不提供授权回调或取消授权通知路由。
+微博 App SDK 登录使用 `ACCOUNTSVC_WEIBO_APP_IDS`（逗号分隔的唯一 1–20 位数字微博 AppKey）和测试用 `ACCOUNTSVC_WEIBO_API_BASE_URL`；不需要 AppSecret，也没有标识模式变量。显式 Enabled 含 WEIBO 却未配置应用时启动失败并指出 `ACCOUNTSVC_WEIBO_APP_IDS`，非法值只报告变量名。服务不提供授权回调或取消授权通知路由。
 
-纯微博部署设 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS=WEIBO`、`ACCOUNTKIT_REQUIRED_IDENTITY_KINDS=[]`，无需 SMTP；默认 Required 仍要求手机号或邮箱补全。migrate 不需要微博配置，但已提供的非法微博配置会被拒绝。
+纯微博部署设 `ACCOUNTSVC_ENABLED_IDENTITY_KINDS=WEIBO`、`ACCOUNTSVC_REQUIRED_IDENTITY_KINDS=[]`，无需 SMTP；默认 Required 仍要求手机号或邮箱补全。migrate 不需要微博配置，但已提供的非法微博配置会被拒绝。
 
 以下名称均加 `ACCOUNTSVC_` 前缀：
 
@@ -104,7 +104,7 @@ QQ App SDK 登录使用 `ACCOUNTKIT_QQ_APP_IDS`（逗号分隔的唯一 1–20 �
 | `ADMIN_ISSUER` / `ADMIN_AUDIENCE` | 启用时必填；issuer 是 HTTPS URL，audience 为管理员 API 专用标识 |
 | `ADMIN_ROLES_CLAIM` / `ADMIN_USERNAME_CLAIM` | /roles / /preferred_username，JSON Pointer |
 
-身份摘要、身份加密和服务调用秘密分别生成独立随机值，例如 `openssl rand -base64 32`，不复用。消费者 JWT 签名密钥是 ES256（P-256）私钥，`ACCOUNTKIT_JWT_KEYS` 的值为 PKCS#8 DER 的 base64：
+身份摘要、身份加密和服务调用秘密分别生成独立随机值，例如 `openssl rand -base64 32`，不复用。消费者 JWT 签名密钥是 ES256（P-256）私钥，`ACCOUNTSVC_JWT_KEYS` 的值为 PKCS#8 DER 的 base64：
 
 ```bash
 openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 | openssl pkcs8 -topk8 -nocrypt -outform DER | base64 -w0
@@ -142,13 +142,13 @@ openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 | openssl pkcs8 -
 | `SMS_ALIYUN_TEMPLATE_SIGN_IN` / `_BIND` / `_REAUTH` / `_SIGN_IN_COMPLETE` | 四个用途的模板 code，模板变量固定为 `${code}`；允许共用同一模板，但建议补全用途使用可区分的文案 |
 | `SMS_ALIYUN_ENDPOINT` | 可选，默认 `https://dysmsapi.aliyuncs.com/`；仅供测试或代理部署，production 只接受 HTTPS |
 
-只设置 `SMS_ALIYUN_*` 而未设置 `SMS_PROVIDER` 会被拒绝，以发现拼写错误。配置服务商后还须在 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS` 中显式加入 PHONE 才会发送短信。
+只设置 `SMS_ALIYUN_*` 而未设置 `SMS_PROVIDER` 会被拒绝，以发现拼写错误。配置服务商后还须在 `ACCOUNTSVC_ENABLED_IDENTITY_KINDS` 中显式加入 PHONE 才会发送短信。
 
 首版**只发送中国大陆手机号**（`+86` 后 1 开头的 11 位号码）：其他号码在占用验证码轮次、冷却与额度之前返回 400 `TARGET_NOT_SUPPORTED`，不调用服务商。将来的国际短信会使用独立的签名与模板变量。只有服务商返回 `Code=OK` 才算发送成功；频控（如 `isv.BUSINESS_LIMIT_CONTROL`）、其他业务错误、网络错误与超时（默认 10 秒）一律按发送失败返回 503，已占额度与冷却不退还，不自动重发，也不映射为 429。发送失败以 Warn 记录阶段、HTTP 状态、服务商错误码与 RequestId（含签名或 AccessKey 错误等网关错误），便于区分频控、余额、模板与凭据问题；日志不含手机号、验证码、Secret 或服务商消息原文。设置了 `SMS_PROVIDER` 时，拼写错误的 `SMS_ALIYUN_*` 变量同样会被拒绝。真实发送需部署方用真实凭据与已审核模板验收。
 
 ## 身份密钥与验证码轮换
 
-服务使用库的 [密钥轮换规则](../README.md#密钥轮换)：保持旧 active 时先升级全部进程，再向所有进程分发相同完整的 `ACCOUNTKIT_SUBJECT_HMAC_KEYS`，确认验证码策略一致后，滚动修改 `ACCOUNTKIT_SUBJECT_HMAC_ACTIVE_KEY` 并重启。配置在进程启动时读取，不新增轮换命令、端点或热加载；实例 schema、Redis 前缀和既有策略保持一致。
+服务使用库的 [密钥轮换规则](../README.md#密钥轮换)：保持旧 active 时先升级全部进程，再向所有进程分发相同完整的 `ACCOUNTSVC_SUBJECT_HMAC_KEYS`，确认验证码策略一致后，滚动修改 `ACCOUNTSVC_SUBJECT_HMAC_ACTIVE_KEY` 并重启。配置在进程启动时读取，不新增轮换命令、端点或热加载；实例 schema、Redis 前缀和既有策略保持一致。
 
 满足此前提时，不同 active 进程和重启后的服务可消费旧码，共用目标冷却及累计 UTC 日额度；IP 额度原本独立于 HMAC。旧码不会延长寿命或重置错误次数，历史多份冲突码返回原 `CODE_EXPIRED` 并作废，重新发码仍受原冷却和额度约束。
 
@@ -209,7 +209,7 @@ healthz 只表示进程存活。readyz 要求启动完成、未停机且 Postgre
 
 哪些接口属于关键接口由业务服务认定并写入其接入说明，例如支付、资金、权限或安全设置变更。两级都由业务服务继续校验 scope、必要的近期认证（`auth_time`）及资源所属；`user:bind`、`user:undelete` 不能访问普通业务。
 
-本地验签必须全部满足：只接受 `alg=ES256` 与 `typ=at+jwt`；按 header `kid` 从 JWKS 选公钥；`iss`、`aud` 与服务配置的 `ACCOUNTKIT_JWT_ISSUER`、`ACCOUNTKIT_JWT_AUDIENCE` 完全相等；`exp` 必须存在，时钟偏差不超过 30 秒；`sub`、`sid` 分别为 `u_`、`s_` 资源 ID。遇到未知 `kid` 时节流刷新 JWKS（例如至多每分钟一次，失败的尝试同样计入节流，并发请求共享一次拉取，拉取期间不阻塞已缓存密钥的验签），刷新失败按依赖不可用拒绝。缓存的密钥集有最长信任期（建议与服务端 `max-age=300` 一致），过期后重新拉取；拉取持续失败时只在有限宽限期内沿用旧密钥，之后按依赖不可用拒绝，使被移除或泄露的密钥不会被无限期接受。返回空密钥集的响应视为拉取失败，不覆盖已有缓存。参考实现见 [examples/remoteauth](../examples/remoteauth) 的 `Verifier` 与 `ProtectedHandler`（`Critical` 字段区分两级）。
+本地验签必须全部满足：只接受 `alg=ES256` 与 `typ=at+jwt`；按 header `kid` 从 JWKS 选公钥；`iss`、`aud` 与服务配置的 `ACCOUNTSVC_JWT_ISSUER`、`ACCOUNTSVC_JWT_AUDIENCE` 完全相等；`exp` 必须存在，时钟偏差不超过 30 秒；`sub`、`sid` 分别为 `u_`、`s_` 资源 ID。遇到未知 `kid` 时节流刷新 JWKS（例如至多每分钟一次，失败的尝试同样计入节流，并发请求共享一次拉取，拉取期间不阻塞已缓存密钥的验签），刷新失败按依赖不可用拒绝。缓存的密钥集有最长信任期（建议与服务端 `max-age=300` 一致），过期后重新拉取；拉取持续失败时只在有限宽限期内沿用旧密钥，之后按依赖不可用拒绝，使被移除或泄露的密钥不会被无限期接受。返回空密钥集的响应视为拉取失败，不覆盖已有缓存。参考实现见 [examples/remoteauth](../examples/remoteauth) 的 `Verifier` 与 `ProtectedHandler`（`Critical` 字段区分两级）。
 
 ### 业务服务错误与配置契约
 
@@ -227,15 +227,15 @@ healthz 只表示进程存活。readyz 要求启动完成、未停机且 Postgre
 
 `message` 是给开发者的英文说明，不作为客户端分支依据；分支只依据 HTTP 状态与 `reason`。
 
-**近期认证判定**：当 `now − auth_time > REAUTH_MAX_AGE`（默认 `5m`），或 `auth_time` 缺失时，判定为需要近期认证（400 `REAUTHENTICATION_REQUIRED`）。`ACCOUNTKIT_SENSITIVE_OP_VERIFICATION=false` 只关闭这项新鲜度检查，Bearer 认证本身仍是必需的。业务服务可以对自身时钟早于 `auth_time` 的情况额外拒绝（示例实现如此），但不能放宽上述判定。
+**近期认证判定**：当 `now − auth_time > REAUTH_MAX_AGE`（默认 `5m`），或 `auth_time` 缺失时，判定为需要近期认证（400 `REAUTHENTICATION_REQUIRED`）。`ACCOUNTSVC_SENSITIVE_OP_VERIFICATION=false` 只关闭这项新鲜度检查，Bearer 认证本身仍是必需的。业务服务可以对自身时钟早于 `auth_time` 的情况额外拒绝（示例实现如此），但不能放宽上述判定。
 
 **业务服务须与 accountsvc 保持一致的配置**：
 
 | accountsvc 配置 | 业务服务用途 |
 |---|---|
-| `ACCOUNTKIT_JWT_ISSUER` / `ACCOUNTKIT_JWT_AUDIENCE` | 本地验签时精确比较 `iss`、`aud` |
-| `ACCOUNTKIT_REAUTH_MAX_AGE` / `ACCOUNTKIT_SENSITIVE_OP_VERIFICATION` | 近期认证判定 |
-| `ACCOUNTKIT_ACCESS_TOKEN_TTL` | 评估本地验签的吊销延迟上限（TTL 加 30 秒偏差） |
+| `ACCOUNTSVC_JWT_ISSUER` / `ACCOUNTSVC_JWT_AUDIENCE` | 本地验签时精确比较 `iss`、`aud` |
+| `ACCOUNTSVC_REAUTH_MAX_AGE` / `ACCOUNTSVC_SENSITIVE_OP_VERIFICATION` | 近期认证判定 |
+| `ACCOUNTSVC_ACCESS_TOKEN_TTL` | 评估本地验签的吊销延迟上限（TTL 加 30 秒偏差） |
 
 验签允许的时钟偏差固定为 **30 秒**，不可配置。scope 取值固定为 `user`、`user:bind`、`user:undelete`。
 
@@ -243,7 +243,7 @@ healthz 只表示进程存活。readyz 要求启动完成、未停机且 Postgre
 
 1. 新增版本（如 `1:<旧>,2:<新>`，active 仍为 1）并重启全部副本，确认 JWKS 已包含新版本；
 2. 等待不短于 JWKS 公共缓存期限（5 分钟）与业务服务自身缓存期限的时间；
-3. 把 `ACCOUNTKIT_JWT_ACTIVE_KEY` 切到新版本并重启全部副本；
+3. 把 `ACCOUNTSVC_JWT_ACTIVE_KEY` 切到新版本并重启全部副本；
 4. 至少再等待 `ACCESS_TOKEN_TTL` 加验签偏差；
 5. 移除旧版本并重启。
 
@@ -300,7 +300,7 @@ Authorization: Basic <PURGE_FEED_CLIENTS 中的客户端 ID 与秘密>
 - `next_page_token` **始终返回**当前位置；空列表表示已追平。业务服务在完成本页清理后持久化该游标，下次从这里续拉。接口没有确认语义，重复拉取同一位置返回相同记录，因此清理必须按 user_id **幂等**。
 - 记录在表锁下按提交顺序分配游标序号：并发清理时也不会出现“较早的记录较晚可见而被游标跳过”，按游标持续拉取不会漏读。
 - 收到 `INVALID_PAGE_TOKEN` 时（典型原因是 accountsvc 数据库从较早备份恢复或重新部署，序号回退到已保存游标之下），业务方须清空游标、从头重拉；因为清理按 user_id 幂等，重放是安全的。
-- 默认长期保留记录。`ACCOUNTKIT_PURGED_USER_RETENTION` 可设置保留期（不得短于 720h），超期记录由维护任务删除；业务服务须在保留期内完成拉取，否则可能遗漏清理。建议每 5 分钟拉取一次，并对落后超过 24 小时告警。
+- 默认长期保留记录。`ACCOUNTSVC_PURGED_USER_RETENTION` 可设置保留期（不得短于 720h），超期记录由维护任务删除；业务服务须在保留期内完成拉取，否则可能遗漏清理。建议每 5 分钟拉取一次，并对落后超过 24 小时告警。
 - 鉴权使用独立的 `ACCOUNTSVC_PURGE_FEED_CLIENTS`（HTTP Basic，格式同内省客户端，支持新旧秘密重叠轮换），内省凭据、消费者或管理员令牌均返回 401；未配置时返回 503 `PURGE_FEED_NOT_CONFIGURED`，数据库不可用时返回 503 `DEPENDENCY_UNAVAILABLE`（单次读取限时 3 秒）。响应 `Cache-Control: no-store`。
 - 该路由与内省一样是内部入口，网关不得对公网开放，见[网关接入手册](gateway-integration.md)。
 

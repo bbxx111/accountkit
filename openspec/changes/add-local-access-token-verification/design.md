@@ -60,7 +60,7 @@
 
 该方法不读 Redis：数据库已经是真相源，再读 Redis 只增加故障面，不增加信息。数据库故障时不回退到 Redis，选择 fail-closed：此时登录、刷新、撤销都已不可用，关键接口暂时返回 503 是可以接受的代价，换来的语义是 `active:true` 一定经过数据库确认。
 
-查询是新增的 sqlc 查询，只选取 `user_id`、`revoke_time`，走主键，不加锁，不开事务。观测沿用 `Authenticate` 的认证操作观测（`authenticate` 操作，吊销时记 `session_revoked` 原因）；现有观测体系没有数据库依赖组件，其他数据库查询也不单独观测，本变更不新增组件或指标名。
+查询复用已有的 sqlc 查询 `GetActiveSessionByIDAndUser`（`id = $1 AND user_id = $2 AND revoke_time IS NULL`，走主键，不加锁，不开事务，不判刷新期限），未命中即视为无效。实施时发现该查询语义与需求完全一致，因此不再新增查询，也无需重新生成 sqlc 代码（对原计划的偏离）。观测沿用 `Authenticate` 的认证操作观测（`authenticate` 操作，吊销时记 `session_revoked` 原因）；现有观测体系没有数据库依赖组件，其他数据库查询也不单独观测，本变更不新增组件或指标名。
 
 内省装配从 `auth.Users().Authenticate` 改为 `AuthenticateStrict`。handler 的协议映射不变，因为它已经把非 `ErrInvalidToken` 的错误映射为 503。
 
@@ -71,7 +71,7 @@
 嵌入式宿主的需求（来自 ai-food 的反馈）：如果宿主自行组装关键路由的认证，Bearer 解析、challenge、错误体和 scope 检查很容易与 `RequireScope` 不一致。因此 `httpapi/authn` 新增以下内容：
 
 - `StrictAuthenticator` 接口；
-- `RequireScopeStrict(a StrictAuthenticator, o Options, allowed ...string)`：与 `Bearer` 共用内部实现，区别是始终重新认证，不跳过上下文中已有的 Principal；
+- `RequireScopeStrict(a StrictAuthenticator, allowed ...string)`：与 `Bearer` 共用内部实现，区别是始终重新认证，不跳过上下文中已有的 Principal；
 - 门面方法 `Auth.RequireScopeStrict(allowed...)`。
 
 `AuthenticateStrict` 把数据库错误包装为 `user.ErrUnavailable`。现有 `Bearer` 已经把该错误映射为 503，因此 503 映射无需新增分支。

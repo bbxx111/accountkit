@@ -361,6 +361,12 @@ func (a *Auth) RequireScope(allowed ...string) func(http.Handler) http.Handler {
 	return authn.RequireScope(a.endUser.AuthnOptions(), allowed...)
 }
 
+// RequireScopeStrict 返回关键路由用的“严格认证 + scope 检查”中间件：401/403 行为与 RequireScope 一致，
+// 但吊销以已提交的数据库会话为准（不读 Redis），数据库不可用返回 503。外层已有 RequireScope 时仍重新认证。
+func (a *Auth) RequireScopeStrict(allowed ...string) func(http.Handler) http.Handler {
+	return authn.RequireScopeStrict(a.users, allowed...)
+}
+
 // RequireRecentAuth 返回近期认证中间件（Config.ReauthMaxAge / SensitiveOpVerification）。
 func (a *Auth) RequireRecentAuth() func(http.Handler) http.Handler {
 	return a.endUser.RequireRecentAuth()

@@ -1,29 +1,28 @@
 ## 1. 签名与 JWKS（tokens）
 
-- [ ] 1.1 改造 `tokens.Signer`，只支持 ES256（P-256）。
+- [x] 1.1 改造 `tokens.Signer`，只支持 ES256（P-256）。
   - 签发：header 写入 `alg=ES256`、`typ=at+jwt`、`kid=<active 版本>`，claims 不变。
   - Parse：固定 `WithValidMethods(ES256)`，要求 `typ=at+jwt`，按 `kid` 选取公钥。
   - NewSigner：拒绝非 P-256 曲线和未配置的 active 版本。
   - 验证：`go test ./tokens/...`。测试须覆盖签发格式与多版本验签，并确认以下令牌均返回 `ErrInvalidToken`：HS256、用公钥作 HMAC 伪造的令牌、`none`、缺少 `typ` 或 `typ` 错误、缺少 `kid` 或 `kid` 非数字或未知、篡改的 payload、过期。
-- [ ] 1.2 在 Signer 上实现 JWKS 序列化：输出全部已配置版本的公钥，字段为 `kty=EC`、`crv=P-256`、`x`、`y`、`kid`、`alg=ES256`、`use=sig`；`x`、`y` 是定长 32 字节的 base64url 编码。
+- [x] 1.2 在 Signer 上实现 JWKS 序列化：输出全部已配置版本的公钥，字段为 `kty=EC`、`crv=P-256`、`x`、`y`、`kid`、`alg=ES256`、`use=sig`；`x`、`y` 是定长 32 字节的 base64url 编码。
   - 验证：单元测试确认输出不含 `d`，多版本按版本号排序，用 JWKS 中的公钥能验证对应版本签发的令牌。
-- [ ] 1.3 实现 `JWT_KEYS` 的解析：`版本:base64(PKCS#8 DER)` 列表，转为 `*ecdsa.PrivateKey`。
+- [x] 1.3 实现 `JWT_KEYS` 的解析：`版本:base64(PKCS#8 DER)` 列表，转为 `*ecdsa.PrivateKey`。
   - 验证：测试确认合法 P-256 密钥可以解析；HMAC 随机字节、P-384、RSA、损坏的 base64 或 DER 都会失败，且错误信息不包含密钥内容。
 
 ## 2. 配置与门面
 
-- [ ] 2.1 将 `Config.JWTKeys` 改为 `map[uint16]*ecdsa.PrivateKey`，同步更新 `Validate`、`ConfigFromEnv` 及 `internal/accountsvc` 中的配置名映射。
+- [x] 2.1 将 `Config.JWTKeys` 改为 `map[uint16]*ecdsa.PrivateKey`，同步更新 `Validate`、`ConfigFromEnv` 及 `internal/accountsvc` 中的配置名映射。
   - 验证：`config_test.go` 覆盖合法配置、active 版本缺失、非 P-256 曲线、旧 HMAC 环境变量值被拒绝，以及自定义前缀；错误信息只指出变量名。
-- [ ] 2.2 在 `Auth` 上新增 `JWKSHandler()`：JWKS 在 `New` 时生成；GET/HEAD 返回 `application/json` 和 `Cache-Control: public, max-age=300`，其他方法返回 405。
+- [x] 2.2 在 `Auth` 上新增 `JWKSHandler()`：JWKS 在 `New` 时生成；GET/HEAD 返回 `application/json` 和 `Cache-Control: public, max-age=300`，其他方法返回 405。
   - 验证：handler 测试确认没有数据库或 Redis 依赖（故障时仍返回 200），且响应内容与 1.2 的输出一致。
-- [ ] 2.3 新增共享的 ES256 测试密钥 helper，把所有使用 HS256 测试密钥的测试和夹具改为 ES256，包括根包各 config/isolation/compatibility 测试、`user/` 服务测试和 `internal/accountsvc` 夹具。
+- [x] 2.3 新增共享的 ES256 测试密钥 helper，把所有使用 HS256 测试密钥的测试和夹具改为 ES256，包括根包各 config/isolation/compatibility 测试、`user/` 服务测试和 `internal/accountsvc` 夹具。
   - 验证：`GOWORK=off go test -count=1 ./...` 通过，`rg "JWTKeys.*\[\]byte"` 无残留。
 
 ## 3. 严格认证（user）
 
-- [ ] 3.1 在 `user/query.sql` 新增按主键读取会话 `user_id`、`revoke_time` 的查询，然后执行 `sqlc generate`。
-  - 验证：`bash scripts/check-generated.sh` 通过，生成差异只包含这一个查询。
-- [ ] 3.2 实现导出方法 `user.Service.AuthenticateStrict`。
+- [x] 3.1 会话吊销状态查询：复用已有的 `GetActiveSessionByIDAndUser`（按 id、user_id 过滤 `revoke_time IS NULL`，不加锁、不判刷新期限），不新增查询，`user/db/` 无变化；偏离原计划已记录在 design.md D5。
+- [x] 3.2 实现导出方法 `user.Service.AuthenticateStrict`。
   - 与 `Authenticate` 共用 JWT 解析和 ID 格式校验。
   - 会话未命中、`user_id ≠ sub` 或已吊销时返回 `ErrInvalidToken`。
   - 数据库错误包装后返回，不得是 `ErrInvalidToken`；不读取 Redis。
@@ -37,7 +36,7 @@
   - 冻结、注销、换绑、revokeOthers 提交后立即无效。
   - 数据库不可用时返回依赖错误。
   - 测试还须确认不读写来源、客户端描述或会话字段。
-- [ ] 3.4 在 `httpapi/authn` 中新增 `StrictAuthenticator` 和 `RequireScopeStrict`，在门面新增 `Auth.RequireScopeStrict`。该中间件始终执行严格认证，不跳过上下文中已有的 Principal。
+- [x] 3.4 在 `httpapi/authn` 中新增 `StrictAuthenticator` 和 `RequireScopeStrict`，在门面新增 `Auth.RequireScopeStrict`。该中间件始终执行严格认证，不跳过上下文中已有的 Principal。
   - 验证：中间件测试覆盖 401 challenge、403 scope、`ErrUnavailable` 返回 503 且不调用下游、外层 RequireScope 注入后内层仍执行严格认证、与 RequireRecentAuth 串联。
 - [ ] 3.5 回归 `Authenticate` 与消费者中间件。
   - 验证：既有 Redis fail-open 测试保持不变且通过，普通认证路径不新增数据库查询。

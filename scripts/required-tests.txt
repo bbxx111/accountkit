@@ -50,6 +50,7 @@ github.com/bbxx111/accountkit/httpapi/authn/TestBearerUnavailableIs503AndSkipsWh
 github.com/bbxx111/accountkit/httpapi/authn/TestPrincipalFromEmpty
 github.com/bbxx111/accountkit/httpapi/authn/TestRequireRecentAuth
 github.com/bbxx111/accountkit/httpapi/authn/TestRequireScope
+github.com/bbxx111/accountkit/httpapi/authn/TestRequireScopeStrict
 github.com/bbxx111/accountkit/httpapi/enduser/TestBindIdentity
 github.com/bbxx111/accountkit/httpapi/enduser/TestDocumentedCredentialExamplesDecode
 github.com/bbxx111/accountkit/httpapi/enduser/TestCredentialProvider
@@ -174,6 +175,10 @@ github.com/bbxx111/accountkit/tokens/TestNewSignerValidates
 github.com/bbxx111/accountkit/tokens/TestParseAcceptsOldKeyVersionDuringOverlap
 github.com/bbxx111/accountkit/tokens/TestParseRejects
 github.com/bbxx111/accountkit/tokens/TestSignParseRoundTrip
+github.com/bbxx111/accountkit/tokens/TestParseKeyList
+github.com/bbxx111/accountkit/tokens/TestParseKeyListRejectsWithoutEchoingInput
+github.com/bbxx111/accountkit/tokens/TestJWKS
+github.com/bbxx111/accountkit/tokens/TestJWKSFixedWidthCoordinates
 github.com/bbxx111/accountkit/user/code/TestCodeExpiresWithTTL
 github.com/bbxx111/accountkit/user/code/TestIssueConcurrentBurstOnlyOneWins
 github.com/bbxx111/accountkit/user/code/TestIssueCooldownAndReissueReplacesCode
@@ -917,6 +922,7 @@ github.com/bbxx111/accountkit/TestWeiboProviderAssembly
 github.com/bbxx111/accountkit/TestWeiboHTTPLoginContract
 github.com/bbxx111/accountkit/TestWeiboHTTPMultiAppIdentityContract
 github.com/bbxx111/accountkit/TestWeiboHTTPProfileBackfillDisabled
+github.com/bbxx111/accountkit/TestJWKSHandler
 github.com/bbxx111/accountkit/enum/TestIdentityWeiboIsBuiltinThirdParty
 github.com/bbxx111/accountkit/user/idp/TestWeiboCredentialRejectedBeforeNetwork
 github.com/bbxx111/accountkit/user/idp/TestWeiboVerify
@@ -949,4 +955,6 @@ github.com/bbxx111/accountkit/user/TestProviderProfileBackfillOnBinding
 github.com/bbxx111/accountkit/user/TestProviderProfileBackfillOnCompletionLink
 github.com/bbxx111/accountkit/user/TestProviderProfileBackfillOnSignIn
 github.com/bbxx111/accountkit/user/TestProviderProfileBackfillRollbackAfterSessionFailure
+github.com/bbxx111/accountkit/user/TestAuthenticateStrictWithoutDatabase
+github.com/bbxx111/accountkit/user/TestAuthenticateStrictDatabaseState
 github.com/bbxx111/accountkit/user/idp/TestWeiboHugeExpireDoesNotOverflow

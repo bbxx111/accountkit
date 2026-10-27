@@ -87,8 +87,8 @@ HTTP SHALL 保持既有九个可选描述头，合法显式值优先、缺失由
 - **THEN** 返回原 pair，不再次更新快照或时间，不延长会话期限
 
 #### Scenario: 普通业务鉴权
-- **WHEN** 宿主调用 Authenticate 或远程内省处理普通业务请求
-- **THEN** 沿用 JWT 与 Redis 吊销校验，不为采集客户端信息访问数据库
+- **WHEN** 宿主调用 Authenticate 或远程内省处理业务请求
+- **THEN** Authenticate 沿用 JWT 与 Redis 吊销校验，内省只读取会话吊销状态；两者都不为采集客户端信息访问数据库，也不读写客户端描述或观察时间
 
 ### Requirement: 服务端查询和数据清理
 

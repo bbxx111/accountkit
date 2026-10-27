@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/internal/accountsvc/basicclients"
+	"github.com/bbxx111/accountkit/internal/accountsvc/serviceauth"
 	"github.com/bbxx111/accountkit/user"
 )
 
@@ -22,32 +23,59 @@ const maxBody = 64 * 1024
 // database yields 503 instead of holding the request until the caller gives up.
 const lookupTimeout = 3 * time.Second
 
+// Realm is the protection space named in this interface's challenges.
+const Realm = "accountsvc-introspection"
+
 type handler struct {
-	clients      *basicclients.Matcher
+	auth         *serviceauth.Authenticator
 	authenticate func(context.Context, string) (user.Principal, error)
 }
 
-// New snapshots validated client credentials and delegates token validation to the
-// consumer service's strict authenticator, which checks the committed session row
-// (revocation is immediate, dependency failures map to 503). It never parses JWT
-// claims itself and does not query account state.
+// New accepts only HTTP Basic callers. It snapshots validated client credentials and
+// delegates token validation to the consumer service's strict authenticator, which checks
+// the committed session row (revocation is immediate, dependency failures map to 503). It
+// never parses JWT claims itself and does not query account state.
 func New(clients map[string][]string, authenticate func(context.Context, string) (user.Principal, error)) (http.Handler, error) {
-	matcher, err := basicclients.NewMatcher(clients)
-	if err != nil {
+	if !basicclients.Valid(clients) {
 		return nil, errors.New("accountsvc: ACCOUNTSVC_INTROSPECTION_CLIENTS must contain unique nonempty client IDs and lists of base64 secrets of at least 32 bytes")
+	}
+	auth, err := serviceauth.New(serviceauth.Config{Realm: Realm, Endpoint: "introspect", Basic: clients})
+	if err != nil {
+		return nil, err
+	}
+	return NewWithAuthenticator(auth, authenticate)
+}
+
+// NewWithAuthenticator accepts the callers auth allows (Basic and/or service Bearer tokens).
+func NewWithAuthenticator(auth *serviceauth.Authenticator, authenticate func(context.Context, string) (user.Principal, error)) (http.Handler, error) {
+	if auth == nil || !auth.Enabled() {
+		return nil, errors.New("accountsvc: introspection requires Basic clients or service token clients")
 	}
 	if authenticate == nil {
 		return nil, errors.New("accountsvc: introspection authenticator is required")
 	}
-	return &handler{clients: matcher, authenticate: authenticate}, nil
+	return &handler{auth: auth, authenticate: authenticate}, nil
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
-	if !h.clients.Authorized(r) {
-		w.Header().Set("WWW-Authenticate", `Basic realm="accountsvc-introspection"`)
-		oauthError(w, http.StatusUnauthorized, "invalid_client")
+	res := h.auth.Authenticate(r)
+	switch res.Outcome {
+	case serviceauth.Unauthenticated:
+		serviceauth.WriteChallenges(w, h.auth.Challenges(res))
+		code := "invalid_client"
+		if res.BearerAttempted {
+			code = "invalid_token"
+		}
+		oauthError(w, http.StatusUnauthorized, code)
+		return
+	case serviceauth.Forbidden:
+		serviceauth.WriteChallenges(w, h.auth.Challenges(res))
+		oauthError(w, http.StatusForbidden, "insufficient_scope")
+		return
+	case serviceauth.Unavailable:
+		oauthError(w, http.StatusServiceUnavailable, "temporarily_unavailable")
 		return
 	}
 	if r.Method != http.MethodPost {

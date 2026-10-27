@@ -11,8 +11,8 @@
 
 ## 3. 接口接入
 
-- [ ] 3.1 introspection 改用 serviceauth：401 `invalid_client`/`invalid_token`、403 `insufficient_scope`、503 `temporarily_unavailable`，challenge 与 no-store 按规范；仅 Basic 配置时行为与现在一致。验证：introspection 处理器测试覆盖矩阵在内省上的期望，现有测试不改通过
-- [ ] 3.2 purgefeed 改用 serviceauth：401 `INVALID_CLIENT`/`TOKEN_INVALID`、403 `CLIENT_NOT_AUTHORIZED`、503 `DEPENDENCY_UNAVAILABLE`+`Retry-After: 1`；两种都未配置才 503 `PURGE_FEED_NOT_CONFIGURED`。验证：purgefeed 处理器测试覆盖矩阵在拉取上的期望，现有测试不改通过
+- [x] 3.1 introspection 改用 serviceauth：401 `invalid_client`/`invalid_token`、403 `insufficient_scope`、503 `temporarily_unavailable`，challenge 与 no-store 按规范；仅 Basic 配置时行为与现在一致。验证：introspection 处理器测试覆盖矩阵在内省上的期望，现有测试不改通过
+- [x] 3.2 purgefeed 改用 serviceauth：401 `INVALID_CLIENT`/`TOKEN_INVALID`、403 `CLIENT_NOT_AUTHORIZED`、503 `DEPENDENCY_UNAVAILABLE`+`Retry-After: 1`；两种都未配置才 503 `PURGE_FEED_NOT_CONFIGURED`。验证：purgefeed 处理器测试覆盖矩阵在拉取上的期望，现有测试不改通过
 
 ## 4. 配置与启动
 

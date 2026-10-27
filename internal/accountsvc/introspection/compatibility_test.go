@@ -3,6 +3,7 @@ package introspection_test
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"encoding/base64"
 	"encoding/json"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/bbxx111/accountkit"
 	"github.com/bbxx111/accountkit/internal/accountsvc/introspection"
+	"github.com/bbxx111/accountkit/internal/testkeys"
 	"github.com/bbxx111/accountkit/session/revocation"
 	"github.com/bbxx111/accountkit/tokens"
 	"github.com/bbxx111/accountkit/user/sender"
@@ -33,7 +35,7 @@ func TestConsumerAuthenticationCompatibility(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr(), MaxRetries: -1})
 	t.Cleanup(func() { _ = rdb.Close() })
 	var logs bytes.Buffer
-	cfg := accountkit.Config{JWTKeys: map[uint16][]byte{1: bytes.Repeat([]byte{1}, 32)}, JWTActiveKey: 1, JWTIssuer: "consumer.example", JWTAudience: "business.example", SubjectHMACKeys: map[uint16][]byte{1: bytes.Repeat([]byte{2}, 32)}, SubjectHMACActiveKey: 1, SubjectCipherKeys: map[uint16][]byte{1: bytes.Repeat([]byte{3}, 32)}, SubjectCipherActiveKey: 1, KeyPrefix: "introspection-test:"}
+	cfg := accountkit.Config{JWTKeys: map[uint16]*ecdsa.PrivateKey{1: testkeys.JWT(1)}, JWTActiveKey: 1, JWTIssuer: "consumer.example", JWTAudience: "business.example", SubjectHMACKeys: map[uint16][]byte{1: bytes.Repeat([]byte{2}, 32)}, SubjectHMACActiveKey: 1, SubjectCipherKeys: map[uint16][]byte{1: bytes.Repeat([]byte{3}, 32)}, SubjectCipherActiveKey: 1, KeyPrefix: "introspection-test:"}
 	a, err := accountkit.New(cfg, accountkit.Deps{Pool: pool, Redis: rdb, SMSSender: sender.NewLog(nil), EmailSender: sender.NewLog(nil), Logger: slog.New(slog.NewTextHandler(&logs, nil))})
 	if err != nil {
 		t.Fatal(err)
@@ -45,9 +47,9 @@ func TestConsumerAuthenticationCompatibility(t *testing.T) {
 	}
 	now := time.Now().Truncate(time.Second)
 	claims := tokens.Claims{UserID: "u_0000000000001", SessionID: "s_0000000000001", Scope: "user:bind", AuthTime: now.Add(-time.Minute)}
-	sign := func(issuer, audience string, key byte, c tokens.Claims, issued time.Time, ttl time.Duration) string {
+	sign := func(issuer, audience string, key int, c tokens.Claims, issued time.Time, ttl time.Duration) string {
 		t.Helper()
-		s, e := tokens.NewSigner(tokens.Options{Keys: map[uint16][]byte{1: bytes.Repeat([]byte{key}, 32)}, Active: 1, Issuer: issuer, Audience: audience})
+		s, e := tokens.NewSigner(tokens.Options{Keys: map[uint16]*ecdsa.PrivateKey{1: testkeys.JWT(key)}, Active: 1, Issuer: issuer, Audience: audience})
 		if e != nil {
 			t.Fatal(e)
 		}

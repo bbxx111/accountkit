@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bbxx111/accountkit/internal/testkeys"
 	"github.com/bbxx111/accountkit/user/sender/smtp"
 )
 
@@ -35,6 +36,7 @@ func configEnvironment(t *testing.T) {
 		t.Setenv("ACCOUNTKIT_"+name+"_KEYS", "1:"+key)
 		t.Setenv("ACCOUNTKIT_"+name+"_ACTIVE_KEY", "1")
 	}
+	t.Setenv("ACCOUNTKIT_JWT_KEYS", "1:"+testkeys.JWTBase64(1))
 	t.Setenv("ACCOUNTKIT_JWT_ISSUER", "test-issuer")
 	t.Setenv("ACCOUNTKIT_JWT_AUDIENCE", "consumer")
 	t.Setenv("ACCOUNTSVC_DATABASE_URL", "postgres://user:synthetic-dsn-password@127.0.0.1:5432/test?sslmode=disable")

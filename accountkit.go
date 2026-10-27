@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -95,6 +96,7 @@ type Auth struct {
 	cipher   *pii.Cipher
 	digester *pii.Digester
 	signer   *tokens.Signer
+	jwks     []byte // 构造时生成，JWKSHandler 只读
 	runner   *maintenance.Runner
 	facebook *idp.Facebook // 未配置时为 nil；数据删除入口使用
 
@@ -205,7 +207,7 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &Auth{authAudit: authAudit, cfg: cfg, deps: deps, cipher: cipher, digester: digester, signer: signer, auditStore: auditStore, auditAsync: auditAsync}
+	a := &Auth{authAudit: authAudit, cfg: cfg, deps: deps, cipher: cipher, digester: digester, signer: signer, jwks: signer.JWKS(), auditStore: auditStore, auditAsync: auditAsync}
 	a.codes = code.NewStore(deps.Redis, cfg.KeyPrefix, digester, code.Options{
 		TTL: cfg.CodeTTL, Cooldown: cfg.CodeCooldown, MaxAttempts: cfg.CodeMaxAttempts,
 		DailyLimitPerTarget: cfg.CodeDailyLimitPerTarget, DailyLimitPerIP: cfg.CodeDailyLimitPerIP,
@@ -331,6 +333,26 @@ func (a *Auth) RecordAdminForbidden(r *http.Request, p AdminPrincipal) {
 		Type: enum.EventAdminForbidden, Actor: enum.ActorAdmin, Result: enum.ResultFailure, Reason: "ROLE_REQUIRED",
 		AdminIssuer: p.Issuer, AdminSubject: p.Subject, AdminUsername: p.Username,
 		IP: a.deps.ClientIP(r), RequestID: a.deps.RequestID(r), OccurTime: time.Now(),
+	})
+}
+
+// JWKSHandler 返回消费者 access 验签公钥集（JWK Set），宿主挂载到 /.well-known/jwks.json 等路径。
+// 只支持 GET/HEAD，内容在 New 时由配置生成，不访问数据库或 Redis；响应可公共缓存 5 分钟。
+func (a *Auth) JWKSHandler() http.Handler {
+	body := a.jwks
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=300")
+		w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		w.WriteHeader(http.StatusOK)
+		if r.Method == http.MethodGet {
+			_, _ = w.Write(body)
+		}
 	})
 }
 

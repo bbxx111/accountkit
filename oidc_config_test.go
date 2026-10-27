@@ -7,6 +7,7 @@ import (
 
 	"github.com/bbxx111/accountkit"
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/testkeys"
 )
 
 func corpOIDC() accountkit.OIDCProvider {
@@ -71,7 +72,7 @@ func TestOIDCProviderConfigValidation(t *testing.T) {
 
 func setRequiredEnv(t *testing.T) {
 	t.Helper()
-	t.Setenv("T_JWT_KEYS", "1:"+b64(k(1)))
+	t.Setenv("T_JWT_KEYS", "1:"+testkeys.JWTBase64(1))
 	t.Setenv("T_JWT_ACTIVE_KEY", "1")
 	t.Setenv("T_JWT_ISSUER", "shifang")
 	t.Setenv("T_JWT_AUDIENCE", "app")

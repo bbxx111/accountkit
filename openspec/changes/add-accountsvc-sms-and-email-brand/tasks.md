@@ -5,10 +5,10 @@
 
 ## 2. 阿里云发送器
 
-- [ ] 2.1 新建 `user/sender/aliyun`，实现 `Config`、`New`，覆盖必填项、四个用途模板、endpoint 规则与超时默认值。验证：构造测试覆盖缺项、非法 endpoint（非回环 HTTP、userinfo、查询串、fragment），并确认错误不回显 Secret；构造时无网络 I/O。
-- [ ] 2.2 实现 RPC 签名，以阿里云官方文档的签名示例作为固定向量（先核对官方原文，无法访问时暂停并请用户提供）。验证：固定向量测试通过。
-- [ ] 2.3 实现 `SendSMS`：只接受 +86 号码并去掉前缀，按用途选择模板，模板参数为 `{"code":...}`，表单 POST，不重定向、不重试，响应上限 64 KiB，并实现 `SupportsTarget`。验证：本地 HTTPS 假服务测试覆盖参数正确性、四种用途、非 +86 不发请求、调用方取消。
-- [ ] 2.4 错误分类：只有 200 且 `Code=OK` 算成功，其余（含 `isv.BUSINESS_LIMIT_CONTROL`、网络错误、超时、非 JSON、超限、3xx/5xx）返回 `sender.ErrUnavailable`，错误链只带阶段、`Code` 与 `RequestId`。验证：逐项测试，并断言错误与日志不含手机号、验证码、Secret 与 Message 原文。
+- [x] 2.1 新建 `user/sender/aliyun`，实现 `Config`、`New`，覆盖必填项、四个用途模板、endpoint 规则与超时默认值。验证：构造测试覆盖缺项、非法 endpoint（非回环 HTTP、userinfo、查询串、fragment），并确认错误不回显 Secret；构造时无网络 I/O。
+- [x] 2.2 实现 RPC 签名，以阿里云官方文档的签名示例作为固定向量（先核对官方原文，无法访问时暂停并请用户提供）。验证：固定向量测试通过。
+- [x] 2.3 实现 `SendSMS`：只接受 +86 号码并去掉前缀，按用途选择模板，模板参数为 `{"code":...}`，表单 POST，不重定向、不重试，响应上限 64 KiB，并实现 `SupportsTarget`。验证：本地 HTTPS 假服务测试覆盖参数正确性、四种用途、非 +86 不发请求、调用方取消。
+- [x] 2.4 错误分类：只有 200 且 `Code=OK` 算成功，其余（含 `isv.BUSINESS_LIMIT_CONTROL`、网络错误、超时、非 JSON、超限、3xx/5xx）返回 `sender.ErrUnavailable`，错误链只带阶段、`Code` 与 `RequestId`。验证：逐项测试，并断言错误与日志不含手机号、验证码、Secret 与 Message 原文。
 
 ## 3. accountsvc 装配
 

@@ -15,3 +15,12 @@ func TestDisabledChannelResponse(t *testing.T) {
 		t.Fatalf("got %d %s", rec.Code, reason)
 	}
 }
+
+func TestUnsupportedTargetResponse(t *testing.T) {
+	rec := httptest.NewRecorder()
+	testHandler(t).writeServiceError(rec, httptest.NewRequest("POST", "/x", nil), fmt.Errorf("wrap: %w", sender.ErrTargetNotSupported))
+	reason, _ := aipErrorInternal(t, rec)
+	if rec.Code != 400 || reason != "FAILED_PRECONDITION/TARGET_NOT_SUPPORTED" {
+		t.Fatalf("got %d %s", rec.Code, reason)
+	}
+}

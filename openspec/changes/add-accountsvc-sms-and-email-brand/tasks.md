@@ -1,7 +1,7 @@
 ## 1. 号码支持能力（库）
 
-- [ ] 1.1 新增 `sender.ErrTargetNotSupported`。在发码流程中，于 `Enabled()` 检查之后、`issueChallenge` 之前，调用可选的 `SupportsTarget(e164)`；不支持时记录审计 `CODE_SEND_REJECTED`，原因为 `TARGET_NOT_SUPPORTED`。验证：数据库测试确认登录、绑定、重新认证、补全四种发码都不产生轮次、冷却或额度变化，发送器未被调用；未实现该能力的发送器行为不变。
-- [ ] 1.2 HTTP 映射为 400 `FAILED_PRECONDITION` / `TARGET_NOT_SUPPORTED`，观测归入参数拒绝分类，不新增标签值。验证：enduser 响应测试与观测分类测试。
+- [x] 1.1 新增 `sender.ErrTargetNotSupported`。在发码流程中，于 `Enabled()` 检查之后、`issueChallenge` 之前，调用可选的 `SupportsTarget(e164)`；不支持时记录审计 `CODE_SEND_REJECTED`，原因为 `TARGET_NOT_SUPPORTED`。验证：数据库测试确认登录、绑定、重新认证、补全四种发码都不产生轮次、冷却或额度变化，发送器未被调用；未实现该能力的发送器行为不变。
+- [x] 1.2 HTTP 映射为 400 `FAILED_PRECONDITION` / `TARGET_NOT_SUPPORTED`，观测归入参数拒绝分类，不新增标签值。验证：enduser 响应测试与观测分类测试。
 
 ## 2. 阿里云发送器
 

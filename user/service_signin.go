@@ -51,6 +51,12 @@ func (s *Service) sendCodeUntil(ctx context.Context, channel enum.IdentityKind, 
 		s.record(ctx, base)
 		return CodeChallenge{}, sender.ErrDisabled
 	}
+	// 可选号码支持能力：发送器可声明只支持部分号码（如仅中国大陆），在占用额度之前拒绝。
+	if capability, ok := delivery.(interface{ SupportsTarget(string) bool }); ok && channel == enum.IdentityPhone && !capability.SupportsTarget(norm) {
+		base.Type, base.Result, base.Reason = enum.EventCodeSendRejected, enum.ResultFailure, "TARGET_NOT_SUPPORTED"
+		s.record(ctx, base)
+		return CodeChallenge{}, sender.ErrTargetNotSupported
+	}
 
 	issued, err := s.issueChallenge(ctx, channel, purpose, norm, meta.IP, binding, deadline)
 	if err != nil {

@@ -36,6 +36,18 @@ func TestCodeObservationRejectionReasons(t *testing.T) {
 			t.Fatal(r.Snapshot())
 		}
 	})
+	t.Run("unsupported target avoids dependency calls", func(t *testing.T) {
+		f, r := observedFixture(t)
+		f.deps.SMS = &regionalSMS{inner: f.sent}
+		rebuildMetricsService(t, f)
+		if _, err := f.svc.SendSignInCode(ctx, enum.IdentityPhone, foreignPhone, meta1); !errors.Is(err, sender.ErrTargetNotSupported) {
+			t.Fatal(err)
+		}
+		requireCodeSend(t, r, ob.ResultRejected, ob.ReasonInvalidArgument)
+		if len(dependencyValues(r, ob.ComponentCodeStore, ob.DependencyIssue)) != 0 || len(dependencyValues(r, ob.ComponentSender, ob.DependencySMS)) != 0 {
+			t.Fatal(r.Snapshot())
+		}
+	})
 	t.Run("deployment identity policy avoids dependency calls", func(t *testing.T) {
 		f, r := observedFixture(t)
 		f.deps.EnabledIdentityKinds = []enum.IdentityKind{enum.IdentityPhone}

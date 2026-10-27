@@ -17,6 +17,8 @@ import (
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/internal/accountsvc/adminauth"
 	"github.com/bbxx111/accountkit/internal/accountsvc/introspection"
+	"github.com/bbxx111/accountkit/user/sender"
+	"github.com/bbxx111/accountkit/user/sender/aliyun"
 	"github.com/bbxx111/accountkit/user/sender/smtp"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -36,6 +38,7 @@ type Config struct {
 	ShutdownTimeout      time.Duration
 	TrustedProxyCIDRs    []netip.Prefix
 	SMTP                 smtp.Config
+	SMS                  *aliyun.Config // nil 表示未配置短信服务商
 	IntrospectionClients map[string][]string
 	AdminEnabled         bool
 	Admin                adminauth.Config
@@ -115,9 +118,12 @@ func LoadConfig(command string) (Config, error) {
 			return Config{}, invalidConfig("ACCOUNTSVC_METRICS_INSTANCE")
 		}
 	}
+	if c.SMS, err = loadSMS(defaultEnv("MODE", "production")); err != nil {
+		return Config{}, err
+	}
 	if c.Library.EnabledIdentityKinds != nil {
-		if c.identityEnabled(enum.IdentityPhone) {
-			return Config{}, errors.New("accountsvc: PHONE requires SMS provider support; inject an SMS sender in an embedded host")
+		if c.identityEnabled(enum.IdentityPhone) && c.SMS == nil {
+			return Config{}, errors.New("accountsvc: PHONE requires an SMS provider; set ACCOUNTSVC_SMS_PROVIDER (embedded hosts inject an SMS sender)")
 		}
 		if c.identityEnabled(enum.IdentityWeChat) && len(c.Library.WeChatApps) == 0 && len(c.Library.WeChatMiniProgramApps) == 0 {
 			return Config{}, invalidConfig("ACCOUNTKIT_WECHAT_APPS")
@@ -263,6 +269,78 @@ func LoadConfig(command string) (Config, error) {
 		}
 	}
 	return c, nil
+}
+
+// aliyunTemplateKeys 是阿里云短信模板变量后缀与验证码用途的对应；将来的国际短信使用独立变量。
+var aliyunTemplateKeys = []struct {
+	suffix  string
+	purpose enum.CodePurpose
+}{
+	{"TEMPLATE_SIGN_IN", enum.PurposeSignIn},
+	{"TEMPLATE_BIND", enum.PurposeBind},
+	{"TEMPLATE_REAUTH", enum.PurposeReauth},
+	{"TEMPLATE_SIGN_IN_COMPLETE", enum.PurposeSignInComplete},
+}
+
+// loadSMS 解析可选短信服务商；未设置 ACCOUNTSVC_SMS_PROVIDER 时返回 nil，
+// 但仍拒绝残留的服务商变量以发现拼写错误。错误只含变量名，不回显值。
+func loadSMS(mode string) (*aliyun.Config, error) {
+	provider := env("SMS_PROVIDER")
+	if provider == "" {
+		for _, entry := range os.Environ() {
+			if name, _, _ := strings.Cut(entry, "="); strings.HasPrefix(name, "ACCOUNTSVC_SMS_ALIYUN_") && env(strings.TrimPrefix(name, "ACCOUNTSVC_")) != "" {
+				return nil, invalidConfig("ACCOUNTSVC_SMS_PROVIDER (" + name + " is set)")
+			}
+		}
+		return nil, nil
+	}
+	if provider != "aliyun" {
+		return nil, invalidConfig("ACCOUNTSVC_SMS_PROVIDER")
+	}
+	cfg := &aliyun.Config{
+		AccessKeyID:     env("SMS_ALIYUN_ACCESS_KEY_ID"),
+		AccessKeySecret: env("SMS_ALIYUN_ACCESS_KEY_SECRET"),
+		SignName:        env("SMS_ALIYUN_SIGN_NAME"),
+		Endpoint:        env("SMS_ALIYUN_ENDPOINT"),
+		Templates:       make(map[enum.CodePurpose]string, len(aliyunTemplateKeys)),
+	}
+	for name, value := range map[string]string{"ACCESS_KEY_ID": cfg.AccessKeyID, "ACCESS_KEY_SECRET": cfg.AccessKeySecret, "SIGN_NAME": cfg.SignName} {
+		if value == "" {
+			return nil, invalidConfig("ACCOUNTSVC_SMS_ALIYUN_" + name)
+		}
+	}
+	for _, key := range aliyunTemplateKeys {
+		code := env("SMS_ALIYUN_" + key.suffix)
+		if code == "" {
+			return nil, invalidConfig("ACCOUNTSVC_SMS_ALIYUN_" + key.suffix)
+		}
+		cfg.Templates[key.purpose] = code
+	}
+	if cfg.Endpoint != "" {
+		if aliyun.ValidateEndpoint(cfg.Endpoint, mode != "production") != nil {
+			return nil, invalidConfig("ACCOUNTSVC_SMS_ALIYUN_ENDPOINT")
+		}
+	}
+	if _, err := aliyun.New(*cfg); err != nil {
+		return nil, invalidConfig("ACCOUNTSVC_SMS_ALIYUN configuration")
+	}
+	return cfg, nil
+}
+
+// smsSender 返回服务注入的短信发送器：省略 Enabled 时显式禁用（不因配置服务商而自动启用 PHONE）；
+// 显式启用 PHONE 时使用已校验的服务商；显式集合不含 PHONE 时不注入。
+func smsSender(cfg Config) (sender.SMSCodeSender, error) {
+	if cfg.Library.EnabledIdentityKinds == nil {
+		return sender.Disabled{}, nil
+	}
+	if !cfg.identityEnabled(enum.IdentityPhone) || cfg.SMS == nil {
+		return nil, nil
+	}
+	s, err := aliyun.New(*cfg.SMS)
+	if err != nil {
+		return nil, errors.New("accountsvc: SMS configuration failed")
+	}
+	return s, nil
 }
 
 // 未配置 Enabled 时保持原 SMTP 装配；显式集合决定需要的发送器。

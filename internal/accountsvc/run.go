@@ -128,10 +128,10 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 	if err != nil {
 		return nil, err
 	}
-	var sms sender.SMSCodeSender
 	var email sender.EmailCodeSender
-	if cfg.Library.EnabledIdentityKinds == nil {
-		sms = sender.Disabled{}
+	sms, err := smsSender(cfg)
+	if err != nil {
+		return nil, err
 	}
 	if cfg.identityEnabled(enum.IdentityEmail) {
 		s, err := smtp.NewWithRenderer(cfg.SMTP, smtp.LegacyChineseRenderer{})

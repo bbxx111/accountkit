@@ -12,8 +12,8 @@
 
 ## 3. accountsvc 装配
 
-- [ ] 3.1 解析 `ACCOUNTSVC_SMS_PROVIDER` 与 `ACCOUNTSVC_SMS_ALIYUN_*`：未知服务商、缺少必填项、非法 endpoint 时启动失败并指出变量名，不回显值；production 下 endpoint 只接受 HTTPS；migrate 不解析。验证：config 测试。
-- [ ] 3.2 修改 PHONE 规则：显式启用 PHONE 时须已配置服务商，否则沿用原拒绝；省略 Enabled 时短信渠道保持禁用；装配时只在 PHONE 已启用时注入阿里云发送器。验证：config 与 run 测试覆盖以上组合。
+- [x] 3.1 解析 `ACCOUNTSVC_SMS_PROVIDER` 与 `ACCOUNTSVC_SMS_ALIYUN_*`：未知服务商、缺少必填项、非法 endpoint 时启动失败并指出变量名，不回显值；production 下 endpoint 只接受 HTTPS；migrate 不解析。验证：config 测试。
+- [x] 3.2 修改 PHONE 规则：显式启用 PHONE 时须已配置服务商，否则沿用原拒绝；省略 Enabled 时短信渠道保持禁用；装配时只在 PHONE 已启用时注入阿里云发送器。验证：config 与 run 测试覆盖以上组合。
 - [ ] 3.3 进程级集成测试：在 PHONE 启用、endpoint 指向本地假服务时，发码与登录成功；假服务返回频控时为 503；非 +86 号码为 400 `TARGET_NOT_SUPPORTED`。验证：`verify-accountsvc.sh`。
 
 ## 4. 邮件品牌前缀

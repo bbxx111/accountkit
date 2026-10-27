@@ -451,7 +451,27 @@ type serviceProcess struct {
 	stopped bool
 }
 
+// startBindAttempts bounds retries when another process takes the port that
+// freeAddress released before the service could bind it.
+const startBindAttempts = 5
+
 func (f *integrationFixture) start(extra map[string]string) *serviceProcess {
+	f.t.Helper()
+	_, pinned := extra["ACCOUNTSVC_HTTP_ADDR"]
+	for attempt := 1; ; attempt++ {
+		p, bindFailed := f.startOnce(extra)
+		if !bindFailed {
+			return p
+		}
+		if pinned || attempt == startBindAttempts {
+			f.t.Fatalf("service failed startup: %v %s", p.err, p.output.String())
+		}
+	}
+}
+
+// startOnce reports bindFailed instead of failing the test when the service
+// exits only because its listen address was already taken.
+func (f *integrationFixture) startOnce(extra map[string]string) (p *serviceProcess, bindFailed bool) {
 	f.t.Helper()
 	addr := freeAddress(f.t)
 	env := map[string]string{"ACCOUNTSVC_HTTP_ADDR": addr}
@@ -477,7 +497,7 @@ func (f *integrationFixture) start(extra map[string]string) *serviceProcess {
 	if tlsEnabled {
 		scheme = "https://"
 	}
-	p := &serviceProcess{fixture: f, done: make(chan struct{}), baseURL: scheme + value("ACCOUNTSVC_HTTP_ADDR")}
+	p = &serviceProcess{fixture: f, done: make(chan struct{}), baseURL: scheme + value("ACCOUNTSVC_HTTP_ADDR")}
 	p.cmd = exec.Command(f.binary)
 	p.cmd.Env = f.environment(env)
 	p.cmd.Stdout = &p.output
@@ -498,21 +518,26 @@ func (f *integrationFixture) start(extra map[string]string) *serviceProcess {
 		select {
 		case <-p.done:
 			f.assertSafe(p.output.String())
+			if strings.Contains(p.output.String(), "listener binding failed") {
+				return p, true
+			}
 			f.t.Fatalf("service failed startup: %v %s", p.err, p.output.String())
 		default:
 		}
 		resp, err := f.client.Get(p.baseURL + "/readyz")
 		if err == nil {
 			resp.Body.Close()
-			if resp.StatusCode == 200 {
-				return p
+			// A process that lost the port race may see another service's
+			// readiness; only its own bind log proves the answer came from it.
+			if resp.StatusCode == 200 && strings.Contains(p.output.String(), "listener started") {
+				return p, false
 			}
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	f.assertSafe(p.output.String())
 	f.t.Fatalf("service not ready: %s", p.output.String())
-	return nil
+	return nil, false
 }
 func (p *serviceProcess) signal() {
 	p.fixture.t.Helper()

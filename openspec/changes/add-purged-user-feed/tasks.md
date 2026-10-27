@@ -21,7 +21,7 @@
 
 - [x] 4.1 把内省 handler 的客户端校验抽成内部共享函数；新增 `ACCOUNTSVC_PURGE_FEED_CLIENTS` 解析，拒绝与内省列表重复的秘密，migrate 不解析。验证：config 测试与内省回归测试。
 - [x] 4.2 新增 handler 与路由 `GET /v1/purgedUsers`：Basic 鉴权（401 带 challenge、AIP 错误体）、未配置时返回 503 `PURGE_FEED_NOT_CONFIGURED`、`page_token` 与 `page_size` 校验、`no-store`、`next_page_token` 始终返回。验证：handler 单元测试；内省凭据访问返回 401。
-- [ ] 4.3 进程级集成测试：账号注销并到期清理后，用拉取凭据读到该 user_id，续拉为空，游标稳定。验证：`verify-accountsvc.sh`。
+- [x] 4.3 进程级集成测试：账号注销并到期清理后，用拉取凭据读到该 user_id，续拉为空，游标稳定。验证：`verify-accountsvc.sh`。
 
 ## 5. 文档
 
@@ -36,6 +36,6 @@
 
 ## 6. 验证与记录
 
-- [ ] 6.1 运行 `go build`、`go vet`、`go test ./...`（连接真实数据库）、`check-generated.sh`、`check-migrations.sh`、`openspec validate --all --strict`。
-- [ ] 6.2 在 Linux 镜像中运行 `verify.sh` 与 `verify-accountsvc.sh`，含恢复演练；新增的必需测试同步写入 required-tests 列表；由一个独立审查代理复核整条分支。
-- [ ] 6.3 编写 `verification.md`。
+- [x] 6.1 运行 `go build`、`go vet`、`go test ./...`（连接真实数据库）、`check-generated.sh`、`check-migrations.sh`、`openspec validate --all --strict`。
+- [x] 6.2 在 Linux 镜像中运行 `verify.sh` 与 `verify-accountsvc.sh`，含恢复演练；新增的必需测试同步写入 required-tests 列表；由一个独立审查代理复核整条分支。
+- [x] 6.3 编写 `verification.md`。

@@ -68,7 +68,7 @@
 
 ### Requirement: 并发撤销和令牌边界
 
-身份变更、重新认证来源替换和会话状态检查 SHALL 遵循一致事务与锁序，不能使已撤销会话重新变为可用。数据库提交后 SHALL 按既有 sid 吊销和异步审计契约处理 access；refresh、宽限刷新及已完成 pending 的结果重放 SHALL 拒绝数据库已撤销会话。Redis 故障 SHALL 保留现有 fail-open 与告警，不宣称所有 access 即时失效，不回滚已成功的身份变更。
+身份变更、重新认证来源替换和会话状态检查 SHALL 遵循一致事务与锁序，不能使已撤销会话重新变为可用。数据库提交后 SHALL 按既有 sid 吊销和异步审计契约处理 access；refresh、宽限刷新及已完成 pending 的结果重放 SHALL 拒绝数据库已撤销会话。Redis 故障时，Authenticate SHALL 保留现有 fail-open 与告警，不宣称所有 access 即时失效，不回滚已成功的身份变更；内省 SHALL 以数据库撤销结果为准，不受 Redis 故障影响。
 
 #### Scenario: 重新认证先提交
 - **WHEN** 来源 A 的当前会话先通过 B 重新认证提交，随后解绑 A
@@ -84,7 +84,7 @@
 
 #### Scenario: 吊销缓存故障
 - **WHEN** 数据库撤销已提交但 Redis 写入失败
-- **THEN** 身份操作保持成功、refresh 被数据库拒绝，access/内省沿用已有故障边界并记录告警
+- **THEN** 身份操作保持成功、refresh 被数据库拒绝，Authenticate 沿用已有故障边界并记录告警，内省对该会话返回 active:false
 
 ### Requirement: 当前会话详情查询
 
@@ -100,7 +100,7 @@
 
 #### Scenario: Redis 故障且数据库会话已撤销
 - **WHEN** Bearer 因原 fail-open 放行，详情发现数据库已撤销
-- **THEN** 返回401，普通 Authenticate/内省边界保持
+- **THEN** 返回401，普通 Authenticate 边界保持；内省对同一令牌返回 active:false
 
 #### Scenario: 未知不是解绑安全
 - **WHEN** 当前结构中的会话缺少来源
@@ -112,7 +112,7 @@
 
 ### Requirement: 来源数据生命周期与兼容
 
-当前结构 SHALL 不接受没有来源的可用会话；旧库 SHALL 按当前迁移边界无写拒绝，不反推或补造来源，不自动退出或转换旧库。使用来源的领域动作 SHALL 将缺失作为内部不变量错误；来源关联 SHALL 随有界会话清理删除，匿名化覆盖全部历史关联并与宿主回调同事务。JWT、refresh、scope 与普通鉴权热路径 SHALL 保持原格式和数据库访问边界。
+当前结构 SHALL 不接受没有来源的可用会话；旧库 SHALL 按当前迁移边界无写拒绝，不反推或补造来源，不自动退出或转换旧库。使用来源的领域动作 SHALL 将缺失作为内部不变量错误；来源关联 SHALL 随有界会话清理删除，匿名化覆盖全部历史关联并与宿主回调同事务。JWT、refresh、scope 与普通 Authenticate 热路径 SHALL 保持原格式和数据库访问边界；内省只按 sid 读取会话吊销状态，不读取来源。
 
 #### Scenario: 非空升级继续使用
 - **WHEN** 旧 v0.3.0 v1 或前一整合 v1 请求使用新定义
@@ -128,4 +128,4 @@
 
 #### Scenario: 普通鉴权不补查来源
 - **WHEN** 宿主调用 Authenticate 或远程内省
-- **THEN** 保留 JWT/Redis 路径，不新增来源数据库查询或写入
+- **THEN** Authenticate 保留 JWT/Redis 路径；内省只读取会话吊销状态；两者都不查询或写入来源

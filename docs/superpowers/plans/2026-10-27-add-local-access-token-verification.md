@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26、golang-jwt/jwt/v5（ES256）、crypto/ecdsa、crypto/x509（PKCS#8）、sqlc、chi、pgx/v5。
 
-**Spec:** `openspec/changes/add-local-access-token-verification/`（proposal.md、design.md、specs/、tasks.md）
+**Spec:** `openspec/changes/archive/2026-10-27-add-local-access-token-verification/`（proposal.md、design.md、specs/、tasks.md）
 
 ## Global Constraints
 
@@ -402,4 +402,4 @@ openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -outform DER | ba
 
 - [ ] **Step 1:** 运行 `GOWORK=off go build ./... && go vet ./... && go test -count=1 ./...`、`bash scripts/check-generated.sh`、`bash scripts/check-migrations.sh`、`openspec validate --all --strict`。
 - [ ] **Step 2:** 用一次性 PostgreSQL 17 容器（3 个库）设置 `SERVER_TEST_DB_DSN` 和两个恢复 DSN，运行 `bash scripts/verify.sh`；Windows 下用 `tests/Dockerfile` 镜像运行。新增的必需顶层测试写入 `scripts/required-tests.txt`。
-- [ ] **Step 3:** 编写 `openspec/changes/add-local-access-token-verification/verification.md`，记录实际运行的检查和未验证项，然后提交。
+- [ ] **Step 3:** 编写 `openspec/changes/archive/2026-10-27-add-local-access-token-verification/verification.md`，记录实际运行的检查和未验证项，然后提交。

@@ -4,7 +4,7 @@
 
 ## 执行方式
 
-- 按[实现计划](../../../docs/superpowers/plans/2026-10-27-add-local-access-token-verification.md)在本会话内顺序实施，没有使用逐任务子代理。原因：tokens → 配置 → 全部测试夹具 → 严格认证 → accountsvc 之间接口强依赖，并且共享写入点。
+- 按[实现计划](../../../../docs/superpowers/plans/2026-10-27-add-local-access-token-verification.md)在本会话内顺序实施，没有使用逐任务子代理。原因：tokens → 配置 → 全部测试夹具 → 严格认证 → accountsvc 之间接口强依赖，并且共享写入点。
 - 每组都先写失败测试，再写实现（TDD）。
 - 全部实现完成后，由一个独立审查代理复核整条分支。
 

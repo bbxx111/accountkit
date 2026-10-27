@@ -28,3 +28,5 @@ github.com/bbxx111/accountkit/internal/accountsvc/TestServiceProfileAttributesHT
 github.com/bbxx111/accountkit/internal/accountsvc/TestProfileAttributesNonRegularFile
 github.com/bbxx111/accountkit/internal/accountsvc/TestProfileAttributesReadFailure
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationAliyunSMS
+github.com/bbxx111/accountkit/internal/accountsvc/TestConfigSMSProvider
+github.com/bbxx111/accountkit/internal/accountsvc/TestConfigSMTPBrand

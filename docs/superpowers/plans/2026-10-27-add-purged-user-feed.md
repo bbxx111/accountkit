@@ -14,7 +14,7 @@
 
 **Tech Stack:** Go 1.26、pgx/v5、sqlc 1.31.1、golang-migrate、chi。
 
-**Spec:** `openspec/changes/add-purged-user-feed/`（proposal.md、design.md、specs/、tasks.md）
+**Spec:** `openspec/changes/archive/2026-10-27-add-purged-user-feed/`（proposal.md、design.md、specs/、tasks.md）
 
 ## Global Constraints
 

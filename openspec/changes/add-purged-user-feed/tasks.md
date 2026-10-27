@@ -14,8 +14,8 @@
 
 ## 3. 保留期
 
-- [ ] 3.1 增加 `Config.PurgedUserRetention` 与环境变量 `PURGED_USER_RETENTION`：0 表示长期保留，大于 0 时不得小于 720h。验证：config 测试覆盖默认值、合法值、过短值被拒绝（错误指出变量名）。
-- [ ] 3.2 保留期大于 0 时注册维护任务 `cleanup_purged_users`，分批删除过期记录。验证：数据库测试确认只删除超出保留期的记录，未配置时不删除。
+- [x] 3.1 增加 `Config.PurgedUserRetention` 与环境变量 `PURGED_USER_RETENTION`：0 表示长期保留，大于 0 时不得小于 720h。验证：config 测试覆盖默认值、合法值、过短值被拒绝（错误指出变量名）。
+- [x] 3.2 保留期大于 0 时注册维护任务 `cleanup_purged_users`，分批删除过期记录。验证：数据库测试确认只删除超出保留期的记录，未配置时不删除。
 
 ## 4. accountsvc 路由
 

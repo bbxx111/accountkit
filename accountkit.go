@@ -235,6 +235,7 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 		ProviderProfileBackfill: cfg.ProviderProfileBackfill,
 		MaxIdentitiesPerKind:    cfg.MaxIdentitiesPerKind,
 		DeletionCoolingPeriod:   cfg.DeletionCoolingPeriod,
+		PurgedUserRetention:     cfg.PurgedUserRetention,
 		Anonymizers:             deps.Anonymizers,
 		BeforeDelete:            deps.BeforeDelete,
 	})
@@ -277,6 +278,13 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 			n, err := users.PurgeDueUsers(ctx)
 			if n > 0 {
 				deps.Logger.Info("maintenance: purged users", "count", n)
+			}
+			return err
+		}},
+		maintenance.Task{Name: "cleanup_purged_users", Run: func(ctx context.Context) error {
+			n, err := users.CleanupPurgedUsers(ctx) // 未配置保留期时不删除
+			if n > 0 {
+				deps.Logger.Info("maintenance: deleted expired purged user records", "count", n)
 			}
 			return err
 		}},

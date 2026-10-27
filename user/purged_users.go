@@ -11,6 +11,11 @@ import (
 // MaxPurgedUserPage 是 ListPurgedUsers 单页的最大条数。
 const MaxPurgedUserPage = 1000
 
+// MinPurgedUserRetention 是已清理记录可配置保留期的下限（30 天），给外部业务服务留出故障补拉窗口。
+const MinPurgedUserRetention = 720 * time.Hour
+
+const purgedUserCleanupBatch = 1000
+
 // PurgedUser 是一条已清理用户记录：账号已匿名化，外部业务服务据此按 UserID 幂等清理自身数据。
 type PurgedUser struct {
 	UserID    string
@@ -36,4 +41,26 @@ func (s *Service) ListPurgedUsers(ctx context.Context, after int64, limit int) (
 		next = r.Seq
 	}
 	return out, next, nil
+}
+
+// CleanupPurgedUsers 删除写入时间早于 now − PurgedUserRetention 的已清理记录，分批删到一批不满为止；
+// 未配置保留期（0）时不删除。维护任务 cleanup_purged_users 每轮调用一次。
+func (s *Service) CleanupPurgedUsers(ctx context.Context) (total int64, err error) {
+	if s.d.PurgedUserRetention <= 0 {
+		return 0, nil
+	}
+	before := s.now().Add(-s.d.PurgedUserRetention)
+	for {
+		if err := ctx.Err(); err != nil {
+			return total, err
+		}
+		n, err := s.d.Repo.Q().DeletePurgedUsersBefore(ctx, db.DeletePurgedUsersBeforeParams{Before: before, BatchSize: purgedUserCleanupBatch})
+		if err != nil {
+			return total, fmt.Errorf("user: delete expired purged users: %w", err)
+		}
+		total += n
+		if n < purgedUserCleanupBatch {
+			return total, nil
+		}
+	}
 }

@@ -91,6 +91,8 @@ type Deps struct {
 	MaxIdentitiesPerKind int
 	// DeletionCoolingPeriod 是软删除到 purge 的冷静期（purge_time = delete_time + 该值），必须 > 0。
 	DeletionCoolingPeriod time.Duration
+	// PurgedUserRetention 是已清理用户记录的保留期；0 表示长期保留，大于 0 时不得短于 MinPurgedUserRetention。
+	PurgedUserRetention time.Duration
 	// Anonymizers 是宿主业务域的匿名化器，purge 时在库表匿名化之后按顺序、同一事务内执行；可空。
 	Anonymizers []anonymize.Anonymizer
 	// BeforeDelete 在注销事务中、账号锁和 ACTIVE 校验之后执行宿主检查；可空。
@@ -188,6 +190,9 @@ func NewService(d Deps) (*Service, error) {
 	}
 	backfill := d.ProviderProfileBackfill == nil || *d.ProviderProfileBackfill
 	d.ProviderProfileBackfill = &backfill
+	if d.PurgedUserRetention < 0 || (d.PurgedUserRetention > 0 && d.PurgedUserRetention < MinPurgedUserRetention) {
+		return nil, fmt.Errorf("user: PurgedUserRetention must be 0 or at least %s", MinPurgedUserRetention)
+	}
 	if d.DeletionCoolingPeriod <= 0 {
 		return nil, errors.New("user: Deps.DeletionCoolingPeriod must be positive")
 	}

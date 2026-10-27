@@ -182,3 +182,36 @@ func TestPurgedUserFeedConcurrentPurgeNoGaps(t *testing.T) {
 		t.Fatalf("records = %d %v", count, err)
 	}
 }
+
+func TestCleanupPurgedUsersRetention(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	deletedUsers(t, f, 2)
+	if _, err := f.svc.PurgeDueUsers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// 未配置保留期：长期保留，不删除。
+	f.advance(10000 * time.Hour)
+	if n, err := f.svc.CleanupPurgedUsers(ctx); err != nil || n != 0 {
+		t.Fatalf("no retention: %d %v", n, err)
+	}
+	newServiceWith(t, f, func(d *user.Deps) { d.PurgedUserRetention = 720 * time.Hour })
+	// 再清理一个较新的账号，确认只删除超出保留期的记录。
+	newer := deletedUsers(t, f, 1)
+	if _, err := f.svc.PurgeDueUsers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := f.svc.CleanupPurgedUsers(ctx); err != nil || n != 2 {
+		t.Fatalf("retention cleanup: %d %v", n, err)
+	}
+	page, _, err := f.svc.ListPurgedUsers(ctx, 0, 10)
+	if err != nil || len(page) != 1 || page[0].UserID != newer[0] {
+		t.Fatalf("remaining: %+v %v", page, err)
+	}
+	// 过短的保留期在构造时被拒绝。
+	d := f.deps
+	d.PurgedUserRetention = 7 * 24 * time.Hour
+	if _, err := user.NewService(d); err == nil {
+		t.Fatal("retention shorter than 30 days must be rejected")
+	}
+}

@@ -85,7 +85,7 @@ func (h ProtectedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	owns, err := h.OwnsResource(r.Context(), principal.Subject, resourceID)
 	if err != nil {
-		unavailable(w)
+		resourceUnavailable(w)
 		return
 	}
 	if !owns {
@@ -95,6 +95,13 @@ func (h ProtectedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// unavailable reports an authentication dependency failure exactly like the library's
+// Bearer middleware (same body and Retry-After), so clients need not tell the sources apart.
 func unavailable(w http.ResponseWriter) {
-	apierror.Write(w, apierror.New(apierror.StatusUnavailable, "DEPENDENCY_UNAVAILABLE", "authentication or resource service temporarily unavailable"))
+	apierror.Write(w, &apierror.Error{Status: apierror.StatusUnavailable, Reason: "DEPENDENCY_UNAVAILABLE", Message: "authentication temporarily unavailable", RetryAfterSeconds: 1})
+}
+
+// resourceUnavailable reports a business resource lookup failure (not an authentication problem).
+func resourceUnavailable(w http.ResponseWriter) {
+	apierror.Write(w, apierror.New(apierror.StatusUnavailable, "DEPENDENCY_UNAVAILABLE", "resource service temporarily unavailable"))
 }

@@ -111,6 +111,10 @@
 
 原始输出位于 `.test-output/verify/`、`.test-output/tests.jsonl`、`.test-output/accountsvc-tests.jsonl` 和 `.test-output/recovery.1ERavt/`。
 
+## 生成代码检查
+
+用户在本机安装 sqlc v1.31.1 后，`bash scripts/check-generated.sh` 退出码为 0，生成结果无差异，工作区保持干净。
+
 ## 未验证项
 
-- `bash scripts/check-generated.sh`：本机没有 sqlc（下载发布二进制被权限策略拒绝），由 CI 执行。本变更未改动 SQL 或 sqlc 配置，`user/db/` 无差异。任务 7.1 因此保持未勾选。
+无。本记录中的全部检查均已在本地实际执行。

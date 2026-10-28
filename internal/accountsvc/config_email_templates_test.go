@@ -45,21 +45,15 @@ func emailTemplatesJSON(subjectSuffix string, languages ...string) string {
 func TestConfigEmailTemplates(t *testing.T) {
 	serveEnvironment(t)
 
-	// 未设置：沿用内置渲染器，品牌照常可用。
-	t.Setenv("ACCOUNTSVC_SMTP_BRAND", "食方")
+	// 未设置：EmailTemplates 为 nil，运行时使用嵌入的默认清单。
 	cfg, err := LoadConfig("serve")
-	if err != nil || cfg.EmailTemplates != nil || cfg.EmailTemplatesDigest != "" {
+	if err != nil || cfg.EmailTemplates != nil || cfg.EmailTemplatesDigest != "" || emailRenderer(cfg) != emailtemplates.Default() {
 		t.Fatalf("unset: %v %v %q", err, cfg.EmailTemplates, cfg.EmailTemplatesDigest)
 	}
 
-	// 清单与品牌变量互斥。
 	t.Setenv("ACCOUNTSVC_SMTP_TEMPLATES_FILE", emailTemplatesFile(t, emailTemplatesJSON("", "zh-Hans", "食方", "en", "Shifang")))
-	if _, err := LoadConfig("serve"); err == nil || !strings.Contains(err.Error(), "ACCOUNTSVC_SMTP_BRAND") || !strings.Contains(err.Error(), "ACCOUNTSVC_SMTP_TEMPLATES_FILE") {
-		t.Fatalf("brand with manifest: %v", err)
-	}
-	t.Setenv("ACCOUNTSVC_SMTP_BRAND", "")
 	cfg, err = LoadConfig("serve")
-	if err != nil || cfg.EmailTemplates == nil {
+	if err != nil || cfg.EmailTemplates == nil || emailRenderer(cfg) != cfg.EmailTemplates {
 		t.Fatalf("valid manifest: %v", err)
 	}
 	if len(cfg.EmailTemplatesDigest) != 12 || strings.Trim(cfg.EmailTemplatesDigest, "0123456789abcdef") != "" {
@@ -93,9 +87,8 @@ func TestConfigEmailTemplates(t *testing.T) {
 		})
 	}
 
-	// EMAIL 显式禁用时与 migrate 一样不读取该设置，也不检查品牌冲突。
+	// EMAIL 显式禁用时与 migrate 一样不读取该设置。
 	t.Setenv("ACCOUNTSVC_SMTP_TEMPLATES_FILE", filepath.Join(dir, "absent.json"))
-	t.Setenv("ACCOUNTSVC_SMTP_BRAND", "食方")
 	if _, err := LoadConfig("migrate"); err != nil {
 		t.Fatalf("migrate must ignore templates: %v", err)
 	}
@@ -111,14 +104,11 @@ func TestLogEmailTemplates(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, nil))
 
-	// EMAIL 禁用时不记录。
+	// EMAIL 禁用或未配置清单时不记录；后者由 warnUnconfigured 告警。
 	logEmailTemplates(Config{Library: accountkit.Config{EnabledIdentityKinds: []enum.IdentityKind{enum.IdentityWeChat}}}, logger)
-	if buf.Len() != 0 {
-		t.Fatalf("EMAIL disabled logged: %s", buf.String())
-	}
 	logEmailTemplates(Config{}, logger)
-	if line := buf.String(); !strings.Contains(line, "level=INFO") || !strings.Contains(line, "email templates: built-in") {
-		t.Fatalf("built-in: %q", line)
+	if buf.Len() != 0 {
+		t.Fatalf("unexpected log: %s", buf.String())
 	}
 
 	serveEnvironment(t)

@@ -921,7 +921,6 @@ github.com/bbxx111/accountkit/user/TestQQPendingConcurrentOwnershipRejectsWithou
 github.com/bbxx111/accountkit/user/TestQQProviderObservationsAndFlowFingerprint
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigWeibo
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigSMSProvider
-github.com/bbxx111/accountkit/internal/accountsvc/TestConfigSMTPBrand
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigPurgeFeedClients
 github.com/bbxx111/accountkit/observability/internal/metricdata/TestWeiboMetricProjection
 github.com/bbxx111/accountkit/TestWeiboConfigFromEnv
@@ -1004,3 +1003,5 @@ github.com/bbxx111/accountkit/internal/accountsvc/TestEmailTemplatesCheckCommand
 github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestLanguageMatchingAcrossScripts
 github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestSinglePassSubstitution
 github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestLayoutGolden
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestDefaultManifest
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestBrandlessLanguage

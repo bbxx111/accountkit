@@ -35,31 +35,32 @@ func readEmailTemplates(path string) (*emailtemplates.Renderer, string, error) {
 	return renderer, hex.EncodeToString(sum[:])[:12], nil
 }
 
-// loadEmailTemplates 仅在 serve 且 EMAIL 启用时调用，须在 SMTPBrand 校验之后。路径为空时保留内置渲染器。
-// 清单自带各语言品牌，因此不得同时设置 ACCOUNTSVC_SMTP_BRAND，避免同一品牌有两个来源。
+// loadEmailTemplates 仅在 serve 且 EMAIL 启用时调用。路径为空时 EmailTemplates 保持 nil，运行时使用
+// 嵌入的无品牌默认清单。
 func (c *Config) loadEmailTemplates(path string) error {
 	if path == "" {
 		return nil
-	}
-	if c.SMTPBrand != "" {
-		return invalidConfig("ACCOUNTSVC_SMTP_BRAND (must be empty when " + emailTemplatesSetting + " is set; brands belong in the manifest)")
 	}
 	var err error
 	c.EmailTemplates, c.EmailTemplatesDigest, err = readEmailTemplates(path)
 	return err
 }
 
-// logEmailTemplates 在 EMAIL 启用时记录当前生效的邮件文案来源。摘要只用于核对多副本是否加载同一清单，
-// 不记录路径、品牌、文字或渲染结果。
+// logEmailTemplates 在 EMAIL 启用且配置了清单时记录生效的清单。摘要只用于核对多副本是否加载同一清单，
+// 不记录路径、品牌、文字或渲染结果。未配置清单的告警由 warnUnconfigured 记录。
 func logEmailTemplates(cfg Config, logger *slog.Logger) {
-	if !cfg.identityEnabled(enum.IdentityEmail) {
-		return
-	}
-	if cfg.EmailTemplates == nil {
-		logger.Info("accountsvc: email templates: built-in")
+	if !cfg.identityEnabled(enum.IdentityEmail) || cfg.EmailTemplates == nil {
 		return
 	}
 	logger.Info("accountsvc: email templates: custom", "version", emailtemplates.Version, "sha256", cfg.EmailTemplatesDigest, "languages", strings.Join(cfg.EmailTemplates.Languages(), ","))
+}
+
+// emailRenderer 返回 serve 实际使用的渲染器：配置的清单，或嵌入的无品牌默认清单。
+func emailRenderer(cfg Config) *emailtemplates.Renderer {
+	if cfg.EmailTemplates != nil {
+		return cfg.EmailTemplates
+	}
+	return emailtemplates.Default()
 }
 
 // acceptLanguage 把请求的 Accept-Language 偏好放进 context，供多语言清单在发送邮件时选择语言。

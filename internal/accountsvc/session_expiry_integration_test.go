@@ -96,7 +96,7 @@ func TestServiceIntegrationSessionExpiry(t *testing.T) {
 	f.call("POST", p.baseURL+"/v1/users/me:sendReauthenticationCode", access, map[string]string{"channel": "EMAIL", "target": target}, 200)
 	m := f.smtp.mail(t)
 	f.secrets = append(f.secrets, m.target, m.code)
-	if m.target != target || !strings.Contains(m.body, "重新认证") {
+	if m.target != target || !strings.Contains(m.body, "身份验证") {
 		t.Fatal("wrong reauthentication delivery")
 	}
 	// Preserve the WWW-Authenticate header in addition to asserting the error body.

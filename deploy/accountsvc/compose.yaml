@@ -39,7 +39,7 @@ services:
     ports:
       - "127.0.0.1:${ACCOUNTSVC_PUBLIC_PORT:-18080}:8080"
     # Optional email template manifest: uncomment the mount and set
-    # ACCOUNTSVC_SMTP_TEMPLATES_FILE=/etc/accountsvc/email-templates.json (and leave ACCOUNTSVC_SMTP_BRAND empty).
+    # ACCOUNTSVC_SMTP_TEMPLATES_FILE=/etc/accountsvc/email-templates.json.
     # volumes:
     #   - ./email-templates.example.json:/etc/accountsvc/email-templates.json:ro
     environment:
@@ -55,7 +55,6 @@ services:
       ACCOUNTSVC_SMTP_PORT: "1025"
       ACCOUNTSVC_SMTP_FROM: accounts@example.test
       ACCOUNTSVC_SMTP_TLS_MODE: none
-      ACCOUNTSVC_SMTP_BRAND: ${ACCOUNTSVC_SMTP_BRAND:-}
       ACCOUNTSVC_SMTP_TEMPLATES_FILE: ${ACCOUNTSVC_SMTP_TEMPLATES_FILE:-}
       # Optional Aliyun SMS; empty values keep SMS unconfigured.
       ACCOUNTSVC_SMS_PROVIDER: ${ACCOUNTSVC_SMS_PROVIDER:-}

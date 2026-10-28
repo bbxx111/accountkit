@@ -9,6 +9,16 @@
 2. 用户提出邮件需要 HTML、图片和多语言后，改为“清单 + 外部 HTML 文件”；再发现三套 HTML 只有文字不同。
 3. 最终收敛为“内置布局 + 清单只配文字”，并合并了 R8 多语言需求。本记录只覆盖最终版本；首版的字符规则包 `internal/mailtext`、`ValidateBrand` 共享规则、有界文件读取和启动日志被沿用，其余首版代码已替换。
 
+## 第二轮：删除品牌变量，内置无品牌默认清单
+
+审查之后，用户决定删除 `ACCOUNTSVC_SMTP_BRAND`，并让服务不再使用 `LegacyChineseRenderer`，改为嵌入一份无品牌默认清单作为兜底。改动：
+- `brand` 变为可选；无品牌的语言不得引用 `{{brand}}`、不能配置 `logo_url`，页脚省略 `©` 行。
+- `emailtemplates.Default()` 返回嵌入的 `default.json`（简体、繁体、英文），经相同解析；`TestDefaultManifest`、`TestBrandlessLanguage` 覆盖。
+- 未配置清单时 `warnUnconfigured` 记录 WARN；配置了清单记录 INFO。
+- 依赖旧中文文案的集成测试断言改为默认清单文案；`TestConfigSMTPBrand` 删除；规格「服务邮件品牌前缀」改为 REMOVED。
+
+本轮完成后在 Linux 镜像重新运行了下表全部检查，数字以本轮为准。
+
 ## 执行方式
 
 - 本会话按顺序直接实施，采用 TDD：先写测试，确认失败，再实现。
@@ -20,9 +30,9 @@ Linux 验证镜像基于 `tests/Dockerfile`（golang:1.26.5）。测试用一次
 
 | 检查 | 结果 |
 |---|---|
-| `bash scripts/verify-accountsvc.sh`（race、真实进程、TLS、伪 SMTP、必需测试门禁） | 通过：791 个测试通过，0 个失败 |
+| `bash scripts/verify-accountsvc.sh`（race、真实进程、TLS、伪 SMTP、必需测试门禁） | 通过：803 个测试通过，0 个失败。首次运行在模块下载阶段遇到代理网络中断（`unexpected EOF`），未进入测试；模块缓存后重跑通过。 |
 | `go build ./...`、`go vet ./...` | 通过 |
-| `go test -race -json -count=1 ./...`（`SERVER_TEST_DB_DSN` 与 `ACCOUNTSVC_TEST_REDIS_URL` 均设置） | 通过：3697 个测试通过，0 个失败 |
+| `go test -race -json -count=1 ./...`（`SERVER_TEST_DB_DSN` 与 `ACCOUNTSVC_TEST_REDIS_URL` 均设置） | 通过：3709 个测试通过，0 个失败 |
 | `go run ./internal/testgate scripts/required-tests.txt` | 通过 |
 | gofmt | 无差异 |
 | `go mod tidy -diff` | 有差异，但与本变更无关：develop 基线（stash 后）同样有差异（`prometheus/client_model` 直接/间接标记与 go.sum 顺序）。本变更未改动 go.mod/go.sum，也没有新增依赖；`golang.org/x/text` 本来就是直接依赖。 |
@@ -46,11 +56,11 @@ Linux 验证镜像基于 `tests/Dockerfile`（golang:1.26.5）。测试用一次
   - TTL 向上取整；ctx 取消、非法 CodeMessage、零值、nil；race 下并发渲染。
 - **语言匹配**：表驱动固定 zh-TW/HK/MO → zh-Hant、zh-CN/SG/zh → zh-Hans、en-US/GB → en、ja/空/`*`/超长/非法 → 默认；前 8 项上限；`RenderIn` 按标签渲染；单语言清单忽略偏好。
 - **样例清单**：`TestExampleManifest` 直接加载 `deploy/accountsvc/email-templates.example.json`，断言三种语言的补全标题。
-- **配置**（`config_email_templates_test.go`）：未设置、清单与 `ACCOUNTSVC_SMTP_BRAND` 冲突、合法清单的摘要与英文渲染、文件不存在/目录/空/超限/JSON 非法/标题含 `{{code}}`/默认语言不存在，错误不含路径与内容；migrate 与 EMAIL 禁用时忽略。
-- **启动日志**：built-in、custom（version、sha256、languages），EMAIL 禁用不记录，不含文字、品牌、路径。
+- **配置**（`config_email_templates_test.go`）：未设置时使用默认清单、合法清单的摘要与英文渲染、文件不存在/目录/空/超限/JSON 非法/标题含 `{{code}}`/默认语言不存在，错误不含路径与内容；migrate 与 EMAIL 禁用时忽略。
+- **启动日志**：配置清单时 INFO（version、sha256、languages），未配置时 WARN（`TestWarnUnconfiguredInterfaces`），EMAIL 禁用不记录，不含文字、品牌、路径。
 - **中间件**：en-US、zh-TW、缺失、乱码、超长五种请求头的选择结果。
 - **检查命令**：成功输出；`-out` 创建目录并写出固定文件；重跑可覆盖；目录含其他文件时拒绝；清单非法时非零退出、不回显、不写预览；用法错误。
-- **集成测试**（`TestServiceIntegrationEmailTemplates`）：真实进程 + 伪 SMTP，分别以 zh-HK、en-GB、ja、无请求头发码，断言标题、纯文本全文、HTML 中的验证码、Logo 与品牌；启动日志含 custom、sha256、`languages=zh-Hans,en,zh-Hant`；文字、品牌、Logo 域名与路径登记为不得出现在进程输出中的秘密。伪 SMTP 夹具改为解析 `multipart/alternative`。
+- **集成测试**（`TestServiceIntegrationEmailTemplates`）：真实进程 + 伪 SMTP，分别以 zh-HK、en-GB、ja、无请求头发码，断言标题、纯文本全文、HTML 中的验证码、Logo 与品牌；启动日志含 custom、sha256、`languages=zh-Hans,en,zh-Hant`；未配置清单时以 en 发码得到默认英文文案、无 `©`，日志含 WARN；文字、品牌、Logo 域名与路径登记为不得出现在进程输出中的秘密。伪 SMTP 夹具改为解析 `multipart/alternative`。
 - **回归**：`ValidateBrand` 原有测试通过并补充了 C1、U+2029、非法 UTF-8；资料 Schema loader 提取为共用函数后错误文本不变；cmd 层对未知命令的安全提示测试更新为新文案。
 
 ## 审查结论

@@ -1,5 +1,6 @@
 // Package emailtemplates 解析 accountsvc 部署方提供的验证码邮件清单，并用内置布局实现 smtp.Renderer。
-// 清单只配置文字、品牌和 Logo 地址；版式由嵌入的 HTML 与纯文本布局提供。文字在启动时编译为
+// 清单只配置文字、品牌和 Logo 地址；版式由嵌入的 HTML 与纯文本布局提供。未配置清单的部署使用
+// 嵌入的无品牌默认清单（Default）。文字在启动时编译为
 // 字面量与占位符片段，渲染只做一次拼接：不执行模板逻辑，替换值不再展开。错误只含字段位置与
 // 固定分类，不回显文件内容。
 package emailtemplates
@@ -14,6 +15,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"golang.org/x/text/language"
@@ -51,6 +53,27 @@ var layoutHTML string
 //go:embed layout.txt
 var layoutText string
 
+//go:embed default.json
+var defaultManifest []byte
+
+var (
+	defaultOnce     sync.Once
+	defaultRenderer *Renderer
+)
+
+// Default 返回嵌入的无品牌默认清单（简体、繁体、英文）的渲染器。它经过与部署清单相同的解析，
+// 由测试保证合法。
+func Default() *Renderer {
+	defaultOnce.Do(func() {
+		r, err := Parse(defaultManifest)
+		if err != nil {
+			panic("emailtemplates: embedded default manifest is invalid: " + err.Error())
+		}
+		defaultRenderer = r
+	})
+	return defaultRenderer
+}
+
 // 占位符种类。literal 之外的值同时是渲染值数组的下标。
 type placeholder uint8
 
@@ -73,7 +96,7 @@ type compiledPurpose struct{ subject, heading, intro template }
 
 type compiledLanguage struct {
 	tag       string
-	brand     string
+	brand     string // 空表示无品牌：文字不得引用 {{brand}}，页脚省略 © 行
 	logoURL   string // 空表示不显示 Logo
 	codeLabel template
 	expiry    template
@@ -176,14 +199,21 @@ func compileLanguage(tag string, value any) (compiledLanguage, error) {
 		return compiledLanguage{}, fail(location, "unknown field")
 	}
 	lang := compiledLanguage{tag: tag, purposes: make(map[enum.CodePurpose]compiledPurpose, len(purposes))}
-	if lang.brand, ok = entry["brand"].(string); !ok || smtp.ValidateBrand(lang.brand) != nil || lang.brand == "" {
-		return compiledLanguage{}, fail(location+".brand", "invalid brand")
+	if raw, present := entry["brand"]; present {
+		if lang.brand, ok = raw.(string); !ok || smtp.ValidateBrand(lang.brand) != nil {
+			return compiledLanguage{}, fail(location+".brand", "invalid brand")
+		}
 	}
 	if raw, present := entry["logo_url"]; present {
 		if lang.logoURL, ok = raw.(string); !ok || !validLogoURL(lang.logoURL) {
 			return compiledLanguage{}, fail(location+".logo_url", "must be an https URL")
 		}
+		// Logo 的替代文字是品牌，没有品牌就不能配置 Logo。
+		if lang.brand == "" {
+			return compiledLanguage{}, fail(location+".logo_url", "requires brand")
+		}
 	}
+	hasBrand := lang.brand != ""
 	common, ok := entry["common"].(map[string]any)
 	if !ok {
 		return compiledLanguage{}, fail(location+".common", "not an object")
@@ -192,17 +222,17 @@ func compileLanguage(tag string, value any) (compiledLanguage, error) {
 		return compiledLanguage{}, fail(location+".common", "unknown field")
 	}
 	var err error
-	if lang.codeLabel, err = compileBody(common, "code_label", location+".common.code_label", MaxShortRunes); err != nil {
+	if lang.codeLabel, err = compileBody(common, "code_label", location+".common.code_label", MaxShortRunes, hasBrand); err != nil {
 		return compiledLanguage{}, err
 	}
-	if lang.expiry, err = compileBody(common, "expiry", location+".common.expiry", MaxLongRunes); err != nil {
+	if lang.expiry, err = compileBody(common, "expiry", location+".common.expiry", MaxLongRunes, hasBrand); err != nil {
 		return compiledLanguage{}, err
 	}
-	if lang.safety, err = compileBody(common, "safety", location+".common.safety", MaxLongRunes); err != nil {
+	if lang.safety, err = compileBody(common, "safety", location+".common.safety", MaxLongRunes, hasBrand); err != nil {
 		return compiledLanguage{}, err
 	}
 	if _, present := common["footer"]; present {
-		if lang.footer, err = compileBody(common, "footer", location+".common.footer", MaxLongRunes); err != nil {
+		if lang.footer, err = compileBody(common, "footer", location+".common.footer", MaxLongRunes, hasBrand); err != nil {
 			return compiledLanguage{}, err
 		}
 	}
@@ -227,13 +257,13 @@ func compileLanguage(tag string, value any) (compiledLanguage, error) {
 			return compiledLanguage{}, fail(purposeLocation, "unknown field")
 		}
 		var cp compiledPurpose
-		if cp.subject, err = compileSubject(fields, purposeLocation+".subject"); err != nil {
+		if cp.subject, err = compileSubject(fields, purposeLocation+".subject", hasBrand); err != nil {
 			return compiledLanguage{}, err
 		}
-		if cp.heading, err = compileBody(fields, "heading", purposeLocation+".heading", MaxShortRunes); err != nil {
+		if cp.heading, err = compileBody(fields, "heading", purposeLocation+".heading", MaxShortRunes, hasBrand); err != nil {
 			return compiledLanguage{}, err
 		}
-		if cp.intro, err = compileBody(fields, "intro", purposeLocation+".intro", MaxLongRunes); err != nil {
+		if cp.intro, err = compileBody(fields, "intro", purposeLocation+".intro", MaxLongRunes, hasBrand); err != nil {
 			return compiledLanguage{}, err
 		}
 		lang.purposes[p] = cp
@@ -270,7 +300,7 @@ func onlyKeys(m map[string]any, allowed ...string) bool {
 	return true
 }
 
-func compileSubject(fields map[string]any, location string) (template, error) {
+func compileSubject(fields map[string]any, location string, hasBrand bool) (template, error) {
 	raw, ok := fields["subject"].(string)
 	if !ok {
 		return nil, fail(location, "missing or not a string")
@@ -281,10 +311,10 @@ func compileSubject(fields map[string]any, location string) (template, error) {
 	if utf8.RuneCountInString(raw) > MaxSubjectRunes {
 		return nil, fail(location, "too long")
 	}
-	return compile(raw, location)
+	return compile(raw, location, hasBrand)
 }
 
-func compileBody(fields map[string]any, field, location string, limit int) (template, error) {
+func compileBody(fields map[string]any, field, location string, limit int, hasBrand bool) (template, error) {
 	raw, ok := fields[field].(string)
 	if !ok {
 		return nil, fail(location, "missing or not a string")
@@ -295,11 +325,12 @@ func compileBody(fields map[string]any, field, location string, limit int) (temp
 	if utf8.RuneCountInString(raw) > limit {
 		return nil, fail(location, "too long")
 	}
-	return compile(raw, location)
+	return compile(raw, location, hasBrand)
 }
 
 // compile 把文字切成字面量与占位符片段。单个花括号按字面处理；"{{" 后必须紧跟合法名称与 "}}"。
-func compile(raw, location string) (template, error) {
+// 没有品牌的语言不得引用 {{brand}}，避免渲染出缺字的句子。
+func compile(raw, location string, hasBrand bool) (template, error) {
 	var t template
 	var lit strings.Builder
 	flush := func() {
@@ -328,6 +359,9 @@ func compile(raw, location string) (template, error) {
 		kind, ok := placeholderNames[name]
 		if !ok {
 			return nil, fail(location, "unknown placeholder")
+		}
+		if kind == brand && !hasBrand {
+			return nil, fail(location, "{{brand}} used but brand is empty")
 		}
 		if count++; count > MaxPlaceholders {
 			return nil, fail(location, "too many placeholders")
@@ -454,6 +488,10 @@ func (r *Renderer) renderIndex(index int, m sender.CodeMessage) (smtp.EmailConte
 		htmlFooter = "            <p style=\"margin:0 0 4px 0;\">" + html.EscapeString(text.footer) + "</p>\n"
 		textFooter = "\n\n" + text.footer
 	}
+	copyright := ""
+	if lang.brand != "" {
+		copyright = "            <p style=\"margin:0;\">&copy; " + html.EscapeString(lang.brand) + "</p>\n"
+	}
 	page := strings.NewReplacer(
 		"{{lang}}", html.EscapeString(lang.tag),
 		"{{subject}}", html.EscapeString(subject),
@@ -466,6 +504,7 @@ func (r *Renderer) renderIndex(index int, m sender.CodeMessage) (smtp.EmailConte
 		"{{expiry}}", nl2br(html.EscapeString(text.expiry)),
 		"{{safety}}", nl2br(html.EscapeString(text.safety)),
 		"{{footer}}", htmlFooter,
+		"{{copyright}}", copyright,
 	).Replace(layoutHTML)
 	plain := strings.NewReplacer(
 		"{{heading}}", text.heading,

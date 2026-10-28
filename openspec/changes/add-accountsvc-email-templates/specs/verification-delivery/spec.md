@@ -4,7 +4,7 @@
 
 项目 SHALL 提供可选的 SMTP 邮件发送能力，支持登录、绑定、重新认证和登录补全四种用途。消息 SHALL 包含对应的验证码和有效期。补全投递 SHALL 通过独立的 /users:sendSignInCompletionCode 触发，普通的 /users:sendSignInCode 不接收补全票据，也不切换用途。accountsvc SHALL 在 EMAIL 启用时使用 SMTP 邮件，EMAIL 未启用时不需要邮件依赖；现有未配置身份策略的默认部署继续使用 SMTP 并禁用短信，不使用日志发送器作为运行时回退。
 
-旧的 smtp.New(Config) 函数签名及 Config 结构 SHALL 保持，继续采用独立的 LegacyChineseRenderer 提供既有的四用途中文纯文本文案。新宿主 SHALL 能通过 NewWithRenderer 显式选择自己的渲染器。accountsvc 未配置邮件模板清单时 SHALL 显式注入 LegacyChineseRenderer，保留原中文邮件内容、部署配置和 EMAIL 禁用行为。配置了模板清单时，SHALL 改为使用内置布局与清单提供的多语言文字渲染 HTML 和纯文本两部分，不得按用途或语言部分回落到内置文案；语言 SHALL 按请求的 `Accept-Language` 在已配置的语言间选择，不按 IP、手机号或保存的用户偏好推断。accountsvc SHALL 不内嵌图片或附件。
+旧的 smtp.New(Config) 函数签名及 Config 结构 SHALL 保持，继续采用独立的 LegacyChineseRenderer 提供既有的四用途中文纯文本文案。新宿主 SHALL 能通过 NewWithRenderer 显式选择自己的渲染器。accountsvc SHALL 使用内置布局与清单提供的多语言文字渲染 HTML 和纯文本两部分，未配置清单时使用嵌入的无品牌默认清单，不得按用途或语言部分回落；accountsvc SHALL 不再使用 LegacyChineseRenderer，EMAIL 禁用行为保持；语言 SHALL 按请求的 `Accept-Language` 在已配置的语言间选择，不按 IP、手机号或保存的用户偏好推断。accountsvc SHALL 不内嵌图片或附件。
 
 #### Scenario: 邮件登录闭环
 
@@ -29,7 +29,7 @@
 #### Scenario: 独立服务显式装配
 
 - **WHEN** accountsvc 启用 EMAIL 且未配置模板清单，或运行 EMAIL 禁用的 serve / migrate
-- **THEN** 前者显式选择兼容中文渲染器完成邮件投递；后者继续遵循原 SMTP 依赖边界，不读取模板清单或引入语言依赖
+- **THEN** 前者用内置布局与嵌入的无品牌默认清单完成邮件投递并记录 WARN；后者继续遵循原 SMTP 依赖边界，不读取模板清单或引入语言依赖
 
 #### Scenario: 独立服务使用模板清单
 

@@ -145,11 +145,7 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 		return nil, err
 	}
 	if cfg.identityEnabled(enum.IdentityEmail) {
-		var renderer smtp.Renderer = smtp.LegacyChineseRenderer{Brand: cfg.SMTPBrand}
-		if cfg.EmailTemplates != nil {
-			renderer = cfg.EmailTemplates
-		}
-		s, err := smtp.NewWithRenderer(cfg.SMTP, renderer)
+		s, err := smtp.NewWithRenderer(cfg.SMTP, emailRenderer(cfg))
 		if err != nil {
 			return nil, errors.New("accountsvc: SMTP configuration failed")
 		}
@@ -168,7 +164,7 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 		return nil, errors.New("accountsvc: accountkit construction failed")
 	}
 	app := &application{migrate: auth.Migrate, start: auth.Start, close: auth.Close, endUser: auth.EndUserHandler(), admin: auth.AdminHandler(), jwks: auth.JWKSHandler(), metrics: metrics}
-	if cfg.EmailTemplates.Multilingual() {
+	if cfg.identityEnabled(enum.IdentityEmail) && emailRenderer(cfg).Multilingual() {
 		// 只有多语言清单才需要读取请求语言；发码只经由消费者路由。
 		app.endUser = acceptLanguage(app.endUser)
 	}
@@ -318,6 +314,10 @@ func warnUnconfigured(cfg Config, logger *slog.Logger) {
 	if cfg.Library.ProfileAttributes == nil {
 		logger.Warn("accountsvc: profile attributes are not configured; GET/PATCH /v1/users/me/profile answer 503 PROFILE_ATTRIBUTES_NOT_CONFIGURED",
 			"settings", "ACCOUNTSVC_PROFILE_ATTRIBUTES_SCHEMA_FILE")
+	}
+	if cfg.identityEnabled(enum.IdentityEmail) && cfg.EmailTemplates == nil {
+		logger.Warn("accountsvc: email templates are not configured; verification emails use the built-in default wording without a brand",
+			"settings", "ACCOUNTSVC_SMTP_TEMPLATES_FILE")
 	}
 }
 

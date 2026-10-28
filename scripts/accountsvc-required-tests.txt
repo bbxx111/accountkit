@@ -29,7 +29,6 @@ github.com/bbxx111/accountkit/internal/accountsvc/TestProfileAttributesNonRegula
 github.com/bbxx111/accountkit/internal/accountsvc/TestProfileAttributesReadFailure
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationAliyunSMS
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigSMSProvider
-github.com/bbxx111/accountkit/internal/accountsvc/TestConfigSMTPBrand
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationPurgedUserFeed
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigPurgeFeedClients
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigRejectsLegacyPrefix
@@ -59,3 +58,5 @@ github.com/bbxx111/accountkit/internal/accountsvc/TestEmailTemplatesCheckCommand
 github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestLanguageMatchingAcrossScripts
 github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestSinglePassSubstitution
 github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestLayoutGolden
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestDefaultManifest
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestBrandlessLanguage

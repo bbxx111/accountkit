@@ -7,7 +7,7 @@
 
 - [x] 2.1 严格解析清单：version=1；`default_language` 属于 `languages`；1–8 种规范 BCP 47 语言，不含 `und`，不重复；语言块、`common`、用途的固定字段集合；拒绝未知字段、重复键、尾随内容、null；错误只含字段位置与固定分类
 - [x] 2.2 占位符 `{{brand}}` / `{{ttl_minutes}}`：单个花括号字面；`{{code}}`、未知名称或不完整的 `{{` 报错；每段最多 8 个；各字段的长度与字符规则；`logo_url` 校验
-- [x] 2.3 内置布局：嵌入 HTML 与纯文本布局；Logo 与页脚槽位由 Go 代码按有无填入；HTML 槽位整体转义
+- [x] 2.3 内置布局：嵌入 HTML 与纯文本布局；Logo、页脚与 `©` 槽位由 Go 代码按有无填入；HTML 槽位整体转义；嵌入无品牌默认清单 `default.json` 与 `Default()`
 - [x] 2.4 渲染：先渲染各段文字再填入布局；有效期向上取整；ctx 取消、CodeMessage 非法、零值或 nil 时返回 ErrUnavailable；并发安全
 - [x] 2.5 语言匹配：`language.NewMatcher`，默认语言在前；`WithLanguagePreference` 与读取函数；无偏好或置信度为 No 时用默认语言；单语言不读 context
 - [x] 2.6 摘要与语言列表：清单 SHA-256 前 12 位；按清单顺序的标签列表
@@ -15,11 +15,11 @@
 
 ## 3. accountsvc 装配
 
-- [x] 3.1 `LoadConfig`：只在 serve 且 EMAIL 启用时加载；与 `ACCOUNTSVC_SMTP_BRAND` 互斥；EMAIL 禁用或 migrate 时不解析
+- [x] 3.1 `LoadConfig`：只在 serve 且 EMAIL 启用时加载；删除 `ACCOUNTSVC_SMTP_BRAND`；未设置时运行期使用嵌入的默认清单；EMAIL 禁用或 migrate 时不解析
 - [x] 3.2 `Accept-Language` 中间件：只在多语言时安装；超过 512 字节、解析失败或缺失时不设置；最多前 8 项
-- [x] 3.3 `run.go`：二选一注入渲染器；启动 INFO 加入 custom/built-in、version、sha256、languages
+- [x] 3.3 `run.go`：注入清单或默认清单渲染器；配置清单时 INFO（version、sha256、languages），未配置时 WARN
 - [x] 3.4 子命令 `email-templates check <清单> [-out 目录]`：不读环境变量；失败非零退出；输出目录只允许覆盖固定文件名；写出 `<lang>/<PURPOSE>.html`、`.txt`、`subjects.txt`
-- [x] 3.5 配置与命令测试：未设置、品牌冲突、各类文件错误、EMAIL 禁用或 migrate 时忽略、check 成功/失败/拒绝脏目录
+- [x] 3.5 配置与命令测试：未设置时使用默认清单并告警、各类文件错误、EMAIL 禁用或 migrate 时忽略、check 成功/失败/拒绝脏目录
 - [x] 3.6 集成测试：伪 SMTP 抓取 multipart/alternative；分别带 zh-HK、en-GB、ja 和不带请求头发码，断言标题、HTML、纯文本和品牌；启动日志含 custom、语言列表和摘要；进程输出不含文字、品牌或路径
 
 ## 4. 样例、文档与部署

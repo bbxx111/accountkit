@@ -26,7 +26,7 @@ func TestServiceIntegrationEmailTemplates(t *testing.T) {
 	// 进程输出（日志）不得出现文字、品牌、Logo 地址或路径。
 	f.secrets = append(f.secrets, hans, hant, en, "BRAND-HANS", "BRAND-HANT", "BRAND-EN", "templates-path-sentinel", "static.example.test")
 
-	p := f.start(map[string]string{"ACCOUNTSVC_SMTP_BRAND": "", "ACCOUNTSVC_SMTP_TEMPLATES_FILE": path})
+	p := f.start(map[string]string{"ACCOUNTSVC_SMTP_TEMPLATES_FILE": path})
 	for i, tc := range []struct{ header, brand, marker string }{
 		{"zh-HK", "BRAND-HANT", hant},
 		{"en-GB,en;q=0.8", "BRAND-EN", en},
@@ -60,9 +60,17 @@ func TestServiceIntegrationEmailTemplates(t *testing.T) {
 		t.Fatalf("custom templates were not logged at startup:\n%s", out)
 	}
 
+	// 未配置清单：使用嵌入的无品牌默认清单，仍按 Accept-Language 选语言，并记录 WARN。
 	p = f.start(nil)
+	transportRequest(t, f.client, "POST", p.baseURL+"/v1/users:sendSignInCode", "application/json", `{"channel":"EMAIL","target":"default@example.test"}`, map[string]string{"Accept-Language": "en"}, 200)
+	m := f.smtp.mail(t)
+	f.secrets = append(f.secrets, m.target, m.code)
+	if m.subject != "Your sign-in code" || strings.Contains(m.html, "&copy;") || !strings.Contains(m.html, ">"+m.code+"</p>") {
+		t.Fatalf("default manifest mail: %q\n%s", m.subject, m.html)
+	}
 	p.stop()
-	if !strings.Contains(p.output.String(), "email templates: built-in") {
-		t.Fatal("built-in templates were not logged at startup")
+	out = p.output.String()
+	if !strings.Contains(out, "email templates are not configured") || strings.Contains(out, "email templates: custom") {
+		t.Fatalf("default templates were not warned at startup:\n%s", out)
 	}
 }

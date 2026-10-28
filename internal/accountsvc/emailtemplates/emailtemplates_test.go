@@ -139,6 +139,57 @@ func TestHTMLEscapingAndLiteralBraces(t *testing.T) {
 	}
 }
 
+// brandless 去掉某语言的品牌、Logo 和所有 {{brand}} 引用。
+func brandless(tag string) func(map[string]any) {
+	return func(root map[string]any) {
+		delete(lang(root, tag), "brand")
+		delete(lang(root, tag), "logo_url")
+		for _, p := range []string{"SIGN_IN", "BIND", "REAUTH", "SIGN_IN_COMPLETE"} {
+			setPurpose(tag, p, "subject", p+" "+sentinel)(root)
+			setPurpose(tag, p, "intro", p+" intro "+sentinel)(root)
+		}
+	}
+}
+
+func TestBrandlessLanguage(t *testing.T) {
+	got, err := mustParse(t, mutated(t, brandless("zh-Hans"))).Render(context.Background(), message(enum.PurposeReauth))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Subject != "REAUTH "+sentinel || strings.Contains(got.HTML, "&copy;") || strings.Contains(got.HTML, "<img") || strings.Contains(got.HTML, "{{") {
+		t.Fatalf("brandless render:\n%q\n%s", got.Subject, got.HTML)
+	}
+	if !strings.Contains(got.HTML, "footer "+sentinel+"</p>") || !strings.Contains(got.Text, "\n\nfooter "+sentinel+"\n") {
+		t.Fatalf("footer kept without brand:\n%s\n%s", got.HTML, got.Text)
+	}
+}
+
+// 嵌入的默认清单必须合法：三种语言、无品牌、无 Logo，每种用途都能渲染。
+func TestDefaultManifest(t *testing.T) {
+	r := Default()
+	if r != Default() || strings.Join(r.Languages(), ",") != "zh-Hans,en,zh-Hant" || !r.Multilingual() {
+		t.Fatalf("default: %v", r.Languages())
+	}
+	for header, wantSubject := range map[string]string{"": "登录验证码", "zh-HK": "登入驗證碼", "en-US": "Your sign-in code"} {
+		ctx := WithLanguagePreference(context.Background(), ParseAcceptLanguage(header))
+		for _, p := range []enum.CodePurpose{enum.PurposeSignIn, enum.PurposeBind, enum.PurposeReauth, enum.PurposeSignInComplete} {
+			got, err := r.Render(ctx, message(p))
+			if err != nil {
+				t.Fatalf("%q %v: %v", header, p, err)
+			}
+			if p == enum.PurposeSignIn && got.Subject != wantSubject {
+				t.Fatalf("%q: subject %q", header, got.Subject)
+			}
+			if strings.Contains(got.HTML, "&copy;") || strings.Contains(got.HTML, "<img") || strings.Contains(got.HTML, "{{") || !strings.Contains(got.HTML, ">123456</p>") || !strings.Contains(got.Text, "\n123456\n") || strings.Contains(got.Subject, "123456") {
+				t.Fatalf("%q %v:\n%s\n%s", header, p, got.HTML, got.Text)
+			}
+		}
+	}
+	if got, _ := r.Render(context.Background(), message(enum.PurposeSignInComplete)); !strings.Contains(got.Text, "完成登录并关联身份") {
+		t.Fatalf("completion wording: %q", got.Text)
+	}
+}
+
 func TestOptionalLogoAndFooter(t *testing.T) {
 	raw := mutated(t, func(root map[string]any) {
 		delete(lang(root, "zh-Hans"), "logo_url")
@@ -298,25 +349,28 @@ func TestParseRejects(t *testing.T) {
 				m["languages"].(map[string]any)[tag] = languageEntry("x")
 			}
 		}), "languages"},
-		"default missing":   {mutated(t, func(m map[string]any) { delete(m, "default_language") }), "default_language"},
-		"default unknown":   {mutated(t, func(m map[string]any) { m["default_language"] = "fr" }), "default_language"},
-		"default null":      {mutated(t, func(m map[string]any) { m["default_language"] = nil }), "default_language"},
-		"tag not canonical": {mutated(t, func(m map[string]any) { m["languages"].(map[string]any)["zh-hant"] = languageEntry("x") }), "languages"},
-		"tag und":           {mutated(t, func(m map[string]any) { m["languages"].(map[string]any)["und"] = languageEntry("x") }), "languages"},
-		"tag garbage":       {mutated(t, func(m map[string]any) { m["languages"].(map[string]any)[sentinel] = languageEntry("x") }), "languages"},
-		"tag private":       {mutated(t, func(m map[string]any) { m["languages"].(map[string]any)["x-foo"] = languageEntry("x") }), "languages"},
-		"tag private ext":   {mutated(t, func(m map[string]any) { m["languages"].(map[string]any)["en-x-foo"] = languageEntry("x") }), "languages"},
-		"language null":     {mutated(t, func(m map[string]any) { m["languages"].(map[string]any)["en"] = nil }), "languages.en"},
-		"language unknown":  {mutated(t, func(m map[string]any) { lang(m, "en")[sentinel] = 1 }), "languages.en"},
-		"brand missing":     {mutated(t, func(m map[string]any) { delete(lang(m, "en"), "brand") }), "languages.en.brand"},
-		"brand empty":       {mutated(t, func(m map[string]any) { lang(m, "en")["brand"] = "" }), "languages.en.brand"},
-		"brand newline":     {mutated(t, func(m map[string]any) { lang(m, "en")["brand"] = "a\nb" + sentinel }), "languages.en.brand"},
-		"brand long":        {mutated(t, func(m map[string]any) { lang(m, "en")["brand"] = long(33) }), "languages.en.brand"},
-		"logo http":         {mutated(t, func(m map[string]any) { lang(m, "en")["logo_url"] = "http://x.example/" + sentinel }), "languages.en.logo_url"},
-		"logo userinfo":     {mutated(t, func(m map[string]any) { lang(m, "en")["logo_url"] = "https://u:p@x.example/l.png" }), "languages.en.logo_url"},
-		"logo space":        {mutated(t, func(m map[string]any) { lang(m, "en")["logo_url"] = "https://x.example/a b.png" }), "languages.en.logo_url"},
-		"logo data":         {mutated(t, func(m map[string]any) { lang(m, "en")["logo_url"] = "data:image/png;base64,AAAA" }), "languages.en.logo_url"},
-		"logo null":         {mutated(t, func(m map[string]any) { lang(m, "en")["logo_url"] = nil }), "languages.en.logo_url"},
+		"default missing":         {mutated(t, func(m map[string]any) { delete(m, "default_language") }), "default_language"},
+		"default unknown":         {mutated(t, func(m map[string]any) { m["default_language"] = "fr" }), "default_language"},
+		"default null":            {mutated(t, func(m map[string]any) { m["default_language"] = nil }), "default_language"},
+		"tag not canonical":       {mutated(t, func(m map[string]any) { m["languages"].(map[string]any)["zh-hant"] = languageEntry("x") }), "languages"},
+		"tag und":                 {mutated(t, func(m map[string]any) { m["languages"].(map[string]any)["und"] = languageEntry("x") }), "languages"},
+		"tag garbage":             {mutated(t, func(m map[string]any) { m["languages"].(map[string]any)[sentinel] = languageEntry("x") }), "languages"},
+		"tag private":             {mutated(t, func(m map[string]any) { m["languages"].(map[string]any)["x-foo"] = languageEntry("x") }), "languages"},
+		"tag private ext":         {mutated(t, func(m map[string]any) { m["languages"].(map[string]any)["en-x-foo"] = languageEntry("x") }), "languages"},
+		"language null":           {mutated(t, func(m map[string]any) { m["languages"].(map[string]any)["en"] = nil }), "languages.en"},
+		"language unknown":        {mutated(t, func(m map[string]any) { lang(m, "en")[sentinel] = 1 }), "languages.en"},
+		"brand missing with logo": {mutated(t, func(m map[string]any) { delete(lang(m, "en"), "brand") }), "languages.en.logo_url"},
+		"brand empty with logo":   {mutated(t, func(m map[string]any) { lang(m, "en")["brand"] = "" }), "languages.en.logo_url"},
+		"brand empty but used":    {mutated(t, func(m map[string]any) { lang(m, "en")["brand"] = ""; delete(lang(m, "en"), "logo_url") }), "languages.en.templates.SIGN_IN.subject"},
+		"brand missing but used":  {mutated(t, func(m map[string]any) { delete(lang(m, "en"), "brand"); delete(lang(m, "en"), "logo_url") }), "languages.en.templates.SIGN_IN.subject"},
+		"brand null":              {mutated(t, func(m map[string]any) { lang(m, "en")["brand"] = nil }), "languages.en.brand"},
+		"brand newline":           {mutated(t, func(m map[string]any) { lang(m, "en")["brand"] = "a\nb" + sentinel }), "languages.en.brand"},
+		"brand long":              {mutated(t, func(m map[string]any) { lang(m, "en")["brand"] = long(33) }), "languages.en.brand"},
+		"logo http":               {mutated(t, func(m map[string]any) { lang(m, "en")["logo_url"] = "http://x.example/" + sentinel }), "languages.en.logo_url"},
+		"logo userinfo":           {mutated(t, func(m map[string]any) { lang(m, "en")["logo_url"] = "https://u:p@x.example/l.png" }), "languages.en.logo_url"},
+		"logo space":              {mutated(t, func(m map[string]any) { lang(m, "en")["logo_url"] = "https://x.example/a b.png" }), "languages.en.logo_url"},
+		"logo data":               {mutated(t, func(m map[string]any) { lang(m, "en")["logo_url"] = "data:image/png;base64,AAAA" }), "languages.en.logo_url"},
+		"logo null":               {mutated(t, func(m map[string]any) { lang(m, "en")["logo_url"] = nil }), "languages.en.logo_url"},
 		"logo long": {mutated(t, func(m map[string]any) {
 			lang(m, "en")["logo_url"] = "https://x.example/" + strings.Repeat("a", MaxLogoURLBytes)
 		}), "languages.en.logo_url"},

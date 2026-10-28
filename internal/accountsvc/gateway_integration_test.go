@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -37,6 +38,8 @@ type testGateway struct {
 	server    *httptest.Server
 	transport *countedTransport
 	logs      safeBuffer
+	// lastProxyError keeps the most recent upstream error for failure messages only.
+	lastProxyError atomic.Value
 }
 
 func newTestGateway(t *testing.T, upstream string, cert tls.Certificate, internal bool) *testGateway {
@@ -56,6 +59,7 @@ func newTestGateway(t *testing.T, upstream string, cert tls.Certificate, interna
 			r.SetXForwarded()
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			g.lastProxyError.Store(err.Error())
 			http.Error(w, "upstream unavailable", http.StatusBadGateway)
 		},
 	}
@@ -270,10 +274,16 @@ func gatewayCancellation(t *testing.T, stopProxy bool) {
 	entered, canceled := make(chan struct{}), make(chan struct{})
 	release := make(chan struct{})
 	defer close(release) // Bound fixture cleanup even when an assertion fails.
+	// Diagnostics for an intermittent CI failure (runs #43, #102): whether the upstream
+	// request ended before the test interrupted it, and why.
+	var interrupted, endedEarly atomic.Bool
+	var upstreamCause atomic.Value
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		close(entered)
 		select {
 		case <-r.Context().Done():
+			endedEarly.Store(!interrupted.Load())
+			upstreamCause.Store(fmt.Sprint(context.Cause(r.Context())))
 			close(canceled)
 		case <-release:
 		}
@@ -286,20 +296,28 @@ func gatewayCancellation(t *testing.T, stopProxy bool) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	r, _ := http.NewRequestWithContext(ctx, "GET", g.server.URL+"/v1/users/me", nil)
-	done := make(chan error, 1)
+	type result struct {
+		err    error
+		status int
+		body   string
+	}
+	done := make(chan result, 1)
 	go func() {
 		resp, err := client.Do(r)
+		res := result{err: err}
 		if err == nil {
-			_, _ = io.Copy(io.Discard, resp.Body)
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 			resp.Body.Close()
+			res.status, res.body = resp.StatusCode, string(body)
 		}
-		done <- err
+		done <- res
 	}()
 	select {
 	case <-entered:
 	case <-time.After(3 * time.Second):
 		t.Fatal("proxy did not reach cancellation upstream")
 	}
+	interrupted.Store(true)
 	if stopProxy {
 		g.server.CloseClientConnections()
 	} else {
@@ -311,9 +329,10 @@ func gatewayCancellation(t *testing.T, stopProxy bool) {
 		t.Fatal("proxy did not propagate cancellation")
 	}
 	select {
-	case err := <-done:
-		if err == nil {
-			t.Fatal("interrupted request reported success")
+	case res := <-done:
+		if res.err == nil {
+			t.Fatalf("interrupted request reported success: status=%d body=%q upstream_ended_before_interrupt=%v upstream_cause=%v proxy_error=%v proxy_calls=%d",
+				res.status, res.body, endedEarly.Load(), upstreamCause.Load(), g.lastProxyError.Load(), g.transport.calls.Load())
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("proxy client request did not terminate")

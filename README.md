@@ -92,7 +92,7 @@ GET 与 PATCH 成功均返回 200 和 `{"name":"users/u_0000000000001/profile","
 
 挂载内置 HTTP handler 的宿主可使用[消费者与管理面 OpenAPI 契约](docs/openapi.md)，按实际地址调整挂载前缀。
 
-本文描述 v0.6.0（已发布）的公开契约：在 v0.5.0 的资料属性、本人资料 HTTP 和头像之上，提供身份提供方注册表与统一凭证信封、Google/OIDC/Facebook/支付宝/QQ/微博登录、微信小程序和可配置的第三方资料补填。版本范围与兼容边界见 [v0.6.0 发布说明](docs/releases/v0.6.0.md)；v0.5.0 及更早状态保留在各自发布说明。账号资源沿用 `/users`，升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
+本文描述 v0.7.0（准备中）的公开契约：在 v0.6.0 的身份提供方注册表与统一凭证信封之上，提供 ES256 access 与 JWKS、严格认证、已清理用户记录、阿里云短信发送器与邮件品牌；accountsvc 另有统一的 `ACCOUNTSVC_` 前缀、服务调用 Bearer 认证与多语言邮件模板清单。版本范围与兼容边界见 [v0.7.0 发布说明](docs/releases/v0.7.0.md)；v0.6.0 及更早状态保留在各自发布说明。账号资源沿用 `/users`，升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
 
 accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可选服务实现，使用同一套库能力；选择库集成不需要部署或调用 accountsvc。服务入口是 `cmd/accountsvc`，包含 SMTP 邮件投递、消费者远程鉴权和默认关闭的外部管理员 JWT 验证，运行与配置见 [accountsvc 服务手册](docs/accountsvc.md)。`examples/embedded` 保留为库集成开发示例。
 
@@ -516,7 +516,7 @@ HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额
 
 ## 仓库与发布状态
 
-当前最新版本为 [v0.6.0](https://github.com/bbxx111/accountkit/releases/tag/v0.6.0)，包含身份提供方注册表与统一凭证、Google/OIDC/Facebook/支付宝/QQ/微博登录、微信小程序和可配置的第三方资料补填。使用 `go get github.com/bbxx111/accountkit@v0.6.0` 接入；范围与升级边界见[发布说明](docs/releases/v0.6.0.md)，候选 `ec6802c` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/40093942831)已通过，实际证据见[发布验收](openspec/changes/archive/2026-10-24-prepare-v0-6-0-release/verification.md)。
+v0.7.0 准备中，范围见 [v0.7.0 发布说明](docs/releases/v0.7.0.md)。当前已发布的最新版本为 [v0.6.0](https://github.com/bbxx111/accountkit/releases/tag/v0.6.0)，包含身份提供方注册表与统一凭证、Google/OIDC/Facebook/支付宝/QQ/微博登录、微信小程序和可配置的第三方资料补填。使用 `go get github.com/bbxx111/accountkit@v0.6.0` 接入；范围与升级边界见[发布说明](docs/releases/v0.6.0.md)，候选 `ec6802c` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/40093942831)已通过，实际证据见[发布验收](openspec/changes/archive/2026-10-24-prepare-v0-6-0-release/verification.md)。
 
 远程仓库：https://github.com/bbxx111/accountkit.git
 

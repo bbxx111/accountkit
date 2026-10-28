@@ -2,7 +2,7 @@
 
 ## 服务调用 Bearer 认证
 
-本节随下一个版本发布。
+本节随 v0.7.0 发布（准备中）。
 
 - **新增能力**：内省与已清理用户拉取在 HTTP Basic 之外可接受客户端凭据 Bearer 令牌（`ACCOUNTSVC_SERVICE_ISSUER`、`ACCOUNTSVC_SERVICE_AUDIENCE`、`ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS`、`ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS`），规则见[服务调用认证](accountsvc.md#服务调用认证内省与已清理用户拉取)。仅配置 Basic 的部署行为不变。
 - **改名**：Basic 凭据变量 `ACCOUNTSVC_INTROSPECTION_CLIENTS`、`ACCOUNTSVC_PURGE_FEED_CLIENTS` 改为 `ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS`、`ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS`，格式不变，不读取旧名。
@@ -12,7 +12,7 @@
 
 ## accountsvc 配置前缀统一
 
-本节随下一个版本发布。
+本节随 v0.7.0 发布（准备中）。
 
 - **accountsvc 环境变量（BREAKING）**：服务的库配置改为以 `ACCOUNTSVC_` 读取，与服务配置共用一个前缀。部署方把每个 `ACCOUNTKIT_` 变量改为 `ACCOUNTSVC_` 加相同后缀，例如 `ACCOUNTKIT_JWT_KEYS` → `ACCOUNTSVC_JWT_KEYS`、`ACCOUNTKIT_ENABLED_IDENTITY_KINDS` → `ACCOUNTSVC_ENABLED_IDENTITY_KINDS`、`ACCOUNTKIT_ALIPAY_<APPID>_PRIVATE_KEY` → `ACCOUNTSVC_ALIPAY_<APPID>_PRIVATE_KEY`；原有 `ACCOUNTSVC_` 服务配置名不变。不提供旧名回退读取。
 - **启动拒绝**：serve 与 migrate 发现任何非空 `ACCOUNTKIT_` 变量时失败并列出旧名与对应新名，不回显值，避免可选配置改名后被静默忽略。删除旧变量后重启。回退到旧版本需要把变量名改回。
@@ -20,7 +20,7 @@
 
 ## 已清理用户拉取与初始结构调整
 
-本节随下一个版本发布。
+本节随 v0.7.0 发布（准备中）。
 
 - **数据库（BREAKING，无迁移）**：经用户明确授权，当前 0001 直接新增 `purged_user` 表，不新增 0002。新安装仍为 version=1。已由 v0.6.0 或更早版本安装的数据库缺少该表，迁移预检以 `migrations.ErrIncompatibleBaseline` 无写拒绝（dirty 优先），不补表、不改版本；需使用经人工核验的新空资源，详见[迁移手册](migrations.md#当前初始基线)。不提供旧数据迁移工具。旧二进制的预检不认识这张表、会接受新结构，但其 purge 不写已清理记录，会让对应账号永久缺席拉取清单：部署须阻止新旧版本混跑和在新结构上回退到旧二进制。
 - **新增能力**：purge 事务内写入已清理记录；`user.Service.ListPurgedUsers` 按游标读取；accountsvc 新增 `GET /v1/purgedUsers`（`ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS`）。`Config.PurgedUserRetention` / `PURGED_USER_RETENTION` 默认 0（长期保留）。purge 本身的语义、时机与宿主 Anonymizer 契约不变。
@@ -28,7 +28,7 @@
 
 ## accountsvc 阿里云短信与邮件品牌
 
-本节随下一个版本发布，新增能力均为可选，未配置时行为不变，无数据库迁移。
+本节随 v0.7.0 发布（准备中），新增能力均为可选，未配置时行为不变，无数据库迁移。
 
 - **短信**：accountsvc 新增 `ACCOUNTSVC_SMS_PROVIDER=aliyun` 与 `ACCOUNTSVC_SMS_ALIYUN_*`（见[服务手册](accountsvc.md#短信服务商)）。显式启用 PHONE 的错误由“服务没有 SMS 服务商”改为要求配置 `ACCOUNTSVC_SMS_PROVIDER`；省略身份策略时短信仍保持禁用。
 - **新错误原因**：发送器可选实现 `SupportsTarget(e164 string) bool`；声明不支持的号码在占用额度前返回 400 `FAILED_PRECONDITION` / `TARGET_NOT_SUPPORTED`（Go 为 `sender.ErrTargetNotSupported`），审计 `CODE_SEND_REJECTED` 原因 `TARGET_NOT_SUPPORTED`。阿里云发送器首版只支持中国大陆号码，客户端可据此提示改用其他登录方式。未实现该方法的宿主发送器不受影响。
@@ -42,7 +42,7 @@
 
 ## 消费者 access 改用 ES256 与严格内省
 
-本节随 v0.6.0 之后的下一个版本发布（版本号在发布时确定），对 v0.6.0 不兼容，不提供旧配置、旧令牌或旧数据迁移。
+本节随 v0.7.0 发布（准备中），对 v0.6.0 不兼容，不提供旧配置、旧令牌或旧数据迁移。
 
 - **签名算法**：消费者 access token 由 HS256 改为 ES256（P-256），header 增加 `typ: at+jwt`（RFC 9068），`kid` 仍为十进制版本号，claims 不变。HS256 完全移除，accountkit 自身验签也拒绝 HS256、`none` 与缺少/错误的 `typ`。
 - **配置**：`accountkit.Config.JWTKeys` 由 `map[uint16][]byte` 改为 `map[uint16]*ecdsa.PrivateKey`（只接受 P-256），`tokens.Options.Keys` 同理，`tokens.MinKeyLen` 移除；Go 宿主在编译期即可发现。环境变量 `JWT_KEYS` 名称与 `版本:base64` 列表格式不变，值改为 PKCS#8 DER 的 base64；旧的 HMAC 随机字节值会被拒绝并指出变量名，不回显密钥。生成命令（`genpkey` 默认输出 PEM，须经 `pkcs8 -topk8` 转为 DER）：

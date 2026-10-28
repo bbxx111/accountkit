@@ -2,3 +2,5 @@
 *.sql text eol=lf
 *.go text eol=lf
 *.sh text eol=lf
+internal/accountsvc/emailtemplates/layout.* text eol=lf
+*.golden.html text eol=lf

@@ -45,7 +45,7 @@ func TestServiceIntegrationEmailLifecycle(t *testing.T) {
 	time.Sleep(1100 * time.Millisecond)
 	f.call("POST", p.baseURL+"/v1/users/me:sendReauthenticationCode", access, map[string]string{"channel": "EMAIL", "target": "lifecycle@example.test"}, 200)
 	m := f.smtp.mail(t)
-	if !strings.Contains(m.body, "您正在进行重新认证。") || !strings.Contains(m.body, "验证码："+m.code) || !strings.Contains(m.body, "有效期：5 分钟。") || !strings.Contains(m.body, "请勿向他人透露验证码。") {
+	if !strings.HasPrefix(m.body, "身份验证\n\n您正在进行一项需要确认本人身份的操作") || !strings.Contains(m.body, "\n"+m.code+"\n") || !strings.Contains(m.body, "验证码 5 分钟内有效。") || !strings.Contains(m.body, "请勿向任何人透露验证码。") {
 		t.Fatal("wrong reauthentication email purpose")
 	}
 	f.secrets = append(f.secrets, m.code)

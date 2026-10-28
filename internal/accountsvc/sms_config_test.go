@@ -140,25 +140,3 @@ func TestConfigSMSProvider(t *testing.T) {
 		}
 	})
 }
-
-func TestConfigSMTPBrand(t *testing.T) {
-	serveEnvironment(t)
-	t.Setenv("ACCOUNTSVC_SMTP_BRAND", "食方")
-	cfg, err := LoadConfig("serve")
-	if err != nil || cfg.SMTPBrand != "食方" {
-		t.Fatalf("brand: %q %v", cfg.SMTPBrand, err)
-	}
-	for _, bad := range []string{"食方\r\nBcc: x@example.org", " 食方", strings.Repeat("食", 33)} {
-		t.Setenv("ACCOUNTSVC_SMTP_BRAND", bad)
-		if _, err := LoadConfig("serve"); err == nil || !strings.Contains(err.Error(), "ACCOUNTSVC_SMTP_BRAND") {
-			t.Fatalf("invalid brand %q: %v", bad, err)
-		}
-	}
-	// EMAIL 显式禁用时不解析品牌。
-	t.Setenv("ACCOUNTSVC_ENABLED_IDENTITY_KINDS", "WECHAT")
-	t.Setenv("ACCOUNTSVC_REQUIRED_IDENTITY_KINDS", "[]")
-	t.Setenv("ACCOUNTSVC_WECHAT_APPS", "test-app:synthetic-provider-secret")
-	if cfg, err := LoadConfig("serve"); err != nil || cfg.SMTPBrand != "" {
-		t.Fatalf("disabled EMAIL must ignore brand: %q %v", cfg.SMTPBrand, err)
-	}
-}

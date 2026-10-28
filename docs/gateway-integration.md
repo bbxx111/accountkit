@@ -10,6 +10,7 @@
 
 - X-Client-Type、X-Client-OS-Name、X-Client-OS-Version。
 - X-Client-Browser-Name、X-Client-Browser-Version、X-Client-App-Name、X-Client-App-Version。
+- Accept-Language：accountsvc 配置多语言邮件清单时据此选择验证码邮件的语言（见[邮件模板清单](accountsvc.md#邮件模板清单)）。它是 CORS 安全请求头，无需额外放行，但代理不得剥离或改写；缺失时服务使用默认语言。
 - X-Device-Type、X-Device-Model。
 
 默认解析也使用User-Agent与浏览器可用的Sec-CH-UA、Sec-CH-UA-Full-Version-List、Sec-CH-UA-Platform、Sec-CH-UA-Platform-Version、Sec-CH-UA-Model、Sec-CH-UA-Mobile；代理不要丢弃这些实际可用输入。浏览器控制的头由浏览器决定是否发送，不要求前端脚本强行设置、不主动请求额外高熵提示；字段可以缺省。UA和全部Sec-CH-UA*值分别限2048字节，超限/畸形只忽略相应自动解析部分，保留合法显式字段。

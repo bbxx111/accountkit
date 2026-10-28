@@ -1,0 +1,9 @@
+{{heading}}
+
+{{intro}}
+
+{{code_label}}
+{{code}}
+
+{{expiry}}
+{{safety}}{{footer}}

@@ -12,7 +12,7 @@ import (
 func TestMainRejectsUnknownCommandWithoutArgumentLeaks(t *testing.T) {
 	var output bytes.Buffer
 	code := runMain(context.Background(), []string{"synthetic-command-secret"}, slog.New(slog.NewTextHandler(&output, nil)))
-	if code != 1 || strings.Contains(output.String(), "synthetic-command-secret") || !strings.Contains(output.String(), "serve or migrate") {
+	if code != 1 || strings.Contains(output.String(), "synthetic-command-secret") || !strings.Contains(output.String(), "serve, migrate or email-templates check") {
 		t.Fatal("CLI did not safely report command failure")
 	}
 }

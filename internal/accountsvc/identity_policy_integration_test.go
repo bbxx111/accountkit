@@ -248,7 +248,7 @@ func serviceMigrationFlowKeys(t *testing.T) {
 	if err := f.pool.QueryRow(t.Context(), "SELECT payload, cipher_version FROM sign_in_completion_flow").Scan(&payload, &version); err != nil || version != 2 || len(payload) == 0 {
 		t.Fatal("old-key flow was not encrypted and persisted")
 	}
-	minimal := map[string]string{"ACCOUNTSVC_SMTP_PORT": "invalid-unused", "ACCOUNTSVC_WECHAT_APPS": "", "ACCOUNTSVC_INTROSPECTION_CLIENTS": ""}
+	minimal := map[string]string{"ACCOUNTSVC_SMTP_PORT": "invalid-unused", "ACCOUNTSVC_WECHAT_APPS": "", "ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS": ""}
 	if _, err := f.command(minimal, "migrate"); err == nil {
 		t.Fatal("migrate ignored an active flow's missing cipher key")
 	}

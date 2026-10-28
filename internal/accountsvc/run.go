@@ -300,7 +300,7 @@ func preloadServiceTokens(preload func(context.Context) error, issuer string, lo
 		defer close(done)
 		if err := preload(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			if errors.Is(err, oidcjwt.ErrIssuerMismatch) {
-				logger.Error("accountsvc: service token issuer discovery does not match ACCOUNTSVC_SERVICE_TOKEN_ISSUER", "issuer", issuer)
+				logger.Error("accountsvc: service token issuer discovery does not match ACCOUNTSVC_SERVICE_ISSUER", "issuer", issuer)
 				return
 			}
 			logger.Warn("accountsvc: service token issuer unavailable at startup; bearer calls answer 503 until it recovers", "issuer", issuer)

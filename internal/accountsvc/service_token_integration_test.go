@@ -41,10 +41,10 @@ func (f *integrationFixture) serviceTokenIssuer(down *atomic.Bool) (sign func(az
 	s.TLS = &tls.Config{Certificates: []tls.Certificate{f.cert}, MinVersion: tls.VersionTLS12}
 	s.StartTLS()
 	f.t.Cleanup(s.Close)
-	f.env["ACCOUNTSVC_SERVICE_TOKEN_ISSUER"] = s.URL
-	f.env["ACCOUNTSVC_SERVICE_TOKEN_AUDIENCE"] = "integration-service"
-	f.env["ACCOUNTSVC_INTROSPECTION_TOKEN_CLIENTS"] = `["intro-svc"]`
-	f.env["ACCOUNTSVC_PURGE_FEED_TOKEN_CLIENTS"] = `["purge-svc"]`
+	f.env["ACCOUNTSVC_SERVICE_ISSUER"] = s.URL
+	f.env["ACCOUNTSVC_SERVICE_AUDIENCE"] = "integration-service"
+	f.env["ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS"] = `["intro-svc"]`
+	f.env["ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS"] = `["purge-svc"]`
 	return func(azp string) string {
 		now := time.Now()
 		token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{"iss": s.URL, "aud": "integration-service", "azp": azp, "exp": now.Add(5 * time.Minute).Unix(), "iat": now.Unix()})

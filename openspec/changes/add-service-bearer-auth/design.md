@@ -4,8 +4,8 @@ accountsvc 有两个只供内部业务服务调用的接口：
 
 | 接口 | 当前认证 | 错误风格 | 未配置时 |
 |---|---|---|---|
-| `POST /v1/introspect` | `ACCOUNTSVC_INTROSPECTION_CLIENTS` Basic（必需） | RFC 6749/7662 顶层 `error` | 启动失败 |
-| `GET /v1/purgedUsers` | `ACCOUNTSVC_PURGE_FEED_CLIENTS` Basic（可选） | AIP-193 `apierror` | 503 `PURGE_FEED_NOT_CONFIGURED` |
+| `POST /v1/introspect` | `ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS` Basic（必需） | RFC 6749/7662 顶层 `error` | 启动失败 |
+| `GET /v1/purgedUsers` | `ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS` Basic（可选） | AIP-193 `apierror` | 503 `PURGE_FEED_NOT_CONFIGURED` |
 
 两份 Basic 列表由 `basicclients.SharedSecret` 保证不共用秘密。管理面已有 `adminauth`：启动时 OIDC discovery 并加载 JWKS（失败则启动失败），只接受 RS256，拒绝 `jku`/`x5u`，要求 `kid`、`exp`、`iat`，固定 30 秒偏差，按 kid 缓存密钥 1 小时，未知 kid 每分钟至多刷新一次，刷新失败归类为 503，并带「super-admin 包含 operator」的角色规则。
 
@@ -91,9 +91,9 @@ accountsvc 有两个只供内部业务服务调用的接口：
 
 ### D4 audience 与 issuer 隔离（约束 2）
 
-serve 启动时，配置任一 token 客户端列表即要求：
-- `ACCOUNTSVC_SERVICE_TOKEN_ISSUER`：绝对 HTTPS URL，规则同 `adminauth.Config.Validate`；可以等于 `ACCOUNTSVC_ADMIN_ISSUER`；SHALL 不等于 `ACCOUNTSVC_JWT_ISSUER`。
-- `ACCOUNTSVC_SERVICE_TOKEN_AUDIENCE`：非空、无首尾空白；SHALL 不等于：
+serve 启动时，配置任一 Bearer 客户端列表即要求：
+- `ACCOUNTSVC_SERVICE_ISSUER`：绝对 HTTPS URL，规则同 `adminauth.Config.Validate`；可以等于 `ACCOUNTSVC_ADMIN_ISSUER`；SHALL 不等于 `ACCOUNTSVC_JWT_ISSUER`。
+- `ACCOUNTSVC_SERVICE_AUDIENCE`：非空、无首尾空白；SHALL 不等于：
   - `ACCOUNTSVC_JWT_AUDIENCE`（消费者）；
   - `ACCOUNTSVC_ADMIN_AUDIENCE`（管理员启用时）；
   - 任一第三方应用/客户端 ID：微信与小程序 AppID、Apple Bundle ID、Google Client ID、Facebook App ID、QQ、微博、支付宝 AppID、OIDC 提供方 client ID（比现有管理员检查更全，管理员检查本次不改）；
@@ -167,16 +167,18 @@ WWW-Authenticate: Bearer realm="accountsvc-introspection", error="invalid_token"
 
 | 变量 | 格式 | 说明 |
 |---|---|---|
-| `ACCOUNTSVC_SERVICE_TOKEN_ISSUER` | HTTPS URL | 两个接口共用 |
-| `ACCOUNTSVC_SERVICE_TOKEN_AUDIENCE` | 字符串 | 两个接口共用；隔离规则见 D4 |
-| `ACCOUNTSVC_INTROSPECTION_TOKEN_CLIENTS` | JSON 字符串数组 | 允许调用内省的 `azp` |
-| `ACCOUNTSVC_PURGE_FEED_TOKEN_CLIENTS` | JSON 字符串数组 | 允许调用拉取的 `azp` |
+| `ACCOUNTSVC_SERVICE_ISSUER` | HTTPS URL | 两个接口共用 |
+| `ACCOUNTSVC_SERVICE_AUDIENCE` | 字符串 | 两个接口共用；隔离规则见 D4 |
+| `ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS` | JSON 字符串数组 | 允许调用内省的 `azp` |
+| `ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS` | JSON 字符串数组 | 允许调用拉取的 `azp` |
 
 - 数组元素唯一、非空、无空白/控制字符、长度 ≤ 256；空数组视同未配置。
 - 两个数组 SHALL 不相交；任一元素 SHALL 不等于服务 audience。
-- 内省：`ACCOUNTSVC_INTROSPECTION_CLIENTS` 与 `ACCOUNTSVC_INTROSPECTION_TOKEN_CLIENTS` 至少一个非空；production 同样只要求「至少一种」。
+- 内省：`ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS` 与 `ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS` 至少一个非空；production 同样只要求「至少一种」。
 - 两个接口共用一个 audience，靠 `azp` 区分接口；不为每个接口单设 audience，减少 IdP mapper 配置。
 - 错误消息只指出变量名，不回显值（与现有一致）。migrate 不解析这些变量。
+
+实施偏离（2026-10-28，用户决定）：变量名按认证方式成对命名。设计原稿的 `SERVICE_TOKEN_ISSUER` / `SERVICE_TOKEN_AUDIENCE` 改为 `SERVICE_ISSUER` / `SERVICE_AUDIENCE`（与 `ADMIN_ISSUER` / `ADMIN_AUDIENCE` 对称）；`*_TOKEN_CLIENTS` 改为 `*_BEARER_CLIENTS`；既有 Basic 变量 `INTROSPECTION_CLIENTS` / `PURGE_FEED_CLIENTS` 同步改为 `*_BASIC_CLIENTS`，格式不变、不读取旧名。尚无产品部署，不提供旧名检测或迁移。
 
 ## Risks / Trade-offs
 

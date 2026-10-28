@@ -25,8 +25,8 @@ func TestServiceAuthenticatorsWithUnavailableIssuer(t *testing.T) {
 	p := oidcjwttest.New(t)
 	p.SetFail(true)
 	serviceTokenEnvironment(t)
-	t.Setenv("ACCOUNTSVC_SERVICE_TOKEN_ISSUER", p.URL())
-	t.Setenv("ACCOUNTSVC_SERVICE_TOKEN_AUDIENCE", oidcjwttest.Audience)
+	t.Setenv("ACCOUNTSVC_SERVICE_ISSUER", p.URL())
+	t.Setenv("ACCOUNTSVC_SERVICE_AUDIENCE", oidcjwttest.Audience)
 	cfg, err := LoadConfig("serve")
 	if err != nil {
 		t.Fatal(err)

@@ -180,7 +180,7 @@ func (f *integrationFixture) command(extra map[string]string, args ...string) (s
 func TestServiceIntegrationStartupSafety(t *testing.T) {
 	f := newIntegration(t)
 	// Both processes start from an absent schema and use the same migration locks.
-	minimal := map[string]string{"ACCOUNTSVC_SMTP_HOST": "", "ACCOUNTSVC_SMTP_PORT": "", "ACCOUNTSVC_SMTP_FROM": "", "ACCOUNTSVC_SMTP_USERNAME": "", "ACCOUNTSVC_SMTP_PASSWORD": "", "ACCOUNTSVC_INTROSPECTION_CLIENTS": "", "ACCOUNTSVC_TLS_CERT_FILE": "", "ACCOUNTSVC_TLS_KEY_FILE": ""}
+	minimal := map[string]string{"ACCOUNTSVC_SMTP_HOST": "", "ACCOUNTSVC_SMTP_PORT": "", "ACCOUNTSVC_SMTP_FROM": "", "ACCOUNTSVC_SMTP_USERNAME": "", "ACCOUNTSVC_SMTP_PASSWORD": "", "ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS": "", "ACCOUNTSVC_TLS_CERT_FILE": "", "ACCOUNTSVC_TLS_KEY_FILE": ""}
 	minimal["ACCOUNTSVC_ENABLED_IDENTITY_KINDS"] = "PHONE,WECHAT"
 	minimal["ACCOUNTSVC_REQUIRED_IDENTITY_KINDS"] = "PHONE"
 	minimal["ACCOUNTSVC_WECHAT_APPS"] = ""

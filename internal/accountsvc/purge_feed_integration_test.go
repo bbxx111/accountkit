@@ -41,9 +41,9 @@ func TestServiceIntegrationPurgedUserFeed(t *testing.T) {
 	feedSecret := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{6}, 32))
 	f.secrets = append(f.secrets, feedSecret)
 	p := f.start(map[string]string{
-		"ACCOUNTSVC_PURGE_FEED_CLIENTS":      `{"ai-food":["` + feedSecret + `"]}`,
-		"ACCOUNTSVC_DELETION_COOLING_PERIOD": "1s",
-		"ACCOUNTSVC_MAINTENANCE_INTERVAL":    "1s",
+		"ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS": `{"ai-food":["` + feedSecret + `"]}`,
+		"ACCOUNTSVC_DELETION_COOLING_PERIOD":  "1s",
+		"ACCOUNTSVC_MAINTENANCE_INTERVAL":     "1s",
 	})
 	// 内省凭据不能读取已清理清单。
 	f.purgedUsers(p, f.secrets[1], "", 401)

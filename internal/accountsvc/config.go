@@ -273,18 +273,18 @@ func LoadConfig(command string) (Config, error) {
 			return Config{}, invalidConfig("ACCOUNTSVC_SMTP configuration")
 		}
 	}
-	if raw := os.Getenv("ACCOUNTSVC_INTROSPECTION_CLIENTS"); strings.TrimSpace(raw) != "" {
+	if raw := os.Getenv("ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS"); strings.TrimSpace(raw) != "" {
 		if c.IntrospectionClients, err = introspection.ParseClients(raw); err != nil {
-			return Config{}, invalidConfig("ACCOUNTSVC_INTROSPECTION_CLIENTS")
+			return Config{}, invalidConfig("ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS")
 		}
 	}
-	if raw := os.Getenv("ACCOUNTSVC_PURGE_FEED_CLIENTS"); strings.TrimSpace(raw) != "" {
-		if c.PurgeFeedClients, err = basicclients.Parse(raw, "ACCOUNTSVC_PURGE_FEED_CLIENTS"); err != nil {
-			return Config{}, invalidConfig("ACCOUNTSVC_PURGE_FEED_CLIENTS")
+	if raw := os.Getenv("ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS"); strings.TrimSpace(raw) != "" {
+		if c.PurgeFeedClients, err = basicclients.Parse(raw, "ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS"); err != nil {
+			return Config{}, invalidConfig("ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS")
 		}
 		// 一份凭据不能同时打开内省与已清理用户拉取两个独立授权的接口。
 		if basicclients.SharedSecret(c.IntrospectionClients, c.PurgeFeedClients) {
-			return Config{}, invalidConfig("ACCOUNTSVC_PURGE_FEED_CLIENTS (secret shared with ACCOUNTSVC_INTROSPECTION_CLIENTS)")
+			return Config{}, invalidConfig("ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS (secret shared with ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS)")
 		}
 	}
 	if err = c.loadAdmin(); err != nil {
@@ -294,7 +294,7 @@ func LoadConfig(command string) (Config, error) {
 		return Config{}, err
 	}
 	if len(c.IntrospectionClients) == 0 && len(c.ServiceToken.IntrospectionClients) == 0 {
-		return Config{}, invalidConfig("ACCOUNTSVC_INTROSPECTION_CLIENTS / ACCOUNTSVC_INTROSPECTION_TOKEN_CLIENTS (introspection needs at least one)")
+		return Config{}, invalidConfig("ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS / ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS (introspection needs at least one)")
 	}
 	return c, nil
 }
@@ -353,30 +353,30 @@ func (s ServiceTokenConfig) Enabled() bool {
 func (c *Config) loadServiceToken() error {
 	s := &c.ServiceToken
 	var err error
-	if s.IntrospectionClients, err = parseTokenClients(env("INTROSPECTION_TOKEN_CLIENTS"), "ACCOUNTSVC_INTROSPECTION_TOKEN_CLIENTS"); err != nil {
+	if s.IntrospectionClients, err = parseTokenClients(env("INTROSPECTION_BEARER_CLIENTS"), "ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS"); err != nil {
 		return err
 	}
-	if s.PurgeFeedClients, err = parseTokenClients(env("PURGE_FEED_TOKEN_CLIENTS"), "ACCOUNTSVC_PURGE_FEED_TOKEN_CLIENTS"); err != nil {
+	if s.PurgeFeedClients, err = parseTokenClients(env("PURGE_FEED_BEARER_CLIENTS"), "ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS"); err != nil {
 		return err
 	}
 	// audience 不经 env() 去空白，以便拒绝首尾空白。
-	s.Issuer, s.Audience = env("SERVICE_TOKEN_ISSUER"), os.Getenv("ACCOUNTSVC_SERVICE_TOKEN_AUDIENCE")
+	s.Issuer, s.Audience = env("SERVICE_ISSUER"), os.Getenv("ACCOUNTSVC_SERVICE_AUDIENCE")
 	if !s.Enabled() {
 		if s.Issuer != "" || s.Audience != "" {
-			return invalidConfig("ACCOUNTSVC_SERVICE_TOKEN_ISSUER / ACCOUNTSVC_SERVICE_TOKEN_AUDIENCE (no token clients configured)")
+			return invalidConfig("ACCOUNTSVC_SERVICE_ISSUER / ACCOUNTSVC_SERVICE_AUDIENCE (no bearer clients configured)")
 		}
 		return nil
 	}
 	for _, id := range s.PurgeFeedClients {
 		if slices.Contains(s.IntrospectionClients, id) {
-			return invalidConfig("ACCOUNTSVC_PURGE_FEED_TOKEN_CLIENTS (client shared with ACCOUNTSVC_INTROSPECTION_TOKEN_CLIENTS)")
+			return invalidConfig("ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS (client shared with ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS)")
 		}
 	}
 	if !oidcjwt.ValidIssuer(s.Issuer) || strings.TrimRight(s.Issuer, "/") == strings.TrimRight(c.Library.JWTIssuer, "/") {
-		return invalidConfig("ACCOUNTSVC_SERVICE_TOKEN_ISSUER")
+		return invalidConfig("ACCOUNTSVC_SERVICE_ISSUER")
 	}
 	if s.Audience == "" || strings.TrimSpace(s.Audience) != s.Audience || slices.Contains(c.reservedAudiences(), s.Audience) {
-		return invalidConfig("ACCOUNTSVC_SERVICE_TOKEN_AUDIENCE")
+		return invalidConfig("ACCOUNTSVC_SERVICE_AUDIENCE")
 	}
 	return nil
 }

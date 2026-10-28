@@ -91,7 +91,7 @@ func New(cfg Config) (*Authenticator, error) {
 		return nil, errors.New("serviceauth: realm is required")
 	}
 	if (len(cfg.TokenClients) > 0) != (cfg.Tokens != nil) {
-		return nil, errors.New("serviceauth: token clients and a token verifier must be configured together")
+		return nil, errors.New("serviceauth: bearer clients and a token verifier must be configured together")
 	}
 	a := &Authenticator{realm: cfg.Realm, endpoint: cfg.Endpoint, tokens: cfg.Tokens, timeout: cfg.Timeout, logger: cfg.Logger}
 	if a.timeout <= 0 {
@@ -111,7 +111,7 @@ func New(cfg Config) (*Authenticator, error) {
 		a.clients = make(map[string]bool, len(cfg.TokenClients))
 		for _, id := range cfg.TokenClients {
 			if !ValidClientID(id) {
-				return nil, errors.New("serviceauth: invalid token client ID")
+				return nil, errors.New("serviceauth: invalid bearer client ID")
 			}
 			a.clients[id] = true
 		}

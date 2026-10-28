@@ -37,7 +37,7 @@ type handler struct {
 // never parses JWT claims itself and does not query account state.
 func New(clients map[string][]string, authenticate func(context.Context, string) (user.Principal, error)) (http.Handler, error) {
 	if !basicclients.Valid(clients) {
-		return nil, errors.New("accountsvc: ACCOUNTSVC_INTROSPECTION_CLIENTS must contain unique nonempty client IDs and lists of base64 secrets of at least 32 bytes")
+		return nil, errors.New("accountsvc: ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS must contain unique nonempty client IDs and lists of base64 secrets of at least 32 bytes")
 	}
 	auth, err := serviceauth.New(serviceauth.Config{Realm: Realm, Endpoint: "introspect", Basic: clients})
 	if err != nil {
@@ -49,7 +49,7 @@ func New(clients map[string][]string, authenticate func(context.Context, string)
 // NewWithAuthenticator accepts the callers auth allows (Basic and/or service Bearer tokens).
 func NewWithAuthenticator(auth *serviceauth.Authenticator, authenticate func(context.Context, string) (user.Principal, error)) (http.Handler, error) {
 	if auth == nil || !auth.Enabled() {
-		return nil, errors.New("accountsvc: introspection requires Basic clients or service token clients")
+		return nil, errors.New("accountsvc: introspection requires Basic clients or bearer clients")
 	}
 	if authenticate == nil {
 		return nil, errors.New("accountsvc: introspection authenticator is required")

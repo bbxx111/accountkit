@@ -9,20 +9,20 @@ production SHALL 在 EMAIL 启用时要求真实 SMTP 与 SMTP TLS，在 PHONE �
 - **THEN** 拒绝启动，不用日志验证码、默认秘密或明文 SMTP 替代；显式关闭 HTTP TLS 不豁免 SMTP TLS
 
 #### Scenario: 仅以服务令牌认证内省
-- **WHEN** production 未设置 `ACCOUNTSVC_INTROSPECTION_CLIENTS`，但服务令牌签发方、audience 与 `ACCOUNTSVC_INTROSPECTION_TOKEN_CLIENTS` 有效
+- **WHEN** production 未设置 `ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS`，但服务令牌签发方、audience 与 `ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS` 有效
 - **THEN** serve 可以启动，内省只接受 Bearer 调用
 
 ### Requirement: 已清理用户拉取凭据
 
-serve SHALL 读取可选的 `ACCOUNTSVC_PURGE_FEED_CLIENTS`，格式与 `ACCOUNTSVC_INTROSPECTION_CLIENTS` 相同（JSON：客户端 ID → base64 秘密数组，每个秘密至少 32 个随机字节），以及可选的 `ACCOUNTSVC_PURGE_FEED_TOKEN_CLIENTS`（允许的 `azp` 字符串数组）。格式非法时 SHALL 启动失败并指出变量名，不回显值。拉取的 Basic 列表与内省 Basic 列表 SHALL 相互独立，同一秘密不得同时出现在两个列表中；拉取与内省的 `azp` 列表 SHALL 不相交。migrate SHALL 不解析这些变量。production SHALL 不强制要求拉取认证配置。
+serve SHALL 读取可选的 `ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS`，格式与 `ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS` 相同（JSON：客户端 ID → base64 秘密数组，每个秘密至少 32 个随机字节），以及可选的 `ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS`（允许的 `azp` 字符串数组）。格式非法时 SHALL 启动失败并指出变量名，不回显值。拉取的 Basic 列表与内省 Basic 列表 SHALL 相互独立，同一秘密不得同时出现在两个列表中；拉取与内省的 `azp` 列表 SHALL 不相交。migrate SHALL 不解析这些变量。production SHALL 不强制要求拉取认证配置。
 
 #### Scenario: 凭据复用被拒绝
 - **WHEN** 同一秘密同时出现在内省客户端与拉取客户端列表中
-- **THEN** serve 启动失败并指出 `ACCOUNTSVC_PURGE_FEED_CLIENTS`，不输出秘密
+- **THEN** serve 启动失败并指出 `ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS`，不输出秘密
 
 #### Scenario: 令牌客户端复用被拒绝
 - **WHEN** 同一 `azp` 同时出现在内省与拉取的令牌客户端列表中
-- **THEN** serve 启动失败并指出 `ACCOUNTSVC_PURGE_FEED_TOKEN_CLIENTS`
+- **THEN** serve 启动失败并指出 `ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS`
 
 ### Requirement: HTTP 边界与可信请求元信息
 

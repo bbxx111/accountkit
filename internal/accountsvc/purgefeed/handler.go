@@ -40,7 +40,7 @@ type handler struct {
 // PURGE_FEED_NOT_CONFIGURED, so callers can tell an unconfigured feed from a wrong path.
 func New(clients map[string][]string, list Lister) (http.Handler, error) {
 	if len(clients) > 0 && !basicclients.Valid(clients) {
-		return nil, errors.New("accountsvc: invalid ACCOUNTSVC_PURGE_FEED_CLIENTS")
+		return nil, errors.New("accountsvc: invalid ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS")
 	}
 	cfg := serviceauth.Config{Realm: Realm, Endpoint: "purged_users"}
 	if len(clients) > 0 {

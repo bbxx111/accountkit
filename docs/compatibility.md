@@ -4,10 +4,11 @@
 
 本节随下一个版本发布。
 
-- **新增能力**：内省与已清理用户拉取在 HTTP Basic 之外可接受客户端凭据 Bearer 令牌（`ACCOUNTSVC_SERVICE_TOKEN_ISSUER`、`ACCOUNTSVC_SERVICE_TOKEN_AUDIENCE`、`ACCOUNTSVC_INTROSPECTION_TOKEN_CLIENTS`、`ACCOUNTSVC_PURGE_FEED_TOKEN_CLIENTS`），规则见[服务调用认证](accountsvc.md#服务调用认证内省与已清理用户拉取)。仅配置 Basic 的部署行为不变。
-- **放宽**：serve 原先要求 `ACCOUNTSVC_INTROSPECTION_CLIENTS`，现在要求它与 `ACCOUNTSVC_INTROSPECTION_TOKEN_CLIENTS` 至少配置一项；拉取在两种方式都未配置时才返回 503 `PURGE_FEED_NOT_CONFIGURED`。
+- **新增能力**：内省与已清理用户拉取在 HTTP Basic 之外可接受客户端凭据 Bearer 令牌（`ACCOUNTSVC_SERVICE_ISSUER`、`ACCOUNTSVC_SERVICE_AUDIENCE`、`ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS`、`ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS`），规则见[服务调用认证](accountsvc.md#服务调用认证内省与已清理用户拉取)。仅配置 Basic 的部署行为不变。
+- **改名**：Basic 凭据变量 `ACCOUNTSVC_INTROSPECTION_CLIENTS`、`ACCOUNTSVC_PURGE_FEED_CLIENTS` 改为 `ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS`、`ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS`，格式不变，不读取旧名。
+- **放宽**：serve 原先要求 Basic 内省凭据，现在要求 `ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS` 与 `ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS` 至少配置一项；拉取在两种方式都未配置时才返回 503 `PURGE_FEED_NOT_CONFIGURED`。
 - **新错误码**：内省新增 401 `invalid_token`、403 `insufficient_scope`；拉取新增 401 `TOKEN_INVALID`、403 `CLIENT_NOT_AUTHORIZED`；签发方不可用时分别为 503 `temporarily_unavailable`、503 `DEPENDENCY_UNAVAILABLE`（`Retry-After: 1`）。启用两种方式时 401 返回两行 `WWW-Authenticate`。
-- **回退**：调用方切回 Basic，或移除 token 配置后重启；无数据迁移。管理员认证行为不变。
+- **回退**：调用方切回 Basic，或移除 Bearer 配置后重启；无数据迁移。管理员认证行为不变。
 
 ## accountsvc 配置前缀统一
 
@@ -22,7 +23,7 @@
 本节随下一个版本发布。
 
 - **数据库（BREAKING，无迁移）**：经用户明确授权，当前 0001 直接新增 `purged_user` 表，不新增 0002。新安装仍为 version=1。已由 v0.6.0 或更早版本安装的数据库缺少该表，迁移预检以 `migrations.ErrIncompatibleBaseline` 无写拒绝（dirty 优先），不补表、不改版本；需使用经人工核验的新空资源，详见[迁移手册](migrations.md#当前初始基线)。不提供旧数据迁移工具。旧二进制的预检不认识这张表、会接受新结构，但其 purge 不写已清理记录，会让对应账号永久缺席拉取清单：部署须阻止新旧版本混跑和在新结构上回退到旧二进制。
-- **新增能力**：purge 事务内写入已清理记录；`user.Service.ListPurgedUsers` 按游标读取；accountsvc 新增 `GET /v1/purgedUsers`（`ACCOUNTSVC_PURGE_FEED_CLIENTS`）。`Config.PurgedUserRetention` / `PURGED_USER_RETENTION` 默认 0（长期保留）。purge 本身的语义、时机与宿主 Anonymizer 契约不变。
+- **新增能力**：purge 事务内写入已清理记录；`user.Service.ListPurgedUsers` 按游标读取；accountsvc 新增 `GET /v1/purgedUsers`（`ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS`）。`Config.PurgedUserRetention` / `PURGED_USER_RETENTION` 默认 0（长期保留）。purge 本身的语义、时机与宿主 Anonymizer 契约不变。
 - **宿主覆盖检查**：`user.PurgeCoveredTables` 新增 `purged_user` 豁免项；宿主自己的 user_id 覆盖性测试若枚举库内表，需要知道这张表只含 user_id 与时间。
 
 ## accountsvc 阿里云短信与邮件品牌

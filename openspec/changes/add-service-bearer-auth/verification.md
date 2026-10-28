@@ -38,6 +38,17 @@
 
 一次性容器、网络、卷与镜像已删除；未触碰其他项目的 `postgres`、`redis` 容器。
 
+## 配置改名（用户决定）
+
+按认证方式成对命名（见 design.md D9 偏离记录）：`SERVICE_ISSUER`、`SERVICE_AUDIENCE`、`INTROSPECTION_BASIC_CLIENTS`、`INTROSPECTION_BEARER_CLIENTS`、`PURGE_FEED_BASIC_CLIENTS`、`PURGE_FEED_BEARER_CLIENTS`（均带 `ACCOUNTSVC_` 前缀）。改名覆盖代码、测试、文档、部署模板及本变更的 proposal/design/specs；已归档变更保留原名作为历史记录，主规格经本变更的 MODIFIED 需求在归档时同步。
+
+| 检查 | 结果 |
+|---|---|
+| Windows `go build ./...`、`go vet ./...`、`go test -count=1 ./internal/accountsvc/... ./cmd/... ./examples/...`、gofmt | 通过 |
+| Linux 镜像 + 一次性 PG 17.4 / Redis 7：`scripts/verify-accountsvc.sh` | 通过：race，700 个测试事件 pass，0 fail，必需测试门禁通过 |
+| `openspec validate --all --strict` | 40 项通过 |
+| 非归档文件中旧变量名残留 | 无 |
+
 ## 未验证项
 
 - 真实 Keycloak 端到端（客户端凭据、audience mapper、密钥轮换）：由接入方（ai-food）负责。

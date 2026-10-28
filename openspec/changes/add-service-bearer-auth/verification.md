@@ -59,6 +59,17 @@
 | Linux 镜像 + 一次性 PG 17.4 / Redis 7：`scripts/verify-accountsvc.sh` | 通过：race，703 个测试事件 pass，0 fail，必需测试门禁通过；新增进程级测试已运行并通过 |
 | `openspec validate --all --strict` | 40 项通过 |
 
+## 未配置接口的启动警告与内部标识符改名（用户要求）
+
+- serve 监听就绪后为每个未配置的可选接口记一条 WARN（内省、已清理用户拉取、管理员 API、用户资料属性），只写变量名。先写 `TestWarnUnconfiguredInterfaces`（修改前编译失败），进程级 `TestServiceIntegrationIntrospectionNotConfigured` 增加对启动日志的断言；前者加入必需清单。
+- 配置相关 Go 标识符与变量名对应：`Config.IntrospectionBasicClients`、`Config.PurgeFeedBasicClients`、`Config.Service`（`ServiceConfig`：`IntrospectionBearerClients`、`PurgeFeedBearerClients`）、`serviceauth.Config.BearerClients`。描述令牌本身的名称（如 `preloadServiceTokens`）不变。逐标识符核对改名差异，无行为变化。
+
+| 检查 | 结果 |
+|---|---|
+| Windows `go build ./...`、`go vet ./...`、`go test -count=1 ./...`、gofmt | 通过 |
+| Linux 镜像 + 一次性 PG 17.4 / Redis 7：`scripts/verify-accountsvc.sh` | 通过：race，706 个测试事件 pass，0 fail，必需测试门禁通过；两个新测试均已运行并通过。首次运行因容器内下载 Go 模块 TLS 握手超时未进入测试，重跑通过 |
+| `openspec validate --all --strict` | 40 项通过 |
+
 ## 未验证项
 
 - 真实 Keycloak 端到端（客户端凭据、audience mapper、密钥轮换）：由接入方（ai-food）负责。

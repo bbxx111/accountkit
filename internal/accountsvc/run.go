@@ -287,6 +287,27 @@ func serviceAuthenticators(cfg Config, logger *slog.Logger, client *http.Client)
 	return intro, purge, preload, nil
 }
 
+// warnUnconfigured 为未配置、只会返回 503 *_NOT_CONFIGURED 的可选接口各记一条 WARN，
+// 使漏配在启动日志中可见，而不是等到调用失败才发现。只写变量名，不写值。
+func warnUnconfigured(cfg Config, logger *slog.Logger) {
+	if len(cfg.IntrospectionBasicClients) == 0 && len(cfg.Service.IntrospectionBearerClients) == 0 {
+		logger.Warn("accountsvc: introspection is not configured; POST /v1/introspect answers 503 introspection_not_configured",
+			"settings", "ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS, ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS")
+	}
+	if len(cfg.PurgeFeedBasicClients) == 0 && len(cfg.Service.PurgeFeedBearerClients) == 0 {
+		logger.Warn("accountsvc: purged user feed is not configured; GET /v1/purgedUsers answers 503 PURGE_FEED_NOT_CONFIGURED",
+			"settings", "ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS, ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS")
+	}
+	if !cfg.AdminEnabled {
+		logger.Warn("accountsvc: administrator API is not configured; /admin/v1 answers 503 ADMIN_NOT_CONFIGURED",
+			"settings", "ACCOUNTSVC_ADMIN_ENABLED")
+	}
+	if cfg.Library.ProfileAttributes == nil {
+		logger.Warn("accountsvc: profile attributes are not configured; GET/PATCH /v1/users/me/profile answer 503 PROFILE_ATTRIBUTES_NOT_CONFIGURED",
+			"settings", "ACCOUNTSVC_PROFILE_ATTRIBUTES_SCHEMA_FILE")
+	}
+}
+
 // preloadServiceTokens 在就绪后于后台尝试加载服务令牌签发方的密钥，返回的函数取消并等待它。
 // 签发方故障（含挂起）既不消耗启动预算也不推迟就绪：Bearer 调用在恢复前返回 503，消费者路由与
 // Basic 调用照常可用。
@@ -365,6 +386,7 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 	} else {
 		logger.Info("accountsvc: HTTP listener started; HTTP TLS is disabled in this process", "http_tls_enabled", false)
 	}
+	warnUnconfigured(cfg, logger)
 	state.ready.Store(true)
 	cancelStartup()
 	stopPreload := preloadServiceTokens(app.preloadServiceTokens, cfg.Service.Issuer, logger)

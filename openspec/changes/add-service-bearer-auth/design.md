@@ -180,7 +180,7 @@ WWW-Authenticate: Bearer realm="accountsvc-introspection", error="invalid_token"
 
 实施偏离（2026-10-28，用户决定）：变量名按认证方式成对命名。设计原稿的 `SERVICE_TOKEN_ISSUER` / `SERVICE_TOKEN_AUDIENCE` 改为 `SERVICE_ISSUER` / `SERVICE_AUDIENCE`（与 `ADMIN_ISSUER` / `ADMIN_AUDIENCE` 对称）；`*_TOKEN_CLIENTS` 改为 `*_BEARER_CLIENTS`；既有 Basic 变量 `INTROSPECTION_CLIENTS` / `PURGE_FEED_CLIENTS` 同步改为 `*_BASIC_CLIENTS`，格式不变、不读取旧名。尚无产品部署，不提供旧名检测或迁移。
 
-实施偏离（2026-10-28，用户决定）：内省调用认证改为与拉取相同的可选规则，取代原稿「至少一个非空、否则启动失败」。两种方式都未配置时 serve（含 production）照常启动，`/v1/introspect` 先于认证返回 503 `introspection_not_configured`；错误体沿用该接口的 OAuth 顶层 `error`（小写下划线，与 RFC 6749 扩展错误码风格一致），不改用 AIP-193，避免同一接口出现两种错误格式。代价是漏配内省不再在启动时暴露，而是表现为依赖内省的关键接口全部失败，部署检查须覆盖该项。
+实施偏离（2026-10-28，用户决定）：内省调用认证改为与拉取相同的可选规则，取代原稿「至少一个非空、否则启动失败」。两种方式都未配置时 serve（含 production）照常启动，`/v1/introspect` 先于认证返回 503 `introspection_not_configured`；错误体沿用该接口的 OAuth 顶层 `error`（小写下划线，与 RFC 6749 扩展错误码风格一致），不改用 AIP-193，避免同一接口出现两种错误格式。代价是漏配内省不再导致启动失败，而是表现为依赖内省的关键接口全部失败。为此 serve 在监听就绪后为每个未配置、只会返回 503 `*_NOT_CONFIGURED` 的可选接口记一条 WARN（只写变量名）：内省、已清理用户拉取、管理员 API（`ACCOUNTSVC_ADMIN_ENABLED`）与用户资料属性（`ACCOUNTSVC_PROFILE_ATTRIBUTES_SCHEMA_FILE`）；后两项不属于本变更的能力，只增加日志、不改行为（用户要求一并处理）。
 
 ## Risks / Trade-offs
 

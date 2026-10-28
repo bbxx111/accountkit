@@ -37,6 +37,7 @@ github.com/bbxx111/accountkit/internal/accountsvc/TestConfigReadsLibrarySettings
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceAndLibraryEnvNamesDoNotOverlap
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationServiceBearerTokens
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationIntrospectionNotConfigured
+github.com/bbxx111/accountkit/internal/accountsvc/TestWarnUnconfiguredInterfaces
 github.com/bbxx111/accountkit/internal/accountsvc/TestRuntimeStartsWhenServiceIssuerUnavailable
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigServiceTokenRejections
 github.com/bbxx111/accountkit/internal/accountsvc/serviceauth/TestBearerDecisions

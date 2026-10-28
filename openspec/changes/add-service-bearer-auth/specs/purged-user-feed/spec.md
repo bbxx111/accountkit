@@ -10,7 +10,7 @@
 
 #### Scenario: 未配置
 - **WHEN** 服务既未设置 `ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS` 也未设置 `ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS`
-- **THEN** 路由返回 503 `PURGE_FEED_NOT_CONFIGURED`，服务其他功能不受影响
+- **THEN** 路由返回 503 `PURGE_FEED_NOT_CONFIGURED`，serve 启动时记录一条指出相关变量名的 WARN，服务其他功能不受影响
 
 #### Scenario: Bearer 拉取
 - **WHEN** 调用方携带 `azp` 在拉取允许列表中的有效服务访问令牌请求 `/v1/purgedUsers`

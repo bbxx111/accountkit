@@ -10,7 +10,7 @@ production SHALL 在 EMAIL 启用时要求真实 SMTP 与 SMTP TLS，在 PHONE �
 
 #### Scenario: 内省调用认证未配置
 - **WHEN** production 既未设置 `ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS` 也未设置 `ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS`
-- **THEN** serve 照常启动并就绪，`POST /v1/introspect` 返回 503 `introspection_not_configured`，其他路由不受影响
+- **THEN** serve 照常启动并就绪，启动日志记录一条指出相关变量名的 WARN，`POST /v1/introspect` 返回 503 `introspection_not_configured`，其他路由不受影响
 
 #### Scenario: 仅以服务令牌认证内省
 - **WHEN** production 未设置 `ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS`，但服务令牌签发方、audience 与 `ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS` 有效

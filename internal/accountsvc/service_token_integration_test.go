@@ -113,4 +113,7 @@ func TestServiceIntegrationIntrospectionNotConfigured(t *testing.T) {
 		t.Fatalf("introspection not configured: %v %v", h, out)
 	}
 	p.stop()
+	if !strings.Contains(p.output.String(), "introspection is not configured") {
+		t.Fatal("unconfigured introspection was not logged at startup")
+	}
 }

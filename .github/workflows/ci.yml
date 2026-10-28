@@ -2,11 +2,14 @@ name: verify
 on:
   # Feature branches are verified through their pull request; pushes are verified only on
   # the integration and release branches. Tags point at an already verified main commit.
+  # Archive and planning records only; tests read README.md and docs/openapi, so other docs stay
+  # covered. A pull request that touches nothing else gets no run; the repository has no required
+  # status check, so a skipped run does not block merging.
   push:
     branches: [develop, main]
-    # Archive and planning records only; tests read README.md and docs/openapi, so other docs stay covered.
     paths-ignore: ['openspec/**', 'docs/superpowers/**']
   pull_request:
+    paths-ignore: ['openspec/**', 'docs/superpowers/**']
 permissions:
   contents: read
 concurrency:

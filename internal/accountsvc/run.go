@@ -274,7 +274,7 @@ func serviceAuthenticators(cfg Config, logger *slog.Logger, client *http.Client)
 			c.Basic = basic
 		}
 		if len(clients) > 0 {
-			c.BearerClients, c.Tokens = clients, tokens
+			c.BearerClients, c.BearerVerifier = clients, tokens
 		}
 		return serviceauth.New(c)
 	}

@@ -52,7 +52,7 @@ func newEnv(t *testing.T, basic, bearer bool) *env {
 		if err != nil {
 			t.Fatal(err)
 		}
-		cfg.Tokens, cfg.BearerClients = v, []string{"intro-client"}
+		cfg.BearerVerifier, cfg.BearerClients = v, []string{"intro-client"}
 	}
 	a, err := serviceauth.New(cfg)
 	if err != nil {
@@ -288,7 +288,7 @@ func TestIssuerMismatchIsUnavailable(t *testing.T) {
 
 func TestProviderTimeoutIsUnavailable(t *testing.T) {
 	e := newEnv(t, false, true)
-	e.auth = mustNew(t, serviceauth.Config{Realm: realm, Endpoint: "introspect", Tokens: tokensFor(t, e), BearerClients: []string{"intro-client"}, Timeout: 100 * time.Millisecond})
+	e.auth = mustNew(t, serviceauth.Config{Realm: realm, Endpoint: "introspect", BearerVerifier: tokensFor(t, e), BearerClients: []string{"intro-client"}, Timeout: 100 * time.Millisecond})
 	e.p.Block()
 	defer e.p.Unblock()
 	res, ch := e.do(e.bearer(e.p.Claims(e.now, "intro-client"), "initial"))
@@ -357,10 +357,10 @@ func TestNewValidation(t *testing.T) {
 	tokens := tokensFor(t, e)
 	for name, cfg := range map[string]serviceauth.Config{
 		"clients without verifier": {Realm: realm, Endpoint: "introspect", BearerClients: []string{"a"}},
-		"verifier without clients": {Realm: realm, Endpoint: "introspect", Tokens: tokens},
-		"empty client":             {Realm: realm, Endpoint: "introspect", Tokens: tokens, BearerClients: []string{""}},
+		"verifier without clients": {Realm: realm, Endpoint: "introspect", BearerVerifier: tokens},
+		"empty client":             {Realm: realm, Endpoint: "introspect", BearerVerifier: tokens, BearerClients: []string{""}},
 		"invalid basic":            {Realm: realm, Endpoint: "introspect", Basic: map[string][]string{"a": {"short"}}},
-		"missing realm":            {Endpoint: "introspect", Tokens: tokens, BearerClients: []string{"a"}},
+		"missing realm":            {Endpoint: "introspect", BearerVerifier: tokens, BearerClients: []string{"a"}},
 	} {
 		if _, err := serviceauth.New(cfg); err == nil {
 			t.Errorf("%s accepted", name)

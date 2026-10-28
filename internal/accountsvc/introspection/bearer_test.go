@@ -26,7 +26,7 @@ func bearerHandler(t *testing.T, p *oidcjwttest.Provider, basic bool, calls *int
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := serviceauth.Config{Realm: introspectionRealm, Endpoint: "introspect", Tokens: tokens, BearerClients: []string{"intro-client"}}
+	cfg := serviceauth.Config{Realm: introspectionRealm, Endpoint: "introspect", BearerVerifier: tokens, BearerClients: []string{"intro-client"}}
 	if basic {
 		cfg.Basic = map[string][]string{"business": {secret(1)}}
 	}

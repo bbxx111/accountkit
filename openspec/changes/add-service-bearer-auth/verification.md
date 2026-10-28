@@ -62,7 +62,7 @@
 ## 未配置接口的启动警告与内部标识符改名（用户要求）
 
 - serve 监听就绪后为每个未配置的可选接口记一条 WARN（内省、已清理用户拉取、管理员 API、用户资料属性），只写变量名。先写 `TestWarnUnconfiguredInterfaces`（修改前编译失败），进程级 `TestServiceIntegrationIntrospectionNotConfigured` 增加对启动日志的断言；前者加入必需清单。
-- 配置相关 Go 标识符与变量名对应：`Config.IntrospectionBasicClients`、`Config.PurgeFeedBasicClients`、`Config.Service`（`ServiceConfig`：`IntrospectionBearerClients`、`PurgeFeedBearerClients`）、`serviceauth.Config.BearerClients`。描述令牌本身的名称（如 `preloadServiceTokens`）不变。逐标识符核对改名差异，无行为变化。
+- 配置相关 Go 标识符与变量名对应：`Config.IntrospectionBasicClients`、`Config.PurgeFeedBasicClients`、`Config.Service`（`ServiceConfig`：`IntrospectionBearerClients`、`PurgeFeedBearerClients`）、`serviceauth.Config.BearerClients`。描述令牌本身的名称（如 `preloadServiceTokens`）不变。逐标识符核对改名差异，无行为变化。随后 `serviceauth.Config.Tokens` 改为 `BearerVerifier`，与 `BearerClients` 成对；纯改名（12 处），`go vet` 与 accountsvc 全部单元测试通过，未重跑 Linux 完整验证。
 
 | 检查 | 结果 |
 |---|---|

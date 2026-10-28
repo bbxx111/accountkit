@@ -475,7 +475,7 @@ func TestLegacyChineseRendererBrand(t *testing.T) {
 			t.Errorf("%s: Render must refuse invalid brand: %v", name, err)
 		}
 	}
-	for name, brand := range map[string]string{"bidi override": "食\u202e方", "zero width": "食\u200b方", "line separator": "食\u2028方"} {
+	for name, brand := range map[string]string{"bidi override": "食\u202e方", "zero width": "食\u200b方", "line separator": "食\u2028方", "paragraph separator": "食\u2029方", "c1 control": "食\u0085方", "invalid utf8": "食\xff方"} {
 		if delivery.ValidateBrand(brand) == nil {
 			t.Errorf("%s: ValidateBrand must reject %q", name, brand)
 		}

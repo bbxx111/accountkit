@@ -6,8 +6,8 @@
 ## 2. 模板解析与渲染（`internal/accountsvc/emailtemplates`）
 
 - [x] 2.1 严格 JSON 解码：version=1；四种用途恰好齐全；拒绝未知字段、重复键、尾随内容、null 和非法 UTF-8；错误只含字段位置与固定分类
-- [x] 2.2 占位符编译：三个名称、`{{`/`}}` 转义；拒绝单独的花括号、空名称、未知名称；text 必须含 `{code}`，subject 不得含；`{brand}` 需要非空品牌；每个模板最多 8 个占位符；subject 不超过 64、text 不超过 4096 个码位
-- [x] 2.3 `TemplateRenderer.Render`：校验 ctx 与 CodeMessage；单次展开；有效期向上取整；零值返回 ErrUnavailable；并发安全
+- [x] 2.2 占位符编译：三个名称、`{{`/`}}` 转义；拒绝单独的花括号、空名称、未知名称；text 必须含 `{code}`，subject 不得含；`{brand}` 需要非空品牌；subject 与 text 各自最多 8 个占位符；subject 不超过 64、text 不超过 4096 个码位
+- [x] 2.3 `emailtemplates.Renderer.Render`：校验 ctx 与 CodeMessage；单次展开；有效期向上取整；零值返回 ErrUnavailable；并发安全
 - [x] 2.4 单元测试覆盖解析与渲染矩阵，包括边界值 64/65、4096/4097、8/9，并断言错误信息不回显内容
 
 ## 3. accountsvc 装配
@@ -28,4 +28,4 @@
 ## 5. 验证
 
 - [x] 5.1 gofmt、go vet、相关包测试；用 Linux 镜像跑 race 与 `scripts/verify-accountsvc.sh`
-- [ ] 5.2 `openspec validate --all --strict`；代码审查；结果写入 verification.md
+- [x] 5.2 `openspec validate --all --strict`；代码审查；结果写入 verification.md

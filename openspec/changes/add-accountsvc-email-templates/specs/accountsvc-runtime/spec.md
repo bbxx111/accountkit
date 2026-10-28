@@ -25,7 +25,7 @@ serve SHALL 支持可选的 `ACCOUNTSVC_SMTP_TEMPLATES_FILE`。仅当 EMAIL 启�
 
 - `subject` SHALL 为 1–64 个码位，不得有首尾空白，不得含控制字符（含换行和制表符）、Unicode 格式字符、行分隔符或段分隔符。
 - `text` SHALL 为 1–4096 个码位，去掉空白后非空；控制字符只允许 LF 和 TAB，不得含 CR、Unicode 格式字符、行分隔符或段分隔符。
-- 每个模板 SHALL 最多包含 8 个占位符。
+- `subject` 与 `text` SHALL 各自最多包含 8 个占位符。
 - 文件 SHALL 非空，且不超过 64 KiB。
 
 **失败与日志**：

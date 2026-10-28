@@ -6,7 +6,7 @@ accountsvc 在 `run.go` 中固定注入 `smtp.LegacyChineseRenderer{Brand}`，�
 
 - serve 新增可选 `ACCOUNTSVC_SMTP_TEMPLATES_FILE`：本地 JSON 文件，`version` 为 1，`templates` 须为 SIGN_IN / BIND / REAUTH / SIGN_IN_COMPLETE 四种用途各提供一套纯文本 `subject` 与 `text`；不允许部分回落到内置文案。
 - 固定占位符：`{code}`、`{ttl_minutes}`（沿用向上取整）、`{brand}`（取自 `ACCOUNTSVC_SMTP_BRAND`）；用 `{{` 和 `}}` 表示字面花括号。正文必须含 `{code}`，标题不得含 `{code}`；未知占位符视为配置错误。不执行任意模板逻辑，不支持 HTML。
-- 字符与长度规则：标题 1–64 个码位，字符规则与 `ValidateBrand` 相同；正文 1–4096 个码位，只允许 LF 和 TAB 两种控制字符；每个模板最多 8 个占位符；文件不超过 64 KiB，只读本地普通文件。
+- 字符与长度规则：标题 1–64 个码位，字符规则与 `ValidateBrand` 相同；正文 1–4096 个码位，只允许 LF 和 TAB 两种控制字符；subject 与 text 各自最多 8 个占位符；文件不超过 64 KiB，只读本地普通文件。
 - 配置只在 EMAIL 启用时由 serve 在监听前读取并校验一次，失败即退出；错误只给变量名及安全分类/字段位置，不回显内容。EMAIL 禁用时或执行 migrate 时不解析。
 - 启动时输出一条 INFO：`email templates: custom`（含版本与文件 SHA-256 前 12 位）或 `email templates: built-in`。日志不包含模板原文和验证码。
 - 未设置时行为与现在逐字一致；`LegacyChineseRenderer` 及其内置文案不变。

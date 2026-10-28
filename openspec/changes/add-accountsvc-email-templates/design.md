@@ -66,17 +66,17 @@
 - 正文规则：合法 UTF-8；去掉空白后非空；控制字符只允许 LF 和 TAB；不含 CR（统一用 LF，由 quoted-printable 输出 CRLF）以及 Cf、Zl、Zp。
 - 长度在模板原文上校验：
   - 标题 1–64 个码位；正文 1–4096 个码位；
-  - 每个模板最多 8 个占位符。
+  - subject 与 text 各自最多 8 个占位符。
   - 因为品牌不超过 32 个码位、验证码长度和 TTL 位数有界，渲染后的长度也有确定上界。
 
-### D4 `TemplateRenderer` 的构造与失败语义
+### D4 `emailtemplates.Renderer` 的构造与失败语义
 
-- 只能通过解析函数构造，字段不导出，零值调用 `Render` 返回 `sender.ErrUnavailable`。
+- 只能通过 `emailtemplates.Parse` 构造，字段不导出，零值调用 `Render` 返回 `sender.ErrUnavailable`。
 - `Render` 的行为：
   - 先检查 ctx 和 `CodeMessage`，失败一律返回固定的 `sender.ErrUnavailable`；
   - 不记录日志；
   - 同一实例只读，可安全并发调用。
-- accountsvc 二选一：设置了文件就注入 `TemplateRenderer`，否则注入 `LegacyChineseRenderer{Brand}`。两者互斥，不存在按用途部分回落。
+- accountsvc 二选一：设置了文件就注入 `emailtemplates.Renderer`，否则注入 `LegacyChineseRenderer{Brand}`。两者互斥，不存在按用途部分回落。
 
 ### D5 文件读取与错误信息
 
@@ -86,7 +86,7 @@
   - 拒绝空文件。
 - 错误形如 `invalid ACCOUNTSVC_SMTP_TEMPLATES_FILE (templates.SIGN_IN.subject: unknown placeholder)`。
   - 只含变量名、JSON 字段位置（由固定的用途名和字段名组成）及固定分类；
-  - 不含路径、文件内容、占位符名或解码器原文。
+  - 不含路径、文件内容、文件中出现的占位符名或解码器原文；分类中的 `{code}`、`{brand}` 是固定文字。
   - JSON 语法错误只给出 `invalid JSON` 分类，不给偏移量。
 - 只在 serve 且 EMAIL 启用时解析；EMAIL 禁用或执行 migrate 时即使变量非法也忽略，与 `SMTP_BRAND` 行为一致。
 
@@ -109,7 +109,7 @@
 - [JSON 中多行正文需要写 `\n`，可读性较差] → 提供示例文件和文档示例；正文上限放宽到 4096 个码位。
 - [模板没有正确说明用途（例如补全邮件写成普通登录）] → 这是部署方的文案责任。文档提示补全邮件须说明“完成登录并关联身份”。服务端无法从语义上校验。
 - [旧版本服务读取新扩展字段会启动失败] → 这是有意的 fail-closed，好过静默丢失语言；发布说明会注明。
-- [ValidateBrand 改为调用共享规则后可能出现行为偏差] → 现有品牌测试保持不变；新增等价性测试。
+- [ValidateBrand 改为调用共享规则后可能出现行为偏差] → 现有品牌测试保持不变；品牌拒绝表补充 C1 控制字符、U+2029 和非法 UTF-8 用例。
 
 ## Migration Plan
 

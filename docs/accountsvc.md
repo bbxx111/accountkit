@@ -317,7 +317,7 @@ EMAIL 启用时，服务默认调用 `smtp.NewWithRenderer(cfg.SMTP, smtp.Legacy
 
 ### 邮件模板文件
 
-`ACCOUNTSVC_SMTP_TEMPLATES_FILE` 指向一个本地 JSON 文件，四种用途必须全部提供，不会按用途回落到内置文案。示例见 [email-templates.example.json](../deploy/accountsvc/email-templates.example.json)：
+`ACCOUNTSVC_SMTP_TEMPLATES_FILE` 指向一个本地 JSON 文件（UTF-8，不带 BOM），四种用途必须全部提供，不会按用途回落到内置文案。下面的结构示意省略了三个用途的正文（`...` 不含 `{code}`，不能直接使用）；可直接使用的完整示例见 [email-templates.example.json](../deploy/accountsvc/email-templates.example.json)：
 
 ```json
 {
@@ -342,7 +342,7 @@ EMAIL 启用时，服务默认调用 `smtp.NewWithRenderer(cfg.SMTP, smtp.Legacy
 - **字符与长度**：
   - `subject`：1–64 个字符，不得有首尾空白、换行、制表符、其他控制字符或 Unicode 格式/分隔字符（规则与品牌相同）。
   - `text`：1–4096 个字符，只是纯文本；换行写作 `\n`，发送时转为 CRLF；控制字符只允许换行和制表符，不得含 `\r` 或 Unicode 格式/分隔字符。
-  - 每个模板最多 8 个占位符，转义的花括号不计入。
+  - `subject` 与 `text` 各自最多 8 个占位符，转义的花括号不计入。
 - **文案责任**：服务只校验格式，不校验语义。登录补全邮件须向用户说明是在完成登录并关联身份（未注册时会自动注册），不要写成普通登录或营销内容。
 - **加载与观测**：
   - 只在 serve 启动且 EMAIL 启用时读取一次；文件不可读、不是普通文件、为空、超过 64 KiB 或内容非法时，在监听前退出。错误只包含变量名、字段位置（如 `templates.SIGN_IN.subject`）和固定分类，不含路径或文件内容。

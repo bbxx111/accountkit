@@ -49,6 +49,16 @@
 | `openspec validate --all --strict` | 40 项通过 |
 | 非归档文件中旧变量名残留 | 无 |
 
+## 内省调用认证改为可选（用户决定）
+
+内省与拉取规则一致：两种调用认证都未配置时 serve（含 production）照常启动，`/v1/introspect` 先于认证返回 503 `introspection_not_configured`（OAuth 顶层 `error`）。本地 Compose 不再强制 `ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS`。见 design.md D9 偏离记录。先写失败测试再改实现：`TestIntrospectionNotConfiguredWithoutAnyMethod`、`TestNewRejectsInvalidConfiguration`（空凭据）、`TestConfigIntrospectionOptional`（production/development）在修改前均按预期失败；新增进程级 `TestServiceIntegrationIntrospectionNotConfigured` 并加入必需清单。
+
+| 检查 | 结果 |
+|---|---|
+| Windows `go build ./...`、`go vet ./...`、`go test -count=1 ./...`、gofmt | 通过 |
+| Linux 镜像 + 一次性 PG 17.4 / Redis 7：`scripts/verify-accountsvc.sh` | 通过：race，703 个测试事件 pass，0 fail，必需测试门禁通过；新增进程级测试已运行并通过 |
+| `openspec validate --all --strict` | 40 项通过 |
+
 ## 未验证项
 
 - 真实 Keycloak 端到端（客户端凭据、audience mapper、密钥轮换）：由接入方（ai-food）负责。

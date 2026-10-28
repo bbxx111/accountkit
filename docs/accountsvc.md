@@ -98,7 +98,7 @@ QQ App SDK 登录使用 `ACCOUNTSVC_QQ_APP_IDS`（逗号分隔的唯一 1–20 �
 | `SMTP_TIMEOUT` | 10s，包含连接、TLS、认证和提交 |
 | `SMTP_BRAND` | 可选，内置中文邮件的品牌前缀：标题为“<品牌><用途>验证码”，正文以“【品牌】”开头；1–32 个字符，不得含换行/控制字符或首尾空白；EMAIL 禁用时不解析 |
 | `SMS_PROVIDER` | 空表示未配置短信；首版只接受 `aliyun`，见[短信服务商](#短信服务商) |
-| `INTROSPECTION_BASIC_CLIENTS` | Basic 内省客户端；JSON：客户端 ID → base64 秘密数组。serve 要求它与 `INTROSPECTION_BEARER_CLIENTS` 至少配置一项 |
+| `INTROSPECTION_BASIC_CLIENTS` | 可选；Basic 内省客户端，JSON：客户端 ID → base64 秘密数组。与 `INTROSPECTION_BEARER_CLIENTS` 都未设置时服务照常启动，`/v1/introspect` 返回 503 `introspection_not_configured` |
 | `PURGE_FEED_BASIC_CLIENTS` | 可选；格式同 `INTROSPECTION_BASIC_CLIENTS`，供业务服务拉取已清理用户（见[已清理用户拉取](#已清理用户拉取)）；秘密不得与内省凭据重复；与 `PURGE_FEED_BEARER_CLIENTS` 都未设置时该路由返回 503 |
 | `SERVICE_ISSUER` / `SERVICE_AUDIENCE` | 配置任一 Bearer 客户端列表时必填；签发业务服务访问令牌的 HTTPS issuer 与服务专用 audience，见[服务调用认证](#服务调用认证内省与已清理用户拉取) |
 | `INTROSPECTION_BEARER_CLIENTS` / `PURGE_FEED_BEARER_CLIENTS` | 可选；JSON 字符串数组，允许以 Bearer 调用对应接口的 `azp`（客户端 ID）；两个列表不得相交 |
@@ -253,6 +253,7 @@ Bearer 令牌须满足：RS256 签名且头部带 `kid`、不带 `jku`/`x5u`；`
 | Bearer 令牌无效（签名、`iss`、`aud`、过期、寿命超过 1 小时、缺 `azp`） | 401 `invalid_token` | 401 `TOKEN_INVALID` | 向提供方重新换令牌后重试一次 |
 | 令牌有效但 `azp` 未获准调用该接口 | 403 `insufficient_scope` | 403 `CLIENT_NOT_AUTHORIZED` | 不重试，修改配置 |
 | 取不到提供方签名密钥 | 503 `temporarily_unavailable` | 503 `DEPENDENCY_UNAVAILABLE`，`Retry-After: 1` | 退避重试；有 Basic 时可回退 |
+| 该接口两种方式都未配置（先于认证判断） | 503 `introspection_not_configured` | 503 `PURGE_FEED_NOT_CONFIGURED` | 不重试，补充服务配置 |
 
 401 对每个已启用的方式各给一行 `WWW-Authenticate`（`Basic realm="…"`、`Bearer realm="…"`，realm 分别为 `accountsvc-introspection`、`accountsvc-purge-feed`）；只有请求确实带了一个 Bearer 令牌时，Bearer 行才附 `error="invalid_token"`。403 只返回 `Bearer realm="…", error="insufficient_scope"`，503 不带认证提示。
 
@@ -291,7 +292,7 @@ Bearer 令牌须满足：RS256 签名且头部带 `kid`、不带 `jku`/`x5u`；`
 {"active":true,"sub":"u_...","scope":"user","sid":"s_...","auth_time":1791000000}
 ```
 
-无效、过期、已吊销、会话不存在、其他实例或 refresh token 返回200 `{"active":false}`。无效调用凭据是401，未获准的服务令牌是403；请求格式错误是400；请求体超限是413；错误内容类型是415。内省响应禁止缓存；接入示例见 [examples/remoteauth](../examples/remoteauth)。
+无效、过期、已吊销、会话不存在、其他实例或 refresh token 返回200 `{"active":false}`。无效调用凭据是401，未获准的服务令牌是403；服务未配置任何内省调用方时是503 `introspection_not_configured`；请求格式错误是400；请求体超限是413；错误内容类型是415。内省响应禁止缓存；接入示例见 [examples/remoteauth](../examples/remoteauth)。
 
 内省在签名、claims 与 ID 格式校验后按 `sid` 查询数据库会话：会话存在、属于 `sub` 且未吊销才返回 `active:true`。它不读取 Redis 吊销集，因此吊销集写入或读取失败都不影响结果；刷新期限已到但未吊销的会话仍为 active。**数据库不可用时返回503 `temporarily_unavailable`（fail-closed）**，不会放行。内省不实时重算账号状态或 scope；冻结、注销、换绑等生命周期操作在同一事务内吊销会话，提交后立即反映。
 

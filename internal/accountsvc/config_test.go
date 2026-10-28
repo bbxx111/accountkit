@@ -352,7 +352,7 @@ func TestConfigTLSMode(t *testing.T) {
 			}
 		}
 	}
-	for _, tc := range []struct{ key, value string }{{"SMTP_TLS_MODE", "none"}, {"SMTP_USERNAME", ""}, {"SMTP_PASSWORD", ""}, {"INTROSPECTION_BASIC_CLIENTS", ""}, {"ADMIN_ISSUER", "http://synthetic-secret.example.test"}} {
+	for _, tc := range []struct{ key, value string }{{"SMTP_TLS_MODE", "none"}, {"SMTP_USERNAME", ""}, {"SMTP_PASSWORD", ""}, {"ADMIN_ISSUER", "http://synthetic-secret.example.test"}} {
 		t.Run("production HTTP retains "+tc.key, func(t *testing.T) {
 			serveEnvironment(t)
 			t.Setenv("ACCOUNTSVC_TLS_ENABLED", "false")

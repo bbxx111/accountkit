@@ -6,7 +6,7 @@
 
 - **新增能力**：内省与已清理用户拉取在 HTTP Basic 之外可接受客户端凭据 Bearer 令牌（`ACCOUNTSVC_SERVICE_ISSUER`、`ACCOUNTSVC_SERVICE_AUDIENCE`、`ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS`、`ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS`），规则见[服务调用认证](accountsvc.md#服务调用认证内省与已清理用户拉取)。仅配置 Basic 的部署行为不变。
 - **改名**：Basic 凭据变量 `ACCOUNTSVC_INTROSPECTION_CLIENTS`、`ACCOUNTSVC_PURGE_FEED_CLIENTS` 改为 `ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS`、`ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS`，格式不变，不读取旧名。
-- **放宽**：serve 原先要求 Basic 内省凭据，现在要求 `ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS` 与 `ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS` 至少配置一项；拉取在两种方式都未配置时才返回 503 `PURGE_FEED_NOT_CONFIGURED`。
+- **放宽**：serve 原先要求 Basic 内省凭据，现在内省与拉取一样可选：`ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS` 与 `ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS` 都未设置时服务照常启动，`/v1/introspect` 返回 503 `introspection_not_configured`（OAuth 顶层 `error`），production 同样适用；拉取在两种方式都未配置时返回 503 `PURGE_FEED_NOT_CONFIGURED`。依赖内省的业务服务须确认部署已配置内省调用方，否则关键接口全部失败。
 - **新错误码**：内省新增 401 `invalid_token`、403 `insufficient_scope`；拉取新增 401 `TOKEN_INVALID`、403 `CLIENT_NOT_AUTHORIZED`；签发方不可用时分别为 503 `temporarily_unavailable`、503 `DEPENDENCY_UNAVAILABLE`（`Retry-After: 1`）。启用两种方式时 401 返回两行 `WWW-Authenticate`。
 - **回退**：调用方切回 Basic，或移除 Bearer 配置后重启；无数据迁移。管理员认证行为不变。
 

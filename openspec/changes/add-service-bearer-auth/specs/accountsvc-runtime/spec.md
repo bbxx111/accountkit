@@ -2,11 +2,15 @@
 
 ### Requirement: 生产发送与内省凭据要求
 
-production SHALL 在 EMAIL 启用时要求真实 SMTP 与 SMTP TLS，在 PHONE 启用时要求真实短信服务商，并始终要求至少一种内省调用认证（Basic 客户端凭据或服务令牌客户端列表）。production SHALL 不使用日志验证码、固定默认秘密或明文邮件降级；HTTP TLS 开关不得使生产 SMTP 降级。短信 endpoint 在 production SHALL 只接受 HTTPS。
+production SHALL 在 EMAIL 启用时要求真实 SMTP 与 SMTP TLS，在 PHONE 启用时要求真实短信服务商。内省调用认证（Basic 客户端凭据或服务令牌客户端列表）在任何模式下 SHALL 为可选：两种都未配置时 serve 照常启动，内省路由返回 503 `introspection_not_configured`；production SHALL 不强制要求内省调用认证配置。production SHALL 不使用日志验证码、固定默认秘密或明文邮件降级；HTTP TLS 开关不得使生产 SMTP 降级。短信 endpoint 在 production SHALL 只接受 HTTPS。
 
 #### Scenario: 生产发送和内省依赖不可降级
-- **WHEN** production 缺少必需的真实 SMTP/TLS、短信服务商，或两种内省调用认证都未配置
+- **WHEN** production 缺少必需的真实 SMTP/TLS 或短信服务商
 - **THEN** 拒绝启动，不用日志验证码、默认秘密或明文 SMTP 替代；显式关闭 HTTP TLS 不豁免 SMTP TLS
+
+#### Scenario: 内省调用认证未配置
+- **WHEN** production 既未设置 `ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS` 也未设置 `ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS`
+- **THEN** serve 照常启动并就绪，`POST /v1/introspect` 返回 503 `introspection_not_configured`，其他路由不受影响
 
 #### Scenario: 仅以服务令牌认证内省
 - **WHEN** production 未设置 `ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS`，但服务令牌签发方、audience 与 `ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS` 有效

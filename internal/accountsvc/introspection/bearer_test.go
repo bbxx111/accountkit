@@ -124,12 +124,27 @@ func TestBearerIntrospectionProviderUnavailable(t *testing.T) {
 	}
 }
 
-func TestNewWithAuthenticatorRequiresAMethod(t *testing.T) {
+func TestIntrospectionNotConfiguredWithoutAnyMethod(t *testing.T) {
 	auth, err := serviceauth.New(serviceauth.Config{Realm: introspectionRealm})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := introspection.NewWithAuthenticator(auth, func(context.Context, string) (user.Principal, error) { return user.Principal{}, nil }); err == nil {
-		t.Fatal("introspection without any caller authentication accepted")
+	calls := 0
+	h, err := introspection.NewWithAuthenticator(auth, func(context.Context, string) (user.Principal, error) {
+		calls++
+		return user.Principal{}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	basic := "Basic " + base64.StdEncoding.EncodeToString([]byte("business:"+secret(1)))
+	for _, authorization := range [][]string{nil, {basic}, {"Bearer synthetic-service-token"}} {
+		w := post(h, "POST", authorization...)
+		if w.Code != 503 || oauthCode(t, w) != "introspection_not_configured" || len(w.Header().Values("WWW-Authenticate")) != 0 || w.Header().Get("Cache-Control") != "no-store" || calls != 0 {
+			t.Fatalf("not configured: status %d headers %v body %s", w.Code, w.Header(), w.Body.String())
+		}
+	}
+	if _, err := introspection.NewWithAuthenticator(nil, func(context.Context, string) (user.Principal, error) { return user.Principal{}, nil }); err == nil {
+		t.Fatal("nil authenticator accepted")
 	}
 }

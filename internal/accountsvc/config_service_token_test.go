@@ -53,10 +53,23 @@ func TestConfigIntrospectionWithOnlyTokens(t *testing.T) {
 	if c.IntrospectionClients != nil || len(c.ServiceToken.IntrospectionClients) != 1 {
 		t.Fatalf("config = %+v", c)
 	}
-	t.Setenv("ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS", "")
-	_, err = LoadConfig("serve")
-	if err == nil || !strings.Contains(err.Error(), "ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS") || !strings.Contains(err.Error(), "ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS") {
-		t.Fatalf("introspection without any caller authentication: %v", err)
+}
+
+// 内省与拉取一样可选：两种方式都未配置时 serve 照常启动，路由返回 503 introspection_not_configured。
+func TestConfigIntrospectionOptional(t *testing.T) {
+	for _, mode := range []string{"production", "development"} {
+		t.Run(mode, func(t *testing.T) {
+			serveEnvironment(t)
+			t.Setenv("ACCOUNTSVC_MODE", mode)
+			t.Setenv("ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS", "")
+			c, err := LoadConfig("serve")
+			if err != nil {
+				t.Fatalf("serve without introspection callers: %v", err)
+			}
+			if len(c.IntrospectionClients) != 0 || len(c.ServiceToken.IntrospectionClients) != 0 {
+				t.Fatalf("config = %+v", c)
+			}
+		})
 	}
 }
 

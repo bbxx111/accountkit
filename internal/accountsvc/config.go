@@ -46,9 +46,9 @@ type Config struct {
 	ShutdownTimeout      time.Duration
 	TrustedProxyCIDRs    []netip.Prefix
 	SMTP                 smtp.Config
-	SMS                  *aliyun.Config // nil 表示未配置短信服务商
-	SMTPBrand            string         // 内置中文邮件的可选品牌前缀
-	IntrospectionClients map[string][]string
+	SMS                  *aliyun.Config      // nil 表示未配置短信服务商
+	SMTPBrand            string              // 内置中文邮件的可选品牌前缀
+	IntrospectionClients map[string][]string // 与 ServiceToken.IntrospectionClients 都为空时 /v1/introspect 返回 503 introspection_not_configured
 	PurgeFeedClients     map[string][]string // 与 ServiceToken.PurgeFeedClients 都为空时 /v1/purgedUsers 返回 503 PURGE_FEED_NOT_CONFIGURED
 	ServiceToken         ServiceTokenConfig
 	AdminEnabled         bool
@@ -292,9 +292,6 @@ func LoadConfig(command string) (Config, error) {
 	}
 	if err = c.loadServiceToken(); err != nil {
 		return Config{}, err
-	}
-	if len(c.IntrospectionClients) == 0 && len(c.ServiceToken.IntrospectionClients) == 0 {
-		return Config{}, invalidConfig("ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS / ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS (introspection needs at least one)")
 	}
 	return c, nil
 }

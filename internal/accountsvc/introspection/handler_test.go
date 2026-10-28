@@ -217,9 +217,19 @@ func TestSafeAuthenticationErrors(t *testing.T) {
 
 func TestNewRejectsInvalidConfiguration(t *testing.T) {
 	authenticate := func(context.Context, string) (user.Principal, error) { return user.Principal{}, nil }
-	for _, clients := range []map[string][]string{nil, {}, {"": {secret(1)}}, {"business": {}}, {"business": {"short"}}} {
+	for _, clients := range []map[string][]string{{"": {secret(1)}}, {"business": {}}, {"business": {"short"}}} {
 		if _, err := introspection.New(clients, authenticate); err == nil {
 			t.Fatal("accepted invalid credentials")
+		}
+	}
+	// 未配置凭据不是配置错误：路由存在，返回 503 introspection_not_configured。
+	for _, clients := range []map[string][]string{nil, {}} {
+		h, err := introspection.New(clients, authenticate)
+		if err != nil {
+			t.Fatalf("empty credentials rejected: %v", err)
+		}
+		if w := request(h, "token=consumer", secret(1)); w.Code != 503 || !strings.Contains(w.Body.String(), `"introspection_not_configured"`) {
+			t.Fatalf("not configured: %d %s", w.Code, w.Body)
 		}
 	}
 	if _, err := introspection.New(map[string][]string{"business": {secret(1)}}, nil); err == nil {

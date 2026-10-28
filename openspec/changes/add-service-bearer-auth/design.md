@@ -111,7 +111,7 @@ serve 启动时，配置任一 Bearer 客户端列表即要求：
 | 携带 Bearer 但无效（签名、iss、aud、过期、算法、jku、azp 缺失、寿命过长） | 401 `invalid_token` | 401 `TOKEN_INVALID` |
 | Bearer 有效但 `azp` 不在本接口列表 | 403 `insufficient_scope` | 403 `CLIENT_NOT_AUTHORIZED` |
 | 取不到签名密钥（discovery/JWKS 失败、刷新冷却中且上次失败） | 503 `temporarily_unavailable` | 503 `DEPENDENCY_UNAVAILABLE` + `Retry-After: 1` |
-| 两种方式都未配置 | 不可能（启动失败） | 503 `PURGE_FEED_NOT_CONFIGURED`（不变） |
+| 两种方式都未配置（先于认证判断） | 503 `introspection_not_configured`（见 D9 偏离） | 503 `PURGE_FEED_NOT_CONFIGURED`（不变） |
 
 拉取 401 选 `TOKEN_INVALID`：与 R3 契约一致，调用方处理是「重新向 IdP 换令牌后重试一次」；保留 `INVALID_CLIENT` 给 Basic/缺失凭据，调用方可据此区分「令牌问题」与「凭据配置问题」。
 
@@ -174,11 +174,13 @@ WWW-Authenticate: Bearer realm="accountsvc-introspection", error="invalid_token"
 
 - 数组元素唯一、非空、无空白/控制字符、长度 ≤ 256；空数组视同未配置。
 - 两个数组 SHALL 不相交；任一元素 SHALL 不等于服务 audience。
-- 内省：`ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS` 与 `ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS` 至少一个非空；production 同样只要求「至少一种」。
+- 内省：`ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS` 与 `ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS` 均可选，规则与拉取相同（见下方偏离）。
 - 两个接口共用一个 audience，靠 `azp` 区分接口；不为每个接口单设 audience，减少 IdP mapper 配置。
 - 错误消息只指出变量名，不回显值（与现有一致）。migrate 不解析这些变量。
 
 实施偏离（2026-10-28，用户决定）：变量名按认证方式成对命名。设计原稿的 `SERVICE_TOKEN_ISSUER` / `SERVICE_TOKEN_AUDIENCE` 改为 `SERVICE_ISSUER` / `SERVICE_AUDIENCE`（与 `ADMIN_ISSUER` / `ADMIN_AUDIENCE` 对称）；`*_TOKEN_CLIENTS` 改为 `*_BEARER_CLIENTS`；既有 Basic 变量 `INTROSPECTION_CLIENTS` / `PURGE_FEED_CLIENTS` 同步改为 `*_BASIC_CLIENTS`，格式不变、不读取旧名。尚无产品部署，不提供旧名检测或迁移。
+
+实施偏离（2026-10-28，用户决定）：内省调用认证改为与拉取相同的可选规则，取代原稿「至少一个非空、否则启动失败」。两种方式都未配置时 serve（含 production）照常启动，`/v1/introspect` 先于认证返回 503 `introspection_not_configured`；错误体沿用该接口的 OAuth 顶层 `error`（小写下划线，与 RFC 6749 扩展错误码风格一致），不改用 AIP-193，避免同一接口出现两种错误格式。代价是漏配内省不再在启动时暴露，而是表现为依赖内省的关键接口全部失败，部署检查须覆盖该项。
 
 ## Risks / Trade-offs
 
@@ -193,7 +195,7 @@ WWW-Authenticate: Bearer realm="accountsvc-introspection", error="invalid_token"
 
 1. 部署新版本，只配 Basic：行为与现在完全相同。
 2. IdP 建客户端与 audience mapper；accountsvc 增加 issuer/audience 与 token 列表，滚动重启；调用方切换到 Bearer。
-3. 观察稳定后移除对应 Basic 列表（内省须保证至少一种仍配置）。
+3. 观察稳定后移除对应 Basic 列表（移除前确认 Bearer 已生效；两种都移除时内省返回 503）。
 回退：调用方切回 Basic；或移除 token 配置并重启。无数据迁移。
 
 ## 测试矩阵（回答问题 4）

@@ -102,3 +102,15 @@ func TestServiceIntegrationServiceBearerTokens(t *testing.T) {
 		t.Fatal("issuer outage at startup was not logged")
 	}
 }
+
+// Without any introspection callers the service still starts; the route answers 503.
+func TestServiceIntegrationIntrospectionNotConfigured(t *testing.T) {
+	f := newIntegration(t)
+	p := f.start(map[string]string{"ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS": ""})
+	basic := "Basic " + base64.StdEncoding.EncodeToString([]byte("business:"+f.secrets[1]))
+	h, out := transportRequest(t, f.client, "POST", p.baseURL+"/v1/introspect", "application/x-www-form-urlencoded", "token=not-a-consumer-token", map[string]string{"Authorization": basic}, 503)
+	if out["error"] != "introspection_not_configured" || h.Get("WWW-Authenticate") != "" || h.Get("Cache-Control") != "no-store" {
+		t.Fatalf("introspection not configured: %v %v", h, out)
+	}
+	p.stop()
+}

@@ -34,12 +34,17 @@ type handler struct {
 // New accepts only HTTP Basic callers. It snapshots validated client credentials and
 // delegates token validation to the consumer service's strict authenticator, which checks
 // the committed session row (revocation is immediate, dependency failures map to 503). It
-// never parses JWT claims itself and does not query account state.
+// never parses JWT claims itself and does not query account state. Without clients the
+// route answers 503 introspection_not_configured.
 func New(clients map[string][]string, authenticate func(context.Context, string) (user.Principal, error)) (http.Handler, error) {
-	if !basicclients.Valid(clients) {
+	if len(clients) > 0 && !basicclients.Valid(clients) {
 		return nil, errors.New("accountsvc: ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS must contain unique nonempty client IDs and lists of base64 secrets of at least 32 bytes")
 	}
-	auth, err := serviceauth.New(serviceauth.Config{Realm: Realm, Endpoint: "introspect", Basic: clients})
+	cfg := serviceauth.Config{Realm: Realm, Endpoint: "introspect"}
+	if len(clients) > 0 {
+		cfg.Basic = clients
+	}
+	auth, err := serviceauth.New(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -47,9 +52,10 @@ func New(clients map[string][]string, authenticate func(context.Context, string)
 }
 
 // NewWithAuthenticator accepts the callers auth allows (Basic and/or service Bearer tokens).
+// An auth with no method enabled yields 503 introspection_not_configured.
 func NewWithAuthenticator(auth *serviceauth.Authenticator, authenticate func(context.Context, string) (user.Principal, error)) (http.Handler, error) {
-	if auth == nil || !auth.Enabled() {
-		return nil, errors.New("accountsvc: introspection requires Basic clients or bearer clients")
+	if auth == nil {
+		return nil, errors.New("accountsvc: introspection caller authenticator is required")
 	}
 	if authenticate == nil {
 		return nil, errors.New("accountsvc: introspection authenticator is required")
@@ -60,6 +66,10 @@ func NewWithAuthenticator(auth *serviceauth.Authenticator, authenticate func(con
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
+	if !h.auth.Enabled() {
+		oauthError(w, http.StatusServiceUnavailable, "introspection_not_configured")
+		return
+	}
 	res := h.auth.Authenticate(r)
 	switch res.Outcome {
 	case serviceauth.Unauthenticated:

@@ -34,29 +34,29 @@ import (
 
 // Config 区分库配置和服务运行配置；其中的秘密不得整体写入日志。
 type Config struct {
-	Library              accountkit.Config
-	Mode                 string
-	DatabaseURL          string
-	RedisURL             string
-	HTTPAddr             string
-	TLSEnabled           bool // LoadConfig 解析后的有效 HTTP TLS 模式。
-	TLSCertFile          string
-	TLSKeyFile           string
-	StartupTimeout       time.Duration
-	ShutdownTimeout      time.Duration
-	TrustedProxyCIDRs    []netip.Prefix
-	SMTP                 smtp.Config
-	SMS                  *aliyun.Config      // nil 表示未配置短信服务商
-	SMTPBrand            string              // 内置中文邮件的可选品牌前缀
-	IntrospectionClients map[string][]string // 与 ServiceToken.IntrospectionClients 都为空时 /v1/introspect 返回 503 introspection_not_configured
-	PurgeFeedClients     map[string][]string // 与 ServiceToken.PurgeFeedClients 都为空时 /v1/purgedUsers 返回 503 PURGE_FEED_NOT_CONFIGURED
-	ServiceToken         ServiceTokenConfig
-	AdminEnabled         bool
-	Admin                adminauth.Config
-	MetricsEnabled       bool
-	MetricsInstance      string
-	command              string
-	tlsConfig            *tls.Config
+	Library                   accountkit.Config
+	Mode                      string
+	DatabaseURL               string
+	RedisURL                  string
+	HTTPAddr                  string
+	TLSEnabled                bool // LoadConfig 解析后的有效 HTTP TLS 模式。
+	TLSCertFile               string
+	TLSKeyFile                string
+	StartupTimeout            time.Duration
+	ShutdownTimeout           time.Duration
+	TrustedProxyCIDRs         []netip.Prefix
+	SMTP                      smtp.Config
+	SMS                       *aliyun.Config      // nil 表示未配置短信服务商
+	SMTPBrand                 string              // 内置中文邮件的可选品牌前缀
+	IntrospectionBasicClients map[string][]string // 与 Service.IntrospectionBearerClients 都为空时 /v1/introspect 返回 503 introspection_not_configured
+	PurgeFeedBasicClients     map[string][]string // 与 Service.PurgeFeedBearerClients 都为空时 /v1/purgedUsers 返回 503 PURGE_FEED_NOT_CONFIGURED
+	Service                   ServiceConfig
+	AdminEnabled              bool
+	Admin                     adminauth.Config
+	MetricsEnabled            bool
+	MetricsInstance           string
+	command                   string
+	tlsConfig                 *tls.Config
 }
 
 func invalidConfig(name string) error { return errors.New("accountsvc: invalid or missing " + name) }
@@ -274,23 +274,23 @@ func LoadConfig(command string) (Config, error) {
 		}
 	}
 	if raw := os.Getenv("ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS"); strings.TrimSpace(raw) != "" {
-		if c.IntrospectionClients, err = introspection.ParseClients(raw); err != nil {
+		if c.IntrospectionBasicClients, err = introspection.ParseClients(raw); err != nil {
 			return Config{}, invalidConfig("ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS")
 		}
 	}
 	if raw := os.Getenv("ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS"); strings.TrimSpace(raw) != "" {
-		if c.PurgeFeedClients, err = basicclients.Parse(raw, "ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS"); err != nil {
+		if c.PurgeFeedBasicClients, err = basicclients.Parse(raw, "ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS"); err != nil {
 			return Config{}, invalidConfig("ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS")
 		}
 		// 一份凭据不能同时打开内省与已清理用户拉取两个独立授权的接口。
-		if basicclients.SharedSecret(c.IntrospectionClients, c.PurgeFeedClients) {
+		if basicclients.SharedSecret(c.IntrospectionBasicClients, c.PurgeFeedBasicClients) {
 			return Config{}, invalidConfig("ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS (secret shared with ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS)")
 		}
 	}
 	if err = c.loadAdmin(); err != nil {
 		return Config{}, err
 	}
-	if err = c.loadServiceToken(); err != nil {
+	if err = c.loadService(); err != nil {
 		return Config{}, err
 	}
 	return c, nil
@@ -332,28 +332,28 @@ func (c *Config) loadAdmin() error {
 	return nil
 }
 
-// ServiceTokenConfig 是业务服务客户端凭据 Bearer 令牌的签发方、受众与逐接口 azp 允许列表。
-type ServiceTokenConfig struct {
-	Issuer, Audience     string
-	IntrospectionClients []string
-	PurgeFeedClients     []string
+// ServiceConfig 是业务服务客户端凭据 Bearer 令牌的签发方、受众与逐接口 azp 允许列表。
+type ServiceConfig struct {
+	Issuer, Audience           string
+	IntrospectionBearerClients []string
+	PurgeFeedBearerClients     []string
 }
 
 // Enabled 报告是否有任一接口接受 Bearer 令牌。
-func (s ServiceTokenConfig) Enabled() bool {
-	return len(s.IntrospectionClients) > 0 || len(s.PurgeFeedClients) > 0
+func (s ServiceConfig) Enabled() bool {
+	return len(s.IntrospectionBearerClients) > 0 || len(s.PurgeFeedBearerClients) > 0
 }
 
-// loadServiceToken 读取服务令牌配置并校验：两列表不相交、不得半配置，issuer 与消费者
+// loadService 读取服务令牌配置并校验：两列表不相交、不得半配置，issuer 与消费者
 // issuer 不同，audience 不得与消费者/管理员 audience、任一第三方应用或客户端 ID、任一 azp 相同
 // （否则那个客户端自己的 ID token 可冒充访问令牌）。错误只含变量名。
-func (c *Config) loadServiceToken() error {
-	s := &c.ServiceToken
+func (c *Config) loadService() error {
+	s := &c.Service
 	var err error
-	if s.IntrospectionClients, err = parseTokenClients(env("INTROSPECTION_BEARER_CLIENTS"), "ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS"); err != nil {
+	if s.IntrospectionBearerClients, err = parseBearerClients(env("INTROSPECTION_BEARER_CLIENTS"), "ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS"); err != nil {
 		return err
 	}
-	if s.PurgeFeedClients, err = parseTokenClients(env("PURGE_FEED_BEARER_CLIENTS"), "ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS"); err != nil {
+	if s.PurgeFeedBearerClients, err = parseBearerClients(env("PURGE_FEED_BEARER_CLIENTS"), "ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS"); err != nil {
 		return err
 	}
 	// audience 不经 env() 去空白，以便拒绝首尾空白。
@@ -364,8 +364,8 @@ func (c *Config) loadServiceToken() error {
 		}
 		return nil
 	}
-	for _, id := range s.PurgeFeedClients {
-		if slices.Contains(s.IntrospectionClients, id) {
+	for _, id := range s.PurgeFeedBearerClients {
+		if slices.Contains(s.IntrospectionBearerClients, id) {
 			return invalidConfig("ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS (client shared with ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS)")
 		}
 	}
@@ -399,12 +399,12 @@ func (c *Config) reservedAudiences() []string {
 	out = append(out, l.GoogleClientIDs...)
 	out = append(out, l.QQAppIDs...)
 	out = append(out, l.WeiboAppIDs...)
-	out = append(out, c.ServiceToken.IntrospectionClients...)
-	return append(out, c.ServiceToken.PurgeFeedClients...)
+	out = append(out, c.Service.IntrospectionBearerClients...)
+	return append(out, c.Service.PurgeFeedBearerClients...)
 }
 
-// parseTokenClients 解析 JSON 字符串数组；未设置或空数组表示不启用。variable 只用于错误信息。
-func parseTokenClients(raw, variable string) ([]string, error) {
+// parseBearerClients 解析 JSON 字符串数组；未设置或空数组表示不启用。variable 只用于错误信息。
+func parseBearerClients(raw, variable string) ([]string, error) {
 	if raw == "" {
 		return nil, nil
 	}

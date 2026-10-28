@@ -261,8 +261,8 @@ const serviceTokenPreloadTimeout = 10 * time.Second
 // verifier（延迟加载）；preload 为 nil 表示未启用 Bearer。client 仅供测试注入。
 func serviceAuthenticators(cfg Config, logger *slog.Logger, client *http.Client) (intro, purge *serviceauth.Authenticator, preload func(context.Context) error, err error) {
 	var tokens *oidcjwt.Verifier
-	if cfg.ServiceToken.Enabled() {
-		tokens, err = oidcjwt.New(cfg.ServiceToken.Issuer, cfg.ServiceToken.Audience, oidcjwt.Options{HTTPClient: client, RefreshInterval: serviceTokenRefreshInterval, RefreshTimeout: serviceTokenRefreshTimeout, Logger: logger})
+	if cfg.Service.Enabled() {
+		tokens, err = oidcjwt.New(cfg.Service.Issuer, cfg.Service.Audience, oidcjwt.Options{HTTPClient: client, RefreshInterval: serviceTokenRefreshInterval, RefreshTimeout: serviceTokenRefreshTimeout, Logger: logger})
 		if err != nil {
 			return nil, nil, nil, errors.New("accountsvc: service token configuration failed")
 		}
@@ -274,14 +274,14 @@ func serviceAuthenticators(cfg Config, logger *slog.Logger, client *http.Client)
 			c.Basic = basic
 		}
 		if len(clients) > 0 {
-			c.TokenClients, c.Tokens = clients, tokens
+			c.BearerClients, c.Tokens = clients, tokens
 		}
 		return serviceauth.New(c)
 	}
-	if intro, err = build(introspection.Realm, "introspect", cfg.IntrospectionClients, cfg.ServiceToken.IntrospectionClients); err != nil {
+	if intro, err = build(introspection.Realm, "introspect", cfg.IntrospectionBasicClients, cfg.Service.IntrospectionBearerClients); err != nil {
 		return nil, nil, nil, errors.New("accountsvc: introspection configuration failed")
 	}
-	if purge, err = build(purgefeed.Realm, "purged_users", cfg.PurgeFeedClients, cfg.ServiceToken.PurgeFeedClients); err != nil {
+	if purge, err = build(purgefeed.Realm, "purged_users", cfg.PurgeFeedBasicClients, cfg.Service.PurgeFeedBearerClients); err != nil {
 		return nil, nil, nil, errors.New("accountsvc: purged user feed configuration failed")
 	}
 	return intro, purge, preload, nil
@@ -367,7 +367,7 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 	}
 	state.ready.Store(true)
 	cancelStartup()
-	stopPreload := preloadServiceTokens(app.preloadServiceTokens, cfg.ServiceToken.Issuer, logger)
+	stopPreload := preloadServiceTokens(app.preloadServiceTokens, cfg.Service.Issuer, logger)
 	var serveError error
 	select {
 	case <-ctx.Done():

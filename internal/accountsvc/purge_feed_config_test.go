@@ -13,16 +13,16 @@ func TestConfigPurgeFeedClients(t *testing.T) {
 	t.Run("unset", func(t *testing.T) {
 		serveEnvironment(t)
 		cfg, err := LoadConfig("serve")
-		if err != nil || cfg.PurgeFeedClients != nil {
-			t.Fatalf("unset feed clients: %v %v", cfg.PurgeFeedClients, err)
+		if err != nil || cfg.PurgeFeedBasicClients != nil {
+			t.Fatalf("unset feed clients: %v %v", cfg.PurgeFeedBasicClients, err)
 		}
 	})
 	t.Run("valid", func(t *testing.T) {
 		serveEnvironment(t)
 		t.Setenv("ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS", fmt.Sprintf(`{"ai-food":["%s"]}`, feedSecret))
 		cfg, err := LoadConfig("serve")
-		if err != nil || len(cfg.PurgeFeedClients["ai-food"]) != 1 {
-			t.Fatalf("valid: %v %v", cfg.PurgeFeedClients, err)
+		if err != nil || len(cfg.PurgeFeedBasicClients["ai-food"]) != 1 {
+			t.Fatalf("valid: %v %v", cfg.PurgeFeedBasicClients, err)
 		}
 	})
 	t.Run("invalid", func(t *testing.T) {

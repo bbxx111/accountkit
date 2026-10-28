@@ -19,7 +19,7 @@ func bearerFeed(t *testing.T, p *oidcjwttest.Provider, basic bool, feed *fakeFee
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := serviceauth.Config{Realm: purgefeed.Realm, Endpoint: "purged_users", Tokens: tokens, TokenClients: []string{"purge-client"}}
+	cfg := serviceauth.Config{Realm: purgefeed.Realm, Endpoint: "purged_users", Tokens: tokens, BearerClients: []string{"purge-client"}}
 	if basic {
 		cfg.Basic = map[string][]string{"ai-food": {secret(1)}}
 	}

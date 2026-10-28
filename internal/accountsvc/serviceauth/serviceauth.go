@@ -61,9 +61,9 @@ type Config struct {
 	Endpoint string
 	// Basic maps client IDs to base64 secrets; nil disables Basic.
 	Basic map[string][]string
-	// TokenClients lists the azp values allowed on this interface; empty disables Bearer.
-	TokenClients []string
-	// Tokens verifies Bearer tokens; required exactly when TokenClients is non-empty.
+	// BearerClients lists the azp values allowed on this interface; empty disables Bearer.
+	BearerClients []string
+	// Tokens verifies Bearer tokens; required exactly when BearerClients is non-empty.
 	Tokens *oidcjwt.Verifier
 	// Timeout bounds waiting for signing keys; zero means three seconds.
 	Timeout time.Duration
@@ -90,7 +90,7 @@ func New(cfg Config) (*Authenticator, error) {
 	if cfg.Realm == "" || strings.ContainsAny(cfg.Realm, `"\`) {
 		return nil, errors.New("serviceauth: realm is required")
 	}
-	if (len(cfg.TokenClients) > 0) != (cfg.Tokens != nil) {
+	if (len(cfg.BearerClients) > 0) != (cfg.Tokens != nil) {
 		return nil, errors.New("serviceauth: bearer clients and a token verifier must be configured together")
 	}
 	a := &Authenticator{realm: cfg.Realm, endpoint: cfg.Endpoint, tokens: cfg.Tokens, timeout: cfg.Timeout, logger: cfg.Logger}
@@ -107,9 +107,9 @@ func New(cfg Config) (*Authenticator, error) {
 		}
 		a.basic = m
 	}
-	if len(cfg.TokenClients) > 0 {
-		a.clients = make(map[string]bool, len(cfg.TokenClients))
-		for _, id := range cfg.TokenClients {
+	if len(cfg.BearerClients) > 0 {
+		a.clients = make(map[string]bool, len(cfg.BearerClients))
+		for _, id := range cfg.BearerClients {
 			if !ValidClientID(id) {
 				return nil, errors.New("serviceauth: invalid bearer client ID")
 			}

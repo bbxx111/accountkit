@@ -48,7 +48,7 @@ func TestServiceAuthenticatorsWithUnavailableIssuer(t *testing.T) {
 		t.Fatalf("bearer outcome with unavailable issuer = %v", res.Outcome)
 	}
 	var basic string
-	for id, secrets := range cfg.IntrospectionClients {
+	for id, secrets := range cfg.IntrospectionBasicClients {
 		basic = "Basic " + base64.StdEncoding.EncodeToString([]byte(id+":"+secrets[0]))
 	}
 	if res := request(intro, basic); res.Outcome != serviceauth.OK {
@@ -85,7 +85,7 @@ func runWithPreload(t *testing.T, startupTimeout time.Duration, preload func(con
 	}
 	cfg.HTTPAddr = "127.0.0.1:0"
 	cfg.StartupTimeout = startupTimeout
-	cfg.ServiceToken.Issuer = "https://idp.example.test"
+	cfg.Service.Issuer = "https://idp.example.test"
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
 	var logs safeLog

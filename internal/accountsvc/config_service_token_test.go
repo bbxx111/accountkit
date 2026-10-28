@@ -21,9 +21,9 @@ func TestConfigServiceTokens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := ServiceTokenConfig{Issuer: "https://idp.example.test/realms/svc", Audience: "accountsvc-service", IntrospectionClients: []string{"intro-client"}, PurgeFeedClients: []string{"purge-client"}}
-	if !reflect.DeepEqual(c.ServiceToken, want) || !c.ServiceToken.Enabled() {
-		t.Fatalf("ServiceToken = %+v", c.ServiceToken)
+	want := ServiceConfig{Issuer: "https://idp.example.test/realms/svc", Audience: "accountsvc-service", IntrospectionBearerClients: []string{"intro-client"}, PurgeFeedBearerClients: []string{"purge-client"}}
+	if !reflect.DeepEqual(c.Service, want) || !c.Service.Enabled() {
+		t.Fatalf("Service = %+v", c.Service)
 	}
 }
 
@@ -33,13 +33,13 @@ func TestConfigServiceTokensOptional(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.ServiceToken.Enabled() {
+	if c.Service.Enabled() {
 		t.Fatal("service tokens enabled without configuration")
 	}
 	t.Setenv("ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS", "[]")
 	t.Setenv("ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS", "[]")
-	if c, err = LoadConfig("serve"); err != nil || c.ServiceToken.Enabled() {
-		t.Fatalf("empty arrays must mean unconfigured: %v %+v", err, c.ServiceToken)
+	if c, err = LoadConfig("serve"); err != nil || c.Service.Enabled() {
+		t.Fatalf("empty arrays must mean unconfigured: %v %+v", err, c.Service)
 	}
 }
 
@@ -50,7 +50,7 @@ func TestConfigIntrospectionWithOnlyTokens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.IntrospectionClients != nil || len(c.ServiceToken.IntrospectionClients) != 1 {
+	if c.IntrospectionBasicClients != nil || len(c.Service.IntrospectionBearerClients) != 1 {
 		t.Fatalf("config = %+v", c)
 	}
 }
@@ -66,7 +66,7 @@ func TestConfigIntrospectionOptional(t *testing.T) {
 			if err != nil {
 				t.Fatalf("serve without introspection callers: %v", err)
 			}
-			if len(c.IntrospectionClients) != 0 || len(c.ServiceToken.IntrospectionClients) != 0 {
+			if len(c.IntrospectionBasicClients) != 0 || len(c.Service.IntrospectionBearerClients) != 0 {
 				t.Fatalf("config = %+v", c)
 			}
 		})

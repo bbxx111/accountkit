@@ -32,4 +32,4 @@
 ## 5. 验证
 
 - [x] 5.1 gofmt、go vet；Linux 镜像跑 race 与 `scripts/verify-accountsvc.sh`；`go test -race ./...` 加 required-tests 门禁
-- [ ] 5.2 `openspec validate --all --strict`；代码审查；改写 verification.md
+- [x] 5.2 `openspec validate --all --strict`；代码审查；改写 verification.md

@@ -1001,3 +1001,6 @@ github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestSingleLangu
 github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestExampleManifest
 github.com/bbxx111/accountkit/internal/accountsvc/TestAcceptLanguageMiddleware
 github.com/bbxx111/accountkit/internal/accountsvc/TestEmailTemplatesCheckCommand
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestLanguageMatchingAcrossScripts
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestSinglePassSubstitution
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestLayoutGolden

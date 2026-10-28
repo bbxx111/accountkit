@@ -53,11 +53,11 @@
 ### D2 内置布局
 
 - HTML 和纯文本两份布局用 `embed` 放在 `emailtemplates` 包内，是可信内容；槽位用 `{{lang}}`、`{{logo}}`、`{{brand}}`、`{{heading}}`、`{{intro}}`、`{{code_label}}`、`{{code}}`、`{{expiry}}`、`{{safety}}`、`{{footer}}`。
-- 版式：表格布局、行内样式；`<style>` 里只有一条移动端适配；验证码用大号等宽字体显示；页脚有“自动发送”提示和 `© 品牌`。
+- 版式：表格布局、行内样式；`<style>` 里只有一条移动端适配；验证码用大号等宽字体显示；页脚固定显示 `© 品牌`，其上方是清单的 `footer` 文字（省略则无）。
 - `{{logo}}` 槽位由 Go 代码填入：有 `logo_url` 时是一段 `<img>`（`src` 做属性转义，`alt` 为品牌），否则为空。布局本身不含条件逻辑。
 - `{{footer}}` 为空时整段省略（Go 代码判断，同上）。
 - 纯文本布局：标题、引导语、验证码标签与验证码、有效期、安全提示、页脚，段落之间空一行，使用 LF。
-- 内置布局与一组固定清单的渲染结果用黄金文件测试固定，避免无意改动版式。
+- 内置布局与一组固定清单的 HTML 渲染结果用 `testdata/*.golden.html` 黄金文件固定（`go test -update` 刷新），避免无意改动版式。
 
 ### D3 占位符与转义
 
@@ -82,9 +82,9 @@
 
 ### D6 语言选择
 
-- 中间件只在清单有多于一种语言时安装，覆盖所有端点：读取 `Accept-Language`；超过 512 字节、解析失败或缺失时不设置偏好；否则用 `language.ParseAcceptLanguage` 解析，最多取前 8 项，写入 context。
-- 启动时用 `language.NewMatcher` 构造匹配器，默认语言放第一位。渲染时无偏好直接用默认语言；匹配置信度为 `language.No` 时也用默认语言。
-- 用表驱动测试固定：zh-TW、zh-HK、zh-MO → zh-Hant；zh-CN、zh-SG、zh → zh-Hans；en-US、en-GB → en；ja → 默认。
+- 中间件只在清单有多于一种语言时安装，包裹消费者路由（`/v1`，发码端点都在其中；管理面与服务接口不装）：读取 `Accept-Language`；超过 512 字节、解析失败或缺失时不设置偏好；否则用 `language.ParseAcceptLanguage` 解析，最多取前 8 项，写入 context。
+- 启动时用 `language.NewMatcher` 构造匹配器，默认语言放第一位。渲染时无偏好直接用默认语言；匹配置信度为 `language.No` 时也用默认语言。低置信度（`Low`）的匹配也采用：例如清单只有 en（默认）和 zh-Hans 时，zh-TW 的请求收到简体邮件，而不是英文。这是有意的选择：同一文字系统的近似匹配比回落到默认语言对用户更友好。该行为由测试固定。
+- 用表驱动测试固定：zh-TW、zh-HK、zh-MO → zh-Hant；zh-CN、zh-SG、zh → zh-Hans；en-US、en-GB → en；ja → 默认；以及只配简体时 zh-TW → zh-Hans、只配繁体时 zh-CN → zh-Hant。
 - 不放进库的 HTTP 层：语言选择是部署策略；嵌入宿主可以用自己的 Renderer 实现。
 - 网关必须透传 `Accept-Language`；客户端应把它设为界面语言。
 

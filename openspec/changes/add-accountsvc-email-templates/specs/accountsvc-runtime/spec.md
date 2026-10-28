@@ -71,7 +71,7 @@ serve SHALL 支持可选的 `ACCOUNTSVC_SMTP_TEMPLATES_FILE`，指向一份邮�
 当清单包含多种语言时，serve SHALL 读取每个请求的 `Accept-Language`，并在发送邮件验证码时从已配置的语言中选出一种渲染。
 
 - 匹配 SHALL 遵循 BCP 47 语言匹配，并识别地区隐含的文字：zh-TW、zh-HK、zh-MO 匹配 `zh-Hant`；zh-CN、zh-SG、zh 匹配 `zh-Hans`；en-US、en-GB 匹配 `en`。
-- 以下情况 SHALL 使用 `default_language`，且不得因此使请求失败：请求头缺失、超过 512 字节、格式非法，或没有可接受的匹配。
+- 近似匹配（如只配置简体时的繁体请求）SHALL 采用匹配到的语言。以下情况 SHALL 使用 `default_language`，且不得因此使请求失败：请求头缺失、超过 512 字节、格式非法，或完全没有匹配。
 - 未配置清单，或清单只有一种语言时，serve SHALL 不读取 `Accept-Language`。
 - 语言选择 SHALL 只影响邮件标题、内容和品牌，不改变验证码用途、额度、审计、HTTP 响应或短信内容。日志 SHALL 不记录逐次选中的语言。
 

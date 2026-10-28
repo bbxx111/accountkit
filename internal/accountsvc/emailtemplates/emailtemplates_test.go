@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -180,6 +183,83 @@ func TestLanguageMatching(t *testing.T) {
 	}
 }
 
+// 低置信度的跨文字匹配也采用；只有完全不匹配才回落默认语言。
+func TestLanguageMatchingAcrossScripts(t *testing.T) {
+	for name, tc := range map[string]struct {
+		languages []string // 第一个是默认语言
+		header    string
+		wantBrand string
+	}{
+		"hans only, hant request": {[]string{"en", "zh-Hans"}, "zh-TW", "B1"},
+		"hant only, hans request": {[]string{"en", "zh-Hant"}, "zh-CN", "B1"},
+		"hans only, no match":     {[]string{"en", "zh-Hans"}, "ja", "B0"},
+		"both scripts, zh":        {[]string{"en", "zh-Hant", "zh-Hans"}, "zh", "B2"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			raw := mutated(t, func(root map[string]any) {
+				langs := map[string]any{}
+				for i, tag := range tc.languages {
+					langs[tag] = languageEntry("B" + strconv.Itoa(i))
+				}
+				root["languages"], root["default_language"] = langs, tc.languages[0]
+			})
+			ctx := WithLanguagePreference(context.Background(), ParseAcceptLanguage(tc.header))
+			got, err := mustParse(t, raw).Render(ctx, message(enum.PurposeSignIn))
+			if err != nil || !strings.HasPrefix(got.Subject, tc.wantBrand+" ") {
+				t.Fatalf("%v %q", err, got.Subject)
+			}
+		})
+	}
+}
+
+// 替换值不会再被当作占位符或布局槽位展开。
+func TestSinglePassSubstitution(t *testing.T) {
+	raw := mutated(t, func(root map[string]any) { lang(root, "zh-Hans")["brand"] = "{{code}}" })
+	got, err := mustParse(t, raw).Render(context.Background(), message(enum.PurposeSignIn))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(got.Subject, "{{code}} ") || !strings.Contains(got.Text, "intro {{code}} ") || !strings.Contains(got.HTML, "intro {{code}} ") {
+		t.Fatalf("brand must stay literal: %q %q", got.Subject, got.Text)
+	}
+	if strings.Count(got.HTML, "123456") != 1 || !strings.Contains(got.HTML, ">123456</p>") || strings.Count(got.Text, "123456") != 1 {
+		t.Fatalf("code expanded more than once:\n%s\n%s", got.HTML, got.Text)
+	}
+}
+
+var update = flag.Bool("update", false, "rewrite golden files")
+
+// 黄金文件固定内置布局的 HTML 输出，防止无意改动版式。
+func TestLayoutGolden(t *testing.T) {
+	full := mutated(t, func(root map[string]any) {
+		lang(root, "zh-Hans")["brand"] = "案例 & <Co>"
+		setPurpose("zh-Hans", "SIGN_IN", "intro", "第一行\n第二行 {{brand}}")(root)
+	})
+	minimal := mutated(t, func(root map[string]any) {
+		delete(lang(root, "zh-Hans"), "logo_url")
+		delete(lang(root, "zh-Hans")["common"].(map[string]any), "footer")
+	})
+	for name, raw := range map[string][]byte{"full": full, "minimal": minimal} {
+		got, err := mustParse(t, raw).Render(context.Background(), message(enum.PurposeSignIn))
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join("testdata", name+".golden.html")
+		if *update {
+			if err := os.WriteFile(path, []byte(got.HTML), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		want, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("%s: %v (run with -update to create)", name, err)
+		}
+		if string(want) != got.HTML {
+			t.Errorf("%s: HTML differs from %s (run with -update after intentional layout changes)", name, path)
+		}
+	}
+}
+
 func TestSingleLanguageIgnoresPreference(t *testing.T) {
 	raw := mutated(t, func(root map[string]any) {
 		root["languages"] = map[string]any{"en": languageEntry("Shifang")}
@@ -224,6 +304,8 @@ func TestParseRejects(t *testing.T) {
 		"tag not canonical": {mutated(t, func(m map[string]any) { m["languages"].(map[string]any)["zh-hant"] = languageEntry("x") }), "languages"},
 		"tag und":           {mutated(t, func(m map[string]any) { m["languages"].(map[string]any)["und"] = languageEntry("x") }), "languages"},
 		"tag garbage":       {mutated(t, func(m map[string]any) { m["languages"].(map[string]any)[sentinel] = languageEntry("x") }), "languages"},
+		"tag private":       {mutated(t, func(m map[string]any) { m["languages"].(map[string]any)["x-foo"] = languageEntry("x") }), "languages"},
+		"tag private ext":   {mutated(t, func(m map[string]any) { m["languages"].(map[string]any)["en-x-foo"] = languageEntry("x") }), "languages"},
 		"language null":     {mutated(t, func(m map[string]any) { m["languages"].(map[string]any)["en"] = nil }), "languages.en"},
 		"language unknown":  {mutated(t, func(m map[string]any) { lang(m, "en")[sentinel] = 1 }), "languages.en"},
 		"brand missing":     {mutated(t, func(m map[string]any) { delete(lang(m, "en"), "brand") }), "languages.en.brand"},
@@ -384,7 +466,7 @@ func TestExampleManifest(t *testing.T) {
 	if strings.Join(r.Languages(), ",") != "zh-Hans,en,zh-Hant" {
 		t.Fatalf("languages %v", r.Languages())
 	}
-	for header, wantSubject := range map[string]string{"zh-CN": "食方登录补全验证码", "zh-TW": "食方登入補全驗證碼", "en-GB": "Finish signing in to Shifang"} {
+	for header, wantSubject := range map[string]string{"zh-CN": "案例登录补全验证码", "zh-TW": "案例登入補全驗證碼", "en-GB": "Finish signing in to Example"} {
 		ctx := WithLanguagePreference(context.Background(), ParseAcceptLanguage(header))
 		got, err := r.Render(ctx, message(enum.PurposeSignInComplete))
 		if err != nil || got.Subject != wantSubject || !strings.Contains(got.Text, "123456") || !strings.Contains(got.HTML, ">123456</p>") || strings.Contains(got.Subject, "123456") {

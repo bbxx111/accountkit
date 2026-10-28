@@ -325,7 +325,7 @@ EMAIL 启用时，服务默认调用 `smtp.NewWithRenderer(cfg.SMTP, smtp.Legacy
   "default_language": "zh-Hans",
   "languages": {
     "zh-Hans": {
-      "brand": "食方",
+      "brand": "案例",
       "logo_url": "https://static.example.com/email/logo.png",
       "common": {
         "code_label": "您的验证码",
@@ -348,12 +348,12 @@ EMAIL 启用时，服务默认调用 `smtp.NewWithRenderer(cfg.SMTP, smtp.Legacy
 
 - **结构**：`version` 必须为 1；`default_language` 必须是 `languages` 中的一个键；`languages` 1–8 种，键为规范形式的 BCP 47 标签（如 `zh-Hans`、`zh-Hant`、`en`，大小写须一致）。每种语言包含 `brand`（必填）、`logo_url`（可选）、`common`（`code_label`、`expiry`、`safety` 必填，`footer` 可选）和 `templates`（四种用途各含 `subject`、`heading`、`intro`）。以下情况均在启动时拒绝：未知字段、重复键、`null`、尾随内容、非法 UTF-8。
 - **邮件结构**：HTML 与纯文本两部分内容相同，段落依次为标题（`heading`）、引导语（`intro`）、验证码标签与验证码、有效期（`expiry`）、安全提示（`safety`）、页脚（`footer`，省略则无此段，`© 品牌` 始终显示）。有 `logo_url` 时 HTML 顶部显示 Logo，替代文字为品牌。
-- **占位符**：文字中只能用 `{{brand}}`（所在语言的 `brand`）和 `{{ttl_minutes}}`（有效期分钟数，向上取整）。验证码由布局放置，文字里不能写 `{{code}}`。单个 `{`、`}` 按字面显示；写了 `{{` 却不是这两个占位符会在启动时报错。替换只做一次，不支持条件、循环或函数。
+- **占位符**：文字中只能用 `{{brand}}`（所在语言的 `brand`）和 `{{ttl_minutes}}`（有效期分钟数，向上取整）。验证码由布局放置，文字里不能写 `{{code}}`。单个 `{`、`}` 按字面显示，但 `{` 不能紧贴在占位符前面（`{{{brand}}}` 会被当作未知占位符）；写了 `{{` 却不是这两个占位符会在启动时报错。替换只做一次，不支持条件、循环或函数。
 - **转义**：文字插入 HTML 时整体转义，所以文字里的 `<b>` 之类会按字面显示，不能用来加格式；换行（`\n`）在 HTML 中显示为换行，纯文本中原样保留。
 - **Logo**：只接受 HTTPS 地址，不含用户信息、空白或控制字符，不超过 2048 字节；不支持内嵌图片或 `data:` 地址。多数邮件客户端默认不加载远程图片，所以邮件不能依赖 Logo 才能读懂，验证码也始终是文本。请把图片放在自己控制的域名下，不带追踪参数。
 - **字符与长度**：`subject` 1–64 个字符，不得有首尾空白、换行、制表符、其他控制字符或 Unicode 格式/分隔字符（规则与 `SMTP_BRAND` 相同）；`heading`、`code_label` 1–64 个字符；`intro`、`expiry`、`safety`、`footer` 1–1024 个字符；这些文字只允许换行和制表符两种控制字符，不得含 `\r`。每段文字最多 8 个占位符。清单不超过 64 KiB。
 - **品牌**：清单各语言自带 `brand`，因此设置了清单时 `ACCOUNTSVC_SMTP_BRAND` 必须为空，否则启动失败。
-- **语言选择**：清单有多种语言时，服务读取每个请求的 `Accept-Language`，按 BCP 47 匹配并识别地区隐含的文字：zh-TW、zh-HK、zh-MO → `zh-Hant`；zh-CN、zh-SG、zh → `zh-Hans`；en-US、en-GB → `en`。请求头缺失、超过 512 字节、格式非法或匹配不上时使用 `default_language`，请求不会失败。客户端应把 App 或页面的界面语言放进 `Accept-Language`；网关须透传该请求头（见[网关集成](gateway-integration.md#客户端描述透传与-cors)）。只有一种语言时不读取请求头。
+- **语言选择**：清单有多种语言时，服务读取每个请求的 `Accept-Language`，按 BCP 47 匹配并识别地区隐含的文字：zh-TW、zh-HK、zh-MO → `zh-Hant`；zh-CN、zh-SG、zh → `zh-Hans`；en-US、en-GB → `en`。近似匹配也会采用：只配置了简体时，繁体用户会收到简体邮件，而不是回落到默认语言。请求头缺失、超过 512 字节、格式非法或完全匹配不上时使用 `default_language`，请求不会失败。客户端应把 App 或页面的界面语言放进 `Accept-Language`；网关须透传该请求头（见[网关集成](gateway-integration.md#客户端描述透传与-cors)）。只有一种语言时不读取请求头。
 - **文案责任**：服务只校验格式，不校验语义。登录补全邮件须向用户说明是在完成登录并关联身份（未注册时会自动注册），不要写成普通登录或营销内容。
 - **加载与观测**：只在 serve 启动且 EMAIL 启用时读取一次；文件不可读、不是普通文件、为空、超过 64 KiB 或内容非法时，在监听前退出。错误只包含变量名、字段位置（如 `languages.en.templates.SIGN_IN.subject`）和固定分类，不含路径或文件内容。修改清单后须重启生效；EMAIL 禁用时和执行 `migrate` 时不读取。启动后记录一条 INFO：`email templates: built-in`，或 `email templates: custom` 并附 `version`、`sha256`（清单内容摘要的前 12 位，用于核对多个副本是否加载了同一份清单）和 `languages`。日志不记录路径、品牌、文字、Logo 地址、渲染结果、逐次选中的语言或验证码。
 - **部署前检查与预览**：`accountsvc email-templates check <清单> [-out <目录>]` 用与 serve 相同的规则校验清单，不读取 `ACCOUNTSVC_` 变量，也不连接数据库、Redis 或 SMTP；失败时非零退出并指出字段位置。加 `-out` 时用验证码 `123456`、有效期 5 分钟渲染每种语言、每种用途，写出 `<语言>/<用途>.html`、`<语言>/<用途>.txt` 和 `subjects.txt`，可直接用浏览器打开。目录不存在会创建；已存在时只允许覆盖这些固定文件名，发现其他文件则拒绝。镜像内可执行 `docker run --rm -v ./email-templates.json:/etc/accountsvc/email-templates.json:ro <镜像> email-templates check /etc/accountsvc/email-templates.json`。

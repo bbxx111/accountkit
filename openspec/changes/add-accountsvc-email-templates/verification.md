@@ -55,7 +55,15 @@ Linux 验证镜像基于 `tests/Dockerfile`（golang:1.26.5）。测试用一次
 
 ## 审查结论
 
-（待审查子代理返回后补充。）
+独立审查子代理（审查 27ed492..67f3257 的累计差异，并实测了 x/text v0.31.0 匹配器与 `strings.Replacer` 的单遍语义）：没有 Critical 问题；安全面（头注入、HTML 注入、单遍替换、信息泄露、`Accept-Language` 有界）、规格一致性和回归点均核实无误；Important 项全部是设计/记录层面。处理如下：
+
+1. **低置信度匹配**：决定采用（例如只配简体时繁体请求收到简体），写入 design D6、规格「邮件语言选择」和文档，并新增 `TestLanguageMatchingAcrossScripts` 固定四种组合。
+2. **黄金文件**：新增 `TestLayoutGolden`，用 `testdata/full.golden.html`、`minimal.golden.html` 固定 HTML 布局输出（`go test -update` 刷新）。
+3. **design 与实现的偏离**：D6 改为"中间件包裹消费者路由"，D2 页脚描述改为实际行为。
+4. 样例清单品牌改为占位（案例 / Example），`TestExampleManifest` 同步。
+5. Minor：补 `TestSinglePassSubstitution`（品牌为 `{{code}}` 时保持字面）；`canonicalTag` 拒绝 `x-` 私有标签并加测试；文档说明 `{` 不能紧贴占位符；修正深度注释。接受不改：长度上限作用于模板原文（design D4 已说明）、预览目录只检查顶层、check 失败时的错误前缀与 serve 相同。
+
+审查意见处理后重跑：`go test ./internal/accountsvc/... ./cmd/accountsvc/ ./user/sender/smtp/ ./internal/mailtext/`（Windows，无 race）通过。
 
 ## 未验证项
 

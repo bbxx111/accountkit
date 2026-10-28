@@ -3,7 +3,7 @@
   "default_language": "zh-Hans",
   "languages": {
     "zh-Hans": {
-      "brand": "食方",
+      "brand": "案例",
       "logo_url": "https://static.example.com/email/logo.png",
       "common": {
         "code_label": "您的验证码",
@@ -35,7 +35,7 @@
       }
     },
     "zh-Hant": {
-      "brand": "食方",
+      "brand": "案例",
       "logo_url": "https://static.example.com/email/logo.png",
       "common": {
         "code_label": "您的驗證碼",
@@ -67,7 +67,7 @@
       }
     },
     "en": {
-      "brand": "Shifang",
+      "brand": "Example",
       "logo_url": "https://static.example.com/email/logo.png",
       "common": {
         "code_label": "Your verification code",

@@ -99,7 +99,7 @@ func Parse(raw []byte) (*Renderer, error) {
 		return nil, fail("(root)", "empty file")
 	}
 	// boundedjson 拒绝重复键、尾随内容、非法 UTF-8 与孤立代理项，并限制大小、深度与节点数。
-	// 深度 5：根 → languages → 语言 → templates → 用途 → 字符串。
+	// 深度 6：根 → languages → 语言 → templates → 用途 → 字符串。
 	value, err := boundedjson.Decode(raw, boundedjson.Limits{MaxBytes: MaxFileBytes, MaxDepth: 6, MaxNodes: 512})
 	if err != nil {
 		return nil, fail("(root)", "invalid JSON")
@@ -149,8 +149,11 @@ func Parse(raw []byte) (*Renderer, error) {
 	return r, nil
 }
 
-// canonicalTag 要求标签能被解析、不是 und，且等于其规范形式，例如 zh-Hant 而不是 zh-hant。
+// canonicalTag 要求标签能被解析、不是 und 或私有用途标签，且等于其规范形式，例如 zh-Hant 而不是 zh-hant。
 func canonicalTag(tag string) bool {
+	if strings.HasPrefix(tag, "x-") || strings.Contains(tag, "-x-") {
+		return false
+	}
 	parsed, err := language.Parse(tag)
 	return err == nil && parsed != language.Und && parsed.String() == tag
 }
@@ -397,6 +400,8 @@ func (r *Renderer) Render(ctx context.Context, m sender.CodeMessage) (smtp.Email
 	index := 0
 	if r.matcher != nil {
 		if prefs, _ := ctx.Value(preferenceKey{}).([]language.Tag); len(prefs) > 0 {
+			// 低置信度的匹配也采用（例如只配了简体时，繁体用户收到简体），只有完全不匹配才回落默认语言。
+			// Match 在 No 时仍可能返回非零下标，因此必须检查置信度。
 			if _, i, confidence := r.matcher.Match(prefs...); confidence != language.No {
 				index = i
 			}

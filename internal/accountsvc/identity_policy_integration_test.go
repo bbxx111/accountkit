@@ -37,8 +37,8 @@ func (f *integrationFixture) localWeChat() {
 	srv.TLS = &tls.Config{Certificates: []tls.Certificate{f.cert}, MinVersion: tls.VersionTLS12}
 	srv.StartTLS()
 	f.t.Cleanup(srv.Close)
-	f.env["ACCOUNTKIT_WECHAT_APPS"] = app + ":" + secret
-	f.env["ACCOUNTKIT_WECHAT_API_BASE_URL"] = srv.URL
+	f.env["ACCOUNTSVC_WECHAT_APPS"] = app + ":" + secret
+	f.env["ACCOUNTSVC_WECHAT_API_BASE_URL"] = srv.URL
 	f.secrets = append(f.secrets, secret, subject, "synthetic-wechat-openid")
 }
 
@@ -69,7 +69,7 @@ func serviceMigrationDependencies(t *testing.T) {
 		t.Fatal(err)
 	}
 	redisURL.Host = proxy.ln.Addr().String()
-	minimal := map[string]string{"ACCOUNTSVC_STARTUP_TIMEOUT": "400ms", "ACCOUNTSVC_SMTP_PORT": "invalid-unused", "ACCOUNTKIT_ENABLED_IDENTITY_KINDS": "PHONE,WECHAT", "ACCOUNTKIT_REQUIRED_IDENTITY_KINDS": "PHONE", "ACCOUNTKIT_WECHAT_APPS": "", "ACCOUNTSVC_REDIS_URL": redisURL.String()}
+	minimal := map[string]string{"ACCOUNTSVC_STARTUP_TIMEOUT": "400ms", "ACCOUNTSVC_SMTP_PORT": "invalid-unused", "ACCOUNTSVC_ENABLED_IDENTITY_KINDS": "PHONE,WECHAT", "ACCOUNTSVC_REQUIRED_IDENTITY_KINDS": "PHONE", "ACCOUNTSVC_WECHAT_APPS": "", "ACCOUNTSVC_REDIS_URL": redisURL.String()}
 	proxy.fail(true)
 	if _, err := f.command(minimal, "migrate"); err == nil {
 		t.Fatal("migration ignored unavailable Redis")
@@ -98,8 +98,8 @@ func serviceMigrationDependencies(t *testing.T) {
 func servicePureWeChat(t *testing.T) {
 	f := newIntegration(t)
 	f.localWeChat()
-	f.env["ACCOUNTKIT_ENABLED_IDENTITY_KINDS"] = "WECHAT"
-	f.env["ACCOUNTKIT_REQUIRED_IDENTITY_KINDS"] = "[]"
+	f.env["ACCOUNTSVC_ENABLED_IDENTITY_KINDS"] = "WECHAT"
+	f.env["ACCOUNTSVC_REQUIRED_IDENTITY_KINDS"] = "[]"
 	for _, key := range []string{"HOST", "PORT", "FROM", "USERNAME", "PASSWORD", "TLS_MODE", "TIMEOUT"} {
 		f.env["ACCOUNTSVC_SMTP_"+key] = "malformed-disabled-smtp"
 	}
@@ -132,9 +132,9 @@ func servicePureWeChat(t *testing.T) {
 func serviceGatewayCompletion(t *testing.T) {
 	f := newIntegration(t)
 	f.localWeChat()
-	f.env["ACCOUNTKIT_ENABLED_IDENTITY_KINDS"] = "EMAIL,WECHAT"
-	f.env["ACCOUNTKIT_REQUIRED_IDENTITY_KINDS"] = "EMAIL"
-	f.env["ACCOUNTKIT_CODE_COOLDOWN"] = "1m"
+	f.env["ACCOUNTSVC_ENABLED_IDENTITY_KINDS"] = "EMAIL,WECHAT"
+	f.env["ACCOUNTSVC_REQUIRED_IDENTITY_KINDS"] = "EMAIL"
+	f.env["ACCOUNTSVC_CODE_COOLDOWN"] = "1m"
 	p := f.start(map[string]string{"ACCOUNTSVC_TLS_ENABLED": "false", "ACCOUNTSVC_TLS_CERT_FILE": "", "ACCOUNTSVC_TLS_KEY_FILE": "", "ACCOUNTSVC_TRUSTED_PROXY_CIDRS": "127.0.0.1/32"})
 	public := newTestGateway(t, p.baseURL, f.cert, false)
 	internal := newTestGateway(t, p.baseURL, f.cert, true)
@@ -231,11 +231,11 @@ func serviceGatewayCompletion(t *testing.T) {
 func serviceMigrationFlowKeys(t *testing.T) {
 	f := newIntegration(t)
 	f.localWeChat()
-	f.env["ACCOUNTKIT_ENABLED_IDENTITY_KINDS"] = "EMAIL,WECHAT"
-	f.env["ACCOUNTKIT_REQUIRED_IDENTITY_KINDS"] = "EMAIL"
+	f.env["ACCOUNTSVC_ENABLED_IDENTITY_KINDS"] = "EMAIL,WECHAT"
+	f.env["ACCOUNTSVC_REQUIRED_IDENTITY_KINDS"] = "EMAIL"
 	oldKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{9}, 32))
 	f.secrets = append(f.secrets, oldKey, "private-old-key-code")
-	p := f.start(map[string]string{"ACCOUNTKIT_SUBJECT_CIPHER_KEYS": "2:" + oldKey, "ACCOUNTKIT_SUBJECT_CIPHER_ACTIVE_KEY": "2"})
+	p := f.start(map[string]string{"ACCOUNTSVC_SUBJECT_CIPHER_KEYS": "2:" + oldKey, "ACCOUNTSVC_SUBJECT_CIPHER_ACTIVE_KEY": "2"})
 	_, pending := transportRequest(t, f.client, "POST", p.baseURL+"/v1/users:signInWithIdp", "application/json", providerSignInBody(t, "private-old-key-code"), map[string]string{"X-Device-Id": "old-key-device"}, 200)
 	if token, _ := pending["sign_in_completion_token"].(string); token == "" {
 		t.Fatal("missing old-key pending flow")
@@ -248,7 +248,7 @@ func serviceMigrationFlowKeys(t *testing.T) {
 	if err := f.pool.QueryRow(t.Context(), "SELECT payload, cipher_version FROM sign_in_completion_flow").Scan(&payload, &version); err != nil || version != 2 || len(payload) == 0 {
 		t.Fatal("old-key flow was not encrypted and persisted")
 	}
-	minimal := map[string]string{"ACCOUNTSVC_SMTP_PORT": "invalid-unused", "ACCOUNTKIT_WECHAT_APPS": "", "ACCOUNTSVC_INTROSPECTION_CLIENTS": ""}
+	minimal := map[string]string{"ACCOUNTSVC_SMTP_PORT": "invalid-unused", "ACCOUNTSVC_WECHAT_APPS": "", "ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS": ""}
 	if _, err := f.command(minimal, "migrate"); err == nil {
 		t.Fatal("migrate ignored an active flow's missing cipher key")
 	}
@@ -256,14 +256,14 @@ func serviceMigrationFlowKeys(t *testing.T) {
 	if err := f.pool.QueryRow(t.Context(), "SELECT payload FROM sign_in_completion_flow").Scan(&unchanged); err != nil || !bytes.Equal(unchanged, payload) {
 		t.Fatal("failed key check mutated the encrypted flow")
 	}
-	minimal["ACCOUNTKIT_SUBJECT_CIPHER_KEYS"] = f.env["ACCOUNTKIT_SUBJECT_CIPHER_KEYS"] + ",2:" + oldKey
+	minimal["ACCOUNTSVC_SUBJECT_CIPHER_KEYS"] = f.env["ACCOUNTSVC_SUBJECT_CIPHER_KEYS"] + ",2:" + oldKey
 	if _, err := f.command(minimal, "migrate"); err != nil {
 		t.Fatal("migrate rejected a retained old flow key")
 	}
 	if _, err := f.pool.Exec(t.Context(), "UPDATE sign_in_completion_flow SET expire_time=now()-interval '1 second'"); err != nil {
 		t.Fatal(err)
 	}
-	delete(minimal, "ACCOUNTKIT_SUBJECT_CIPHER_KEYS")
+	delete(minimal, "ACCOUNTSVC_SUBJECT_CIPHER_KEYS")
 	if _, err := f.command(minimal, "migrate"); err != nil {
 		t.Fatal("expired flow still required its old key")
 	}
@@ -294,7 +294,7 @@ func serviceMigrationLock(t *testing.T, kind string) {
 	if _, err := holder.Exec(ctx, "SELECT pg_advisory_lock($1)", key); err != nil {
 		t.Fatal(err)
 	}
-	minimal := map[string]string{"ACCOUNTSVC_STARTUP_TIMEOUT": "400ms", "ACCOUNTSVC_SMTP_PORT": "invalid-unused", "ACCOUNTKIT_ENABLED_IDENTITY_KINDS": "PHONE,WECHAT", "ACCOUNTKIT_REQUIRED_IDENTITY_KINDS": "PHONE", "ACCOUNTKIT_WECHAT_APPS": ""}
+	minimal := map[string]string{"ACCOUNTSVC_STARTUP_TIMEOUT": "400ms", "ACCOUNTSVC_SMTP_PORT": "invalid-unused", "ACCOUNTSVC_ENABLED_IDENTITY_KINDS": "PHONE,WECHAT", "ACCOUNTSVC_REQUIRED_IDENTITY_KINDS": "PHONE", "ACCOUNTSVC_WECHAT_APPS": ""}
 	start := time.Now()
 	if _, err := f.command(minimal, "migrate"); err == nil {
 		t.Fatal("migrate ignored a held migration lock")

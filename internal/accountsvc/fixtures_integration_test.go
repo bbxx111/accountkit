@@ -14,9 +14,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
+	"mime"
+	"mime/multipart"
 	"mime/quotedprintable"
 	"net"
 	"net/http"
@@ -38,6 +41,7 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit"
+	"github.com/bbxx111/accountkit/internal/testkeys"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -55,7 +59,8 @@ func (b *safeBuffer) Write(p []byte) (int, error) {
 }
 func (b *safeBuffer) String() string { b.mu.Lock(); defer b.mu.Unlock(); return b.b.String() }
 
-type deliveredMail struct{ target, code, body string }
+// deliveredMail 的 body 是纯文本部分；多部分邮件时 html 为 text/html 部分，否则为空。
+type deliveredMail struct{ target, code, body, subject, html string }
 type smtpFixture struct {
 	ln       net.Listener
 	messages chan deliveredMail
@@ -143,12 +148,13 @@ func (s *smtpFixture) serve(c net.Conn) {
 			if err != nil {
 				return
 			}
-			body, err := io.ReadAll(quotedprintable.NewReader(msg.Body))
+			body, html, err := decodeMailBody(msg)
 			if err != nil {
 				return
 			}
-			code := regexp.MustCompile(`[0-9]{6}`).FindString(string(body))
-			s.messages <- deliveredMail{target, code, string(body)}
+			code := regexp.MustCompile(`[0-9]{6}`).FindString(body)
+			subject, _ := new(mime.WordDecoder).DecodeHeader(msg.Header.Get("Subject"))
+			s.messages <- deliveredMail{target, code, body, subject, html}
 			if s.hold.Load() {
 				s.entered <- struct{}{}
 				<-s.release
@@ -163,6 +169,38 @@ func (s *smtpFixture) serve(c net.Conn) {
 			return
 		default:
 			send("250 ok")
+		}
+	}
+}
+
+// decodeMailBody 解码 quoted-printable 的纯文本正文；multipart/alternative 时分别返回纯文本与 HTML 部分。
+func decodeMailBody(msg *mail.Message) (text, html string, err error) {
+	mediaType, params, err := mime.ParseMediaType(msg.Header.Get("Content-Type"))
+	if err != nil {
+		return "", "", err
+	}
+	if !strings.HasPrefix(mediaType, "multipart/") {
+		raw, err := io.ReadAll(quotedprintable.NewReader(msg.Body))
+		return string(raw), "", err
+	}
+	parts := multipart.NewReader(msg.Body, params["boundary"])
+	for {
+		part, err := parts.NextPart()
+		if err == io.EOF {
+			return text, html, nil
+		}
+		if err != nil {
+			return "", "", err
+		}
+		raw, err := io.ReadAll(quotedprintable.NewReader(part))
+		if err != nil {
+			return "", "", err
+		}
+		switch {
+		case strings.HasPrefix(part.Header.Get("Content-Type"), "text/html"):
+			html = string(raw)
+		case strings.HasPrefix(part.Header.Get("Content-Type"), "text/plain"):
+			text = string(raw)
 		}
 	}
 }
@@ -361,17 +399,18 @@ func newIntegration(t *testing.T) *integrationFixture {
 	smtp := newSMTP(t, cert)
 	_, port, _ := net.SplitHostPort(smtp.ln.Addr().String())
 	key := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))
+	jwtKey := testkeys.JWTBase64(1)
 	clientSecret := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{4}, 32))
-	f := &integrationFixture{t: t, binary: binary, dir: dir, schema: schema, prefix: prefix, dsn: dsn, redisURL: redisURL, pool: pool, redis: rc, client: client, smtp: smtp, cert: cert, secrets: []string{"fixture-smtp-password", clientSecret, key}}
-	f.env = map[string]string{"SSL_CERT_FILE": certFile, "ACCOUNTSVC_MODE": "production", "ACCOUNTSVC_DATABASE_URL": dsn, "ACCOUNTSVC_REDIS_URL": redisURL, "ACCOUNTSVC_TLS_CERT_FILE": certFile, "ACCOUNTSVC_TLS_KEY_FILE": keyFile, "ACCOUNTSVC_SMTP_HOST": "127.0.0.1", "ACCOUNTSVC_SMTP_PORT": port, "ACCOUNTSVC_SMTP_FROM": "account@example.test", "ACCOUNTSVC_SMTP_TLS_MODE": "implicit", "ACCOUNTSVC_SMTP_USERNAME": "fixture-user", "ACCOUNTSVC_SMTP_PASSWORD": "fixture-smtp-password", "ACCOUNTSVC_SMTP_TIMEOUT": "30s", "ACCOUNTSVC_INTROSPECTION_CLIENTS": `{"business":["` + clientSecret + `"]}`, "ACCOUNTSVC_STARTUP_TIMEOUT": "10s", "ACCOUNTSVC_SHUTDOWN_TIMEOUT": "18s", "ACCOUNTKIT_AUTH_SCHEMA": schema, "ACCOUNTKIT_AUTH_KEY_PREFIX": prefix, "ACCOUNTKIT_JWT_KEYS": "1:" + key, "ACCOUNTKIT_JWT_ACTIVE_KEY": "1", "ACCOUNTKIT_JWT_ISSUER": "integration-consumer", "ACCOUNTKIT_JWT_AUDIENCE": "integration-business", "ACCOUNTKIT_SUBJECT_HMAC_KEYS": "1:" + key, "ACCOUNTKIT_SUBJECT_HMAC_ACTIVE_KEY": "1", "ACCOUNTKIT_SUBJECT_CIPHER_KEYS": "1:" + key, "ACCOUNTKIT_SUBJECT_CIPHER_ACTIVE_KEY": "1", "ACCOUNTKIT_CODE_COOLDOWN": "1s", "ACCOUNTKIT_MAINTENANCE_INTERVAL": "1h"}
+	f := &integrationFixture{t: t, binary: binary, dir: dir, schema: schema, prefix: prefix, dsn: dsn, redisURL: redisURL, pool: pool, redis: rc, client: client, smtp: smtp, cert: cert, secrets: []string{"fixture-smtp-password", clientSecret, key, jwtKey}}
+	f.env = map[string]string{"SSL_CERT_FILE": certFile, "ACCOUNTSVC_MODE": "production", "ACCOUNTSVC_DATABASE_URL": dsn, "ACCOUNTSVC_REDIS_URL": redisURL, "ACCOUNTSVC_TLS_CERT_FILE": certFile, "ACCOUNTSVC_TLS_KEY_FILE": keyFile, "ACCOUNTSVC_SMTP_HOST": "127.0.0.1", "ACCOUNTSVC_SMTP_PORT": port, "ACCOUNTSVC_SMTP_FROM": "account@example.test", "ACCOUNTSVC_SMTP_TLS_MODE": "implicit", "ACCOUNTSVC_SMTP_USERNAME": "fixture-user", "ACCOUNTSVC_SMTP_PASSWORD": "fixture-smtp-password", "ACCOUNTSVC_SMTP_TIMEOUT": "30s", "ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS": `{"business":["` + clientSecret + `"]}`, "ACCOUNTSVC_STARTUP_TIMEOUT": "10s", "ACCOUNTSVC_SHUTDOWN_TIMEOUT": "18s", "ACCOUNTSVC_AUTH_SCHEMA": schema, "ACCOUNTSVC_AUTH_KEY_PREFIX": prefix, "ACCOUNTSVC_JWT_KEYS": "1:" + jwtKey, "ACCOUNTSVC_JWT_ACTIVE_KEY": "1", "ACCOUNTSVC_JWT_ISSUER": "integration-consumer", "ACCOUNTSVC_JWT_AUDIENCE": "integration-business", "ACCOUNTSVC_SUBJECT_HMAC_KEYS": "1:" + key, "ACCOUNTSVC_SUBJECT_HMAC_ACTIVE_KEY": "1", "ACCOUNTSVC_SUBJECT_CIPHER_KEYS": "1:" + key, "ACCOUNTSVC_SUBJECT_CIPHER_ACTIVE_KEY": "1", "ACCOUNTSVC_CODE_COOLDOWN": "1s", "ACCOUNTSVC_MAINTENANCE_INTERVAL": "1h"}
 	// Validate actual library environment parsing before any service process can
 	// migrate or send a request. A misspelled key must never fall back to auth.
 	for name, value := range f.env {
-		if strings.HasPrefix(name, "ACCOUNTKIT_") {
+		if strings.HasPrefix(name, "ACCOUNTSVC_") {
 			t.Setenv(name, value)
 		}
 	}
-	parsed, err := accountkit.ConfigFromEnv("ACCOUNTKIT_")
+	parsed, err := accountkit.ConfigFromEnv("ACCOUNTSVC_")
 	if err != nil || parsed.Schema != schema || parsed.KeyPrefix != prefix {
 		t.Fatal("integration fixture did not configure isolated schema and Redis prefix")
 	}
@@ -446,7 +485,27 @@ type serviceProcess struct {
 	stopped bool
 }
 
+// startBindAttempts bounds retries when another process takes the port that
+// freeAddress released before the service could bind it.
+const startBindAttempts = 5
+
 func (f *integrationFixture) start(extra map[string]string) *serviceProcess {
+	f.t.Helper()
+	_, pinned := extra["ACCOUNTSVC_HTTP_ADDR"]
+	for attempt := 1; ; attempt++ {
+		p, bindFailed := f.startOnce(extra)
+		if !bindFailed {
+			return p
+		}
+		if pinned || attempt == startBindAttempts {
+			f.t.Fatalf("service failed startup: %v %s", p.err, p.output.String())
+		}
+	}
+}
+
+// startOnce reports bindFailed instead of failing the test when the service
+// exits only because its listen address was already taken.
+func (f *integrationFixture) startOnce(extra map[string]string) (p *serviceProcess, bindFailed bool) {
 	f.t.Helper()
 	addr := freeAddress(f.t)
 	env := map[string]string{"ACCOUNTSVC_HTTP_ADDR": addr}
@@ -472,7 +531,7 @@ func (f *integrationFixture) start(extra map[string]string) *serviceProcess {
 	if tlsEnabled {
 		scheme = "https://"
 	}
-	p := &serviceProcess{fixture: f, done: make(chan struct{}), baseURL: scheme + value("ACCOUNTSVC_HTTP_ADDR")}
+	p = &serviceProcess{fixture: f, done: make(chan struct{}), baseURL: scheme + value("ACCOUNTSVC_HTTP_ADDR")}
 	p.cmd = exec.Command(f.binary)
 	p.cmd.Env = f.environment(env)
 	p.cmd.Stdout = &p.output
@@ -493,21 +552,26 @@ func (f *integrationFixture) start(extra map[string]string) *serviceProcess {
 		select {
 		case <-p.done:
 			f.assertSafe(p.output.String())
+			if strings.Contains(p.output.String(), "listener binding failed") {
+				return p, true
+			}
 			f.t.Fatalf("service failed startup: %v %s", p.err, p.output.String())
 		default:
 		}
 		resp, err := f.client.Get(p.baseURL + "/readyz")
 		if err == nil {
 			resp.Body.Close()
-			if resp.StatusCode == 200 {
-				return p
+			// A process that lost the port race may see another service's
+			// readiness; only its own bind log proves the answer came from it.
+			if resp.StatusCode == 200 && strings.Contains(p.output.String(), "listener started") {
+				return p, false
 			}
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	f.assertSafe(p.output.String())
 	f.t.Fatalf("service not ready: %s", p.output.String())
-	return nil
+	return nil, false
 }
 func (p *serviceProcess) signal() {
 	p.fixture.t.Helper()
@@ -532,11 +596,52 @@ func (p *serviceProcess) wait(wantSuccess bool, max time.Duration) {
 func (p *serviceProcess) stop() { p.signal(); p.wait(true, 20*time.Second) }
 func (f *integrationFixture) assertSafe(output string) {
 	f.t.Helper()
-	for _, secret := range f.secrets {
-		if secret != "" && strings.Contains(output, secret) {
-			f.t.Fatal("process output exposed a test credential or private identity")
+	for i, secret := range f.secrets {
+		if at := secretIndex(output, secret); at >= 0 {
+			f.t.Fatalf("process output exposed test secret #%d: %s", i, redactedContext(output, at, len(secret), f.secrets))
 		}
 	}
+}
+
+// secretIndex returns where secret occurs in output, or -1. Short all-digit secrets
+// (six-digit verification codes) count only as a standalone number: as substrings they
+// collide by chance with digit runs such as the nanosecond fraction of every JSON log
+// timestamp, while a real leak is delimited by non-digits ("验证码：123456", "code=123456").
+func secretIndex(output, secret string) int {
+	if secret == "" {
+		return -1
+	}
+	if len(secret) > 8 || strings.IndexFunc(secret, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
+		return strings.Index(output, secret)
+	}
+	for from := 0; from <= len(output)-len(secret); {
+		i := strings.Index(output[from:], secret)
+		if i < 0 {
+			return -1
+		}
+		i += from
+		end := i + len(secret)
+		if (i == 0 || !isASCIIDigit(output[i-1])) && (end == len(output) || !isASCIIDigit(output[end])) {
+			return i
+		}
+		from = i + 1
+	}
+	return -1
+}
+
+func isASCIIDigit(b byte) bool { return b >= '0' && b <= '9' }
+
+// redactedContext shows the text around a match with every known secret masked, so a
+// failure explains itself without copying credentials into CI logs.
+func redactedContext(output string, at, n int, secrets []string) string {
+	start, end := max(0, at-60), min(len(output), at+n+60)
+	window := output[start:end]
+	for i, secret := range secrets {
+		if secret != "" {
+			window = strings.ReplaceAll(window, secret, fmt.Sprintf("<secret#%d>", i))
+		}
+	}
+	return strings.ToValidUTF8(window, "?")
 }
 
 func (f *integrationFixture) call(method, address, bearer string, body any, want int) map[string]any {
@@ -607,6 +712,45 @@ func (f *integrationFixture) introspect(p *serviceProcess, token string, active 
 	}
 	if !active && len(out) != 1 {
 		f.t.Fatal("inactive response exposed details")
+	}
+}
+
+// verifyLocally 模拟业务服务：只用公开 JWKS 校验 access（ES256、typ、kid、iss、aud），不调用内省。
+func (f *integrationFixture) verifyLocally(p *serviceProcess, token string) {
+	f.t.Helper()
+	resp, err := f.client.Get(p.baseURL + "/.well-known/jwks.json")
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var set struct {
+		Keys []struct{ Kty, Crv, X, Y, Kid, Alg string } `json:"keys"`
+	}
+	if resp.StatusCode != 200 || resp.Header.Get("Cache-Control") != "public, max-age=300" || json.NewDecoder(resp.Body).Decode(&set) != nil || len(set.Keys) == 0 {
+		f.t.Fatalf("JWKS unavailable: %d", resp.StatusCode)
+	}
+	keys := map[string]*ecdsa.PublicKey{}
+	for _, k := range set.Keys {
+		x, _ := base64.RawURLEncoding.DecodeString(k.X)
+		y, _ := base64.RawURLEncoding.DecodeString(k.Y)
+		pub, err := ecdsa.ParseUncompressedPublicKey(elliptic.P256(), append(append([]byte{4}, x...), y...))
+		if err != nil || k.Kty != "EC" || k.Crv != "P-256" || k.Alg != "ES256" {
+			f.t.Fatalf("bad JWK %s", k.Kid)
+		}
+		keys[k.Kid] = pub
+	}
+	_, err = jwt.Parse(token, func(t *jwt.Token) (any, error) {
+		if t.Header["typ"] != "at+jwt" {
+			return nil, errors.New("typ")
+		}
+		kid, _ := t.Header["kid"].(string)
+		if k, ok := keys[kid]; ok {
+			return k, nil
+		}
+		return nil, errors.New("unknown kid")
+	}, jwt.WithValidMethods([]string{"ES256"}), jwt.WithIssuer(f.env["ACCOUNTSVC_JWT_ISSUER"]), jwt.WithAudience(f.env["ACCOUNTSVC_JWT_AUDIENCE"]), jwt.WithExpirationRequired())
+	if err != nil {
+		f.t.Fatalf("local verification with JWKS failed: %v", err)
 	}
 }
 

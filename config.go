@@ -1,6 +1,7 @@
 package accountkit
 
 import (
+	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"net/url"
@@ -68,6 +69,7 @@ type WeChatApp struct {
 
 // Config 是 accountkit 的全部配置。New 应用默认值并校验；Validate 可独立提前校验。
 // 密钥只来自配置：JWT/HMAC/加密三组都是"版本 → 密钥"映射加一个 active 版本。
+// JWT 签名密钥为 P-256 私钥（ES256），公钥经 JWKSHandler 发布。
 type Config struct {
 	// ProfileAttributes 为 nil 时关闭用户资料属性；启用后内置 HTTP 允许本人完整读写。
 	// 宿主负责资料用途及 Go 直接调用授权，不应存放本人不可见或不可改的字段。
@@ -84,7 +86,7 @@ type Config struct {
 	// AuditNamespace 默认 accountkit/<schema>/resources，持久化后变更须迁移。
 	AuditNamespace string
 
-	JWTKeys      map[uint16][]byte
+	JWTKeys      map[uint16]*ecdsa.PrivateKey
 	JWTActiveKey uint16
 	JWTIssuer    string
 	JWTAudience  string
@@ -114,8 +116,11 @@ type Config struct {
 	MaxIdentitiesPerKind      int           // 默认 1
 
 	DeletionCoolingPeriod time.Duration // 默认 360h（15 天）
-	AuditRetentionDays    int           // 默认 180
-	DefaultRegion         string        // 默认 "CN"
+	// PurgedUserRetention 是已清理用户记录（purged_user）的保留期：0 表示长期保留（默认）；
+	// 大于 0 时不得短于 720h，由维护任务删除超出保留期的记录，外部业务服务须在保留期内完成拉取。
+	PurgedUserRetention time.Duration
+	AuditRetentionDays  int    // 默认 180
+	DefaultRegion       string // 默认 "CN"
 
 	// WeChatApps 配置 OAuth 应用；两组均为空时未启用微信登录。
 	WeChatApps []WeChatApp
@@ -359,8 +364,8 @@ func (c Config) validateBase() error {
 	if err := (authentication.Options{Source: c.AuditSource, Namespace: c.AuditNamespace}).Validate(); err != nil {
 		return fmt.Errorf("accountkit: audit configuration: %w", err)
 	}
-	if err := checkKeySet("JWTKeys", c.JWTKeys, c.JWTActiveKey, tokens.MinKeyLen, false); err != nil {
-		return err
+	if err := tokens.CheckKeys(c.JWTKeys, c.JWTActiveKey); err != nil {
+		return fmt.Errorf("accountkit: JWTKeys: %w", err)
 	}
 	if c.JWTIssuer == "" || c.JWTAudience == "" {
 		return errors.New("accountkit: JWTIssuer and JWTAudience are required")
@@ -398,6 +403,9 @@ func (c Config) validateBase() error {
 	}
 	if c.MaxIdentitiesPerKind <= 0 {
 		return errors.New("accountkit: MaxIdentitiesPerKind must be >= 1")
+	}
+	if c.PurgedUserRetention < 0 || (c.PurgedUserRetention > 0 && c.PurgedUserRetention < user.MinPurgedUserRetention) {
+		return fmt.Errorf("accountkit: PurgedUserRetention must be 0 (keep forever) or at least %s", user.MinPurgedUserRetention)
 	}
 	if c.DeletionCoolingPeriod <= 0 || c.AuditRetentionDays <= 0 {
 		return errors.New("accountkit: DeletionCoolingPeriod and AuditRetentionDays must be positive")
@@ -602,7 +610,13 @@ func ConfigFromEnv(prefix string) (Config, error) {
 	c.KeyPrefix = str("AUTH_KEY_PREFIX")
 	c.AuditSource = str("AUDIT_SOURCE")
 	c.AuditNamespace = str("AUDIT_NAMESPACE")
-	keylist("JWT_KEYS", &c.JWTKeys)
+	if s := str("JWT_KEYS"); s != "" {
+		if m, err := tokens.ParseKeyList(s); err != nil {
+			fail("JWT_KEYS", err)
+		} else {
+			c.JWTKeys = m
+		}
+	}
 	u16("JWT_ACTIVE_KEY", &c.JWTActiveKey)
 	c.JWTIssuer = str("JWT_ISSUER")
 	c.JWTAudience = str("JWT_AUDIENCE")
@@ -631,6 +645,7 @@ func ConfigFromEnv(prefix string) (Config, error) {
 	keylist("SUBJECT_CIPHER_KEYS", &c.SubjectCipherKeys)
 	u16("SUBJECT_CIPHER_ACTIVE_KEY", &c.SubjectCipherActiveKey)
 	dur("CODE_TTL", &c.CodeTTL)
+	dur("PURGED_USER_RETENTION", &c.PurgedUserRetention)
 	integer("CODE_MAX_ATTEMPTS", &c.CodeMaxAttempts)
 	dur("CODE_COOLDOWN", &c.CodeCooldown)
 	integer("CODE_DAILY_LIMIT_PER_TARGET", &c.CodeDailyLimitPerTarget)

@@ -31,12 +31,12 @@ func TestHTTPBoundaryAndHealth(t *testing.T) {
 	mark := func(status int) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(status) })
 	}
-	public := serviceHandler(cfg, mark(201), mark(202), mark(203), state)
+	public := serviceHandler(cfg, mark(201), mark(202), mark(203), mark(205), mark(204), state)
 	for _, tc := range []struct {
 		h            http.Handler
 		path, method string
 		want         int
-	}{{public, "/v1/test", "GET", 201}, {public, "/admin/v1/test", "GET", 202}, {public, "/internal/v1/introspect", "POST", 404}, {public, "/v1/introspect", "POST", 203}, {public, "/v1/introspect", "GET", 203}, {public, "/healthz", "GET", 200}, {public, "/readyz", "GET", 503}, {public, "/healthz", "POST", 405}} {
+	}{{public, "/.well-known/jwks.json", "GET", 204}, {public, "/v1/purgedUsers", "GET", 205}, {public, "/v1/test", "GET", 201}, {public, "/admin/v1/test", "GET", 202}, {public, "/internal/v1/introspect", "POST", 404}, {public, "/v1/introspect", "POST", 203}, {public, "/v1/introspect", "GET", 203}, {public, "/healthz", "GET", 200}, {public, "/readyz", "GET", 503}, {public, "/healthz", "POST", 405}} {
 		rec := httptest.NewRecorder()
 		tc.h.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
 		if rec.Code != tc.want || rec.Header().Get("X-Request-Id") == "" {
@@ -79,7 +79,7 @@ func TestHTTPIntrospectionBoundary(t *testing.T) {
 		t.Error("enduser mount swallowed introspection")
 		w.WriteHeader(418)
 	})
-	public := serviceHandler(Config{}, endUser, http.NotFoundHandler(), introspect, &healthState{})
+	public := serviceHandler(Config{}, endUser, http.NotFoundHandler(), introspect, nil, nil, &healthState{})
 	for _, tc := range []struct {
 		method, auth, contentType, body string
 		want                            int
@@ -166,7 +166,7 @@ func TestConsumerDecoderRejectsOversizeBeforeCodeIssuance(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer auth.Close()
-	public := serviceHandler(cfg, auth.EndUserHandler(), auth.AdminHandler(), http.NotFoundHandler(), &healthState{})
+	public := serviceHandler(cfg, auth.EndUserHandler(), auth.AdminHandler(), http.NotFoundHandler(), nil, nil, &healthState{})
 	server := httptest.NewServer(public)
 	defer server.Close()
 	valid := `{"channel":"EMAIL","target":"oversize@example.org"}`
@@ -220,7 +220,7 @@ func TestReadinessHasSharedTwoSecondBudget(t *testing.T) {
 		return ctx.Err()
 	}, redis: func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() }}
 	state.ready.Store(true)
-	internal := serviceHandler(Config{}, http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), state)
+	internal := serviceHandler(Config{}, http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), nil, nil, state)
 	start := time.Now()
 	rec := httptest.NewRecorder()
 	internal.ServeHTTP(rec, httptest.NewRequest("GET", "/readyz", nil))
@@ -245,7 +245,7 @@ func TestHTTPServerBudgetsAndBodyLimit(t *testing.T) {
 			w.WriteHeader(400)
 		}
 	})
-	public := serviceHandler(Config{}, reader, reader, http.NotFoundHandler(), &healthState{})
+	public := serviceHandler(Config{}, reader, reader, http.NotFoundHandler(), nil, nil, &healthState{})
 	rec := httptest.NewRecorder()
 	public.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/test", strings.NewReader(strings.Repeat("x", 65537))))
 	if rec.Code != 413 {

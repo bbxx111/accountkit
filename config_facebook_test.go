@@ -8,6 +8,7 @@ import (
 
 	"github.com/bbxx111/accountkit"
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/testkeys"
 )
 
 func TestFacebookRequiredKindRejected(t *testing.T) {
@@ -64,7 +65,7 @@ func TestFacebookConfigValidation(t *testing.T) {
 }
 
 func TestFacebookConfigFromEnv(t *testing.T) {
-	for name, value := range map[string]string{"JWT_KEYS": "1:" + b64(k(1)), "JWT_ACTIVE_KEY": "1", "JWT_ISSUER": "issuer", "JWT_AUDIENCE": "aud", "SUBJECT_HMAC_KEYS": "1:" + b64(k(2)), "SUBJECT_HMAC_ACTIVE_KEY": "1", "SUBJECT_CIPHER_KEYS": "1:" + b64(k(3)), "SUBJECT_CIPHER_ACTIVE_KEY": "1"} {
+	for name, value := range map[string]string{"JWT_KEYS": "1:" + testkeys.JWTBase64(1), "JWT_ACTIVE_KEY": "1", "JWT_ISSUER": "issuer", "JWT_AUDIENCE": "aud", "SUBJECT_HMAC_KEYS": "1:" + b64(k(2)), "SUBJECT_HMAC_ACTIVE_KEY": "1", "SUBJECT_CIPHER_KEYS": "1:" + b64(k(3)), "SUBJECT_CIPHER_ACTIVE_KEY": "1"} {
 		t.Setenv("FBENV_"+name, value)
 	}
 	t.Setenv("FBENV_FACEBOOK_APP_ID", "123")

@@ -25,8 +25,8 @@ import (
 
 func TestApplicationMigrateWithoutAuthenticationDependencies(t *testing.T) {
 	configEnvironment(t)
-	t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "PHONE,WECHAT")
-	t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "PHONE")
+	t.Setenv("ACCOUNTSVC_ENABLED_IDENTITY_KINDS", "PHONE,WECHAT")
+	t.Setenv("ACCOUNTSVC_REQUIRED_IDENTITY_KINDS", "PHONE")
 	cfg, err := LoadConfig("migrate")
 	if err != nil {
 		t.Fatal(err)
@@ -47,7 +47,7 @@ func TestApplicationMigrationChecksSearchPath(t *testing.T) {
 	}
 	configEnvironment(t)
 	t.Setenv("ACCOUNTSVC_DATABASE_URL", dsn)
-	t.Setenv("ACCOUNTKIT_AUTH_SCHEMA", fmt.Sprintf("acctsvc_path_%d", time.Now().UnixNano()))
+	t.Setenv("ACCOUNTSVC_AUTH_SCHEMA", fmt.Sprintf("acctsvc_path_%d", time.Now().UnixNano()))
 	cfg, err := LoadConfig("migrate")
 	if err != nil {
 		t.Fatal(err)
@@ -87,9 +87,9 @@ func TestApplicationMigrationChecksSearchPath(t *testing.T) {
 
 func TestApplicationIdPWithoutSMTP(t *testing.T) {
 	serveEnvironment(t)
-	t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "APPLE")
-	t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
-	t.Setenv("ACCOUNTKIT_APPLE_BUNDLE_IDS", "com.example.accountsvc")
+	t.Setenv("ACCOUNTSVC_ENABLED_IDENTITY_KINDS", "APPLE")
+	t.Setenv("ACCOUNTSVC_REQUIRED_IDENTITY_KINDS", "[]")
+	t.Setenv("ACCOUNTSVC_APPLE_BUNDLE_IDS", "com.example.accountsvc")
 	t.Setenv("ACCOUNTSVC_SMTP_PORT", "invalid-disabled-port")
 	cfg, err := LoadConfig("serve")
 	if err != nil {

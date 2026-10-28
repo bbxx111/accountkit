@@ -2,7 +2,7 @@
 
 本指南面向在自己的 Go 进程中嵌入 `github.com/bbxx111/accountkit` 的宿主。可以挂载内置 HTTP handler，也可以直接调用 `auth.Users()`；两者使用同一个领域服务，不需要启动 accountsvc。
 
-内容依据 v0.6.0 公开契约，包含 v0.2.0 未提供的登录补全和通用审计 API、v0.3.0 未提供的当前会话、按来源撤销和客户端描述、v0.4.0 后新增的资料属性和头像，以及 v0.5.0 后新增的身份提供方注册表、统一凭证和各第三方提供方。实际集成应固定包含所需接口的已验证版本；不要把新签名直接套到旧发布。升级边界见[兼容指南](compatibility.md)。
+内容依据 v0.7.0（准备中）公开契约，包含 v0.2.0 未提供的登录补全和通用审计 API、v0.3.0 未提供的当前会话、按来源撤销和客户端描述、v0.4.0 后新增的资料属性和头像、v0.5.0 后新增的身份提供方注册表、统一凭证和各第三方提供方，以及 v0.6.0 后新增的 ES256 密钥与 JWKS、严格认证、已清理用户拉取和阿里云短信发送器（详见 [README](../README.md)）。实际集成应固定包含所需接口的已验证版本；不要把新签名直接套到旧发布。升级边界见[兼容指南](compatibility.md)。
 
 ## 基础资料与头像
 
@@ -196,7 +196,7 @@ pending 与 `user:bind` 是不同状态。补全先调用 `SendSignInCompletionC
 
 直接 Go 调用时先通过 `Authenticate(ctx, rawAccess)` 获取可信 `Principal`，不要从客户端提交的 user_id、session_id、scope 或 auth_time 构造它。认证成功后仍须检查允许的 scope，以及业务资源所属用户；不要把 `GetMe`、`BatchPublicProfiles` 或账号存在性检查视为授权。
 
-`Authenticate` 校验 JWT、资源 ID 格式和 Redis 吊销集，不为每次请求查询 PostgreSQL 中的当前账号状态。吊销查询故障按既有策略 fail-open 并告警；需要防止冻结/注销并发穿透的业务写入，使用 `WithActiveUsers` 同事务复核 ACTIVE。宿主入口限流和可信 IP 解析仍由宿主完成；直接调用时必须自己传 `Meta`，`Deps.ClientIP` / `RequestID` 不会自动作用于 Go 方法。
+`Authenticate` 校验 JWT、资源 ID 格式和 Redis 吊销集，不为每次请求查询 PostgreSQL 中的当前账号状态。吊销查询故障按既有策略 fail-open 并告警；需要防止冻结/注销并发穿透的业务写入，使用 `WithActiveUsers` 同事务复核 ACTIVE。要求撤销后立即失效、且不受 Redis 读写故障影响的关键路由，改用 `AuthenticateStrict`（HTTP 用 `auth.RequireScopeStrict`）：按 sid 查询已提交的会话吊销状态，数据库不可用时返回 `ErrUnavailable` 而不放行，见 [README](../README.md#关键路由的严格认证)。宿主入口限流和可信 IP 解析仍由宿主完成；直接调用时必须自己传 `Meta`，`Deps.ClientIP` / `RequestID` 不会自动作用于 Go 方法。
 
 刷新成功必须原子替换整个 token pair。宿主应协调同会话的并发刷新及持久化，防止旧响应覆盖新令牌；默认宽限内重复刷新返回相同 pair，宽限外重放执行原防重放处理。遇到 `ErrInvalidGrant` 不应无限重试；Redis 宽限故障也可能返回该错误，不能仅凭它断言发生攻击。
 

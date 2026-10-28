@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "accountkit 消费者 HTTP API",
-    "version": "v0.6.0",
-    "description": "v0.6.0 的内置消费者 HTTP 契约，在 v0.5.0 上将身份凭证请求体统一为 {\"kind\",\"credential\"} 并增加各第三方提供方类型；v0.5.0 不包含这些变化。宿主配置实际挂载地址。请求体为单个 JSON 对象，默认上限 64 KiB，拒绝未知字段与尾随内容。领域状态、事务、故障策略以规格与 README 为准。"
+    "version": "v0.7.0",
+    "description": "v0.7.0（准备中）的内置消费者 HTTP 契约，操作集合与 v0.6.0 相同，四个发码操作补充 400 TARGET_NOT_SUPPORTED；v0.6.0 在 v0.5.0 上将身份凭证请求体统一为 {\"kind\",\"credential\"} 并增加各第三方提供方类型。宿主配置实际挂载地址。请求体为单个 JSON 对象，默认上限 64 KiB，拒绝未知字段与尾随内容。领域状态、事务、故障策略以规格与 README 为准。"
   },
   "servers": [
     {
@@ -26,7 +26,7 @@
       "post": {
         "operationId": "sendSignInCode",
         "summary": "发送登录验证码",
-        "description": "发送器接受投递后才返回轮次，不等于最终送达。失败保留已经占用的额度与冷却；不自动重发。",
+        "description": "发送器接受投递后才返回轮次，不等于最终送达。失败保留已经占用的额度与冷却；不自动重发。部署的短信发送器不支持该号码（如仅支持中国大陆号码）时，在占用额度前返回 400 TARGET_NOT_SUPPORTED。",
         "responses": {
           "200": {
             "description": "成功。",
@@ -345,7 +345,7 @@
       "post": {
         "operationId": "sendSignInCompletionCode",
         "summary": "发送登录补全验证码",
-        "description": "专用票据与 SIGN_IN_COMPLETE 轮次绑定，不能使用普通登录码。可省略设备字段；重复提供须匹配初次登录。缺可选能力为 503 SIGN_IN_COMPLETION_NOT_CONFIGURED。",
+        "description": "专用票据与 SIGN_IN_COMPLETE 轮次绑定，不能使用普通登录码。可省略设备字段；重复提供须匹配初次登录。缺可选能力为 503 SIGN_IN_COMPLETION_NOT_CONFIGURED。部署的短信发送器不支持该号码（如仅支持中国大陆号码）时，在占用额度前返回 400 TARGET_NOT_SUPPORTED。",
         "responses": {
           "200": {
             "description": "成功。",
@@ -1097,7 +1097,7 @@
       "post": {
         "operationId": "sendReauthenticationCode",
         "summary": "发送近期认证验证码",
-        "description": "目标须为本账号已绑定手机/邮箱；轮次绑定用户和会话。 允许的消费者 scope：user。",
+        "description": "目标须为本账号已绑定手机/邮箱；轮次绑定用户和会话。部署的短信发送器不支持该号码（如仅支持中国大陆号码）时，在占用额度前返回 400 TARGET_NOT_SUPPORTED。 允许的消费者 scope：user。",
         "responses": {
           "200": {
             "description": "成功。",
@@ -1409,7 +1409,7 @@
       "post": {
         "operationId": "sendBindCode",
         "summary": "发送绑定或换绑验证码",
-        "description": "BIND 轮次绑定当前用户；换绑新目标也使用此入口发码。 允许的消费者 scope：user 或 user:bind。",
+        "description": "BIND 轮次绑定当前用户；换绑新目标也使用此入口发码。部署的短信发送器不支持该号码（如仅支持中国大陆号码）时，在占用额度前返回 400 TARGET_NOT_SUPPORTED。 允许的消费者 scope：user 或 user:bind。",
         "responses": {
           "200": {
             "description": "成功。",

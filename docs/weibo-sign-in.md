@@ -46,16 +46,16 @@ cfg.RequiredIdentityKinds = []enum.IdentityKind{}
 
 ## accountsvc 配置
 
-库使用 `ConfigFromEnv(prefix)` 的宿主前缀；accountsvc 固定为 `ACCOUNTKIT_`：
+库使用 `ConfigFromEnv(prefix)` 的宿主前缀；accountsvc 固定为 `ACCOUNTSVC_`：
 
 ```text
-ACCOUNTKIT_WEIBO_APP_IDS=1234567890,1234567891
-ACCOUNTKIT_WEIBO_API_BASE_URL=https://api.weibo.com
-ACCOUNTKIT_ENABLED_IDENTITY_KINDS=WEIBO
-ACCOUNTKIT_REQUIRED_IDENTITY_KINDS=[]
+ACCOUNTSVC_WEIBO_APP_IDS=1234567890,1234567891
+ACCOUNTSVC_WEIBO_API_BASE_URL=https://api.weibo.com
+ACCOUNTSVC_ENABLED_IDENTITY_KINDS=WEIBO
+ACCOUNTSVC_REQUIRED_IDENTITY_KINDS=[]
 ```
 
-应用列表缺省/空表示不配置，已配置列表不允许重复或空项。`ACCOUNTKIT_WEIBO_API_BASE_URL` 一般无需设置。serve 显式 Enabled 含 WEIBO 却无应用时启动失败并指出 `ACCOUNTKIT_WEIBO_APP_IDS`，非法值只报告变量名，不输出配置值。migrate 无需配置微博、不调用微博，但显式提供的非法配置仍会被静态校验拒绝。
+应用列表缺省/空表示不配置，已配置列表不允许重复或空项。`ACCOUNTSVC_WEIBO_API_BASE_URL` 一般无需设置。serve 显式 Enabled 含 WEIBO 却无应用时启动失败并指出 `ACCOUNTSVC_WEIBO_APP_IDS`，非法值只报告变量名，不输出配置值。migrate 无需配置微博、不调用微博，但显式提供的非法配置仍会被静态校验拒绝。
 
 [本地 Compose](../deploy/accountsvc/compose.yaml) 默认 EMAIL；仅编辑 `.env` 不会自动把任意 IdP 变量传进容器。切换时用 Compose override 或实际部署的环境注入，显式覆盖 Enabled/Required 并传入微博配置。
 

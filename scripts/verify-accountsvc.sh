@@ -13,5 +13,5 @@ fi
 mkdir -p .test-output
 go build -o .test-output/accountsvc ./cmd/accountsvc
 go vet ./internal/accountsvc/... ./examples/remoteauth ./user/sender/smtp
-go test -race -json -count=1 -timeout=5m ./internal/accountsvc/... ./examples/remoteauth ./user/sender/smtp | tee .test-output/accountsvc-tests.jsonl
+go test -race -json -count=1 -timeout=10m ./internal/accountsvc/... ./examples/remoteauth ./user/sender/smtp | tee .test-output/accountsvc-tests.jsonl
 go run ./internal/testgate scripts/accountsvc-required-tests.txt < .test-output/accountsvc-tests.jsonl

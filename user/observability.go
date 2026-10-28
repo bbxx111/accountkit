@@ -126,7 +126,7 @@ func classifyOperation(err error) (ob.Result, ob.Reason) {
 		return ob.ResultRejected, ob.ReasonIdentityKindDisabled
 	case errors.Is(err, sender.ErrDisabled):
 		return ob.ResultRejected, ob.ReasonChannelDisabled
-	case errors.Is(err, ErrInvalidArgument), errors.Is(err, ErrInvalidTarget), errors.Is(err, ErrInvalidClientInfo), errors.Is(err, idp.ErrMalformedCredential):
+	case errors.Is(err, ErrInvalidArgument), errors.Is(err, ErrInvalidTarget), errors.Is(err, sender.ErrTargetNotSupported), errors.Is(err, ErrInvalidClientInfo), errors.Is(err, idp.ErrMalformedCredential):
 		return ob.ResultRejected, ob.ReasonInvalidArgument
 	case errors.Is(err, code.ErrInvalid):
 		return ob.ResultRejected, ob.ReasonCodeInvalid
@@ -296,6 +296,20 @@ func (s *Service) Authenticate(ctx context.Context, token string) (Principal, er
 	start := time.Now()
 	ctx, facts := s.observationContext(ctx)
 	result, err := s.authenticate(ctx, token)
+	s.observeAuth(ctx, start, ob.AuthAuthenticate, ob.MethodNone, result.Scope, false, err, facts)
+	return result, err
+}
+
+// AuthenticateStrict 校验 access token，并以已提交的数据库会话状态判定吊销（不读 Redis 吊销集）。
+// 会话不存在、不属于 sub 或已吊销返回 ErrInvalidToken；数据库不可用返回 ErrUnavailable，不放行。
+// 用于内省及需要撤销后立即失效的关键路由；刷新期限已到但未吊销的会话仍有效。
+func (s *Service) AuthenticateStrict(ctx context.Context, token string) (Principal, error) {
+	if !s.observer.Enabled() {
+		return s.authenticateStrict(ctx, token)
+	}
+	start := time.Now()
+	ctx, facts := s.observationContext(ctx)
+	result, err := s.authenticateStrict(ctx, token)
 	s.observeAuth(ctx, start, ob.AuthAuthenticate, ob.MethodNone, result.Scope, false, err, facts)
 	return result, err
 }

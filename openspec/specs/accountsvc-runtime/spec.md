@@ -20,7 +20,7 @@
 
 ### Requirement: 配置校验与安全启动
 
-服务 SHALL 保留 `ACCOUNTKIT_` 库配置并使用 `ACCOUNTSVC_` 服务配置，默认 production。serve SHALL 在监听前完成配置校验；非法配置 SHALL 非零退出并指出配置项名称，错误不得泄露配置值。显式启用 GOOGLE 但没有 client ID 时 SHALL 指出 `ACCOUNTKIT_GOOGLE_CLIENT_IDS`。仅启用 GOOGLE、Required 为空且 client ID 有效时，无 SMTP SHALL 仍可启动。服务 SHALL 分别遵守下述身份策略、HTTP TLS、生产依赖与 migrate 依赖边界。
+服务 SHALL 只使用 `ACCOUNTSVC_` 前缀读取全部配置：库配置项沿用库定义的名称并以 `ACCOUNTSVC_` 为前缀，服务配置项同样以 `ACCOUNTSVC_` 为前缀；运行模式默认 production。serve 与 migrate SHALL 在读取配置前拒绝任何非空的 `ACCOUNTKIT_` 变量，以非零退出并指出该变量名及对应新名，不回显值。服务配置项名称 SHALL 不与库配置项名称重叠，也不使用库按 `ALIPAY_`、`OIDC_` 动态生成的名称空间。serve SHALL 在监听前完成配置校验；非法配置 SHALL 非零退出并指出配置项名称，错误不得泄露配置值。显式启用 GOOGLE 但没有 client ID 时 SHALL 指出 `ACCOUNTSVC_GOOGLE_CLIENT_IDS`。仅启用 GOOGLE、Required 为空且 client ID 有效时，无 SMTP SHALL 仍可启动。服务 SHALL 分别遵守下述身份策略、HTTP TLS、生产依赖与 migrate 依赖边界。
 
 #### Scenario: 配置缺失
 - **WHEN** serve 缺少已启用 EMAIL 所需的 SMTP、数据库、Redis、内省客户端必填配置，或在有效 TLS 配置要求启用时缺少证书/私钥
@@ -52,7 +52,7 @@
 
 #### Scenario: Google 缺少 client ID
 - **WHEN** 显式 Enabled 包含 GOOGLE 但 client ID 为空
-- **THEN** 启动失败并指出 `ACCOUNTKIT_GOOGLE_CLIENT_IDS`，错误不泄露其他配置值
+- **THEN** 启动失败并指出 `ACCOUNTSVC_GOOGLE_CLIENT_IDS`，错误不泄露其他配置值
 
 #### Scenario: 服务不能凭开关获得短信能力
 - **WHEN** serve 显式 Enabled 包含 PHONE
@@ -62,17 +62,29 @@
 - **WHEN** 执行 migrate，身份集合本身合法而 SMTP 或 IdP 运行配置未提供
 - **THEN** 不监听、不构造认证处理器、不要求这些运行依赖；迁移锁及密钥版本检查仍执行
 
+#### Scenario: 旧前缀被拒绝
+- **WHEN** serve 或 migrate 的环境中存在非空的 `ACCOUNTKIT_JWT_KEYS` 或其他 `ACCOUNTKIT_` 变量
+- **THEN** 启动失败并指出该变量名及应改用的 `ACCOUNTSVC_` 名称，不输出变量值，也不回退读取旧名
+
+#### Scenario: 统一前缀读取库配置
+- **WHEN** 部署方以 `ACCOUNTSVC_JWT_KEYS`、`ACCOUNTSVC_AUTH_SCHEMA` 等名称提供库配置
+- **THEN** 服务按库的相同规则解析，非法值的错误指出 `ACCOUNTSVC_` 变量名
+
 ### Requirement: 服务身份策略与发送能力
 
-serve SHALL 读取 ACCOUNTKIT_ENABLED_IDENTITY_KINDS 和 ACCOUNTKIT_REQUIRED_IDENTITY_KINDS，对显式策略执行子集与依赖校验；未设置时保留原默认装配。EMAIL 显式禁用时 SHALL 不要求或解析 SMTP 设置。首版无短信服务商，显式启用 PHONE SHALL 拒绝启动，不使用日志或伪发送器替代。显式启用 GOOGLE 时 SHALL 要求至少一个 client ID，缺失时指出 `ACCOUNTKIT_GOOGLE_CLIENT_IDS`。
+serve SHALL 读取 ACCOUNTSVC_ENABLED_IDENTITY_KINDS 和 ACCOUNTSVC_REQUIRED_IDENTITY_KINDS，对显式策略执行子集与依赖校验；未设置时保留原默认装配。EMAIL 显式禁用时 SHALL 不要求或解析 SMTP 设置。显式启用 PHONE SHALL 要求已配置短信服务商；未配置时 SHALL 拒绝启动，不使用日志或伪发送器替代。省略 ENABLED 时，即使配置了短信服务商，短信渠道也 SHALL 保持显式禁用，不自动启用 PHONE。显式启用 GOOGLE 时 SHALL 要求至少一个 client ID，缺失时指出 `ACCOUNTSVC_GOOGLE_CLIENT_IDS`。
 
 #### Scenario: 身份集合与服务发送能力一致
 - **WHEN** serve 读取显式身份策略
-- **THEN** 校验集合及运行依赖；EMAIL 禁用不解析 SMTP，PHONE 启用因服务缺少短信能力而拒绝，直接嵌入库仍可注入真实发送器
+- **THEN** 校验集合及运行依赖；EMAIL 禁用时不解析 SMTP；PHONE 启用时须已配置短信服务商，否则拒绝启动；直接嵌入库仍可注入真实发送器
+
+#### Scenario: 配置短信服务商但未显式启用 PHONE
+- **WHEN** serve 配置了阿里云短信，但省略 ACCOUNTSVC_ENABLED_IDENTITY_KINDS
+- **THEN** 身份策略与短信渠道均保持原默认装配，发送短信验证码返回 `CHANNEL_NOT_ENABLED`
 
 #### Scenario: 启用 Google 但未配置客户端
 - **WHEN** serve 的显式 Enabled 包含 GOOGLE，且 Google client ID 为空
-- **THEN** 启动失败并指出 `ACCOUNTKIT_GOOGLE_CLIENT_IDS`
+- **THEN** 启动失败并指出 `ACCOUNTSVC_GOOGLE_CLIENT_IDS`
 
 ### Requirement: 服务 HTTP TLS 配置决策
 
@@ -84,19 +96,27 @@ serve SHALL 支持 ACCOUNTSVC_TLS_ENABLED。未设置或为空时，production S
 
 ### Requirement: 生产发送与内省凭据要求
 
-production SHALL 在 EMAIL 启用时要求真实 SMTP 与 SMTP TLS，并始终要求内省调用凭据。production SHALL 不使用日志验证码、固定默认秘密或明文邮件降级；HTTP TLS 开关不得使生产 SMTP 降级。
+production SHALL 在 EMAIL 启用时要求真实 SMTP 与 SMTP TLS，在 PHONE 启用时要求真实短信服务商。内省调用认证（Basic 客户端凭据或服务令牌客户端列表）在任何模式下 SHALL 为可选：两种都未配置时 serve 照常启动，内省路由返回 503 `introspection_not_configured`；production SHALL 不强制要求内省调用认证配置。production SHALL 不使用日志验证码、固定默认秘密或明文邮件降级；HTTP TLS 开关不得使生产 SMTP 降级。短信 endpoint 在 production SHALL 只接受 HTTPS。
 
 #### Scenario: 生产发送和内省依赖不可降级
-- **WHEN** production 缺少必需的真实 SMTP/TLS 或内省调用凭据
+- **WHEN** production 缺少必需的真实 SMTP/TLS 或短信服务商
 - **THEN** 拒绝启动，不用日志验证码、默认秘密或明文 SMTP 替代；显式关闭 HTTP TLS 不豁免 SMTP TLS
+
+#### Scenario: 内省调用认证未配置
+- **WHEN** production 既未设置 `ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS` 也未设置 `ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS`
+- **THEN** serve 照常启动并就绪，启动日志记录一条指出相关变量名的 WARN，`POST /v1/introspect` 返回 503 `introspection_not_configured`，其他路由不受影响
+
+#### Scenario: 仅以服务令牌认证内省
+- **WHEN** production 未设置 `ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS`，但服务令牌签发方、audience 与 `ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS` 有效
+- **THEN** serve 可以启动，内省只接受 Bearer 调用
 
 ### Requirement: migrate 静态校验与依赖边界
 
-migrate SHALL 只执行静态身份策略语法/集合校验及迁移必要检查，不监听、不构造认证处理器，不要求发送器或第三方运行时依赖。migrate SHALL 不要求或解析服务监听地址、HTTP TLS 开关、证书、SMTP 或内省客户端配置；迁移锁与密钥版本检查仍执行。
+migrate SHALL 只执行静态身份策略语法/集合校验及迁移必要检查，不监听、不构造认证处理器，不要求发送器或第三方运行时依赖。migrate SHALL 不要求或解析服务监听地址、HTTP TLS 开关、证书、SMTP、短信服务商、邮件品牌或内省客户端配置；迁移锁与密钥版本检查仍执行。
 
 #### Scenario: 迁移独立于服务运行配置
 - **WHEN** migrate 的身份集合合法且迁移必要依赖有效，未提供服务运行配置
-- **THEN** 迁移可执行，不读取无关监听/TLS/发送/内省设置，仍核对迁移锁和存储引用密钥
+- **THEN** 迁移可执行，不读取无关监听/TLS/发送/短信/内省设置，仍核对迁移锁和存储引用密钥
 
 ### Requirement: 有界迁移与资源回收
 
@@ -112,10 +132,10 @@ migrate SHALL 只执行静态身份策略语法/集合校验及迁移必要检�
 
 ### Requirement: HTTP 边界与可信请求元信息
 
-serve SHALL 仅使用 ACCOUNTSVC_HTTP_ADDR 创建一个监听器，默认绑定 127.0.0.1:8080，挂载消费者 /v1、管理员 /admin/v1、内省 /v1/introspect 与 /healthz、/readyz。不同身份体系和处理器 SHALL 独立。网关与网络策略 SHALL 控制公网暴露范围，不把路径名称视为网络隔离；单监听器不自动区分公网和内网来源。
+serve SHALL 仅使用 ACCOUNTSVC_HTTP_ADDR 创建一个监听器，默认绑定 127.0.0.1:8080，挂载消费者 /v1、管理员 /admin/v1、内省 /v1/introspect、已清理用户拉取 /v1/purgedUsers、公钥 /.well-known/jwks.json 与 /healthz、/readyz。不同身份体系和处理器 SHALL 独立。网关与网络策略 SHALL 控制公网暴露范围，不把路径名称视为网络隔离；单监听器不自动区分公网和内网来源。
 
 #### Scenario: 公网请求内部路径
-- **WHEN** 公网调用者通过按接入契约配置的网关请求 `/v1/introspect`、`/healthz` 或 `/readyz`
+- **WHEN** 公网调用者通过按接入契约配置的网关请求 `/v1/introspect`、`/v1/purgedUsers`、`/healthz` 或 `/readyz`
 - **THEN** 网关拒绝且请求不进入 accountsvc；单监听器本身不承诺识别公网/内网来源并自动隔离这些路由
 
 #### Scenario: 伪造代理头
@@ -124,7 +144,7 @@ serve SHALL 仅使用 ACCOUNTSVC_HTTP_ADDR 创建一个监听器，默认绑定 
 
 #### Scenario: 单地址提供不同身份面
 - **WHEN** serve 使用有效配置启动
-- **THEN** 只绑定一次，所有路由使用该地址；内省仍要求 Basic，消费者和管理员仍分别验证各自凭据及权限
+- **THEN** 只绑定一次，所有路由使用该地址；内省与已清理用户拉取各自要求独立的服务调用认证（Basic 凭据或获准的服务令牌），消费者和管理员仍分别验证各自凭据及权限，JWKS 无需认证
 
 #### Scenario: 旧部署配置被显式拒绝
 - **WHEN** serve 仍提供非空 INTERNAL_ADDR
@@ -219,11 +239,11 @@ serve SHALL 支持可选 ACCOUNTSVC_PROFILE_ATTRIBUTES_SCHEMA_FILE，在监听�
 - **THEN** 当前实例规则不变化，重启后加载新内容；多副本配置一致性由部署方保证，不自动转换旧资料
 
 ### Requirement: 服务 OIDC 提供方配置
-serve SHALL 从 `ACCOUNTKIT_OIDC_PROVIDERS` 读取逗号分隔的 OIDC 类型名，并为每个类型读取 `ACCOUNTKIT_OIDC_<KIND>_ISSUER`、`_JWKS_URL`、`_CLIENT_IDS` 和可选的 `_NONCE_TTL`、`_NAME_CLAIMS`、`_PICTURE_CLAIMS`（变量未设置为默认映射，设置为空为不读取）。缺失或非法时 SHALL 在监听前非零退出并指出具体变量名，不泄露配置值。显式 Enabled 包含未在 `ACCOUNTKIT_OIDC_PROVIDERS` 中配置的第三方类型时 SHALL 指出 `ACCOUNTKIT_ENABLED_IDENTITY_KINDS`。仅启用 OIDC 类型且 Required 为空时，无 SMTP SHALL 仍可启动。未设置任何 OIDC 变量时 migrate SHALL 不要求它们；已列出 OIDC 类型但其配置不完整或非法时，migrate 与 serve SHALL 同样启动失败并指出变量名，与其他已提供但格式非法的库配置一致。
+serve SHALL 从 `ACCOUNTSVC_OIDC_PROVIDERS` 读取逗号分隔的 OIDC 类型名，并为每个类型读取 `ACCOUNTSVC_OIDC_<KIND>_ISSUER`、`_JWKS_URL`、`_CLIENT_IDS` 和可选的 `_NONCE_TTL`、`_NAME_CLAIMS`、`_PICTURE_CLAIMS`（变量未设置为默认映射，设置为空为不读取）。缺失或非法时 SHALL 在监听前非零退出并指出具体变量名，不泄露配置值。显式 Enabled 包含未在 `ACCOUNTSVC_OIDC_PROVIDERS` 中配置的第三方类型时 SHALL 指出 `ACCOUNTSVC_ENABLED_IDENTITY_KINDS`。仅启用 OIDC 类型且 Required 为空时，无 SMTP SHALL 仍可启动。未设置任何 OIDC 变量时 migrate SHALL 不要求它们；已列出 OIDC 类型但其配置不完整或非法时，migrate 与 serve SHALL 同样启动失败并指出变量名，与其他已提供但格式非法的库配置一致。
 
 #### Scenario: 缺少 issuer
-- **WHEN** `ACCOUNTKIT_OIDC_PROVIDERS=CORP_SSO` 而未设置 `ACCOUNTKIT_OIDC_CORP_SSO_ISSUER`
-- **THEN** serve 启动失败并指出 `ACCOUNTKIT_OIDC_CORP_SSO_ISSUER`
+- **WHEN** `ACCOUNTSVC_OIDC_PROVIDERS=CORP_SSO` 而未设置 `ACCOUNTSVC_OIDC_CORP_SSO_ISSUER`
+- **THEN** serve 启动失败并指出 `ACCOUNTSVC_OIDC_CORP_SSO_ISSUER`
 
 #### Scenario: 仅 OIDC 的服务
 - **WHEN** 显式 Enabled 为 CORP_SSO、Required 为 []、该类型配置有效且没有 SMTP 设置
@@ -234,11 +254,11 @@ serve SHALL 从 `ACCOUNTKIT_OIDC_PROVIDERS` 读取逗号分隔的 OIDC 类型名
 - **THEN** 迁移照常执行，不因 OIDC 配置失败
 
 #### Scenario: migrate 遇到不完整的 OIDC 配置
-- **WHEN** 执行 migrate，`ACCOUNTKIT_OIDC_PROVIDERS` 列出 CORP_SSO 但缺少其 issuer
-- **THEN** 启动失败并指出 `ACCOUNTKIT_OIDC_CORP_SSO_ISSUER`
+- **WHEN** 执行 migrate，`ACCOUNTSVC_OIDC_PROVIDERS` 列出 CORP_SSO 但缺少其 issuer
+- **THEN** 启动失败并指出 `ACCOUNTSVC_OIDC_CORP_SSO_ISSUER`
 
 ### Requirement: 服务支付宝配置与装配
-serve SHALL 读取 ACCOUNTKIT_ALIPAY_APP_IDS 及每个 AppID 的 ACCOUNTKIT_ALIPAY_<APPID>_PRIVATE_KEY / _PUBLIC_KEY，和 ACCOUNTKIT_ALIPAY_SUBJECT_MODE、ACCOUNTKIT_ALIPAY_GATEWAY_URL。配置 SHALL 遵循 alipay-sign-in 的校验要求；模式缺省 UNIONID，应用列表为空不启用。显式启用 ALIPAY 而无应用配置时 SHALL 启动失败并指出 ACCOUNTKIT_ALIPAY_APP_IDS，缺少密钥时指出对应变量名，不输出值。服务 SHALL 复用既有登录和绑定路由，不提供 authInfo 或授权回调入口。
+serve SHALL 读取 ACCOUNTSVC_ALIPAY_APP_IDS 及每个 AppID 的 ACCOUNTSVC_ALIPAY_<APPID>_PRIVATE_KEY / _PUBLIC_KEY，和 ACCOUNTSVC_ALIPAY_SUBJECT_MODE、ACCOUNTSVC_ALIPAY_GATEWAY_URL。配置 SHALL 遵循 alipay-sign-in 的校验要求；模式缺省 UNIONID，应用列表为空不启用。显式启用 ALIPAY 而无应用配置时 SHALL 启动失败并指出 ACCOUNTSVC_ALIPAY_APP_IDS，缺少密钥时指出对应变量名，不输出值。服务 SHALL 复用既有登录和绑定路由，不提供 authInfo 或授权回调入口。
 
 #### Scenario: 多应用服务
 - **WHEN** 配置两个有效 AppID 及各自密钥，其他服务配置合法
@@ -276,15 +296,15 @@ serve SHALL 读取 ACCOUNTKIT_ALIPAY_APP_IDS 及每个 AppID 的 ACCOUNTKIT_ALIP
 - **THEN** 共享静态配置校验拒绝并指出配置项，与已提供但非法的其他 IdP 配置保持一致
 
 ### Requirement: 服务 Facebook 配置
-serve SHALL 读取 `ACCOUNTKIT_FACEBOOK_APP_ID`、`_APP_SECRET` 及可选的 `_GRAPH_API_VERSION`、`_NONCE_TTL`、`_GRAPH_API_BASE_URL`、`_JWKS_URL`。App ID 非空而 Secret 缺失或其他项非法时 SHALL 在监听前非零退出并指出变量名，不泄露配置值。显式 Enabled 包含 FACEBOOK 而 App ID 为空时 SHALL 指出 `ACCOUNTKIT_FACEBOOK_APP_ID`。仅启用 FACEBOOK 且 Required 为空时，无 SMTP SHALL 仍可启动。未设置 Facebook 变量时 migrate SHALL 不要求它们。服务 SHALL 不提供数据删除回调路由。
+serve SHALL 读取 `ACCOUNTSVC_FACEBOOK_APP_ID`、`_APP_SECRET` 及可选的 `_GRAPH_API_VERSION`、`_NONCE_TTL`、`_GRAPH_API_BASE_URL`、`_JWKS_URL`。App ID 非空而 Secret 缺失或其他项非法时 SHALL 在监听前非零退出并指出变量名，不泄露配置值。显式 Enabled 包含 FACEBOOK 而 App ID 为空时 SHALL 指出 `ACCOUNTSVC_FACEBOOK_APP_ID`。仅启用 FACEBOOK 且 Required 为空时，无 SMTP SHALL 仍可启动。未设置 Facebook 变量时 migrate SHALL 不要求它们。服务 SHALL 不提供数据删除回调路由。
 
 #### Scenario: 缺少 App Secret
-- **WHEN** 设置了 `ACCOUNTKIT_FACEBOOK_APP_ID` 而未设置 `ACCOUNTKIT_FACEBOOK_APP_SECRET`
-- **THEN** serve 启动失败并指出 `ACCOUNTKIT_FACEBOOK_APP_SECRET`，错误不含其他配置值
+- **WHEN** 设置了 `ACCOUNTSVC_FACEBOOK_APP_ID` 而未设置 `ACCOUNTSVC_FACEBOOK_APP_SECRET`
+- **THEN** serve 启动失败并指出 `ACCOUNTSVC_FACEBOOK_APP_SECRET`，错误不含其他配置值
 
 #### Scenario: 启用 Facebook 但未配置 App
-- **WHEN** 显式 Enabled 包含 FACEBOOK 且 `ACCOUNTKIT_FACEBOOK_APP_ID` 为空
-- **THEN** 启动失败并指出 `ACCOUNTKIT_FACEBOOK_APP_ID`
+- **WHEN** 显式 Enabled 包含 FACEBOOK 且 `ACCOUNTSVC_FACEBOOK_APP_ID` 为空
+- **THEN** 启动失败并指出 `ACCOUNTSVC_FACEBOOK_APP_ID`
 
 #### Scenario: 仅 Facebook 的服务
 - **WHEN** 显式 Enabled 为 FACEBOOK、Required 为 []、App ID 与 Secret 有效且没有 SMTP 设置
@@ -295,15 +315,15 @@ serve SHALL 读取 `ACCOUNTKIT_FACEBOOK_APP_ID`、`_APP_SECRET` 及可选的 `_G
 - **THEN** 迁移照常执行，不因 Facebook 配置失败
 
 ### Requirement: 服务 QQ 配置与装配
-serve SHALL 读取 ACCOUNTKIT_QQ_APP_IDS、ACCOUNTKIT_QQ_SUBJECT_MODE 和 ACCOUNTKIT_QQ_API_BASE_URL。配置 SHALL 遵循 qq-sign-in 的校验要求；模式缺省 UNIONID，应用列表为空不启用。显式启用 QQ 而无应用配置时 SHALL 启动失败并指出 ACCOUNTKIT_QQ_APP_IDS，不输出配置值。服务 SHALL 复用既有登录和绑定路由，不提供授权发起或回调入口，也不要求 QQ AppKey。
+serve SHALL 读取 ACCOUNTSVC_QQ_APP_IDS、ACCOUNTSVC_QQ_SUBJECT_MODE 和 ACCOUNTSVC_QQ_API_BASE_URL。配置 SHALL 遵循 qq-sign-in 的校验要求；模式缺省 UNIONID，应用列表为空不启用。显式启用 QQ 而无应用配置时 SHALL 启动失败并指出 ACCOUNTSVC_QQ_APP_IDS，不输出配置值。服务 SHALL 复用既有登录和绑定路由，不提供授权发起或回调入口，也不要求 QQ AppKey。
 
 #### Scenario: 多应用服务
 - **WHEN** 配置两个有效 QQ AppID，其他服务配置合法
 - **THEN** serve 正常装配两个允许应用，均使用实例固定身份模式
 
 #### Scenario: 启用但未配置应用
-- **WHEN** Enabled 含 QQ，而 ACCOUNTKIT_QQ_APP_IDS 未设置或为空
-- **THEN** 监听前拒绝并指出 ACCOUNTKIT_QQ_APP_IDS
+- **WHEN** Enabled 含 QQ，而 ACCOUNTSVC_QQ_APP_IDS 未设置或为空
+- **THEN** 监听前拒绝并指出 ACCOUNTSVC_QQ_APP_IDS
 
 #### Scenario: 非法列表或模式
 - **WHEN** APP_IDS 有重复项、空项或非数字项，或 SUBJECT_MODE 为 AUTO
@@ -325,19 +345,19 @@ serve SHALL 读取 ACCOUNTKIT_QQ_APP_IDS、ACCOUNTKIT_QQ_SUBJECT_MODE 和 ACCOUN
 - **THEN** 迁移只按原边界校验，不调用 QQ
 
 #### Scenario: migrate 遇到非法已配置项
-- **WHEN** 运行 migrate，ACCOUNTKIT_QQ_APP_IDS 含非数字项
+- **WHEN** 运行 migrate，ACCOUNTSVC_QQ_APP_IDS 含非数字项
 - **THEN** 共享静态配置校验拒绝并指出该配置项
 
 ### Requirement: 服务微博配置与装配
-serve SHALL 读取 ACCOUNTKIT_WEIBO_APP_IDS 和 ACCOUNTKIT_WEIBO_API_BASE_URL。配置 SHALL 遵循 weibo-sign-in 的校验要求；应用列表为空不启用。显式启用 WEIBO 而无应用配置时 SHALL 启动失败并指出 ACCOUNTKIT_WEIBO_APP_IDS，不输出配置值。服务 SHALL 复用既有登录和绑定路由，不提供授权发起、回调或取消授权通知入口，也不要求微博 AppSecret。
+serve SHALL 读取 ACCOUNTSVC_WEIBO_APP_IDS 和 ACCOUNTSVC_WEIBO_API_BASE_URL。配置 SHALL 遵循 weibo-sign-in 的校验要求；应用列表为空不启用。显式启用 WEIBO 而无应用配置时 SHALL 启动失败并指出 ACCOUNTSVC_WEIBO_APP_IDS，不输出配置值。服务 SHALL 复用既有登录和绑定路由，不提供授权发起、回调或取消授权通知入口，也不要求微博 AppSecret。
 
 #### Scenario: 多应用服务
 - **WHEN** 配置两个有效微博 AppKey，其他服务配置合法
 - **THEN** serve 正常装配两个允许应用，两者的同一 uid 命中同一身份
 
 #### Scenario: 启用但未配置应用
-- **WHEN** Enabled 含 WEIBO，而 ACCOUNTKIT_WEIBO_APP_IDS 未设置或为空
-- **THEN** 监听前拒绝并指出 ACCOUNTKIT_WEIBO_APP_IDS
+- **WHEN** Enabled 含 WEIBO，而 ACCOUNTSVC_WEIBO_APP_IDS 未设置或为空
+- **THEN** 监听前拒绝并指出 ACCOUNTSVC_WEIBO_APP_IDS
 
 #### Scenario: 非法列表或地址
 - **WHEN** APP_IDS 有重复项、空项或非数字项，或 API_BASE_URL 为 HTTP 非回环地址
@@ -359,16 +379,155 @@ serve SHALL 读取 ACCOUNTKIT_WEIBO_APP_IDS 和 ACCOUNTKIT_WEIBO_API_BASE_URL。
 - **THEN** 迁移只按原边界校验，不调用微博
 
 #### Scenario: migrate 遇到非法已配置项
-- **WHEN** 运行 migrate，ACCOUNTKIT_WEIBO_APP_IDS 含非数字项
+- **WHEN** 运行 migrate，ACCOUNTSVC_WEIBO_APP_IDS 含非数字项
 - **THEN** 共享静态配置校验拒绝并指出该配置项
 
 ### Requirement: 服务资料补填配置
-服务 SHALL 通过 `ACCOUNTKIT_PROVIDER_PROFILE_BACKFILL` 接受资料补填配置，未设置时视为开启。非法布尔值 SHALL 使 serve 与 migrate 在启动前以非零退出并指出该配置名，不泄露其他配置值。无秘密配置模板 SHALL 列出该项及其默认值。
+服务 SHALL 通过 `ACCOUNTSVC_PROVIDER_PROFILE_BACKFILL` 接受资料补填配置，未设置时视为开启。非法布尔值 SHALL 使 serve 与 migrate 在启动前以非零退出并指出该配置名，不泄露其他配置值。无秘密配置模板 SHALL 列出该项及其默认值。
 
 #### Scenario: 关闭补填
-- **WHEN** serve 设置 `ACCOUNTKIT_PROVIDER_PROFILE_BACKFILL=false`，其他配置有效
+- **WHEN** serve 设置 `ACCOUNTSVC_PROVIDER_PROFILE_BACKFILL=false`，其他配置有效
 - **THEN** 服务正常启动，已有账号的第三方登录不补填空资料，新账号仍按通用规则填充
 
 #### Scenario: 非法值
-- **WHEN** `ACCOUNTKIT_PROVIDER_PROFILE_BACKFILL` 不是有效布尔值
-- **THEN** 启动失败并指出 `ACCOUNTKIT_PROVIDER_PROFILE_BACKFILL`
+- **WHEN** `ACCOUNTSVC_PROVIDER_PROFILE_BACKFILL` 不是有效布尔值
+- **THEN** 启动失败并指出 `ACCOUNTSVC_PROVIDER_PROFILE_BACKFILL`
+
+### Requirement: 服务短信服务商配置
+
+serve SHALL 读取可选的短信服务商配置。`ACCOUNTSVC_SMS_PROVIDER` 首版只接受 `aliyun`，未设置或为空表示未配置。选择 `aliyun` 时 SHALL 要求以下配置：
+
+- AccessKey ID 与 AccessKey Secret；
+- 签名名称；
+- SIGN_IN、BIND、REAUTH、SIGN_IN_COMPLETE 四个模板 code。
+
+endpoint 可选覆盖，仅供测试或代理部署使用。任一必填项缺失或非法时，serve SHALL 启动失败并指出变量名，不回显值。未知服务商名称 SHALL 拒绝启动。AccessKey Secret SHALL 只通过环境或密钥注入提供，不写入镜像、Compose 文件或日志。配置结构 SHALL 为将来的国际签名与模板预留独立变量，不复用大陆模板变量。
+
+#### Scenario: 完整的阿里云配置
+- **WHEN** serve 设置了 provider=aliyun 及全部必填变量
+- **THEN** 构造阿里云发送器并注入为短信发送器，不进行网络 I/O
+
+#### Scenario: 配置不完整
+- **WHEN** provider=aliyun 但缺少 REAUTH 模板
+- **THEN** 启动失败并指出该模板变量名，输出不含 Secret
+
+### Requirement: 已清理用户拉取凭据
+
+serve SHALL 读取可选的 `ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS`，格式与 `ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS` 相同（JSON：客户端 ID → base64 秘密数组，每个秘密至少 32 个随机字节），以及可选的 `ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS`（允许的 `azp` 字符串数组）。格式非法时 SHALL 启动失败并指出变量名，不回显值。拉取的 Basic 列表与内省 Basic 列表 SHALL 相互独立，同一秘密不得同时出现在两个列表中；拉取与内省的 `azp` 列表 SHALL 不相交。migrate SHALL 不解析这些变量。production SHALL 不强制要求拉取认证配置。
+
+#### Scenario: 凭据复用被拒绝
+- **WHEN** 同一秘密同时出现在内省客户端与拉取客户端列表中
+- **THEN** serve 启动失败并指出 `ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS`，不输出秘密
+
+#### Scenario: 令牌客户端复用被拒绝
+- **WHEN** 同一 `azp` 同时出现在内省与拉取的令牌客户端列表中
+- **THEN** serve 启动失败并指出 `ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS`
+
+### Requirement: 服务邮件模板清单
+
+serve SHALL 支持可选的 `ACCOUNTSVC_SMTP_TEMPLATES_FILE`，指向一份邮件模板清单 JSON。仅当 EMAIL 启用时，serve SHALL 在监听及创建运行依赖之前有界读取一次该本地普通文件并完成校验。不支持 URL，也不热加载。
+
+**未设置或为空**：serve SHALL 使用嵌入的无品牌默认清单（简体默认，另含繁体与英文），并在启动时记录 WARN 提示设置该变量；默认清单 SHALL 经过与部署清单相同的校验。
+
+**清单结构**：
+- 清单 SHALL 为 UTF-8 JSON 对象，`version` 为 1，`default_language` 为 `languages` 中的一个键。
+- `languages` SHALL 包含 1–8 种语言。语言标签 SHALL 为规范形式的 BCP 47 标签，不得为 `und`，且两两不同。
+- 每种语言 SHALL 只含 `brand`（可选）、`logo_url`（可选）、`common`（必填）与 `templates`（必填）。
+- `common` SHALL 只含 `code_label`、`expiry`、`safety`（必填）与 `footer`（可选）。
+- `templates` SHALL 恰好包含 `SIGN_IN`、`BIND`、`REAUTH`、`SIGN_IN_COMPLETE`；每个用途 SHALL 恰好包含非空字符串 `subject`、`heading`、`intro`。
+- 以下情况 SHALL 拒绝：未知字段、重复键、尾随内容、`null`、缺少或多出用途。任何语言或用途 SHALL 不得回落到其他语言或内置文案。
+
+**版式**：
+- 邮件 SHALL 由服务内置的布局渲染，同时包含 HTML 部分与纯文本部分，段落依次为标题、引导语、验证码、有效期、安全提示、页脚（`footer` 省略时无此段）。
+- 提供 `logo_url` 时，HTML 部分 SHALL 显示该图片并以品牌作为替代文字，因此该语言 SHALL 有品牌；`logo_url` SHALL 为 HTTPS 地址，不含用户信息、空白或控制字符，不超过 2048 字节。
+- 有品牌的语言 SHALL 在页脚显示 `© 品牌`；无品牌的语言 SHALL 省略该行。
+- 服务 SHALL 不内嵌图片或附件，也不接受自定义布局。
+
+**占位符与转义**：
+- 清单文字 SHALL 只接受 `{{brand}}` 与 `{{ttl_minutes}}`，名称两侧不得有空白；`{{code}}` 与其他名称 SHALL 视为配置错误。单个 `{` 或 `}` SHALL 按字面处理；`{{` 后不是合法占位符时 SHALL 视为配置错误。
+- `{{brand}}` SHALL 取所在语言的 `brand`，不继承其他语言；没有品牌的语言引用 `{{brand}}` SHALL 视为配置错误。`brand` SHALL 为 1–32 个码位，不含控制字符、Unicode 格式字符或行/段分隔符，无首尾空白。
+- `{{ttl_minutes}}` SHALL 为有效期分钟数，向上取整。
+- 清单文字插入 HTML 时 SHALL 整体做 HTML 转义，文字中的标签 SHALL 按字面显示；插入纯文本时不转义。替换后的值 SHALL 不再展开。渲染 SHALL 不执行任何模板函数、条件或循环。
+
+**长度与字符**：
+- `subject` SHALL 为 1–64 个码位，不得有首尾空白，不得含控制字符（含换行和制表符）、Unicode 格式字符、行分隔符或段分隔符。
+- `heading`、`code_label` SHALL 为 1–64 个码位；`intro`、`expiry`、`safety`、`footer` SHALL 为 1–1024 个码位；这些文字去掉空白后非空，控制字符只允许 LF 和 TAB，不得含 CR、Unicode 格式字符、行分隔符或段分隔符。
+- 每段文字 SHALL 最多包含 8 个占位符。清单 SHALL 非空，且不超过 64 KiB。
+
+**失败与日志**：
+- 读取失败、非普通文件、空文件、超限或内容非法时，serve SHALL 在监听前非零退出。错误 SHALL 只含变量名、固定的字段位置和安全分类，不含路径、文件内容或解码器原文。
+- EMAIL 启用且配置了清单时，serve SHALL 记录一条 INFO 日志，附带格式版本、清单内容 SHA-256 的前 12 位十六进制与语言标签列表；未配置时 SHALL 记录 WARN。这些日志及其他日志 SHALL 不包含路径、品牌、文字、Logo 地址、渲染结果或验证码。
+- EMAIL 禁用时，或执行 migrate 时，SHALL 不读取或校验该设置。
+- 库 New/ConfigFromEnv SHALL 保持不做文件 I/O，也不新增公开 Go API。
+
+#### Scenario: 合法清单生效
+
+- **WHEN** serve 启用 EMAIL，配置了合法的三语言清单，并以默认语言发送登录补全验证码邮件
+- **THEN** 邮件标题、HTML 和纯文本都按默认语言的补全文字和内置布局渲染，品牌、验证码和向上取整的分钟数被替换，Logo 以品牌为替代文字；启动日志说明使用了自定义清单，附带版本、摘要和语言列表，不含文字
+
+#### Scenario: 未配置清单
+
+- **WHEN** serve 启用 EMAIL 但未设置清单，客户端以 `Accept-Language: en` 请求邮箱登录验证码
+- **THEN** 服务照常启动并记录 WARN；邮件使用默认清单的英文文字，无品牌、无 Logo、无 `©` 行，仍同时含 HTML 与纯文本部分
+
+#### Scenario: 无品牌语言
+
+- **WHEN** 清单中某语言省略 `brand`，其文字不引用 `{{brand}}` 且未配置 `logo_url`
+- **THEN** 该语言正常渲染，页脚省略 `©` 行；若其文字引用了 `{{brand}}` 或配置了 `logo_url`，serve 在监听前失败
+
+#### Scenario: 清单不完整或非法
+
+- **WHEN** 清单缺少某种语言的某一用途或字段，或含未知字段、未知占位符、`{{code}}`、不完整的 `{{`，或标题含换行，或超出长度或占位符数量上限，或 `logo_url` 不是 HTTPS
+- **THEN** serve 在监听前失败，错误指出 `ACCOUNTSVC_SMTP_TEMPLATES_FILE` 及字段位置，不回显内容，不回落到其他语言或内置文案
+
+#### Scenario: HTML 中的文字转义
+
+- **WHEN** 某语言的 `brand` 或 `intro` 含有 `<`、`&` 或引号
+- **THEN** HTML 部分输出转义后的实体，版式不受影响；标题和纯文本部分显示原字符
+
+#### Scenario: EMAIL 禁用与 migrate 隔离
+
+- **WHEN** EMAIL 被显式禁用的 serve 或 migrate 设置了不存在或非法的清单路径
+- **THEN** 忽略该设置，启动或迁移只受其他配置约束
+
+#### Scenario: 配置变更
+
+- **WHEN** 运行期间清单被修改
+- **THEN** 当前实例的文案不变，重启后才加载新内容
+
+### Requirement: 邮件语言选择
+
+当清单包含多种语言时，serve SHALL 读取每个请求的 `Accept-Language`，并在发送邮件验证码时从已配置的语言中选出一种渲染。
+
+- 匹配 SHALL 遵循 BCP 47 语言匹配，并识别地区隐含的文字：zh-TW、zh-HK、zh-MO 匹配 `zh-Hant`；zh-CN、zh-SG、zh 匹配 `zh-Hans`；en-US、en-GB 匹配 `en`。
+- 近似匹配（如只配置简体时的繁体请求）SHALL 采用匹配到的语言。以下情况 SHALL 使用 `default_language`，且不得因此使请求失败：请求头缺失、超过 512 字节、格式非法，或完全没有匹配。
+- 未配置清单，或清单只有一种语言时，serve SHALL 不读取 `Accept-Language`。
+- 语言选择 SHALL 只影响邮件标题、内容和品牌，不改变验证码用途、额度、审计、HTTP 响应或短信内容。日志 SHALL 不记录逐次选中的语言。
+
+#### Scenario: 按界面语言发送繁体邮件
+
+- **WHEN** 清单配置了 zh-Hans（默认）、zh-Hant、en，客户端以 `Accept-Language: zh-TW` 请求邮箱登录验证码
+- **THEN** 邮件使用 zh-Hant 的文字和品牌渲染
+
+#### Scenario: 无法匹配时使用默认语言
+
+- **WHEN** 同一部署收到 `Accept-Language: ja`、没有该请求头，或请求头格式非法、超长
+- **THEN** 邮件使用默认语言，发码请求照常成功
+
+### Requirement: 邮件模板检查命令
+
+accountsvc SHALL 提供子命令 `email-templates check <清单路径>`，使用与 serve 相同的规则离线校验清单。
+
+- 该命令 SHALL 不读取 `ACCOUNTSVC_` 环境变量，也不连接数据库、Redis 或 SMTP。
+- 校验失败时 SHALL 非零退出，错误格式与 serve 相同，不回显内容；成功时 SHALL 输出版本、摘要和语言列表。
+- 指定 `-out <目录>` 时，SHALL 用示例验证码和固定有效期，为每种语言、每种用途写出渲染后的 HTML、纯文本和标题汇总。目录中存在本命令固定文件名之外的文件时 SHALL 拒绝写入。
+
+#### Scenario: 部署前预览
+
+- **WHEN** 运维对合法清单执行 `accountsvc email-templates check templates.json -out preview`
+- **THEN** 命令成功退出，`preview` 下包含每种语言、四种用途的 `.html` 与 `.txt` 渲染结果及标题汇总，可在浏览器中查看
+
+#### Scenario: 离线发现错误
+
+- **WHEN** 对缺少用途或含未知占位符的清单执行该命令
+- **THEN** 命令以非零码退出，指出字段位置，不写出任何预览文件

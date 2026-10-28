@@ -1,5 +1,63 @@
 # 功能与兼容对照
 
+## 服务调用 Bearer 认证
+
+本节随 v0.7.0 发布（准备中）。
+
+- **新增能力**：内省与已清理用户拉取在 HTTP Basic 之外可接受客户端凭据 Bearer 令牌（`ACCOUNTSVC_SERVICE_ISSUER`、`ACCOUNTSVC_SERVICE_AUDIENCE`、`ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS`、`ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS`），规则见[服务调用认证](accountsvc.md#服务调用认证内省与已清理用户拉取)。仅配置 Basic 的部署行为不变。
+- **改名**：Basic 凭据变量 `ACCOUNTSVC_INTROSPECTION_CLIENTS`、`ACCOUNTSVC_PURGE_FEED_CLIENTS` 改为 `ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS`、`ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS`，格式不变，不读取旧名。
+- **放宽**：serve 原先要求 Basic 内省凭据，现在内省与拉取一样可选：`ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS` 与 `ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS` 都未设置时服务照常启动，`/v1/introspect` 返回 503 `introspection_not_configured`（OAuth 顶层 `error`），production 同样适用；拉取在两种方式都未配置时返回 503 `PURGE_FEED_NOT_CONFIGURED`。依赖内省的业务服务须确认部署已配置内省调用方，否则关键接口全部失败。
+- **新错误码**：内省新增 401 `invalid_token`、403 `insufficient_scope`；拉取新增 401 `TOKEN_INVALID`、403 `CLIENT_NOT_AUTHORIZED`；签发方不可用时分别为 503 `temporarily_unavailable`、503 `DEPENDENCY_UNAVAILABLE`（`Retry-After: 1`）。启用两种方式时 401 返回两行 `WWW-Authenticate`。
+- **回退**：调用方切回 Basic，或移除 Bearer 配置后重启；无数据迁移。管理员认证行为不变。
+
+## accountsvc 配置前缀统一
+
+本节随 v0.7.0 发布（准备中）。
+
+- **accountsvc 环境变量（BREAKING）**：服务的库配置改为以 `ACCOUNTSVC_` 读取，与服务配置共用一个前缀。部署方把每个 `ACCOUNTKIT_` 变量改为 `ACCOUNTSVC_` 加相同后缀，例如 `ACCOUNTKIT_JWT_KEYS` → `ACCOUNTSVC_JWT_KEYS`、`ACCOUNTKIT_ENABLED_IDENTITY_KINDS` → `ACCOUNTSVC_ENABLED_IDENTITY_KINDS`、`ACCOUNTKIT_ALIPAY_<APPID>_PRIVATE_KEY` → `ACCOUNTSVC_ALIPAY_<APPID>_PRIVATE_KEY`；原有 `ACCOUNTSVC_` 服务配置名不变。不提供旧名回退读取。
+- **启动拒绝**：serve 与 migrate 发现任何非空 `ACCOUNTKIT_` 变量时失败并列出旧名与对应新名，不回显值，避免可选配置改名后被静默忽略。删除旧变量后重启。回退到旧版本需要把变量名改回。
+- **不受影响**：直接嵌入库的宿主继续用 `ConfigFromEnv(prefix)` 自选前缀；`examples/embedded`、`examples/audit` 与 README 仍以 `ACCOUNTKIT_` 为示例前缀。测试基础设施变量 `ACCOUNTKIT_RECOVERY_*` 只供恢复演练脚本使用，不传给 accountsvc 进程。
+
+## 已清理用户拉取与初始结构调整
+
+本节随 v0.7.0 发布（准备中）。
+
+- **数据库（BREAKING，无迁移）**：经用户明确授权，当前 0001 直接新增 `purged_user` 表，不新增 0002。新安装仍为 version=1。已由 v0.6.0 或更早版本安装的数据库缺少该表，迁移预检以 `migrations.ErrIncompatibleBaseline` 无写拒绝（dirty 优先），不补表、不改版本；需使用经人工核验的新空资源，详见[迁移手册](migrations.md#当前初始基线)。不提供旧数据迁移工具。旧二进制的预检不认识这张表、会接受新结构，但其 purge 不写已清理记录，会让对应账号永久缺席拉取清单：部署须阻止新旧版本混跑和在新结构上回退到旧二进制。
+- **新增能力**：purge 事务内写入已清理记录；`user.Service.ListPurgedUsers` 按游标读取；accountsvc 新增 `GET /v1/purgedUsers`（`ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS`）。`Config.PurgedUserRetention` / `PURGED_USER_RETENTION` 默认 0（长期保留）。purge 本身的语义、时机与宿主 Anonymizer 契约不变。
+- **宿主覆盖检查**：`user.PurgeCoveredTables` 新增 `purged_user` 豁免项；宿主自己的 user_id 覆盖性测试若枚举库内表，需要知道这张表只含 user_id 与时间。
+
+## accountsvc 阿里云短信与邮件品牌
+
+本节随 v0.7.0 发布（准备中），新增能力均为可选，未配置时行为不变，无数据库迁移。
+
+- **短信**：accountsvc 新增 `ACCOUNTSVC_SMS_PROVIDER=aliyun` 与 `ACCOUNTSVC_SMS_ALIYUN_*`（见[服务手册](accountsvc.md#短信服务商)）。显式启用 PHONE 的错误由“服务没有 SMS 服务商”改为要求配置 `ACCOUNTSVC_SMS_PROVIDER`；省略身份策略时短信仍保持禁用。
+- **新错误原因**：发送器可选实现 `SupportsTarget(e164 string) bool`；声明不支持的号码在占用额度前返回 400 `FAILED_PRECONDITION` / `TARGET_NOT_SUPPORTED`（Go 为 `sender.ErrTargetNotSupported`），审计 `CODE_SEND_REJECTED` 原因 `TARGET_NOT_SUPPORTED`。阿里云发送器首版只支持中国大陆号码，客户端可据此提示改用其他登录方式。未实现该方法的宿主发送器不受影响。
+- **邮件品牌**：`smtp.LegacyChineseRenderer` 由空结构体改为含可选 `Brand` 字段的结构体，`LegacyChineseRenderer{}` 字面量与零值文案不变。accountsvc 曾在本版本内新增 `ACCOUNTSVC_SMTP_BRAND`，发布前已撤回：服务改用下文的邮件模板清单，品牌写在清单里。
+- **邮件模板清单**：accountsvc 新增可选 `ACCOUNTSVC_SMTP_TEMPLATES_FILE`，用内置布局和清单里的多语言文字渲染 HTML 加纯文本的验证码邮件，并按请求的 `Accept-Language` 选择语言（见[服务手册](accountsvc.md#邮件模板清单)）。
+  - **服务邮件行为变化**：accountsvc 不再使用 `LegacyChineseRenderer`。未设置清单时改为嵌入的无品牌默认清单（简体、繁体、英文，HTML 加纯文本，新版式），启动时记录 WARN；原纯文本中文邮件的逐字内容不再由服务输出。库的 `smtp.New` 默认值、`NewWithRenderer` 和公开 Go API 均不变，不新增依赖。
+  - 品牌只来自清单；`ACCOUNTSVC_SMTP_BRAND` 已删除。
+  - EMAIL 启用时，配置了清单记录 INFO（版本、摘要、语言列表），未配置记录 WARN。
+  - 新增离线子命令 `accountsvc email-templates check`。
+  - 网关需要透传 `Accept-Language`；客户端应把界面语言放进该请求头。
+
+## 消费者 access 改用 ES256 与严格内省
+
+本节随 v0.7.0 发布（准备中），对 v0.6.0 不兼容，不提供旧配置、旧令牌或旧数据迁移。
+
+- **签名算法**：消费者 access token 由 HS256 改为 ES256（P-256），header 增加 `typ: at+jwt`（RFC 9068），`kid` 仍为十进制版本号，claims 不变。HS256 完全移除，accountkit 自身验签也拒绝 HS256、`none` 与缺少/错误的 `typ`。
+- **配置**：`accountkit.Config.JWTKeys` 由 `map[uint16][]byte` 改为 `map[uint16]*ecdsa.PrivateKey`（只接受 P-256），`tokens.Options.Keys` 同理，`tokens.MinKeyLen` 移除；Go 宿主在编译期即可发现。环境变量 `JWT_KEYS` 名称与 `版本:base64` 列表格式不变，值改为 PKCS#8 DER 的 base64；旧的 HMAC 随机字节值会被拒绝并指出变量名，不回显密钥。生成命令（`genpkey` 默认输出 PEM，须经 `pkcs8 -topk8` 转为 DER）：
+
+  ```bash
+  openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 | openssl pkcs8 -topk8 -nocrypt -outform DER | base64 -w0
+  ```
+
+  宿主测试可直接用 `ecdsa.GenerateKey(elliptic.P256(), rand.Reader)` 构造密钥，库不导出测试辅助包。
+- **已签发令牌**：升级后旧 HS256 access 全部失效，客户端收到 401 后用 refresh token 刷新一次即可；refresh token 是数据库中的不透明凭据，不受影响。回退到旧版本时须同时恢复旧的 HS256 配置，此时 ES256 access 同样失效，客户端刷新即可。
+- **新增能力**：`Auth.JWKSHandler()` 输出验签公钥集，accountsvc 挂载于 `GET /.well-known/jwks.json`；`user.Service.AuthenticateStrict` 与 `Auth.RequireScopeStrict`（`httpapi/authn.RequireScopeStrict`）以已提交的数据库会话判定吊销，供关键路由使用。`Authenticate`、`RequireScope` 的 JWT + Redis 吊销及 fail-open 行为不变。
+- **内省语义（BREAKING）**：`POST /v1/introspect` 改为在 JWT 校验后查询数据库会话，不再读取 Redis 吊销集。吊销提交后立即返回 `active:false`，不受 Redis 写入/读取失败影响；数据库不可用时返回503 `temporarily_unavailable`，不再 fail-open 返回 `active:true`。刷新期限已到但未吊销的会话仍为 active。依赖“Redis 故障时内省仍放行”的调用方须按依赖不可用处理503。
+- **接入方式**：业务服务由“每个受保护请求都内省”改为分级：普通接口用 JWKS 本地验签，关键接口每次内省，见 [accountsvc 接入说明](accountsvc.md#分级校验)。只使用嵌入库的宿主无需改动路由，可按需把关键路由换成 `RequireScopeStrict`。
+- **数据库**：无结构变化、无迁移；内省与严格认证每次多一次按主键的会话查询。
+
 ## 统一凭证信封与身份类型字符串
 
 本节随 v0.6.0 发布，对 v0.5.0 不兼容，不提供旧数据迁移。

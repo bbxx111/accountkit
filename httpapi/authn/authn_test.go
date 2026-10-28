@@ -180,3 +180,73 @@ func TestPrincipalFromEmpty(t *testing.T) {
 		t.Fatal("empty ctx must not carry a principal")
 	}
 }
+
+// fakeStrict 模拟以数据库为准的严格认证：revoked 中的令牌签名有效但会话已吊销。
+type fakeStrict struct {
+	tokens  map[string]user.Principal
+	revoked map[string]bool
+	err     error
+	calls   *int
+}
+
+func (f fakeStrict) AuthenticateStrict(_ context.Context, raw string) (user.Principal, error) {
+	*f.calls++
+	if f.err != nil {
+		return user.Principal{}, f.err
+	}
+	p, ok := f.tokens[raw]
+	if !ok || f.revoked[raw] {
+		return user.Principal{}, fmt.Errorf("%w: revoked", user.ErrInvalidToken)
+	}
+	return p, nil
+}
+
+func TestRequireScopeStrict(t *testing.T) {
+	alice := user.Principal{UserID: "u_alice", SessionID: "s_1", Scope: user.ScopeUser, AuthTime: now.Add(-time.Minute)}
+	bind := user.Principal{UserID: "u_bind", SessionID: "s_2", Scope: user.ScopeBind, AuthTime: now.Add(-time.Minute)}
+	stale := user.Principal{UserID: "u_stale", SessionID: "s_3", Scope: user.ScopeUser, AuthTime: now.Add(-time.Hour)}
+	toks := map[string]user.Principal{"good": alice, "bind": bind, "revoked": alice, "stale": stale}
+	calls := 0
+	strict := fakeStrict{tokens: toks, revoked: map[string]bool{"revoked": true}, calls: &calls}
+	plain := fakeAuth{tokens: toks} // 普通认证（Redis fail-open 场景）放行已吊销令牌
+	reached := 0
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached++; echo().ServeHTTP(w, r) })
+	h := authn.RequireScopeStrict(strict, user.ScopeUser)(next)
+
+	if rec := do(h, ""); rec.Code != 401 || reason(t, rec) != "UNAUTHENTICATED/TOKEN_MISSING" {
+		t.Fatalf("missing: %d", rec.Code)
+	}
+	rec := do(h, "Bearer revoked")
+	if rec.Code != 401 || reason(t, rec) != "UNAUTHENTICATED/TOKEN_INVALID" || !strings.Contains(rec.Header().Get("WWW-Authenticate"), `error="invalid_token"`) {
+		t.Fatalf("revoked: %d %v", rec.Code, rec.Header())
+	}
+	if rec := do(h, "Bearer bind"); rec.Code != 403 || reason(t, rec) != "PERMISSION_DENIED/INSUFFICIENT_SCOPE" {
+		t.Fatalf("scope: %d", rec.Code)
+	}
+	if rec := do(h, "Bearer good"); rec.Code != 200 || !strings.Contains(rec.Body.String(), "u_alice") {
+		t.Fatalf("good: %d %s", rec.Code, rec.Body)
+	}
+
+	// 外层普通 RequireScope 已注入 Principal，内层严格中间件仍须重新认证
+	calls, reached = 0, 0
+	nested := authn.RequireScope(opts(plain), user.ScopeUser)(h)
+	if rec := do(nested, "Bearer revoked"); rec.Code != 401 || calls != 1 || reached != 0 {
+		t.Fatalf("nested strict must re-authenticate: code=%d calls=%d reached=%d", rec.Code, calls, reached)
+	}
+
+	// 依赖不可用：503，不调用下游
+	reached = 0
+	down := authn.RequireScopeStrict(fakeStrict{err: fmt.Errorf("%w: db down", user.ErrUnavailable), calls: new(int)}, user.ScopeUser)(next)
+	if rec := do(down, "Bearer good"); rec.Code != 503 || reached != 0 {
+		t.Fatalf("unavailable: %d reached=%d", rec.Code, reached)
+	}
+
+	// 与 RequireRecentAuth 串联
+	chain := authn.RequireScopeStrict(strict, user.ScopeUser)(authn.RequireRecentAuth(opts(plain), 5*time.Minute, true)(next))
+	if rec := do(chain, "Bearer stale"); rec.Code != 400 || reason(t, rec) != "FAILED_PRECONDITION/REAUTHENTICATION_REQUIRED" {
+		t.Fatalf("stale: %d", rec.Code)
+	}
+	if rec := do(chain, "Bearer good"); rec.Code != 200 {
+		t.Fatalf("fresh: %d", rec.Code)
+	}
+}

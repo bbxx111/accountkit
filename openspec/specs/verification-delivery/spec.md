@@ -8,9 +8,9 @@
 
 ### Requirement: 真实 SMTP 邮件投递
 
-项目 SHALL 提供可选 SMTP 邮件发送能力，支持登录、绑定、重新认证及登录补全用途，消息 SHALL 包含对应验证码和有效期。补全投递 SHALL 通过独立 /users:sendSignInCompletionCode 触发，普通 /users:sendSignInCode 不接收补全票据或切换用途。accountsvc SHALL 在 EMAIL 启用时使用 SMTP 邮件，未启用时无需邮件依赖；其现有未配置身份策略的默认部署继续使用 SMTP 并禁用短信，不使用日志发送器作为运行回退。
+项目 SHALL 提供可选的 SMTP 邮件发送能力，支持登录、绑定、重新认证和登录补全四种用途。消息 SHALL 包含对应的验证码和有效期。补全投递 SHALL 通过独立的 /users:sendSignInCompletionCode 触发，普通的 /users:sendSignInCode 不接收补全票据，也不切换用途。accountsvc SHALL 在 EMAIL 启用时使用 SMTP 邮件，EMAIL 未启用时不需要邮件依赖；现有未配置身份策略的默认部署继续使用 SMTP 并禁用短信，不使用日志发送器作为运行时回退。
 
-旧 smtp.New(Config) 函数签名及 Config 结构 SHALL 保持，继续采用独立的 LegacyChineseRenderer 提供既有四用途中文纯文本文案；新宿主 SHALL 能通过 NewWithRenderer 显式选择自己的渲染器。accountsvc SHALL 显式注入 LegacyChineseRenderer，保留原中文邮件内容、部署配置和 EMAIL 禁用行为；本变更 SHALL 不新增 accountsvc 语言协商或模板管理配置。
+旧的 smtp.New(Config) 函数签名及 Config 结构 SHALL 保持，继续采用独立的 LegacyChineseRenderer 提供既有的四用途中文纯文本文案。新宿主 SHALL 能通过 NewWithRenderer 显式选择自己的渲染器。accountsvc SHALL 使用内置布局与清单提供的多语言文字渲染 HTML 和纯文本两部分，未配置清单时使用嵌入的无品牌默认清单，不得按用途或语言部分回落；accountsvc SHALL 不再使用 LegacyChineseRenderer，EMAIL 禁用行为保持；语言 SHALL 按请求的 `Accept-Language` 在已配置的语言间选择，不按 IP、手机号或保存的用户偏好推断。accountsvc SHALL 不内嵌图片或附件。
 
 #### Scenario: 邮件登录闭环
 
@@ -34,8 +34,13 @@
 
 #### Scenario: 独立服务显式装配
 
-- **WHEN** accountsvc 启用 EMAIL，或运行 EMAIL 禁用的 serve / migrate
-- **THEN** 前者显式选择兼容中文渲染器完成邮件投递；后者继续遵循原 SMTP 依赖边界，不新增模板或语言依赖
+- **WHEN** accountsvc 启用 EMAIL 且未配置模板清单，或运行 EMAIL 禁用的 serve / migrate
+- **THEN** 前者用内置布局与嵌入的无品牌默认清单完成邮件投递并记录 WARN；后者继续遵循原 SMTP 依赖边界，不读取模板清单或引入语言依赖
+
+#### Scenario: 独立服务使用模板清单
+
+- **WHEN** accountsvc 启用 EMAIL 并配置了含 zh-Hans、zh-Hant、en 的合法模板清单，两个请求分别携带 `Accept-Language: zh-HK` 与 `Accept-Language: en-GB`
+- **THEN** 前者收到繁体文字及繁体品牌的邮件，后者收到英文文字及英文品牌的邮件，两封邮件都同时含 HTML 与纯文本部分；验证码用途隔离、有效期与额度规则不变
 
 ### Requirement: 显式禁用渠道
 
@@ -161,3 +166,43 @@ SMTP 适配器的渲染错误、渲染结果校验错误及请求取消 SHALL �
 
 - **WHEN** 请求已取消，或遵守 context 的渲染器在总投递超时内未完成
 - **THEN** 发送失败，不继续建立 SMTP 连接；渲染器与网络投递共用该次总预算，超时不得在渲染后重置
+
+### Requirement: 发送器声明不支持的号码
+
+库 SHALL 支持发送器可选实现的号码支持能力。发码流程（登录、绑定、重新认证、登录补全）在目标规范化之后、占用验证码轮次、冷却与额度之前，SHALL 询问该能力。发送器声明不支持时：
+
+- SHALL 返回不支持目标错误；
+- HTTP 层映射为 400 `TARGET_NOT_SUPPORTED`；
+- SHALL 记录 `CODE_SEND_REJECTED` 审计，原因为 `TARGET_NOT_SUPPORTED`；
+- SHALL 不生成验证码，不扣冷却或额度，不调用发送接口。
+
+未实现该能力的发送器 SHALL 保持原行为（接受全部规范化后的目标）；包装发送器的装饰器须转发该能力，否则预检不生效。指标沿用既有的参数拒绝分类，不新增标签值。
+
+#### Scenario: 不支持的号码在占额度之前被拒绝
+- **WHEN** 短信发送器只支持中国大陆号码，客户端请求向 `+14155550123` 发送登录验证码
+- **THEN** 返回 400 `TARGET_NOT_SUPPORTED`，没有新的验证码轮次、冷却或额度变化，发送器未被调用
+
+#### Scenario: 旧发送器不受影响
+- **WHEN** 宿主注入的短信发送器未实现号码支持能力
+- **THEN** 任意合法 E.164 号码按原流程发送
+
+### Requirement: 内置中文渲染器品牌前缀
+
+内置中文邮件渲染器 SHALL 支持可选的品牌前缀。设置后：
+
+- 标题为“<品牌><用途>验证码”；
+- 正文以“【<品牌>】”开头，其余内容不变。
+
+未设置或为空时，标题与正文 SHALL 与现有输出逐字一致。品牌值 SHALL 为 1 至 32 个 Unicode 码位，不得包含换行或其他控制字符、格式字符（如双向覆盖、零宽字符）或行/段分隔符，不得有首尾空白；不合法的品牌 SHALL 在发送器构造或服务配置阶段被拒绝，渲染时 SHALL 不输出未经校验的品牌。
+
+#### Scenario: 带品牌的登录邮件
+- **WHEN** 品牌为“食方”，渲染登录验证码
+- **THEN** 标题为“食方登录验证码”，正文以“【食方】您正在进行登录。”开头
+
+#### Scenario: 未设置品牌
+- **WHEN** 品牌为空
+- **THEN** 四种用途的标题与正文与变更前逐字一致
+
+#### Scenario: 拒绝邮件头注入
+- **WHEN** 品牌包含 CR/LF、其他控制字符、超过 32 个码位或首尾空白
+- **THEN** 配置被拒绝并指出配置项，不发送邮件

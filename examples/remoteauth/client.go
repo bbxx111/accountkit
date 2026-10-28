@@ -1,5 +1,7 @@
-// Package remoteauth demonstrates per-request authentication for a business
-// service. It is optional example code, not a dependency of the accountkit library.
+// Package remoteauth demonstrates how a business service authenticates accountsvc
+// consumer tokens: local ES256 verification against the JWKS for ordinary routes,
+// plus per-request introspection for critical routes that need immediate
+// revocation. It is optional example code, not a dependency of the accountkit library.
 package remoteauth
 
 import (
@@ -25,6 +27,11 @@ var ErrUnavailable = errors.New("remote authentication unavailable")
 // explicitly permits local development or an application connection protected
 // by a controlled TLS proxy/service mesh. Deployment owns that transport boundary;
 // HTTPS endpoints still require certificate verification.
+//
+// The example authenticates to accountsvc with HTTP Basic. accountsvc also accepts a
+// client-credentials Bearer access token whose azp is listed in
+// ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS; such callers set that Authorization header
+// instead and refresh the token once after a 401 invalid_token.
 type Config struct {
 	Endpoint, ClientID, ClientSecret string
 	HTTPClient                       *http.Client

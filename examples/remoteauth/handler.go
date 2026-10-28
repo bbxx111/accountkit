@@ -11,11 +11,18 @@ import (
 	"github.com/bbxx111/accountkit/user"
 )
 
-// ProtectedHandler is an example sensitive business endpoint, mounted as e.g.
+// ProtectedHandler is an example business endpoint, mounted as e.g.
 // GET /documents/{resource} with net/http.ServeMux. A real handler would read or
 // modify its resource after these checks; this example returns 204 on success.
+//
+// Tiered verification: with a Verifier the token is first checked locally against
+// the JWKS. Ordinary routes stop there and accept revocation delay up to the access
+// TTL. Critical routes (Critical=true), or handlers without a Verifier, additionally
+// call introspection on every request, which reflects revocation immediately.
 type ProtectedHandler struct {
 	Client     *Client
+	Verifier   *Verifier
+	Critical   bool
 	MaxAuthAge time.Duration
 	Now        func() time.Time
 	// OwnsResource must constrain the business lookup by BOTH userID and resourceID
@@ -31,18 +38,33 @@ func (h ProtectedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		authn.WriteUnauthenticated(w, authn.ReasonTokenMissing, "bearer token required")
 		return
 	}
-	if h.Client == nil || h.OwnsResource == nil || h.MaxAuthAge <= 0 {
+	introspect := h.Verifier == nil || h.Critical
+	if (introspect && h.Client == nil) || h.OwnsResource == nil || h.MaxAuthAge <= 0 {
 		unavailable(w)
 		return
 	}
-	principal, err := h.Client.Introspect(r.Context(), token)
-	if err != nil {
-		unavailable(w)
-		return
+	var principal Result
+	var err error
+	if h.Verifier != nil {
+		// Local check first, so invalid tokens never cost an introspection call.
+		if principal, err = h.Verifier.Verify(r.Context(), token); err != nil {
+			unavailable(w)
+			return
+		}
+		if !principal.Active {
+			authn.WriteUnauthenticated(w, authn.ReasonTokenInvalid, "invalid or expired access token")
+			return
+		}
 	}
-	if !principal.Active {
-		authn.WriteUnauthenticated(w, authn.ReasonTokenInvalid, "invalid or expired access token")
-		return
+	if introspect {
+		if principal, err = h.Client.Introspect(r.Context(), token); err != nil {
+			unavailable(w)
+			return
+		}
+		if !principal.Active {
+			authn.WriteUnauthenticated(w, authn.ReasonTokenInvalid, "invalid or expired access token")
+			return
+		}
 	}
 	if principal.Scope != user.ScopeUser {
 		apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, "INSUFFICIENT_SCOPE", "token scope does not permit this operation"))
@@ -63,7 +85,7 @@ func (h ProtectedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	owns, err := h.OwnsResource(r.Context(), principal.Subject, resourceID)
 	if err != nil {
-		unavailable(w)
+		resourceUnavailable(w)
 		return
 	}
 	if !owns {
@@ -73,6 +95,13 @@ func (h ProtectedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// unavailable reports an authentication dependency failure exactly like the library's
+// Bearer middleware (same body and Retry-After), so clients need not tell the sources apart.
 func unavailable(w http.ResponseWriter) {
-	apierror.Write(w, apierror.New(apierror.StatusUnavailable, "DEPENDENCY_UNAVAILABLE", "authentication or resource service temporarily unavailable"))
+	apierror.Write(w, &apierror.Error{Status: apierror.StatusUnavailable, Reason: "DEPENDENCY_UNAVAILABLE", Message: "authentication temporarily unavailable", RetryAfterSeconds: 1})
+}
+
+// resourceUnavailable reports a business resource lookup failure (not an authentication problem).
+func resourceUnavailable(w http.ResponseWriter) {
+	apierror.Write(w, apierror.New(apierror.StatusUnavailable, "DEPENDENCY_UNAVAILABLE", "resource service temporarily unavailable"))
 }

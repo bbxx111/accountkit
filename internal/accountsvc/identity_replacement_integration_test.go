@@ -17,8 +17,8 @@ import (
 
 func TestServiceIntegrationIdentityReplacement(t *testing.T) {
 	f := newIntegration(t)
-	f.env["ACCOUNTKIT_REAUTH_MAX_AGE"] = "5s"
-	f.env["ACCOUNTKIT_MAX_IDENTITIES_PER_KIND"] = "2"
+	f.env["ACCOUNTSVC_REAUTH_MAX_AGE"] = "5s"
+	f.env["ACCOUNTSVC_MAX_IDENTITIES_PER_KIND"] = "2"
 	p := f.start(nil)
 	const oldTarget, newTarget, retainedTarget = "replace-old@example.test", "replace-new@example.test", "replace-retained@example.test"
 	f.secrets = append(f.secrets, oldTarget, newTarget, retainedTarget)
@@ -87,7 +87,7 @@ func TestServiceIntegrationIdentityReplacement(t *testing.T) {
 		t.Fatal("expired auth did not require reauthentication")
 	}
 	f.call("POST", p.baseURL+"/v1/users/me:sendReauthenticationCode", access, map[string]string{"channel": "EMAIL", "target": retainedTarget}, 200)
-	reauthCode := mail(retainedTarget, "重新认证")
+	reauthCode := mail(retainedTarget, "身份验证")
 	reauth := f.call("POST", p.baseURL+"/v1/users/me:reauthenticate", access, map[string]any{"kind": "EMAIL", "credential": map[string]string{"code_id": f.codeID(retainedTarget), "target": retainedTarget, "code": reauthCode}}, 200)
 	if _, ok := reauth["refresh_token"]; ok {
 		t.Fatal("reauthentication returned unexpected refresh token")

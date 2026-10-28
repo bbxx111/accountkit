@@ -21,6 +21,7 @@ import (
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/migrations"
 	"github.com/bbxx111/accountkit/user"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -83,10 +84,12 @@ func seedFormatFixture(t *testing.T, pool *pgxpool.Pool, cfg accountkit.Config) 
 		t.Fatal(err)
 	}
 	b64 := base64.RawURLEncoding.EncodeToString
-	signed := b64([]byte(`{"alg":"HS256","kid":"1","typ":"JWT"}`)) + "." + b64(claims)
-	mac = hmac.New(sha256.New, cfg.JWTKeys[1])
-	mac.Write([]byte(signed))
-	return f, signed + "." + b64(mac.Sum(nil))
+	signed := b64([]byte(`{"alg":"ES256","kid":"1","typ":"at+jwt"}`)) + "." + b64(claims)
+	sig, err := jwt.SigningMethodES256.Sign(signed, cfg.JWTKeys[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return f, signed + "." + b64(sig)
 }
 
 func snapshotSource(t *testing.T, pool *pgxpool.Pool) string {

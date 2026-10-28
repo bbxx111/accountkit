@@ -204,6 +204,8 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, r *http.Request, err 
 		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "TARGET_NOT_ANCHOR", "target must be a phone or email already bound to this account"))
 	case errors.Is(err, sender.ErrDisabled):
 		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "CHANNEL_NOT_ENABLED", "verification channel is not enabled"))
+	case errors.Is(err, sender.ErrTargetNotSupported):
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "TARGET_NOT_SUPPORTED", "verification target is not supported by this deployment"))
 	case errors.Is(err, user.ErrUserFrozen):
 		apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, "USER_FROZEN", "this account is frozen"))
 	case errors.Is(err, user.ErrUserPendingDeletion):

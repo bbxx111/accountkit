@@ -39,8 +39,8 @@ func TestConsolidatedInitialSchema(t *testing.T) {
 	if err := c.QueryRow(context.Background(), "SELECT count(*) FROM pg_tables WHERE schemaname=$1 AND tablename <> 'schema_migrations'", schema).Scan(&tables); err != nil {
 		t.Fatal(err)
 	}
-	if tables != 7 {
-		t.Fatalf("business tables = %d, want 7", tables)
+	if tables != 8 {
+		t.Fatalf("business tables = %d, want 8", tables)
 	}
 	if _, err := c.Exec(context.Background(), "INSERT INTO user_account(id,state) VALUES('u_0000000000001',1)"); err != nil {
 		t.Fatal(err)
@@ -200,6 +200,9 @@ END $$`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := old.Exec(ctx, identityKindTextDDL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := old.Exec(ctx, purgedUserDDL); err != nil {
 		t.Fatal(err)
 	}
 	initialUp(t, cfg, newSchema)

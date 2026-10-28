@@ -89,7 +89,8 @@ func TestObserverSharedAcrossRootMaintenance(t *testing.T) {
 				items++
 			}
 		}
-		if rounds != 1 || runs != 6 || items != 1 {
+		// 六个内置分类任务加 cleanup_purged_users（归入 other 分类，未配置保留期时空跑）。
+		if rounds != 1 || runs != 7 || items != 1 {
 			t.Fatalf("instance %d: round=%d runs=%d items=%d", instance, rounds, runs, items)
 		}
 		for _, event := range shared.Snapshot()[start:] {

@@ -39,9 +39,9 @@ func TestServiceProfileAttributesHTTP(t *testing.T) {
 	serveEnvironment(t)
 	schema := fmt.Sprintf("svc_profile_%08x", rand.Uint32())
 	t.Setenv("ACCOUNTSVC_DATABASE_URL", dsn)
-	t.Setenv("ACCOUNTKIT_AUTH_SCHEMA", schema)
-	t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "EMAIL")
-	t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "EMAIL")
+	t.Setenv("ACCOUNTSVC_AUTH_SCHEMA", schema)
+	t.Setenv("ACCOUNTSVC_ENABLED_IDENTITY_KINDS", "EMAIL")
+	t.Setenv("ACCOUNTSVC_REQUIRED_IDENTITY_KINDS", "EMAIL")
 	t.Setenv("ACCOUNTSVC_PROFILE_ATTRIBUTES_SCHEMA_FILE", profileSchemaFile(t, serviceProfileSchema))
 	cfg, err := LoadConfig("serve")
 	if err != nil {
@@ -92,7 +92,7 @@ func TestServiceProfileAttributesHTTP(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(app.close)
-		return serviceHandler(cfg, app.endUser, app.admin, app.introspect, &healthState{})
+		return serviceHandler(cfg, app.endUser, app.admin, app.introspect, app.purgeFeed, app.jwks, &healthState{})
 	}
 	call := func(h http.Handler, method, path, body string, status int) *httptest.ResponseRecorder {
 		t.Helper()

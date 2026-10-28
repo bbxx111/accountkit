@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -95,6 +96,7 @@ type Auth struct {
 	cipher   *pii.Cipher
 	digester *pii.Digester
 	signer   *tokens.Signer
+	jwks     []byte // 构造时生成，JWKSHandler 只读
 	runner   *maintenance.Runner
 	facebook *idp.Facebook // 未配置时为 nil；数据删除入口使用
 
@@ -205,7 +207,7 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &Auth{authAudit: authAudit, cfg: cfg, deps: deps, cipher: cipher, digester: digester, signer: signer, auditStore: auditStore, auditAsync: auditAsync}
+	a := &Auth{authAudit: authAudit, cfg: cfg, deps: deps, cipher: cipher, digester: digester, signer: signer, jwks: signer.JWKS(), auditStore: auditStore, auditAsync: auditAsync}
 	a.codes = code.NewStore(deps.Redis, cfg.KeyPrefix, digester, code.Options{
 		TTL: cfg.CodeTTL, Cooldown: cfg.CodeCooldown, MaxAttempts: cfg.CodeMaxAttempts,
 		DailyLimitPerTarget: cfg.CodeDailyLimitPerTarget, DailyLimitPerIP: cfg.CodeDailyLimitPerIP,
@@ -233,6 +235,7 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 		ProviderProfileBackfill: cfg.ProviderProfileBackfill,
 		MaxIdentitiesPerKind:    cfg.MaxIdentitiesPerKind,
 		DeletionCoolingPeriod:   cfg.DeletionCoolingPeriod,
+		PurgedUserRetention:     cfg.PurgedUserRetention,
 		Anonymizers:             deps.Anonymizers,
 		BeforeDelete:            deps.BeforeDelete,
 	})
@@ -275,6 +278,13 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 			n, err := users.PurgeDueUsers(ctx)
 			if n > 0 {
 				deps.Logger.Info("maintenance: purged users", "count", n)
+			}
+			return err
+		}},
+		maintenance.Task{Name: "cleanup_purged_users", Run: func(ctx context.Context) error {
+			n, err := users.CleanupPurgedUsers(ctx) // 未配置保留期时不删除
+			if n > 0 {
+				deps.Logger.Info("maintenance: deleted expired purged user records", "count", n)
 			}
 			return err
 		}},
@@ -334,9 +344,35 @@ func (a *Auth) RecordAdminForbidden(r *http.Request, p AdminPrincipal) {
 	})
 }
 
+// JWKSHandler 返回消费者 access 验签公钥集（JWK Set），宿主挂载到 /.well-known/jwks.json 等路径。
+// 只支持 GET/HEAD，内容在 New 时由配置生成，不访问数据库或 Redis；响应可公共缓存 5 分钟。
+func (a *Auth) JWKSHandler() http.Handler {
+	body := a.jwks
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=300")
+		w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		w.WriteHeader(http.StatusOK)
+		if r.Method == http.MethodGet {
+			_, _ = w.Write(body)
+		}
+	})
+}
+
 // RequireScope 返回“Bearer 认证 + scope 检查”中间件，供宿主业务路由使用。
 func (a *Auth) RequireScope(allowed ...string) func(http.Handler) http.Handler {
 	return authn.RequireScope(a.endUser.AuthnOptions(), allowed...)
+}
+
+// RequireScopeStrict 返回关键路由用的“严格认证 + scope 检查”中间件：401/403 行为与 RequireScope 一致，
+// 但吊销以已提交的数据库会话为准（不读 Redis），数据库不可用返回 503。外层已有 RequireScope 时仍重新认证。
+func (a *Auth) RequireScopeStrict(allowed ...string) func(http.Handler) http.Handler {
+	return authn.RequireScopeStrict(a.users, allowed...)
 }
 
 // RequireRecentAuth 返回近期认证中间件（Config.ReauthMaxAge / SensitiveOpVerification）。
@@ -408,8 +444,8 @@ func (a *Auth) Close() {
 	})
 }
 
-// RunMaintenanceOnce 立即执行一轮维护任务（抢 advisory lock → purge_users → cleanup_sessions → audit_retention →
-// rekey_digests → reencrypt_subjects），返回是否抢到锁。供宿主的一次性作业与测试使用；Start 的 ticker 每轮做的就是这件事。
+// RunMaintenanceOnce 立即执行一轮维护任务（抢 advisory lock → cleanup_sign_in_completion_flows → purge_users →
+// cleanup_purged_users → cleanup_sessions → audit_retention → rekey_digests → reencrypt_subjects），返回是否抢到锁。供宿主的一次性作业与测试使用；Start 的 ticker 每轮做的就是这件事。
 // 须在 Close 之前调用：Close 之后维护任务产生的审计事件会被丢弃并计数。
 func (a *Auth) RunMaintenanceOnce(ctx context.Context) bool { return a.runner.RunOnce(ctx) }
 

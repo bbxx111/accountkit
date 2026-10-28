@@ -3,8 +3,6 @@ package introspection
 
 import (
 	"context"
-	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"io"
@@ -12,41 +10,82 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
+	"github.com/bbxx111/accountkit/internal/accountsvc/basicclients"
+	"github.com/bbxx111/accountkit/internal/accountsvc/serviceauth"
 	"github.com/bbxx111/accountkit/user"
 )
 
 const maxBody = 64 * 1024
 
+// lookupTimeout bounds token validation (including the session lookup), so a hung
+// database yields 503 instead of holding the request until the caller gives up.
+const lookupTimeout = 3 * time.Second
+
+// Realm is the protection space named in this interface's challenges.
+const Realm = "accountsvc-introspection"
+
 type handler struct {
-	clients      map[string][][sha256.Size]byte
+	auth         *serviceauth.Authenticator
 	authenticate func(context.Context, string) (user.Principal, error)
 }
 
-// New snapshots validated client credentials and delegates token validation to the
-// existing consumer service. It neither parses JWT claims nor queries account state.
+// New accepts only HTTP Basic callers. It snapshots validated client credentials and
+// delegates token validation to the consumer service's strict authenticator, which checks
+// the committed session row (revocation is immediate, dependency failures map to 503). It
+// never parses JWT claims itself and does not query account state. Without clients the
+// route answers 503 introspection_not_configured.
 func New(clients map[string][]string, authenticate func(context.Context, string) (user.Principal, error)) (http.Handler, error) {
-	if err := validateClients(clients); err != nil {
+	if len(clients) > 0 && !basicclients.Valid(clients) {
+		return nil, errors.New("accountsvc: ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS must contain unique nonempty client IDs and lists of base64 secrets of at least 32 bytes")
+	}
+	cfg := serviceauth.Config{Realm: Realm, Endpoint: "introspect"}
+	if len(clients) > 0 {
+		cfg.Basic = clients
+	}
+	auth, err := serviceauth.New(cfg)
+	if err != nil {
 		return nil, err
+	}
+	return NewWithAuthenticator(auth, authenticate)
+}
+
+// NewWithAuthenticator accepts the callers auth allows (Basic and/or service Bearer tokens).
+// An auth with no method enabled yields 503 introspection_not_configured.
+func NewWithAuthenticator(auth *serviceauth.Authenticator, authenticate func(context.Context, string) (user.Principal, error)) (http.Handler, error) {
+	if auth == nil {
+		return nil, errors.New("accountsvc: introspection caller authenticator is required")
 	}
 	if authenticate == nil {
 		return nil, errors.New("accountsvc: introspection authenticator is required")
 	}
-	h := &handler{clients: make(map[string][][sha256.Size]byte, len(clients)), authenticate: authenticate}
-	for id, secrets := range clients {
-		for _, secret := range secrets {
-			h.clients[id] = append(h.clients[id], sha256.Sum256([]byte(secret)))
-		}
-	}
-	return h, nil
+	return &handler{auth: auth, authenticate: authenticate}, nil
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
-	if !h.authorized(r) {
-		w.Header().Set("WWW-Authenticate", `Basic realm="accountsvc-introspection"`)
-		oauthError(w, http.StatusUnauthorized, "invalid_client")
+	if !h.auth.Enabled() {
+		oauthError(w, http.StatusServiceUnavailable, "introspection_not_configured")
+		return
+	}
+	res := h.auth.Authenticate(r)
+	switch res.Outcome {
+	case serviceauth.Unauthenticated:
+		serviceauth.WriteChallenges(w, h.auth.Challenges(res))
+		code := "invalid_client"
+		if res.BearerAttempted {
+			code = "invalid_token"
+		}
+		oauthError(w, http.StatusUnauthorized, code)
+		return
+	case serviceauth.Forbidden:
+		serviceauth.WriteChallenges(w, h.auth.Challenges(res))
+		oauthError(w, http.StatusForbidden, "insufficient_scope")
+		return
+	case serviceauth.Unavailable:
+		oauthError(w, http.StatusServiceUnavailable, "temporarily_unavailable")
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -75,7 +114,9 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
-	principal, err := h.authenticate(r.Context(), form.Get("token"))
+	ctx, cancel := context.WithTimeout(r.Context(), lookupTimeout)
+	defer cancel()
+	principal, err := h.authenticate(ctx, form.Get("token"))
 	if errors.Is(err, user.ErrInvalidToken) {
 		writeJSON(w, http.StatusOK, struct {
 			Active bool `json:"active"`
@@ -93,24 +134,6 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		SID      string `json:"sid"`
 		AuthTime int64  `json:"auth_time"`
 	}{true, principal.UserID, principal.Scope, principal.SessionID, principal.AuthTime.Unix()})
-}
-
-func (h *handler) authorized(r *http.Request) bool {
-	if len(r.Header.Values("Authorization")) != 1 {
-		return false
-	}
-	id, password, ok := r.BasicAuth()
-	if !ok {
-		return false
-	}
-	digest := sha256.Sum256([]byte(password))
-	match := 0
-	// Compare fixed-size hashes and inspect every rotation entry, never return on
-	// the first match. The public client ID selects its permitted secrets.
-	for _, expected := range h.clients[id] {
-		match |= subtle.ConstantTimeCompare(digest[:], expected[:])
-	}
-	return match == 1
 }
 
 func oauthError(w http.ResponseWriter, status int, code string) {

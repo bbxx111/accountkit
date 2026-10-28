@@ -1,10 +1,12 @@
 package accountkit_test
 
 import (
-	"github.com/bbxx111/accountkit"
-	"github.com/bbxx111/accountkit/enum"
 	"strings"
 	"testing"
+
+	"github.com/bbxx111/accountkit"
+	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/testkeys"
 )
 
 func TestWeChatMiniProgramConfig(t *testing.T) {
@@ -33,7 +35,7 @@ func TestWeChatMiniProgramConfig(t *testing.T) {
 
 func TestWeChatMiniProgramEnv(t *testing.T) {
 	const p = "MINI_CONFIG_"
-	t.Setenv(p+"JWT_KEYS", "1:"+b64(k(1)))
+	t.Setenv(p+"JWT_KEYS", "1:"+testkeys.JWTBase64(1))
 	t.Setenv(p+"JWT_ACTIVE_KEY", "1")
 	t.Setenv(p+"JWT_ISSUER", "issuer")
 	t.Setenv(p+"JWT_AUDIENCE", "consumer")

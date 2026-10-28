@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "default_language": "zh-Hans",
+  "languages": {
+    "zh-Hans": {
+      "common": {
+        "code_label": "您的验证码",
+        "expiry": "验证码 {{ttl_minutes}} 分钟内有效。",
+        "safety": "请勿向任何人透露验证码。如非本人操作，请忽略此邮件，您的账号不会发生任何变化。",
+        "footer": "此邮件由系统自动发送，请勿直接回复。"
+      },
+      "templates": {
+        "SIGN_IN": {
+          "subject": "登录验证码",
+          "heading": "登录验证",
+          "intro": "您正在登录，请在页面中输入以下验证码完成登录。"
+        },
+        "BIND": {
+          "subject": "绑定邮箱验证码",
+          "heading": "绑定邮箱",
+          "intro": "您正在将此邮箱绑定到账号，请输入以下验证码完成绑定。"
+        },
+        "REAUTH": {
+          "subject": "身份验证验证码",
+          "heading": "身份验证",
+          "intro": "您正在进行一项需要确认本人身份的操作，请输入以下验证码继续。"
+        },
+        "SIGN_IN_COMPLETE": {
+          "subject": "登录补全验证码",
+          "heading": "完成登录",
+          "intro": "您正在完成登录并关联身份；如此邮箱尚未注册，将自动注册账号。请输入以下验证码继续。"
+        }
+      }
+    },
+    "zh-Hant": {
+      "common": {
+        "code_label": "您的驗證碼",
+        "expiry": "驗證碼 {{ttl_minutes}} 分鐘內有效。",
+        "safety": "請勿向任何人透露驗證碼。如非本人操作，請忽略此郵件，您的帳號不會有任何變更。",
+        "footer": "此郵件由系統自動發送，請勿直接回覆。"
+      },
+      "templates": {
+        "SIGN_IN": {
+          "subject": "登入驗證碼",
+          "heading": "登入驗證",
+          "intro": "您正在登入，請在頁面中輸入以下驗證碼完成登入。"
+        },
+        "BIND": {
+          "subject": "綁定電子郵件驗證碼",
+          "heading": "綁定電子郵件",
+          "intro": "您正在將此電子郵件綁定到帳號，請輸入以下驗證碼完成綁定。"
+        },
+        "REAUTH": {
+          "subject": "身分驗證驗證碼",
+          "heading": "身分驗證",
+          "intro": "您正在進行一項需要確認本人身分的操作，請輸入以下驗證碼繼續。"
+        },
+        "SIGN_IN_COMPLETE": {
+          "subject": "登入補全驗證碼",
+          "heading": "完成登入",
+          "intro": "您正在完成登入並連結身分；如此電子郵件尚未註冊，將自動註冊帳號。請輸入以下驗證碼繼續。"
+        }
+      }
+    },
+    "en": {
+      "common": {
+        "code_label": "Your verification code",
+        "expiry": "This code expires in {{ttl_minutes}} minutes.",
+        "safety": "Never share this code with anyone. If you didn't request this code, you can safely ignore this email; nothing will change in your account.",
+        "footer": "This is an automated message. Please do not reply."
+      },
+      "templates": {
+        "SIGN_IN": {
+          "subject": "Your sign-in code",
+          "heading": "Sign in",
+          "intro": "Use the code below to sign in."
+        },
+        "BIND": {
+          "subject": "Confirm your email",
+          "heading": "Confirm your email",
+          "intro": "Use the code below to add this email address to your account."
+        },
+        "REAUTH": {
+          "subject": "Confirm it's you",
+          "heading": "Confirm it's you",
+          "intro": "You're about to do something that requires confirming your identity. Use the code below to continue."
+        },
+        "SIGN_IN_COMPLETE": {
+          "subject": "Finish signing in",
+          "heading": "Finish signing in",
+          "intro": "Use the code below to finish signing in and link your account. If this email address isn't registered yet, a new account will be created for you."
+        }
+      }
+    }
+  }
+}

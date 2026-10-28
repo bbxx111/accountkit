@@ -29,6 +29,7 @@ func TestServiceIntegrationEmailLifecycle(t *testing.T) {
 	tokens := f.login(p, "lifecycle@example.test")
 	access, refresh := tokens["access_token"].(string), tokens["refresh_token"].(string)
 	f.introspect(p, access, true)
+	f.verifyLocally(p, access)
 	rotated := f.call("POST", p.baseURL+"/v1/token", "", map[string]string{"grant_type": "refresh_token", "refresh_token": refresh}, 200)
 	replay := f.call("POST", p.baseURL+"/v1/token", "", map[string]string{"grant_type": "refresh_token", "refresh_token": refresh}, 200)
 	if rotated["access_token"] != replay["access_token"] || rotated["refresh_token"] != replay["refresh_token"] {
@@ -44,7 +45,7 @@ func TestServiceIntegrationEmailLifecycle(t *testing.T) {
 	time.Sleep(1100 * time.Millisecond)
 	f.call("POST", p.baseURL+"/v1/users/me:sendReauthenticationCode", access, map[string]string{"channel": "EMAIL", "target": "lifecycle@example.test"}, 200)
 	m := f.smtp.mail(t)
-	if !strings.Contains(m.body, "您正在进行重新认证。") || !strings.Contains(m.body, "验证码："+m.code) || !strings.Contains(m.body, "有效期：5 分钟。") || !strings.Contains(m.body, "请勿向他人透露验证码。") {
+	if !strings.HasPrefix(m.body, "身份验证\n\n您正在进行一项需要确认本人身份的操作") || !strings.Contains(m.body, "\n"+m.code+"\n") || !strings.Contains(m.body, "验证码 5 分钟内有效。") || !strings.Contains(m.body, "请勿向任何人透露验证码。") {
 		t.Fatal("wrong reauthentication email purpose")
 	}
 	f.secrets = append(f.secrets, m.code)
@@ -119,7 +120,7 @@ func TestServiceIntegrationAdminLifecycle(t *testing.T) {
 
 func TestServiceIntegrationDependencyFailure(t *testing.T) {
 	f := newIntegration(t)
-	f.env["ACCOUNTKIT_CODE_COOLDOWN"] = "1m"
+	f.env["ACCOUNTSVC_CODE_COOLDOWN"] = "1m"
 	proxy := newRedisProxy(t, f.redisURL)
 	u, _ := url.Parse(f.redisURL)
 	u.Host = proxy.ln.Addr().String()
@@ -133,7 +134,14 @@ func TestServiceIntegrationDependencyFailure(t *testing.T) {
 		t.Fatal("readiness exceeded two-second budget with scheduling margin")
 	}
 	f.call("GET", p.baseURL+"/healthz", "", nil, 200)
+	// Introspection is database-backed and does not read Redis: still active.
 	f.introspect(p, access, true)
+	// Ordinary Bearer authentication keeps its Redis fail-open contract (warning asserted below).
+	f.call("GET", p.baseURL+"/v1/users/me", access, nil, 200)
+	// Revocation committed while the revocation-set write fails takes effect in
+	// introspection immediately; the plain Bearer path may still accept the access.
+	f.call("POST", p.baseURL+"/v1/revoke", "", map[string]string{"token": tokens["refresh_token"].(string)}, 200)
+	f.introspect(p, access, false)
 	proxy.fail(false)
 	f.call("GET", p.baseURL+"/readyz", "", nil, 200)
 	// SMTP rejection is isolated to send-code and must not make the process unready.
@@ -172,10 +180,10 @@ func (f *integrationFixture) command(extra map[string]string, args ...string) (s
 func TestServiceIntegrationStartupSafety(t *testing.T) {
 	f := newIntegration(t)
 	// Both processes start from an absent schema and use the same migration locks.
-	minimal := map[string]string{"ACCOUNTSVC_SMTP_HOST": "", "ACCOUNTSVC_SMTP_PORT": "", "ACCOUNTSVC_SMTP_FROM": "", "ACCOUNTSVC_SMTP_USERNAME": "", "ACCOUNTSVC_SMTP_PASSWORD": "", "ACCOUNTSVC_INTROSPECTION_CLIENTS": "", "ACCOUNTSVC_TLS_CERT_FILE": "", "ACCOUNTSVC_TLS_KEY_FILE": ""}
-	minimal["ACCOUNTKIT_ENABLED_IDENTITY_KINDS"] = "PHONE,WECHAT"
-	minimal["ACCOUNTKIT_REQUIRED_IDENTITY_KINDS"] = "PHONE"
-	minimal["ACCOUNTKIT_WECHAT_APPS"] = ""
+	minimal := map[string]string{"ACCOUNTSVC_SMTP_HOST": "", "ACCOUNTSVC_SMTP_PORT": "", "ACCOUNTSVC_SMTP_FROM": "", "ACCOUNTSVC_SMTP_USERNAME": "", "ACCOUNTSVC_SMTP_PASSWORD": "", "ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS": "", "ACCOUNTSVC_TLS_CERT_FILE": "", "ACCOUNTSVC_TLS_KEY_FILE": ""}
+	minimal["ACCOUNTSVC_ENABLED_IDENTITY_KINDS"] = "PHONE,WECHAT"
+	minimal["ACCOUNTSVC_REQUIRED_IDENTITY_KINDS"] = "PHONE"
+	minimal["ACCOUNTSVC_WECHAT_APPS"] = ""
 	var wg sync.WaitGroup
 	errs := make(chan error, 2)
 	for range 2 {

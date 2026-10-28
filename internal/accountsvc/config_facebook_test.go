@@ -13,9 +13,9 @@ func TestConfigFacebook(t *testing.T) {
 	}
 	t.Run("missing app secret", func(t *testing.T) {
 		serveEnvironment(t)
-		t.Setenv("ACCOUNTKIT_FACEBOOK_APP_ID", "synthetic-app-id-123")
+		t.Setenv("ACCOUNTSVC_FACEBOOK_APP_ID", "synthetic-app-id-123")
 		_, err := LoadConfig("serve")
-		if err == nil || !strings.Contains(err.Error(), "ACCOUNTKIT_FACEBOOK_APP_SECRET") {
+		if err == nil || !strings.Contains(err.Error(), "ACCOUNTSVC_FACEBOOK_APP_SECRET") {
 			t.Fatalf("missing secret must name variable: %v", err)
 		}
 		for _, leaked := range []string{"synthetic-app-id-123", "synthetic-dsn-password", "synthetic-redis-password", "synthetic-smtp-password"} {
@@ -26,14 +26,14 @@ func TestConfigFacebook(t *testing.T) {
 	})
 	t.Run("invalid optional values name variable without leaking", func(t *testing.T) {
 		for _, tc := range []struct{ key, value string }{
-			{"ACCOUNTKIT_FACEBOOK_GRAPH_API_VERSION", "bad-version"},
-			{"ACCOUNTKIT_FACEBOOK_NONCE_TTL", "1s"},
-			{"ACCOUNTKIT_FACEBOOK_GRAPH_API_BASE_URL", "ftp://synthetic-host"},
-			{"ACCOUNTKIT_FACEBOOK_JWKS_URL", "not-a-url"},
+			{"ACCOUNTSVC_FACEBOOK_GRAPH_API_VERSION", "bad-version"},
+			{"ACCOUNTSVC_FACEBOOK_NONCE_TTL", "1s"},
+			{"ACCOUNTSVC_FACEBOOK_GRAPH_API_BASE_URL", "ftp://synthetic-host"},
+			{"ACCOUNTSVC_FACEBOOK_JWKS_URL", "not-a-url"},
 		} {
 			serveEnvironment(t)
-			t.Setenv("ACCOUNTKIT_FACEBOOK_APP_ID", "synthetic-app-id")
-			t.Setenv("ACCOUNTKIT_FACEBOOK_APP_SECRET", "synthetic-facebook-secret")
+			t.Setenv("ACCOUNTSVC_FACEBOOK_APP_ID", "synthetic-app-id")
+			t.Setenv("ACCOUNTSVC_FACEBOOK_APP_SECRET", "synthetic-facebook-secret")
 			t.Setenv(tc.key, tc.value)
 			_, err := LoadConfig("serve")
 			if err == nil || !strings.Contains(err.Error(), tc.key) {
@@ -48,20 +48,20 @@ func TestConfigFacebook(t *testing.T) {
 	})
 	t.Run("enabled without app", func(t *testing.T) {
 		serveEnvironment(t)
-		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "FACEBOOK")
-		t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
+		t.Setenv("ACCOUNTSVC_ENABLED_IDENTITY_KINDS", "FACEBOOK")
+		t.Setenv("ACCOUNTSVC_REQUIRED_IDENTITY_KINDS", "[]")
 		noSMTP(t)
 		_, err := LoadConfig("serve")
-		if err == nil || !strings.Contains(err.Error(), "ACCOUNTKIT_FACEBOOK_APP_ID") {
+		if err == nil || !strings.Contains(err.Error(), "ACCOUNTSVC_FACEBOOK_APP_ID") {
 			t.Fatalf("want app id variable, got %v", err)
 		}
 	})
 	t.Run("facebook-only without SMTP", func(t *testing.T) {
 		serveEnvironment(t)
-		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "FACEBOOK")
-		t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
-		t.Setenv("ACCOUNTKIT_FACEBOOK_APP_ID", "synthetic-app-id")
-		t.Setenv("ACCOUNTKIT_FACEBOOK_APP_SECRET", "synthetic-facebook-secret")
+		t.Setenv("ACCOUNTSVC_ENABLED_IDENTITY_KINDS", "FACEBOOK")
+		t.Setenv("ACCOUNTSVC_REQUIRED_IDENTITY_KINDS", "[]")
+		t.Setenv("ACCOUNTSVC_FACEBOOK_APP_ID", "synthetic-app-id")
+		t.Setenv("ACCOUNTSVC_FACEBOOK_APP_SECRET", "synthetic-facebook-secret")
 		noSMTP(t)
 		c, err := LoadConfig("serve")
 		if err != nil {
@@ -76,8 +76,8 @@ func TestConfigFacebook(t *testing.T) {
 		if _, err := LoadConfig("migrate"); err != nil {
 			t.Fatal(err)
 		}
-		t.Setenv("ACCOUNTKIT_ENABLED_IDENTITY_KINDS", "FACEBOOK")
-		t.Setenv("ACCOUNTKIT_REQUIRED_IDENTITY_KINDS", "[]")
+		t.Setenv("ACCOUNTSVC_ENABLED_IDENTITY_KINDS", "FACEBOOK")
+		t.Setenv("ACCOUNTSVC_REQUIRED_IDENTITY_KINDS", "[]")
 		if _, err := LoadConfig("migrate"); err != nil {
 			t.Fatalf("migrate must not require facebook vars: %v", err)
 		}

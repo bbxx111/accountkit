@@ -94,13 +94,17 @@ func TestIdentityKindSmallintV1Rejected(t *testing.T) {
 }
 
 // Positive control: the same historical fixtures plus only the authorized column change
-// are accepted, proving the rejection above comes from the identity kind check alone.
+// (and the separately authorized purged_user table) are accepted, proving the rejection
+// above comes from the identity kind check alone.
 func TestIdentityKindSmallintV1WithTextColumnAccepted(t *testing.T) {
 	for _, commit := range smallintIdentityKindCommits {
 		t.Run(commit[:7], func(t *testing.T) {
 			cfg, schema, c := smallintIdentityKindV1(t, commit)
 			ctx := context.Background()
 			if _, err := c.Exec(ctx, identityKindTextDDL); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := c.Exec(ctx, purgedUserDDL); err != nil {
 				t.Fatal(err)
 			}
 			seedRenameFlow(t, c, "sign_in_completion_flow")

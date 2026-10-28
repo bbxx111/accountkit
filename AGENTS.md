@@ -112,6 +112,7 @@
 
 - v0.5.0 已发布，tag 固定到 `102315c3069273f7a8c3ad253c1f4ae01255f8c6`；其中的 0001 已包含资料属性与头像，原始 SQL 字节不可改写。下述资料单列整合及头像直接修改 0001 的限定授权均已完成，不构成后续改写开关；后续真实结构变更从 0002 递增，已发布 tag/SQL 和冻结源保持。用户确认当前尚无正式部署，本次发布不提供旧数据库迁移工具；这不放宽迁移历史保护。证据见 [v0.5.0 发布说明](docs/releases/v0.5.0.md)。
 
+- 本轮 `add-purged-user-feed` 经用户明确要求“直接改 0001，不新增 0002 迁移”，仅授权在当前 `0001_init.up.sql` 末尾新增 `purged_user` 表（`user_id` 主键与格式 CHECK、`seq` identity 唯一约束、`purge_time`）及 `idx_purged_user_purge_time`，并在 `0001_init.down.sql` 最先删除该表；同步 sqlc、运行时预检与当前 `initialFrozen`，并把与旧当前定义逐字节相同的 v0.6.0（tag `ec6802cd221db3ce107e79bac92174bc35a0ba7d`）作为独立 pin。其他表、列、索引与约束保持，不新增 0002；新安装仍为 version=1/dirty=false。v0.6.0 及更早 v1 缺少完整 `purged_user` 结构时无写拒绝，dirty 优先；不补表、不重放同号 SQL、不 Force、改版本或清库，也不提供旧数据迁移。已发布 tag/SQL 和冻结源保持，后续真实增量仍从 0002。见 [OpenSpec 变更](openspec/changes/archive/2026-10-27-add-purged-user-feed/proposal.md)。此授权不构成日常改写初始 SQL 的开关。
 - 本轮 `add-google-sign-in` 经用户明确要求“数据库变更直接修改 0001”，仅授权更新当前 `0001_init.up.sql` 里 `identity.kind` 与 `provider_meta` 的注释（提及 GOOGLE 及 `profile.name` / `profile.picture`），并只同步当前 `initialFrozen`。不新增列、索引、CHECK 或 0002；down、已发布 tag/SQL 和冻结源保持。新安装仍为 version=1/dirty=false。同号数据库不重放 0001，不会自动更新注释。不 Force、改版本或清库。此授权不构成日常改写初始 SQL 的开关。
 - 本轮 `add-identity-provider-registry` 经用户明确要求“直接改 0001”，仅授权把当前 `0001_init.up.sql` 中 `identity.kind` 改为 `VARCHAR(32) COLLATE "C" NOT NULL` 并加格式 CHECK `identity_kind_format`，同步相关注释、sqlc、运行时预检和当前 `initialFrozen`。索引定义文本、其他列与约束、down、已发布 tag/SQL 和冻结源保持，不新增 0002；新安装仍为 version=1/dirty=false。`identity.kind` 仍为 SMALLINT 的 v1 及该列漂移结构无写拒绝，dirty 优先；不转换列、不重放同号 SQL、不 Force、改版本或清库，也不提供旧数据迁移。见 [OpenSpec 变更](openspec/changes/archive/2026-10-23-add-identity-provider-registry/proposal.md)。此授权不构成日常改写初始 SQL 的开关。
 - 本轮 `add-user-avatar-url` 经用户明确要求“不新增 0002 迁移，改现有 0001”，仅授权在当前 `user_account` 增加 `avatar_url TEXT NULL`（无默认值、索引或业务 CHECK），同步 sqlc、运行时预检和当前 initialFrozen。新安装仍为 version=1/dirty=false，down 整表语义保持。前一含资料但无头像的 v1、全部既有历史拒绝结构及撤回 v2 均无写拒绝，dirty 优先，保留 catalog、数据、version/dirty；不补列、重放同号 SQL、Force、改版本、清库或提供旧数据迁移。已发布 tag/SQL、v0.4.0 精确 pin 和冻结源保持；后续增量仍从 0002，测试 probe 使用 latest+1。本条仅覆盖头像列，以下历史授权与验收保持原事实；见[头像计划](docs/superpowers/plans/2026-10-21-add-user-avatar-url.md)和[验收记录](openspec/changes/archive/2026-10-21-add-user-avatar-url/verification.md)。
@@ -129,7 +130,7 @@
 - 用户确认尚无实际产品接入后，`consolidate-initial-schema` 执行过一次明确的初始结构整合：`0001_init` 直接定义全部认证及登录补全结构，初始版本为 1。此前 `generalize-audit-events` 经用户明确授权，将十列 UUIDv7 审计定义纳入未发布的 0001、更新其固定校验，并撤回当时新增的 0002/staging 工具。旧完整十七列审计 v1 和旧增量结构 v2 均拒绝且保留数据与版本；固定源快照和已发布历史不变。当前初始 SQL 按独立固定哈希保护，不提供日常改写、squash 或跳过历史检查的开关。
 - `rename-sign-in-completion-flow` 经用户本次明确要求“不新增 0002，直接改 0001 中的表定义”，限定为修改当前未发布 0001 的流程表、五个独立索引、主键与格式 CHECK 名称及配套 down，并同步当前固定哈希；列、约束表达式和索引定义保持。撤回本分支新增的 0002，初始化保持 version=1，后续真实增量从 0002 开始。旧表名 v1、双表并存及已撤回旧 v2（包括此前新表名 v2）均拒绝且保留数据、结构和版本，重复 Up 不自动改名或接管。采用新定义须人工核验后使用新空资源，需保留数据时另行制定并验证迁移方案，不 Force、不修改版本、不自动清库；公共 Down 仍拒绝。内部使用 `SignInCompletionFlow`，公开旧 `ids.IdentityFlow`、`user.Deps.IdentityFlowContext`、`CleanupIdentityFlows` 保留 deprecated 兼容入口，新上下文字段非空时优先、否则回退旧字段；密文 AAD、`f_`、审计 `IDENTITY_FLOW` 和 JSON `flow_id` 保持。本次授权不扩展为日常改写初始 SQL 或修改冻结源与已发布历史。
 - 此前索引命名维护另经用户明确要求“不新增迁移”，限定为直接将未发布 0001 的 22 个普通索引改用 `idx_`、4 个独立唯一索引改用 `uk_` 前缀并同步固定校验；当次主键、索引定义、初始版本和历史源快照未变。旧同号数据库不会重放 0001，也不会自动得到该次索引命名调整；这些有限授权不扩展为后续任意改写初始 SQL。
-- `tests/testdata/source-baseline/` 的原始 SQL 与 manifest 仍冻结；已发布 v0.1.0/v0.2.0/v0.3.0 的精确标签提交和历史 SQL 保持。历史检查分别核验源快照、v0.3.0、v0.4.0、v0.5.0 已发布定义和当前整合定义的独立基线，不能改写源快照或移动旧 tag 来让检查通过。旧数据库不自动接管，使用新基线须经人工核验后使用新空资源；不得 Force、修改版本或自动清库。
+- `tests/testdata/source-baseline/` 的原始 SQL 与 manifest 仍冻结；已发布 v0.1.0/v0.2.0/v0.3.0 的精确标签提交和历史 SQL 保持。历史检查分别核验源快照、v0.3.0、v0.4.0、v0.5.0、v0.6.0 已发布定义和当前整合定义的独立基线，不能改写源快照或移动旧 tag 来让检查通过。旧数据库不自动接管，使用新基线须经人工核验后使用新空资源；不得 Force、修改版本或自动清库。
 - 新业务结构使用递增 `NNNN_name.up.sql` / `.down.sql`，已发布版本不可修改、删除、重编号或 squash。测试专用下一版本放 `migrations/testdata/`，不混入生产嵌入目录。
 - `schema_migrations` 记录当前 version/dirty，不是完整历史账本。重复 Up 只忽略无新迁移；dirty 必须阻断后续升级，禁止自动 Force、清除 dirty 或把失败标记为成功。
 - 保留从 schema 初始化开始的外层锁，以及与旧工具兼容的引擎锁。锁等待必须支持取消和超时，所有错误路径必须释放连接及锁；不能假定底层 WithInstance 初始化失败会自动释放借出的连接。
@@ -139,12 +140,12 @@
 
 ## 认证行为与兼容性
 
-- 会话认证来源始终为事务校验过的非空具体身份集合；当前详情、重新认证和换绑使用来源时检查有效性，缺失或失效为内部不变量错误。解绑须检查同账号所有未吊销会话（含自然过期未清理者），任一缺少有效来源则整事务拒绝，不能按未命中放行或从身份列表/尽力审计补造；普通JWT/内省不增加数据库访问。
+- 会话认证来源始终为事务校验过的非空具体身份集合；当前详情、重新认证和换绑使用来源时检查有效性，缺失或失效为内部不变量错误。解绑须检查同账号所有未吊销会话（含自然过期未清理者），任一缺少有效来源则整事务拒绝，不能按未命中放行或从身份列表/尽力审计补造；普通JWT验证不增加数据库访问；严格认证与内省只按 sid 读取会话吊销状态，不读取来源。
 - 客户端描述为单份完整观察：非空规范化输入整体替换，nil/空输入不写且保持旧值和时间；孤立version/build合法，app/browser并存。pending最终本次非空描述优先，否则整体沿用加密首次描述及原observe_time；失败、回滚和重放不更新。Go保留平坦ClientInfo并新增DeviceManufacturer、AppBuild和Extensions，存储/HTTP采用nested JSON；扩展仅来自Go/宿主回调，无新任意JSON HTTP输入。业务读写负责完整校验与深拷贝，宿主负责扩展来源、语义和隐私白名单，固定敏感键检查不能识别任意值中的隐私。
 
 - 保留刷新轮换、宽限内返回同一 token pair、宽限外重放处理及同设备会话规则；不要把所有重复刷新都改成失败。
 - 保留验证码用途、尝试次数、发送额度、重新认证窗口及账号状态校验，失败路径不能绕过限流或回滚掉尝试计数。
-- Redis 失败模式按 README 区分：验证码流程 fail-closed；刷新宽限查询失败拒绝且不误吊销；access 吊销查询当前为 fail-open 并记录警告。更改这些行为必须作为明确的兼容/安全设计变更。
+- Redis 失败模式按 README 区分：验证码流程 fail-closed；刷新宽限查询失败拒绝且不误吊销；`Authenticate`/`RequireScope` 的 access 吊销查询当前为 fail-open 并记录警告。严格认证（`AuthenticateStrict`/`RequireScopeStrict`）与内省不读 Redis，以已提交的数据库会话为准，数据库失败拒绝（503）。更改这些行为必须作为明确的兼容/安全设计变更。
 - 审计默认有界异步写入，记录失败不改变认证动作结果；不要未经设计改成同步强依赖。新增敏感操作要补相应审计与脱敏测试。
 - 审计生产事件为 `audit.Event`，存储记录为 `audit.RecordView`；注入写侧须显式配置稳定的 AuditSource/AuditNamespace。宿主可同时注入 Reader，只有写侧时已授权审计查询返回 503 AUDIT_QUERY_NOT_CONFIGURED，不能静默读取本地旧副本。库只管理自建 worker；宿主负责注入组件生命周期，以及外部保留、持久化清理流程和完成核验。USER_PURGED 是尽力审计通知，不能当作唯一可靠清理通知或完成证据；切换外部模式不免除旧本地副本责任。
 - 改动公开 API、配置默认值、错误码、SQL、ID、令牌/密文格式或宿主回调时，先读取相关规格及兼容测试；破坏性变化写出调用迁移说明，不能静默“统一”成另一个产品的实现。

@@ -1,0 +1,307 @@
+package user_test
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/bbxx111/accountkit/anonymize"
+	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/user"
+)
+
+// deletedUsers 建立 n 个已申请注销的账号，并把时钟推过冷静期。
+func deletedUsers(t *testing.T, f *fixture, n int) []string {
+	t.Helper()
+	ctx := context.Background()
+	ids := make([]string, 0, n)
+	for i := range n {
+		res := f.signIn(t, enum.IdentityPhone, fmt.Sprintf("+861380000%04d", i), dev1)
+		p := principalOf(t, f, res)
+		if _, err := f.svc.DeleteMe(ctx, p, meta1); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, p.UserID)
+	}
+	f.advance(360*time.Hour + time.Second)
+	return ids
+}
+
+func TestPurgeWritesPurgedUserRecord(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	ids := deletedUsers(t, f, 2)
+	if got, next, err := f.svc.ListPurgedUsers(ctx, 0, 10); err != nil || len(got) != 0 || next != 0 {
+		t.Fatalf("before purge: %+v %d %v", got, next, err)
+	}
+	if n, err := f.svc.PurgeDueUsers(ctx); err != nil || n != 2 {
+		t.Fatalf("purge: %d %v", n, err)
+	}
+	page, next, err := f.svc.ListPurgedUsers(ctx, 0, 10)
+	if err != nil || len(page) != 2 || next == 0 {
+		t.Fatalf("after purge: %+v %d %v", page, next, err)
+	}
+	seen := map[string]bool{}
+	for _, p := range page {
+		seen[p.UserID] = true
+		if !p.PurgeTime.Equal(*f.clock) {
+			t.Fatalf("purge_time %v is not the purge execution time %v", p.PurgeTime, *f.clock)
+		}
+	}
+	for _, id := range ids {
+		if !seen[id] {
+			t.Fatalf("missing purged user %s in %+v", id, page)
+		}
+	}
+	// 记录只含 user_id 与时间；再次 purge 不重复写入。
+	if n, err := f.svc.PurgeDueUsers(ctx); err != nil || n != 0 {
+		t.Fatalf("repeat purge: %d %v", n, err)
+	}
+	var count int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM purged_user`).Scan(&count); err != nil || count != 2 {
+		t.Fatalf("records = %d %v", count, err)
+	}
+}
+
+func TestPurgedUserRecordRollsBackWithAnonymizer(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	mustExec(t, f, `CREATE TABLE host_note (id SERIAL PRIMARY KEY, user_id TEXT NOT NULL, body TEXT)`)
+	failing := &recordingAnonymizer{name: "host_note", fail: errors.New("host failure")}
+	newServiceWith(t, f, func(d *user.Deps) { d.Anonymizers = []anonymize.Anonymizer{failing} })
+	deletedUsers(t, f, 1)
+	if _, err := f.svc.PurgeDueUsers(ctx); err == nil {
+		t.Fatal("anonymizer failure must fail the purge")
+	}
+	if page, _, err := f.svc.ListPurgedUsers(ctx, 0, 10); err != nil || len(page) != 0 {
+		t.Fatalf("failed purge left a record: %+v %v", page, err)
+	}
+	failing.fail = nil
+	if n, err := f.svc.PurgeDueUsers(ctx); err != nil || n != 1 {
+		t.Fatalf("retry: %d %v", n, err)
+	}
+	if page, _, err := f.svc.ListPurgedUsers(ctx, 0, 10); err != nil || len(page) != 1 {
+		t.Fatalf("retry record: %+v %v", page, err)
+	}
+}
+
+func TestListPurgedUsersPaging(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	ids := deletedUsers(t, f, 5)
+	if _, err := f.svc.PurgeDueUsers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var all []user.PurgedUser
+	var cursor int64
+	for {
+		page, next, err := f.svc.ListPurgedUsers(ctx, cursor, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page) == 0 {
+			if next != cursor {
+				t.Fatalf("caught-up cursor moved: %d -> %d", cursor, next)
+			}
+			break
+		}
+		if len(page) > 2 || next <= cursor {
+			t.Fatalf("page size %d, cursor %d -> %d", len(page), cursor, next)
+		}
+		all = append(all, page...)
+		cursor = next
+	}
+	if len(all) != len(ids) {
+		t.Fatalf("paged %d records, want %d", len(all), len(ids))
+	}
+	// 同一位置重复读取结果相同。
+	again, next, err := f.svc.ListPurgedUsers(ctx, 0, 100)
+	if err != nil || len(again) != len(ids) || next != cursor {
+		t.Fatalf("re-read: %d %d %v", len(again), next, err)
+	}
+	for _, bad := range []int{0, -1, user.MaxPurgedUserPage + 1} {
+		if _, _, err := f.svc.ListPurgedUsers(ctx, 0, bad); !errors.Is(err, user.ErrInvalidArgument) {
+			t.Fatalf("limit %d: %v", bad, err)
+		}
+	}
+	if _, _, err := f.svc.ListPurgedUsers(ctx, -1, 10); !errors.Is(err, user.ErrInvalidArgument) {
+		t.Fatalf("negative cursor: %v", err)
+	}
+}
+
+// 并发 purge 与持续拉取：序号顺序与提交顺序一致，拉取方最终读到全部记录、不漏读。
+func TestPurgedUserFeedConcurrentPurgeNoGaps(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	ids := deletedUsers(t, f, 12)
+	var wg sync.WaitGroup
+	errs := make(chan error, 4)
+	for range 4 {
+		wg.Go(func() {
+			if _, err := f.svc.PurgeDueUsers(ctx); err != nil {
+				errs <- err
+			}
+		})
+	}
+	seen := map[string]int64{}
+	var cursor int64
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
+	poll := func() {
+		for {
+			page, next, err := f.svc.ListPurgedUsers(ctx, cursor, 3)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if len(page) == 0 {
+				return
+			}
+			for _, p := range page {
+				if _, dup := seen[p.UserID]; dup {
+					t.Errorf("user %s returned twice", p.UserID)
+				}
+				seen[p.UserID] = next
+			}
+			cursor = next
+		}
+	}
+	for running := true; running; {
+		select {
+		case <-done:
+			running = false
+		default:
+			poll()
+		}
+	}
+	poll()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("concurrent purge failed: %v", err)
+	}
+	if len(seen) != len(ids) {
+		t.Fatalf("feed returned %d of %d purged users", len(seen), len(ids))
+	}
+	// 每个账号恰好一条记录。
+	var count int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM purged_user`).Scan(&count); err != nil || count != len(ids) {
+		t.Fatalf("records = %d %v", count, err)
+	}
+}
+
+func TestCleanupPurgedUsersRetention(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	deletedUsers(t, f, 2)
+	if _, err := f.svc.PurgeDueUsers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// 未配置保留期：长期保留，不删除。
+	f.advance(10000 * time.Hour)
+	if n, err := f.svc.CleanupPurgedUsers(ctx); err != nil || n != 0 {
+		t.Fatalf("no retention: %d %v", n, err)
+	}
+	newServiceWith(t, f, func(d *user.Deps) { d.PurgedUserRetention = 720 * time.Hour })
+	// 再清理一个较新的账号，确认只删除超出保留期的记录。
+	newer := deletedUsers(t, f, 1)
+	if _, err := f.svc.PurgeDueUsers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := f.svc.CleanupPurgedUsers(ctx); err != nil || n != 2 {
+		t.Fatalf("retention cleanup: %d %v", n, err)
+	}
+	page, _, err := f.svc.ListPurgedUsers(ctx, 0, 10)
+	if err != nil || len(page) != 1 || page[0].UserID != newer[0] {
+		t.Fatalf("remaining: %+v %v", page, err)
+	}
+	// 过短的保留期在构造时被拒绝。
+	d := f.deps
+	d.PurgedUserRetention = 7 * 24 * time.Hour
+	if _, err := user.NewService(d); err == nil {
+		t.Fatal("retention shorter than 30 days must be rejected")
+	}
+}
+
+// 数据库从较早备份恢复或重新部署后，序号回退到业务方已保存游标之下；超前的游标必须被拒绝，
+// 让业务方从头重拉（清理幂等），而不是静默跳过之后的新记录。
+func TestListPurgedUsersRejectsCursorAheadOfFeed(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	if _, _, err := f.svc.ListPurgedUsers(ctx, 5, 10); !errors.Is(err, user.ErrPurgedUserCursorAhead) || !errors.Is(err, user.ErrInvalidArgument) {
+		t.Fatalf("cursor on empty feed: %v", err)
+	}
+	deletedUsers(t, f, 2)
+	if _, err := f.svc.PurgeDueUsers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	_, last, err := f.svc.ListPurgedUsers(ctx, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, next, err := f.svc.ListPurgedUsers(ctx, last, 10); err != nil || next != last {
+		t.Fatalf("cursor at the end must stay valid: %d %v", next, err)
+	}
+	if _, _, err := f.svc.ListPurgedUsers(ctx, last+1, 10); !errors.Is(err, user.ErrPurgedUserCursorAhead) {
+		t.Fatalf("cursor ahead of feed: %v", err)
+	}
+	// 模拟恢复：序号重置到更早的位置，旧游标随即失效。
+	mustExec(t, f, `ALTER TABLE purged_user ALTER COLUMN seq RESTART WITH 1`)
+	mustExec(t, f, `DELETE FROM purged_user`)
+	if _, _, err := f.svc.ListPurgedUsers(ctx, last, 10); !errors.Is(err, user.ErrPurgedUserCursorAhead) {
+		t.Fatalf("rewound feed must reject the saved cursor: %v", err)
+	}
+}
+
+// 确定性验证表锁：另一事务已插入记录（分配了较小序号）但尚未提交时，purge 的 SHARE ROW EXCLUSIVE 锁与其
+// ROW EXCLUSIVE 冲突，必须等待其提交，之后分配的序号更大。若去掉锁，purge 会以更大的序号先提交而先于
+// 前者可见，游标越过后前者被永久跳过。
+func TestPurgeWaitsForPurgedUserLock(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	ids := deletedUsers(t, f, 1)
+	holder, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Rollback(ctx)
+	// 持有者只插入、不取表锁：它已分配较小的序号但尚未提交，代表一个进行中的写入。
+	var heldSeq int64
+	if err := holder.QueryRow(ctx, `INSERT INTO purged_user(user_id, purge_time) VALUES('u_0000000000099', now()) RETURNING seq`).Scan(&heldSeq); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { _, err := f.svc.PurgeDueUsers(ctx); done <- err }()
+	// purge 必须阻塞在表锁上。
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var waiting bool
+		if err := f.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_locks l JOIN pg_class c ON c.oid=l.relation WHERE c.relname='purged_user' AND NOT l.granted)`).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("purge finished while the purged_user lock was held: %v", err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("purge never waited for the purged_user lock")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := holder.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	var purgedSeq int64
+	if err := f.pool.QueryRow(ctx, `SELECT seq FROM purged_user WHERE user_id=$1`, ids[0]).Scan(&purgedSeq); err != nil || purgedSeq <= heldSeq {
+		t.Fatalf("purge seq %d must follow the held seq %d: %v", purgedSeq, heldSeq, err)
+	}
+}

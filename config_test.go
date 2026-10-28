@@ -2,6 +2,9 @@ package accountkit_test
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"encoding/base64"
 	"os"
 	"strings"
@@ -11,6 +14,7 @@ import (
 	"github.com/bbxx111/accountkit"
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/testkeys"
 )
 
 func k(b byte) []byte     { return bytes.Repeat([]byte{b}, 32) }
@@ -19,7 +23,7 @@ func b64(b []byte) string { return base64.StdEncoding.EncodeToString(b) }
 // minimal 返回只含必填项的配置。
 func minimal() accountkit.Config {
 	return accountkit.Config{
-		JWTKeys: map[uint16][]byte{1: k(1)}, JWTActiveKey: 1, JWTIssuer: "shifang", JWTAudience: "app",
+		JWTKeys: map[uint16]*ecdsa.PrivateKey{1: testkeys.JWT(1)}, JWTActiveKey: 1, JWTIssuer: "shifang", JWTAudience: "app",
 		SubjectHMACKeys: map[uint16][]byte{1: k(2)}, SubjectHMACActiveKey: 1,
 		SubjectCipherKeys: map[uint16][]byte{1: k(3)}, SubjectCipherActiveKey: 1,
 	}
@@ -42,7 +46,7 @@ func TestAuditConfiguration(t *testing.T) {
 		}
 	}
 	const prefix = "AUDIT_TEST_"
-	t.Setenv(prefix+"JWT_KEYS", "1:"+b64(k(1)))
+	t.Setenv(prefix+"JWT_KEYS", "1:"+testkeys.JWTBase64(1))
 	t.Setenv(prefix+"JWT_ACTIVE_KEY", "1")
 	t.Setenv(prefix+"JWT_ISSUER", "issuer")
 	t.Setenv(prefix+"JWT_AUDIENCE", "app")
@@ -115,7 +119,7 @@ func TestValidateAppliesDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Validate 不改动 c（值接收者）；用 ConfigFromEnv 路径观察默认值更直接：
-	t.Setenv("T_JWT_KEYS", "1:"+b64(k(1)))
+	t.Setenv("T_JWT_KEYS", "1:"+testkeys.JWTBase64(1))
 	t.Setenv("T_JWT_ACTIVE_KEY", "1")
 	t.Setenv("T_JWT_ISSUER", "shifang")
 	t.Setenv("T_JWT_AUDIENCE", "app")
@@ -141,7 +145,7 @@ func TestValidateAppliesDefaults(t *testing.T) {
 }
 
 func TestConfigFromEnvOverridesAndParses(t *testing.T) {
-	t.Setenv("T_JWT_KEYS", "1:"+b64(k(1))+",2:"+b64(k(9)))
+	t.Setenv("T_JWT_KEYS", "1:"+testkeys.JWTBase64(1)+",2:"+testkeys.JWTBase64(9))
 	t.Setenv("T_JWT_ACTIVE_KEY", "2")
 	t.Setenv("T_JWT_ISSUER", "shifang")
 	t.Setenv("T_JWT_AUDIENCE", "app")
@@ -177,7 +181,7 @@ func TestConfigFromEnvSchema(t *testing.T) {
 		}
 	}
 	for name, value := range map[string]string{
-		"JWT_KEYS": "1:" + b64(k(1)), "JWT_ACTIVE_KEY": "1",
+		"JWT_KEYS": "1:" + testkeys.JWTBase64(1), "JWT_ACTIVE_KEY": "1",
 		"JWT_ISSUER": "test-issuer", "JWT_AUDIENCE": "consumer",
 		"SUBJECT_HMAC_KEYS": "1:" + b64(k(2)), "SUBJECT_HMAC_ACTIVE_KEY": "1",
 		"SUBJECT_CIPHER_KEYS": "1:" + b64(k(3)), "SUBJECT_CIPHER_ACTIVE_KEY": "1",
@@ -212,8 +216,11 @@ func TestConfigFromEnvSchema(t *testing.T) {
 func TestValidateRejects(t *testing.T) {
 	cases := map[string]func(*accountkit.Config){
 		"missing jwt keys":          func(c *accountkit.Config) { c.JWTKeys = nil },
+		"purged retention short":    func(c *accountkit.Config) { c.PurgedUserRetention = 7 * 24 * time.Hour },
+		"purged retention negative": func(c *accountkit.Config) { c.PurgedUserRetention = -time.Hour },
 		"jwt active missing":        func(c *accountkit.Config) { c.JWTActiveKey = 9 },
-		"jwt key short":             func(c *accountkit.Config) { c.JWTKeys = map[uint16][]byte{1: k(1)[:16]} },
+		"jwt key wrong curve":       func(c *accountkit.Config) { c.JWTKeys = map[uint16]*ecdsa.PrivateKey{1: p384Key(t)} },
+		"jwt key nil":               func(c *accountkit.Config) { c.JWTKeys = map[uint16]*ecdsa.PrivateKey{1: nil} },
 		"issuer empty":              func(c *accountkit.Config) { c.JWTIssuer = "" },
 		"audience empty":            func(c *accountkit.Config) { c.JWTAudience = "" },
 		"hmac active missing":       func(c *accountkit.Config) { c.SubjectHMACActiveKey = 7 },
@@ -247,7 +254,13 @@ func TestConfigFromEnvReportsBadValues(t *testing.T) {
 	if _, err := accountkit.ConfigFromEnv("T_"); err == nil || !strings.Contains(err.Error(), "T_JWT_KEYS") {
 		t.Fatalf("bad key list must name the variable: %v", err)
 	}
-	t.Setenv("T_JWT_KEYS", "1:"+b64(k(1)))
+	// 旧 HS256 随机字节密钥：必须指明变量名且不回显密钥值
+	legacy := b64(k(1))
+	t.Setenv("T_JWT_KEYS", "1:"+legacy)
+	if _, err := accountkit.ConfigFromEnv("T_"); err == nil || !strings.Contains(err.Error(), "T_JWT_KEYS") || strings.Contains(err.Error(), legacy) {
+		t.Fatalf("legacy HMAC key must be rejected by name without echo: %v", err)
+	}
+	t.Setenv("T_JWT_KEYS", "1:"+testkeys.JWTBase64(1))
 	t.Setenv("T_JWT_ACTIVE_KEY", "one")
 	if _, err := accountkit.ConfigFromEnv("T_"); err == nil || !strings.Contains(err.Error(), "T_JWT_ACTIVE_KEY") {
 		t.Fatalf("bad integer must name the variable: %v", err)
@@ -270,7 +283,7 @@ func TestIdPConfigDefaultsAndValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Validate 不改动 c（值接收者，见 TestValidateAppliesDefaults）；用 ConfigFromEnv 路径观察默认值。
-	t.Setenv("T_JWT_KEYS", "1:"+b64(k(1)))
+	t.Setenv("T_JWT_KEYS", "1:"+testkeys.JWTBase64(1))
 	t.Setenv("T_JWT_ACTIVE_KEY", "1")
 	t.Setenv("T_JWT_ISSUER", "shifang")
 	t.Setenv("T_JWT_AUDIENCE", "app")
@@ -344,7 +357,7 @@ func TestConfigFromEnvIdP(t *testing.T) {
 	t.Setenv("T_APPLE_NONCE_TTL", "15m")
 	t.Setenv("T_WECHAT_API_BASE_URL", "http://127.0.0.1:1/")
 	t.Setenv("T_APPLE_JWKS_URL", "http://127.0.0.1:2/keys")
-	t.Setenv("T_JWT_KEYS", "1:"+b64(k(1)))
+	t.Setenv("T_JWT_KEYS", "1:"+testkeys.JWTBase64(1))
 	t.Setenv("T_JWT_ACTIVE_KEY", "1")
 	t.Setenv("T_JWT_ISSUER", "shifang")
 	t.Setenv("T_JWT_AUDIENCE", "app")
@@ -370,5 +383,40 @@ func TestFacebookCannotBeOIDCName(t *testing.T) {
 	c.OIDCProviders = []accountkit.OIDCProvider{{Kind: enum.IdentityFacebook, Issuer: "https://i.example", JWKSURL: "https://i.example/k", ClientIDs: []string{"c"}}}
 	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "builtin") {
 		t.Fatalf("OIDC FACEBOOK: %v", err)
+	}
+}
+
+func p384Key(t *testing.T) *ecdsa.PrivateKey {
+	t.Helper()
+	k, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return k
+}
+
+func TestConfigPurgedUserRetention(t *testing.T) {
+	c := minimal()
+	if err := c.Validate(); err != nil || c.PurgedUserRetention != 0 {
+		t.Fatalf("default must keep purged users forever: %v %v", c.PurgedUserRetention, err)
+	}
+	for _, name := range []string{"T_JWT_KEYS"} {
+		t.Setenv(name, "1:"+testkeys.JWTBase64(1))
+	}
+	t.Setenv("T_JWT_ACTIVE_KEY", "1")
+	t.Setenv("T_JWT_ISSUER", "i")
+	t.Setenv("T_JWT_AUDIENCE", "a")
+	t.Setenv("T_SUBJECT_HMAC_KEYS", "1:"+b64(k(2)))
+	t.Setenv("T_SUBJECT_HMAC_ACTIVE_KEY", "1")
+	t.Setenv("T_SUBJECT_CIPHER_KEYS", "1:"+b64(k(3)))
+	t.Setenv("T_SUBJECT_CIPHER_ACTIVE_KEY", "1")
+	t.Setenv("T_PURGED_USER_RETENTION", "2160h")
+	got, err := accountkit.ConfigFromEnv("T_")
+	if err != nil || got.PurgedUserRetention != 2160*time.Hour {
+		t.Fatalf("env: %v %v", got.PurgedUserRetention, err)
+	}
+	t.Setenv("T_PURGED_USER_RETENTION", "168h")
+	if _, err := accountkit.ConfigFromEnv("T_"); err == nil || !strings.Contains(err.Error(), "PurgedUserRetention") {
+		t.Fatalf("short retention must be rejected by name: %v", err)
 	}
 }

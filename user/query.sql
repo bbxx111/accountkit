@@ -217,6 +217,34 @@ SELECT DISTINCT cipher_key_version::smallint AS version FROM identity
 WHERE delete_time IS NULL AND cipher_key_version IS NOT NULL
 ORDER BY 1;
 
+-- purged_user：已清理用户记录（外部业务服务按 seq 游标拉取）
+
+-- name: LockPurgedUserForInsert :exec
+-- 在清理事务末尾取得自冲突表锁，使 seq 分配与提交串行：序号小的记录一定先提交，按游标拉取不会漏读。
+-- 读取只持 ACCESS SHARE，不被阻塞。
+LOCK TABLE purged_user IN SHARE ROW EXCLUSIVE MODE;
+
+-- name: InsertPurgedUser :exec
+-- purge_time 与账号行 purge_time 使用同一执行时刻；排序与游标只依赖 seq。
+INSERT INTO purged_user (user_id, purge_time) VALUES (@user_id, @purge_time::timestamptz);
+
+-- name: ListPurgedUsersAfter :many
+SELECT user_id, seq, purge_time FROM purged_user
+WHERE seq > @after::bigint
+ORDER BY seq
+LIMIT @page_size;
+
+-- name: GetPurgedUserSeqLastValue :one
+-- 序号已分配的最大值（含回滚产生的空洞；从未分配时为 0）。正常游标不会超过它；超过说明数据库被恢复或
+-- 重新部署导致序号回退，拉取方须从头重拉。
+SELECT COALESCE(pg_sequence_last_value(pg_get_serial_sequence('purged_user', 'seq')::regclass), 0)::bigint AS last_value;
+
+-- name: DeletePurgedUsersBefore :execrows
+-- 保留期清理：按写入时间分批删除。
+DELETE FROM purged_user WHERE user_id IN (
+  SELECT user_id FROM purged_user WHERE purge_time < @before::timestamptz ORDER BY purge_time LIMIT @batch_size
+);
+
 -- session
 
 -- name: CreateSession :one

@@ -1,9 +1,22 @@
 name: verify
 on:
+  # Feature branches are verified through their pull request; pushes are verified only on
+  # the integration and release branches. Tags point at an already verified main commit.
+  # Archive and planning records only; tests read README.md and docs/openapi, so other docs stay
+  # covered. A pull request that touches nothing else gets no run; the repository has no required
+  # status check, so a skipped run does not block merging.
   push:
+    branches: [develop, main]
+    paths-ignore: ['openspec/**', 'docs/superpowers/**']
   pull_request:
+    paths-ignore: ['openspec/**', 'docs/superpowers/**']
 permissions:
   contents: read
+concurrency:
+  # A newer push to the same pull request supersedes its running check. Branch pushes are
+  # grouped per commit, because a shared group would drop a queued develop/main run.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   test:
     runs-on: ubuntu-latest

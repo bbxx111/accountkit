@@ -39,17 +39,17 @@ cfg.RequiredIdentityKinds = []enum.IdentityKind{}
 
 ## accountsvc 配置
 
-库使用 `ConfigFromEnv(prefix)` 的宿主前缀；accountsvc 固定为 `ACCOUNTKIT_`：
+库使用 `ConfigFromEnv(prefix)` 的宿主前缀；accountsvc 固定为 `ACCOUNTSVC_`：
 
 ```text
-ACCOUNTKIT_QQ_APP_IDS=1100000001,1100000002
-ACCOUNTKIT_QQ_SUBJECT_MODE=UNIONID
-ACCOUNTKIT_QQ_API_BASE_URL=https://graph.qq.com
-ACCOUNTKIT_ENABLED_IDENTITY_KINDS=QQ
-ACCOUNTKIT_REQUIRED_IDENTITY_KINDS=[]
+ACCOUNTSVC_QQ_APP_IDS=1100000001,1100000002
+ACCOUNTSVC_QQ_SUBJECT_MODE=UNIONID
+ACCOUNTSVC_QQ_API_BASE_URL=https://graph.qq.com
+ACCOUNTSVC_ENABLED_IDENTITY_KINDS=QQ
+ACCOUNTSVC_REQUIRED_IDENTITY_KINDS=[]
 ```
 
-应用列表缺省/空表示不配置，已配置列表不允许重复或空项。模式未设置时为 UNIONID，显式空白、小写和其他值拒绝。`ACCOUNTKIT_QQ_API_BASE_URL` 一般无需设置。serve 显式 Enabled 含 QQ 却无应用时启动失败并指出 `ACCOUNTKIT_QQ_APP_IDS`，非法值只报告变量名，不输出配置值。migrate 无需配置 QQ、不调用 QQ，但显式提供的非法配置仍会被静态校验拒绝。
+应用列表缺省/空表示不配置，已配置列表不允许重复或空项。模式未设置时为 UNIONID，显式空白、小写和其他值拒绝。`ACCOUNTSVC_QQ_API_BASE_URL` 一般无需设置。serve 显式 Enabled 含 QQ 却无应用时启动失败并指出 `ACCOUNTSVC_QQ_APP_IDS`，非法值只报告变量名，不输出配置值。migrate 无需配置 QQ、不调用 QQ，但显式提供的非法配置仍会被静态校验拒绝。
 
 [本地 Compose](../deploy/accountsvc/compose.yaml) 默认 EMAIL；仅编辑 `.env` 不会自动把任意 IdP 变量传进容器。切换时用 Compose override 或实际部署的环境注入，显式覆盖 Enabled/Required 并传入每个 QQ 配置。
 

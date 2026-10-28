@@ -92,7 +92,7 @@ GET 与 PATCH 成功均返回 200 和 `{"name":"users/u_0000000000001/profile","
 
 挂载内置 HTTP handler 的宿主可使用[消费者与管理面 OpenAPI 契约](docs/openapi.md)，按实际地址调整挂载前缀。
 
-本文描述 v0.6.0（已发布）的公开契约：在 v0.5.0 的资料属性、本人资料 HTTP 和头像之上，提供身份提供方注册表与统一凭证信封、Google/OIDC/Facebook/支付宝/QQ/微博登录、微信小程序和可配置的第三方资料补填。版本范围与兼容边界见 [v0.6.0 发布说明](docs/releases/v0.6.0.md)；v0.5.0 及更早状态保留在各自发布说明。账号资源沿用 `/users`，升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
+本文描述 v0.7.0（准备中）的公开契约：在 v0.6.0 的身份提供方注册表与统一凭证信封之上，提供 ES256 access 与 JWKS、严格认证、已清理用户记录、阿里云短信发送器与邮件品牌；accountsvc 另有统一的 `ACCOUNTSVC_` 前缀、服务调用 Bearer 认证与多语言邮件模板清单。版本范围与兼容边界见 [v0.7.0 发布说明](docs/releases/v0.7.0.md)；v0.6.0 及更早状态保留在各自发布说明。账号资源沿用 `/users`，升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
 
 accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可选服务实现，使用同一套库能力；选择库集成不需要部署或调用 accountsvc。服务入口是 `cmd/accountsvc`，包含 SMTP 邮件投递、消费者远程鉴权和默认关闭的外部管理员 JWT 验证，运行与配置见 [accountsvc 服务手册](docs/accountsvc.md)。`examples/embedded` 保留为库集成开发示例。
 
@@ -116,12 +116,14 @@ accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect
 | 刷新 | `Refresh(ctx, refreshToken, meta)` | 行锁 + CAS 轮换；30s 宽限内重放返回同一 pair；宽限外重放吊销会话 |
 | 登出 | `Revoke(ctx, refreshToken, meta)` | RFC 7009 语义：未知 token 也返回成功 |
 | 校验 access | `Authenticate(ctx, raw)` | 验签 + id 格式 + Redis 吊销集（Redis 不可用时 fail-open） |
+| 严格校验 access | `AuthenticateStrict(ctx, raw)` | 验签 + id 格式 + 按 sid 查数据库会话（存在、属于 sub、未吊销）；不读 Redis，不判刷新期限；数据库不可用返回 `ErrUnavailable`，不放行。内省与关键路由使用 |
 | 重新认证 | `SendReauthenticationCode` / `Reauthenticate` | 只接受本账号已启用手机/邮箱身份；刷新 `auth_time` 并重签 access（不发 refresh） |
 | 资料 | `GetMe` / `UpdateProfile` / `UpdateDisplayName` | 显示名 ≤ 128 个 Unicode 码位；头像为最长 2048 字节的 HTTPS URL；可原子更新两字段 |
 | 批量公开资料 | `BatchPublicProfiles(ctx, ids)` | 一次查询返回 ID/DisplayName/AvatarURL/State；未知账号略去，待注销/已删除账号显示名和头像为空；宿主先过滤业务权限 |
 | 宿主事务保护 | `WithActiveUsers(ctx, ids, fn)` | 验证、去重并排序锁定 ACTIVE 账号后执行 `fn(pgx.Tx)`；库提交，错误或 panic 回滚 |
 | 离线导入 | `ImportAccounts(ctx, tx, accounts)` | 调用者事务中的 ACTIVE PHONE/EMAIL 锚点账号或 DELETED 匿名墓碑；调用者提交/回滚 |
 | 会话 | `ListSessions` / `RevokeSession` / `RevokeOtherSessions` | 他人的会话一律 `ErrNotFound` |
+| 已清理用户 | `ListPurgedUsers(ctx, after, limit)` | 返回游标 `after` 之后按清理提交顺序排列的 `PurgedUser{UserID, PurgeTime}` 与新游标（从头读传 0，追平时游标不变，`limit` 1–1000）；记录在 purge 事务内写入，供无法使用同事务匿名化回调的业务方幂等清理 |
 
 ### 身份策略与登录补全
 
@@ -165,7 +167,7 @@ HTTP 新增 `POST /users:sendSignInCompletionCode`（`{sign_in_completion_token,
 
 宽限资格取会话读取后的时间；缓存返回后再检查会话/pair期限并计算剩余有效期。已符合宽限的请求不会仅因缓存等待跨过宽限而被认定为重放，仍返回同一pair。缓存不可用或到期拒绝不会被误记为已遏制的重放。
 
-刷新期限与access有效性独立：自然到期不写撤销集，原access和内省仍按JWT及Redis吊销规则判断；“不在会话列表中”不等于“所有已发access都已失效”。显式单个/批量撤销、同设备重登和账号生命周期操作仍覆盖未清理的过期会话。列表读取不删除数据，原30天会话清理保留期不变。实际验证见[会话过期验收记录](openspec/changes/archive/2026-10-04-harden-session-expiry/verification.md)。
+刷新期限与access有效性独立：自然到期不写撤销集，原access仍有效——`Authenticate` 按JWT及Redis吊销规则判断，严格认证与内省按数据库吊销状态判断，两者都不按刷新期限拒绝；“不在会话列表中”不等于“所有已发access都已失效”。显式单个/批量撤销、同设备重登和账号生命周期操作仍覆盖未清理的过期会话。列表读取不删除数据，原30天会话清理保留期不变。实际验证见[会话过期验收记录](openspec/changes/archive/2026-10-04-harden-session-expiry/verification.md)。
 
 ### Redis 键与失败模式
 
@@ -175,7 +177,8 @@ HTTP 新增 `POST /users:sendSignInCompletionCode`（`{sign_in_completion_token,
 |---|---|
 | 发码、验证码登录/重新认证 | fail-closed：`user.ErrUnavailable` |
 | 宽限期查询 | 退化为拒绝（`ErrInvalidGrant`），不吊销会话 |
-| 吊销检查 | fail-open：按签名与过期校验，记 Warn 日志 |
+| 吊销检查（`Authenticate`/`RequireScope`） | fail-open：按签名与过期校验，记 Warn 日志 |
+| 严格认证（`AuthenticateStrict`/`RequireScopeStrict`/内省） | 不读 Redis，不受影响；吊销以已提交的数据库会话为准，数据库不可用时 fail-closed（503） |
 | 重放检测 / 冻结 / 待删除时的吊销 | 数据库写失败向上返回错误（不记"已遏制"审计），吊销集仍尽力写入 |
 
 ### 发送器
@@ -200,6 +203,8 @@ _ = deps
 
 渲染与 SMTP 共用一次总超时预算，派生 context 保留宿主值。宿主回调必须及时响应取消，避免无界 I/O；库不会通过遗留 goroutine 强制中断不合作的回调。渲染失败、非法内容或取消返回固定 `sender.ErrUnavailable`，沿用 503 和额度/冷却保留契约，不回退默认模板、不自动重试。宿主不得在日志中输出验证码、完整地址、正文或原始渲染错误。示例只做本地渲染与构造，不发送网络请求、不读取真实凭据，输出仅为非敏感标题或装配结果。
 
+库提供可选的阿里云短信发送器 `github.com/bbxx111/accountkit/user/sender/aliyun`：`aliyun.New(aliyun.Config{AccessKeyID, AccessKeySecret, SignName, Templates: map[enum.CodePurpose]string{…四个用途…}})`，构造不做网络 I/O，只发中国大陆手机号，发送失败返回 `sender.ErrUnavailable`（503），错误只含服务商错误码与 RequestId；可选 `Logger` 以 Warn 记录同样脱敏的失败信息。发送器可选实现 `SupportsTarget(e164 string) bool`：返回 false 的号码在占用验证码轮次、冷却与额度之前以 `sender.ErrTargetNotSupported` 拒绝，HTTP 为 400 `TARGET_NOT_SUPPORTED`，未实现该方法的发送器行为不变。宿主若用日志或指标装饰器包装发送器，须同时转发 `SupportsTarget`（及 `Enabled`），否则预检失效，不支持的号码会在占用额度后才失败。内置 `smtp.LegacyChineseRenderer{Brand: "品牌"}` 可为标题和正文添加品牌前缀（先用 `smtp.ValidateBrand` 校验），零值文案不变。
+
 使用服务商托管模板时，直接实现 `EmailCodeSender.SendEmail(ctx, target, message)` 或 `SMSCodeSender.SendSMS(ctx, target, message)` 并注入原 Deps 字段。宿主把 `message.Purpose` 映射到服务商模板 ID，把 `message.Code`、`message.TTL` 转换为模板参数，并自行选择语言、处理取消及安全错误；这种适配无需 SMTP Renderer，也无需先生成正文。不要将模板 ID 或服务商参数加入核心 CodeMessage。
 
 ### 枚举
@@ -222,6 +227,20 @@ r.Route("/v1", func(r chi.Router) {
 ```
 
 示例中的 `device.ConsumerHandler()` 是宿主设备业务模块的示意接口，不属于 accountkit 的公开门面。
+
+### 关键路由的严格认证
+
+`auth.RequireScope` 的吊销检查读取 Redis 吊销集：Redis 正常时撤销即时生效，Redis 读写失败时按 fail-open 放行，最长到 access 自然过期（`AccessTokenTTL` 加验签偏差）。少数要求“撤销后立即失效”的关键路由（如支付、资金或权限变更）可改用 `auth.RequireScopeStrict(...)`：401/403 响应、challenge 与 `RequireScope` 一致，但以已提交的数据库会话为准，不读 Redis，数据库不可用时返回 503 `DEPENDENCY_UNAVAILABLE`，可与 `RequireRecentAuth` 串联。即使外层已挂 `RequireScope`，严格中间件也会重新认证。
+
+```go
+r.With(auth.RequireScopeStrict("user"), auth.RequireRecentAuth()).Post("/payments", payments.Create)
+```
+
+对嵌入式宿主，严格认证的额外保证只在 Redis 读写失败时体现；关键写接口本来就要写数据库，数据库故障时 fail-closed 几乎没有额外可用性代价。每次请求多一次按主键的会话查询，不建议用于全部路由。
+
+### 消费者 access 与 JWKS
+
+access token 使用 ES256（P-256）签发，header 为 `alg=ES256`、`typ=at+jwt`（RFC 9068）和十进制版本号 `kid`，claims 为 `iss`、`aud`、`sub`、`sid`、`scope`、`auth_time`、`jti`、`iat`、`exp`。`auth.JWKSHandler()` 输出全部已配置版本的公钥（JWK Set，不含私钥参数），只支持 GET/HEAD，`Cache-Control: public, max-age=300`，不访问数据库或 Redis；宿主可挂载到 `/.well-known/jwks.json` 供其他服务本地验签。本地验签的校验要求、吊销延迟边界与轮换顺序见 [accountsvc 接入说明](docs/accountsvc.md#分级校验)。
 
 | 端点 | 认证 | 成功 | 失败 |
 |---|---|---|---|
@@ -424,7 +443,7 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 | `REQUIRED_IDENTITY_KINDS` | PHONE,EMAIL | PHONE/EMAIL any-of；`[]` 表示不限定类型 |
 | `AUTH_SCHEMA` | `account` | PostgreSQL schema，`^[a-z][a-z0-9_]{0,62}$` |
 | `AUTH_KEY_PREFIX` | `auth:` | Redis 键前缀，须以 `:` 结尾 |
-| `JWT_KEYS` / `JWT_ACTIVE_KEY` | 必填 | `1:<base64>,2:<base64>` 版本化 HS256 密钥（≥ 32 字节）与签发版本 |
+| `JWT_KEYS` / `JWT_ACTIVE_KEY` | 必填 | `1:<base64>,2:<base64>` 版本化 ES256（P-256）私钥（PKCS#8 DER 的 base64）与签发版本；生成：`openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 \| openssl pkcs8 -topk8 -nocrypt -outform DER \| base64 -w0` |
 | `JWT_ISSUER` / `JWT_AUDIENCE` | 必填 | |
 | `ACCESS_TOKEN_TTL` / `REFRESH_TOKEN_TTL` / `REFRESH_GRACE` | `15m` / `720h` / `30s` | |
 | `REAUTH_MAX_AGE` / `SENSITIVE_OP_VERIFICATION` | `5m` / `true` | 敏感操作要求 `auth_time` 在此时限内 |
@@ -439,6 +458,7 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 | `AUDIT_SOURCE` / `AUDIT_NAMESPACE` | `accountkit/<schema>` / `accountkit/<schema>/resources` | 本地默认在 New 应用；外部写侧必须显式配置稳定值，不能从请求采信 |
 | `DEFAULT_REGION` | `CN` | 无 `+` 前缀手机号的解析区域 |
 | `MAINTENANCE_INTERVAL` | `5m` | 维护 ticker 周期 |
+| `PURGED_USER_RETENTION` | `0`（长期保留） | 已清理用户记录保留期；大于 0 时不得短于 `720h`，由维护任务 `cleanup_purged_users` 删除超期记录 |
 | `WECHAT_APPS` | 空 | `appid:secret,appid:secret`（OAuth 应用） |
 | `WECHAT_MINI_PROGRAM_APPS` | 空 | 同上格式；仅配置本组也可启用微信登录 |
 | `WECHAT_SUBJECT_MODE` | `UNIONID` | 全局固定 `UNIONID` / `OPENID`；显式空值、空白或其他值非法 |
@@ -496,7 +516,7 @@ HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额
 
 ## 仓库与发布状态
 
-当前最新版本为 [v0.6.0](https://github.com/bbxx111/accountkit/releases/tag/v0.6.0)，包含身份提供方注册表与统一凭证、Google/OIDC/Facebook/支付宝/QQ/微博登录、微信小程序和可配置的第三方资料补填。使用 `go get github.com/bbxx111/accountkit@v0.6.0` 接入；范围与升级边界见[发布说明](docs/releases/v0.6.0.md)，候选 `ec6802c` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/40093942831)已通过，实际证据见[发布验收](openspec/changes/archive/2026-10-24-prepare-v0-6-0-release/verification.md)。
+v0.7.0 准备中，范围见 [v0.7.0 发布说明](docs/releases/v0.7.0.md)。当前已发布的最新版本为 [v0.6.0](https://github.com/bbxx111/accountkit/releases/tag/v0.6.0)，包含身份提供方注册表与统一凭证、Google/OIDC/Facebook/支付宝/QQ/微博登录、微信小程序和可配置的第三方资料补填。使用 `go get github.com/bbxx111/accountkit@v0.6.0` 接入；范围与升级边界见[发布说明](docs/releases/v0.6.0.md)，候选 `ec6802c` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/40093942831)已通过，实际证据见[发布验收](openspec/changes/archive/2026-10-24-prepare-v0-6-0-release/verification.md)。
 
 远程仓库：https://github.com/bbxx111/accountkit.git
 

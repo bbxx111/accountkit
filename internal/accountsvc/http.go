@@ -56,7 +56,8 @@ func (s *healthState) serveReady(w http.ResponseWriter, r *http.Request) {
 	healthResponse(w, 200, "ready")
 }
 
-func serviceHandler(cfg Config, endUser, admin, introspect http.Handler, state *healthState, metrics ...http.Handler) http.Handler {
+// serviceHandler 组装单监听器路由；purgeFeed / jwks 为 nil 时不挂载对应路由（仅供不涉及它们的测试）。
+func serviceHandler(cfg Config, endUser, admin, introspect, purgeFeed, jwks http.Handler, state *healthState, metrics ...http.Handler) http.Handler {
 	router := chi.NewRouter()
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -65,6 +66,14 @@ func serviceHandler(cfg Config, endUser, admin, introspect http.Handler, state *
 		})
 	})
 	router.Handle("/v1/introspect", introspect)
+	if purgeFeed != nil {
+		// 内部入口：独立 Basic 凭据；网关不得对公网开放。
+		router.Handle("/v1/purgedUsers", purgeFeed)
+	}
+	if jwks != nil {
+		// 只含公钥、无需认证；方法限制由 handler 自身处理（GET/HEAD）。
+		router.Handle("/.well-known/jwks.json", jwks)
+	}
 	router.Mount("/v1", endUser)
 	router.Mount("/admin/v1", admin)
 	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) { healthResponse(w, 200, "ok") })

@@ -42,6 +42,8 @@ func (s *Service) recordCompletionRejected(ctx context.Context, token, flowID st
 		reason = "IDENTITY_KIND_NOT_ENABLED"
 	case errors.Is(err, sender.ErrDisabled):
 		reason = "CHANNEL_NOT_ENABLED"
+	case errors.Is(err, sender.ErrTargetNotSupported):
+		reason = "TARGET_NOT_SUPPORTED"
 	case errors.Is(err, ErrUnavailable), errors.Is(err, code.ErrUnavailable):
 		reason = "UNAVAILABLE"
 	case errors.Is(err, ErrInvalidTarget), errors.Is(err, ErrInvalidArgument):

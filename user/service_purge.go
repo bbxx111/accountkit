@@ -34,6 +34,7 @@ var PurgeCoveredTables = map[string]string{
 	"identity":                "全部行（含已解绑的软删行）软删；subject_digest / provider_subject 替换为随机值；密文、provider_meta、hint、密钥版本置 NULL（AnonymizeIdentity）",
 	"session":                 "豁免 user_id 置空：全部会话在 purge 事务内吊销并写吊销集；账号行与身份已匿名化，user_id 不再指向可识别的自然人；行由 CleanupSessions 在 SessionRetention 后物理删除",
 	"audit_event":             "按配置 source 与资源 namespace 定向清理名称、客户端隐私及 subject_hint；保留稳定账号/流程引用与事件事实（ScrubAuditEventsByUser）",
+	"purged_user":             "豁免：本表即 purge 事务写入的已清理记录，只含 user_id 与时间，供外部业务服务拉取后幂等清理；不含身份目标或资料，按可选保留期由 CleanupPurgedUsers 删除",
 }
 
 // PurgeDueUsers 匿名化所有 purge_time 已到的 PENDING_DELETION 账号（§3.5），返回成功 purge 的账号数。
@@ -147,6 +148,14 @@ func (s *Service) purgeOne(ctx context.Context, userID string) (bool, error) {
 			if err := a.Anonymize(ctx, tx, userID); err != nil {
 				return fmt.Errorf("user: anonymizer %s: %w", a.Name(), err)
 			}
+		}
+		// 已清理记录最后写入：先取自冲突表锁再分配 seq，使序号顺序与提交顺序一致（拉取方按 seq 游标不漏读），
+		// 锁只覆盖插入到提交这一段。
+		if err := q.LockPurgedUserForInsert(ctx); err != nil {
+			return fmt.Errorf("user: lock purged_user: %w", err)
+		}
+		if err := q.InsertPurgedUser(ctx, db.InsertPurgedUserParams{UserID: userID, PurgeTime: now}); err != nil {
+			return fmt.Errorf("user: record purged user: %w", err)
 		}
 		purged = true
 		return nil

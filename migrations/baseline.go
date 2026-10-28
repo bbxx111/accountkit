@@ -80,7 +80,10 @@ func checkBaseline(ctx context.Context, db *sql.DB, schema string, src source.Dr
 	if err := checkProfileAttributesBaseline(ctx, db, schema, version); err != nil {
 		return err
 	}
-	return checkIdentityKindBaseline(ctx, db, schema, version)
+	if err := checkIdentityKindBaseline(ctx, db, schema, version); err != nil {
+		return err
+	}
+	return checkPurgedUserBaseline(ctx, db, schema, version)
 }
 
 // The consolidated version 1 requires the full session context. The previous

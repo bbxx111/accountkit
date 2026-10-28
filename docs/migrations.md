@@ -6,7 +6,7 @@ Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史�
 
 ## 当前头像初始定义：version 1
 
-该完整初始定义已随 [v0.5.0](releases/v0.5.0.md) 发布，tag 固定为 `102315c3069273f7a8c3ad253c1f4ae01255f8c6`。以下为发布前的有限授权记录；v0.5.0 tag 内的 0001 字节保持。其后当前 0001 又按 `add-google-sign-in`、`add-identity-provider-registry` 的明确授权调整（见[当前初始基线](#当前初始基线)），将随 v0.6.0 发布；后续真实结构变更从 0002 递增。
+该完整初始定义已随 [v0.5.0](releases/v0.5.0.md) 发布，tag 固定为 `102315c3069273f7a8c3ad253c1f4ae01255f8c6`。以下为发布前的有限授权记录；v0.5.0 tag 内的 0001 字节保持。其后当前 0001 又按 `add-google-sign-in`、`add-identity-provider-registry` 的明确授权调整（见[当前初始基线](#当前初始基线)），已随 v0.6.0 发布；`add-purged-user-feed` 的 `purged_user` 表将随 v0.7.0 发布；后续真实结构变更从 0002 递增。
 
 本轮用户明确要求“不新增 0002 迁移，改现有 0001”，范围仅为在当前 `user_account` 增加 `avatar_url TEXT NULL`，无默认值、业务 CHECK 或索引。同步 sqlc、当前 `initialFrozen` 与预检，新空 schema 安装仍为 version=1/dirty=false；0001 down 的整表删除定义已覆盖头像列，无需改动。此前资料单列整合与更早授权分别保留历史事实。
 
@@ -32,7 +32,7 @@ Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史�
 
 **下列历史数据库不能直接升级。** 已发布v0.3.0的v1缺少会话上下文；前一`b414fef`的v1仍含known标记、snapshot_kind和平坦双快照，原会话v2也已撤回。三者均返回ErrIncompatibleBaseline，保留catalog、数据、version/dirty，不自动补表、转换、重放0001、降版本或清库。新部署使用人工核验的新空数据库/schema；需要保留数据时必须另行制定并验证迁移方案，不能只因版本号都是1就直接接管。
 
-当前会话来源是非空领域不变量，不能用空集合表示安全，也不从身份列表或尽力审计推断。新建/重新认证在事务内验证来源身份归属和有效状态；当前详情、重新认证、换绑使用来源时检查有效性。解绑会检查同账号全部未吊销会话（含自然过期但未清理者），任一缺少有效来源则内部错误并整事务回滚；合法时只撤销命中来源的会话。普通JWT验证/内省不增加数据库查询。客户端描述为单份完整观察，有效非空观察整体替换，nil/空观察保持原值与时间，读取非法JSON为内部错误。
+当前会话来源是非空领域不变量，不能用空集合表示安全，也不从身份列表或尽力审计推断。新建/重新认证在事务内验证来源身份归属和有效状态；当前详情、重新认证、换绑使用来源时检查有效性。解绑会检查同账号全部未吊销会话（含自然过期但未清理者），任一缺少有效来源则内部错误并整事务回滚；合法时只撤销命中来源的会话。普通JWT验证不增加数据库查询；内省只按 sid 读取会话吊销状态，不读取来源。客户端描述为单份完整观察，有效非空观察整体替换，nil/空观察保持原值与时间，读取非法JSON为内部错误。
 
 1. 核对目标 schema、实际结构、版本、密钥、Redis 前缀和备份。新安装先确认目标为空；有旧数据时先完成独立迁移方案，不对旧库 Force 或改版本。
 2. 进入维护窗口，暂停并排空旧认证写请求和相关维护任务，或统一切换全部认证副本。旧副本不得继续建无来源会话、重新认证不替换来源或执行旧解绑/换绑撤销规则；不可让新旧副本混承接身份变更。
@@ -43,13 +43,15 @@ Auth.Migrate 仍按 search_path 检查、Redis Ping、数据库迁移、历史�
 
 ## 当前初始基线
 
-当前初始结构在 v0.4.0 七表会话定义之上，按各次限定授权合入资料单列和本轮头像列；生产目录只有 0001 up/down，version=1/dirty=false。0001 down 继续覆盖七表，公共 Down 拒绝；审计流程关联仍为 data.accountkit.flow_id。此前审计、流程改名、索引和会话简化授权各自限于当时范围。
+当前初始结构在 v0.4.0 七表会话定义之上，按各次限定授权合入资料单列、头像列，以及 `add-purged-user-feed` 的 `purged_user` 表（共八表）；生产目录只有 0001 up/down，version=1/dirty=false。0001 down 覆盖八表，公共 Down 拒绝；审计流程关联仍为 data.accountkit.flow_id。此前审计、流程改名、索引和会话简化授权各自限于当时范围。
+
+`add-purged-user-feed` 经用户明确要求“直接改 0001，不新增 0002”，在当前 0001 末尾新增 `purged_user`（`user_id` 主键与格式 CHECK、`seq BIGINT NOT NULL GENERATED ALWAYS AS IDENTITY` 唯一约束 `uk_purged_user_seq`、`purge_time` 默认 `clock_timestamp()`）及 `idx_purged_user_purge_time`，0001 down 最先删除该表。其他表、列、索引与约束不变，不新增 0002，新安装仍为 version=1/dirty=false。v0.6.0 发布的 0001 与此前当前定义逐字节相同，现作为独立 pin（tag `ec6802cd221db3ce107e79bac92174bc35a0ba7d`），当前 initialFrozen 更新为新哈希。已安装 v0.6.0 或更早版本的同号数据库缺少该表，预检无写拒绝（`migrations.ErrIncompatibleBaseline`，dirty 优先）；不补表、不 Force、不改版本、不清库，使用新版本须经人工核验后改用新空资源。**旧二进制（v0.6.0 及本变更前的 develop）的预检不检查这张新表，会接受新 version 1 结构；若让旧二进制或旧嵌入宿主对新结构运行维护任务，其 purge 不写已清理记录，该账号永远不会出现在拉取清单中，外部业务数据也就不会被清理。部署须人工阻止新旧版本混跑，以及在新结构上回退到旧二进制。**数据库从备份恢复或重新部署后，已清理记录的序号可能回退到业务方已保存的游标之下：拉取接口会对这类超前游标返回 400 `INVALID_PAGE_TOKEN`，业务方须清空游标从头重拉（清理按 user_id 幂等）。
 
 `add-google-sign-in` 只改当前 0001 up 中 `identity.kind` 与 `provider_meta` 的注释，并更新当前 initialFrozen。不新增列、索引、CHECK 或 0002。已发布 tag、冻结源和 0001 down 不变。同号数据库不会重放这段注释。旧二进制不能解释 kind 5。后续真实结构增量仍从 0002 开始。
 
 `add-identity-provider-registry` 经用户明确要求“直接改 0001”，只把当前 0001 中 `identity.kind` 改为 `VARCHAR(32) COLLATE "C" NOT NULL` 并加格式 CHECK `identity_kind_format`（`^[A-Z][A-Z0-9_]{1,31}$`），同步注释、sqlc、运行时预检与当前 initialFrozen。四个以 kind 开头的索引定义文本、其他列与约束、0001 down 不变，不新增 0002。`identity.kind` 仍为 SMALLINT 的 version 1（v0.5.0 及其后、本变更前的安装）与该列漂移的结构均无写拒绝，dirty 优先；不转换列、不重放同号 SQL、不 Force、改版本或清库，也不提供旧数据迁移。旧二进制（v0.5.0 及本变更前的 develop）的预检不认识这一列变化，可能接受新 version 1 后在读写 kind 时失败；部署须人工阻止新旧版本混跑，以及在新结构上回退到旧二进制。实际当前哈希记于[本变更验收](../openspec/changes/archive/2026-10-23-add-identity-provider-registry/verification.md)。
 
-基线预检要求完整 sign_in_completion_flow、十列 UUIDv7 审计、必有来源/单份描述、当前资料单列、头像列和文本身份类型列。旧缺头像资料 v1、v0.4.0 v1、v0.3.0 v1、双快照/旧流程/审计、双表及各代撤回 v2 均返回可由 errors.Is 识别的 migrations.ErrIncompatibleBaseline，保持 catalog、数据和 version/dirty，dirty 优先。UnsafeReset 沿用相同预检，不接受旧基线；重复 Up 不补列或重放同号 SQL。
+基线预检要求完整 sign_in_completion_flow、十列 UUIDv7 审计、必有来源/单份描述、当前资料单列、头像列、文本身份类型列和完整 purged_user 表。旧缺头像资料 v1、v0.4.0 v1、v0.3.0 v1、双快照/旧流程/审计、双表及各代撤回 v2 均返回可由 errors.Is 识别的 migrations.ErrIncompatibleBaseline，保持 catalog、数据和 version/dirty，dirty 优先。UnsafeReset 沿用相同预检，不接受旧基线；重复 Up 不补列或重放同号 SQL。
 
 冻结源、全部发布 tag/SQL、v0.4.0 旧定义与当前 initialFrozen 分别固定。头像轮当时的哈希和校验结果记于[该轮验收](../openspec/changes/archive/2026-10-21-add-user-avatar-url/verification.md)。后续真实增量从 0002 递增；旧发布说明和归档保留原文，当前操作以本节为准。
 
@@ -119,6 +121,6 @@ err := migrations.UnsafeReset(ctx, connCfg, schema,
 
 Redis 验证码状态不在数据库备份中；恢复后的 PENDING 流程缺少验证码轮次时必须拒绝，不能仅凭数据库票据放行。COMPLETED 的相同请求只有在原期限内、账号和会话有效且 refresh 未轮换时可读取原结果；期限自然经过后应拒绝票据，仍可验证已完成会话的 refresh。演练不延长5分钟流程期限，也不宣称数据库备份实现零数据损失。
 
-bash scripts/check-migrations.sh 校验固定源快照、v0.1.0/v0.2.0 的精确提交与原 SQL、v0.3.0 的精确提交与旧初始 SQL，v0.4.0、v0.5.0 的精确提交与原始 SQL，以及当前整合基线和全部可达新正式 vX.Y.Z tag，包括合并分支及 HEAD。各代基线使用独立固定 LF 字节哈希；发布过的增量不能被后续 tag 覆盖或删除，新标签不能借用历史基线例外。浅克隆须获取完整历史和 tags。
+bash scripts/check-migrations.sh 校验固定源快照、v0.1.0/v0.2.0 的精确提交与原 SQL、v0.3.0 的精确提交与旧初始 SQL，v0.4.0、v0.5.0、v0.6.0 的精确提交与原始 SQL，以及当前整合基线和全部可达新正式 vX.Y.Z tag，包括合并分支及 HEAD。各代基线使用独立固定 LF 字节哈希；发布过的增量不能被后续 tag 覆盖或删除，新标签不能借用历史基线例外。浅克隆须获取完整历史和 tags。
 
 bash scripts/verify-recovery.sh需要psql/pg_dump/pg_restore 17、Go和两个明确指定的独立空测试库。脚本通过集群system_identifier和实际数据库名称判断同库，要求具备读取pg_control_system的测试权限，并拒绝非空库。只生成合成数据，不删除或覆盖既有库。恢复后检查七个业务表、版本、解密和旧访问/刷新令牌；核对每个会话有效非空来源、双身份来源、单份nested客户端描述的app/browser并存、制造商/build、extensions及原观察时间。完整备份包含两个上下文子表，并在source-unchanged阶段验证源库未改变。普通TestRecoveryFixture仍预期skip，只有脚本三阶段强制运行才是恢复演练证据。历史凭证夹具须显式建立有效来源，不能将测试补关联描述成生产自动迁移。证据保留在被Git忽略的.test-output/recovery.*下；重跑需提供新的空库。当前简化版本的实际门禁结果见[验收记录](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)，历史记录不代表当前验证通过。

@@ -1,6 +1,6 @@
 # accountsvc 邮件模板清单实现计划
 
-> 需求与验收以 OpenSpec 变更为准：[proposal](../../../openspec/changes/add-accountsvc-email-templates/proposal.md)、[design](../../../openspec/changes/add-accountsvc-email-templates/design.md)、[tasks](../../../openspec/changes/add-accountsvc-email-templates/tasks.md)。本计划只记录实施顺序与执行方式，不重复规格。
+> 需求与验收以 OpenSpec 变更为准：[proposal](../../../openspec/changes/archive/2026-10-28-add-accountsvc-email-templates/proposal.md)、[design](../../../openspec/changes/archive/2026-10-28-add-accountsvc-email-templates/design.md)、[tasks](../../../openspec/changes/archive/2026-10-28-add-accountsvc-email-templates/tasks.md)。本计划只记录实施顺序与执行方式，不重复规格。
 
 **目标：** accountsvc 通过 `ACCOUNTSVC_SMTP_TEMPLATES_FILE` 读取一份多语言清单，用内置布局渲染 HTML 加纯文本的验证码邮件，并按请求的 `Accept-Language` 选择语言；未配置时行为逐字不变。
 

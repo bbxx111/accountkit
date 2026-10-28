@@ -1,6 +1,6 @@
 # add-accountsvc-email-templates 验收记录
 
-日期：2026-10-28。分支 `feat/accountsvc-email-templates`，基于 develop `27ed492`。实施计划见 [plan](../../../docs/superpowers/plans/2026-10-28-add-accountsvc-email-templates.md)。
+日期：2026-10-28。分支 `feat/accountsvc-email-templates`，基于 develop `27ed492`。实施计划见 [plan](../../../../docs/superpowers/plans/2026-10-28-add-accountsvc-email-templates.md)。
 
 ## 演进说明
 

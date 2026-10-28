@@ -4,8 +4,8 @@ accountsvc 有两个只供内部业务服务调用的接口：
 
 | 接口 | 当前认证 | 错误风格 | 未配置时 |
 |---|---|---|---|
-| `POST /v1/introspect` | `ACCOUNTSVC_INTROSPECTION_CLIENTS` Basic（必需） | RFC 6749/7662 顶层 `error` | 启动失败 |
-| `GET /v1/purgedUsers` | `ACCOUNTSVC_PURGE_FEED_CLIENTS` Basic（可选） | AIP-193 `apierror` | 503 `PURGE_FEED_NOT_CONFIGURED` |
+| `POST /v1/introspect` | `ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS` Basic（必需） | RFC 6749/7662 顶层 `error` | 启动失败 |
+| `GET /v1/purgedUsers` | `ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS` Basic（可选） | AIP-193 `apierror` | 503 `PURGE_FEED_NOT_CONFIGURED` |
 
 两份 Basic 列表由 `basicclients.SharedSecret` 保证不共用秘密。管理面已有 `adminauth`：启动时 OIDC discovery 并加载 JWKS（失败则启动失败），只接受 RS256，拒绝 `jku`/`x5u`，要求 `kid`、`exp`、`iat`，固定 30 秒偏差，按 kid 缓存密钥 1 小时，未知 kid 每分钟至多刷新一次，刷新失败归类为 503，并带「super-admin 包含 operator」的角色规则。
 
@@ -87,11 +87,13 @@ accountsvc 有两个只供内部业务服务调用的接口：
 
 令牌长度上限沿用 16 KiB。
 
+实施偏离（2026-10-28）：adminauth 现有行为只在 `iat` 存在时校验它，并不要求必须有。为保持管理员行为不变，`oidcjwt` 公共层只要求 `exp`、存在时校验 `iat`；「`iat` 必需」与 `exp - iat` 上限一起放在 serviceauth 中执行。服务令牌的外部行为与规范一致。
+
 ### D4 audience 与 issuer 隔离（约束 2）
 
-serve 启动时，配置任一 token 客户端列表即要求：
-- `ACCOUNTSVC_SERVICE_TOKEN_ISSUER`：绝对 HTTPS URL，规则同 `adminauth.Config.Validate`；可以等于 `ACCOUNTSVC_ADMIN_ISSUER`；SHALL 不等于 `ACCOUNTSVC_JWT_ISSUER`。
-- `ACCOUNTSVC_SERVICE_TOKEN_AUDIENCE`：非空、无首尾空白；SHALL 不等于：
+serve 启动时，配置任一 Bearer 客户端列表即要求：
+- `ACCOUNTSVC_SERVICE_ISSUER`：绝对 HTTPS URL，规则同 `adminauth.Config.Validate`；可以等于 `ACCOUNTSVC_ADMIN_ISSUER`；SHALL 不等于 `ACCOUNTSVC_JWT_ISSUER`。
+- `ACCOUNTSVC_SERVICE_AUDIENCE`：非空、无首尾空白；SHALL 不等于：
   - `ACCOUNTSVC_JWT_AUDIENCE`（消费者）；
   - `ACCOUNTSVC_ADMIN_AUDIENCE`（管理员启用时）；
   - 任一第三方应用/客户端 ID：微信与小程序 AppID、Apple Bundle ID、Google Client ID、Facebook App ID、QQ、微博、支付宝 AppID、OIDC 提供方 client ID（比现有管理员检查更全，管理员检查本次不改）；
@@ -109,7 +111,7 @@ serve 启动时，配置任一 token 客户端列表即要求：
 | 携带 Bearer 但无效（签名、iss、aud、过期、算法、jku、azp 缺失、寿命过长） | 401 `invalid_token` | 401 `TOKEN_INVALID` |
 | Bearer 有效但 `azp` 不在本接口列表 | 403 `insufficient_scope` | 403 `CLIENT_NOT_AUTHORIZED` |
 | 取不到签名密钥（discovery/JWKS 失败、刷新冷却中且上次失败） | 503 `temporarily_unavailable` | 503 `DEPENDENCY_UNAVAILABLE` + `Retry-After: 1` |
-| 两种方式都未配置 | 不可能（启动失败） | 503 `PURGE_FEED_NOT_CONFIGURED`（不变） |
+| 两种方式都未配置（先于认证判断） | 503 `introspection_not_configured`（见 D9 偏离） | 503 `PURGE_FEED_NOT_CONFIGURED`（不变） |
 
 拉取 401 选 `TOKEN_INVALID`：与 R3 契约一致，调用方处理是「重新向 IdP 换令牌后重试一次」；保留 `INVALID_CLIENT` 给 Basic/缺失凭据，调用方可据此区分「令牌问题」与「凭据配置问题」。
 
@@ -153,6 +155,8 @@ WWW-Authenticate: Bearer realm="accountsvc-introspection", error="invalid_token"
 - 服务 issuer 与管理员 issuer 相同时两个 verifier 各自缓存，互不影响；故障分类各自独立。
 - 认证阶段单独设 3 秒上限（现有 3 秒超时只覆盖认证之后的查询）；等待密钥超时 → 503。
 
+实施偏离（2026-10-28，独立审查发现）：启动阶段同步预加载在签发方**挂起**（丢包、DNS 黑洞）时会耗尽 `STARTUP_TIMEOUT` 预算，使 serve 启动失败，违反「签发方故障不阻止启动」。改为监听就绪后在后台预加载（上限 10 秒），关停时取消并等待；失败记 WARN，issuer 不一致记 ERROR。另为服务 verifier 设单次刷新超时 5 秒（小于 10 秒冷却），使挂起的签发方在冷却窗口内即判失败，后续 Bearer 请求立即 503；管理员保持原 10 秒超时与 1 分钟冷却。
+
 ### D8 可观测性（约束 7）
 
 - 不记录令牌、Basic 秘密或 Authorization 头；日志只出现 `client_id`（Basic 用户名或 `azp`）与 `auth_method`（`basic`/`bearer`）。
@@ -163,16 +167,20 @@ WWW-Authenticate: Bearer realm="accountsvc-introspection", error="invalid_token"
 
 | 变量 | 格式 | 说明 |
 |---|---|---|
-| `ACCOUNTSVC_SERVICE_TOKEN_ISSUER` | HTTPS URL | 两个接口共用 |
-| `ACCOUNTSVC_SERVICE_TOKEN_AUDIENCE` | 字符串 | 两个接口共用；隔离规则见 D4 |
-| `ACCOUNTSVC_INTROSPECTION_TOKEN_CLIENTS` | JSON 字符串数组 | 允许调用内省的 `azp` |
-| `ACCOUNTSVC_PURGE_FEED_TOKEN_CLIENTS` | JSON 字符串数组 | 允许调用拉取的 `azp` |
+| `ACCOUNTSVC_SERVICE_ISSUER` | HTTPS URL | 两个接口共用 |
+| `ACCOUNTSVC_SERVICE_AUDIENCE` | 字符串 | 两个接口共用；隔离规则见 D4 |
+| `ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS` | JSON 字符串数组 | 允许调用内省的 `azp` |
+| `ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS` | JSON 字符串数组 | 允许调用拉取的 `azp` |
 
 - 数组元素唯一、非空、无空白/控制字符、长度 ≤ 256；空数组视同未配置。
 - 两个数组 SHALL 不相交；任一元素 SHALL 不等于服务 audience。
-- 内省：`ACCOUNTSVC_INTROSPECTION_CLIENTS` 与 `ACCOUNTSVC_INTROSPECTION_TOKEN_CLIENTS` 至少一个非空；production 同样只要求「至少一种」。
+- 内省：`ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS` 与 `ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS` 均可选，规则与拉取相同（见下方偏离）。
 - 两个接口共用一个 audience，靠 `azp` 区分接口；不为每个接口单设 audience，减少 IdP mapper 配置。
 - 错误消息只指出变量名，不回显值（与现有一致）。migrate 不解析这些变量。
+
+实施偏离（2026-10-28，用户决定）：变量名按认证方式成对命名。设计原稿的 `SERVICE_TOKEN_ISSUER` / `SERVICE_TOKEN_AUDIENCE` 改为 `SERVICE_ISSUER` / `SERVICE_AUDIENCE`（与 `ADMIN_ISSUER` / `ADMIN_AUDIENCE` 对称）；`*_TOKEN_CLIENTS` 改为 `*_BEARER_CLIENTS`；既有 Basic 变量 `INTROSPECTION_CLIENTS` / `PURGE_FEED_CLIENTS` 同步改为 `*_BASIC_CLIENTS`，格式不变、不读取旧名。尚无产品部署，不提供旧名检测或迁移。
+
+实施偏离（2026-10-28，用户决定）：内省调用认证改为与拉取相同的可选规则，取代原稿「至少一个非空、否则启动失败」。两种方式都未配置时 serve（含 production）照常启动，`/v1/introspect` 先于认证返回 503 `introspection_not_configured`；错误体沿用该接口的 OAuth 顶层 `error`（小写下划线，与 RFC 6749 扩展错误码风格一致），不改用 AIP-193，避免同一接口出现两种错误格式。代价是漏配内省不再导致启动失败，而是表现为依赖内省的关键接口全部失败。为此 serve 在监听就绪后为每个未配置、只会返回 503 `*_NOT_CONFIGURED` 的可选接口记一条 WARN（只写变量名）：内省、已清理用户拉取、管理员 API（`ACCOUNTSVC_ADMIN_ENABLED`）与用户资料属性（`ACCOUNTSVC_PROFILE_ATTRIBUTES_SCHEMA_FILE`）；后两项不属于本变更的能力，只增加日志、不改行为（用户要求一并处理）。
 
 ## Risks / Trade-offs
 
@@ -187,7 +195,7 @@ WWW-Authenticate: Bearer realm="accountsvc-introspection", error="invalid_token"
 
 1. 部署新版本，只配 Basic：行为与现在完全相同。
 2. IdP 建客户端与 audience mapper；accountsvc 增加 issuer/audience 与 token 列表，滚动重启；调用方切换到 Bearer。
-3. 观察稳定后移除对应 Basic 列表（内省须保证至少一种仍配置）。
+3. 观察稳定后移除对应 Basic 列表（移除前确认 Bearer 已生效；两种都移除时内省返回 503）。
 回退：调用方切回 Basic；或移除 token 配置并重启。无数据迁移。
 
 ## 测试矩阵（回答问题 4）

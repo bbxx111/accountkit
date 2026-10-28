@@ -117,7 +117,7 @@ func serveEnvironment(t *testing.T) {
 	t.Setenv("ACCOUNTSVC_SMTP_FROM", "sender@example.org")
 	t.Setenv("ACCOUNTSVC_SMTP_USERNAME", "smtp-user")
 	t.Setenv("ACCOUNTSVC_SMTP_PASSWORD", "synthetic-smtp-password")
-	t.Setenv("ACCOUNTSVC_INTROSPECTION_CLIENTS", fmt.Sprintf(`{"test-client":["%s"]}`, base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{8}, 32))))
+	t.Setenv("ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS", fmt.Sprintf(`{"test-client":["%s"]}`, base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{8}, 32))))
 }
 
 func certificateFiles(t *testing.T) (string, string) {
@@ -157,13 +157,13 @@ func TestConfigProductionDefaultsAndMigrate(t *testing.T) {
 		if c.Mode != "production" || c.HTTPAddr != "127.0.0.1:8080" || c.StartupTimeout != time.Minute || c.ShutdownTimeout != 30*time.Second || c.SMTP.TLSMode != "implicit" || c.SMTP.Timeout != 10*time.Second || c.AdminEnabled {
 			t.Fatal("unsafe service defaults")
 		}
-		if c.Library.Schema != "account" || c.Library.KeyPrefix != "auth:" || len(c.IntrospectionClients) != 1 {
+		if c.Library.Schema != "account" || c.Library.KeyPrefix != "auth:" || len(c.IntrospectionBasicClients) != 1 {
 			t.Fatal("library defaults/clients not loaded")
 		}
 	})
 	t.Run("migrate ignores service-only config", func(t *testing.T) {
 		configEnvironment(t)
-		for _, key := range []string{"MODE", "SMTP_PORT", "ADMIN_ENABLED", "INTROSPECTION_CLIENTS", "HTTP_ADDR", "INTERNAL_ADDR", "TLS_ENABLED", "TLS_CERT_FILE", "TLS_KEY_FILE", "SHUTDOWN_TIMEOUT"} {
+		for _, key := range []string{"MODE", "SMTP_PORT", "ADMIN_ENABLED", "INTROSPECTION_BASIC_CLIENTS", "HTTP_ADDR", "INTERNAL_ADDR", "TLS_ENABLED", "TLS_CERT_FILE", "TLS_KEY_FILE", "SHUTDOWN_TIMEOUT"} {
 			t.Setenv("ACCOUNTSVC_"+key, "malformed-service-only")
 		}
 		if _, err := LoadConfig("migrate"); err != nil {
@@ -352,7 +352,7 @@ func TestConfigTLSMode(t *testing.T) {
 			}
 		}
 	}
-	for _, tc := range []struct{ key, value string }{{"SMTP_TLS_MODE", "none"}, {"SMTP_USERNAME", ""}, {"SMTP_PASSWORD", ""}, {"INTROSPECTION_CLIENTS", ""}, {"ADMIN_ISSUER", "http://synthetic-secret.example.test"}} {
+	for _, tc := range []struct{ key, value string }{{"SMTP_TLS_MODE", "none"}, {"SMTP_USERNAME", ""}, {"SMTP_PASSWORD", ""}, {"ADMIN_ISSUER", "http://synthetic-secret.example.test"}} {
 		t.Run("production HTTP retains "+tc.key, func(t *testing.T) {
 			serveEnvironment(t)
 			t.Setenv("ACCOUNTSVC_TLS_ENABLED", "false")
@@ -404,7 +404,7 @@ func TestConfigRejectsUnsafeValuesWithoutLeaks(t *testing.T) {
 		{"ACCOUNTSVC_SMTP_PORT", "synthetic-secret", "SMTP_PORT"},
 		{"ACCOUNTSVC_SMTP_TIMEOUT", "0s", "SMTP_TIMEOUT"},
 		{"ACCOUNTSVC_SMTP_FROM", "sender@example.org\r\nBcc: synthetic-secret@example.org", "SMTP_FROM"},
-		{"ACCOUNTSVC_INTROSPECTION_CLIENTS", `{"id":["synthetic-secret"]}`, "INTROSPECTION_CLIENTS"},
+		{"ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS", `{"id":["synthetic-secret"]}`, "INTROSPECTION_BASIC_CLIENTS"},
 		{"ACCOUNTSVC_TRUSTED_PROXY_CIDRS", "synthetic-secret", "TRUSTED_PROXY_CIDRS"},
 		{"ACCOUNTSVC_ADMIN_ENABLED", "synthetic-secret", "ADMIN_ENABLED"},
 		{"ACCOUNTSVC_ADMIN_ISSUER", "https://synthetic-secret.example.org", "ADMIN_ISSUER"},

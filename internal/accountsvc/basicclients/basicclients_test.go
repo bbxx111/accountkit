@@ -13,8 +13,8 @@ import (
 func secret(b byte) string { return base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{b}, 32)) }
 
 func TestParseNamesVariableWithoutEchoingValue(t *testing.T) {
-	_, err := basicclients.Parse(`{"a":["short-secret"]}`, "ACCOUNTSVC_PURGE_FEED_CLIENTS")
-	if err == nil || !strings.Contains(err.Error(), "ACCOUNTSVC_PURGE_FEED_CLIENTS") || strings.Contains(err.Error(), "short-secret") {
+	_, err := basicclients.Parse(`{"a":["short-secret"]}`, "ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS")
+	if err == nil || !strings.Contains(err.Error(), "ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS") || strings.Contains(err.Error(), "short-secret") {
 		t.Fatalf("err = %v", err)
 	}
 	if _, err := basicclients.Parse(`{"a":["`+secret(1)+`"],"a":["`+secret(2)+`"]}`, "X"); err == nil {
@@ -43,5 +43,22 @@ func TestMatcherAndSharedSecret(t *testing.T) {
 	if !basicclients.SharedSecret(map[string][]string{"a": {secret(1)}}, map[string][]string{"b": {secret(1)}}) ||
 		basicclients.SharedSecret(map[string][]string{"a": {secret(1)}}, map[string][]string{"b": {secret(2)}}) {
 		t.Fatal("SharedSecret mismatch")
+	}
+}
+
+func TestMatchReturnsClientID(t *testing.T) {
+	m, err := basicclients.NewMatcher(map[string][]string{"svc": {secret(1)}, "other": {secret(2)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest("GET", "/", nil)
+	r.SetBasicAuth("other", secret(2))
+	if id, ok := m.Match(r); !ok || id != "other" {
+		t.Fatalf("Match = %q, %v", id, ok)
+	}
+	r = httptest.NewRequest("GET", "/", nil)
+	r.SetBasicAuth("svc", secret(2))
+	if id, ok := m.Match(r); ok || id != "" {
+		t.Fatalf("secret of another client matched: %q, %v", id, ok)
 	}
 }

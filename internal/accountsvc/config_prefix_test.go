@@ -102,7 +102,7 @@ func libraryConfigWith(t *testing.T, name, value string) (accountkit.Config, err
 
 func TestServiceAndLibraryEnvNamesDoNotOverlap(t *testing.T) {
 	names := serviceEnvNames(t)
-	for _, required := range []string{"DATABASE_URL", "HTTP_ADDR", "INTROSPECTION_CLIENTS", "SMTP_HOST", "SMS_ALIYUN_TEMPLATE_SIGN_IN"} {
+	for _, required := range []string{"DATABASE_URL", "HTTP_ADDR", "INTROSPECTION_BASIC_CLIENTS", "SMTP_HOST", "SMS_ALIYUN_TEMPLATE_SIGN_IN"} {
 		if i := sort.SearchStrings(names, required); i == len(names) || names[i] != required {
 			t.Fatalf("service variable scan missed %s; got %v", required, names)
 		}

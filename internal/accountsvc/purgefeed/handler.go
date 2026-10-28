@@ -14,6 +14,7 @@ import (
 
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/internal/accountsvc/basicclients"
+	"github.com/bbxx111/accountkit/internal/accountsvc/serviceauth"
 	"github.com/bbxx111/accountkit/user"
 )
 
@@ -27,26 +28,41 @@ const (
 // Lister reads purged users after a cursor; *user.Service.ListPurgedUsers satisfies it.
 type Lister func(ctx context.Context, after int64, limit int) ([]user.PurgedUser, int64, error)
 
+// Realm is the protection space named in this interface's challenges.
+const Realm = "accountsvc-purge-feed"
+
 type handler struct {
-	clients *basicclients.Matcher // nil when ACCOUNTSVC_PURGE_FEED_CLIENTS is not configured
-	list    Lister
+	auth *serviceauth.Authenticator // reports !Enabled() when no caller authentication is configured
+	list Lister
 }
 
-// New returns the feed handler. With no clients the route answers 503 PURGE_FEED_NOT_CONFIGURED,
-// so callers can tell an unconfigured feed from a wrong path.
+// New accepts only HTTP Basic callers. With no clients the route answers 503
+// PURGE_FEED_NOT_CONFIGURED, so callers can tell an unconfigured feed from a wrong path.
 func New(clients map[string][]string, list Lister) (http.Handler, error) {
+	if len(clients) > 0 && !basicclients.Valid(clients) {
+		return nil, errors.New("accountsvc: invalid ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS")
+	}
+	cfg := serviceauth.Config{Realm: Realm, Endpoint: "purged_users"}
+	if len(clients) > 0 {
+		cfg.Basic = clients
+	}
+	auth, err := serviceauth.New(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return NewWithAuthenticator(auth, list)
+}
+
+// NewWithAuthenticator accepts the callers auth allows (Basic and/or service Bearer tokens).
+// An auth with no method enabled yields 503 PURGE_FEED_NOT_CONFIGURED.
+func NewWithAuthenticator(auth *serviceauth.Authenticator, list Lister) (http.Handler, error) {
+	if auth == nil {
+		return nil, errors.New("accountsvc: purged user feed authenticator is required")
+	}
 	if list == nil {
 		return nil, errors.New("accountsvc: purged user lister is required")
 	}
-	h := &handler{list: list}
-	if len(clients) > 0 {
-		m, err := basicclients.NewMatcher(clients)
-		if err != nil {
-			return nil, errors.New("accountsvc: invalid ACCOUNTSVC_PURGE_FEED_CLIENTS")
-		}
-		h.clients = m
-	}
-	return h, nil
+	return &handler{auth: auth, list: list}, nil
 }
 
 type purgedUser struct {
@@ -61,13 +77,28 @@ type page struct {
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	if h.clients == nil {
+	if !h.auth.Enabled() {
 		apierror.Write(w, apierror.New(apierror.StatusUnavailable, "PURGE_FEED_NOT_CONFIGURED", "purged user feed is not configured on this service"))
 		return
 	}
-	if !h.clients.Authorized(r) {
-		w.Header().Set("WWW-Authenticate", `Basic realm="accountsvc-purge-feed"`)
-		apierror.Write(w, apierror.New(apierror.StatusUnauthenticated, "INVALID_CLIENT", "valid service client credentials are required"))
+	res := h.auth.Authenticate(r)
+	switch res.Outcome {
+	case serviceauth.Unauthenticated:
+		serviceauth.WriteChallenges(w, h.auth.Challenges(res))
+		if res.BearerAttempted {
+			apierror.Write(w, apierror.New(apierror.StatusUnauthenticated, "TOKEN_INVALID", "service access token is invalid; obtain a new token and retry once"))
+		} else {
+			apierror.Write(w, apierror.New(apierror.StatusUnauthenticated, "INVALID_CLIENT", "valid service client credentials are required"))
+		}
+		return
+	case serviceauth.Forbidden:
+		serviceauth.WriteChallenges(w, h.auth.Challenges(res))
+		apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, "CLIENT_NOT_AUTHORIZED", "this service client is not authorized for the purged user feed"))
+		return
+	case serviceauth.Unavailable:
+		e := apierror.New(apierror.StatusUnavailable, "DEPENDENCY_UNAVAILABLE", "service token verification temporarily unavailable")
+		e.RetryAfterSeconds = 1
+		apierror.Write(w, e)
 		return
 	}
 	if r.Method != http.MethodGet {

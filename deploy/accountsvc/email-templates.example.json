@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "templates": {
+    "SIGN_IN": {
+      "subject": "{brand}登录验证码",
+      "text": "【{brand}】您正在登录。\n\n验证码：{code}\n有效期：{ttl_minutes} 分钟。\n\n请勿向他人透露验证码。如非本人操作，请忽略此邮件。\n"
+    },
+    "BIND": {
+      "subject": "{brand}绑定邮箱验证码",
+      "text": "【{brand}】您正在将此邮箱绑定到账号。\n\n验证码：{code}\n有效期：{ttl_minutes} 分钟。\n\n请勿向他人透露验证码。如非本人操作，请忽略此邮件。\n"
+    },
+    "REAUTH": {
+      "subject": "{brand}身份验证验证码",
+      "text": "【{brand}】您正在进行身份验证，以确认是本人操作。\n\n验证码：{code}\n有效期：{ttl_minutes} 分钟。\n\n请勿向他人透露验证码。如非本人操作，请忽略此邮件。\n"
+    },
+    "SIGN_IN_COMPLETE": {
+      "subject": "{brand}登录补全验证码",
+      "text": "【{brand}】您正在完成登录并关联身份；如该邮箱尚未注册，将自动注册账号。\n\n验证码：{code}\n有效期：{ttl_minutes} 分钟。\n\n请勿向他人透露验证码。如非本人操作，请忽略此邮件。\n"
+    }
+  }
+}

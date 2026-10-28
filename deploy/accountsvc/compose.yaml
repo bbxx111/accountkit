@@ -38,6 +38,11 @@ services:
         condition: service_started
     ports:
       - "127.0.0.1:${ACCOUNTSVC_PUBLIC_PORT:-18080}:8080"
+    # Optional email templates: uncomment and set
+    # ACCOUNTSVC_SMTP_TEMPLATES_FILE=/etc/accountsvc/email-templates.json (requires ACCOUNTSVC_SMTP_BRAND
+    # because the example uses {brand}).
+    # volumes:
+    #   - ./email-templates.example.json:/etc/accountsvc/email-templates.json:ro
     environment:
       ACCOUNTSVC_MODE: development
       ACCOUNTSVC_DATABASE_URL: postgres://accountkit:${POSTGRES_PASSWORD:?required}@postgres:5432/accountkit?sslmode=disable
@@ -52,6 +57,7 @@ services:
       ACCOUNTSVC_SMTP_FROM: accounts@example.test
       ACCOUNTSVC_SMTP_TLS_MODE: none
       ACCOUNTSVC_SMTP_BRAND: ${ACCOUNTSVC_SMTP_BRAND:-}
+      ACCOUNTSVC_SMTP_TEMPLATES_FILE: ${ACCOUNTSVC_SMTP_TEMPLATES_FILE:-}
       # Optional Aliyun SMS; empty values keep SMS unconfigured.
       ACCOUNTSVC_SMS_PROVIDER: ${ACCOUNTSVC_SMS_PROVIDER:-}
       ACCOUNTSVC_SMS_ALIYUN_ACCESS_KEY_ID: ${ACCOUNTSVC_SMS_ALIYUN_ACCESS_KEY_ID:-}

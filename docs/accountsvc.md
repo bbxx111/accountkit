@@ -96,7 +96,8 @@ QQ App SDK 登录使用 `ACCOUNTSVC_QQ_APP_IDS`（逗号分隔的唯一 1–20 �
 | `SMTP_TLS_MODE` | implicit；可选 starttls；none 仅限 development |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | 成对配置，生产必填 |
 | `SMTP_TIMEOUT` | 10s，包含连接、TLS、认证和提交 |
-| `SMTP_BRAND` | 可选，内置中文邮件的品牌前缀：标题为“<品牌><用途>验证码”，正文以“【品牌】”开头；1–32 个字符，不得含换行/控制字符或首尾空白；EMAIL 禁用时不解析 |
+| `SMTP_BRAND` | 可选，内置中文邮件的品牌前缀：标题为“<品牌><用途>验证码”，正文以“【品牌】”开头；配置模板文件时作为 `{brand}` 的取值；1–32 个字符，不得含换行/控制字符或首尾空白；EMAIL 禁用时不解析 |
+| `SMTP_TEMPLATES_FILE` | 可选本地普通文件，自定义四种用途的纯文本邮件标题和正文，最大 64 KiB，仅 serve 在 EMAIL 启用时于启动阶段读取一次；空设置使用内置中文文案；格式见[邮件模板文件](#邮件模板文件) |
 | `SMS_PROVIDER` | 空表示未配置短信；首版只接受 `aliyun`，见[短信服务商](#短信服务商) |
 | `INTROSPECTION_BASIC_CLIENTS` | 可选；Basic 内省客户端，JSON：客户端 ID → base64 秘密数组。与 `INTROSPECTION_BEARER_CLIENTS` 都未设置时服务照常启动，`/v1/introspect` 返回 503 `introspection_not_configured` |
 | `PURGE_FEED_BASIC_CLIENTS` | 可选；格式同 `INTROSPECTION_BASIC_CLIENTS`，供业务服务拉取已清理用户（见[已清理用户拉取](#已清理用户拉取)）；秘密不得与内省凭据重复；与 `PURGE_FEED_BEARER_CLIENTS` 都未设置时该路由返回 503 |
@@ -312,7 +313,42 @@ JWKS 最多缓存1小时；未知 kid 刷新合并并按60秒节流，无法取�
 
 ## 邮件、匿名化与停机
 
-EMAIL 启用时，服务显式调用 `smtp.NewWithRenderer(cfg.SMTP, smtp.LegacyChineseRenderer{})`，保留原四用途中文纯文本与有效期分钟数向上取整行为。这里不增加语言协商、模板管理或环境变量；EMAIL 关闭时仍不要求 SMTP，`migrate` 不装配发送器。嵌入式宿主需要本地化时，可参考[双语渲染实现](../examples/codeemail/renderer.go)和[装配示例](../examples/codeemail/example_test.go)，通过自己的 context 约定选择语言；并发、取消、HTML 转义和安全日志责任见 [README 发送器契约](../README.md#发送器)。新旧名称与回退说明见[兼容指南](compatibility.md#验证码发送器命名与渲染接入)。
+EMAIL 启用时，服务默认调用 `smtp.NewWithRenderer(cfg.SMTP, smtp.LegacyChineseRenderer{Brand: <SMTP_BRAND>})`，保留原四用途中文纯文本与有效期分钟数向上取整行为；配置了 `SMTP_TEMPLATES_FILE` 时改用该文件的纯文本模板（见[邮件模板文件](#邮件模板文件)）。服务不做语言协商，也不提供 HTML 邮件；EMAIL 关闭时仍不要求 SMTP，`migrate` 不装配发送器。嵌入式宿主需要本地化时，可参考[双语渲染实现](../examples/codeemail/renderer.go)和[装配示例](../examples/codeemail/example_test.go)，通过自己的 context 约定选择语言；并发、取消、HTML 转义和安全日志责任见 [README 发送器契约](../README.md#发送器)。新旧名称与回退说明见[兼容指南](compatibility.md#验证码发送器命名与渲染接入)。
+
+### 邮件模板文件
+
+`ACCOUNTSVC_SMTP_TEMPLATES_FILE` 指向一个本地 JSON 文件，四种用途必须全部提供，不会按用途回落到内置文案。示例见 [email-templates.example.json](../deploy/accountsvc/email-templates.example.json)：
+
+```json
+{
+  "version": 1,
+  "templates": {
+    "SIGN_IN":          {"subject": "{brand}登录验证码",     "text": "【{brand}】您正在登录。\n\n验证码：{code}\n有效期：{ttl_minutes} 分钟。\n"},
+    "BIND":             {"subject": "{brand}绑定邮箱验证码", "text": "..."},
+    "REAUTH":           {"subject": "{brand}身份验证验证码", "text": "..."},
+    "SIGN_IN_COMPLETE": {"subject": "{brand}登录补全验证码", "text": "..."}
+  }
+}
+```
+
+- **结构**：`version` 必须为 1；`templates` 恰好包含 `SIGN_IN`、`BIND`、`REAUTH`、`SIGN_IN_COMPLETE`，每项恰好包含字符串 `subject` 与 `text`。以下情况均在启动时拒绝：未知字段、重复键、`null`、尾随内容、非法 UTF-8。
+- **占位符**：只有三个。
+  - `{code}`：验证码。
+  - `{ttl_minutes}`：有效期分钟数，向上取整。
+  - `{brand}`：`ACCOUNTSVC_SMTP_BRAND` 的值；模板引用 `{brand}` 而品牌为空时启动失败。
+  - 字面花括号写作 `{{` 和 `}}`。其他名称、单独的 `{` 或 `}` 都是配置错误。
+  - 每个 `text` 必须含 `{code}`；`subject` 不得含 `{code}`，避免验证码出现在收件箱列表或通知预览里。
+  - 替换只做一次，替换值不会再被当作占位符展开；不支持条件、循环或函数。
+- **字符与长度**：
+  - `subject`：1–64 个字符，不得有首尾空白、换行、制表符、其他控制字符或 Unicode 格式/分隔字符（规则与品牌相同）。
+  - `text`：1–4096 个字符，只是纯文本；换行写作 `\n`，发送时转为 CRLF；控制字符只允许换行和制表符，不得含 `\r` 或 Unicode 格式/分隔字符。
+  - 每个模板最多 8 个占位符，转义的花括号不计入。
+- **文案责任**：服务只校验格式，不校验语义。登录补全邮件须向用户说明是在完成登录并关联身份（未注册时会自动注册），不要写成普通登录或营销内容。
+- **加载与观测**：
+  - 只在 serve 启动且 EMAIL 启用时读取一次；文件不可读、不是普通文件、为空、超过 64 KiB 或内容非法时，在监听前退出。错误只包含变量名、字段位置（如 `templates.SIGN_IN.subject`）和固定分类，不含路径或文件内容。
+  - 修改文件后须重启生效。EMAIL 禁用时和执行 `migrate` 时不读取。
+  - 启动后记录一条 INFO：`email templates: built-in`，或 `email templates: custom` 并附 `version` 与 `sha256`（文件内容摘要的前 12 位）。摘要用于核对多个副本是否加载了同一份文件；日志不记录路径、模板原文、渲染结果或验证码。
+- **兼容性**：以后的多语言扩展会作为可选字段加在 version 1 中，顶层 `templates` 仍作为默认语言，现有文件无需修改。旧版本服务遇到新字段会在启动时拒绝，不会静默忽略。
 
 SMTP 认证使用 AUTH PLAIN，并在生产模式要求证书验证和加密；首版不支持 OAuth SMTP 凭据。提交被接受不代表邮件最终进入收件箱。发送器不自动重发；超时/拒绝返回503且保留已经占用的额度和冷却，避免故障时产生发送风暴。生产日志不包含验证码或完整邮箱。
 

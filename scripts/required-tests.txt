@@ -988,3 +988,16 @@ github.com/bbxx111/accountkit/user/sender/aliyun/TestSendSMSErrorsAreUnavailable
 github.com/bbxx111/accountkit/user/sender/aliyun/TestSendSMSTimeoutAndCancellation
 github.com/bbxx111/accountkit/user/sender/aliyun/TestSendSMSFailureLoggingAndGatewayErrors
 github.com/bbxx111/accountkit/user/sender/aliyun/TestSupportsTargetMobileOnly
+github.com/bbxx111/accountkit/internal/mailtext/TestHeaderText
+github.com/bbxx111/accountkit/internal/mailtext/TestBodyText
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestParseAndRenderAllPurposes
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestParseRejects
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestParseBoundaries
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestPlaceholderEscapesAndSinglePass
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestBrandNotRequiredWhenUnused
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestRenderTTLRoundsUp
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestRenderRejectsInvalidInput
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestRenderConcurrent
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestExampleFile
+github.com/bbxx111/accountkit/internal/accountsvc/TestConfigEmailTemplates
+github.com/bbxx111/accountkit/internal/accountsvc/TestLogEmailTemplates

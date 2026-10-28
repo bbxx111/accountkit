@@ -140,7 +140,11 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 		return nil, err
 	}
 	if cfg.identityEnabled(enum.IdentityEmail) {
-		s, err := smtp.NewWithRenderer(cfg.SMTP, smtp.LegacyChineseRenderer{Brand: cfg.SMTPBrand})
+		var renderer smtp.Renderer = smtp.LegacyChineseRenderer{Brand: cfg.SMTPBrand}
+		if cfg.EmailTemplates != nil {
+			renderer = cfg.EmailTemplates
+		}
+		s, err := smtp.NewWithRenderer(cfg.SMTP, renderer)
 		if err != nil {
 			return nil, errors.New("accountsvc: SMTP configuration failed")
 		}
@@ -386,6 +390,7 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 	} else {
 		logger.Info("accountsvc: HTTP listener started; HTTP TLS is disabled in this process", "http_tls_enabled", false)
 	}
+	logEmailTemplates(cfg, logger)
 	warnUnconfigured(cfg, logger)
 	state.ready.Store(true)
 	cancelStartup()

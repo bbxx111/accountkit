@@ -5,11 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"strings"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/mailtext"
 	"github.com/bbxx111/accountkit/user/sender"
 )
 
@@ -28,14 +27,9 @@ func ValidateBrand(brand string) error {
 	if brand == "" {
 		return nil
 	}
-	if !utf8.ValidString(brand) || utf8.RuneCountInString(brand) > MaxBrandLength || strings.TrimSpace(brand) != brand {
+	// 控制字符（含换行）、格式字符（双向覆盖、零宽字符）与行/段分隔符均拒绝，防止头注入与标题伪装。
+	if !mailtext.HeaderText(brand) || utf8.RuneCountInString(brand) > MaxBrandLength {
 		return errors.New("smtp: invalid Brand")
-	}
-	for _, r := range brand {
-		// 控制字符（含换行）、格式字符（双向覆盖、零宽字符）与行/段分隔符均拒绝，防止头注入与标题伪装。
-		if unicode.IsControl(r) || unicode.In(r, unicode.Cf, unicode.Zl, unicode.Zp) {
-			return errors.New("smtp: invalid Brand")
-		}
 	}
 	return nil
 }

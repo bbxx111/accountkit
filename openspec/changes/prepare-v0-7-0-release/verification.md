@@ -4,7 +4,7 @@
 
 ## 准备范围
 
-- develop `7e3a524`（含 `add-accountsvc-email-templates` 归档与 CI 去重）之上，分支 `docs/prepare-v0-7-0-release` 只修改文档、两份 OpenAPI 的 `info.version`/`info.description` 与本变更工件；相对 develop 无 Go、SQL、生成代码或脚本改动。
+- develop `7e3a524`（含 `add-accountsvc-email-templates` 归档与 CI 去重）之上，分支 `docs/prepare-v0-7-0-release`（准备提交 `49f0f2c`，本记录的补记提交除外）只修改文档、两份 OpenAPI 的 `info.version`/`info.description` 与本变更工件；相对 develop 无 Go、SQL、生成代码或脚本改动。
 - 盘点 v0.6.0..develop：六项已归档变更与四项维护，见 [v0.7.0 发布说明](../../../docs/releases/v0.7.0.md)。go.mod/go.sum 无变化；当前 `migrations/0001_init.up.sql` SHA256 为 `ef2d1f229fa15b660cc7ecb4f417615b76866c19494641c96faf25bab24188b6`，v0.6.0 为 `4c6b565e336aba88db5f6bf219407b026a7c1b438057b61470377005ed2509c5`（已由 `add-purged-user-feed` 作为独立 pin 固定）。
 
 ## 静态检查（通过）
@@ -16,7 +16,7 @@
 
 ## 完整本地验证（通过）
 
-准备快照为提交 `PREP_SHA`。在 `tests/Dockerfile` 构建的 Linux 验证镜像 `akverify-linux`（golang:1.26.5 + postgresql-client-17）中执行，PostgreSQL 17.4 容器 `akverify-pg`（数据库 `akverify`、`akverify_svc`、`akverify_src`、`akverify_dst`）与 Redis 7 容器 `akverify-redis`（DB 0/1）均为本任务创建的一次性资源，运行结束后已删除容器、网络、构建缓存卷与镜像。原始日志在被忽略的 `.test-output/v070prep/`。
+准备快照为提交 `49f0f2c`。在 `tests/Dockerfile` 构建的 Linux 验证镜像 `akverify-linux`（golang:1.26.5 + postgresql-client-17）中执行，PostgreSQL 17.4 容器 `akverify-pg`（数据库 `akverify`、`akverify_svc`、`akverify_src`、`akverify_dst`）与 Redis 7 容器 `akverify-redis`（DB 0/1）均为本任务创建的一次性资源，运行结束后已删除容器、网络、构建缓存卷与镜像。原始日志在被忽略的 `.test-output/v070prep/`。
 
 - `bash scripts/verify.sh` 退出 0：迁移历史检查、独立构建、vet、race；52 个有测试的包全部通过，1208 个顶层测试通过、0 失败、2 个预期 skip（`TestRecoveryFixture` 在普通套件中按规则 skip，`TestProfileAttributesUnreadableFile` 以 root 运行时 skip）；必需测试门禁（`scripts/required-tests.txt` 1007 项）通过；pg_dump/pg_restore 17.11 恢复演练 seed/verify/source-unchanged 通过。
 - `bash scripts/verify-accountsvc.sh` 退出 0：10 个有测试的包全部通过，194 个顶层测试通过、0 失败、1 个预期 skip（`TestProfileAttributesUnreadableFile`）；必需门禁（`scripts/accountsvc-required-tests.txt` 62 项）通过；包含服务进程 race、传输模式与网关边界集成用例。

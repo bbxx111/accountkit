@@ -37,9 +37,9 @@
 
 用户确认版本号 v0.7.0 并授权开始发布准备；准备授权不扩展为合并 main、推送、tag 或 Release。说明见 [v0.7.0](releases/v0.7.0.md)，证据集中在[发布准备验收](../openspec/changes/prepare-v0-7-0-release/verification.md)；历史版本勾选不适用于本版本。
 
-- [ ] 六项功能变更已完成、归档并合入 develop；盘点公开 Go API、HTTP/配置、指标/审计、依赖与当前 0001 差异。
-- [ ] 发布说明及迁移/回退边界（ES256 与 `JWTKeys`、内省语义、`ACCOUNTSVC_` 前缀与内省变量改名、`purged_user`、服务邮件默认清单）完成独立审查。
-- [ ] 准备快照的 OpenSpec strict、生成一致性、迁移历史、OpenAPI、完整库/服务 race、必需门禁及恢复 seed/verify/source-unchanged 通过，结果写入准备验收。
+- [x] 六项功能变更已完成、归档并合入 develop；盘点公开 Go API、HTTP/配置、指标/审计、依赖与当前 0001 差异。
+- [x] 发布说明及迁移/回退边界（ES256 与 `JWTKeys`、内省语义、`ACCOUNTSVC_` 前缀与内省变量改名、`purged_user`、服务邮件默认清单）完成独立审查。
+- [x] 准备快照的 OpenSpec strict、生成一致性、迁移历史、OpenAPI、完整库/服务 race、必需门禁及恢复 seed/verify/source-unchanged 通过，结果写入准备验收。
 - [ ] 以 `--no-ff` 将准备内容合入 develop，再将 develop 合入 main 并推送，记录最终 main 候选 SHA。
 - [ ] 最终 main 候选在线 CI 的 check-generated.sh、verify.sh、verify-accountsvc.sh 全部成功，head_sha 精确匹配。
 - [ ] 确认远端 v0.7.0 不存在，创建并推送 annotated tag，发布 GitHub Release；历史 tag 不移动。

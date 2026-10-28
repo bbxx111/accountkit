@@ -144,7 +144,7 @@ openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 | openssl pkcs8 -
 | `SMS_ALIYUN_ACCESS_KEY_ID` / `SMS_ALIYUN_ACCESS_KEY_SECRET` | AccessKey；Secret 只通过环境或密钥系统注入，不写入镜像、Compose 文件或日志 |
 | `SMS_ALIYUN_SIGN_NAME` | 短信签名名称（一个） |
 | `SMS_ALIYUN_TEMPLATE_SIGN_IN` / `_BIND` / `_REAUTH` / `_SIGN_IN_COMPLETE` | 四个用途的模板 code，模板变量固定为 `${code}`；允许共用同一模板，但建议补全用途使用可区分的文案 |
-| `SMS_ALIYUN_ENDPOINT` | 可选，默认 `https://dysmsapi.aliyuncs.com/`；仅供测试或代理部署，production 只接受 HTTPS |
+| `SMS_ALIYUN_ENDPOINT` | 可选，默认 `https://dysmsapi.aliyuncs.com/`；仅供测试或代理部署，只接受 HTTPS，非 production 模式仅额外允许回环地址的 HTTP |
 
 只设置 `SMS_ALIYUN_*` 而未设置 `SMS_PROVIDER` 会被拒绝，以发现拼写错误。配置服务商后还须在 `ACCOUNTSVC_ENABLED_IDENTITY_KINDS` 中显式加入 PHONE 才会发送短信。
 

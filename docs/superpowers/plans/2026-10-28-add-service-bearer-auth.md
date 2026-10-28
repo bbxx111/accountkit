@@ -4,7 +4,7 @@
 
 **Goal:** 内省与已清理用户拉取在 Basic 之外接受客户端凭据 Bearer 令牌，按 `azp` 逐接口授权。
 
-**Spec:** `openspec/changes/add-service-bearer-auth/`（proposal、design、specs、tasks）。本计划只描述实现顺序与接口，需求以该 change 为准。
+**Spec:** `openspec/changes/archive/2026-10-28-add-service-bearer-auth/`（proposal、design、specs、tasks）。本计划只描述实现顺序与接口，需求以该 change 为准。
 
 ## Global Constraints
 

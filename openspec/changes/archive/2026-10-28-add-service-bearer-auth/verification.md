@@ -4,7 +4,7 @@
 
 ## 实施方式
 
-按[实现计划](../../../docs/superpowers/plans/2026-10-28-add-service-bearer-auth.md)在本会话内顺序实施，未使用逐任务子代理：oidcjwt → serviceauth → 处理器 → 配置/装配之间接口依赖紧密。功能部分先写失败测试（TDD），结束时由独立审查子代理对完整区间做一次代码审查。
+按[实现计划](../../../../docs/superpowers/plans/2026-10-28-add-service-bearer-auth.md)在本会话内顺序实施，未使用逐任务子代理：oidcjwt → serviceauth → 处理器 → 配置/装配之间接口依赖紧密。功能部分先写失败测试（TDD），结束时由独立审查子代理对完整区间做一次代码审查。
 
 ## 设计偏离（已记入 design.md）
 

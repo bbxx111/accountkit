@@ -48,9 +48,9 @@ type Config struct {
 	TrustedProxyCIDRs         []netip.Prefix
 	SMTP                      smtp.Config
 	SMS                       *aliyun.Config           // nil 表示未配置短信服务商
-	SMTPBrand                 string                   // 内置中文邮件的可选品牌前缀，也是模板 {brand} 的取值
+	SMTPBrand                 string                   // 内置中文邮件的可选品牌前缀；配置清单时必须为空
 	EmailTemplates            *emailtemplates.Renderer // nil 表示使用内置中文渲染器
-	EmailTemplatesDigest      string                   // 模板文件 SHA-256 的前 12 位十六进制，仅用于启动日志核对
+	EmailTemplatesDigest      string                   // 清单 SHA-256 的前 12 位十六进制，仅用于启动日志核对
 	IntrospectionBasicClients map[string][]string      // 与 Service.IntrospectionBearerClients 都为空时 /v1/introspect 返回 503 introspection_not_configured
 	PurgeFeedBasicClients     map[string][]string      // 与 Service.PurgeFeedBearerClients 都为空时 /v1/purgedUsers 返回 503 PURGE_FEED_NOT_CONFIGURED
 	Service                   ServiceConfig

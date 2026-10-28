@@ -1,16 +1,22 @@
-// Package emailtemplates 解析 accountsvc 部署方提供的验证码邮件纯文本模板，并实现 smtp.Renderer。
-// 模板在启动时编译为字面量与占位符片段，渲染只做一次拼接：不执行模板逻辑，替换值不再展开。
-// 错误只含字段位置与固定分类，不回显文件内容。
+// Package emailtemplates 解析 accountsvc 部署方提供的验证码邮件清单，并用内置布局实现 smtp.Renderer。
+// 清单只配置文字、品牌和 Logo 地址；版式由嵌入的 HTML 与纯文本布局提供。文字在启动时编译为
+// 字面量与占位符片段，渲染只做一次拼接：不执行模板逻辑，替换值不再展开。错误只含字段位置与
+// 固定分类，不回显文件内容。
 package emailtemplates
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
+	"html"
 	"math"
+	"net/url"
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"golang.org/x/text/language"
 
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/internal/boundedjson"
@@ -20,27 +26,41 @@ import (
 )
 
 const (
-	// MaxFileBytes 是模板文件的字节上限。
-	MaxFileBytes = 64 * 1024
-	// MaxSubjectRunes、MaxTextRunes 按模板原文的 Unicode 码位计数。
-	MaxSubjectRunes = 64
-	MaxTextRunes    = 4096
-	// MaxPlaceholders 是单个模板允许的占位符个数；转义的花括号不计入。
-	MaxPlaceholders = 8
-	// Version 是当前唯一支持的文件格式版本。
+	// Version 是当前唯一支持的清单格式版本。
 	Version = 1
+	// MaxFileBytes 是清单的字节上限。
+	MaxFileBytes = 64 * 1024
+	// MaxLanguages 是清单允许的语言数。
+	MaxLanguages = 8
+	// MaxPlaceholders 是每段文字允许的占位符个数。
+	MaxPlaceholders = 8
+	// MaxSubjectRunes、MaxShortRunes、MaxLongRunes 按 Unicode 码位计数。
+	MaxSubjectRunes = 64
+	MaxShortRunes   = 64
+	MaxLongRunes    = 1024
+	// MaxLogoURLBytes 是 logo_url 的字节上限。
+	MaxLogoURLBytes = 2048
+	// MaxAcceptLanguageBytes 之上的 Accept-Language 被忽略；最多采用前 MaxAcceptLanguageTags 项。
+	MaxAcceptLanguageBytes = 512
+	MaxAcceptLanguageTags  = 8
 )
 
+//go:embed layout.html
+var layoutHTML string
+
+//go:embed layout.txt
+var layoutText string
+
+// 占位符种类。literal 之外的值同时是渲染值数组的下标。
 type placeholder uint8
 
 const (
 	literal placeholder = iota
-	code
-	ttlMinutes
 	brand
+	ttlMinutes
 )
 
-var placeholderNames = map[string]placeholder{"code": code, "ttl_minutes": ttlMinutes, "brand": brand}
+var placeholderNames = map[string]placeholder{"brand": brand, "ttl_minutes": ttlMinutes}
 
 type segment struct {
 	kind placeholder
@@ -49,39 +69,38 @@ type segment struct {
 
 type template []segment
 
-func (t template) uses(p placeholder) bool {
-	for _, s := range t {
-		if s.kind == p {
-			return true
-		}
-	}
-	return false
-}
+type compiledPurpose struct{ subject, heading, intro template }
 
-type purposeTemplates struct{ subject, text template }
+type compiledLanguage struct {
+	tag       string
+	brand     string
+	logoURL   string // 空表示不显示 Logo
+	codeLabel template
+	expiry    template
+	safety    template
+	footer    template // nil 表示省略页脚段
+	purposes  map[enum.CodePurpose]compiledPurpose
+}
 
 // Renderer 只能由 Parse 构造；零值与 nil 渲染均返回 sender.ErrUnavailable。构造后只读，可并发使用。
 type Renderer struct {
-	brand     string
-	templates map[enum.CodePurpose]purposeTemplates
+	languages []compiledLanguage // 清单顺序，默认语言在前
+	tags      []language.Tag
+	matcher   language.Matcher // 单语言时为 nil
 }
 
 var purposes = []enum.CodePurpose{enum.PurposeSignIn, enum.PurposeBind, enum.PurposeReauth, enum.PurposeSignInComplete}
 
 func fail(location, category string) error { return errors.New(location + ": " + category) }
 
-// Parse 严格解析模板文件内容。brand 为 {brand} 的取值，须满足 smtp.ValidateBrand；
-// 为空时任何模板引用 {brand} 都视为错误。
-func Parse(raw []byte, brandValue string) (*Renderer, error) {
-	if smtp.ValidateBrand(brandValue) != nil {
-		return nil, fail("(root)", "invalid brand")
-	}
+// Parse 严格解析清单内容。错误只含字段位置与固定分类。
+func Parse(raw []byte) (*Renderer, error) {
 	if len(raw) == 0 {
 		return nil, fail("(root)", "empty file")
 	}
-	// boundedjson 拒绝重复键、尾随内容、非法 UTF-8 与孤立代理项，并限制大小、深度与节点数；
-	// 深度 4 对应 根对象 → templates → 用途对象 → 字符串。
-	value, err := boundedjson.Decode(raw, boundedjson.Limits{MaxBytes: MaxFileBytes, MaxDepth: 4, MaxNodes: 64})
+	// boundedjson 拒绝重复键、尾随内容、非法 UTF-8 与孤立代理项，并限制大小、深度与节点数。
+	// 深度 5：根 → languages → 语言 → templates → 用途 → 字符串。
+	value, err := boundedjson.Decode(raw, boundedjson.Limits{MaxBytes: MaxFileBytes, MaxDepth: 6, MaxNodes: 512})
 	if err != nil {
 		return nil, fail("(root)", "invalid JSON")
 	}
@@ -89,44 +108,147 @@ func Parse(raw []byte, brandValue string) (*Renderer, error) {
 	if !ok {
 		return nil, fail("(root)", "not an object")
 	}
-	if !onlyKeys(root, "version", "templates") {
+	if !onlyKeys(root, "version", "default_language", "languages") {
 		return nil, fail("(root)", "unknown field")
 	}
 	if version, ok := root["version"].(json.Number); !ok || version.String() != strconv.Itoa(Version) {
 		return nil, fail("version", "must be 1")
 	}
-	entries, ok := root["templates"].(map[string]any)
+	entries, ok := root["languages"].(map[string]any)
+	if !ok || len(entries) == 0 || len(entries) > MaxLanguages {
+		return nil, fail("languages", "must be an object with 1 to 8 languages")
+	}
+	defaultTag, ok := root["default_language"].(string)
+	if !ok || entries[defaultTag] == nil {
+		return nil, fail("default_language", "must name one of languages")
+	}
+	// 先校验全部标签：不规范的标签不能出现在错误位置里。
+	ordered := make([]string, 0, len(entries))
+	for key := range entries {
+		if !canonicalTag(key) {
+			return nil, fail("languages", "invalid language tag")
+		}
+		if key != defaultTag {
+			ordered = append(ordered, key)
+		}
+	}
+	sortStrings(ordered)
+	ordered = append([]string{defaultTag}, ordered...)
+	r := &Renderer{}
+	for _, tag := range ordered {
+		lang, err := compileLanguage(tag, entries[tag])
+		if err != nil {
+			return nil, err
+		}
+		r.languages = append(r.languages, lang)
+		r.tags = append(r.tags, language.MustParse(tag))
+	}
+	if len(r.tags) > 1 {
+		r.matcher = language.NewMatcher(r.tags)
+	}
+	return r, nil
+}
+
+// canonicalTag 要求标签能被解析、不是 und，且等于其规范形式，例如 zh-Hant 而不是 zh-hant。
+func canonicalTag(tag string) bool {
+	parsed, err := language.Parse(tag)
+	return err == nil && parsed != language.Und && parsed.String() == tag
+}
+
+func sortStrings(s []string) {
+	for i := 1; i < len(s); i++ {
+		for j := i; j > 0 && s[j] < s[j-1]; j-- {
+			s[j], s[j-1] = s[j-1], s[j]
+		}
+	}
+}
+
+func compileLanguage(tag string, value any) (compiledLanguage, error) {
+	location := "languages." + tag
+	entry, ok := value.(map[string]any)
 	if !ok {
-		return nil, fail("templates", "must be an object")
+		return compiledLanguage{}, fail(location, "not an object")
+	}
+	if !onlyKeys(entry, "brand", "logo_url", "common", "templates") {
+		return compiledLanguage{}, fail(location, "unknown field")
+	}
+	lang := compiledLanguage{tag: tag, purposes: make(map[enum.CodePurpose]compiledPurpose, len(purposes))}
+	if lang.brand, ok = entry["brand"].(string); !ok || smtp.ValidateBrand(lang.brand) != nil || lang.brand == "" {
+		return compiledLanguage{}, fail(location+".brand", "invalid brand")
+	}
+	if raw, present := entry["logo_url"]; present {
+		if lang.logoURL, ok = raw.(string); !ok || !validLogoURL(lang.logoURL) {
+			return compiledLanguage{}, fail(location+".logo_url", "must be an https URL")
+		}
+	}
+	common, ok := entry["common"].(map[string]any)
+	if !ok {
+		return compiledLanguage{}, fail(location+".common", "not an object")
+	}
+	if !onlyKeys(common, "code_label", "expiry", "safety", "footer") {
+		return compiledLanguage{}, fail(location+".common", "unknown field")
+	}
+	var err error
+	if lang.codeLabel, err = compileBody(common, "code_label", location+".common.code_label", MaxShortRunes); err != nil {
+		return compiledLanguage{}, err
+	}
+	if lang.expiry, err = compileBody(common, "expiry", location+".common.expiry", MaxLongRunes); err != nil {
+		return compiledLanguage{}, err
+	}
+	if lang.safety, err = compileBody(common, "safety", location+".common.safety", MaxLongRunes); err != nil {
+		return compiledLanguage{}, err
+	}
+	if _, present := common["footer"]; present {
+		if lang.footer, err = compileBody(common, "footer", location+".common.footer", MaxLongRunes); err != nil {
+			return compiledLanguage{}, err
+		}
+	}
+	templates, ok := entry["templates"].(map[string]any)
+	if !ok {
+		return compiledLanguage{}, fail(location+".templates", "not an object")
 	}
 	names := make([]string, len(purposes))
 	for i, p := range purposes {
 		names[i] = p.String()
 	}
-	if !onlyKeys(entries, names...) {
-		return nil, fail("templates", "unknown purpose")
+	if !onlyKeys(templates, names...) {
+		return compiledLanguage{}, fail(location+".templates", "unknown purpose")
 	}
-	r := &Renderer{brand: brandValue, templates: make(map[enum.CodePurpose]purposeTemplates, len(purposes))}
 	for _, p := range purposes {
-		location := "templates." + p.String()
-		entry, ok := entries[p.String()].(map[string]any)
+		purposeLocation := location + ".templates." + p.String()
+		fields, ok := templates[p.String()].(map[string]any)
 		if !ok {
-			return nil, fail(location, "missing or not an object")
+			return compiledLanguage{}, fail(purposeLocation, "missing or not an object")
 		}
-		if !onlyKeys(entry, "subject", "text") {
-			return nil, fail(location, "unknown field")
+		if !onlyKeys(fields, "subject", "heading", "intro") {
+			return compiledLanguage{}, fail(purposeLocation, "unknown field")
 		}
-		subject, err := compileField(entry, "subject", location+".subject", brandValue)
-		if err != nil {
-			return nil, err
+		var cp compiledPurpose
+		if cp.subject, err = compileSubject(fields, purposeLocation+".subject"); err != nil {
+			return compiledLanguage{}, err
 		}
-		text, err := compileField(entry, "text", location+".text", brandValue)
-		if err != nil {
-			return nil, err
+		if cp.heading, err = compileBody(fields, "heading", purposeLocation+".heading", MaxShortRunes); err != nil {
+			return compiledLanguage{}, err
 		}
-		r.templates[p] = purposeTemplates{subject: subject, text: text}
+		if cp.intro, err = compileBody(fields, "intro", purposeLocation+".intro", MaxLongRunes); err != nil {
+			return compiledLanguage{}, err
+		}
+		lang.purposes[p] = cp
 	}
-	return r, nil
+	return lang, nil
+}
+
+func validLogoURL(raw string) bool {
+	if raw == "" || len(raw) > MaxLogoURLBytes || !utf8.ValidString(raw) || strings.TrimSpace(raw) != raw {
+		return false
+	}
+	for _, r := range raw {
+		if r <= ' ' || r == 0x7f {
+			return false
+		}
+	}
+	u, err := url.Parse(raw)
+	return err == nil && u.Scheme == "https" && u.Host != "" && u.User == nil
 }
 
 func onlyKeys(m map[string]any, allowed ...string) bool {
@@ -145,39 +267,36 @@ func onlyKeys(m map[string]any, allowed ...string) bool {
 	return true
 }
 
-func compileField(entry map[string]any, field, location, brandValue string) (template, error) {
-	raw, ok := entry[field].(string)
+func compileSubject(fields map[string]any, location string) (template, error) {
+	raw, ok := fields["subject"].(string)
 	if !ok {
 		return nil, fail(location, "missing or not a string")
 	}
-	isSubject := field == "subject"
-	limit, valid := MaxTextRunes, mailtext.BodyText(raw)
-	if isSubject {
-		limit, valid = MaxSubjectRunes, mailtext.HeaderText(raw)
+	if !mailtext.HeaderText(raw) {
+		return nil, fail(location, "empty or forbidden characters")
 	}
-	if !valid {
+	if utf8.RuneCountInString(raw) > MaxSubjectRunes {
+		return nil, fail(location, "too long")
+	}
+	return compile(raw, location)
+}
+
+func compileBody(fields map[string]any, field, location string, limit int) (template, error) {
+	raw, ok := fields[field].(string)
+	if !ok {
+		return nil, fail(location, "missing or not a string")
+	}
+	if !mailtext.BodyText(raw) {
 		return nil, fail(location, "empty or forbidden characters")
 	}
 	if utf8.RuneCountInString(raw) > limit {
 		return nil, fail(location, "too long")
 	}
-	t, err := compile(raw)
-	if err != nil {
-		return nil, fail(location, err.Error())
-	}
-	switch {
-	case isSubject && t.uses(code):
-		return nil, fail(location, "{code} not allowed in subject")
-	case !isSubject && !t.uses(code):
-		return nil, fail(location, "missing {code}")
-	case t.uses(brand) && brandValue == "":
-		return nil, fail(location, "{brand} used but brand is empty")
-	}
-	return t, nil
+	return compile(raw, location)
 }
 
-// compile 返回的错误只含固定分类。
-func compile(raw string) (template, error) {
+// compile 把文字切成字面量与占位符片段。单个花括号按字面处理；"{{" 后必须紧跟合法名称与 "}}"。
+func compile(raw, location string) (template, error) {
 	var t template
 	var lit strings.Builder
 	flush := func() {
@@ -186,49 +305,39 @@ func compile(raw string) (template, error) {
 			lit.Reset()
 		}
 	}
-	placeholders := 0
+	count := 0
 	for i := 0; i < len(raw); {
-		switch raw[i] {
-		case '{':
-			if strings.HasPrefix(raw[i:], "{{") {
-				lit.WriteByte('{')
-				i += 2
-				continue
-			}
-			end := strings.IndexByte(raw[i+1:], '}')
-			if end < 0 {
-				return nil, errors.New("unclosed placeholder")
-			}
-			name := raw[i+1 : i+1+end]
-			if name == "" {
-				return nil, errors.New("empty placeholder")
-			}
-			kind, ok := placeholderNames[name]
-			if !ok {
-				return nil, errors.New("unknown placeholder")
-			}
-			if placeholders++; placeholders > MaxPlaceholders {
-				return nil, errors.New("too many placeholders")
-			}
-			flush()
-			t = append(t, segment{kind: kind})
-			i += end + 2
-		case '}':
-			if !strings.HasPrefix(raw[i:], "}}") {
-				return nil, errors.New("unmatched }")
-			}
-			lit.WriteByte('}')
-			i += 2
-		default:
-			lit.WriteByte(raw[i])
-			i++
+		open := strings.Index(raw[i:], "{{")
+		if open < 0 {
+			lit.WriteString(raw[i:])
+			break
 		}
+		lit.WriteString(raw[i : i+open])
+		i += open + 2
+		end := strings.Index(raw[i:], "}}")
+		if end < 0 {
+			return nil, fail(location, "unclosed placeholder")
+		}
+		name := raw[i : i+end]
+		if name == "code" {
+			return nil, fail(location, "{{code}} is placed by the layout")
+		}
+		kind, ok := placeholderNames[name]
+		if !ok {
+			return nil, fail(location, "unknown placeholder")
+		}
+		if count++; count > MaxPlaceholders {
+			return nil, fail(location, "too many placeholders")
+		}
+		flush()
+		t = append(t, segment{kind: kind})
+		i += end + 2
 	}
 	flush()
 	return t, nil
 }
 
-func (t template) render(values *[brand + 1]string) string {
+func (t template) render(values *[ttlMinutes + 1]string) string {
 	var b strings.Builder
 	for _, s := range t {
 		if s.kind == literal {
@@ -240,22 +349,133 @@ func (t template) render(values *[brand + 1]string) string {
 	return b.String()
 }
 
+// Languages 按清单顺序返回语言标签，默认语言在前。
+func (r *Renderer) Languages() []string {
+	if r == nil {
+		return nil
+	}
+	tags := make([]string, len(r.languages))
+	for i, lang := range r.languages {
+		tags[i] = lang.tag
+	}
+	return tags
+}
+
+// Multilingual 报告清单是否包含多于一种语言；只有此时才需要读取请求的 Accept-Language。
+func (r *Renderer) Multilingual() bool { return r != nil && r.matcher != nil }
+
+type preferenceKey struct{}
+
+// WithLanguagePreference 把请求的语言偏好放入 context，供 Render 选择语言。
+func WithLanguagePreference(ctx context.Context, prefs []language.Tag) context.Context {
+	if len(prefs) == 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, preferenceKey{}, prefs)
+}
+
+// ParseAcceptLanguage 有界解析 Accept-Language。超长、为空或非法时返回 nil，调用方应使用默认语言。
+func ParseAcceptLanguage(header string) []language.Tag {
+	if header == "" || len(header) > MaxAcceptLanguageBytes {
+		return nil
+	}
+	tags, _, err := language.ParseAcceptLanguage(header)
+	if err != nil || len(tags) == 0 {
+		return nil
+	}
+	if len(tags) > MaxAcceptLanguageTags {
+		tags = tags[:MaxAcceptLanguageTags]
+	}
+	return tags
+}
+
 // Render 实现 smtp.Renderer。失败一律返回 sender.ErrUnavailable，不记录日志。
 func (r *Renderer) Render(ctx context.Context, m sender.CodeMessage) (smtp.EmailContent, error) {
-	if r == nil || ctx.Err() != nil || !validMessage(m) {
+	if r == nil || ctx.Err() != nil {
 		return smtp.EmailContent{}, sender.ErrUnavailable
 	}
-	t, ok := r.templates[m.Purpose]
+	index := 0
+	if r.matcher != nil {
+		if prefs, _ := ctx.Value(preferenceKey{}).([]language.Tag); len(prefs) > 0 {
+			if _, i, confidence := r.matcher.Match(prefs...); confidence != language.No {
+				index = i
+			}
+		}
+	}
+	return r.renderIndex(index, m)
+}
+
+// RenderIn 用指定语言渲染，供离线预览使用；未知标签返回 sender.ErrUnavailable。
+func (r *Renderer) RenderIn(tag string, m sender.CodeMessage) (smtp.EmailContent, error) {
+	if r == nil {
+		return smtp.EmailContent{}, sender.ErrUnavailable
+	}
+	for i, lang := range r.languages {
+		if lang.tag == tag {
+			return r.renderIndex(i, m)
+		}
+	}
+	return smtp.EmailContent{}, sender.ErrUnavailable
+}
+
+func (r *Renderer) renderIndex(index int, m sender.CodeMessage) (smtp.EmailContent, error) {
+	if !validMessage(m) || index < 0 || index >= len(r.languages) {
+		return smtp.EmailContent{}, sender.ErrUnavailable
+	}
+	lang := r.languages[index]
+	purpose, ok := lang.purposes[m.Purpose]
 	if !ok {
 		return smtp.EmailContent{}, sender.ErrUnavailable
 	}
-	values := [brand + 1]string{
-		code:       m.Code,
+	values := [ttlMinutes + 1]string{
+		brand:      lang.brand,
 		ttlMinutes: strconv.FormatFloat(math.Ceil(m.TTL.Minutes()), 'f', 0, 64),
-		brand:      r.brand,
 	}
-	return smtp.EmailContent{Subject: t.subject.render(&values), Text: t.text.render(&values)}, nil
+	subject := purpose.subject.render(&values)
+	text := struct{ heading, intro, codeLabel, expiry, safety, footer string }{
+		purpose.heading.render(&values), purpose.intro.render(&values),
+		lang.codeLabel.render(&values), lang.expiry.render(&values), lang.safety.render(&values), "",
+	}
+	if lang.footer != nil {
+		text.footer = lang.footer.render(&values)
+	}
+	// 布局是可信内容；槽位用单次 Replacer 填入，替换值不会再被扫描。填入 HTML 的值整体转义。
+	logo := ""
+	if lang.logoURL != "" {
+		logo = "        <tr>\n          <td class=\"pad\" style=\"padding:32px 40px 8px 40px;\">\n            <img src=\"" + html.EscapeString(lang.logoURL) + "\" alt=\"" + html.EscapeString(lang.brand) + "\" height=\"32\" style=\"display:block;border:0;outline:none;text-decoration:none;height:32px;\">\n          </td>\n        </tr>\n"
+	}
+	htmlFooter, textFooter := "", ""
+	if text.footer != "" {
+		htmlFooter = "            <p style=\"margin:0 0 4px 0;\">" + html.EscapeString(text.footer) + "</p>\n"
+		textFooter = "\n\n" + text.footer
+	}
+	page := strings.NewReplacer(
+		"{{lang}}", html.EscapeString(lang.tag),
+		"{{subject}}", html.EscapeString(subject),
+		"{{logo}}", logo,
+		"{{brand}}", html.EscapeString(lang.brand),
+		"{{heading}}", html.EscapeString(text.heading),
+		"{{intro}}", nl2br(html.EscapeString(text.intro)),
+		"{{code_label}}", html.EscapeString(text.codeLabel),
+		"{{code}}", html.EscapeString(m.Code),
+		"{{expiry}}", nl2br(html.EscapeString(text.expiry)),
+		"{{safety}}", nl2br(html.EscapeString(text.safety)),
+		"{{footer}}", htmlFooter,
+	).Replace(layoutHTML)
+	plain := strings.NewReplacer(
+		"{{heading}}", text.heading,
+		"{{intro}}", text.intro,
+		"{{code_label}}", text.codeLabel,
+		"{{code}}", m.Code,
+		"{{expiry}}", text.expiry,
+		"{{safety}}", text.safety,
+		"{{footer}}", textFooter,
+	).Replace(layoutText)
+	return smtp.EmailContent{Subject: subject, Text: plain, HTML: page}, nil
 }
+
+// nl2br 让文字里的换行在 HTML 中生效；输入已转义，输出的 <br> 是布局的一部分。
+func nl2br(escaped string) string { return strings.ReplaceAll(escaped, "\n", "<br>\n") }
 
 func validMessage(m sender.CodeMessage) bool {
 	if !m.Purpose.Valid() || m.TTL <= 0 || m.Code == "" {

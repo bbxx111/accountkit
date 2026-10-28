@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="{{lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>{{subject}}</title>
+<style>
+  body { margin: 0; padding: 0; }
+  @media (max-width: 600px) {
+    .card { width: 100% !important; }
+    .pad { padding: 24px 20px !important; }
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f5f7;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f5f7;">
+  <tr>
+    <td align="center" style="padding:32px 12px;">
+      <table role="presentation" class="card" width="560" cellpadding="0" cellspacing="0" border="0" style="width:560px;max-width:560px;background-color:#ffffff;border-radius:12px;">
+{{logo}}        <tr>
+          <td class="pad" style="padding:32px 40px 0 40px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',Helvetica,Arial,sans-serif;color:#1f2329;">
+            <h1 style="margin:0 0 12px 0;font-size:22px;line-height:30px;font-weight:600;">{{heading}}</h1>
+            <p style="margin:0 0 24px 0;font-size:15px;line-height:24px;color:#4e5969;">{{intro}}</p>
+          </td>
+        </tr>
+        <tr>
+          <td class="pad" style="padding:0 40px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f2f3f5;border-radius:8px;">
+              <tr>
+                <td align="center" style="padding:20px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',Helvetica,Arial,sans-serif;">
+                  <p style="margin:0 0 8px 0;font-size:13px;line-height:20px;color:#86909c;">{{code_label}}</p>
+                  <p style="margin:0;font-family:'SFMono-Regular',Menlo,Consolas,'Courier New',monospace;font-size:34px;line-height:42px;font-weight:700;letter-spacing:8px;color:#1f2329;">{{code}}</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td class="pad" style="padding:24px 40px 32px 40px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',Helvetica,Arial,sans-serif;">
+            <p style="margin:0 0 12px 0;font-size:14px;line-height:22px;color:#1f2329;">{{expiry}}</p>
+            <p style="margin:0;font-size:13px;line-height:21px;color:#86909c;">{{safety}}</p>
+          </td>
+        </tr>
+      </table>
+      <table role="presentation" class="card" width="560" cellpadding="0" cellspacing="0" border="0" style="width:560px;max-width:560px;">
+        <tr>
+          <td align="center" style="padding:16px 40px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',Helvetica,Arial,sans-serif;font-size:12px;line-height:18px;color:#a9aeb8;">
+{{footer}}            <p style="margin:0;">&copy; {{brand}}</p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>

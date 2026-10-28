@@ -1,17 +1,35 @@
 ## Why
 
-accountsvc 在 `run.go` 中固定注入 `smtp.LegacyChineseRenderer{Brand}`，部署方只能通过 `ACCOUNTSVC_SMTP_BRAND` 加品牌前缀。四种用途的标题由“品牌 + 用途 + 验证码”拼接，登录补全用途会变成“食方完成登录并关联身份，未注册时自动注册验证码”，不适合作邮件标题。ai-food 内嵌 accountkit 时可自定义文案，改为独立部署 accountsvc 后失去了这一能力（R7）。
+accountsvc 在 `run.go` 中固定注入 `smtp.LegacyChineseRenderer{Brand}`，部署方只能通过 `ACCOUNTSVC_SMTP_BRAND` 加品牌前缀：
+- 四种用途的标题由“品牌 + 用途 + 验证码”拼成，登录补全用途会变成“食方完成登录并关联身份，未注册时自动注册验证码”，不适合作标题。
+- 邮件只有纯文本，没有品牌 Logo 和样式。
+- 不能按用户使用的文字（简体、繁体、英文）发送不同内容。
+
+ai-food 内嵌 accountkit 时能自己控制这些，改为独立部署 accountsvc 后失去了这一能力。本变更合并了 R7（可配置邮件文案）与 R8（多语言）。
+
+设计经用户逐步确认：
+- 邮件为 HTML 加纯文本；版式由**内置布局**提供，部署方只配置一份清单（文字、品牌、Logo 地址），自定义布局推后；
+- 图片只用远程 HTTPS 地址；
+- 品牌全部写在清单里；
+- 按请求的 `Accept-Language` 在简体、繁体、英文之间选择；
+- 提供模板检查与预览子命令。
 
 ## What Changes
 
-- serve 新增可选 `ACCOUNTSVC_SMTP_TEMPLATES_FILE`：本地 JSON 文件，`version` 为 1，`templates` 须为 SIGN_IN / BIND / REAUTH / SIGN_IN_COMPLETE 四种用途各提供一套纯文本 `subject` 与 `text`；不允许部分回落到内置文案。
-- 固定占位符：`{code}`、`{ttl_minutes}`（沿用向上取整）、`{brand}`（取自 `ACCOUNTSVC_SMTP_BRAND`）；用 `{{` 和 `}}` 表示字面花括号。正文必须含 `{code}`，标题不得含 `{code}`；未知占位符视为配置错误。不执行任意模板逻辑，不支持 HTML。
-- 字符与长度规则：标题 1–64 个码位，字符规则与 `ValidateBrand` 相同；正文 1–4096 个码位，只允许 LF 和 TAB 两种控制字符；subject 与 text 各自最多 8 个占位符；文件不超过 64 KiB，只读本地普通文件。
-- 配置只在 EMAIL 启用时由 serve 在监听前读取并校验一次，失败即退出；错误只给变量名及安全分类/字段位置，不回显内容。EMAIL 禁用时或执行 migrate 时不解析。
-- 启动时输出一条 INFO：`email templates: custom`（含版本与文件 SHA-256 前 12 位）或 `email templates: built-in`。日志不包含模板原文和验证码。
-- 未设置时行为与现在逐字一致；`LegacyChineseRenderer` 及其内置文案不变。
-- 新增 `deploy/accountsvc/email-templates.example.json`，作为四种用途的推荐文案，并由测试保证其可通过校验。
-- 不新增库的公开 Go API；`smtp.New` / `NewWithRenderer` / `Renderer` 不变。无破坏性变化。
+- serve 新增可选的 `ACCOUNTSVC_SMTP_TEMPLATES_FILE`，指向一份清单 JSON：
+  - `version` 为 1，`default_language` 指定默认语言；
+  - `languages` 把 BCP 47 语言标签映射为 `brand`、可选 `logo_url`、`common`（四种用途共用的文字）和 `templates`；
+  - `templates` 必须为 SIGN_IN / BIND / REAUTH / SIGN_IN_COMPLETE 各提供 `subject`、`heading`、`intro`。
+- 邮件由内置布局渲染为 `multipart/alternative`（HTML + 纯文本），段落固定为：标题、引导语、验证码、有效期、安全提示、页脚（可选）。
+- 文字中只允许 `{{brand}}` 和 `{{ttl_minutes}}` 两个占位符；验证码由布局放置，文字里不得出现 `{{code}}`。单个花括号按字面处理；`{{` 后不是合法占位符即为配置错误。插入 HTML 时整体转义，文字里不能写标签。
+- 品牌全部来自清单的各语言 `brand`。配置了清单时，如果同时设置了 `ACCOUNTSVC_SMTP_BRAND`，启动失败。
+- serve 按发码请求的 `Accept-Language` 进行 BCP 47 匹配，识别地区隐含的文字（zh-TW/zh-HK → zh-Hant，zh-CN/zh → zh-Hans，en-GB → en）；匹配不上、缺失或非法时使用默认语言。
+- 校验在 serve 监听前完成（只在 EMAIL 启用时），失败即退出；错误只给变量名、字段位置和固定分类，不回显内容；EMAIL 禁用或执行 migrate 时不解析。
+- 新增子命令 `accountsvc email-templates check <清单> [-out 目录]`：用与 serve 相同的规则校验，并用示例验证码把每种语言、每种用途渲染为 `.html`、`.txt` 及标题汇总，供部署前预览。
+- 启动时记录一条 INFO：`email templates: custom`（附版本、清单 SHA-256 前 12 位、语言列表）或 `email templates: built-in`。日志不含路径、品牌、文字和验证码。
+- 未设置时行为与现在逐字一致，`LegacyChineseRenderer` 不变。
+- 新增样例 `deploy/accountsvc/email-templates.example.json`（简体、繁体、英文三套文字），由测试保证可以通过校验。
+- 不新增库的公开 Go API 和第三方依赖；`smtp` 包、HTTP 请求和响应结构不变。无破坏性变化。
 
 ## Capabilities
 
@@ -21,16 +39,15 @@ accountsvc 在 `run.go` 中固定注入 `smtp.LegacyChineseRenderer{Brand}`，�
 
 ### Modified Capabilities
 
-- `verification-delivery`：「真实 SMTP 邮件投递」的 accountsvc 装配由“只注入兼容中文渲染器、不新增模板管理配置”改为：默认仍注入兼容中文渲染器，部署方可改用纯文本模板文件。
-- `accountsvc-runtime`：新增「服务邮件模板文件」要求；「服务邮件品牌前缀」补充品牌同时供模板 `{brand}` 使用。
+- `verification-delivery`：「真实 SMTP 邮件投递」中，accountsvc 的装配由“只注入兼容中文渲染器、不新增模板或语言配置”改为：默认仍使用兼容中文渲染器，部署方可改用内置布局加多语言清单，并按请求语言选择。
+- `accountsvc-runtime`：新增「服务邮件模板清单」「邮件语言选择」「邮件模板检查命令」三项要求；「服务邮件品牌前缀」改为只服务于内置文案，并与清单互斥。
 
 ## Impact
 
 - 代码：
-  - 新增 `internal/accountsvc/emailtemplates`，负责解析、编译和渲染；
-  - 新增 `internal/mailtext`，放标题与正文字符规则，供 `user/sender/smtp` 与 accountsvc 共用，不对外公开；
-  - 修改 `user/sender/smtp/legacy_renderer.go`，让 `ValidateBrand` 改用共享规则，行为不变；
-  - 修改 `internal/accountsvc/config.go` 和 `run.go`。
-- 文档与部署：`docs/accountsvc.md`、`docs/compatibility.md`、`deploy/accountsvc/.env.example`、`deploy/accountsvc/compose.yaml`、新增示例模板文件。
-- 依赖：仅用标准库，不新增第三方库。
-- 下游：ai-food 将在 adopt-standalone-accountsvc 中挂载模板文件。
+  - 新增 `internal/accountsvc/emailtemplates`：清单解析、内置布局（嵌入的 HTML 与纯文本）、渲染、语言匹配；
+  - 新增 `internal/mailtext`：字符规则，与 `smtp.ValidateBrand` 共用；
+  - 修改 `internal/accountsvc` 的 `config.go`、`run.go` 与命令分发；新增 `Accept-Language` 中间件。
+- 依赖：使用已有依赖 `golang.org/x/text/language` 做语言匹配，不新增 module。
+- 文档与部署：`docs/accountsvc.md`、`docs/gateway-integration.md`（须透传 `Accept-Language`）、`docs/compatibility.md`、`deploy/accountsvc/.env.example`、`compose.yaml`、样例清单。
+- 下游：ai-food 挂载清单；客户端在发码请求中把界面语言放进 `Accept-Language`；网关不得剥离该请求头。

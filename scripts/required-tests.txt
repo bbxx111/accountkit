@@ -496,7 +496,6 @@ github.com/bbxx111/accountkit/TestMigrateAuditConfigurationMinimumPoolCapacity
 github.com/bbxx111/accountkit/httpapi/admin/TestAuditReaderNilDisablesOnlyAuditRoute
 github.com/bbxx111/accountkit/httpapi/admin/TestAuditProjectionDoesNotExposeGenericData
 github.com/bbxx111/accountkit/user/TestReplacementUnverifiedPrincipalDoesNotBecomeAuditActor
-
 github.com/bbxx111/accountkit/migrations/TestGenericAuditInitialDefinition
 github.com/bbxx111/accountkit/migrations/TestGenericAuditNonemptyRepeatInstall
 github.com/bbxx111/accountkit/migrations/TestGenericAuditLegacySameVersionRejected
@@ -506,7 +505,6 @@ github.com/bbxx111/accountkit/migrations/TestGenericAuditDatabaseConstraints
 github.com/bbxx111/accountkit/migrations/TestGenericAuditQualifiedInsertWithoutSearchPath
 github.com/bbxx111/accountkit/migrations/TestAuditMigrationRejectsIncompleteInitialBaseline
 github.com/bbxx111/accountkit/migrations/TestGenericAuditEmptyInstall
-
 github.com/bbxx111/accountkit/migrations/TestGenericAuditCapacityMatchesPublicJSON
 github.com/bbxx111/accountkit/migrations/TestGenericAuditResultStorageAllowsFutureEnumValues
 github.com/bbxx111/accountkit/migrations/TestGenericAuditDatabaseTimeDomain
@@ -517,7 +515,6 @@ github.com/bbxx111/accountkit/migrations/TestSessionContextPrecheckIgnoresConcur
 github.com/bbxx111/accountkit/migrations/TestSessionContextQueriesIsolation
 github.com/bbxx111/accountkit/migrations/TestSessionContextReadLock
 github.com/bbxx111/accountkit/migrations/TestSessionContextStorageConstraints
-
 github.com/bbxx111/accountkit/audit/authentication/TestAuthenticationActorKindMustMatchAction
 github.com/bbxx111/accountkit/audit/authentication/TestAuthenticationEventMapping
 github.com/bbxx111/accountkit/audit/authentication/TestAuthenticationIDFailureDoesNotChangeResult
@@ -694,7 +691,6 @@ github.com/bbxx111/accountkit/httpapi/enduser/TestCurrentSessionOpenAPIContract
 github.com/bbxx111/accountkit/user/TestNormalizeClientInfo
 github.com/bbxx111/accountkit/user/TestMergeClientInfo
 github.com/bbxx111/accountkit/httpapi/clientinfo/TestParseClientInfo
-
 github.com/bbxx111/accountkit/migrations/TestSessionContextConsolidatedCatalog
 github.com/bbxx111/accountkit/migrations/TestSessionContextRetiredBaselinesRejected
 github.com/bbxx111/accountkit/internal/migrationcheck/TestPinnedPublishedInitialBaseline
@@ -990,14 +986,18 @@ github.com/bbxx111/accountkit/user/sender/aliyun/TestSendSMSFailureLoggingAndGat
 github.com/bbxx111/accountkit/user/sender/aliyun/TestSupportsTargetMobileOnly
 github.com/bbxx111/accountkit/internal/mailtext/TestHeaderText
 github.com/bbxx111/accountkit/internal/mailtext/TestBodyText
-github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestParseAndRenderAllPurposes
 github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestParseRejects
 github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestParseBoundaries
-github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestPlaceholderEscapesAndSinglePass
-github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestBrandNotRequiredWhenUnused
 github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestRenderTTLRoundsUp
 github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestRenderRejectsInvalidInput
 github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestRenderConcurrent
-github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestExampleFile
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigEmailTemplates
 github.com/bbxx111/accountkit/internal/accountsvc/TestLogEmailTemplates
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestParseAndRenderDefaultLanguage
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestHTMLEscapingAndLiteralBraces
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestOptionalLogoAndFooter
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestLanguageMatching
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestSingleLanguageIgnoresPreference
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestExampleManifest
+github.com/bbxx111/accountkit/internal/accountsvc/TestAcceptLanguageMiddleware
+github.com/bbxx111/accountkit/internal/accountsvc/TestEmailTemplatesCheckCommand

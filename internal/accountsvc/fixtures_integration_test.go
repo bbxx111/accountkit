@@ -19,6 +19,7 @@ import (
 	"io"
 	"math/big"
 	"mime"
+	"mime/multipart"
 	"mime/quotedprintable"
 	"net"
 	"net/http"
@@ -58,7 +59,8 @@ func (b *safeBuffer) Write(p []byte) (int, error) {
 }
 func (b *safeBuffer) String() string { b.mu.Lock(); defer b.mu.Unlock(); return b.b.String() }
 
-type deliveredMail struct{ target, code, body, subject string }
+// deliveredMail 的 body 是纯文本部分；多部分邮件时 html 为 text/html 部分，否则为空。
+type deliveredMail struct{ target, code, body, subject, html string }
 type smtpFixture struct {
 	ln       net.Listener
 	messages chan deliveredMail
@@ -146,13 +148,13 @@ func (s *smtpFixture) serve(c net.Conn) {
 			if err != nil {
 				return
 			}
-			body, err := io.ReadAll(quotedprintable.NewReader(msg.Body))
+			body, html, err := decodeMailBody(msg)
 			if err != nil {
 				return
 			}
-			code := regexp.MustCompile(`[0-9]{6}`).FindString(string(body))
+			code := regexp.MustCompile(`[0-9]{6}`).FindString(body)
 			subject, _ := new(mime.WordDecoder).DecodeHeader(msg.Header.Get("Subject"))
-			s.messages <- deliveredMail{target, code, string(body), subject}
+			s.messages <- deliveredMail{target, code, body, subject, html}
 			if s.hold.Load() {
 				s.entered <- struct{}{}
 				<-s.release
@@ -167,6 +169,38 @@ func (s *smtpFixture) serve(c net.Conn) {
 			return
 		default:
 			send("250 ok")
+		}
+	}
+}
+
+// decodeMailBody 解码 quoted-printable 的纯文本正文；multipart/alternative 时分别返回纯文本与 HTML 部分。
+func decodeMailBody(msg *mail.Message) (text, html string, err error) {
+	mediaType, params, err := mime.ParseMediaType(msg.Header.Get("Content-Type"))
+	if err != nil {
+		return "", "", err
+	}
+	if !strings.HasPrefix(mediaType, "multipart/") {
+		raw, err := io.ReadAll(quotedprintable.NewReader(msg.Body))
+		return string(raw), "", err
+	}
+	parts := multipart.NewReader(msg.Body, params["boundary"])
+	for {
+		part, err := parts.NextPart()
+		if err == io.EOF {
+			return text, html, nil
+		}
+		if err != nil {
+			return "", "", err
+		}
+		raw, err := io.ReadAll(quotedprintable.NewReader(part))
+		if err != nil {
+			return "", "", err
+		}
+		switch {
+		case strings.HasPrefix(part.Header.Get("Content-Type"), "text/html"):
+			html = string(raw)
+		case strings.HasPrefix(part.Header.Get("Content-Type"), "text/plain"):
+			text = string(raw)
 		}
 	}
 }

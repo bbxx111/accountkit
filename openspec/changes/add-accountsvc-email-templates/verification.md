@@ -2,83 +2,64 @@
 
 日期：2026-10-28。分支 `feat/accountsvc-email-templates`，基于 develop `27ed492`。实施计划见 [plan](../../../docs/superpowers/plans/2026-10-28-add-accountsvc-email-templates.md)。
 
+## 演进说明
+
+本变更经历了三版设计：
+1. 首版（提交 `7e4ca34`、`6e1da7e`）：单个 JSON、纯文本正文、`{name}` 占位符，已实现并通过审查，但未推送。
+2. 用户提出邮件需要 HTML、图片和多语言后，改为“清单 + 外部 HTML 文件”；再发现三套 HTML 只有文字不同。
+3. 最终收敛为“内置布局 + 清单只配文字”，并合并了 R8 多语言需求。本记录只覆盖最终版本；首版的字符规则包 `internal/mailtext`、`ValidateBrand` 共享规则、有界文件读取和启动日志被沿用，其余首版代码已替换。
+
 ## 执行方式
 
 - 本会话按顺序直接实施，采用 TDD：先写测试，确认失败，再实现。
-- 实施完成后，由一个独立审查子代理审查整个分支。
-- 需求来自 ai-food 会话转来的 R7。设计经用户评审后确定：
-  - 内置文案不变；
-  - 解析器放在 internal；
-  - 正文上限 4096 个码位；
-  - 启动时记录 INFO 日志；
-  - 示例文件纳入测试。
+- 实施完成后，由一个独立审查子代理审查整个分支（结论见下文）。
 
 ## 已运行的检查
 
-Linux 验证镜像基于 `tests/Dockerfile`（golang:1.26.5）。测试用的是一次性的 PostgreSQL 17.4 和 Redis 7 容器，用完即清理。
+Linux 验证镜像基于 `tests/Dockerfile`（golang:1.26.5）。测试用一次性的 PostgreSQL 17.4 与 Redis 7 容器，用完即清理。
 
 | 检查 | 结果 |
 |---|---|
-| `bash scripts/verify-accountsvc.sh`（race、真实进程、TLS、伪 SMTP、必需测试门禁） | 通过：776 个测试通过，0 个失败。新增的 `TestServiceIntegrationEmailTemplates` 在首轮失败，原因是断言写错：夹具的 quoted-printable 解码会把 CRLF 还原为 LF。修正断言后通过，实现未改动。 |
+| `bash scripts/verify-accountsvc.sh`（race、真实进程、TLS、伪 SMTP、必需测试门禁） | 通过：791 个测试通过，0 个失败 |
 | `go build ./...`、`go vet ./...` | 通过 |
-| `go test -race -json -count=1 ./...`（`SERVER_TEST_DB_DSN` 和 `ACCOUNTSVC_TEST_REDIS_URL` 均已设置） | 通过：3682 个测试通过，0 个失败 |
-| `go run ./internal/testgate scripts/required-tests.txt` | 通过。第一次运行时漏设 Redis 变量，导致 `TestAlipayHTTPLoginContract` 被跳过、门禁失败；补设后重跑通过。 |
+| `go test -race -json -count=1 ./...`（`SERVER_TEST_DB_DSN` 与 `ACCOUNTSVC_TEST_REDIS_URL` 均设置） | 通过：3697 个测试通过，0 个失败 |
+| `go run ./internal/testgate scripts/required-tests.txt` | 通过 |
 | gofmt | 无差异 |
+| `go mod tidy -diff` | 有差异，但与本变更无关：develop 基线（stash 后）同样有差异（`prometheus/client_model` 直接/间接标记与 go.sum 顺序）。本变更未改动 go.mod/go.sum，也没有新增依赖；`golang.org/x/text` 本来就是直接依赖。 |
 | `openspec validate --all --strict` | 41 项全部通过 |
-| 审查后补充的 `ValidateBrand` 回归用例：`go test ./user/sender/smtp -run TestLegacyChineseRendererBrand` | 通过 |
+| 本机 Windows：`go test ./internal/accountsvc/ ./internal/accountsvc/emailtemplates/ ./cmd/accountsvc/ ./user/sender/smtp/ ./internal/mailtext/`（无 race） | 通过 |
 
 ## 覆盖要点
 
-- **解析器**：
-  - 结构方面：version、四种用途是否齐全、未知字段、重复键、尾随内容、null、非法 UTF-8 和孤立代理项；
-  - 占位符方面：未知、单独的花括号、空名称、未闭合、转义、单次展开；
-  - 字符方面：CR、LF、TAB、U+202E、U+200B、U+2028、U+2029、首尾空白；
-  - 边界值：64/65、4096/4097、8/9 个占位符、64 KiB；
-  - 所有错误信息都用哨兵字符串断言不回显内容。
+- **清单解析**（`emailtemplates_test.go`）：
+  - 结构：version、default_language、1–8 种语言、规范 BCP 47 标签（拒绝 `zh-hant`、`und`、乱码）、语言块/`common`/用途的固定字段、未知字段、重复键、尾随内容、null、非法 UTF-8、缺少或多出用途；
+  - 品牌：缺失、空、换行、超长；
+  - Logo：http、含用户信息、含空格、`data:`、null、超过 2048 字节；
+  - 占位符：`{{code}}`、未知名称、未闭合、带空格、空名称、每段 9 个；
+  - 字符与长度：标题 CRLF/TAB/U+202E/尾部空白/65 码位；正文 CR、ESC、1025 码位；
+  - 边界值：64、1024、7/8 个占位符、单个花括号、8 种语言、2048 字节 Logo；
+  - 所有错误用哨兵字符串断言不回显内容，且位置前缀精确。
 - **渲染**：
-  - 四种用途逐字比对；
-  - TTL 向上取整（1s、59s、60s、61s、5m、90m）；
-  - ctx 取消、非法 CodeMessage、零值和 nil 都返回 `ErrUnavailable`；
-  - race 下并发渲染。
-- **配置**：
-  - 未设置时使用内置渲染器；
-  - 合法文件可用，摘要为 12 位十六进制；
-  - 品牌为空却引用 `{brand}` 时报错；
-  - 文件不存在、是目录、为空、超限、JSON 非法、标题含 `{code}`、用途不全时都报错，错误只含变量名，不含路径或内容；
-  - migrate 时，或 EMAIL 禁用的 serve，都会忽略非法路径。
-- **启动日志**：
-  - `built-in` 和 `custom` 两种情况，后者含 version 与 sha256；
-  - EMAIL 禁用时不记录；
-  - 不含模板原文、品牌或路径。
-  - 集成测试把模板原文和路径登记为不得出现在进程输出中的秘密，并做了断言。
-- **示例文件**：`TestExampleFile` 直接加载 `deploy/accountsvc/email-templates.example.json`，渲染四种用途；断言补全用途的标题为“食方登录补全验证码”，且品牌为空时会拒绝。
-- **回归**：
-  - `ValidateBrand` 改用共享规则后，原有品牌测试全部通过，并新增 C1 控制字符、U+2029、非法 UTF-8 三个用例；
-  - 资料 Schema loader 提取为共用函数后，错误文本逐字不变（审查已核对）。
+  - 四种用途逐字比对纯文本，HTML 断言 lang、title、Logo、标题、验证码、有效期、页脚和 `©`；
+  - HTML 转义（品牌与引导语含 `&`、`<`、引号）、标题与纯文本不转义、换行转 `<br>`；
+  - 可选 Logo 和页脚缺省时的输出；
+  - TTL 向上取整；ctx 取消、非法 CodeMessage、零值、nil；race 下并发渲染。
+- **语言匹配**：表驱动固定 zh-TW/HK/MO → zh-Hant、zh-CN/SG/zh → zh-Hans、en-US/GB → en、ja/空/`*`/超长/非法 → 默认；前 8 项上限；`RenderIn` 按标签渲染；单语言清单忽略偏好。
+- **样例清单**：`TestExampleManifest` 直接加载 `deploy/accountsvc/email-templates.example.json`，断言三种语言的补全标题。
+- **配置**（`config_email_templates_test.go`）：未设置、清单与 `ACCOUNTSVC_SMTP_BRAND` 冲突、合法清单的摘要与英文渲染、文件不存在/目录/空/超限/JSON 非法/标题含 `{{code}}`/默认语言不存在，错误不含路径与内容；migrate 与 EMAIL 禁用时忽略。
+- **启动日志**：built-in、custom（version、sha256、languages），EMAIL 禁用不记录，不含文字、品牌、路径。
+- **中间件**：en-US、zh-TW、缺失、乱码、超长五种请求头的选择结果。
+- **检查命令**：成功输出；`-out` 创建目录并写出固定文件；重跑可覆盖；目录含其他文件时拒绝；清单非法时非零退出、不回显、不写预览；用法错误。
+- **集成测试**（`TestServiceIntegrationEmailTemplates`）：真实进程 + 伪 SMTP，分别以 zh-HK、en-GB、ja、无请求头发码，断言标题、纯文本全文、HTML 中的验证码、Logo 与品牌；启动日志含 custom、sha256、`languages=zh-Hans,en,zh-Hant`；文字、品牌、Logo 域名与路径登记为不得出现在进程输出中的秘密。伪 SMTP 夹具改为解析 `multipart/alternative`。
+- **回归**：`ValidateBrand` 原有测试通过并补充了 C1、U+2029、非法 UTF-8；资料 Schema loader 提取为共用函数后错误文本不变；cmd 层对未知命令的安全提示测试更新为新文案。
 
 ## 审查结论
 
-独立审查子代理认为可以合并：没有 Critical 或 Important 问题。
-
-已核实：
-- 标题注入防护；
-- 单次展开；
-- 错误和日志不回显内容；
-- 编译器在 `{{{`、`}}}`、`{a{b}`、多字节字符旁花括号等边界上的行为；
-- 实现与规格一致；
-- 两处回归点。
-
-对 Minor 意见的处理：
-1. 补写本 verification.md。
-2. `ValidateBrand` 拒绝表补了 C1、U+2029、非法 UTF-8 三个用例。
-3. design 中的类型名统一为 `emailtemplates.Renderer`；把“不含占位符名”改为“不回显文件中出现的占位符名”。
-4. 文档、规格、proposal、tasks 统一写明“subject 与 text 各自最多 8 个占位符”。
-5. 文档示例注明正文已省略、不能直接使用，并指向完整示例文件；注明文件须为不带 BOM 的 UTF-8。
-6. 带 BOM 的文件和嵌套过深的未知字段都只报 `invalid JSON`，诊断不够精确。按审查建议接受，不改代码。
+（待审查子代理返回后补充。）
 
 ## 未验证项
 
 - 没有在 Windows 上运行 race：本机缺少 CGO 工具链，race 在 Linux 镜像中运行。
-- 没有运行 `scripts/check-migrations.sh` 和恢复演练（`verify-recovery.sh`）：本次变更不涉及迁移、SQL 或数据结构，这两项留到发布前的完整验证。
-- 没有向真实邮件服务商投递；只用伪 SMTP 验证了 MIME 编码和内容。
+- 没有运行 `scripts/check-migrations.sh` 和恢复演练：本次变更不涉及迁移、SQL 或数据结构，这两项留到发布前的完整验证。
+- 没有向真实邮件服务商投递，也没有在真实邮件客户端里查看版式；只用伪 SMTP 验证了 MIME 结构和内容。建议 ai-food 用 `email-templates check -out` 预览后再用 Mailpit 或真实邮箱确认显示效果。
 - 线上 CI 尚未运行，分支还未推送。

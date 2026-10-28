@@ -1,31 +1,35 @@
-## 1. 共享字符规则
+## 1. 共享字符规则（沿用首版实现）
 
-- [x] 1.1 新增 `internal/mailtext`：实现标题与正文的字符规则和码位计数，附单元测试（含 CR/LF/TAB、U+202E、U+200B、U+2028、首尾空白、非法 UTF-8）
-- [x] 1.2 `smtp.ValidateBrand` 改为使用共享标题规则，签名与行为保持不变，现有品牌测试全部通过
+- [x] 1.1 新增 `internal/mailtext`：标题与正文的字符规则，附单元测试
+- [x] 1.2 `smtp.ValidateBrand` 改为使用共享标题规则，签名与行为不变；品牌回归用例补全
 
-## 2. 模板解析与渲染（`internal/accountsvc/emailtemplates`）
+## 2. 清单解析与渲染（`internal/accountsvc/emailtemplates`）
 
-- [x] 2.1 严格 JSON 解码：version=1；四种用途恰好齐全；拒绝未知字段、重复键、尾随内容、null 和非法 UTF-8；错误只含字段位置与固定分类
-- [x] 2.2 占位符编译：三个名称、`{{`/`}}` 转义；拒绝单独的花括号、空名称、未知名称；text 必须含 `{code}`，subject 不得含；`{brand}` 需要非空品牌；subject 与 text 各自最多 8 个占位符；subject 不超过 64、text 不超过 4096 个码位
-- [x] 2.3 `emailtemplates.Renderer.Render`：校验 ctx 与 CodeMessage；单次展开；有效期向上取整；零值返回 ErrUnavailable；并发安全
-- [x] 2.4 单元测试覆盖解析与渲染矩阵，包括边界值 64/65、4096/4097、8/9，并断言错误信息不回显内容
+- [x] 2.1 严格解析清单：version=1；`default_language` 属于 `languages`；1–8 种规范 BCP 47 语言，不含 `und`，不重复；语言块、`common`、用途的固定字段集合；拒绝未知字段、重复键、尾随内容、null；错误只含字段位置与固定分类
+- [x] 2.2 占位符 `{{brand}}` / `{{ttl_minutes}}`：单个花括号字面；`{{code}}`、未知名称或不完整的 `{{` 报错；每段最多 8 个；各字段的长度与字符规则；`logo_url` 校验
+- [x] 2.3 内置布局：嵌入 HTML 与纯文本布局；Logo 与页脚槽位由 Go 代码按有无填入；HTML 槽位整体转义
+- [x] 2.4 渲染：先渲染各段文字再填入布局；有效期向上取整；ctx 取消、CodeMessage 非法、零值或 nil 时返回 ErrUnavailable；并发安全
+- [x] 2.5 语言匹配：`language.NewMatcher`，默认语言在前；`WithLanguagePreference` 与读取函数；无偏好或置信度为 No 时用默认语言；单语言不读 context
+- [x] 2.6 摘要与语言列表：清单 SHA-256 前 12 位；按清单顺序的标签列表
+- [x] 2.7 单元测试：拒绝矩阵（含哨兵断言不回显）、占位符边界、HTML 转义、Logo 有无、footer 有无、黄金文件固定布局输出、匹配表、并发渲染、样例清单
 
 ## 3. accountsvc 装配
 
-- [x] 3.1 把资料 Schema 的有界文件读取提取为共用函数，资料 Schema 行为与错误分类保持不变
-- [x] 3.2 `LoadConfig` 仅在 serve 且 EMAIL 启用时读取 `ACCOUNTSVC_SMTP_TEMPLATES_FILE`，失败即返回只含变量名的错误；EMAIL 禁用或执行 migrate 时不解析
-- [x] 3.3 `run.go` 二选一注入渲染器；监听后记录 `email templates: custom`（version 与 sha256 前 12 位）或 `built-in` 的 INFO 日志
-- [x] 3.4 配置测试：未设置、EMAIL 禁用时非法路径、migrate 时非法路径、各类文件错误、品牌为空却引用 `{brand}`
-- [x] 3.5 集成测试：用伪 SMTP 抓取自定义模板邮件，断言标题与正文；启动日志包含 custom、版本与摘要且不含模板原文和验证码；未配置时日志为 built-in
+- [x] 3.1 `LoadConfig`：只在 serve 且 EMAIL 启用时加载；与 `ACCOUNTSVC_SMTP_BRAND` 互斥；EMAIL 禁用或 migrate 时不解析
+- [x] 3.2 `Accept-Language` 中间件：只在多语言时安装；超过 512 字节、解析失败或缺失时不设置；最多前 8 项
+- [x] 3.3 `run.go`：二选一注入渲染器；启动 INFO 加入 custom/built-in、version、sha256、languages
+- [x] 3.4 子命令 `email-templates check <清单> [-out 目录]`：不读环境变量；失败非零退出；输出目录只允许覆盖固定文件名；写出 `<lang>/<PURPOSE>.html`、`.txt`、`subjects.txt`
+- [x] 3.5 配置与命令测试：未设置、品牌冲突、各类文件错误、EMAIL 禁用或 migrate 时忽略、check 成功/失败/拒绝脏目录
+- [x] 3.6 集成测试：伪 SMTP 抓取 multipart/alternative；分别带 zh-HK、en-GB、ja 和不带请求头发码，断言标题、HTML、纯文本和品牌；启动日志含 custom、语言列表和摘要；进程输出不含文字、品牌或路径
 
-## 4. 示例、文档与部署
+## 4. 样例、文档与部署
 
-- [x] 4.1 新增 `deploy/accountsvc/email-templates.example.json`（四种用途的推荐文案，补全标题为“{brand}登录补全验证码”），并用测试直接加载和渲染该文件
-- [x] 4.2 更新 `docs/accountsvc.md`：配置表、品牌说明、新增“邮件模板文件”一节
-- [x] 4.3 更新 `docs/compatibility.md`、`deploy/accountsvc/.env.example`、`deploy/accountsvc/compose.yaml`（变量透传与注释掉的只读挂载示例）
-- [x] 4.4 新增的必需顶层测试写入 `scripts/accountsvc-required-tests.txt`
+- [x] 4.1 `deploy/accountsvc/email-templates.example.json`：简体、繁体、英文三套文字，由测试加载并渲染
+- [x] 4.2 `docs/accountsvc.md`：配置表、品牌说明（互斥）、改写“邮件模板清单”一节（格式、占位符、Logo 要求、布局段落、语言匹配、check 命令）
+- [x] 4.3 `docs/gateway-integration.md`（透传 `Accept-Language`）、`docs/compatibility.md`、`deploy/accountsvc/.env.example`、`compose.yaml`
+- [x] 4.4 必需测试清单：新增条目，删除已被替代的首版条目
 
 ## 5. 验证
 
-- [x] 5.1 gofmt、go vet、相关包测试；用 Linux 镜像跑 race 与 `scripts/verify-accountsvc.sh`
-- [x] 5.2 `openspec validate --all --strict`；代码审查；结果写入 verification.md
+- [x] 5.1 gofmt、go vet；Linux 镜像跑 race 与 `scripts/verify-accountsvc.sh`；`go test -race ./...` 加 required-tests 门禁
+- [ ] 5.2 `openspec validate --all --strict`；代码审查；改写 verification.md

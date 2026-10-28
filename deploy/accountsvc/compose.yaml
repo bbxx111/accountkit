@@ -38,9 +38,8 @@ services:
         condition: service_started
     ports:
       - "127.0.0.1:${ACCOUNTSVC_PUBLIC_PORT:-18080}:8080"
-    # Optional email templates: uncomment and set
-    # ACCOUNTSVC_SMTP_TEMPLATES_FILE=/etc/accountsvc/email-templates.json (requires ACCOUNTSVC_SMTP_BRAND
-    # because the example uses {brand}).
+    # Optional email template manifest: uncomment the mount and set
+    # ACCOUNTSVC_SMTP_TEMPLATES_FILE=/etc/accountsvc/email-templates.json (and leave ACCOUNTSVC_SMTP_BRAND empty).
     # volumes:
     #   - ./email-templates.example.json:/etc/accountsvc/email-templates.json:ro
     environment:

@@ -49,7 +49,10 @@ github.com/bbxx111/accountkit/internal/accountsvc/oidcjwt/TestCooldownAfterSucce
 github.com/bbxx111/accountkit/internal/accountsvc/oidcjwt/TestCooldownAfterFailedAttempt
 github.com/bbxx111/accountkit/internal/accountsvc/TestRuntimeStartsWhenServiceIssuerHangs
 github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestParseRejects
-github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestExampleFile
 github.com/bbxx111/accountkit/internal/accountsvc/TestConfigEmailTemplates
 github.com/bbxx111/accountkit/internal/accountsvc/TestLogEmailTemplates
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationEmailTemplates
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestLanguageMatching
+github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates/TestExampleManifest
+github.com/bbxx111/accountkit/internal/accountsvc/TestAcceptLanguageMiddleware
+github.com/bbxx111/accountkit/internal/accountsvc/TestEmailTemplatesCheckCommand

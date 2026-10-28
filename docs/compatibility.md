@@ -33,9 +33,12 @@
 - **短信**：accountsvc 新增 `ACCOUNTSVC_SMS_PROVIDER=aliyun` 与 `ACCOUNTSVC_SMS_ALIYUN_*`（见[服务手册](accountsvc.md#短信服务商)）。显式启用 PHONE 的错误由“服务没有 SMS 服务商”改为要求配置 `ACCOUNTSVC_SMS_PROVIDER`；省略身份策略时短信仍保持禁用。
 - **新错误原因**：发送器可选实现 `SupportsTarget(e164 string) bool`；声明不支持的号码在占用额度前返回 400 `FAILED_PRECONDITION` / `TARGET_NOT_SUPPORTED`（Go 为 `sender.ErrTargetNotSupported`），审计 `CODE_SEND_REJECTED` 原因 `TARGET_NOT_SUPPORTED`。阿里云发送器首版只支持中国大陆号码，客户端可据此提示改用其他登录方式。未实现该方法的宿主发送器不受影响。
 - **邮件品牌**：`smtp.LegacyChineseRenderer` 由空结构体改为含可选 `Brand` 字段的结构体，`LegacyChineseRenderer{}` 字面量与零值文案不变；accountsvc 新增 `ACCOUNTSVC_SMTP_BRAND`。
-- **邮件模板文件**：accountsvc 新增可选 `ACCOUNTSVC_SMTP_TEMPLATES_FILE`，用于自定义四种用途的纯文本邮件标题和正文（见[服务手册](accountsvc.md#邮件模板文件)）。
-  - 未设置时文案与内置中文渲染器逐字一致；`LegacyChineseRenderer` 文案、`smtp.New` / `NewWithRenderer` 和库的公开 API 均不变。
-  - EMAIL 启用时，启动日志新增一条 INFO，说明使用的是内置文案还是自定义模板。
+- **邮件模板清单**：accountsvc 新增可选 `ACCOUNTSVC_SMTP_TEMPLATES_FILE`，用内置布局和清单里的多语言文字渲染 HTML 加纯文本的验证码邮件，并按请求的 `Accept-Language` 选择语言（见[服务手册](accountsvc.md#邮件模板清单)）。
+  - 未设置时文案与内置中文渲染器逐字一致；`LegacyChineseRenderer` 文案、`smtp.New` / `NewWithRenderer` 和库的公开 Go API 均不变，不新增依赖。
+  - 设置了清单时 `ACCOUNTSVC_SMTP_BRAND` 必须为空：品牌按语言写在清单里。
+  - EMAIL 启用时，启动日志新增一条 INFO，说明使用的是内置文案还是自定义清单。
+  - 新增离线子命令 `accountsvc email-templates check`。
+  - 网关需要透传 `Accept-Language`；客户端应把界面语言放进该请求头。
 
 ## 消费者 access 改用 ES256 与严格内省
 

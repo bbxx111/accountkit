@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -61,11 +62,15 @@ func parseCommand(args []string) (string, error) {
 	if len(args) == 1 && (args[0] == "serve" || args[0] == "migrate") {
 		return args[0], nil
 	}
-	return "", errors.New("accountsvc: command must be serve or migrate")
+	return "", errors.New("accountsvc: command must be serve, migrate or email-templates check")
 }
 
 // Run 接收主入口的信号 context，执行安全配置校验与完整服务生命周期。
+// `email-templates check` 是离线子命令：不读取服务配置，也不创建依赖。
 func Run(ctx context.Context, args []string, logger *slog.Logger) error {
+	if len(args) > 0 && args[0] == "email-templates" {
+		return runEmailTemplatesCommand(args[1:], os.Stdout)
+	}
 	command, err := parseCommand(args)
 	if err != nil {
 		return err
@@ -163,6 +168,10 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 		return nil, errors.New("accountsvc: accountkit construction failed")
 	}
 	app := &application{migrate: auth.Migrate, start: auth.Start, close: auth.Close, endUser: auth.EndUserHandler(), admin: auth.AdminHandler(), jwks: auth.JWKSHandler(), metrics: metrics}
+	if cfg.EmailTemplates.Multilingual() {
+		// 只有多语言清单才需要读取请求语言；发码只经由消费者路由。
+		app.endUser = acceptLanguage(app.endUser)
+	}
 	if cfg.command == "serve" {
 		intro, purge, preload, err := serviceAuthenticators(cfg, logger, nil)
 		if err != nil {

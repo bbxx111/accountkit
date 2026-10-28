@@ -1,6 +1,6 @@
 # v0.7.0 发布准备验收
 
-日期：2026-10-28。用户确认版本号 v0.7.0 并授权发布准备（不含合并 main、推送、tag 与 Release）。当前结论：准备快照的静态检查、完整本地验证与独立审查全部通过；合并 develop/main、推送、tag、Release 与远端消费尚未执行，等待逐项授权。
+日期：2026-10-28。用户确认版本号 v0.7.0 并授权发布准备（不含合并 main、推送、tag 与 Release）。当前结论：v0.7.0 已发布。最终候选 `6f3b072` 在线 CI 全部通过；annotated tag 与 GitHub Release 已核验，两个独立宿主从远端无 replace 消费通过。产品部署与本变更归档另行执行。
 
 ## 准备范围
 
@@ -32,6 +32,18 @@
 - 补充遗漏的公开符号（`tokens.ParsePrivateKey`/`Algorithm`/`TokenType`/`Signer.JWKS`、`user.ErrPurgedUserCursorAhead`/`MaxPurgedUserPage`/`Deps.PurgedUserRetention`、`aliyun` 包导出面、`smtp.NewWithRenderer` 的品牌校验错误路径）；删除 `LegacyChineseRenderer` 不存在的“位置式字面量”迁移动作；`SMS_ALIYUN_ENDPOINT` 改为“只接受 HTTPS，非 production 仅额外允许回环地址 HTTP”（发布说明与 `docs/accountsvc.md` 同步）；WARN 列表注明邮件模板与签发方不可用另有 WARN；`docs/features.md` 的 HTTP 契约行补充 JWKS 与已清理用户拉取不在库契约内。
 
 审查确认一致：0001 哈希与 v0.6.0 pin、发布说明提到的全部公开 Go 符号与维护任务顺序、accountsvc 变量名/路由/错误码/服务 Bearer 规则、与兼容说明前五节无矛盾、OpenAPI 操作数 24/11 不变且 diff 仅为描述文本、go.mod 无变化。修改后重新运行 `git diff --check`、`go test ./httpapi/enduser ./internal/migrationcheck`（读取 README 与 OpenAPI 的测试）通过。
+
+## 发布与远端消费（2026-10-28）
+
+- 准备分支经 `--no-ff` 合入 develop（`d88dc6adac0a794645dc7d3560246f84ae925e31`，[develop CI](https://github.com/bbxx111/accountkit/actions/runs/40724202706) 通过），develop 合入 main（`6f3b072a8372b83be75b508d1ea521f368c80723`）并推送；main 树与 develop 一致。
+- 最终候选 [CI run 40725361916](https://github.com/bbxx111/accountkit/actions/runs/40725361916)：head_sha 精确为 `6f3b072…`，结论 success；check-generated、Linux 镜像构建、`verify.sh`（含迁移历史、race、必需门禁与恢复演练）、`verify-accountsvc.sh` 各步骤均成功。
+- 创建前本地与远端均无 v0.7.0；annotated tag `v0.7.0`（对象 `8648467a9a375aad130806c3708fe102112f091e`，消息 `Release v0.7.0`）指向 `6f3b072…`，`git ls-remote` 核验；v0.1.0–v0.6.0 六个历史 tag 未移动。
+- [GitHub Release v0.7.0](https://github.com/bbxx111/accountkit/releases/tag/v0.7.0) 于 2026-10-28T16:38:10Z 发布，非 draft/prerelease，为 latest；正文取自发布说明，状态改为已发布，相对链接固定到 `6f3b072` 的 blob 地址。
+- 远端消费：`.test-output/release-v070/` 下两个独立宿主（`facade`、`enduser`），`GOWORK=off`、`GOPROXY=https://goproxy.cn,direct`、`GOSUMDB=sum.golang.org`、独立 GOMODCACHE，`go get github.com/bbxx111/accountkit@v0.7.0`，无 replace；均 `go mod tidy`、`go vet`、构建并运行通过。
+  - `facade`：`tokens.ParseKeyList` 对 PKCS#8 DER 的 P-256 私钥往返一致、`CheckKeys` 拒绝未知 active 版本、旧 HMAC 字节被拒绝、`Algorithm`/`TokenType` 常量；`ConfigFromEnv` 解析 `JWT_KEYS` 为 `*ecdsa.PrivateKey` 与 `PURGED_USER_RETENTION=720h`（同时要求 issuer/audience 与主体密钥）；`MinPurgedUserRetention`、`PurgeCoveredTables["purged_user"]`、`ErrPurgedUserCursorAhead` 属 `ErrInvalidArgument`；`smtp.ValidateBrand` 拒绝换行、`aliyun.ValidateEndpoint` 只放行 HTTPS 与受控回环 HTTP；`JWKSHandler`、`RequireScopeStrict`、`ListPurgedUsers`、`CleanupPurgedUsers`、`AuthenticateStrict`、`aliyun.Sender` 实现 `SMSCodeSender`、`*user.Service` 实现 `authn.StrictAuthenticator` 编译通过。
+  - `enduser`：直接使用 `httpapi/authn.RequireScopeStrict` 加桩认证器：依赖不可用返回 503 `DEPENDENCY_UNAVAILABLE` 带 `Retry-After: 1`，无效令牌 401 带 `invalid_token` challenge，缺令牌 401 `TOKEN_MISSING`，有效令牌放行。
+  - 两者 `go list -m -json` 版本为 v0.7.0、无 Replace；模块内 `migrations/0001_init.up.sql` SHA256 为 `ef2d1f22…`，与当前固定哈希一致。日志见 `consumption.log`。
+- 通知：已向 ai-food 会话发送 tag、Release 与破坏性变化要点；对方确认已固定到 `6f3b072`，只使用 JWKS 本地验签与 `/v1/purgedUsers`。
 
 ## 未验证范围
 

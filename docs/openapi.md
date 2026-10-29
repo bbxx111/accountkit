@@ -23,7 +23,7 @@
 - `reauthenticate` 使用独立 `AccessToken` schema，不含 refresh 字段。客户端保留原 refresh 和原绝对期限；普通登录/刷新才更新完整 pair。
 - 身份绑定新增返回 201，幂等命中返回 200。单会话撤销和解绑返回 204 无内容；`revoke` 返回 200 无内容；`revokeOthers` 返回 200 `{}`。账号注销返回更新后的资源。
 - 普通错误为 `{"error":{"code":400,"message":"…","status":"INVALID_ARGUMENT","reason":"…"}}`；`code` 是数字 HTTP 状态，`reason` 才是细分原因。`token` / `revoke` 使用独立 OAuth 错误体，不能按普通错误解析。
-- 消费者 Bearer 401 带 `WWW-Authenticate`；限流 429 带 `Retry-After` 和 `retry_after_seconds`，部分 503 也带等待提示。凭证响应包含 `Cache-Control: no-store`，token/pending/OAuth 错误还带 `Pragma: no-cache`。
+- 消费者 Bearer 401 带 `WWW-Authenticate`；限流 429 带 `Retry-After` 和 `retry_after_seconds`，部分 503 也带等待提示。凭证响应包含 `Cache-Control: no-store`，管理面 `:reveal` 的身份明文响应同样带 `Cache-Control: no-store`，token/pending/OAuth 错误还带 `Pragma: no-cache`。
 - 枚举使用大写字符串。身份类型为 `^[A-Z][A-Z0-9_]{1,31}$`：内置 PHONE、EMAIL、WECHAT、APPLE、GOOGLE，部署可另配 OIDC 等类型。凭证请求统一为 `{"kind","credential"}`，见下节；未知字段拒绝。POST token/revoke 也使用 JSON，不使用表单编码。
 - nullable 字段和 optional 字段不同：例如 `delete_time` 必须出现但可以为 null；审计 `flow_id` 可以省略。管理 DTO 与消费者 DTO 独立，管理会话没有 `is_current`。
 

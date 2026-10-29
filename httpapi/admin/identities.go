@@ -29,5 +29,7 @@ func (h *Handler) revealIdentity(w http.ResponseWriter, r *http.Request) {
 		h.writeServiceError(w, r, err)
 		return
 	}
+	// 明文身份不得被任何中间缓存保存；错误体由 apierror.Write 统一 no-store。
+	w.Header().Set("Cache-Control", "no-store")
 	apierror.WriteJSON(w, http.StatusOK, revealResource{Name: "users/" + uid + "/identities/" + rv.ID, Kind: rv.Kind.String(), Subject: rv.Subject})
 }

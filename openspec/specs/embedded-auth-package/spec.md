@@ -115,6 +115,8 @@
 
 审计 SHALL 支持通用事件及宿主外部查询，认证管理路由继续返回明确的认证 DTO，不直接序列化任意业务数据。审计资源 ID SHALL 显式升级为 UUIDv7，旧审计游标返回 400 INVALID_PAGE_TOKEN；非审计资源名和游标保持。仅注入审计写侧时，已授权审计查询 SHALL 返回 503 AUDIT_QUERY_NOT_CONFIGURED，不静默读取本地空表。默认本地模式 SHALL 保持可用。
 
+身份明文查看 `GET /users/{user}/identities/{identity}:reveal` 的所有响应（成功与错误）SHALL 带 `Cache-Control: no-store`；该头由库自身设置，不依赖宿主或网关配置。
+
 #### Scenario: 管理员权限不足
 - **WHEN** 已识别的管理员缺少目标操作角色
 - **THEN** 拒绝操作并沿用基线审计机制记录禁止事件
@@ -126,6 +128,10 @@
 #### Scenario: UUID 审计列表
 - **WHEN** 管理员查询有权限访问的账号审计
 - **THEN** 资源名使用 users/{user}/auditEvents/{uuid}，原字段语义保留，其他账号及通用扩展敏感内容不泄露
+
+#### Scenario: 身份明文响应禁止缓存
+- **WHEN** super-admin 成功调用 `:reveal`
+- **THEN** 200 响应带 `Cache-Control: no-store`，正文仍为既有 `{"name","kind","subject"}`，并写入 IDENTITY_REVEALED 审计
 
 ### Requirement: 加密和维护兼容
 包 SHALL 保留敏感身份加密、带版本的检索摘要、令牌密钥轮换及历史密钥检查，提供会话清理、账号清理、审计保留、摘要重建和密文重加密维护能力。

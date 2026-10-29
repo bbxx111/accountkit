@@ -1,8 +1,8 @@
 # 功能清单与候选功能
 
-更新日期：2026-10-28。Go 集成与 HTTP 文档面向已发布的 v0.7.0；标准化指标实现与验证状态见[库指标验收](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)，accountsvc 采集端点见[服务指标验收](../openspec/changes/archive/2026-10-19-add-accountsvc-prometheus/verification.md)。版本交付状态以[v0.7.0 发布说明](releases/v0.7.0.md)为准。
+更新日期：2026-10-29。Go 集成与 HTTP 文档面向 v0.7.1 候选（库契约与 v0.7.0 相同）；标准化指标实现与验证状态见[库指标验收](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)，accountsvc 采集端点见[服务指标验收](../openspec/changes/archive/2026-10-19-add-accountsvc-prometheus/verification.md)。版本交付状态以[v0.7.1 发布说明](releases/v0.7.1.md)为准。
 
-本文统一记录 v0.7.0 已支持能力、已实现但待真实环境验证的项目，以及尚未立项的候选功能。版本发布不表示产品环境已验收；历史版本不包含本表全部能力。目前尚无实际产品接入，正式部署暂不安排。
+本文统一记录 v0.7.1 候选已支持能力、已实现但待真实环境验证的项目，以及尚未立项的候选功能。版本发布不表示产品环境已验收；历史版本不包含本表全部能力。目前尚无实际产品接入，正式部署暂不安排。
 
 协议和配置细节以 [README](../README.md)、[主规格](../openspec/specs)及公开 Go 类型为准；调用升级见[兼容指南](compatibility.md)，独立服务边界见[accountsvc 手册](accountsvc.md)。
 
@@ -22,7 +22,7 @@
 | 标准化指标 | 可选类型化 Observer、OTel/原生 Prometheus、认证/验证码/依赖/降级/审计/维护的 13 项指标；accountsvc 可选 Prometheus 采集端点 | 默认 no-op；嵌入宿主负责 Provider/Registry、导出与端点，见[指标指南](metrics.md)；accountsvc 默认关闭指标，启用后提供同址 GET /metrics，部署方落实采集访问控制，见[服务配置](accountsvc.md#prometheus-指标)；合成示例不替代真实联调 |
 | 宿主事务集成 | 注销前检查、同库业务匿名化回调、已清理用户持久拉取（独立部署时供业务方幂等清理）、活动账号事务保护、受控离线导入 | 导入仅 Go 接口，不发令牌或自动合并；业务表和业务授权仍由宿主负责 |
 | 存储与维护 | PostgreSQL + Redis、schema/键前缀/令牌域隔离、版本迁移、迁移锁、dirty 阻断、定期清理、备份恢复验证 | 新库由 0001 直接定义 sign_in_completion_flow，初始化版本为 1；旧表名 v1、双表和已撤回旧 v2 拒绝接管，见[迁移手册](migrations.md#当前初始基线)；公开 Down 拒绝执行 |
-| 集成与运行形式 | 嵌入式 Go 包；可选 accountsvc，提供 SMTP 与多语言邮件模板清单、阿里云短信、TLS、JWKS 本地验签、以数据库为准的远程令牌内省、已清理用户拉取、服务调用 Basic/Bearer 认证、外部管理员 OIDC 验证、探针和优雅关闭 | 阿里云短信首版只发中国大陆号码；服务配置统一 `ACCOUNTSVC_` 前缀；网关、入口流量控制和实际网络隔离由部署方负责 |
+| 集成与运行形式 | 嵌入式 Go 包；可选 accountsvc，提供 SMTP 与多语言邮件模板清单、阿里云短信、TLS、JWKS 本地验签、以数据库为准的远程令牌内省、已清理用户拉取、服务调用 Basic/Bearer 认证、外部管理员 OIDC 验证、探针和优雅关闭 | 阿里云短信首版只发中国大陆号码；服务配置统一 `ACCOUNTSVC_` 前缀；development 模式另允许管理员与服务令牌签发方使用 `http://`（production 不变）；网关、入口流量控制和实际网络隔离由部署方负责 |
 | Go 接入文档与示例 | 集成指南、生命周期、token/pending 分流、刷新与重新认证、调用层授权、事务回调和错误处理 | [指南](go-integration.md)及[可编译片段](../examples/gointegration/example_test.go)；无 Output 片段不执行依赖 I/O，合成输出不替代产品联调 |
 | HTTP 契约文档 | 消费者与管理面分别提供 OpenAPI 3.1，覆盖现有 24/11 个操作 | [契约与维护说明](openapi.md)；不包含 accountsvc 专属的 JWKS、内省、已清理用户拉取、探针，不代表已有完整客户端 SDK |
 

@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "accountkit 消费者 HTTP API",
-    "version": "v0.7.0",
-    "description": "v0.7.0 的内置消费者 HTTP 契约，操作集合与 v0.6.0 相同，四个发码操作补充 400 TARGET_NOT_SUPPORTED；v0.6.0 在 v0.5.0 上将身份凭证请求体统一为 {\"kind\",\"credential\"} 并增加各第三方提供方类型。宿主配置实际挂载地址。请求体为单个 JSON 对象，默认上限 64 KiB，拒绝未知字段与尾随内容。领域状态、事务、故障策略以规格与 README 为准。"
+    "version": "v0.7.1",
+    "description": "v0.7.1（准备中）的内置消费者 HTTP 契约，与 v0.7.0 相同；v0.7.0 的操作集合与 v0.6.0 相同，四个发码操作补充 400 TARGET_NOT_SUPPORTED；v0.6.0 在 v0.5.0 上将身份凭证请求体统一为 {\"kind\",\"credential\"} 并增加各第三方提供方类型。宿主配置实际挂载地址。请求体为单个 JSON 对象，默认上限 64 KiB，拒绝未知字段与尾随内容。领域状态、事务、故障策略以规格与 README 为准。"
   },
   "servers": [
     {

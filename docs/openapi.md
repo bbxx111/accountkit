@@ -1,6 +1,6 @@
 # HTTP OpenAPI 契约
 
-本契约描述 v0.7.0 的内置 HTTP handler：操作集合与 v0.6.0 相同，四个发码操作补充部署的短信发送器不支持号码时的 400 `TARGET_NOT_SUPPORTED`；v0.6.0 在 v0.5.0 上将身份凭证请求体统一为 `{"kind","credential"}` 并增加各第三方提供方类型。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
+本契约描述 v0.7.1（准备中）的内置 HTTP handler：操作集合、字段与错误码与 v0.7.0 相同，v0.7.0 的操作集合与 v0.6.0 相同，四个发码操作补充部署的短信发送器不支持号码时的 400 `TARGET_NOT_SUPPORTED`；v0.6.0 在 v0.5.0 上将身份凭证请求体统一为 `{"kind","credential"}` 并增加各第三方提供方类型。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
 
 ## 两个独立 HTTP 面
 
@@ -11,7 +11,7 @@
 
 两份文件各自独立，使用 [OpenAPI 3.1.0](https://spec.openapis.org/oas/v3.1.0.html) 与 JSON Schema 描述。所有 paths 均为相对 handler 路由，`servers[0].variables.basePath.default` 由宿主调整为实际挂载前缀或完整服务 URL。路径中的 `user` / `session` / `identity` 是原始 `u_` / `s_` / `i_` ID；响应 `name` 才是 `users/{id}` 等资源名。
 
-`info.version` 标识已发布的 v0.7.0 接口契约。文件不包含 accountsvc 专属的 `/v1/introspect`、`/v1/purgedUsers`、探针或管理员登录流程，也不描述宿主自有业务接口；这些不能由库契约自动推导。
+`info.version` 标识 v0.7.1（准备中）接口契约，内容与 v0.7.0 相同。文件不包含 accountsvc 专属的 `/v1/introspect`、`/v1/purgedUsers`、探针或管理员登录流程，也不描述宿主自有业务接口；这些不能由库契约自动推导。
 
 消费者使用自己的 Bearer access token。`x-allowed-scopes` 表示允许的 scope 列表，`x-recent-authentication` 表示现有近期认证要求；这些扩展与说明用于接入核对，代码生成器不会自动替宿主实施授权。未标 scope 的 `GET /users/me` 接受任何有效消费者 Bearer scope。
 

@@ -46,6 +46,13 @@
 
 修复后复跑 `openspec validate --all --strict` 与 `git diff --check`，结果见提交时的静态检查表。
 
+## 发布与消费（分别授权后执行）
+
+- 准备材料以 `--no-ff` 合入 develop（`3c3a923`，CI [40806175953](https://github.com/bbxx111/accountkit/actions/runs/40806175953) 成功），develop 合入 main 为最终候选 `e67d26286b9c7995f27cc77d1c3642a272cfbe0d`；在线 CI [40806251482](https://github.com/bbxx111/accountkit/actions/runs/40806251482) 的 check-generated.sh、docker 镜像构建、Verify package and recovery、Verify accountsvc 全部成功，head_sha 精确匹配。
+- 确认本地与远端均无 v0.7.1 后创建 annotated tag `v0.7.1`（对象 `5d6477655cfd9637ae9661f3c96046e9b0a3e849`）指向该提交并推送；`gh release create --verify-tag` 以发布说明（相对链接固定到 `blob/e67d262`，状态行改为已发布）创建 [GitHub Release](https://github.com/bbxx111/accountkit/releases/tag/v0.7.1)，非 draft、非 prerelease，`releases/latest` 为 v0.7.1。
+- 远端消费：`.test-output/release-v071/`（被忽略）中 facade 与 enduser 两个独立宿主，GOWORK=off、`GOFLAGS=-mod=mod`、无 replace，从 goproxy.cn 拉取 `@v0.7.1`：`go vet` 与运行均 OK，`go list -m` Version 为 v0.7.1、无 Replace；模块内 `migrations/0001_init.up.sql` SHA256 `ef2d1f229fa15b660cc7ecb4f417615b76866c19494641c96faf25bab24188b6`。日志 `.test-output/release-v071/consumption.log`。
+- 已通知接入方（ai-food）tag、tag 对象、提交、Release 与 CI 链接；tag 内文档状态行保持“发布候选”，本补记只合入 develop/main。
+
 ## 未验证项
 
 - 真实 Keycloak 联调由接入方完成。

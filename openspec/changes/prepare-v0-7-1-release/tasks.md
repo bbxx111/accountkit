@@ -13,10 +13,10 @@
 
 ## 3. 最终候选与发布（须分别明确授权）
 
-- [ ] 3.1 提交发布材料，以 `--no-ff` 合入 develop 与 main 并推送，记录最终候选 SHA。
-- [ ] 3.2 核验最终候选在线 CI 全部通过。
-- [ ] 3.3 创建并推送 v0.7.1 annotated tag，发布 GitHub Release。
-- [ ] 3.4 独立宿主从远端无 replace 消费 v0.7.1，补记发布事实与长期文档状态，通知接入方 tag 名与提交。
+- [x] 3.1 提交发布材料，以 `--no-ff` 合入 develop 与 main 并推送，记录最终候选 SHA。
+- [x] 3.2 核验最终候选在线 CI 全部通过。
+- [x] 3.3 创建并推送 v0.7.1 annotated tag，发布 GitHub Release。
+- [x] 3.4 独立宿主从远端无 replace 消费 v0.7.1，补记发布事实与长期文档状态，通知接入方 tag 名与提交。
 
 ## Workflow follow-up
 

@@ -4,7 +4,7 @@
 
 ## 当前待办与责任归属
 
-**v0.7.1 准备中**：v0.7.0 后的 accountsvc 开发模式明文 HTTP 签发方（`allow-development-http-issuer`）已完成、归档并以 `--no-ff` 合入 develop（`2397058`）。用户确认版本号 v0.7.1 并授权发布准备；合并 main、推送、tag 与 Release 另行授权。库契约、数据库结构与依赖相对 v0.7.0 无变化。发布说明见 [v0.7.1](releases/v0.7.1.md)，准备证据见[发布准备验收](../openspec/changes/prepare-v0-7-1-release/verification.md)。
+**v0.7.1 发布候选**：v0.7.0 后的 accountsvc 开发模式明文 HTTP 签发方（`allow-development-http-issuer`）已完成、归档并以 `--no-ff` 合入 develop（`2397058`）。用户确认版本号 v0.7.1 并授权发布准备；合并 main、推送、tag 与 Release 另行授权。库契约、数据库结构与依赖相对 v0.7.0 无变化。发布说明见 [v0.7.1](releases/v0.7.1.md)，准备证据见[发布准备验收](../openspec/changes/prepare-v0-7-1-release/verification.md)。
 
 **v0.7.0 已发布**：v0.6.0 后的消费者 access ES256 与严格内省、accountsvc 阿里云短信、已清理用户拉取清单（当前 0001 新增 `purged_user`）、`ACCOUNTSVC_` 前缀统一、服务调用 Bearer 认证、邮件模板清单与多语言均已完成并归档，已合入 develop/main；最终候选 `6f3b072` 的在线 CI 全部通过，tag 和正式 Release 已核验，两个独立宿主远端消费通过。本次以新空 schema 安装为目标，不提供旧库、旧令牌或旧配置迁移。发布说明见 [v0.7.0](releases/v0.7.0.md)，候选/CI/tag/Release 与远端消费证据见[发布验收](../openspec/changes/archive/2026-10-29-prepare-v0-7-0-release/verification.md)。产品上线另行执行。
 
@@ -105,6 +105,8 @@ v0.4.0 发布门禁覆盖来源缺失/失效时的事务拒绝、普通JWT不加
 本地复核使用[开发与验证入口](development.md)，测试数据库权限限定到一次性数据库；生产密钥不进入示例或测试。各次变更的实际结果保存在对应 `openspec/changes/.../verification.md`，原始日志和恢复材料保留于 ignored `.test-output/`。
 
 ## 发布动作与消费确认
+
+**状态措辞约定**（自 v0.7.1 起）：发布准备到打 tag 之前，发布说明、README、兼容/功能/集成/OpenAPI 文档统一写“候选”（如“v0.7.1（候选）”、“状态：发布候选”），不写“准备中”，并写明 tag 将固定包含该文的提交及可预知的 Release 链接；tag 内容不会也不需要包含自己的 SHA、CI 与消费证据。tag 与 Release 完成、远端消费验证通过后，以补记提交把状态改为“已发布”并写入 tag 对象、提交 SHA、CI 与消费结果，合入 develop 与 main；历史 tag 不移动。不为改一个状态词在 CI 通过后追加提交再打 tag。
 
 上述发布前门禁通过后，按明确授权执行版本发布。Go 版本使用完整的 `v0.1.0`，tag 指向已验证的最终候选提交；实际发布流程见 [Go 模块发布说明](https://go.dev/doc/modules/publishing)。
 

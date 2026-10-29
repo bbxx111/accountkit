@@ -36,7 +36,7 @@
 
 审查子代理对准备快照（发布说明、检查表、README/docs 版本表述、OpenAPI、本变更工件）独立核对代码与 v0.7.0 先例，自行运行 `git diff v0.7.0..HEAD`、0001 哈希、`git diff --check`、`openspec validate --all --strict`、`check-openapi.cjs` 及读取 README/OpenAPI 的测试。结论：Critical 0、Important 0、Minor 7，可提交。处理：
 
-1. `docs/compatibility.md` 新节与发布说明「运行与验证」缺「准备中」标记：已补。
+1. `docs/compatibility.md` 新节与发布说明「运行与验证」缺状态标记：已补；随后按用户决定把全部“准备中”统一改为“候选”表述，并把约定写入发布检查表「发布动作与消费确认」。
 2. 发布说明称本地 compose 可直接配置 HTTP issuer，但模板不含 `ACCOUNTSVC_ADMIN_*`：已改为只有服务签发方可经模板配置，管理员变量需自行加入。
 3. production 下 HTTP `jwks_uri` 的后果表述模糊：已补「管理员 issuer 启动失败、服务签发方 Bearer 503」。
 4. 检查表 v0.7.0 段落残留「发布变更归档另行执行」而归档已完成：已删去。

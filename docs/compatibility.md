@@ -2,7 +2,7 @@
 
 ## 开发模式的明文 HTTP 签发方
 
-本节随 v0.7.1 发布（准备中），仅影响 accountsvc 的 development 模式，无数据库、公开 Go API、HTTP 契约或错误码变化。
+本节随 v0.7.1 发布（候选），仅影响 accountsvc 的 development 模式，无数据库、公开 Go API、HTTP 契约或错误码变化。
 
 - **新增能力**：`ACCOUNTSVC_MODE=development` 时 `ACCOUNTSVC_ADMIN_ISSUER` 与 `ACCOUNTSVC_SERVICE_ISSUER` 额外接受 `http://` 绝对 URL，discovery、`jwks_uri` 与 `iss` 精确匹配整条链路按 HTTP 工作，重定向仍拒绝；serve 为每个 HTTP issuer 记一条只写变量名的 WARN。规则见[本地开发的明文 HTTP 签发方](accountsvc.md#本地开发的明文-http-签发方)。
 - **不变**：production（默认）仍只接受 HTTPS，错误信息与变量名与 v0.7.0 相同；其余 URL 约束（无凭据、查询、片段、首尾空白）在两种模式下相同。

@@ -40,6 +40,7 @@
 | SMTP 邮件 | 本地 SMTP/TLS 夹具和邮件验证码闭环；邮件布局黄金文件与多语言清单渲染测试 | 实际服务商认证、证书、投递和最终收件；真实邮件客户端的 HTML 显示效果 |
 | 阿里云短信 | 本地 HTTP 替身验证签名、模板映射、错误分类与超时 | 真实凭据、已审核签名/模板的实际发送与频控行为 |
 | 服务调用 Bearer 认证 | 本地签发方替身验证 RS256、`azp` 授权、challenge 与依赖故障分类；接入方（ai-food，2026-10-29，accountsvc v0.7.1）以真实 Keycloak 客户端凭据验证已清理用户拉取的 `azp` 允许/拒绝（列表外客户端 403 `CLIENT_NOT_AUTHORIZED`）、realm 密钥先 passive 后 active 轮换时不重启接受新 kid | 内省接口的真实 IdP 端到端；其他 IdP 产品 |
+| 管理面 `:reveal` 响应禁止缓存 | handler 单元测试断言 200 与 404 带 `Cache-Control: no-store`；接入方（ai-food，2026-10-29，accountsvc v0.7.2）经 Kong 用真实 Keycloak super-admin 令牌验证 200、404（未知 identity）、400（畸形 id）均带该头，用户详情等非明文管理路由不带，无令牌时处理器之前的 verifier 401 不带 | 其他网关产品或缓存插件下的透传行为 |
 | 外部管理员 OIDC | 本地 HTTPS（及 development 模式纯 HTTP）discovery/JWKS、签名、角色和换钥测试；接入方（ai-food，2026-10-29）在 `ACCOUNTSVC_MODE=development` 下以真实 Keycloak `http://` issuer 验证启动 WARN 与管理面鉴权 | 实际管理员提供方在 production（HTTPS）下的 audience、角色映射和换钥行为 |
 
 实际验证状态以各次变更的 verification.md 为准：[身份策略与登录补全验收](../openspec/changes/archive/2026-10-15-add-identity-policy-sign-in-completion/verification.md)、[初始结构整合验收](../openspec/changes/archive/2026-10-15-consolidate-initial-schema/verification.md)。其他真实服务、网关和产品环境验收边界见 [accountsvc 验证边界](accountsvc.md#验证边界)及[发布与上线检查表](release-checklist.md)。本文不重复维护测试统计或验收报告。

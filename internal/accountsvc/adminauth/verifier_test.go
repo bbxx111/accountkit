@@ -34,7 +34,13 @@ type oidcFixture struct {
 	release        chan struct{}
 }
 
-func newFixture(t *testing.T) *oidcFixture {
+// newFixture serves discovery and JWKS over TLS, the production shape.
+func newFixture(t *testing.T) *oidcFixture { return newFixtureWith(t, false) }
+
+// newPlainFixture serves the same endpoints over plain HTTP, as a local development IdP would.
+func newPlainFixture(t *testing.T) *oidcFixture { return newFixtureWith(t, true) }
+
+func newFixtureWith(t *testing.T, plain bool) *oidcFixture {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -42,7 +48,7 @@ func newFixture(t *testing.T) *oidcFixture {
 	}
 	f := &oidcFixture{t: t, key: key}
 	f.keys = []map[string]any{jwk("initial", &key.PublicKey)}
-	f.server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		if r.URL.Path == "/.well-known/openid-configuration" {
 			issuer, address := f.server.URL, f.server.URL+"/keys"
@@ -77,7 +83,12 @@ func newFixture(t *testing.T) *oidcFixture {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"keys": keys})
-	}))
+	})
+	if plain {
+		f.server = httptest.NewServer(handler)
+	} else {
+		f.server = httptest.NewTLSServer(handler)
+	}
 	t.Cleanup(f.server.Close)
 	return f
 }

@@ -4,7 +4,7 @@
 
 ## 当前待办与责任归属
 
-**v0.7.2 发布候选**：v0.7.1 后的管理面 `:reveal` 响应禁止缓存（`add-admin-reveal-no-store`）已完成、归档并以 `--no-ff` 合入 develop（`21d9fe8`，归档合并 `61c6b9c`），同批合入 `caller_cancel` 用例容忍（`df42c46`）与接入方真实环境验收补记（`6b5c22d`）。版本按补丁递增为 v0.7.2，用户指示继续发布准备；合并 main、推送、tag 与 Release 另行授权。库路由/字段/错误码、数据库结构与依赖相对 v0.7.1 无变化。发布说明见 [v0.7.2](releases/v0.7.2.md)，准备证据见[发布准备验收](../openspec/changes/prepare-v0-7-2-release/verification.md)。
+**v0.7.2 已发布**：v0.7.1 后的管理面 `:reveal` 响应禁止缓存（`add-admin-reveal-no-store`）已完成、归档并合入 develop/main，同批合入 `caller_cancel` 用例容忍与接入方真实环境验收补记；最终候选 `453527b` 的在线 CI 全部通过，tag `v0.7.2` 与正式 Release 已核验，两个独立宿主远端消费通过。库路由/字段/错误码、数据库结构与依赖相对 v0.7.1 无变化。发布说明见 [v0.7.2](releases/v0.7.2.md)，证据见[发布验收](../openspec/changes/prepare-v0-7-2-release/verification.md)。产品上线和本发布变更归档另行执行。
 
 **v0.7.1 已发布**：v0.7.0 后的 accountsvc 开发模式明文 HTTP 签发方（`allow-development-http-issuer`）已完成、归档并合入 develop/main；最终候选 `e67d262` 的在线 CI 全部通过，tag `v0.7.1` 与正式 Release 已核验，两个独立宿主远端消费通过。库契约、数据库结构与依赖相对 v0.7.0 无变化。发布说明见 [v0.7.1](releases/v0.7.1.md)，证据见[发布验收](../openspec/changes/archive/2026-10-29-prepare-v0-7-1-release/verification.md)。产品上线另行执行。
 
@@ -57,11 +57,11 @@
 - [x] `add-admin-reveal-no-store` 已完成、归档并合入 develop；确认公开 Go API、路由/字段/错误码、依赖与当前 0001 相对 v0.7.1 无变化，仅 `:reveal` 响应新增 `Cache-Control: no-store`。
 - [x] 发布说明（响应头范围、OpenAPI 声明、宿主责任不变与回退边界）完成独立审查。
 - [x] 准备快照的 OpenSpec strict、生成一致性、迁移历史、OpenAPI、完整库/服务 race、必需门禁及恢复 seed/verify/source-unchanged 通过，结果写入准备验收。
-- [ ] 以 `--no-ff` 将准备内容合入 develop，再将 develop 合入 main 并推送；记录最终 main 候选 SHA。
-- [ ] 最终 main 候选在线 CI 的 check-generated.sh、verify.sh、verify-accountsvc.sh 全部成功，head_sha 精确匹配。
-- [ ] 确认远端 v0.7.2 不存在，创建并推送 annotated tag，发布 GitHub Release；历史 tag 不移动。
-- [ ] 两个独立宿主以 GOWORK=off、无 replace 从远端消费 @v0.7.2，模块版本 v0.7.2、初始 SQL 哈希 `ef2d1f22…` 与公开符号验证通过；通知接入方 tag 与提交。
-- [ ] 补记 tag/Release、最终 SHA/CI 与消费结果，长期文档改为已发布状态。归档另行明确执行。
+- [x] 以 `--no-ff` 将准备内容合入 develop（`ebe0ee7`），再将 develop 合入 main 并推送；最终 main 候选为 `453527beeb276b0e9780ec2ccab4d26a40f57665`。
+- [x] 最终 main 候选在线 CI（[40865352107](https://github.com/bbxx111/accountkit/actions/runs/40865352107)）的 check-generated.sh、verify.sh、verify-accountsvc.sh 全部成功，head_sha 精确匹配。
+- [x] 确认远端 v0.7.2 不存在，创建并推送 annotated tag（对象 `7d93cfe93d7d78613fa0734650e0567ea9d2ebf9`），发布 GitHub Release；历史 tag 不移动。
+- [x] 两个独立宿主以 GOWORK=off、无 replace 从远端消费 @v0.7.2，模块版本 v0.7.2、初始 SQL 哈希 `ef2d1f22…` 与公开符号验证通过；已通知接入方 tag 与提交。
+- [x] 补记 tag/Release、最终 SHA/CI 与消费结果，长期文档改为已发布状态。归档另行明确执行。
 
 ## v0.7.1 版本门禁
 

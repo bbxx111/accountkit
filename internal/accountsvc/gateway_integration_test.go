@@ -330,7 +330,16 @@ func gatewayCancellation(t *testing.T, stopProxy bool) {
 	}
 	select {
 	case res := <-done:
+		// With caller cancellation the proxy answers 502 as soon as the upstream round
+		// trip reports context cancellation. net/http's client selects between its own
+		// cancelled context and that response, so it may hand the 502 back instead of the
+		// context error (CI runs #43, #102, 40809097973). Either outcome shows the same
+		// gateway behaviour; anything else is a real failure.
 		if res.err == nil {
+			tolerated := !stopProxy && res.status == http.StatusBadGateway && !endedEarly.Load() && fmt.Sprint(g.lastProxyError.Load()) == context.Canceled.Error()
+			if tolerated {
+				break
+			}
 			t.Fatalf("interrupted request reported success: status=%d body=%q upstream_ended_before_interrupt=%v upstream_cause=%v proxy_error=%v proxy_calls=%d",
 				res.status, res.body, endedEarly.Load(), upstreamCause.Load(), g.lastProxyError.Load(), g.transport.calls.Load())
 		}

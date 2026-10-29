@@ -1,6 +1,6 @@
 # 功能清单与候选功能
 
-更新日期：2026-10-29。Go 集成与 HTTP 文档面向已发布的 v0.7.1（库契约与 v0.7.0 相同）；标准化指标实现与验证状态见[库指标验收](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)，accountsvc 采集端点见[服务指标验收](../openspec/changes/archive/2026-10-19-add-accountsvc-prometheus/verification.md)。版本交付状态以[v0.7.1 发布说明](releases/v0.7.1.md)为准。
+更新日期：2026-10-29（含接入方真实环境验收补记）。Go 集成与 HTTP 文档面向已发布的 v0.7.1（库契约与 v0.7.0 相同）；标准化指标实现与验证状态见[库指标验收](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)，accountsvc 采集端点见[服务指标验收](../openspec/changes/archive/2026-10-19-add-accountsvc-prometheus/verification.md)。版本交付状态以[v0.7.1 发布说明](releases/v0.7.1.md)为准。
 
 本文统一记录 v0.7.1 已支持能力、已实现但待真实环境验证的项目，以及尚未立项的候选功能。版本发布不表示产品环境已验收；历史版本不包含本表全部能力。目前尚无实际产品接入，正式部署暂不安排。
 
@@ -39,8 +39,8 @@
 | 微信 / Apple | 本地提供方夹具、协议和数据库集成测试 | 真实应用上的既有登录、普通绑定、首次补全关联与注册；目前尚无测试应用配置 |
 | SMTP 邮件 | 本地 SMTP/TLS 夹具和邮件验证码闭环；邮件布局黄金文件与多语言清单渲染测试 | 实际服务商认证、证书、投递和最终收件；真实邮件客户端的 HTML 显示效果 |
 | 阿里云短信 | 本地 HTTP 替身验证签名、模板映射、错误分类与超时 | 真实凭据、已审核签名/模板的实际发送与频控行为 |
-| 服务调用 Bearer 认证 | 本地签发方替身验证 RS256、`azp` 授权、challenge 与依赖故障分类 | 真实 IdP（如 Keycloak）的客户端凭据、audience mapper 与换钥 |
-| 外部管理员 OIDC | 本地 HTTPS（及 development 模式纯 HTTP）discovery/JWKS、签名、角色和换钥测试 | 实际管理员提供方的 audience、角色映射和换钥行为 |
+| 服务调用 Bearer 认证 | 本地签发方替身验证 RS256、`azp` 授权、challenge 与依赖故障分类；接入方（ai-food，2026-10-29，accountsvc v0.7.1）以真实 Keycloak 客户端凭据验证已清理用户拉取的 `azp` 允许/拒绝（列表外客户端 403 `CLIENT_NOT_AUTHORIZED`）、realm 密钥先 passive 后 active 轮换时不重启接受新 kid | 内省接口的真实 IdP 端到端；其他 IdP 产品 |
+| 外部管理员 OIDC | 本地 HTTPS（及 development 模式纯 HTTP）discovery/JWKS、签名、角色和换钥测试；接入方（ai-food，2026-10-29）在 `ACCOUNTSVC_MODE=development` 下以真实 Keycloak `http://` issuer 验证启动 WARN 与管理面鉴权 | 实际管理员提供方在 production（HTTPS）下的 audience、角色映射和换钥行为 |
 
 实际验证状态以各次变更的 verification.md 为准：[身份策略与登录补全验收](../openspec/changes/archive/2026-10-15-add-identity-policy-sign-in-completion/verification.md)、[初始结构整合验收](../openspec/changes/archive/2026-10-15-consolidate-initial-schema/verification.md)。其他真实服务、网关和产品环境验收边界见 [accountsvc 验证边界](accountsvc.md#验证边界)及[发布与上线检查表](release-checklist.md)。本文不重复维护测试统计或验收报告。
 

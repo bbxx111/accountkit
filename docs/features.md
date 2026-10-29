@@ -1,8 +1,8 @@
 # 功能清单与候选功能
 
-更新日期：2026-10-29（含接入方真实环境验收补记）。Go 集成与 HTTP 文档面向 v0.7.2 候选（库契约在 v0.7.1 之上仅增加管理面 `:reveal` 响应的 `Cache-Control: no-store`）；标准化指标实现与验证状态见[库指标验收](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)，accountsvc 采集端点见[服务指标验收](../openspec/changes/archive/2026-10-19-add-accountsvc-prometheus/verification.md)。版本交付状态以[v0.7.2 发布说明](releases/v0.7.2.md)为准。
+更新日期：2026-10-29（含接入方真实环境验收补记）。Go 集成与 HTTP 文档面向已发布的 v0.7.2（库契约在 v0.7.1 之上仅增加管理面 `:reveal` 响应的 `Cache-Control: no-store`）；标准化指标实现与验证状态见[库指标验收](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)，accountsvc 采集端点见[服务指标验收](../openspec/changes/archive/2026-10-19-add-accountsvc-prometheus/verification.md)。版本交付状态以[v0.7.2 发布说明](releases/v0.7.2.md)为准。
 
-本文统一记录 v0.7.2（候选）已支持能力、已实现但待真实环境验证的项目，以及尚未立项的候选功能。版本发布不表示产品环境已验收；历史版本不包含本表全部能力。目前接入方仅在本地环境联调（见下表的真实环境验证记录），尚无正式产品部署，部署暂不安排。
+本文统一记录 v0.7.2 已支持能力、已实现但待真实环境验证的项目，以及尚未立项的候选功能。版本发布不表示产品环境已验收；历史版本不包含本表全部能力。目前接入方仅在本地环境联调（见下表的真实环境验证记录），尚无正式产品部署，部署暂不安排。
 
 协议和配置细节以 [README](../README.md)、[主规格](../openspec/specs)及公开 Go 类型为准；调用升级见[兼容指南](compatibility.md)，独立服务边界见[accountsvc 手册](accountsvc.md)。
 

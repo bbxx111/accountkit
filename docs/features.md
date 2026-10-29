@@ -40,7 +40,7 @@
 | SMTP 邮件 | 本地 SMTP/TLS 夹具和邮件验证码闭环；邮件布局黄金文件与多语言清单渲染测试 | 实际服务商认证、证书、投递和最终收件；真实邮件客户端的 HTML 显示效果 |
 | 阿里云短信 | 本地 HTTP 替身验证签名、模板映射、错误分类与超时 | 真实凭据、已审核签名/模板的实际发送与频控行为 |
 | 服务调用 Bearer 认证 | 本地签发方替身验证 RS256、`azp` 授权、challenge 与依赖故障分类 | 真实 IdP（如 Keycloak）的客户端凭据、audience mapper 与换钥 |
-| 外部管理员 OIDC | 本地 HTTPS discovery/JWKS、签名、角色和换钥测试 | 实际管理员提供方的 audience、角色映射和换钥行为 |
+| 外部管理员 OIDC | 本地 HTTPS（及 development 模式纯 HTTP）discovery/JWKS、签名、角色和换钥测试 | 实际管理员提供方的 audience、角色映射和换钥行为 |
 
 实际验证状态以各次变更的 verification.md 为准：[身份策略与登录补全验收](../openspec/changes/archive/2026-10-15-add-identity-policy-sign-in-completion/verification.md)、[初始结构整合验收](../openspec/changes/archive/2026-10-15-consolidate-initial-schema/verification.md)。其他真实服务、网关和产品环境验收边界见 [accountsvc 验证边界](accountsvc.md#验证边界)及[发布与上线检查表](release-checklist.md)。本文不重复维护测试统计或验收报告。
 

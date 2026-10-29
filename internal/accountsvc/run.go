@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -325,12 +326,18 @@ func warnUnconfigured(cfg Config, logger *slog.Logger) {
 // 在任何明文网络访问（管理员 discovery）之前调用，只写变量名，不写值；production 不会到达此处的
 // HTTP 分支，因为配置校验已拒绝。
 func warnPlainHTTPIssuers(cfg Config, logger *slog.Logger) {
-	if cfg.AdminEnabled && strings.HasPrefix(cfg.Admin.Issuer, "http://") {
+	if cfg.AdminEnabled && plainHTTP(cfg.Admin.Issuer) {
 		logger.Warn("accountsvc: administrator issuer uses plain HTTP; allowed only in development mode", "settings", "ACCOUNTSVC_ADMIN_ISSUER")
 	}
-	if cfg.Service.Enabled() && strings.HasPrefix(cfg.Service.Issuer, "http://") {
+	if cfg.Service.Enabled() && plainHTTP(cfg.Service.Issuer) {
 		logger.Warn("accountsvc: service token issuer uses plain HTTP; allowed only in development mode", "settings", "ACCOUNTSVC_SERVICE_ISSUER")
 	}
+}
+
+// plainHTTP 按解析后的 scheme 判断，与配置校验一致（url.Parse 会把 HTTP:// 归一为 http）。
+func plainHTTP(issuer string) bool {
+	u, err := url.Parse(issuer)
+	return err == nil && u.Scheme == "http"
 }
 
 // preloadServiceTokens 在就绪后于后台尝试加载服务令牌签发方的密钥，返回的函数取消并等待它。

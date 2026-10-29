@@ -13,4 +13,4 @@
 ## 4. 文档与验收
 
 - [x] 4.1 `docs/accountsvc.md` 配置表 `MODE`、`SERVICE_ISSUER`、`ADMIN_ISSUER` 条目与服务调用认证小节补充开发例外；`deploy/accountsvc/.env.example` 注释说明。验证：人工核对与 specs 一致
-- [ ] 4.2 `GOWORK=off go build ./... && go vet ./... && go test -count=1 ./internal/accountsvc/...`、`openspec validate --all --strict`、`git diff --check`；独立审查；结果写入 `verification.md`
+- [x] 4.2 `GOWORK=off go build ./... && go vet ./... && go test -count=1 ./internal/accountsvc/...`、`openspec validate --all --strict`、`git diff --check`；独立审查；结果写入 `verification.md`

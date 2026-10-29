@@ -33,6 +33,13 @@ func TestWarnPlainHTTPIssuers(t *testing.T) {
 		t.Fatalf("warnings must name only the variables, once each: %s", out)
 	}
 	logs.Reset()
+	// url.Parse lowercases the scheme, so configuration accepts HTTP:// and the WARN must follow.
+	cfg.Admin.Issuer, cfg.Service.Issuer = "HTTP://idp.example.test/realms/admin", "Http://idp.example.test/realms/svc"
+	warnPlainHTTPIssuers(cfg, logger)
+	if strings.Count(logs.String(), "level=WARN") != 2 {
+		t.Fatalf("mixed-case scheme must still warn: %s", logs.String())
+	}
+	logs.Reset()
 	cfg.Admin.Issuer, cfg.Service.Issuer = "https://idp.example.test/realms/admin", "https://idp.example.test/realms/svc"
 	warnPlainHTTPIssuers(cfg, logger)
 	if logs.Len() != 0 {

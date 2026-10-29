@@ -2,7 +2,7 @@
 
 ## 管理面身份明文响应禁止缓存
 
-本节随 v0.7.2 发布（候选），仅为管理面 `GET /users/{user}/identities/{identity}:reveal` 增加响应头，无数据库、公开 Go API、路由、字段或错误码变化。
+本节随 v0.7.2 发布，仅为管理面 `GET /users/{user}/identities/{identity}:reveal` 增加响应头，无数据库、公开 Go API、路由、字段或错误码变化。
 
 - **新增行为**：`:reveal` 处理器在入口设置 `Cache-Control: no-store`，其写出的所有响应（200 成功与 400/401/404/500 错误）带该头，不依赖宿主或网关；宿主 verifier 的 401/403、角色中间件的 403 与未配置管理面的 503 在处理器之前产生，不含明文也不带该头。正文与 IDENTITY_REVEALED 审计不变。OpenAPI 管理契约的 `adminRevealIdentity` 200 响应声明该头。记录见 [add-admin-reveal-no-store](../openspec/changes/archive/2026-10-29-add-admin-reveal-no-store/verification.md)。
 - **不变**：其他管理面响应（用户列表/详情、会话、审计）不含明文手机号/邮箱，不加该头；宿主仍须保证网关不缓存管理面响应并保护访问日志。

@@ -4,7 +4,7 @@
 
 ## 当前待办与责任归属
 
-**v0.7.1 已发布**：v0.7.0 后的 accountsvc 开发模式明文 HTTP 签发方（`allow-development-http-issuer`）已完成、归档并合入 develop/main；最终候选 `e67d262` 的在线 CI 全部通过，tag `v0.7.1` 与正式 Release 已核验，两个独立宿主远端消费通过。库契约、数据库结构与依赖相对 v0.7.0 无变化。发布说明见 [v0.7.1](releases/v0.7.1.md)，证据见[发布验收](../openspec/changes/prepare-v0-7-1-release/verification.md)。产品上线和本发布变更归档另行执行。
+**v0.7.1 已发布**：v0.7.0 后的 accountsvc 开发模式明文 HTTP 签发方（`allow-development-http-issuer`）已完成、归档并合入 develop/main；最终候选 `e67d262` 的在线 CI 全部通过，tag `v0.7.1` 与正式 Release 已核验，两个独立宿主远端消费通过。库契约、数据库结构与依赖相对 v0.7.0 无变化。发布说明见 [v0.7.1](releases/v0.7.1.md)，证据见[发布验收](../openspec/changes/archive/2026-10-29-prepare-v0-7-1-release/verification.md)。产品上线和本发布变更归档另行执行。
 
 **v0.7.0 已发布**：v0.6.0 后的消费者 access ES256 与严格内省、accountsvc 阿里云短信、已清理用户拉取清单（当前 0001 新增 `purged_user`）、`ACCOUNTSVC_` 前缀统一、服务调用 Bearer 认证、邮件模板清单与多语言均已完成并归档，已合入 develop/main；最终候选 `6f3b072` 的在线 CI 全部通过，tag 和正式 Release 已核验，两个独立宿主远端消费通过。本次以新空 schema 安装为目标，不提供旧库、旧令牌或旧配置迁移。发布说明见 [v0.7.0](releases/v0.7.0.md)，候选/CI/tag/Release 与远端消费证据见[发布验收](../openspec/changes/archive/2026-10-29-prepare-v0-7-0-release/verification.md)。产品上线另行执行。
 
@@ -50,7 +50,7 @@
 
 ## v0.7.1 版本门禁
 
-用户确认版本号 v0.7.1 并授权开始发布准备；准备授权不扩展为合并 main、推送、tag 或 Release。说明见 [v0.7.1](releases/v0.7.1.md)，证据集中在[发布准备验收](../openspec/changes/prepare-v0-7-1-release/verification.md)；历史版本勾选不适用于本版本。
+用户确认版本号 v0.7.1 并授权开始发布准备；准备授权不扩展为合并 main、推送、tag 或 Release。说明见 [v0.7.1](releases/v0.7.1.md)，证据集中在[发布准备验收](../openspec/changes/archive/2026-10-29-prepare-v0-7-1-release/verification.md)；历史版本勾选不适用于本版本。
 
 - [x] `allow-development-http-issuer` 已完成、归档并合入 develop；确认公开 Go API、HTTP/配置契约、依赖与当前 0001 相对 v0.7.0 无变化。
 - [x] 发布说明（开发模式例外的触发条件、放开范围、WARN 与 production 不变）完成独立审查。

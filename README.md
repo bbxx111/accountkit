@@ -516,7 +516,7 @@ HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额
 
 ## 仓库与发布状态
 
-当前最新版本为 [v0.7.1](https://github.com/bbxx111/accountkit/releases/tag/v0.7.1)：在 v0.7.0（ES256 access 与 JWKS、严格认证与以数据库为准的内省、已清理用户拉取、accountsvc 阿里云短信、`ACCOUNTSVC_` 统一前缀、服务调用 Bearer 认证与多语言邮件模板清单）之上，仅增加 accountsvc 开发模式的明文 HTTP 签发方例外，库契约不变。使用 `go get github.com/bbxx111/accountkit@v0.7.1` 接入；范围与升级边界见[发布说明](docs/releases/v0.7.1.md)，候选 `e67d262` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/40806251482)已通过，实际证据见[发布验收](openspec/changes/prepare-v0-7-1-release/verification.md)；v0.7.0 见[其发布说明](docs/releases/v0.7.0.md)。
+当前最新版本为 [v0.7.1](https://github.com/bbxx111/accountkit/releases/tag/v0.7.1)：在 v0.7.0（ES256 access 与 JWKS、严格认证与以数据库为准的内省、已清理用户拉取、accountsvc 阿里云短信、`ACCOUNTSVC_` 统一前缀、服务调用 Bearer 认证与多语言邮件模板清单）之上，仅增加 accountsvc 开发模式的明文 HTTP 签发方例外，库契约不变。使用 `go get github.com/bbxx111/accountkit@v0.7.1` 接入；范围与升级边界见[发布说明](docs/releases/v0.7.1.md)，候选 `e67d262` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/40806251482)已通过，实际证据见[发布验收](openspec/changes/archive/2026-10-29-prepare-v0-7-1-release/verification.md)；v0.7.0 见[其发布说明](docs/releases/v0.7.0.md)。
 
 远程仓库：https://github.com/bbxx111/accountkit.git
 

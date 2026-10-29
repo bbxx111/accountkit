@@ -75,6 +75,17 @@ func TestServiceAuthenticatorsWithoutTokens(t *testing.T) {
 // /readyz, stops the service and returns its log.
 func runWithPreload(t *testing.T, startupTimeout time.Duration, preload func(context.Context) error) string {
 	t.Helper()
+	return runServe(t, startupTimeout, func(cfg *Config, app *application) {
+		cfg.Service.Issuer = "https://idp.example.test"
+		app.preloadServiceTokens = preload
+	}, nil)
+}
+
+// runServe starts the runtime with stub dependencies and HTTP listening, waits for readiness,
+// stops it and returns the log output. mutate adjusts the loaded Config and the stub application
+// before startup; observe, when set, receives the log buffer before the runtime starts.
+func runServe(t *testing.T, startupTimeout time.Duration, mutate func(*Config, *application), observe func(*safeLog)) string {
+	t.Helper()
 	serveEnvironment(t)
 	t.Setenv("ACCOUNTSVC_TLS_ENABLED", "false")
 	t.Setenv("ACCOUNTSVC_TLS_CERT_FILE", "")
@@ -85,19 +96,21 @@ func runWithPreload(t *testing.T, startupTimeout time.Duration, preload func(con
 	}
 	cfg.HTTPAddr = "127.0.0.1:0"
 	cfg.StartupTimeout = startupTimeout
-	cfg.Service.Issuer = "https://idp.example.test"
+	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	app := &application{migrate: func(context.Context) error { return nil }, start: func(context.Context) {}, close: func() {}, endUser: ok, admin: ok, introspect: ok}
+	mutate(&cfg, app)
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
 	var logs safeLog
+	if observe != nil {
+		observe(&logs)
+	}
 	bound := make(chan net.Listener, 1)
 	factory := runtimeFactory{
 		open: func(context.Context, Config, *slog.Logger) (*dependencies, error) {
 			return &dependencies{databasePing: func(context.Context) error { return nil }, redisPing: func(context.Context) error { return nil }}, nil
 		},
-		newApp: func(Config, *dependencies, *slog.Logger) (*application, error) {
-			ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
-			return &application{migrate: func(context.Context) error { return nil }, start: func(context.Context) {}, close: func() {}, endUser: ok, admin: ok, introspect: ok, preloadServiceTokens: preload}, nil
-		},
+		newApp: func(Config, *dependencies, *slog.Logger) (*application, error) { return app, nil },
 		listen: func(ctx context.Context, addr string) (net.Listener, error) {
 			ln, err := net.Listen("tcp", addr)
 			if err == nil {

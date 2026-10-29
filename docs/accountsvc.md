@@ -80,7 +80,7 @@ QQ App SDK 登录使用 `ACCOUNTSVC_QQ_APP_IDS`（逗号分隔的唯一 1–20 �
 
 | 变量 | 默认/要求 |
 |---|---|
-| `MODE` | production；开发显式 development |
+| `MODE` | production；开发显式 development。development 另允许 `ADMIN_ISSUER` / `SERVICE_ISSUER` 使用 `http://`（启动时各记一条 WARN），production 只接受 HTTPS |
 | `DATABASE_URL` | 必填 PostgreSQL DSN |
 | `REDIS_URL` | 必填 Redis URI，支持认证、数据库编号及 rediss |
 | `HTTP_ADDR` | 单一监听地址；127.0.0.1:8080 |
@@ -100,10 +100,10 @@ QQ App SDK 登录使用 `ACCOUNTSVC_QQ_APP_IDS`（逗号分隔的唯一 1–20 �
 | `SMS_PROVIDER` | 空表示未配置短信；首版只接受 `aliyun`，见[短信服务商](#短信服务商) |
 | `INTROSPECTION_BASIC_CLIENTS` | 可选；Basic 内省客户端，JSON：客户端 ID → base64 秘密数组。与 `INTROSPECTION_BEARER_CLIENTS` 都未设置时服务照常启动，`/v1/introspect` 返回 503 `introspection_not_configured` |
 | `PURGE_FEED_BASIC_CLIENTS` | 可选；格式同 `INTROSPECTION_BASIC_CLIENTS`，供业务服务拉取已清理用户（见[已清理用户拉取](#已清理用户拉取)）；秘密不得与内省凭据重复；与 `PURGE_FEED_BEARER_CLIENTS` 都未设置时该路由返回 503 |
-| `SERVICE_ISSUER` / `SERVICE_AUDIENCE` | 配置任一 Bearer 客户端列表时必填；签发业务服务访问令牌的 HTTPS issuer 与服务专用 audience，见[服务调用认证](#服务调用认证内省与已清理用户拉取) |
+| `SERVICE_ISSUER` / `SERVICE_AUDIENCE` | 配置任一 Bearer 客户端列表时必填；签发业务服务访问令牌的 issuer 与服务专用 audience。issuer 为不含凭据、查询和片段的绝对 URL：production 只接受 HTTPS，`MODE=development` 另接受 `http://` 并在启动时记一条 WARN（见[本地开发的明文 HTTP 签发方](#本地开发的明文-http-签发方)），见[服务调用认证](#服务调用认证内省与已清理用户拉取) |
 | `INTROSPECTION_BEARER_CLIENTS` / `PURGE_FEED_BEARER_CLIENTS` | 可选；JSON 字符串数组，允许以 Bearer 调用对应接口的 `azp`（客户端 ID）；两个列表不得相交 |
 | `ADMIN_ENABLED` | false |
-| `ADMIN_ISSUER` / `ADMIN_AUDIENCE` | 启用时必填；issuer 是 HTTPS URL，audience 为管理员 API 专用标识 |
+| `ADMIN_ISSUER` / `ADMIN_AUDIENCE` | 启用时必填；issuer 是不含凭据、查询和片段的绝对 URL，production 只接受 HTTPS，`MODE=development` 另接受 `http://` 并在启动时记一条 WARN（见[本地开发的明文 HTTP 签发方](#本地开发的明文-http-签发方)）；audience 为管理员 API 专用标识 |
 | `ADMIN_ROLES_CLAIM` / `ADMIN_USERNAME_CLAIM` | /roles / /preferred_username，JSON Pointer |
 
 可选接口未配置时服务照常启动，对应路由返回 503 `*_NOT_CONFIGURED`。为使漏配在启动时可见，serve 在监听就绪后为每个未配置的接口记一条 WARN（只写相关变量名，不写值）：内省（`introspection_not_configured`）、已清理用户拉取（`PURGE_FEED_NOT_CONFIGURED`）、管理员 API（`ADMIN_NOT_CONFIGURED`）、用户资料属性（`PROFILE_ATTRIBUTES_NOT_CONFIGURED`）。有意不启用某项时可忽略对应警告；部署检查应确认依赖的接口没有出现在警告中。
@@ -269,6 +269,10 @@ Bearer 令牌须满足：RS256 签名且头部带 `kid`、不带 `jku`/`x5u`；`
 
 日志只记录客户端 ID（Basic 用户名或 `azp`）与认证方式，不记录令牌、秘密或 `Authorization` 头；`azp` 未获准时记 INFO，提供方不可用记 WARN，discovery 返回的 issuer 与配置不一致记 ERROR 并返回 503。
 
+#### 本地开发的明文 HTTP 签发方
+
+`MODE=development` 时，`SERVICE_ISSUER` 与 `ADMIN_ISSUER` 可以是 `http://` 绝对 URL（例如本地 Keycloak `http://localhost:8180/realms/dev`，容器内 `http://host.docker.internal:8180/realms/dev`），其他格式约束不变。此时 discovery 文档与其返回的 `jwks_uri` 同样允许 HTTP，令牌 `iss` 仍须与配置值逐字相同（Keycloak 须固定 hostname，使容器内外看到同一 issuer），重定向仍拒绝。serve 在管理员 discovery 之前为每个 HTTP issuer 各记一条 WARN（`administrator issuer uses plain HTTP; allowed only in development mode` / `service token issuer uses plain HTTP; allowed only in development mode`，属性 `settings` 为对应变量名，不写值）。production（默认）行为不变：HTTP issuer 在监听前被拒绝并指出变量名；没有自定义 CA 或跳过证书验证的选项。
+
 **Keycloak 配置示例**（接入方负责，accountsvc 不依赖 Keycloak）：
 
 1. 为每个调用接口各建一个机密客户端，只开启 Service accounts（客户端凭据），关闭标准流程与直接授权；客户端 ID 即令牌的 `azp`，分别写入对应的 Bearer 客户端列表。
@@ -304,7 +308,7 @@ Bearer 令牌须满足：RS256 签名且头部带 `kid`、不带 `jku`/`x5u`；`
 
 ## 管理员认证
 
-默认关闭，整个 `/admin/v1` 返回503 `ADMIN_NOT_CONFIGURED`。启用后通过 HTTPS discovery/JWKS 验证外部提供方签发的 RS256 JWT access token。管理员 API audience 应独立于消费者 audience 和管理员登录客户端 ID；不接受登录 ID token 作为 API 凭据。
+默认关闭，整个 `/admin/v1` 返回503 `ADMIN_NOT_CONFIGURED`。启用后通过 discovery/JWKS 验证外部提供方签发的 RS256 JWT access token；production 只接受 HTTPS issuer，`MODE=development` 的 `http://` 例外见[本地开发的明文 HTTP 签发方](#本地开发的明文-http-签发方)。管理员 API audience 应独立于消费者 audience 和管理员登录客户端 ID；不接受登录 ID token 作为 API 凭据。
 
 角色默认读取 `/roles` 字符串数组；例如嵌套角色可配置 `/realm_access/roles`。super-admin 在服务适配层包含 operator，无需依赖提供方的复合角色配置。缺角色返回403并记录拒绝审计；无效凭据返回401；没有可用验证 key 且提供方故障返回503。
 

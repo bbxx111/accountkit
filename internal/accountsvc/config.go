@@ -312,7 +312,8 @@ func (c *Config) loadAdmin() error {
 		}
 		return nil
 	}
-	c.Admin = adminauth.Config{Issuer: env("ADMIN_ISSUER"), Audience: env("ADMIN_AUDIENCE"), RolesClaim: defaultEnv("ADMIN_ROLES_CLAIM", "/roles"), UsernameClaim: defaultEnv("ADMIN_USERNAME_CLAIM", "/preferred_username")}
+	// 开发模式允许本地明文 IdP；production 保持只接受 HTTPS，错误信息不变。
+	c.Admin = adminauth.Config{Issuer: env("ADMIN_ISSUER"), Audience: env("ADMIN_AUDIENCE"), RolesClaim: defaultEnv("ADMIN_ROLES_CLAIM", "/roles"), UsernameClaim: defaultEnv("ADMIN_USERNAME_CLAIM", "/preferred_username"), AllowHTTP: c.Mode == "development"}
 	if err = c.Admin.Validate(); err != nil {
 		return invalidConfig("ACCOUNTSVC_ADMIN_ISSUER / ADMIN_AUDIENCE / ADMIN_ROLES_CLAIM / ADMIN_USERNAME_CLAIM")
 	}
@@ -333,10 +334,12 @@ func (c *Config) loadAdmin() error {
 }
 
 // ServiceConfig 是业务服务客户端凭据 Bearer 令牌的签发方、受众与逐接口 azp 允许列表。
+// AllowHTTP 仅在 development 模式为 true：签发方、discovery 与 jwks_uri 另接受 http://。
 type ServiceConfig struct {
 	Issuer, Audience           string
 	IntrospectionBearerClients []string
 	PurgeFeedBearerClients     []string
+	AllowHTTP                  bool
 }
 
 // Enabled 报告是否有任一接口接受 Bearer 令牌。
@@ -358,6 +361,7 @@ func (c *Config) loadService() error {
 	}
 	// audience 不经 env() 去空白，以便拒绝首尾空白。
 	s.Issuer, s.Audience = env("SERVICE_ISSUER"), os.Getenv("ACCOUNTSVC_SERVICE_AUDIENCE")
+	s.AllowHTTP = c.Mode == "development"
 	if !s.Enabled() {
 		if s.Issuer != "" || s.Audience != "" {
 			return invalidConfig("ACCOUNTSVC_SERVICE_ISSUER / ACCOUNTSVC_SERVICE_AUDIENCE (no bearer clients configured)")
@@ -369,7 +373,11 @@ func (c *Config) loadService() error {
 			return invalidConfig("ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS (client shared with ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS)")
 		}
 	}
-	if !oidcjwt.ValidIssuer(s.Issuer) || strings.TrimRight(s.Issuer, "/") == strings.TrimRight(c.Library.JWTIssuer, "/") {
+	validIssuer := oidcjwt.ValidIssuer
+	if s.AllowHTTP {
+		validIssuer = oidcjwt.ValidPlainIssuer
+	}
+	if !validIssuer(s.Issuer) || strings.TrimRight(s.Issuer, "/") == strings.TrimRight(c.Library.JWTIssuer, "/") {
 		return invalidConfig("ACCOUNTSVC_SERVICE_ISSUER")
 	}
 	if s.Audience == "" || strings.TrimSpace(s.Audience) != s.Audience || slices.Contains(c.reservedAudiences(), s.Audience) {

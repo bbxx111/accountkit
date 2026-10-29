@@ -46,6 +46,10 @@ type Options struct {
 	RefreshTimeout time.Duration
 	// Logger receives provider failures (WARN) and issuer mismatches (ERROR); nil disables logging.
 	Logger *slog.Logger
+	// AllowHTTP also accepts http:// for the issuer, its discovery document and the
+	// discovered jwks_uri. Meant for local development against a plain-HTTP provider;
+	// redirects stay refused.
+	AllowHTTP bool
 }
 
 type keyCache struct {
@@ -64,6 +68,7 @@ type Verifier struct {
 	interval         time.Duration
 	refreshTimeout   time.Duration
 	logger           *slog.Logger
+	allowHTTP        bool
 	mu               sync.Mutex
 	jwksURL          string
 	cache            keyCache
@@ -72,7 +77,7 @@ type Verifier struct {
 // New validates the issuer and audience without any I/O. Keys are fetched by Load or on
 // the first token that needs them.
 func New(issuer, audience string, opts Options) (*Verifier, error) {
-	if !ValidIssuer(issuer) {
+	if !validIssuer(issuer, opts.AllowHTTP) {
 		return nil, errors.New("oidcjwt: issuer must be an absolute HTTPS URL without credentials, query or fragment")
 	}
 	if strings.TrimSpace(audience) == "" || strings.TrimSpace(audience) != audience {
@@ -94,10 +99,10 @@ func New(issuer, audience string, opts Options) (*Verifier, error) {
 	if client.Timeout <= 0 || client.Timeout > refreshTimeout {
 		client.Timeout = refreshTimeout
 	}
-	// Discovery/JWKS endpoints must be explicit HTTPS URLs, including when the
-	// caller supplies a client with a permissive redirect policy.
+	// Discovery/JWKS endpoints must be the explicit configured or discovered URLs, including
+	// when the caller supplies a client with a permissive redirect policy.
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return errors.New("oidcjwt: redirects are not allowed") }
-	return &Verifier{issuer: issuer, audience: audience, client: &client, now: opts.Now, interval: opts.RefreshInterval, refreshTimeout: opts.RefreshTimeout, logger: opts.Logger}, nil
+	return &Verifier{issuer: issuer, audience: audience, client: &client, now: opts.Now, interval: opts.RefreshInterval, refreshTimeout: opts.RefreshTimeout, logger: opts.Logger, allowHTTP: opts.AllowHTTP}, nil
 }
 
 // Load discovers the provider and loads its keys now. It does not count as a refresh

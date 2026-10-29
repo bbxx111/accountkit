@@ -5,7 +5,7 @@
 
 审计 SHALL 支持通用事件及宿主外部查询，认证管理路由继续返回明确的认证 DTO，不直接序列化任意业务数据。审计资源 ID SHALL 显式升级为 UUIDv7，旧审计游标返回 400 INVALID_PAGE_TOKEN；非审计资源名和游标保持。仅注入审计写侧时，已授权审计查询 SHALL 返回 503 AUDIT_QUERY_NOT_CONFIGURED，不静默读取本地空表。默认本地模式 SHALL 保持可用。
 
-身份明文查看 `GET /users/{user}/identities/{identity}:reveal` 的成功响应 SHALL 带 `Cache-Control: no-store`，错误响应沿用统一错误体的 no-store；该头由库自身设置，不依赖宿主或网关配置。
+身份明文查看 `GET /users/{user}/identities/{identity}:reveal` 的所有响应（成功与错误）SHALL 带 `Cache-Control: no-store`；该头由库自身设置，不依赖宿主或网关配置。
 
 #### Scenario: 管理员权限不足
 - **WHEN** 已识别的管理员缺少目标操作角色

@@ -4,7 +4,7 @@
 
 ## What Changes
 
-- `:reveal` 的 200 响应 SHALL 带 `Cache-Control: no-store`；错误响应沿用既有 `apierror.Write` 的 no-store。
+- `:reveal` 路由的所有响应（200 与错误体）SHALL 带 `Cache-Control: no-store`，由处理器在任何检查之前设置，不依赖宿主或网关。
 - OpenAPI `admin.json` 的该操作 200 响应声明 `Cache-Control` 头；`docs/openapi.md` 补一句说明。
 - 不改 HTTP 方法、路径、DTO、审计或角色要求；其他管理面响应（掩码身份、会话、审计）不在本次范围。
 

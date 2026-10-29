@@ -1,6 +1,6 @@
 ## Context
 
-`httpapi/admin/identities.go` 的 `revealIdentity` 直接以 `apierror.WriteJSON` 写出明文；`WriteJSON` 只设 Content-Type。消费者侧的凭证、会话与 OAuth 响应各自在写出前设置 `Cache-Control: no-store`，错误体由 `apierror.Write` 统一设置。OpenAPI `enduser.json` 对这些响应声明了 `Cache-Control` 头（`const: no-store`），`admin.json` 的 `:reveal` 200 响应 `headers` 为空，描述只写“宿主应对敏感响应实施缓存和日志保护”。
+`httpapi/admin/identities.go` 的 `revealIdentity` 直接以 `apierror.WriteJSON` 写出明文；`WriteJSON` 只设 Content-Type；`apierror.Write` 也不设置 Cache-Control（只有 `WriteOAuth` 设 no-store）。消费者侧的凭证、会话与 OAuth 响应各自在写出前设置 `Cache-Control: no-store`。OpenAPI `enduser.json` 对这些响应声明了 `Cache-Control` 头（`const: no-store`），`admin.json` 的 `:reveal` 200 响应 `headers` 为空，描述只写“宿主应对敏感响应实施缓存和日志保护”。
 
 ## Goals / Non-Goals
 
@@ -10,8 +10,8 @@
 
 ## Decisions
 
-- 只在 `revealIdentity` 成功路径设置头，与消费者侧“在写出前就地设置”的做法一致，不新增通用中间件。
-- OpenAPI 以与 `enduser.json` 相同的 `headers` 结构声明；`check-openapi.cjs` 不校验响应头，故额外由处理器测试断言该头。
+- 在 `revealIdentity` 入口处设置头，使该路由的成功与错误响应一律 no-store，与消费者侧“在写出前就地设置”的做法一致，不新增通用中间件。
+- OpenAPI 以与 `enduser.json` 相同的 `headers` 结构声明，并在 `check-openapi.cjs` 增加与当前会话操作同样的 `Cache-Control` 常量断言；运行时行为由处理器测试断言（200 与 404 都带该头）。
 - 描述中保留“宿主应对敏感响应实施日志保护”，去掉对缓存的宿主依赖表述。
 
 ## Risks / Trade-offs

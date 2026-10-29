@@ -32,8 +32,8 @@ func TestRevealIdentity(t *testing.T) {
 		t.Fatalf("revealed identity must not be cacheable: Cache-Control=%q", rec.Header().Get("Cache-Control"))
 	}
 	rec = do(t, h, call{method: "GET", path: "/users/" + uid + "/identities/i_0000000000000:reveal", headers: superAdmin})
-	if status, _ := aipError(t, rec); rec.Code != 404 || status != "NOT_FOUND/NOT_FOUND" {
-		t.Fatalf("unknown identity: %d %s", rec.Code, status)
+	if status, _ := aipError(t, rec); rec.Code != 404 || status != "NOT_FOUND/NOT_FOUND" || rec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("unknown identity: %d %s Cache-Control=%q", rec.Code, status, rec.Header().Get("Cache-Control"))
 	}
 	rec = do(t, h, call{method: "GET", path: "/users/" + uid + "/identities/nope:reveal", headers: superAdmin})
 	if status, _ := aipError(t, rec); rec.Code != 400 || status != "INVALID_ARGUMENT/INVALID_ID" {

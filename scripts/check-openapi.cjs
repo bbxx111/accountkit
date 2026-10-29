@@ -101,6 +101,8 @@ const current = enduser.paths['/users/me/sessions/current'].get;
 assert.deepEqual(Object.keys(current.responses).sort(), ['200','401','403','500','503']);
 assert.deepEqual(current['x-allowed-scopes'], ['user','user:bind']);
 assert.equal(current.responses['200'].headers['Cache-Control'].schema.const, 'no-store');
+const adminSpec = JSON.parse(read('docs/openapi/admin.json'));
+assert.equal(adminSpec.paths['/users/{user}/identities/{identity}:reveal'].get.responses['200'].headers['Cache-Control'].schema.const, 'no-store', 'reveal no-store');
 assert.equal(enduser.components.schemas.CurrentSession.properties.is_current.const, true);
 assert.deepEqual(Object.keys(enduser.components.schemas.AuthenticationIdentity.properties).sort(), ['kind','name']);
 const observed = new Set(['signInWithCode','signInWithIdp','completeSignIn','reauthenticate','refreshToken']);

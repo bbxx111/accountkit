@@ -9,11 +9,20 @@ import (
 
 // Config identifies an external provider and the separate administrator API audience.
 // Claim locations are JSON Pointers, defaulting to /roles and /preferred_username.
-type Config struct{ Issuer, Audience, RolesClaim, UsernameClaim string }
+// AllowHTTP additionally accepts a plain http:// issuer, discovery document and jwks_uri;
+// accountsvc sets it only in development mode.
+type Config struct {
+	Issuer, Audience, RolesClaim, UsernameClaim string
+	AllowHTTP                                   bool
+}
 
 // Validate rejects unsafe provider URLs and malformed claim pointers before any I/O.
 func (c Config) Validate() error {
-	if !oidcjwt.ValidIssuer(c.Issuer) {
+	valid := oidcjwt.ValidIssuer
+	if c.AllowHTTP {
+		valid = oidcjwt.ValidPlainIssuer
+	}
+	if !valid(c.Issuer) {
 		return errors.New("adminauth: issuer must be an absolute HTTPS URL without credentials, query or fragment")
 	}
 	if strings.TrimSpace(c.Audience) == "" || strings.TrimSpace(c.Audience) != c.Audience {

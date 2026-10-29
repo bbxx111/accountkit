@@ -33,32 +33,42 @@ type provider struct {
 	jwksRequests   int
 	fail           bool
 	issuerOverride string
+	jwksOverride   string
 	entered        chan struct{}
 	release        chan struct{}
 }
 
-func newProvider(t *testing.T) *provider {
+// newProvider serves discovery and JWKS over TLS, the production shape.
+func newProvider(t *testing.T) *provider { return newProviderWith(t, false) }
+
+// newPlainProvider serves the same endpoints over plain HTTP, as a local development IdP would.
+func newPlainProvider(t *testing.T) *provider { return newProviderWith(t, true) }
+
+func newProviderWith(t *testing.T, plain bool) *provider {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
 	}
 	p := &provider{t: t, key: key, keys: []map[string]any{jwk("initial", &key.PublicKey)}}
-	p.server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p.mu.Lock()
 		switch r.URL.Path {
 		case "/.well-known/openid-configuration":
 			p.discoveries++
-			fail, issuer := p.fail, p.server.URL
+			fail, issuer, jwksURI := p.fail, p.server.URL, p.server.URL+"/keys"
 			if p.issuerOverride != "" {
 				issuer = p.issuerOverride
+			}
+			if p.jwksOverride != "" {
+				jwksURI = p.jwksOverride
 			}
 			p.mu.Unlock()
 			if fail {
 				http.Error(w, "synthetic upstream failure", http.StatusServiceUnavailable)
 				return
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"issuer": issuer, "jwks_uri": p.server.URL + "/keys"})
+			_ = json.NewEncoder(w).Encode(map[string]any{"issuer": issuer, "jwks_uri": jwksURI})
 		case "/keys":
 			p.jwksRequests++
 			fail, keys, entered, release := p.fail, p.keys, p.entered, p.release
@@ -76,7 +86,12 @@ func newProvider(t *testing.T) *provider {
 			p.mu.Unlock()
 			http.NotFound(w, r)
 		}
-	}))
+	})
+	if plain {
+		p.server = httptest.NewServer(handler)
+	} else {
+		p.server = httptest.NewTLSServer(handler)
+	}
 	t.Cleanup(p.server.Close)
 	return p
 }

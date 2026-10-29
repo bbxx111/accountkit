@@ -29,7 +29,7 @@ type Verifier struct {
 	onForbidden func(*http.Request, accountkit.AdminPrincipal)
 }
 
-// New discovers the configured HTTPS issuer and loads its signing keys before startup.
+// New discovers the configured issuer and loads its signing keys before startup.
 func New(ctx context.Context, cfg Config, opts Options) (*Verifier, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -40,7 +40,7 @@ func New(ctx context.Context, cfg Config, opts Options) (*Verifier, error) {
 	if cfg.UsernameClaim == "" {
 		cfg.UsernameClaim = "/preferred_username"
 	}
-	tokens, err := oidcjwt.New(cfg.Issuer, cfg.Audience, oidcjwt.Options{HTTPClient: opts.HTTPClient, Now: opts.Now, RefreshInterval: time.Minute})
+	tokens, err := oidcjwt.New(cfg.Issuer, cfg.Audience, oidcjwt.Options{HTTPClient: opts.HTTPClient, Now: opts.Now, RefreshInterval: time.Minute, AllowHTTP: cfg.AllowHTTP})
 	if err != nil {
 		return nil, err
 	}

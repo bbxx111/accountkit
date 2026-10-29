@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -271,7 +272,7 @@ const serviceTokenPreloadTimeout = 10 * time.Second
 func serviceAuthenticators(cfg Config, logger *slog.Logger, client *http.Client) (intro, purge *serviceauth.Authenticator, preload func(context.Context) error, err error) {
 	var tokens *oidcjwt.Verifier
 	if cfg.Service.Enabled() {
-		tokens, err = oidcjwt.New(cfg.Service.Issuer, cfg.Service.Audience, oidcjwt.Options{HTTPClient: client, RefreshInterval: serviceTokenRefreshInterval, RefreshTimeout: serviceTokenRefreshTimeout, Logger: logger})
+		tokens, err = oidcjwt.New(cfg.Service.Issuer, cfg.Service.Audience, oidcjwt.Options{HTTPClient: client, RefreshInterval: serviceTokenRefreshInterval, RefreshTimeout: serviceTokenRefreshTimeout, Logger: logger, AllowHTTP: cfg.Service.AllowHTTP})
 		if err != nil {
 			return nil, nil, nil, errors.New("accountsvc: service token configuration failed")
 		}
@@ -321,6 +322,24 @@ func warnUnconfigured(cfg Config, logger *slog.Logger) {
 	}
 }
 
+// warnPlainHTTPIssuers 为 development 模式下使用明文 HTTP 的管理员与服务令牌签发方各记一条 WARN。
+// 在任何明文网络访问（管理员 discovery）之前调用，只写变量名，不写值；production 不会到达此处的
+// HTTP 分支，因为配置校验已拒绝。
+func warnPlainHTTPIssuers(cfg Config, logger *slog.Logger) {
+	if cfg.AdminEnabled && plainHTTP(cfg.Admin.Issuer) {
+		logger.Warn("accountsvc: administrator issuer uses plain HTTP; allowed only in development mode", "settings", "ACCOUNTSVC_ADMIN_ISSUER")
+	}
+	if cfg.Service.Enabled() && plainHTTP(cfg.Service.Issuer) {
+		logger.Warn("accountsvc: service token issuer uses plain HTTP; allowed only in development mode", "settings", "ACCOUNTSVC_SERVICE_ISSUER")
+	}
+}
+
+// plainHTTP 按解析后的 scheme 判断，与配置校验一致（url.Parse 会把 HTTP:// 归一为 http）。
+func plainHTTP(issuer string) bool {
+	u, err := url.Parse(issuer)
+	return err == nil && u.Scheme == "http"
+}
+
 // preloadServiceTokens 在就绪后于后台尝试加载服务令牌签发方的密钥，返回的函数取消并等待它。
 // 签发方故障（含挂起）既不消耗启动预算也不推迟就绪：Bearer 调用在恢复前返回 503，消费者路由与
 // Basic 调用照常可用。
@@ -363,6 +382,7 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 	if cfg.command == "migrate" {
 		return startupCleanup(cfg, d, app, nil)
 	}
+	warnPlainHTTPIssuers(cfg, logger)
 	if cfg.AdminEnabled {
 		if err = app.initAdmin(startup); err != nil {
 			_ = startupCleanup(cfg, d, app, nil)

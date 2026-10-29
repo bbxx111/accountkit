@@ -18,7 +18,7 @@ const (
 )
 
 func (v *Verifier) fetchJSON(ctx context.Context, address string, dest any) error {
-	if err := validateHTTPS(address); err != nil {
+	if err := validateURL(address, v.allowHTTP); err != nil {
 		return err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
@@ -56,7 +56,7 @@ func (v *Verifier) discover(ctx context.Context) (string, error) {
 	if discovery.Issuer != v.issuer {
 		return "", ErrIssuerMismatch
 	}
-	if err := validateHTTPS(discovery.JWKSURI); err != nil {
+	if err := validateURL(discovery.JWKSURI, v.allowHTTP); err != nil {
 		return "", errors.New("oidcjwt: invalid JWKS URI")
 	}
 	return discovery.JWKSURI, nil

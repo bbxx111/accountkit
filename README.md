@@ -92,7 +92,7 @@ GET 与 PATCH 成功均返回 200 和 `{"name":"users/u_0000000000001/profile","
 
 挂载内置 HTTP handler 的宿主可使用[消费者与管理面 OpenAPI 契约](docs/openapi.md)，按实际地址调整挂载前缀。
 
-本文描述 v0.7.1（已发布）的公开契约，库契约与 v0.7.0 相同：在 v0.6.0 的身份提供方注册表与统一凭证信封之上，提供 ES256 access 与 JWKS、严格认证、已清理用户记录、阿里云短信发送器与邮件品牌；accountsvc 另有统一的 `ACCOUNTSVC_` 前缀、服务调用 Bearer 认证与多语言邮件模板清单。版本范围与兼容边界见 [v0.7.1 发布说明](docs/releases/v0.7.1.md)（accountsvc 开发模式的明文 HTTP 签发方例外）与 [v0.7.0 发布说明](docs/releases/v0.7.0.md)；v0.6.0 及更早状态保留在各自发布说明。账号资源沿用 `/users`，升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
+本文描述 v0.7.2（候选）的公开契约，库契约在 v0.7.1 之上仅增加管理面 `:reveal` 响应的 `Cache-Control: no-store`；v0.7.1 与 v0.7.0 相同，二者在 v0.6.0 的身份提供方注册表与统一凭证信封之上提供 ES256 access 与 JWKS、严格认证、已清理用户记录、阿里云短信发送器与邮件品牌；accountsvc 另有统一的 `ACCOUNTSVC_` 前缀、服务调用 Bearer 认证与多语言邮件模板清单。版本范围与兼容边界见 [v0.7.2 发布说明](docs/releases/v0.7.2.md)（`:reveal` 响应禁止缓存）、[v0.7.1 发布说明](docs/releases/v0.7.1.md)（accountsvc 开发模式的明文 HTTP 签发方例外）与 [v0.7.0 发布说明](docs/releases/v0.7.0.md)；v0.6.0 及更早状态保留在各自发布说明。账号资源沿用 `/users`，升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
 
 accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可选服务实现，使用同一套库能力；选择库集成不需要部署或调用 accountsvc。服务入口是 `cmd/accountsvc`，包含 SMTP 邮件投递、消费者远程鉴权和默认关闭的外部管理员 JWT 验证，运行与配置见 [accountsvc 服务手册](docs/accountsvc.md)。`examples/embedded` 保留为库集成开发示例。
 
@@ -516,7 +516,7 @@ HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额
 
 ## 仓库与发布状态
 
-当前最新版本为 [v0.7.1](https://github.com/bbxx111/accountkit/releases/tag/v0.7.1)：在 v0.7.0（ES256 access 与 JWKS、严格认证与以数据库为准的内省、已清理用户拉取、accountsvc 阿里云短信、`ACCOUNTSVC_` 统一前缀、服务调用 Bearer 认证与多语言邮件模板清单）之上，仅增加 accountsvc 开发模式的明文 HTTP 签发方例外，库契约不变。使用 `go get github.com/bbxx111/accountkit@v0.7.1` 接入；范围与升级边界见[发布说明](docs/releases/v0.7.1.md)，候选 `e67d262` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/40806251482)已通过，实际证据见[发布验收](openspec/changes/archive/2026-10-29-prepare-v0-7-1-release/verification.md)；v0.7.0 见[其发布说明](docs/releases/v0.7.0.md)。
+v0.7.2 为发布候选，范围见 [v0.7.2 发布说明](docs/releases/v0.7.2.md)：管理面 `:reveal` 处理器写出的所有响应带 `Cache-Control: no-store`，库契约其余不变。当前已发布的最新版本为 [v0.7.1](https://github.com/bbxx111/accountkit/releases/tag/v0.7.1)：在 v0.7.0（ES256 access 与 JWKS、严格认证与以数据库为准的内省、已清理用户拉取、accountsvc 阿里云短信、`ACCOUNTSVC_` 统一前缀、服务调用 Bearer 认证与多语言邮件模板清单）之上，仅增加 accountsvc 开发模式的明文 HTTP 签发方例外，库契约不变。使用 `go get github.com/bbxx111/accountkit@v0.7.1` 接入；范围与升级边界见[发布说明](docs/releases/v0.7.1.md)，候选 `e67d262` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/40806251482)已通过，实际证据见[发布验收](openspec/changes/archive/2026-10-29-prepare-v0-7-1-release/verification.md)；v0.7.0 见[其发布说明](docs/releases/v0.7.0.md)。
 
 远程仓库：https://github.com/bbxx111/accountkit.git
 

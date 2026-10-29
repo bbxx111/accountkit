@@ -1,6 +1,6 @@
 # HTTP OpenAPI 契约
 
-本契约描述 v0.7.1 的内置 HTTP handler：操作集合、字段与错误码与 v0.7.0 相同，v0.7.0 的操作集合与 v0.6.0 相同，四个发码操作补充部署的短信发送器不支持号码时的 400 `TARGET_NOT_SUPPORTED`；v0.6.0 在 v0.5.0 上将身份凭证请求体统一为 `{"kind","credential"}` 并增加各第三方提供方类型。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
+本契约描述 v0.7.2（候选）的内置 HTTP handler：操作集合、字段与错误码与 v0.7.1 相同，仅管理面 `:reveal` 的 200 响应新增 `Cache-Control: no-store` 头声明；v0.7.1 与 v0.7.0 相同，v0.7.0 的操作集合与 v0.6.0 相同，四个发码操作补充部署的短信发送器不支持号码时的 400 `TARGET_NOT_SUPPORTED`；v0.6.0 在 v0.5.0 上将身份凭证请求体统一为 `{"kind","credential"}` 并增加各第三方提供方类型。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
 
 ## 两个独立 HTTP 面
 
@@ -11,7 +11,7 @@
 
 两份文件各自独立，使用 [OpenAPI 3.1.0](https://spec.openapis.org/oas/v3.1.0.html) 与 JSON Schema 描述。所有 paths 均为相对 handler 路由，`servers[0].variables.basePath.default` 由宿主调整为实际挂载前缀或完整服务 URL。路径中的 `user` / `session` / `identity` 是原始 `u_` / `s_` / `i_` ID；响应 `name` 才是 `users/{id}` 等资源名。
 
-`info.version` 标识已发布的 v0.7.1 接口契约，内容与 v0.7.0 相同。文件不包含 accountsvc 专属的 `/v1/introspect`、`/v1/purgedUsers`、探针或管理员登录流程，也不描述宿主自有业务接口；这些不能由库契约自动推导。
+`info.version` 标识 v0.7.2（候选）接口契约，操作集合与 v0.7.1 相同，管理契约增加 `:reveal` 响应头声明。文件不包含 accountsvc 专属的 `/v1/introspect`、`/v1/purgedUsers`、探针或管理员登录流程，也不描述宿主自有业务接口；这些不能由库契约自动推导。
 
 消费者使用自己的 Bearer access token。`x-allowed-scopes` 表示允许的 scope 列表，`x-recent-authentication` 表示现有近期认证要求；这些扩展与说明用于接入核对，代码生成器不会自动替宿主实施授权。未标 scope 的 `GET /users/me` 接受任何有效消费者 Bearer scope。
 
@@ -23,7 +23,7 @@
 - `reauthenticate` 使用独立 `AccessToken` schema，不含 refresh 字段。客户端保留原 refresh 和原绝对期限；普通登录/刷新才更新完整 pair。
 - 身份绑定新增返回 201，幂等命中返回 200。单会话撤销和解绑返回 204 无内容；`revoke` 返回 200 无内容；`revokeOthers` 返回 200 `{}`。账号注销返回更新后的资源。
 - 普通错误为 `{"error":{"code":400,"message":"…","status":"INVALID_ARGUMENT","reason":"…"}}`；`code` 是数字 HTTP 状态，`reason` 才是细分原因。`token` / `revoke` 使用独立 OAuth 错误体，不能按普通错误解析。
-- 消费者 Bearer 401 带 `WWW-Authenticate`；限流 429 带 `Retry-After` 和 `retry_after_seconds`，部分 503 也带等待提示。凭证响应包含 `Cache-Control: no-store`，token/pending/OAuth 错误还带 `Pragma: no-cache`。
+- 消费者 Bearer 401 带 `WWW-Authenticate`；限流 429 带 `Retry-After` 和 `retry_after_seconds`，部分 503 也带等待提示。凭证响应包含 `Cache-Control: no-store`，管理面 `:reveal` 的身份明文响应同样带 `Cache-Control: no-store`，token/pending/OAuth 错误还带 `Pragma: no-cache`。
 - 枚举使用大写字符串。身份类型为 `^[A-Z][A-Z0-9_]{1,31}$`：内置 PHONE、EMAIL、WECHAT、APPLE、GOOGLE，部署可另配 OIDC 等类型。凭证请求统一为 `{"kind","credential"}`，见下节；未知字段拒绝。POST token/revoke 也使用 JSON，不使用表单编码。
 - nullable 字段和 optional 字段不同：例如 `delete_time` 必须出现但可以为 null；审计 `flow_id` 可以省略。管理 DTO 与消费者 DTO 独立，管理会话没有 `is_current`。
 

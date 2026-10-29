@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "accountkit 管理 HTTP API",
-    "version": "v0.7.1",
-    "description": "v0.7.1 的内置管理 HTTP 契约，与 v0.7.0 相同，操作与字段同 v0.6.0；身份类型字符串可包含 v0.6.0 新增的内置及配置提供方类型。用户资源的 avatar_url 自 v0.5.0 起提供。宿主配置实际挂载地址。请求体为单个 JSON 对象，默认上限 64 KiB，拒绝未知字段与尾随内容。领域状态、事务、故障策略以规格与 README 为准。"
+    "version": "v0.7.2",
+    "description": "v0.7.2 的内置管理 HTTP 契约，操作与字段与 v0.7.1 相同（v0.7.1 与 v0.7.0 相同，同 v0.6.0），adminRevealIdentity 的 200 响应声明 Cache-Control: no-store；身份类型字符串可包含 v0.6.0 新增的内置及配置提供方类型。用户资源的 avatar_url 自 v0.5.0 起提供。宿主配置实际挂载地址。请求体为单个 JSON 对象，默认上限 64 KiB，拒绝未知字段与尾随内容。领域状态、事务、故障策略以规格与 README 为准。"
   },
   "servers": [
     {
@@ -378,11 +378,19 @@
       "get": {
         "operationId": "adminRevealIdentity",
         "summary": "授权查看身份明文",
-        "description": "保留既有 GET :reveal 协议并写入审计；此契约不改 HTTP 方法。宿主应对敏感响应实施缓存和日志保护。 所需管理员角色：super-admin；角色层级由宿主 verifier 决定。",
+        "description": "保留既有 GET :reveal 协议并写入审计；此契约不改 HTTP 方法。成功响应带 Cache-Control: no-store；宿主应对敏感响应实施日志保护。 所需管理员角色：super-admin；角色层级由宿主 verifier 决定。",
         "responses": {
           "200": {
             "description": "成功。",
-            "headers": {},
+            "headers": {
+              "Cache-Control": {
+                "description": "身份明文响应禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {

@@ -378,11 +378,19 @@
       "get": {
         "operationId": "adminRevealIdentity",
         "summary": "授权查看身份明文",
-        "description": "保留既有 GET :reveal 协议并写入审计；此契约不改 HTTP 方法。宿主应对敏感响应实施缓存和日志保护。 所需管理员角色：super-admin；角色层级由宿主 verifier 决定。",
+        "description": "保留既有 GET :reveal 协议并写入审计；此契约不改 HTTP 方法。成功响应带 Cache-Control: no-store；宿主应对敏感响应实施日志保护。 所需管理员角色：super-admin；角色层级由宿主 verifier 决定。",
         "responses": {
           "200": {
             "description": "成功。",
-            "headers": {},
+            "headers": {
+              "Cache-Control": {
+                "description": "身份明文响应禁止缓存。",
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {

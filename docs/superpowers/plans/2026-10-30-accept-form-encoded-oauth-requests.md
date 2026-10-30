@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26 标准库（`mime`、`net/http`、`net/url`），Chi 路由，现有 `httpapi/jsonbody` 与 `httpapi/apierror`。
 
-**Spec:** `openspec/changes/accept-form-encoded-oauth-requests/`（proposal.md、specs/embedded-auth-package/spec.md、design.md、tasks.md）。本计划的任务编号与 tasks.md 一一对应。
+**Spec:** `openspec/changes/archive/2026-10-30-accept-form-encoded-oauth-requests/`（已归档）（proposal.md、specs/embedded-auth-package/spec.md、design.md、tasks.md）。本计划的任务编号与 tasks.md 一一对应。
 
 ## Global Constraints
 

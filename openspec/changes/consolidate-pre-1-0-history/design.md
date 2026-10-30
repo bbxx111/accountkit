@@ -63,7 +63,7 @@ v1.0.0 打 tag 后 0001 永久冻结，“version=1 等价于当前 0001 结构�
 
 ### D7 Deprecated 符号直接删除，不再留一版过渡
 
-6 个符号都是旧 Go 入口的别名或转发，没有任何已知调用方。v1.0.0 之前删除成本为零，之后删除需要 v2。规格层面同步删除 `verification-delivery` 中保留别名的要求；`ids.IdentityFlow` 等三处在规格中没有保留要求，只需删代码、测试与文档迁移说明。
+6 个别名符号都是旧 Go 入口的别名或转发，没有任何已知调用方。v1.0.0 之前删除成本为零，之后删除需要 v2。公开 API 盘点（D8）另取消导出 `user.KeyBackfillBatchSize` 与 `user.PurgeBatchSize`（维护任务内部批量参数，包外无引用，无替代名），因此从公开面移除的符号共 8 个：6 个别名加这 2 个常量。规格层面同步删除 `verification-delivery` 中保留别名的要求；`ids.IdentityFlow` 等三处在规格中没有保留要求，只需删代码、测试与文档迁移说明。
 
 ### D8 公开 API 盘点是一次有产出的通读，不是重构许可
 
@@ -80,6 +80,10 @@ v1.0.0 打 tag 后 0001 永久冻结，“version=1 等价于当前 0001 结构�
 3. 用户单独确认后，删除远端九个 v0 tag、对应 GitHub Release 与本地 tag。这是唯一不可逆点，与 CI 状态无关。
 4. 启动 `prepare-v1-0-0-release` 变更：发布说明、候选、CI、tag、Release、远端消费验证；v1.0.0 tag 打上后 0001 正式冻结。
 
+### D11 合成种子保留
+
+原项目源快照（`tests/testdata/source-baseline/`）整体退役，但其中的合成 fixture 仍被恢复演练、宿主契约与实例隔离测试用作种子数据，因此没有随目录删除，而是移到 `tests/testdata/synthetic/fixture.json`，由根包 `synthetic_fixture_test.go` 读取（`seedSyntheticAccount`、`snapshotSource` 等辅助函数随之改用正式名称）。这与 D5 的“证明能读原项目字节”不同：它只是合成测试数据，不再承担历史格式证明。“历史格式”这一证明（原 `TestHistoricalFormatsOnInitialSchema`）被丢弃，格式覆盖改由包内单元测试固定：`pii.TestStoredFormatsSurviveKeyRotation`（AES-GCM 与 HMAC 摘要的版本化格式及轮换）、`user.TestRefreshTokenHashFormat`（refresh 令牌 SHA-256 存储格式）以及 `tokens` 包的 kid 测试（`TestSignParseRoundTrip`、`TestParseAcceptsOldKeyVersionDuringOverlap`）。这是对计划中“直接删除 fixture”做法的偏离，原因是仍有三类测试依赖该数据。
+
 ## Risks / Trade-offs
 
 - [v0 tag 被误建或恢复后工具不报错] → D3 已接受此代价；AGENTS.md 规则禁止创建低于 v1.0.0 的 tag，发布检查表加入“远端不存在 v0 tag”的人工核对项。
@@ -92,14 +96,14 @@ v1.0.0 打 tag 后 0001 永久冻结，“version=1 等价于当前 0001 结构�
 
 ## Migration Plan
 
-对库的使用者：没有数据库迁移；新空 schema 安装仍为 version=1/dirty=false。升级到 v1.0.0 的 Go 调用者把 `sender.SMSSender`/`EmailSender`/`Message` 改为 `SMSCodeSender`/`EmailCodeSender`/`CodeMessage`，`ids.IdentityFlow` 改为 `ids.SignInCompletionFlow`，`Deps.IdentityFlowContext` 改为 `SignInCompletionFlowContext`，`CleanupIdentityFlows` 改为 `CleanupSignInCompletionFlows`。
+对库的使用者：没有数据库迁移；新空 schema 安装仍为 version=1/dirty=false。升级到 v1.0.0 的 Go 调用者：`user.KeyBackfillBatchSize` 与 `user.PurgeBatchSize` 已取消导出且无替代（内部批量参数，不应被读取）；把 `sender.SMSSender`/`EmailSender`/`Message` 改为 `SMSCodeSender`/`EmailCodeSender`/`CodeMessage`，`ids.IdentityFlow` 改为 `ids.SignInCompletionFlow`，`Deps.IdentityFlowContext` 改为 `SignInCompletionFlowContext`，`CleanupIdentityFlows` 改为 `CleanupSignInCompletionFlows`。
 
 回退：tag 删除前，本变更可整体 revert 恢复旧门禁与文档。tag 删除后不可回退，这是用户确认的决定；若之后需要历史 SQL，只能从提交历史读取，不再作为受保护基线。
 
 ## Open Questions
 
-- `docs/releases/pre-1.0-history.md` 是否列出每个 v0 tag 的提交 SHA。倾向列出，便于从提交历史追溯；不影响规格与任务拆分，实施时决定。
-- `examples/httpflows` 是否同时覆盖 accountsvc 独有的内省与已清理用户拉取。倾向不覆盖，它们不属于库的 HTTP 契约；若覆盖则放 accountsvc 文档，不改变本变更范围。
+- 已决定：`docs/releases/pre-1.0-history.md` 列出每个 v0 tag 的完整提交 SHA，便于从提交历史追溯。
+- 已决定：`examples/httpflows` 只覆盖库的终端用户 HTTP 面，不覆盖 accountsvc 独有的内省与已清理用户拉取，它们不属于库的 HTTP 契约，由 accountsvc 文档说明。
 
 ## 附录：接受的 API 现状
 

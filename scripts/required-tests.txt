@@ -125,6 +125,7 @@ github.com/bbxx111/accountkit/pii/TestNewCipherRequiresExactly32ByteKeys
 github.com/bbxx111/accountkit/pii/TestParseKeyList
 github.com/bbxx111/accountkit/pii/TestParseKeyListErrorDoesNotEchoSecret
 github.com/bbxx111/accountkit/pii/TestParseKeyListRejects
+github.com/bbxx111/accountkit/pii/TestStoredFormatsSurviveKeyRotation
 github.com/bbxx111/accountkit/session/grace/TestGetMissAndTamperedValue
 github.com/bbxx111/accountkit/session/grace/TestPutGetRoundTripEncryptedAndExpires
 github.com/bbxx111/accountkit/session/grace/TestPutRejectsNonPositiveTTL
@@ -256,6 +257,7 @@ github.com/bbxx111/accountkit/user/TestRefreshRejectsUnknownRevokedAndExpired
 github.com/bbxx111/accountkit/user/TestRefreshReplayAfterGraceRevokesSession
 github.com/bbxx111/accountkit/user/TestRefreshReuseDetectedContainmentFailurePropagatesError
 github.com/bbxx111/accountkit/user/TestRefreshRotatesAndOldTokenEntersGrace
+github.com/bbxx111/accountkit/user/TestRefreshTokenHashFormat
 github.com/bbxx111/accountkit/user/TestRekeyDigestsRecomputesOnlyActiveOldVersionRows
 github.com/bbxx111/accountkit/user/TestRepoAnonymizeIdentityKeepsExactlyOneSubjectAndCoversSoftDeleted
 github.com/bbxx111/accountkit/user/TestRepoFreezeUnfreezeAndCountSessions
@@ -598,6 +600,7 @@ github.com/bbxx111/accountkit/TestObserverSharedAcrossRootMaintenance
 github.com/bbxx111/accountkit/audit/TestAuditObservations
 github.com/bbxx111/accountkit/examples/metricsotel/TestMetricsExamples
 github.com/bbxx111/accountkit/examples/metricsprometheus/TestMetricsExamples
+github.com/bbxx111/accountkit/examples/httpflows/TestHTTPFlows
 github.com/bbxx111/accountkit/internal/maintenancectx/TestTaskOwnership
 github.com/bbxx111/accountkit/maintenance/TestRunnerObservations
 github.com/bbxx111/accountkit/observability/TestObserverContract

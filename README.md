@@ -246,7 +246,7 @@ access token 使用 ES256（P-256）签发，header 为 `alg=ES256`、`typ=at+jw
 |---|---|---|---|
 | `POST /users:sendSignInCode` `{channel, target}` | 无 | 200 `{code_id, expire_time}` | 429 `RESOURCE_EXHAUSTED` + `retry_after_seconds`；400 `CHANNEL_INVALID` / `INVALID_TARGET` |
 | `POST /users:signInWithCode` `{kind: PHONE\|EMAIL, credential:{target,code_id,code}}` + `X-Device-Id`/`X-Device-Name` | 无 | 200 token 或 pending | 400 `CODE_INVALID` / `CODE_EXPIRED` / `DEVICE_ID_INVALID`；429 `TARGET_VERIFY_LIMIT`；403 `USER_FROZEN` |
-| `POST /users:signInWithIdp` `{kind,credential:{...}}` + `X-Device-Id`/`X-Device-Name`（第三方类型，见下） | 无 | 200 token 或 pending | 400 `IDP_CREDENTIAL_INVALID` / `IDP_APP_NOT_ALLOWED` / `IDP_NONCE_REPLAYED`；403 `USER_FROZEN`；503 `IDP_UNAVAILABLE`；403 USER_PENDING_DELETION（冷静期账号） |
+| `POST /users:signInWithIdp` `{kind,credential:{...}}` + `X-Device-Id`/`X-Device-Name`（第三方类型，见下） | 无 | 200 token 或 pending | 400 `IDP_CREDENTIAL_INVALID` / `IDP_APP_NOT_ALLOWED` / `IDP_NONCE_REPLAYED`；403 `USER_FROZEN`；503 `IDP_UNAVAILABLE`；403 USER_PENDING_DELETION（冷静期账号）；409 `IDENTITY_ALREADY_BOUND`（身份已被占用或并发注册冲突） |
 | `POST /token` `{grant_type:"refresh_token", refresh_token}`（JSON 或 `application/x-www-form-urlencoded`） | 无 | 200 token | RFC 6749：400 `invalid_grant`；403 `invalid_grant`+`reason:USER_FROZEN`；503 `temporarily_unavailable` |
 | `POST /revoke` `{token, token_type_hint?}`（JSON 或 `application/x-www-form-urlencoded`） | 无 | 200 空 | 400 `invalid_request`（缺 token） |
 | `GET /users/me` | 任意 scope | 200 资源 | |
@@ -254,7 +254,7 @@ access token 使用 ES256（P-256）签发，header 为 `alg=ES256`、`typ=at+jw
 | `DELETE /users/me` | `user` + 近期认证 | 200 账号资源（`state=PENDING_DELETION`） | 400 `REAUTHENTICATION_REQUIRED` / `INVALID_ACCOUNT_STATE` / `DELETION_BLOCKED`；403 `USER_FROZEN` |
 | `POST /users/me:undelete` | `user:undelete` | 200 账号资源（`state=ACTIVE`） | 400 `INVALID_ACCOUNT_STATE`；403 `USER_FROZEN` |
 | `POST /users/me:sendReauthenticationCode` `{channel, target}` | `user` | 200 `{code_id, expire_time}` | 400 `TARGET_NOT_ANCHOR` |
-| `POST /users/me:reauthenticate` `{kind: PHONE\|EMAIL, credential}` | `user` | 200 token（无 refresh） | 400 `CODE_*`；401 会话已吊销 |
+| `POST /users/me:reauthenticate` `{kind: PHONE\|EMAIL, credential}` | `user` | 200 token（无 refresh） | 400 `CODE_*` / `TARGET_NOT_ANCHOR`；403 `USER_FROZEN`；429 `TARGET_VERIFY_LIMIT`；401 会话已吊销 |
 | `GET /users/me/sessions/current` | `user` / `user:bind` | 200 当前会话（no-store） | 401 `TOKEN_INVALID`；403 scope不足；503 `SESSION_QUERY_NOT_CONFIGURED` / 依赖不可用 |
 | `GET /users/me/sessions` | `user` | 200 `{sessions:[…]}` | |
 | `DELETE /users/me/sessions/{session}` | `user` | 204 | 400 `INVALID_ID`；404 |
@@ -262,9 +262,9 @@ access token 使用 ES256（P-256）签发，header 为 `alg=ES256`、`typ=at+jw
 | `POST /users/me:sendBindCode` `{channel, target}` | `user` / `user:bind` | 200 `{code_id, expire_time}` | 429 限流；400 `CHANNEL_INVALID` / `INVALID_TARGET` |
 | `GET /users/me/identities` | `user` / `user:bind` | 200 `{identities:[{name, kind, masked_subject, create_time}]}` | |
 | `POST /users/me/identities` `{kind, credential}` | `user` / `user:bind` | 201 新建 / 200 幂等 | 400 `CODE_*` / `IDP_*`；409 `IDENTITY_ALREADY_BOUND` / `IDENTITY_KIND_LIMIT`；403 `USER_FROZEN` |
-| `DELETE /users/me/identities/{identity}` | `user` | 204 | 400 `LAST_ANCHOR_IDENTITY` / `REAUTHENTICATION_REQUIRED` / `INVALID_ID`；404 |
+| `DELETE /users/me/identities/{identity}` | `user` | 204 | 400 `LAST_ANCHOR_IDENTITY` / `REAUTHENTICATION_REQUIRED` / `INVALID_ID`；403 `USER_FROZEN`；404 |
 
-约定：错误体 AIP-193（`/token`、`/revoke` 为 RFC 6749 §5.2）；401 只表示 bearer 缺失/无效/会话已吊销并带 `WWW-Authenticate: Bearer`；scope 不足 403 `INSUFFICIENT_SCOPE`；需重新认证 400 `FAILED_PRECONDITION` `REAUTHENTICATION_REQUIRED`；body ≤ 64 KiB、严格 JSON（未知字段 400 `MALFORMED_BODY`）；所有响应带 `X-Request-Id`。例外：`/token`、`/revoke` 在 `Content-Type` 媒体类型为 `application/x-www-form-urlencoded` 时按 RFC 6749 §3.2 / RFC 7009 §2.1 解析表单（同一大小上限，只读请求体不读查询串，同名参数重复（无论是否识别）为 `invalid_request`，未识别参数忽略），其他情况仍按严格 JSON 解析且不要求 `Content-Type`；请求中的 `scope` 按 RFC 6749 §3.3 忽略，携带与否结果相同，签发 scope 始终按账号当前状态推导并在响应 `scope` 字段返回，客户端以响应为准。表单 POST 属 CORS 简单请求、不触发预检，端点不依赖 Cookie，Web 宿主的 CORS 策略仍按网关清单配置。`Deps.ClientIP` 必须返回非空 IP（默认取 `RemoteAddr`；经代理部署时宿主注入可信跳数解析）。405（方法不允许）body 沿用 AIP-193 形状，但不带 `Allow` 头（RFC 9110 建议携带，这里为实现简单接受偏离）。
+约定：错误体 AIP-193（`/token`、`/revoke` 为 RFC 6749 §5.2），每个操作可能出现的 `reason` 完整列在 OpenAPI 各操作的 `x-error-reasons` 与文件级 `x-error-reason-catalog`，本表只列主要项；401 只表示 bearer 缺失/无效/会话已吊销并带 `WWW-Authenticate: Bearer`；scope 不足 403 `INSUFFICIENT_SCOPE`；需重新认证 400 `FAILED_PRECONDITION` `REAUTHENTICATION_REQUIRED`；body ≤ 64 KiB、严格 JSON（未知字段 400 `MALFORMED_BODY`）；所有响应带 `X-Request-Id`。例外：`/token`、`/revoke` 在 `Content-Type` 媒体类型为 `application/x-www-form-urlencoded` 时按 RFC 6749 §3.2 / RFC 7009 §2.1 解析表单（同一大小上限，只读请求体不读查询串，同名参数重复（无论是否识别）为 `invalid_request`，未识别参数忽略），其他情况仍按严格 JSON 解析且不要求 `Content-Type`；请求中的 `scope` 按 RFC 6749 §3.3 忽略，携带与否结果相同，签发 scope 始终按账号当前状态推导并在响应 `scope` 字段返回，客户端以响应为准。表单 POST 属 CORS 简单请求、不触发预检，端点不依赖 Cookie，Web 宿主的 CORS 策略仍按网关清单配置。`Deps.ClientIP` 必须返回非空 IP（默认取 `RemoteAddr`；经代理部署时宿主注入可信跳数解析）。405（方法不允许）body 沿用 AIP-193 形状，但不带 `Allow` 头（RFC 9110 建议携带，这里为实现简单接受偏离）。
 
 `authn.WithPrincipal` 仅用于受信任宿主/测试注入 Principal（例如宿主自己的上游网关已经做过身份校验）：`Bearer` 中间件发现 ctx 里已有 Principal 会直接放行，不再调用 `Authenticate`，业务代码不应依赖它来绕过正常的 token 校验路径。
 
@@ -308,7 +308,7 @@ access token 使用 ES256（P-256）签发，header 为 `alg=ES256`、`typ=at+jw
 | `POST /users/me:sendBindCode` `{channel, target}` | `user` / `user:bind` | | 200 `{code_id, expire_time}` | 429 限流；400 `CHANNEL_INVALID` / `INVALID_TARGET` |
 | `GET /users/me/identities` | `user` / `user:bind` | | 200 `{identities:[{name, kind, masked_subject, create_time}]}` | |
 | `POST /users/me/identities` `{kind, credential}` | `user` / `user:bind` | | 201 新建 / 200 幂等 | 400 `CODE_*` / `IDP_*`；409 `IDENTITY_ALREADY_BOUND` / `IDENTITY_KIND_LIMIT`；403 `USER_FROZEN` |
-| `DELETE /users/me/identities/{identity}` | `user` | 是 | 204 | 400 `LAST_ANCHOR_IDENTITY` / `REAUTHENTICATION_REQUIRED` / `INVALID_ID`；404 |
+| `DELETE /users/me/identities/{identity}` | `user` | 是 | 204 | 400 `LAST_ANCHOR_IDENTITY` / `REAUTHENTICATION_REQUIRED` / `INVALID_ID`；403 `USER_FROZEN`；404 |
 
 规则：一个 subject 全局只属于一个账号（冲突 409，不合并不迁移）；每 kind 最多 `MaxIdentitiesPerKind`（默认 1）个活动身份；同一 subject 重复绑定到本账号为幂等；解绑是软删除，解绑后同一 subject 可绑到任一账号；解绑或换绑后的最终身份集合必须仍有至少一个已启用身份并满足当前 R；绑定不改变已签发 token 的 scope，客户端新一轮刷新后生效。`masked_subject` 由检索提示拼出（`+86 138****1234`、`ba***@example.com`），第三方身份为空串。
 
@@ -412,7 +412,7 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 | `POST /users/{user}:freeze` `{reason}` | operator | 200 用户资源（`state=FROZEN`，`freeze` 快照） | 400 `INVALID_ARGUMENT`（reason 空/超 200 字/含控制符）/ `INVALID_ACCOUNT_STATE` / `USER_FROZEN`（已冻结）；404 |
 | `POST /users/{user}:unfreeze` `{reason?}`（须为 JSON 对象，无 reason 时发送 `{}`） | operator | 200 用户资源（`state=ACTIVE`，`freeze=null`） | 400 `INVALID_ACCOUNT_STATE`；404 |
 | `DELETE /users/{user}` | super-admin | 200 用户资源（`state=PENDING_DELETION`） | 400 `INVALID_ACCOUNT_STATE` / `USER_FROZEN`（需先解冻）；404 |
-| `POST /users/{user}:undelete` | super-admin | 200 用户资源（`state=ACTIVE`） | 400 `INVALID_ACCOUNT_STATE`（含已 purge）；404 |
+| `POST /users/{user}:undelete` | super-admin | 200 用户资源（`state=ACTIVE`） | 400 `INVALID_ACCOUNT_STATE`（含已 purge）/ `USER_FROZEN`；404 |
 | `GET /users/{user}/identities/{identity}:reveal` | super-admin | 200 `{name, kind, subject}`（明文） | 400 `INVALID_ID`；404（非该用户或已解绑） |
 | `GET /users/{user}/sessions` | operator | 200 `{sessions:[{name, device_id, device_name, create_time, last_used_time}]}` | 404 |
 | `DELETE /users/{user}/sessions/{session}` | operator | 204 | 400 `INVALID_ID`；404 |

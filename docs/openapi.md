@@ -22,11 +22,12 @@
 ## 客户端需要区分的响应
 
 - 登录和 `completeSignIn` 的 HTTP 200 是 `TokenPair` / `PendingSignIn` 的 `oneOf`。补全成功响应仍可能 pending，或返回 `user:bind`；只看状态码不能判断已获得普通业务权限。
+- `oneOf` 没有 discriminator：按响应是否含 `access_token` 收窄，有则为 `TokenPair`，否则为 `PendingSignIn`。`next_action` 是可扩展枚举，当前唯一值 `COMPLETE_IDENTITY`；客户端必须拒绝并提示未知值，不得当作已登录或按补全处理。生成 SDK 时为该字段保留未知值分支。
 - `reauthenticate` 使用独立 `AccessToken` schema，不含 refresh 字段。客户端保留原 refresh 和原绝对期限；普通登录/刷新才更新完整 pair。
 - 身份绑定新增返回 201，幂等命中返回 200。单会话撤销和解绑返回 204 无内容；`revoke` 返回 200 无内容；`revokeOthers` 返回 200 `{}`。账号注销返回更新后的资源。
-- 普通错误为 `{"error":{"code":400,"message":"…","status":"INVALID_ARGUMENT","reason":"…"}}`；`code` 是数字 HTTP 状态，`reason` 才是细分原因。`token` / `revoke` 使用独立 OAuth 错误体，不能按普通错误解析。
+- 普通错误为 `{"error":{"code":400,"message":"…","status":"INVALID_ARGUMENT","reason":"…"}}`；`code` 是数字 HTTP 状态，`reason` 才是细分原因。每个操作可能出现的 `reason` 按状态码列在该操作的 `x-error-reasons`（含认证中间件与通用解析错误），全部 `reason` 的说明在文件级 `x-error-reason-catalog`；不带 `reason` 的响应（固定 500、部分 404）只能按 `code`/`status` 处理。生成 SDK 时据此产出类型化错误并为未知 `reason` 保留兜底分支。管理面的 401/403 由宿主 verifier 定义，`x-error-reasons` 只列库自身产生的值。`token` / `revoke` 使用独立 OAuth 错误体，不能按普通错误解析。
 - 消费者 Bearer 401 带 `WWW-Authenticate`；限流 429 带 `Retry-After` 和 `retry_after_seconds`，部分 503 也带等待提示。凭证响应包含 `Cache-Control: no-store`，管理面 `:reveal` 的身份明文响应同样带 `Cache-Control: no-store`，token/pending/OAuth 错误还带 `Pragma: no-cache`。
-- 枚举使用大写字符串。身份类型为 `^[A-Z][A-Z0-9_]{1,31}$`：内置 PHONE、EMAIL、WECHAT、APPLE、GOOGLE，部署可另配 OIDC 等类型。凭证请求统一为 `{"kind","credential"}`，见下节；未知字段拒绝。POST token/revoke 也使用 JSON，不使用表单编码。
+- 枚举使用大写字符串。身份类型为 `^[A-Z][A-Z0-9_]{1,31}$`：内置 PHONE、EMAIL、WECHAT、APPLE、GOOGLE、FACEBOOK、ALIPAY、QQ、WEIBO，部署可另配 OIDC 类型，任何非内置类型按 OIDC 凭证形状解析。凭证请求统一为 `{"kind","credential"}`，见下节；未知字段拒绝。POST token/revoke 另接受 `application/x-www-form-urlencoded`，见上文。
 - nullable 字段和 optional 字段不同：例如 `delete_time` 必须出现但可以为 null；审计 `flow_id` 可以省略。管理 DTO 与消费者 DTO 独立，管理会话没有 `is_current`。
 
 示例 token、验证码和票据只能使用合成值，不应把真实响应导入公开文档。刷新重放、验证码失败预算、事务回滚、账号状态及外部审计治理仍以 [README](../README.md)、[主规格](../openspec/specs)和对应实现为准，schema 不能表达或证明所有行为。
@@ -40,6 +41,9 @@
 | PHONE / EMAIL | `{"target","code_id","code"}` | 验证码登录、重新认证、换绑、登录补全、绑定 |
 | WECHAT | `{"app_id","code"}` | 第三方登录、绑定 |
 | APPLE / GOOGLE / 配置的 OIDC 类型 | `{"id_token","nonce"}`，nonce 为原始值 | 第三方登录、绑定 |
+| FACEBOOK | `{"id_token","nonce"}`（Limited Login）或 `{"access_token"}`（Classic Login），二者择一 | 第三方登录、绑定 |
+| ALIPAY | `{"app_id","code"}` | 第三方登录、绑定 |
+| QQ / WEIBO | `{"app_id","access_token"}`，微博的 app_id 即 AppKey | 第三方登录、绑定 |
 
 `kind` 或 `credential` 缺失、`credential` 不是对象、第三方 credential 原始 JSON 超过 16 KiB，或 credential 字段缺失、未知、类型错误时返回 `400 CREDENTIAL_INCOMPLETE`；kind 格式非法为 `400 INVALID_ARGUMENT`；类型不属于该端点允许的类别为 `400 CREDENTIAL_KIND_NOT_ALLOWED`。这些拒绝都发生在消费验证码、访问提供方和登记 nonce 之前。未配置的第三方类型在未显式设置 Enabled 时为 `400 IDP_APP_NOT_ALLOWED`，显式设置时为 `IDENTITY_KIND_NOT_ENABLED`。PHONE/EMAIL 的 `code_id` 缺失或格式错误沿用原分类 `400 INVALID_ARGUMENT`，其 credential 只受 64 KiB 请求体上限约束。同一对象内的重复键按标准 JSON 解码取最后一个值，客户端不应发送重复键。旧格式迁移见[兼容说明](compatibility.md#统一凭证信封与身份类型字符串)。
 
@@ -90,7 +94,7 @@ filter 是 `term (AND term)*` 子集，不支持 OR、NOT 或括号。支持：
 
 ## 验证与维护
 
-JSON 文档直接维护，修改路由、DTO、scope、状态码或错误时同步更新；不从本文反向生成服务器实现。无依赖的源码对应检查：
+JSON 文档直接维护，修改路由、DTO、scope、状态码或错误时同步更新，新增或改名 `reason` 时同步该操作的 `x-error-reasons` 与 `x-error-reason-catalog`；不从本文反向生成服务器实现。无依赖的源码对应检查：
 
 ```powershell
 node scripts/check-openapi.cjs

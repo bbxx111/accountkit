@@ -420,6 +420,7 @@ type Recorder struct {
 	failed, omitted atomic.Uint64
 }
 
+// NewRecorder 绑定下游 Recorder 与来源配置，不做 I/O；out 为 nil 或配置不合法时返回错误。logger 为 nil 时使用 slog.Default()。
 func NewRecorder(out event.Recorder, o Options, logger *slog.Logger) (*Recorder, error) {
 	if out == nil {
 		return nil, errors.New("audit/authentication: recorder required")
@@ -432,6 +433,8 @@ func NewRecorder(out event.Recorder, o Options, logger *slog.Logger) (*Recorder,
 	}
 	return &Recorder{out: out, options: o, logger: logger, observer: observability.NewRecorder(o.Observer, logger), newID: uuid.NewV7}, nil
 }
+
+// Record 把认证输入映射为通用事件后交给下游 Recorder；映射失败只计数、观测并记日志，不返回错误。
 func (r *Recorder) Record(ctx context.Context, in Input) {
 	e, omitted, err := mapEvent(in, r.options, r.newID, "")
 	for _, field := range omitted {
@@ -455,6 +458,8 @@ func (r *Recorder) Record(ctx context.Context, in Input) {
 	}
 	r.out.Record(ctx, e)
 }
+
+// Stats 返回映射失败与可选字段省略的累计计数快照。
 func (r *Recorder) Stats() Stats { return Stats{Failed: r.failed.Load(), Omitted: r.omitted.Load()} }
 
 func observationField(field string) observability.AuditField {

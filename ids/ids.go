@@ -16,6 +16,8 @@ import (
 // Kind 是资源类型前缀（不含下划线）。
 type Kind string
 
+// 资源类型前缀：账号 u、身份 i、会话 s、登录补全流程 f。AuditEvent（e）仅用于历史审计 ID 格式追溯，
+// 当前审计事件 ID 为 UUIDv7。
 const (
 	User                 Kind = "u"
 	Identity             Kind = "i"

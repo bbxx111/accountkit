@@ -55,8 +55,10 @@ func NewAlipay(options AlipayOptions) (*Alipay, error) {
 	return &Alipay{config: config, http: &isolated, logger: logger, observer: observability.NewRecorder(options.Observer, logger), now: now}, nil
 }
 
+// Kind 返回 ALIPAY。
 func (*Alipay) Kind() enum.IdentityKind { return enum.IdentityAlipay }
 
+// Verify 严格解码客户端凭证，以授权码兑换并校验支付宝身份；失败返回本包哨兵错误。
 func (a *Alipay) Verify(ctx context.Context, credential json.RawMessage) (Identity, error) {
 	object, err := alipayObject(credential)
 	if err != nil {

@@ -216,6 +216,7 @@ func (s *Service) observeAuth(ctx context.Context, start time.Time, operation ob
 // Public wrappers record only after a normal return, after all implementation
 // defers have normalized the final error. Business panics therefore propagate
 // unchanged and produce no fabricated terminal observation.
+
 // SignInWithCode 验证码登录；未知身份按策略直接注册或返回待补全结果。
 func (s *Service) SignInWithCode(ctx context.Context, cred CodeCredential, dev Device, meta Meta) (SignInResult, error) {
 	if !s.observer.Enabled() {

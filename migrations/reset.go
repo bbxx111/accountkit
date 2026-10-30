@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// ErrDestructiveOperation 表示调用了被禁用的破坏性操作（Down）；它不做任何 I/O。
 var ErrDestructiveOperation = errors.New("migrations: destructive operation disabled")
 
 // UnsafeResetOptions explicitly confirms the schema whose auth tables will be destroyed.

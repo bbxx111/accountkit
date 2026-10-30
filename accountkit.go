@@ -73,7 +73,8 @@ type Deps struct {
 	// Audit 接收审计事件。为空时默认使用 audit.Async（有界队列 + 批量写入 audit_event 表；Start 启动、Close 刷出）；
 	// 宿主可注入自己的 Recorder（例如转发到日志管道）。任何实现都不得让记录失败影响认证动作的结果。
 	Audit audit.Recorder
-	// AuditReader is optional in external writer mode; nil disables only audit queries.
+	// AuditReader 是可选的审计读侧，只能与外部 Audit 同时注入（Audit 为空时提供它 New 报错）。
+	// 注入外部 Audit 而 AuditReader 为 nil 时，只有管理面审计查询返回 503 AUDIT_QUERY_NOT_CONFIGURED。
 	AuditReader audit.Reader
 	// HTTPClient 用于调用微信 API 与拉取 Apple JWKS。默认 10 秒超时；宿主可注入带代理/追踪的客户端。
 	HTTPClient *http.Client

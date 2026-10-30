@@ -34,6 +34,7 @@ type RateLimitedError struct {
 	RetryAfter time.Duration
 }
 
+// Error 返回包含限流维度与重试等待时间的文本。
 func (e *RateLimitedError) Error() string {
 	return fmt.Sprintf("code: rate limited (%s), retry after %s", e.Dimension, e.RetryAfter)
 }

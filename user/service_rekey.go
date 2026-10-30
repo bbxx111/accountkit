@@ -11,8 +11,8 @@ import (
 	"github.com/bbxx111/accountkit/user/db"
 )
 
-// KeyBackfillBatchSize 是密钥回填任务每批处理的身份行数。
-const KeyBackfillBatchSize = 100
+// keyBackfillBatchSize 是密钥回填任务每批处理的身份行数。
+const keyBackfillBatchSize = 100
 
 // backfillStep 描述一种回填：如何列出某个旧版本的行、如何改写一行(返回 CAS 命中行数)。
 type backfillStep struct {
@@ -54,7 +54,7 @@ func (s *Service) runBackfill(ctx context.Context, step backfillStep, old uint16
 		if firstErr != nil {
 			return total, fmt.Errorf("user: %s: %w", step.name, firstErr)
 		}
-		if len(rows) < KeyBackfillBatchSize {
+		if len(rows) < keyBackfillBatchSize {
 			return total, nil
 		}
 	}
@@ -83,7 +83,7 @@ func (s *Service) RekeyDigests(ctx context.Context) (total int, resultErr error)
 		n, err := s.runBackfill(ctx, backfillStep{
 			name: "rekey_digests",
 			list: func(ctx context.Context, v uint16) ([]db.Identity, error) {
-				return s.d.Repo.Q().ListIdentitiesByDigestKeyVersion(ctx, db.ListIdentitiesByDigestKeyVersionParams{Version: int16(v), BatchSize: KeyBackfillBatchSize})
+				return s.d.Repo.Q().ListIdentitiesByDigestKeyVersion(ctx, db.ListIdentitiesByDigestKeyVersionParams{Version: int16(v), BatchSize: keyBackfillBatchSize})
 			},
 			apply: func(ctx context.Context, row db.Identity, now time.Time) (int64, error) {
 				plain, err := s.decryptSubject(row)
@@ -116,7 +116,7 @@ func (s *Service) ReencryptSubjects(ctx context.Context) (total int, resultErr e
 		n, err := s.runBackfill(ctx, backfillStep{
 			name: "reencrypt_subjects",
 			list: func(ctx context.Context, v uint16) ([]db.Identity, error) {
-				return s.d.Repo.Q().ListIdentitiesByCipherKeyVersion(ctx, db.ListIdentitiesByCipherKeyVersionParams{Version: int16(v), BatchSize: KeyBackfillBatchSize})
+				return s.d.Repo.Q().ListIdentitiesByCipherKeyVersion(ctx, db.ListIdentitiesByCipherKeyVersionParams{Version: int16(v), BatchSize: keyBackfillBatchSize})
 			},
 			apply: func(ctx context.Context, row db.Identity, now time.Time) (int64, error) {
 				plain, err := s.decryptSubject(row)

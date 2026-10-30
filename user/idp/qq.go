@@ -54,6 +54,7 @@ type qqSDKCredential struct {
 	AccessToken string `json:"access_token"`
 }
 
+// Kind 返回 QQ。
 func (*QQ) Kind() enum.IdentityKind { return enum.IdentityQQ }
 
 // Verify 实现 Provider：credential 为 {"app_id","access_token"}。

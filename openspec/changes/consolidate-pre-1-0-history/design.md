@@ -100,3 +100,44 @@ v1.0.0 打 tag 后 0001 永久冻结，“version=1 等价于当前 0001 结构�
 
 - `docs/releases/pre-1.0-history.md` 是否列出每个 v0 tag 的提交 SHA。倾向列出，便于从提交历史追溯；不影响规格与任务拆分，实施时决定。
 - `examples/httpflows` 是否同时覆盖 accountsvc 独有的内省与已清理用户拉取。倾向不覆盖，它们不属于库的 HTTP 契约；若覆盖则放 accountsvc 文档，不改变本变更范围。
+
+## 附录：接受的 API 现状
+
+盘点范围为模块内 `internal/`、`examples/`、`cmd/` 以外的全部 33 个包（`GOWORK=off go doc -all` 输出位于被忽略的 `.test-output/api-inventory/`）。只列实际发现；“修改”为本变更内已处理，“接受”为保持现状，“待用户决定”为可能值得在 v1.0.0 前做、但属于破坏性改名/取消导出或牵涉规格与包外引用、超出本次盘点许可的项。
+
+| 符号 | 包 | 类别 | 处理 | 理由 |
+|---|---|---|---|---|
+| `KeyBackfillBatchSize`、`PurgeBatchSize` | `user` | 不应导出 | 修改 | 维护任务内部批量参数，Go 代码、示例、测试与文档均无包外引用，已取消导出；`PurgeDueUsers` 注释改写为“每批 100 个账号”。 |
+| 别名类型与 `Actor*` 常量组、`Noop.Record`、`Memory.Record`、`Store`、`StoreOptions`、`NewStoreWithOptions`、`ListByResource`、`DeleteOlderThan`、`ErrConflict`、`ErrInvalid`、`RetentionBatchSize` | `audit` | 文档缺失 | 修改 | 补充注释，说明别名指向与存储语义（按 `occur_time` 分批清理、来源与命名空间范围）。 |
+| `NewRecorder`、`Recorder.Record`、`Recorder.Stats`；`MaxEventBytes`、`MaxResources` | `audit/authentication`、`audit/event` | 文档缺失 | 修改 | 补充构造、失败不外抛语义和校验上限注释。 |
+| `UserState`、`RevokeReason`、`CodePurpose`、`ActorKind`、`Result`、`EventType`、`FlowState` 及 `ParseRevokeReason`、`ParseEventType`、`ParseFlowState`、`ParseClientType`、`ParseDeviceType` | `enum` | 文档缺失 | 修改 | 补充类型用途（对应存储列）与 Parse 只接受精确 UPPER_SNAKE 名的注释。 |
+| 支付宝/QQ/微信 `SubjectMode` 常量组、`Deps.AuditReader` | 根包 | 文档缺失 | 修改 | 常量组补注释；`AuditReader` 原英文注释未说明须与外部 `Audit` 同时注入，改为中文并补全约束。 |
+| `ErrSignInCompletionInvalid`、`ErrSignInAlreadyCompleted`、`ErrProfileAttributesNotConfigured`、`ProfileAttributesValidationError.Error/Is`、`IdentityPolicy.Allows/Complete/EnabledKinds/RequiredKinds`、`Service.SignInWithCode` | `user` | 文档缺失 | 修改 | 补充错误映射与策略方法注释；`SignInWithCode` 的 godoc 混入了一段描述包内包装器的英文说明，已与方法注释分开。 |
+| `Kind` 常量组、`ErrDestructiveOperation`、`ReasonTokenMissing/Invalid`、`Error.Error`、`RateLimitedError.Error`、`Disabled` 三个方法、`Alipay.Kind/Verify`、`QQ.Kind`、`Weibo.Kind`、支付宝/QQ 模式常量组 | `ids`、`migrations`、`httpapi/authn`、`httpapi/apierror`、`user/code`、`user/sender`、`user/idp` | 文档缺失 | 修改 | 补充注释；`ids` 常量组注明 `AuditEvent`（`e`）仅用于历史审计 ID 格式。 |
+| `MapLegacy`、认证快照 `legacy_event_id` | `audit/authentication` | 开发期兼容残留 | 待用户决定 | 开发期审计兼容路径，按控制方裁定保留进入 v1.0.0；`docs/compatibility.md`、`docs/migrations.md` 与 `versioned-auth-storage` 规格仍引用，删除需规格 delta。 |
+| `AuditEvent`（`e`） | `ids` | 开发期兼容残留 | 待用户决定 | 当前审计事件 ID 为 UUIDv7，`e` 前缀只剩历史格式追溯；仅 `ids` 外部测试包引用，删除属破坏性变更。 |
+| `ErrExhausted` | `user/code` | 开发期兼容残留 | 待用户决定 | 注释写明“为源码兼容保留”，`code` 包已不再返回它；`user` 与 `httpapi/enduser` 仍有对应的映射分支，删除需同步清理。 |
+| `NewWeChat` | `user/idp` | 开发期兼容残留 | 待用户决定 | 早期仅 OAuth、固定 UNIONID 的构造器，库内装配已改用 `NewWeChatWithConfig`；仅外部测试包引用。 |
+| `Store.ListByUser` | `audit` | 不应导出 | 待用户决定 | 注释自称本地便捷方法、集成应使用 `Reader`；仅 `user` 外部测试包使用。 |
+| `RetentionBatchSize`、`IsUniqueViolation` | `audit`、`user` | 不应导出 | 待用户决定 | 内部批量参数与 pgx 唯一冲突判定，但被同目录外部测试包（`audit_test`、`user_test`）引用；取消导出需配套测试导出垫片，超出本次许可。 |
+| `PurgeCoveredTables` | `user` | 不应导出 | 待用户决定 | 导出的可变 map，宿主可改写库内覆盖登记；`docs/compatibility.md` 把它作为宿主覆盖检查入口，改为返回副本的函数属破坏性变更。 |
+| `Repo`、`NewRepo`、`Repo.Q/WithTx/WithTxRaw`、函数 `CheckKeyVersions`，以及 `Deps` 中的 `*Repo`、`*code.Store`、`*grace.Cache`、`*revocation.Set` | `user` | 不应导出 | 待用户决定 | 使 sqlc 生成的 `*db.Queries` 成为公开签名的一部分，v1 后修改查询即可能构成破坏性变更；`internal/accountsvc` 依赖 `NewRepo` 与 `CheckKeyVersions`，收窄需另行设计装配入口。 |
+| `user/db`、`audit/db` 包 | — | 包结构 | 待用户决定 | sqlc 生成包可被宿主直接导入，生成命名也不完全符合 Go 缩写约定（如 `FlowIds`、`ProofUserIds`）；移入 `internal/` 受上一行牵连。 |
+| `httpapi/jsonbody`、`httpapi/reqid` 包 | `httpapi` | 包结构 | 待用户决定 | 两个 HTTP 面共用的内部工具包，`httpapi` 之外无引用，文档也未将其作为宿主接口；移入 `internal/` 属包路径级破坏性变更，不在符号级许可内。 |
+| `LegacyChineseRenderer` | `user/sender/smtp` | 命名不一致 | 待用户决定 | 实为 `smtp.New` 的默认渲染器，名称中的 Legacy 是开发期措辞；README 与兼容文档引用，改名属破坏性变更。 |
+| `Pair.AccessExpiresAt`、`Pair.RefreshExpiresAt` | `session/grace` | 命名不一致 | 待用户决定 | 时间字段约定为 `<verb>_time`（Go 名应为 `…ExpireTime`），JSON 标签是 Redis 内部短名不受影响；`user` 包引用。 |
+| 构造器与校验方法：`NewApple/NewGoogle/NewFacebook/NewOIDC` 不返回 error 而 `NewAlipay/NewQQ/NewWeibo/NewWeChatWithConfig` 返回；`AppleOptions` 平铺字段而 `AlipayOptions` 内嵌 `Config`；`VerifyApple/VerifyGoogle/VerifyWeChat/VerifyIDToken` 各自命名 | `user/idp` | 命名不一致 | 待用户决定 | 各提供方分批引入形成的不同风格；统一须改签名，影响自行装配提供方的宿主。 |
+| `SessionRetention` | `user` | 不应导出 | 接受 | 无包外引用，但它是 `CleanupSessions` 文档引用的固定保留期，宿主可据此说明会话记录可查期限。 |
+| `Alphabet`、`TSIDLength`、`MaxResources`、`HTTPStatus`、`StatusInternal` | `ids`、`audit/event`、`httpapi/apierror` | 不应导出 | 接受 | 无包外引用，但分别描述 ID 格式、事件校验上限与错误体状态映射，属宿主可依赖的契约。 |
+| `IdentityPolicy.RequiredKinds/ValidateCapabilities`、`NonceRegistry.RegisterScoped`、`OIDC.VerifyIDToken`、`Auth.RunMaintenanceOnce` | `user`、`user/idp`、根包 | 不应导出 | 接受 | 无包外调用，但所属类型面向宿主：策略经 `Service.IdentityPolicy` 返回，自定义提供方可复用 nonce 登记，`VerifyIDToken` 与 Apple/Google 同类方法对称，`RunMaintenanceOnce` 是宿主一次性作业入口。 |
+| `Down` | `migrations` | 不应导出 | 接受 | AGENTS.md 要求保留签名、无 I/O 返回 `ErrDestructiveOperation`。 |
+| 枚举值短前缀（`PurposeSignIn`、`UserActive`、`ClientWeb`）与全名零值（`…Unspecified`）；`ActorKind`、`Result`、`CodePurpose` 无 Parse 函数 | `enum` | 命名不一致 | 接受 | 规则本身一致且已被全仓与宿主广泛使用；缺少的 Parse 函数没有 API 边界需求，补充属新增导出。 |
+| `enum.ActorUser` 等与 `audit.ActorUser`（`event.ActorType`）同名不同类型；`observability.Purpose/Result` 与 `enum` 同名词 | `enum`、`audit`、`observability` | 命名不一致 | 接受 | 分属认证领域、通用审计和观测标签三套词汇，包名限定后无歧义。 |
+| 根 `Deps.SMSSender/EmailSender`、`Config.AccessTokenTTL` 与 `user.Deps.SMS/Email/AccessTTL`；`idp` 各 `Options.HTTP` 与 `aliyun.Config.HTTPClient` | 根包、`user`、`user/idp`、`user/sender/aliyun` | 命名不一致 | 接受 | 门面与领域层、各子包分别定义，已被宿主与文档使用；统一属破坏性变更且无语义收益。 |
+| `Claims.IssuedAt/ExpiresAt/JTI` | `tokens` | 命名不一致 | 接受 | 对应 JWT 注册 claim（iat/exp/jti），JWT 标准字段不按本地 `<verb>_time` 偏好改名。 |
+| `ProviderDeletionResult.PurgeTime`、`idp.Identity.ExpireTime` 以零值表示缺失，不同于 `AdminUser.PurgeTime *time.Time` | `user`、`user/idp` | 命名不一致 | 接受 | 注释已写明零值语义；改为指针属签名变更。 |
+| `StoreOptions = authentication.Options` | `audit` | 命名不一致 | 接受 | Store 与认证映射共用同一对 Source/Namespace，别名保证二者一致；文档与 `examples/audit` 使用。 |
+| `NewRunner`/`NewRunnerWithObserver`；`enduser` 的可选能力接口（`CurrentSessionService` 等） | `maintenance`、`httpapi/enduser` | 命名不一致 | 接受 | 用并列构造器和可选接口承载可选依赖，是 v1 后不破坏既有实现的扩展方式。 |
+| `Task` 无 `cleanup_purged_users` 分类 | `observability` | 命名不一致 | 接受 | 有意归入 `TaskOther`（根包观测测试已断言）；新增分类属新增导出与指标标签变更。 |
+| `observability`、`observability/otel`、`observability/prometheus`、`migrations` 部分及 `audit` 多处英文注释 | 多包 | 文档缺失 | 接受 | 内容完整，仅语言与其余包不同；统一语言不改变 API，可作后续纯文档维护。 |
+| 枚举值常量、`String/Valid` 方法与多数导出结构字段无逐项注释 | 多包 | 文档缺失 | 接受 | 由类型注释、行尾注释和字段名自解释，逐项补注收益低。 |

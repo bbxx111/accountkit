@@ -43,6 +43,7 @@ type AlipayApp = idp.AlipayApp
 // AlipaySubjectMode 决定实例内所有支付宝应用的固定身份识别方式。
 type AlipaySubjectMode = idp.AlipaySubjectMode
 
+// 支付宝身份识别模式：UNIONID（默认）或 OPENID，取值见 idp 包同名常量。
 const (
 	AlipaySubjectModeUnionID = idp.AlipaySubjectModeUnionID
 	AlipaySubjectModeOpenID  = idp.AlipaySubjectModeOpenID
@@ -51,11 +52,13 @@ const (
 // QQSubjectMode 决定实例内所有 QQ 应用的固定身份识别方式。
 type QQSubjectMode = idp.QQSubjectMode
 
+// QQ 身份识别模式：UNIONID（默认）或 OPENID，取值见 idp 包同名常量。
 const (
 	QQSubjectModeUnionID = idp.QQSubjectModeUnionID
 	QQSubjectModeOpenID  = idp.QQSubjectModeOpenID
 )
 
+// 微信身份识别模式：UNIONID（默认）或 OPENID，取值见 idp 包同名常量。
 const (
 	WeChatSubjectModeUnionID = idp.WeChatSubjectModeUnionID
 	WeChatSubjectModeOpenID  = idp.WeChatSubjectModeOpenID

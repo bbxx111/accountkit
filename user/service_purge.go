@@ -17,8 +17,8 @@ import (
 	"github.com/bbxx111/accountkit/user/db"
 )
 
-// PurgeBatchSize 是 purge 任务每次取批的账号数；批内每个账号独立事务。
-const PurgeBatchSize = 100
+// purgeBatchSize 是 purge 任务每次取批的账号数；批内每个账号独立事务。
+const purgeBatchSize = 100
 
 // Use the existing authentication enum as the single action registry. Business
 // events keep all data, even when their JSON contains an accountkit-shaped key.
@@ -38,7 +38,7 @@ var PurgeCoveredTables = map[string]string{
 }
 
 // PurgeDueUsers 匿名化所有 purge_time 已到的 PENDING_DELETION 账号（§3.5），返回成功 purge 的账号数。
-// 按批取（PurgeBatchSize）、逐账号独立事务：某账号失败则记 Error 日志、跳过，批结束后返回首个错误
+// 按批取（每批 100 个账号）、逐账号独立事务：某账号失败则记 Error 日志、跳过，批结束后返回首个错误
 // （维护运行器记日志，下一轮重试），且不再取下一批——避免在同一个坏账号上空转。
 // 一批全部成功且批满时继续取下一批。
 func (s *Service) PurgeDueUsers(ctx context.Context) (total int, resultErr error) {
@@ -50,7 +50,7 @@ func (s *Service) PurgeDueUsers(ctx context.Context) (total int, resultErr error
 			return total, err
 		}
 		now := s.now()
-		ids, err := s.d.Repo.Q().ListUsersDueForPurge(ctx, db.ListUsersDueForPurgeParams{Now: now, BatchSize: PurgeBatchSize})
+		ids, err := s.d.Repo.Q().ListUsersDueForPurge(ctx, db.ListUsersDueForPurgeParams{Now: now, BatchSize: purgeBatchSize})
 		if err != nil {
 			return total, fmt.Errorf("user: list users due for purge: %w", err)
 		}
@@ -74,7 +74,7 @@ func (s *Service) PurgeDueUsers(ctx context.Context) (total int, resultErr error
 		if firstErr != nil {
 			return total, firstErr
 		}
-		if len(ids) < PurgeBatchSize {
+		if len(ids) < purgeBatchSize {
 			return total, nil
 		}
 	}

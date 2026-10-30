@@ -2,7 +2,7 @@
 
 ## OAuth 端点接受表单请求体
 
-本节为 v0.7.2 之后的开发中变更（`accept-form-encoded-oauth-requests`），仅扩展 `POST /token` 与 `POST /revoke` 可接受的请求体编码，无数据库、公开 Go API、路由、响应字段变化。
+本节为 v0.7.2 之后的开发中变更（[accept-form-encoded-oauth-requests](../openspec/changes/archive/2026-10-30-accept-form-encoded-oauth-requests/verification.md)，已归档），仅扩展 `POST /token` 与 `POST /revoke` 可接受的请求体编码，无数据库、公开 Go API、路由、响应字段变化。
 
 - **新增能力**：`Content-Type` 媒体类型为 `application/x-www-form-urlencoded` 时按 RFC 6749 §3.2 / RFC 7009 §2.1 解析表单（忽略 `charset`，同一大小上限，只读请求体不读查询串，同名参数重复（无论是否识别）为 400 `invalid_request`，未识别参数忽略），标准 OAuth 客户端库可直接对接刷新与撤销；其他情况（含缺失 `Content-Type`）与之前完全一致，仍按严格 JSON 解析并拒绝未知字段。
 - **放宽**：刷新请求中的 `scope` 按 RFC 6749 §3.3 忽略，携带与否结果相同，签发 scope 始终按账号当前状态推导并在响应 `scope` 返回。此前 JSON 中出现 `scope` 作为未知字段返回 400 `invalid_request`，现在成功；回传会话 scope 的标准客户端库无需额外配置。不新增错误码。

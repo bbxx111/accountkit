@@ -15,7 +15,7 @@
 
 默认解析也使用User-Agent与浏览器可用的Sec-CH-UA、Sec-CH-UA-Full-Version-List、Sec-CH-UA-Platform、Sec-CH-UA-Platform-Version、Sec-CH-UA-Model、Sec-CH-UA-Mobile；代理不要丢弃这些实际可用输入。浏览器控制的头由浏览器决定是否发送，不要求前端脚本强行设置、不主动请求额外高熵提示；字段可以缺省。UA和全部Sec-CH-UA*值分别限2048字节，超限/畸形只忽略相应自动解析部分，保留合法显式字段。
 
-跨域预检由宿主/网关配置允许Origin、方法及这些实际使用的头，库不自动提供通用CORS策略。按客户端读取需要Expose-Headers包含WWW-Authenticate、Retry-After、X-Request-Id；保留Cache-Control: no-store和错误体。新GET所有响应都no-store；查询数据库依赖故障保持503，不能被代理改成401以触发用户退出。
+跨域预检由宿主/网关配置允许Origin、方法及这些实际使用的头，库不自动提供通用CORS策略。`/token`、`/revoke` 接受 `application/x-www-form-urlencoded` 后，这两个端点的表单 POST 属于 CORS 简单请求、不触发预检；端点不依赖 Cookie、凭据随请求体携带，不构成新的凭据暴露面，但允许的 Origin 与响应头暴露仍须由网关显式配置。按客户端读取需要Expose-Headers包含WWW-Authenticate、Retry-After、X-Request-Id；保留Cache-Control: no-store和错误体。新GET所有响应都no-store；查询数据库依赖故障保持503，不能被代理改成401以触发用户退出。
 
 优先级为合法显式值、Client Hints、UA。全部描述均自报，不能用于授权、限流身份或可信设备判断，也不代替可信ClientIP。默认不信任X-Forwarded-User-Agent等任意转发头；BFF由宿主Deps.ClientInfo明确适配原客户端信息，不能将BFF客户端库UA称为终端浏览器。原始UA、hints与完整描述不得进入日志/追踪/审计正文或指标标签；仅持久化有界结构化摘要，不保存原始UA、IP或位置。
 

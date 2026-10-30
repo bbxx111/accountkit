@@ -13,6 +13,8 @@
 
 `info.version` 标识已发布的 v0.7.2 接口契约，操作集合与 v0.7.1 相同，管理契约增加 `:reveal` 响应头声明。文件不包含 accountsvc 专属的 `/v1/introspect`、`/v1/purgedUsers`、探针或管理员登录流程，也不描述宿主自有业务接口；这些不能由库契约自动推导。
 
+`POST /token` 与 `POST /revoke` 的 `requestBody` 同时声明 `application/json` 与 `application/x-www-form-urlencoded`：`Content-Type` 媒体类型为表单时按 RFC 6749 §3.2 / RFC 7009 §2.1 解析（忽略 `charset`，只读请求体，同名参数重复（无论是否识别）为 `invalid_request`，未识别参数忽略），其他情况（含缺失 `Content-Type`）沿用严格 JSON 规则并拒绝未知字段；两种编码共用大小上限、校验、错误映射与响应。刷新携带非空 `scope` 返回 400 `invalid_scope`，`OAuthError.error` 枚举含该值；客户端须配置为刷新时不发送 `scope`。其余操作只接受严格 JSON。
+
 消费者使用自己的 Bearer access token。`x-allowed-scopes` 表示允许的 scope 列表，`x-recent-authentication` 表示现有近期认证要求；这些扩展与说明用于接入核对，代码生成器不会自动替宿主实施授权。未标 scope 的 `GET /users/me` 接受任何有效消费者 Bearer scope。
 
 管理面使用独立宿主身份系统，`x-required-role` 对应路由要求；`operator` 与 `super-admin` 的层级由宿主 verifier 决定。文件中的 AdminBearer 表示常见的外部 Bearer 接入，宿主若使用其他认证方式须修改安全定义。外部 verifier 的 401/403 响应体与 challenge 由宿主定义，契约没有伪造统一错误体。完全未配置管理面时返回 `503 ADMIN_NOT_CONFIGURED`。

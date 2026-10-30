@@ -1,7 +1,10 @@
 package enduser
 
 import (
+	"io"
+	"mime"
 	"net/http"
+	"net/url"
 
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 )
@@ -9,12 +12,52 @@ import (
 type tokenRequest struct {
 	GrantType    string `json:"grant_type"`
 	RefreshToken string `json:"refresh_token"`
+	// Scope 只用于拒绝：本库不支持刷新时收窄 scope（RFC 6749 §6），非空即 invalid_scope。
+	Scope string `json:"scope"`
 }
 
-// POST /token — RFC 6749 §6 刷新（JSON body；不做 form 编码，见 AGENTS.md "标准的适用范围"）。
+// decodeOAuthBody 解析两个 OAuth 端点（/token、/revoke）的请求体。Content-Type 媒体类型为
+// application/x-www-form-urlencoded（忽略 charset 等参数）时按 RFC 6749 §3.2 / RFC 7009 §2.1 解析表单，
+// fields 把表单参数名映射到目标字段：与 JSON 同一大小上限，只读请求体（URL 查询串既不参与取值也不参与
+// 校验，因此不用会合并并校验查询串的 Request.ParseForm），同名参数重复（无论是否识别）视为畸形，未识别
+// 参数按 RFC 6749 §3.2 忽略。其他情况（包括缺失或无法解析的 Content-Type）沿用共用的严格 JSON 解码，与
+// 新增表单支持之前完全一致：既有调用方不要求 Content-Type，JSON 路径继续拒绝未知字段。表单能力不扩散到
+// 其他端点。
+func (h *Handler) decodeOAuthBody(w http.ResponseWriter, r *http.Request, dst any, fields map[string]*string) error {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/x-www-form-urlencoded" {
+		return h.decodeJSON(w, r, dst)
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, h.d.MaxBodyBytes))
+	if err != nil {
+		h.d.Logger.Debug("malformed form body", "request_id", requestIDFrom(r.Context()), "err", err)
+		return errMalformedBody
+	}
+	values, err := url.ParseQuery(string(body))
+	if err != nil {
+		h.d.Logger.Debug("malformed form body", "request_id", requestIDFrom(r.Context()), "err", err)
+		return errMalformedBody
+	}
+	for name, vs := range values {
+		if len(vs) != 1 {
+			return errMalformedBody
+		}
+		if field, ok := fields[name]; ok {
+			*field = vs[0]
+		}
+	}
+	return nil
+}
+
+// POST /token — RFC 6749 §6 刷新。请求体接受 JSON 或表单编码（见 decodeOAuthBody），响应与错误体为
+// RFC 6749 §5.1 / §5.2 格式。
 func (h *Handler) token(w http.ResponseWriter, r *http.Request) {
 	var req tokenRequest
-	if err := h.decodeJSON(w, r, &req); err != nil {
+	if err := h.decodeOAuthBody(w, r, &req, map[string]*string{
+		"grant_type":    &req.GrantType,
+		"refresh_token": &req.RefreshToken,
+		"scope":         &req.Scope,
+	}); err != nil {
 		h.writeOAuthError(w, r, err)
 		return
 	}
@@ -24,6 +67,10 @@ func (h *Handler) token(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.GrantType != "refresh_token" {
 		apierror.WriteOAuth(w, http.StatusBadRequest, "unsupported_grant_type", "only grant_type=refresh_token is supported", nil)
+		return
+	}
+	if req.Scope != "" {
+		apierror.WriteOAuth(w, http.StatusBadRequest, "invalid_scope", "scope cannot be changed on refresh; omit it to keep the originally granted scope", nil)
 		return
 	}
 	meta, err := h.authMeta(r)
@@ -44,10 +91,13 @@ type revokeRequest struct {
 	TokenTypeHint string `json:"token_type_hint"`
 }
 
-// POST /revoke — RFC 7009。未知 token 也返回 200；hint 只作提示，服务端自行判定类型。
+// POST /revoke — RFC 7009。请求体接受 JSON 或表单编码；未知 token 也返回 200；hint 只作提示，服务端自行判定类型。
 func (h *Handler) revoke(w http.ResponseWriter, r *http.Request) {
 	var req revokeRequest
-	if err := h.decodeJSON(w, r, &req); err != nil {
+	if err := h.decodeOAuthBody(w, r, &req, map[string]*string{
+		"token":           &req.Token,
+		"token_type_hint": &req.TokenTypeHint,
+	}); err != nil {
 		h.writeOAuthError(w, r, err)
 		return
 	}

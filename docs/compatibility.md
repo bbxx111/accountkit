@@ -1,5 +1,14 @@
 # 功能与兼容对照
 
+## OAuth 端点接受表单请求体
+
+本节为 v0.7.2 之后的开发中变更（`accept-form-encoded-oauth-requests`），仅扩展 `POST /token` 与 `POST /revoke` 可接受的请求体编码，无数据库、公开 Go API、路由、响应字段变化。
+
+- **新增能力**：`Content-Type` 媒体类型为 `application/x-www-form-urlencoded` 时按 RFC 6749 §3.2 / RFC 7009 §2.1 解析表单（忽略 `charset`，同一大小上限，只读请求体不读查询串，同名参数重复（无论是否识别）为 400 `invalid_request`，未识别参数忽略），标准 OAuth 客户端库在刷新不发送 `scope` 的配置下可直接对接刷新与撤销；其他情况（含缺失 `Content-Type`）与之前完全一致，仍按严格 JSON 解析并拒绝未知字段。
+- **新错误码**：刷新请求携带非空 `scope` 返回 400 `invalid_scope`（本库不支持刷新时收窄 scope）。部分客户端库（如回传会话 scope 的刷新实现）默认携带该参数，接入前须配置为不发送；接受与原授权相等的 scope 需要领域层在轮换前暴露当前 scope，留作后续评估。JSON 请求体中的 `scope` 此前作为未知字段返回 `invalid_request`，现细化为 `invalid_scope`，状态码仍为 400；`OAuthError.error` 枚举新增该值。
+- **不变**：响应体、`no-store` 头、`grant_type` 判定、领域层刷新/撤销规则；其余 22 个 C 端操作与管理面只接受严格 JSON。表单 POST 属 CORS 简单请求，端点不依赖 Cookie，不构成新的凭据暴露面。
+- **升级与回退**：升级无需改动；回退后表单请求会得到 `invalid_request`，只使用 JSON 的客户端不受影响。
+
 ## 管理面身份明文响应禁止缓存
 
 本节随 v0.7.2 发布，仅为管理面 `GET /users/{user}/identities/{identity}:reveal` 增加响应头，无数据库、公开 Go API、路由、字段或错误码变化。

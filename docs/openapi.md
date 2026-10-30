@@ -92,6 +92,8 @@ filter 是 `term (AND term)*` 子集，不支持 OR、NOT 或括号。支持：
 
 审计只接受 `page_size` / `page_token`，按 `(occur_time, UUID)` 升序，限定认证动作及账号关联范围。审计使用独立 v2 游标，绑定 source、资源与认证动作集合；旧或跨范围游标返回 `400 INVALID_PAGE_TOKEN`，客户端从第一页重新开始，不复用用户列表游标。
 
+`GET /users/{user}/identities/{identity}:reveal` 由处理器在入口设置 `Cache-Control: no-store`，其写出的全部响应（200 明文与 400/401/404/500 错误）都带该头；宿主 verifier、角色中间件和未配置管理面的拒绝发生在处理器之前，不含明文，也不带该头。其他管理响应不含明文手机号/邮箱、不加该头，宿主仍须保证网关不缓存管理面响应并保护访问日志。
+
 ## 验证与维护
 
 JSON 文档直接维护，修改路由、DTO、scope、状态码或错误时同步更新，新增或改名 `reason` 时同步该操作的 `x-error-reasons` 与 `x-error-reason-catalog`；不从本文反向生成服务器实现。无依赖的源码对应检查：

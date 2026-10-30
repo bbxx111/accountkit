@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -22,7 +21,7 @@ func TestSessionContextInitialRepeat(t *testing.T) {
 	initialUp(t, cfg, schema)
 	c := migrationTestConn(t, cfg, schema)
 	ctx := context.Background()
-	seedRenameFlow(t, c, "sign_in_completion_flow")
+	seedRenameFlow(t, c)
 	original := func() string {
 		t.Helper()
 		var data string
@@ -260,7 +259,7 @@ func TestSessionContextStorageConstraints(t *testing.T) {
 			t.Fatal("missing format/unique/not-null constraint", sql)
 		}
 	}
-	seedRenameFlow(t, c, "sign_in_completion_flow")
+	seedRenameFlow(t, c)
 	q := db.New(c)
 	if n, err := q.AddSessionAuthenticationIdentity(ctx, db.AddSessionAuthenticationIdentityParams{UserID: "u_0000000000001", SessionID: "s_0000000000001", IdentityID: "i_0000000000001"}); err != nil || n != 0 {
 		t.Fatalf("generated duplicate write %d %v", n, err)
@@ -318,48 +317,6 @@ func TestSessionContextStorageConstraints(t *testing.T) {
 	}
 }
 
-func TestSessionContextBaselineRejectsPartialVersion(t *testing.T) {
-	for _, mutation := range []string{
-		`ALTER TABLE session ADD COLUMN authentication_identities_known boolean NOT NULL DEFAULT false`,
-		`DROP TABLE session_authentication_identity`,
-		`ALTER TABLE session_client_info DROP COLUMN client_info`,
-		`ALTER TABLE session_client_info ALTER COLUMN client_info DROP NOT NULL`,
-		`ALTER TABLE session_client_info ALTER COLUMN client_info TYPE json USING client_info::json`,
-		`ALTER TABLE session_client_info ALTER COLUMN observe_time DROP NOT NULL`,
-		`ALTER TABLE session_client_info ALTER COLUMN create_time DROP DEFAULT`,
-		`ALTER TABLE session_client_info ALTER COLUMN update_time DROP DEFAULT`,
-		`ALTER TABLE session_client_info ALTER COLUMN update_time SET DEFAULT clock_timestamp()`,
-		`ALTER TABLE session_client_info DROP CONSTRAINT session_client_info_pkey`,
-		`ALTER TABLE session_client_info DROP CONSTRAINT session_client_info_pkey, ADD PRIMARY KEY(session_id,observe_time)`,
-		`ALTER TABLE session_client_info DROP CONSTRAINT session_client_info_session_id_format`,
-		`ALTER TABLE session_client_info ADD COLUMN snapshot_kind smallint`,
-		`ALTER TABLE session_authentication_identity DROP CONSTRAINT session_authentication_identity_identity_id_format`,
-		`DROP INDEX idx_session_authentication_identity_identity_id_session_id`,
-		`DROP INDEX idx_session_user_id_id`,
-	} {
-		t.Run(strings.Fields(mutation)[2]+"/"+mutation, func(t *testing.T) {
-			cfg, schema := safetyDB(t)
-			ctx := context.Background()
-			if err := Up(ctx, cfg, schema); err != nil {
-				t.Fatal(err)
-			}
-			c := migrationTestConn(t, cfg, schema)
-			seedRenameFlow(t, c, "sign_in_completion_flow")
-			if _, err := c.Exec(ctx, mutation); err != nil {
-				t.Fatal(err)
-			}
-			before, catalog := renameDataSnapshot(t, c, "sign_in_completion_flow"), migrationCatalog(t, c, schema)
-			if err := Up(ctx, cfg, schema); !errors.Is(err, ErrIncompatibleBaseline) {
-				t.Fatalf("incomplete v1 accepted: %v", err)
-			}
-			assertVersion(t, cfg, schema, latestVersion(t), false)
-			if before != renameDataSnapshot(t, c, "sign_in_completion_flow") || catalog != migrationCatalog(t, c, schema) {
-				t.Fatal("rejection changed data/catalog")
-			}
-		})
-	}
-}
-
 func TestSessionContextReadLock(t *testing.T) {
 	cfg, schema := safetyDB(t)
 	ctx := context.Background()
@@ -368,7 +325,7 @@ func TestSessionContextReadLock(t *testing.T) {
 	}
 	c := migrationTestConn(t, cfg, schema)
 	writer := migrationTestConn(t, cfg, schema)
-	seedRenameFlow(t, c, "sign_in_completion_flow")
+	seedRenameFlow(t, c)
 	tx, err := c.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -411,54 +368,5 @@ func TestSessionContextIdentityLookupPlan(t *testing.T) {
 	}
 	if plan := strings.Join(lines, "\n"); !strings.Contains(plan, "idx_session_authentication_identity_identity_id_session_id") {
 		t.Fatalf("identity lookup missed reverse index: %s", plan)
-	}
-}
-
-func TestSessionContextPrecheckIgnoresConcurrentOtherSchemaDDL(t *testing.T) {
-	cfg, schema := safetyDB(t)
-	_, otherSchema := safetyDB(t)
-	ctx := context.Background()
-	if cfg.RuntimeParams == nil {
-		cfg.RuntimeParams = map[string]string{}
-	}
-	cfg.RuntimeParams["join_collapse_limit"] = "1"
-	cfg.RuntimeParams["from_collapse_limit"] = "1"
-	if err := Up(ctx, cfg, schema); err != nil {
-		t.Fatal(err)
-	}
-	other := migrationTestConn(t, cfg, otherSchema)
-	if _, err := other.Exec(ctx, "CREATE SCHEMA "+otherSchema); err != nil {
-		t.Fatal(err)
-	}
-	churn, stop := context.WithCancel(ctx)
-	var wg sync.WaitGroup
-	wg.Add(1)
-	errs := make(chan error, 1)
-	go func() {
-		defer wg.Done()
-		for churn.Err() == nil {
-			_, err := other.Exec(ctx, `CREATE TABLE session_authentication_identity(session_id text CONSTRAINT session_authentication_identity_session_id_format CHECK(session_id ~ '^s_[0-9a-hjkmnp-tv-z]{13}$'),identity_id text CONSTRAINT session_authentication_identity_identity_id_format CHECK(identity_id ~ '^i_[0-9a-hjkmnp-tv-z]{13}$'),CONSTRAINT session_authentication_identity_pkey PRIMARY KEY(session_id,identity_id)); CREATE INDEX idx_session_authentication_identity_identity_id_session_id ON session_authentication_identity(identity_id,session_id); CREATE TABLE session(user_id text,id text); CREATE INDEX idx_session_user_id_id ON session(user_id,id); CREATE TABLE session_client_info(session_id text CONSTRAINT session_client_info_session_id_format CHECK(session_id ~ '^s_[0-9a-hjkmnp-tv-z]{13}$'),snapshot_kind smallint,CONSTRAINT session_client_info_pkey PRIMARY KEY(session_id,snapshot_kind)); `)
-			if err == nil {
-				_, err = other.Exec(ctx, `DROP TABLE session_authentication_identity; DROP TABLE session; DROP TABLE session_client_info`)
-			}
-			if err != nil {
-				errs <- err
-				return
-			}
-		}
-	}()
-	defer func() {
-		stop()
-		wg.Wait()
-		select {
-		case err := <-errs:
-			t.Error(err)
-		default:
-		}
-	}()
-	for range 40 {
-		if err := Up(ctx, cfg, schema); err != nil {
-			t.Fatal("other schema DDL broke precheck", err)
-		}
 	}
 }

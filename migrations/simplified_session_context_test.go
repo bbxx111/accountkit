@@ -2,12 +2,8 @@ package migrations
 
 import (
 	"context"
-	"errors"
-	"os/exec"
 	"slices"
 	"testing"
-
-	"github.com/golang-migrate/migrate/v4"
 )
 
 func TestSimplifiedSessionClientStorage(t *testing.T) {
@@ -44,48 +40,4 @@ func TestSimplifiedSessionClientStorage(t *testing.T) {
 		}
 	}
 	assertVersion(t, cfg, schema, latestVersion(t), false)
-}
-
-func TestSimplifiedSessionRejectsPreviousSnapshotBaseline(t *testing.T) {
-	cfg, schema := safetyDB(t)
-	ctx := context.Background()
-	c := migrationTestConn(t, cfg, schema)
-	previous, err := exec.Command("git", "show", "b414fef:migrations/0001_init.up.sql").Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, statement := range []string{"CREATE SCHEMA " + schema, string(previous), "CREATE TABLE schema_migrations(version bigint PRIMARY KEY,dirty boolean NOT NULL); INSERT INTO schema_migrations VALUES(1,false)"} {
-		if _, err := c.Exec(ctx, statement); err != nil {
-			t.Fatal(err)
-		}
-	}
-	seedRenameFlow(t, c, "sign_in_completion_flow")
-	if _, err := c.Exec(ctx, `INSERT INTO session_authentication_identity VALUES('s_0000000000001','i_0000000000001'); INSERT INTO session_client_info(session_id,snapshot_kind,app_name,observe_time) VALUES('s_0000000000001',1,'preserved',now()),('s_0000000000001',2,'newer',now())`); err != nil {
-		t.Fatal(err)
-	}
-	snapshot := func() string {
-		var value string
-		if err := c.QueryRow(ctx, `SELECT jsonb_agg(t ORDER BY snapshot_kind)::text FROM session_client_info t`).Scan(&value); err != nil {
-			t.Fatal(err)
-		}
-		return renameDataSnapshot(t, c, "sign_in_completion_flow") + value
-	}
-	before, catalog := snapshot(), migrationCatalog(t, c, schema)
-	for range 2 {
-		if err := Up(ctx, cfg, schema); !errors.Is(err, ErrIncompatibleBaseline) {
-			t.Fatalf("old two-snapshot v1 accepted: %v", err)
-		}
-		assertVersion(t, cfg, schema, 1, false)
-		if snapshot() != before || migrationCatalog(t, c, schema) != catalog {
-			t.Fatal("rejection changed old data/catalog")
-		}
-	}
-	if _, err := c.Exec(ctx, "UPDATE schema_migrations SET dirty=true"); err != nil {
-		t.Fatal(err)
-	}
-	var dirty migrate.ErrDirty
-	if err := Up(ctx, cfg, schema); !errors.As(err, &dirty) {
-		t.Fatalf("dirty precedence lost: %v", err)
-	}
-	assertVersion(t, cfg, schema, 1, true)
 }

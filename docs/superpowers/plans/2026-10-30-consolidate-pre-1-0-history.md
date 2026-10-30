@@ -1355,7 +1355,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 - [ ] **Step 2: 其余文档**
 
-- `docs/features.md`：第 1-5 行改为“更新日期：2026-10-30。Go 集成与 HTTP 文档面向 v1.0.0（候选）”；第 42-43、60 行删除 v0.7.x 引用；候选表“完整 HTTP 客户端调用示例”行改为“已提供平台中立版本，见 [HTTP 调用流程](http-client-flows.md)；平台特定示例待目标客户端”。
+- `docs/features.md`：第 1-5 行改为“更新日期：2026-10-30。Go 集成与 HTTP 文档面向 v1.0.0（候选）”；第 42-43、60 行删除 v0.7.x 引用；候选表“完整 HTTP 客户端调用示例”行改为“已提供平台中立版本，见 [HTTP 调用流程](../../http-client-flows.md)；平台特定示例待目标客户端”。
 - `docs/openapi.md`：第 3、14 行改为描述 v1.0.0（候选）契约，删除版本链；第 48、72 行的 compatibility 锚点改为本文内节或删除；第 114、116 行历史验收引用删除。
 - `docs/go-integration.md`：第 5 行版本链改为“本文对应 v1.0.0（候选）”；第 130、205 行历史引用删除。
 - `docs/gateway-integration.md`：第 7、40 行版本引用删除；第 38、62 行 compatibility 锚点改为 README 或 accountsvc 对应节。

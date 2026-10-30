@@ -357,18 +357,35 @@ func TestHTTPFlows(t *testing.T) {
 		if list.status != 200 || len(sessions) != 3 {
 			t.Fatalf("sessions %d %v", list.status, list.body)
 		}
-		var otherName string
+		// 按 device_id 找到 device-b 的会话：它不是当前会话，单独撤销它。
+		var deletedName string
 		for _, s := range sessions {
 			m := s.(map[string]any)
-			if m["is_current"] != true {
-				otherName = str(m, "name")
-				break
+			if str(m, "device_id") == "device-b" {
+				if m["is_current"] == true {
+					t.Fatalf("device-b session must not be current: %v", m)
+				}
+				deletedName = str(m, "name")
 			}
 		}
+		if deletedName == "" {
+			t.Fatalf("device-b session not listed: %v", list.body)
+		}
 		// 单个撤销：按 name 末段 s_ ID 调用。
-		id := lastSegment(t, otherName, "sessions")
+		id := lastSegment(t, deletedName, "sessions")
 		if r := e.call("DELETE", "/users/me/sessions/"+id, str(a, "access_token"), "", nil); r.status != 204 {
 			t.Fatalf("delete session %d %v", r.status, r.body)
+		}
+		// 单个撤销只影响目标会话：device-b 立即 401，device-c 与当前会话不受影响。
+		if r := e.call("GET", "/users/me", str(b, "access_token"), "", nil); r.status != 401 || r.header.Get("WWW-Authenticate") == "" {
+			t.Fatalf("deleted session must be signed out: %d", r.status)
+		}
+		if r := e.call("GET", "/users/me", str(c, "access_token"), "", nil); r.status != 200 {
+			t.Fatalf("other session must survive single deletion: %d %v", r.status, r.body)
+		}
+		after := e.call("GET", "/users/me/sessions", str(a, "access_token"), "", nil)
+		if remaining, _ := after.body["sessions"].([]any); after.status != 200 || len(remaining) != 2 {
+			t.Fatalf("sessions after single deletion %d %v", after.status, after.body)
 		}
 		if r := e.call("POST", "/users/me/sessions:revokeOthers", str(a, "access_token"), "", nil); r.status != 200 {
 			t.Fatalf("revokeOthers %d %v", r.status, r.body)

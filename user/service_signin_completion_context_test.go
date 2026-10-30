@@ -12,19 +12,17 @@ import (
 	"github.com/bbxx111/accountkit/user"
 )
 
-// A persisted ticket must survive a host switching from the deprecated context
-// field to the new one. The legacy JSON keys/order and AAD are storage protocol.
-func TestSignInCompletionContextCompatibility(t *testing.T) {
-	for _, tc := range []struct{ name, legacy, current string }{
-		{"new_only", "", "stable-instance"},
-		{"legacy_fallback", "stable-instance", ""},
-		{"new_precedence", "different-legacy-instance", "stable-instance"},
+// A persisted ticket must stay decryptable by a service with the same context.
+// The JSON keys/order and AAD are storage protocol.
+func TestSignInCompletionContextStable(t *testing.T) {
+	for _, tc := range []struct{ name, current string }{
+		{"new_only", "stable-instance"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFixture(t)
 			ctx := context.Background()
 			d := f.deps
-			d.IdentityFlowContext = "stable-instance"
+			d.SignInCompletionFlowContext = "stable-instance"
 			var err error
 			f.svc, err = user.NewService(d)
 			if err != nil {
@@ -51,7 +49,7 @@ func TestSignInCompletionContextCompatibility(t *testing.T) {
 			if _, err := f.ciph.DecryptWithAAD(ciphertext, keyVersion, aad); err != nil {
 				t.Fatalf("legacy context serialization or AAD changed: %v", err)
 			}
-			d.IdentityFlowContext, d.SignInCompletionFlowContext = tc.legacy, tc.current
+			d.SignInCompletionFlowContext = tc.current
 			current, err := user.NewService(d)
 			if err != nil {
 				t.Fatal(err)

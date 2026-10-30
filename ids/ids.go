@@ -22,8 +22,6 @@ const (
 	Session              Kind = "s"
 	AuditEvent           Kind = "e"
 	SignInCompletionFlow Kind = "f"
-	// Deprecated: use SignInCompletionFlow.
-	IdentityFlow Kind = SignInCompletionFlow
 )
 
 // Alphabet 是小写 Crockford base32 字符集，剔除 i/l/o/u。

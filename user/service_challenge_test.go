@@ -27,7 +27,7 @@ func (d challengeDelivery) SendEmail(ctx context.Context, target string, m sende
 
 func TestCodeChallengeDeliveryCleanup(t *testing.T) {
 	t.Run("failed delivery invalidates only its challenge and retains quota", func(t *testing.T) {
-		d := &legacyDelivery{err: sender.ErrUnavailable}
+		d := &codeDelivery{err: sender.ErrUnavailable}
 		s, mr, mem := deliveryService(t, d, d)
 		c, err := s.SendSignInCode(context.Background(), enum.IdentityEmail, "person@example.org", Meta{IP: "203.0.113.4"})
 		if !errors.Is(err, ErrUnavailable) || c.CodeID != "" || !c.ExpireTime.IsZero() {
@@ -89,7 +89,7 @@ func TestCodeChallengeDeliveryCleanup(t *testing.T) {
 		var logs bytes.Buffer
 		secretID := "0123456789abcdef0123456789abcdef"
 		providerErr := fmt.Errorf("provider response person@example.org 123456 %s", secretID)
-		d := &legacyDelivery{err: providerErr}
+		d := &codeDelivery{err: providerErr}
 		s, _, mem := deliveryService(t, d, d)
 		s.d.Logger = slog.New(slog.NewTextHandler(&logs, nil))
 		c, err := s.SendSignInCode(context.Background(), enum.IdentityEmail, "person@example.org", Meta{IP: "203.0.113.4"})
@@ -104,7 +104,7 @@ func TestCodeChallengeDeliveryCleanup(t *testing.T) {
 		}
 	})
 	t.Run("redis unavailable returns dependency error", func(t *testing.T) {
-		d := &legacyDelivery{}
+		d := &codeDelivery{}
 		s, mr, _ := deliveryService(t, d, d)
 		// 保留监听端口并拒绝所有命令。Close 释放的端口可能被并行夹具复用，
 		// 使尚未建连的客户端误连到另一台健康 Redis。

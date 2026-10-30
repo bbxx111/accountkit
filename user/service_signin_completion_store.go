@@ -75,9 +75,6 @@ func signInCompletionFlowConfiguration(d Deps, policy *IdentityPolicy, providers
 	// Bind the logical instance, not the physical database name: pg_restore into
 	// an independent database must preserve the original instance's flow context.
 	extra := d.SignInCompletionFlowContext
-	if extra == "" {
-		extra = d.IdentityFlowContext
-	}
 	// The JSON field names and order are persisted encryption context, including Extra.
 	context := fingerprintJSON(struct{ SearchPath, Prefix, JWT, Extra string }{
 		searchPath, d.Codes.InstancePrefix(), d.Signer.ContextFingerprint(), extra,
@@ -210,10 +207,4 @@ func (s *Service) CleanupSignInCompletionFlows(ctx context.Context) (total int64
 		defer s.observeMaintenance(ctx, ob.TaskCleanupSignInCompletionFlows, func() int64 { return total }, &resultErr, time.Now())
 	}
 	return s.d.Repo.Q().DeleteExpiredSignInCompletionFlows(ctx, db.DeleteExpiredSignInCompletionFlowsParams{Now: s.now(), BatchSize: 1000})
-}
-
-// CleanupIdentityFlows removes an expired batch of sign-in completion flows.
-// Deprecated: use CleanupSignInCompletionFlows.
-func (s *Service) CleanupIdentityFlows(ctx context.Context) (int64, error) {
-	return s.CleanupSignInCompletionFlows(ctx)
 }

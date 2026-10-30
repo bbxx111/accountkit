@@ -203,9 +203,6 @@ func alipayPendingPayload(t *testing.T, f *fixture, mutate func(map[string]any))
 	searchPath, _, _ := strings.Cut(f.pool.Config().ConnConfig.RuntimeParams["search_path"], ",")
 	searchPath = strings.Trim(strings.TrimSpace(searchPath), `"`)
 	extra := f.deps.SignInCompletionFlowContext
-	if extra == "" {
-		extra = f.deps.IdentityFlowContext
-	}
 	wire, _ := json.Marshal(struct{ SearchPath, Prefix, JWT, Extra string }{searchPath, f.deps.Codes.InstancePrefix(), f.deps.Signer.ContextFingerprint(), extra})
 	hash := sha256.Sum256(wire)
 	aad, _ := json.Marshal([]string{"accountkit-sign-in-completion-v1", fmt.Sprintf("%x", hash), id})

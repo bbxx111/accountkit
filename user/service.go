@@ -47,8 +47,6 @@ type Deps struct {
 	ProfileAttributes *ProfileAttributesConfig
 	// SignInCompletionFlowContext 可补充宿主稳定实例标识；内置数据库/Redis/JWT域仍自动绑定。
 	SignInCompletionFlowContext string
-	// Deprecated: use SignInCompletionFlowContext. Used only when that field is empty.
-	IdentityFlowContext string
 	// ProviderConfiguration 是宿主附加的稳定配置标识，并入登录补全配置指纹；不含秘密。
 	// 已登记提供方的 PolicyFingerprint 会自动并入。
 	ProviderConfiguration string

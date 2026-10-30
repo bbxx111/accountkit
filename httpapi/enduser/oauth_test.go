@@ -191,23 +191,30 @@ func TestTokenEndpointScope(t *testing.T) {
 		return user.TokenResult{AccessToken: "at2", RefreshToken: "rt2", ExpiresIn: 900, RefreshExpiresIn: 2592000, Scope: "user", UserID: "u_1"}, nil
 	}}
 	h := newHandler(t, f)
+	// RFC 6749 §3.3：服务端可忽略请求 scope，签发 scope 以响应为准。携带任何 scope（已知、未知、多值、空、
+	// 任一编码）都与不传一致：200、领域层刷新一次、响应 scope 为推导值。
 	for name, c := range map[string]call{
-		"form":  {method: "POST", path: "/token", body: "grant_type=refresh_token&refresh_token=rt1&scope=user", headers: map[string]string{"Content-Type": formType}},
-		"json":  {method: "POST", path: "/token", body: `{"grant_type":"refresh_token","refresh_token":"rt1","scope":"user"}`},
-		"empty": {method: "POST", path: "/token", body: "grant_type=refresh_token&refresh_token=rt1&scope=", headers: map[string]string{"Content-Type": formType}},
+		"form same":    {method: "POST", path: "/token", body: "grant_type=refresh_token&refresh_token=rt1&scope=user", headers: map[string]string{"Content-Type": formType}},
+		"form other":   {method: "POST", path: "/token", body: "grant_type=refresh_token&refresh_token=rt1&scope=user%3Abind", headers: map[string]string{"Content-Type": formType}},
+		"form unknown": {method: "POST", path: "/token", body: "grant_type=refresh_token&refresh_token=rt1&scope=admin+openid", headers: map[string]string{"Content-Type": formType}},
+		"form empty":   {method: "POST", path: "/token", body: "grant_type=refresh_token&refresh_token=rt1&scope=", headers: map[string]string{"Content-Type": formType}},
+		"json same":    {method: "POST", path: "/token", body: `{"grant_type":"refresh_token","refresh_token":"rt1","scope":"user"}`},
+		"json unknown": {method: "POST", path: "/token", body: `{"grant_type":"refresh_token","refresh_token":"rt1","scope":"admin openid"}`},
+		"json empty":   {method: "POST", path: "/token", body: `{"grant_type":"refresh_token","refresh_token":"rt1","scope":""}`},
 	} {
 		calls = 0
 		rec := do(t, h, c)
-		if name == "empty" {
-			// 空 scope 等同未提供（RFC 6749 §6：省略视为原授权范围）。
-			if rec.Code != 200 || calls != 1 {
-				t.Fatalf("%s: got %d calls=%d body=%s", name, rec.Code, calls, rec.Body.String())
-			}
-			continue
+		var tok map[string]any
+		decode(t, rec, &tok)
+		if rec.Code != 200 || calls != 1 || tok["scope"] != "user" || tok["access_token"] != "at2" {
+			t.Fatalf("%s: got %d calls=%d body=%s", name, rec.Code, calls, rec.Body.String())
 		}
-		if got := oauthErr(t, rec); rec.Code != 400 || got != "invalid_scope" || calls != 0 {
-			t.Fatalf("%s: got %d %q calls=%d body=%s", name, rec.Code, got, calls, rec.Body.String())
-		}
+	}
+	// 重复的 scope 参数仍按 §3.2 "参数不得重复" 拒绝，与其他参数一致。
+	calls = 0
+	rec := do(t, h, call{method: "POST", path: "/token", body: "grant_type=refresh_token&refresh_token=rt1&scope=user&scope=user", headers: map[string]string{"Content-Type": formType}})
+	if got := oauthErr(t, rec); rec.Code != 400 || got != "invalid_request" || calls != 0 {
+		t.Fatalf("duplicate scope: got %d %q calls=%d", rec.Code, got, calls)
 	}
 }
 

@@ -12,7 +12,8 @@ import (
 type tokenRequest struct {
 	GrantType    string `json:"grant_type"`
 	RefreshToken string `json:"refresh_token"`
-	// Scope 只用于拒绝：本库不支持刷新时收窄 scope（RFC 6749 §6），非空即 invalid_scope。
+	// Scope 按 RFC 6749 §3.3 被忽略：签发 scope 始终由账号当前状态推导并在响应 scope 字段返回，
+	// 携带与否结果相同。保留字段只是为了让严格 JSON 解码不把它当作未知字段拒绝。
 	Scope string `json:"scope"`
 }
 
@@ -53,10 +54,10 @@ func (h *Handler) decodeOAuthBody(w http.ResponseWriter, r *http.Request, dst an
 // RFC 6749 §5.1 / §5.2 格式。
 func (h *Handler) token(w http.ResponseWriter, r *http.Request) {
 	var req tokenRequest
+	// 表单映射不含 scope：未识别参数按 §3.2 忽略，效果与 JSON 路径一致。
 	if err := h.decodeOAuthBody(w, r, &req, map[string]*string{
 		"grant_type":    &req.GrantType,
 		"refresh_token": &req.RefreshToken,
-		"scope":         &req.Scope,
 	}); err != nil {
 		h.writeOAuthError(w, r, err)
 		return
@@ -67,10 +68,6 @@ func (h *Handler) token(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.GrantType != "refresh_token" {
 		apierror.WriteOAuth(w, http.StatusBadRequest, "unsupported_grant_type", "only grant_type=refresh_token is supported", nil)
-		return
-	}
-	if req.Scope != "" {
-		apierror.WriteOAuth(w, http.StatusBadRequest, "invalid_scope", "scope cannot be changed on refresh; omit it to keep the originally granted scope", nil)
 		return
 	}
 	meta, err := h.authMeta(r)

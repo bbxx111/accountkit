@@ -10,7 +10,7 @@
 - 对 `scope` 做显式、安全的处理。
 
 **Non-Goals:**
-- 不支持刷新时收窄 scope。
+- 不支持按请求 scope 签发（收窄或扩大）；请求 scope 被忽略。
 - 不支持客户端认证（`client_id`/`client_secret`、HTTP Basic）；本库面向公共客户端，相关参数忽略。
 - 不支持 `GET` 或查询串传参。
 - 不为其他 C 端或管理面端点开放表单。
@@ -21,9 +21,9 @@
 1. **按媒体类型分派，而不是嗅探内容；非表单一律沿用 JSON 路径**。用 `mime.ParseMediaType` 取媒体类型并忽略参数（`charset`）。只有 `application/x-www-form-urlencoded` 走表单；其他情况（包括缺失或无法解析的 `Content-Type`、`text/plain`）走现有 JSON 解码。原设计把"缺失或其他媒体类型"判为 400，实施时发现现有 JSON 路径从不检查 `Content-Type`（仓库内全部 HTTP 测试都不发该头），那样会破坏既有调用方，因此改为本条；这是对 proposal 初稿的明确偏离，规格场景已同步。表单编码的请求体在 JSON 路径下自然解析失败，仍得到 400 `invalid_request`，不引入 415 这种第二种错误形状。
 2. **表单只解析请求体，不用 `Request.ParseForm`**。`ParseForm` 会同时解析并校验 URL 查询串（查询串畸形时即使请求体合法也返回错误），与"忽略查询串"的契约冲突；因此按 accountsvc 内省接口的既有做法，用 `http.MaxBytesReader(w, r.Body, h.d.MaxBodyBytes)` 读取请求体后 `url.ParseQuery`，查询串既不参与取值也不参与校验。超长与非法编码（含 `;` 分隔）归为 `invalid_request`。
 3. **重复参数拒绝，未识别参数忽略**。RFC 6749 §3.2 规定参数不得重复出现，因此同名参数重复（无论是否识别）拒绝；`encoding/json` 不拒绝重复键，这里不以 JSON 侧作类比。未识别参数按 RFC 6749 §3.2 "MUST ignore" 处理，这样标准 OAuth 客户端库附带的 `client_id` 不会导致失败。JSON 路径保持 `DisallowUnknownFields`，这是两条路径唯一的刻意差异，README 与 OpenAPI 明确写出。
-4. **`scope` 显式拒绝（两种编码一致）**。RFC 6749 §6 允许刷新时请求不宽于原授权的 scope；本库 scope 由账号状态与身份推导，不支持按请求收窄。若忽略该参数，会在客户端请求更窄 scope 时签发更宽令牌，违反规范；因此 `tokenRequest` 增加 `scope` 字段，非空即返回 400 `invalid_scope`。JSON 请求体中的 `scope` 因此从「未知字段 → `invalid_request`」变为 `invalid_scope`，属于错误码细化，仍是 400。审查指出部分标准客户端库默认在刷新时回传原 scope，严格拒绝会让它们每次刷新都失败；考虑过的替代方案是接受与原授权相等的 scope，但当前 scope 由刷新事务按账号状态推导，处理器在轮换前拿不到它，轮换后再拒绝会留下客户端未收到的新 pair，因此本次不采用，改为在文档中要求客户端配置为不发送 `scope`，等值 scope 的支持留作后续评估。
+4. **请求 `scope` 按 RFC 6749 §3.3 忽略（两种编码一致）**。本库签发 scope 由刷新事务按账号状态与身份完整性推导，从不依据请求；§3.3 允许服务端完全忽略请求 scope，只要签发 scope 与请求不同时在响应返回 `scope`，而本库响应始终带 `scope`。因此 `tokenRequest` 保留 `scope` 字段仅为让严格 JSON 不把它当未知字段，表单映射不含 `scope`（未识别参数本就忽略），携带与否结果相同、不报错。JSON 中的 `scope` 此前作为未知字段返回 `invalid_request`，现与不传一致，属放宽。考虑过的替代：一律拒绝（首版实现，审查指出回传原 scope 的标准客户端库会每次刷新失败）、只接受等于本次推导值（账号状态变化后客户端卡死）、只接受等于原授权（需在会话存储 scope，即首个 0002 迁移），均不如忽略；等值校验若将来需要，可在处理器层增量加入而不改接口。
 5. **解析与业务分离**。新增一个只负责"把请求体填进 `tokenRequest` / `revokeRequest`"的解码函数，两个处理器在解码后的逻辑零改动；`writeOAuthError` 对 `errMalformedBody` 的文案改为同时描述两种编码。
-6. **契约表达**。OpenAPI 在两个操作的 `requestBody.content` 增加 `application/x-www-form-urlencoded`，schema 复用 `RefreshRequest` / `RevokeRequest`（表单字段名与 JSON 相同）；`RefreshRequest` 增加可选 `scope` 并注明会被拒绝；`OAuthError.error` 枚举加入 `invalid_scope`。
+6. **契约表达**。OpenAPI 在两个操作的 `requestBody.content` 增加 `application/x-www-form-urlencoded`，schema 复用 `RefreshRequest` / `RevokeRequest`（表单字段名与 JSON 相同）；`RefreshRequest` 增加可选 `scope` 并注明被忽略；`OAuthError.error` 枚举不变。
 
 ## Risks / Trade-offs
 

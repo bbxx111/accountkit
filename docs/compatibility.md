@@ -113,7 +113,7 @@ Schema 原始输入限 64 KiB、32 层；展开后的主树属性声明限 128�
 |---|---|---|
 | 独立消费、完整功能 | 根门面、全部子包、sqlc.yaml | `GOWORK=off` 独立构建、[examples/embedded](../examples/embedded/main.go) 宿主编译 |
 | 手机/邮箱验证码、限流 | user/code、user/service_signin.go、httpapi/enduser | user/code/store_test.go、user/service_test.go、httpapi/enduser/signin_test.go、TestConsumerEndToEndAgainstRealDB |
-| 验证码 HMAC 轮换 | user/code/store.go、user/code/scripts.go，库及 accountsvc 共用 | 多版本状态/并发测试、TestCodeKeyRotationIntegration、TestCodeRotationRedisIntegration、TestServiceIntegrationCodeKeyRotation；见[轮换验收记录](../openspec/changes/archive/2026-10-04-harden-code-key-rotation/verification.md) |
+| 验证码 HMAC 轮换 | user/code/store.go、user/code/challenge_scripts.go，库及 accountsvc 共用 | 多版本状态/并发测试、TestCodeKeyRotationIntegration、TestCodeRotationRedisIntegration、TestServiceIntegrationCodeKeyRotation；见[轮换验收记录](../openspec/changes/archive/2026-10-04-harden-code-key-rotation/verification.md) |
 | 微信/Apple | user/idp、user/service_idp.go | user/idp/wechat_test.go、apple_test.go、nonce_test.go、user/service_idp_test.go、TestWeChatSignInEndToEndAgainstRealDB |
 | Facebook 登录（Limited/Classic） | user/idp/facebook.go、user/service_idp.go、config.go | user/idp/facebook*_test.go、user/service_facebook_test.go、httpapi/enduser/signin_facebook_test.go、config_facebook_test.go、internal/accountsvc/config_facebook_test.go |
 | 支付宝 App 极简登录与空字段补填 | user/idp/alipay*.go、user/service_idp.go、user/service_signin_completion.go、config.go | user/idp/alipay*_test.go、user/service_alipay_test.go、config_alipay_test.go、accountkit_alipay_test.go、accountkit_alipay_http_test.go、internal/accountsvc/config_test.go；真实 App/应用分组属于宿主接入清单 |

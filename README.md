@@ -6,13 +6,14 @@
 
 头像去除首尾空白后最长 2048 字节，要求具有主机的绝对 HTTPS URL，拒绝用户凭据、fragment、反斜线、内部空白/控制字符及非法 UTF-8。宿主负责上传、存储、默认头像与地址可用性；库只保存和校验地址。新原子更新仅允许 ACTIVE，冻结及冷静期保留头像，待注销/已删除账号的批量公开头像为空，最终匿名化清空。
 
-本轮按用户授权直接在当前 `0001` 增加 `avatar_url TEXT NULL`，新安装仍为 version 1；旧无头像列的同号库明确拒绝。详情见[迁移手册](docs/migrations.md#当前头像初始定义version-1)和[Go 调用方式](docs/go-integration.md#基础资料与头像)。
+头像保存在 `user_account.avatar_url`（`TEXT NULL`），由初始迁移 `0001` 定义，见[迁移手册](docs/migrations.md#当前初始基线)；Go 调用方式见 [Go 集成指南](docs/go-integration.md#基础资料与头像)。
 
 ### 可选用户资料属性（Go 与本人 HTTP 接口）
 
 宿主可在 `New` 前设置 `Config.ProfileAttributes`；nil 关闭接口且不删除已有资料。
 `ProfileAttributesConfig` 仅含 `Schema`，`ProfileAttributesView` 仅含 `Data`。
-扩展资料存储使用 `profile_attributes` JSONB，实际变化复用账号原 `update_time`。此前授权将资料单列并入当前 0001、撤回生产 0002；本轮追加内置头像列，新空 schema 仍安装 version 1。旧缺头像或资料列的 v1 及各代撤回 v2 无写拒绝，无旧数据迁移。已发布 tag/SQL 与冻结源独立固定，详见[迁移手册](docs/migrations.md#当前头像初始定义version-1)。
+扩展资料存储使用 `user_account.profile_attributes` JSONB（由初始迁移 `0001` 定义，见[迁移手册](docs/migrations.md#当前初始基线)），实际变化复用账号原 `update_time`。
+Schema 顶层不得声明内置字段名 `id`、`name`、`state`、`display_name`、`avatar_url`、`create_time`、`update_time`、`delete_time`、`purge_time`、`profile_attributes`；头像是内置资料（见上节），`Config.Validate` 与 `New` 以 `user.ErrInvalidArgument` 拒绝这类 Schema。
 嵌入库时 Schema 由宿主读取或嵌入；accountsvc 可通过 `ACCOUNTSVC_PROFILE_ATTRIBUTES_SCHEMA_FILE` 在启动时加载本地文件，见[服务配置](docs/accountsvc.md#本人资料属性)。
 宿主装配示例见 [examples/embedded/profile_attributes.go](examples/embedded/profile_attributes.go)：
 
@@ -92,22 +93,23 @@ GET 与 PATCH 成功均返回 200 和 `{"name":"users/u_0000000000001/profile","
 
 挂载内置 HTTP handler 的宿主可使用[消费者与管理面 OpenAPI 契约](docs/openapi.md)，按实际地址调整挂载前缀。
 
-本文描述 v0.7.2（已发布）的公开契约，库契约在 v0.7.1 之上仅增加管理面 `:reveal` 响应的 `Cache-Control: no-store`；v0.7.1 与 v0.7.0 相同，二者在 v0.6.0 的身份提供方注册表与统一凭证信封之上提供 ES256 access 与 JWKS、严格认证、已清理用户记录、阿里云短信发送器与邮件品牌；accountsvc 另有统一的 `ACCOUNTSVC_` 前缀、服务调用 Bearer 认证与多语言邮件模板清单。版本范围与兼容边界见 [v0.7.2 发布说明](docs/releases/v0.7.2.md)（`:reveal` 响应禁止缓存）、[v0.7.1 发布说明](docs/releases/v0.7.1.md)（accountsvc 开发模式的明文 HTTP 签发方例外）与 [v0.7.0 发布说明](docs/releases/v0.7.0.md)；v0.6.0 及更早状态保留在各自发布说明。账号资源沿用 `/users`，升级调用者见[协议迁移说明](docs/compatibility.md#身份策略与登录补全协议升级)。
+本文描述 v1.0.0（候选）的公开契约；账号资源沿用 `/users`。v1.0.0 移除的 Go 符号及调用者须知见[兼容指南](docs/compatibility.md#v100-调用者须知)，开发期版本见[1.0 前历史](docs/releases/pre-1.0-history.md)。
 
 accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可选服务实现，使用同一套库能力；选择库集成不需要部署或调用 accountsvc。服务入口是 `cmd/accountsvc`，包含 SMTP 邮件投递、消费者远程鉴权和默认关闭的外部管理员 JWT 验证，运行与配置见 [accountsvc 服务手册](docs/accountsvc.md)。`examples/embedded` 保留为库集成开发示例。
 
-accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect` 和探针；公网暴露、直连限制、TLS 终止与入口流量控制由部署方配置，统一规则见 [网关接入手册](docs/gateway-integration.md)。直接嵌入库的宿主也可沿用该契约。旧双监听部署与调用方需按[服务传输迁移说明](docs/compatibility.md#服务单监听与传输迁移)调整。
+accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect` 和探针；公网暴露、直连限制、TLS 终止与入口流量控制由部署方配置，统一规则见 [网关接入手册](docs/gateway-integration.md)。直接嵌入库的宿主也可沿用该契约。
 
-`v0.2.0` 默认使用 `account` schema；`v0.1.0` 默认仍为 `auth`。升级已有实例时须显式保留原 schema。宿主可通过 `Config.Schema` 或带宿主前缀的 `AUTH_SCHEMA` 设置合法 schema，库与 accountsvc 共用此默认值。
+默认 schema 为 `account`，可用 `Config.Schema` 或带宿主前缀的 `AUTH_SCHEMA` 设置合法 schema，库与 accountsvc 共用此默认值。
 
 ## 生命周期
 
-完整可编译宿主示例见 [examples/embedded/main.go](examples/embedded/main.go)，开发与验证步骤见 [docs/development.md](docs/development.md)。导入使用 `"github.com/bbxx111/accountkit"`，通过 `accountkit.Config`、`accountkit.Deps` 和 `accountkit.New` 装配。旧包名调用方见[包名迁移说明](docs/compatibility.md#包名迁移)。
+完整可编译宿主示例见 [examples/embedded/main.go](examples/embedded/main.go)，开发与验证步骤见 [docs/development.md](docs/development.md)。导入使用 `"github.com/bbxx111/accountkit"`，通过 `accountkit.Config`、`accountkit.Deps` 和 `accountkit.New` 装配。
 
-按 `Config/Deps → New → Migrate → Start → Close` 装配；库不绑定端口，宿主挂载 EndUserHandler 到 /v1，AdminHandler 到 /admin/v1。管理员验证器及主体解析器可选；未配置时管理接口返回 503 ADMIN_NOT_CONFIGURED。生产宿主须在管理路由前完成身份验证，并提供 AdminVerifier/AdminPrincipal，服务商发送器也由宿主注入。终端用户 HTTP 包与门面的源码迁移见[终端用户入口迁移说明](docs/compatibility.md#终端用户-http-入口迁移)。
-## 领域层（阶段 3a）
+按 `Config/Deps → New → Migrate → Start → Close` 装配；库不绑定端口，宿主挂载 EndUserHandler 到 /v1，AdminHandler 到 /admin/v1。管理员验证器及主体解析器可选；未配置时管理接口返回 503 ADMIN_NOT_CONFIGURED。生产宿主须在管理路由前完成身份验证，并提供 AdminVerifier/AdminPrincipal，服务商发送器也由宿主注入。直接构造终端用户适配器时使用 `httpapi/enduser` 包，见下文 [HTTP 面](#http-面)。
 
-`auth.Users()` 返回 `*user.Service`，是所有业务规则的唯一所在；HTTP handler（阶段 3b）、维护任务与管理面都只调用它。
+## 领域层
+
+`auth.Users()` 返回 `*user.Service`，是所有业务规则的唯一所在；HTTP handler、维护任务与管理面都只调用它。
 
 | 能力 | 方法 | 备注 |
 |---|---|---|
@@ -129,21 +131,21 @@ accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect
 
 `Config.EnabledIdentityKinds`（E）决定可使用的身份；`Config.RequiredIdentityKinds`（R）决定账号完整性。R 只接受 PHONE/EMAIL，按 any-of 判断，并须为 E 的子集。账号至少有一个已验证、未删除且启用的身份，并且 R 为空或其中任意一种身份已具备，才取得 `user` scope。R 不是 MFA，也不要求每次使用其中的身份登录。
 
-Go 的 nil 表示省略；非 nil 空切片表示显式空。E 省略时沿用 PHONE、EMAIL 和已配置 IdP，R 省略时默认 PHONE/EMAIL 二选一。显式空 E 非法，显式空 R 允许纯第三方注册。环境键为宿主前缀加 `ENABLED_IDENTITY_KINDS` / `REQUIRED_IDENTITY_KINDS`，使用逗号分隔的 UPPER_SNAKE_CASE；只有 `[]` 表示显式空，已设置但空白非法。例如 E=`EMAIL,WECHAT`、R=`EMAIL`；E=`WECHAT` 时 R 必须为 `[]`。显式启用的类型必须具备真实发送器或验证器；禁用渠道可省略发送器。省略 E 的旧宿主仍保留原发送器必填和 Disabled 装配规则。策略为装配时快照，不随短暂依赖故障改变。
+Go 的 nil 表示省略；非 nil 空切片表示显式空。E 省略时沿用 PHONE、EMAIL 和已配置 IdP，R 省略时默认 PHONE/EMAIL 二选一。显式空 E 非法，显式空 R 允许纯第三方注册。环境键为宿主前缀加 `ENABLED_IDENTITY_KINDS` / `REQUIRED_IDENTITY_KINDS`，使用逗号分隔的 UPPER_SNAKE_CASE；只有 `[]` 表示显式空，已设置但空白非法。例如 E=`EMAIL,WECHAT`、R=`EMAIL`；E=`WECHAT` 时 R 必须为 `[]`。显式启用的类型必须具备真实发送器或验证器；禁用渠道可省略发送器。省略 E 时 `Deps.SMSSender` / `Deps.EmailSender` 均必填，并沿用 Disabled 装配规则。策略为装配时快照，不随短暂依赖故障改变。
 
 `SignInWithCode` 和 `SignInWithIdp` 返回 `user.SignInResult{Tokens *user.TokenResult, Pending *user.PendingSignIn}`，恰有一个成员。已知账号按全部可用身份推导 `user` 或 `user:bind`；未知身份满足策略时直接注册，否则只返回 pending，尚无账号、身份或会话。pending 不含 user_id、scope 或 token pair。
 
 补全通过 `SendSignInCompletionCode(ctx, token, channel, target, dev, meta)` 获取专用轮次，再调用 `CompleteSignIn(ctx, token, cred, dev, meta)`。初次登录必须提供设备 ID；后续设备字段可省略，重复提供则须与首次一致。补全只接受已启用的 PHONE/EMAIL 验证码。目标属于活动账号 B 时关联尚未占用的本次身份并沿用 B 的 user_id；目标无归属且满足 R 时原子注册。页面应说明“验证并继续”会关联本次身份，未注册时自动注册。第三方 hint_email 不能证明邮箱归属，已有两个账号不会自动合并。R=[] 时未知第三方直接注册，不能自动发现另一邮箱账号；应先登录原账号再主动绑定。
 
-HTTP 新增 `POST /users:sendSignInCompletionCode`（`{sign_in_completion_token,channel,target}`）和 `POST /users:completeSignIn`（`{sign_in_completion_token,phone|email:{target,code_id,code}}`）。唯一票据字段为 `sign_in_completion_token`，普通发码不接收它，也不接收公开 purpose。pending 返回 HTTP 200、no-store，仅含 `next_action=COMPLETE_IDENTITY`、票据、`expire_time`、`enabled_identity_kinds`、`required_identity_kinds`；成功继续使用顶层 RFC 6749 token 字段。
+HTTP 端点为 `POST /users:sendSignInCompletionCode`（`{sign_in_completion_token,channel,target}`）和 `POST /users:completeSignIn`（`{sign_in_completion_token,phone|email:{target,code_id,code}}`）。唯一票据字段为 `sign_in_completion_token`，普通发码不接收它，也不接收公开 purpose。pending 返回 HTTP 200、no-store，仅含 `next_action=COMPLETE_IDENTITY`、票据、`expire_time`、`enabled_identity_kinds`、`required_identity_kinds`；成功继续使用顶层 RFC 6749 token 字段。
 
 票据使用独立随机秘密，数据库仅存摘要；`sign_in_completion_flow` 中的证明、设备与完成结果按版本加密并绑定实例和流程。原期限最多5分钟，取原证明更早期限，追加证明和重试不续期。只有相同完成请求、原期限内且账号/会话/refresh 仍有效时才能读取原 token pair；refresh 已轮换则返回 `SIGN_IN_ALREADY_COMPLETED`，票据过期返回 `SIGN_IN_COMPLETION_INVALID`。验证码消费不会随 SQL 回滚恢复，证明落库失败须按原额度重新取证；数据库备份不含 Redis，恢复不能跳过缺失证明。
 
-直接构造 `user.NewService` 的宿主可用 `user.Deps.SignInCompletionFlowContext` 补充稳定实例域；原 `IdentityFlowContext` 保留为 deprecated 兼容字段，新字段非空时优先，否则回退旧字段。自定义 IdP 的应用允许列表等配置变化时须改变 `ProviderConfiguration`。内置验证器自动提供配置指纹。策略或实例上下文变化拒绝旧流程；有效流程引用的旧加密密钥须保留到到期或清理。重命名保持密文上下文和 AAD、`f_` ID、审计资源类型 `IDENTITY_FLOW` 与 JSON `flow_id`，公开 Go 名称迁移见[兼容说明](docs/compatibility.md#登录补全流程重命名)。
+直接构造 `user.NewService` 的宿主可用 `user.Deps.SignInCompletionFlowContext` 补充稳定实例域。自定义 IdP 的应用允许列表等配置变化时须改变 `ProviderConfiguration`。内置验证器自动提供配置指纹。策略或实例上下文变化拒绝旧流程；有效流程引用的旧加密密钥须保留到到期或清理。流程 ID 前缀为 `f_`，审计资源类型为 `IDENTITY_FLOW`，审计 JSON 字段为 `flow_id`。
 
 ### 验证码轮次
 
-四类发码方法返回 `user.CodeChallenge{CodeID, ExpireTime}`。发送器接受投递后才返回轮次；发送失败保留冷却和额度，只清理仍匹配本次标识的轮次，不恢复旧轮次。发送器的 `sender.Message` 签名保持原样。PHONE/EMAIL 的登录、绑定、重新认证和换绑统一传 `user.CodeCredential{Channel, Target, CodeID, Code}`，用途由方法确定，不提供无标识验证旁路。
+四类发码方法返回 `user.CodeChallenge{CodeID, ExpireTime}`。发送器接受投递后才返回轮次；发送失败保留冷却和额度，只清理仍匹配本次标识的轮次，不恢复旧轮次。发送器输入为 `sender.CodeMessage{Purpose, Code, TTL}`，不含轮次标识。PHONE/EMAIL 的登录、绑定、重新认证和换绑统一传 `user.CodeCredential{Channel, Target, CodeID, Code}`，用途由方法确定，不提供无标识验证旁路。
 
 `code_id` 是 128 bit 随机值的 32 位小写十六进制编码。重发使同渠道、用途和目标的旧轮次失效，即使验证码数字相同；BIND 绑定用户，REAUTH 绑定用户和会话，SIGN_IN_COMPLETE 单独绑定流程。轮次匹配、绑定校验、错误次数和一次性消费在 Redis 原子执行；并发正确提交至多成功一次。格式错误标识为 400 `INVALID_ARGUMENT`，合法但未知、过期、已消费或绑定不符为 400 `CODE_EXPIRED`，不扣当前轮次或目标失败预算。每轮默认最多 5 次，可显式配置为 3 次；第三次正确可以成功，第三次错误返回 `CODE_INVALID` 并使轮次作废，之后为 `CODE_EXPIRED`。若同时达到目标累计失败上限，优先返回下述 `TARGET_VERIFY_LIMIT`。
 
@@ -151,7 +153,7 @@ HTTP 新增 `POST /users:sendSignInCompletionCode`（`{sign_in_completion_token,
 
 ### 宿主账号事务
 
-通过 `Deps.BeforeDelete user.BeforeDelete` 注入 `func(ctx context.Context, tx pgx.Tx, userID string) error`。消费者和管理员注销共用此回调，在账号锁和 ACTIVE 状态检查后、改变状态前执行。返回 `user.ErrDeletionBlocked` 时，两个 HTTP 面均为 400 `FAILED_PRECONDITION`、reason `DELETION_BLOCKED`；基础设施错误为固定安全消息的 500。拒绝或故障使账号、会话及同批宿主写入一起回滚；不配置时保持原注销行为。
+通过 `Deps.BeforeDelete user.BeforeDelete` 注入 `func(ctx context.Context, tx pgx.Tx, userID string) error`。消费者和管理员注销共用此回调，在账号锁和 ACTIVE 状态检查后、改变状态前执行。返回 `user.ErrDeletionBlocked` 时，两个 HTTP 面均为 400 `FAILED_PRECONDITION`、reason `DELETION_BLOCKED`；基础设施错误为固定安全消息的 500。拒绝或故障使账号、会话及同批宿主写入一起回滚；不配置时注销不调用宿主检查。
 
 新建宿主关系时可调用 `auth.Users().WithActiveUsers(ctx, ids, func(tx pgx.Tx) error { ... })`，要求非空账号集合及非 nil 回调；宿主空批次直接跳过。先取得按 ID 排序的账号锁，再取得业务资源锁。回调只能用传入事务，不得自行提交或回滚；未知、非法或非 ACTIVE 账号在回调前拒绝。`BatchPublicProfiles` 和这些事务方法只提供 Go 契约，不新增任意账号资料或导入 HTTP 入口。
 
@@ -167,7 +169,7 @@ HTTP 新增 `POST /users:sendSignInCompletionCode`（`{sign_in_completion_token,
 
 宽限资格取会话读取后的时间；缓存返回后再检查会话/pair期限并计算剩余有效期。已符合宽限的请求不会仅因缓存等待跨过宽限而被认定为重放，仍返回同一pair。缓存不可用或到期拒绝不会被误记为已遏制的重放。
 
-刷新期限与access有效性独立：自然到期不写撤销集，原access仍有效——`Authenticate` 按JWT及Redis吊销规则判断，严格认证与内省按数据库吊销状态判断，两者都不按刷新期限拒绝；“不在会话列表中”不等于“所有已发access都已失效”。显式单个/批量撤销、同设备重登和账号生命周期操作仍覆盖未清理的过期会话。列表读取不删除数据，原30天会话清理保留期不变。实际验证见[会话过期验收记录](openspec/changes/archive/2026-10-04-harden-session-expiry/verification.md)。
+刷新期限与access有效性独立：自然到期不写撤销集，原access仍有效——`Authenticate` 按JWT及Redis吊销规则判断，严格认证与内省按数据库吊销状态判断，两者都不按刷新期限拒绝；“不在会话列表中”不等于“所有已发access都已失效”。显式单个/批量撤销、同设备重登和账号生命周期操作仍覆盖未清理的过期会话。列表读取不删除数据，会话清理仍按吊销或 refresh 过期 30 天以上的保留期执行。实际验证见[会话过期验收记录](openspec/changes/archive/2026-10-04-harden-session-expiry/verification.md)。
 
 ### Redis 键与失败模式
 
@@ -183,7 +185,7 @@ HTTP 新增 `POST /users:sendSignInCompletionCode`（`{sign_in_completion_token,
 
 ### 发送器
 
-省略 Enabled 时 `Deps.SMSSender` / `Deps.EmailSender` 必填；显式策略只要求已启用渠道的发送器。正式接口为 `sender.SMSCodeSender`、`sender.EmailCodeSender`，输入为 `sender.CodeMessage{Purpose, Code, TTL}`；Deps 字段名不变。原 `SMSSender`、`EmailSender`、`Message` 保留为兼容别名，名称映射见[兼容指南](docs/compatibility.md#验证码发送器命名与渲染接入)。开发环境可用 `sender.NewLog(logger)`（把验证码打进日志，**禁止用于生产**）。
+省略 Enabled 时 `Deps.SMSSender` / `Deps.EmailSender` 必填；显式策略只要求已启用渠道的发送器。正式接口为 `sender.SMSCodeSender`、`sender.EmailCodeSender`，输入为 `sender.CodeMessage{Purpose, Code, TTL}`；分别注入 `Deps.SMSSender`、`Deps.EmailSender` 字段。开发环境可用 `sender.NewLog(logger)`（把验证码打进日志，**禁止用于生产**）。
 
 使用可选 SMTP 传输时，宿主通过 `smtp.NewWithRenderer(cfg, renderer)` 注入 `smtp.Renderer`。例如导入 `github.com/bbxx111/accountkit/examples/codeemail` 与 `github.com/bbxx111/accountkit/user/sender/smtp` 后：
 
@@ -197,7 +199,7 @@ deps := accountkit.Deps{EmailSender: email /* 其余依赖由宿主装配 */}
 _ = deps
 ```
 
-[可编译本地化示例](examples/codeemail/example_test.go)与[渲染实现](examples/codeemail/renderer.go)覆盖四种用途、中文/英文、Text/HTML 和请求语言回退。`Render(context.Context, sender.CodeMessage) (smtp.EmailContent, error)` 返回 Subject、必需 Text 和可选 HTML；模板必须正确表达用途、实际验证码与有效期，动态 HTML 值由宿主使用 `html/template` 等方式转义。SMTP 负责 MIME 编码，不能验证任意语言的文案语义。原 `smtp.New(cfg)` 继续使用 `smtp.LegacyChineseRenderer{}`，保留原四用途中文纯文本和有效期分钟数向上取整行为。
+[可编译本地化示例](examples/codeemail/example_test.go)与[渲染实现](examples/codeemail/renderer.go)覆盖四种用途、中文/英文、Text/HTML 和请求语言回退。`Render(context.Context, sender.CodeMessage) (smtp.EmailContent, error)` 返回 Subject、必需 Text 和可选 HTML；模板必须正确表达用途、实际验证码与有效期，动态 HTML 值由宿主使用 `html/template` 等方式转义。SMTP 负责 MIME 编码，不能验证任意语言的文案语义。`smtp.New(cfg)` 使用 `smtp.LegacyChineseRenderer{}`：四种用途的中文纯文本，有效期分钟数向上取整。
 
 宿主在自己的中间件或 Go 入口选择语言，再用示例的 `codeemail.WithLanguage(ctx, "zh-CN")` 派生 context 并传入本次服务调用；核心不解析 Accept-Language，不读取业务偏好，不增加消息字段。示例只支持 `zh-CN`/`en`：缺失或未知请求提示回退到实例默认，未知默认语言回退到 `zh-CN`。同一渲染器可并发复用，配置和模板构造后不再修改；不要通过共享字段设置“当前语言”。
 
@@ -205,13 +207,13 @@ _ = deps
 
 库提供可选的阿里云短信发送器 `github.com/bbxx111/accountkit/user/sender/aliyun`：`aliyun.New(aliyun.Config{AccessKeyID, AccessKeySecret, SignName, Templates: map[enum.CodePurpose]string{…四个用途…}})`，构造不做网络 I/O，只发中国大陆手机号，发送失败返回 `sender.ErrUnavailable`（503），错误只含服务商错误码与 RequestId；可选 `Logger` 以 Warn 记录同样脱敏的失败信息。发送器可选实现 `SupportsTarget(e164 string) bool`：返回 false 的号码在占用验证码轮次、冷却与额度之前以 `sender.ErrTargetNotSupported` 拒绝，HTTP 为 400 `TARGET_NOT_SUPPORTED`，未实现该方法的发送器行为不变。宿主若用日志或指标装饰器包装发送器，须同时转发 `SupportsTarget`（及 `Enabled`），否则预检失效，不支持的号码会在占用额度后才失败。内置 `smtp.LegacyChineseRenderer{Brand: "品牌"}` 可为标题和正文添加品牌前缀（先用 `smtp.ValidateBrand` 校验），零值文案不变。
 
-使用服务商托管模板时，直接实现 `EmailCodeSender.SendEmail(ctx, target, message)` 或 `SMSCodeSender.SendSMS(ctx, target, message)` 并注入原 Deps 字段。宿主把 `message.Purpose` 映射到服务商模板 ID，把 `message.Code`、`message.TTL` 转换为模板参数，并自行选择语言、处理取消及安全错误；这种适配无需 SMTP Renderer，也无需先生成正文。不要将模板 ID 或服务商参数加入核心 CodeMessage。
+使用服务商托管模板时，直接实现 `EmailCodeSender.SendEmail(ctx, target, message)` 或 `SMSCodeSender.SendSMS(ctx, target, message)` 并注入对应 Deps 字段。宿主把 `message.Purpose` 映射到服务商模板 ID，把 `message.Code`、`message.TTL` 转换为模板参数，并自行选择语言、处理取消及安全错误；这种适配无需 SMTP Renderer，也无需先生成正文。不要将模板 ID 或服务商参数加入核心 CodeMessage。
 
 ### 枚举
 
 所有 SMALLINT 列的取值由 `enum` 包定义并钉死（`UserState`：ACTIVE=1 FROZEN=2 PENDING_DELETION=3 DELETED=4，其余见 `enum/enum.go`）。DB 无 CHECK；新增值只追加。
 
-## HTTP 面（阶段 3b）
+## HTTP 面
 
 `auth.EndUserHandler()` 返回相对路由（chi），宿主决定前缀。直接构造适配器时导入 `github.com/bbxx111/accountkit/httpapi/enduser`，使用 `enduser.New(enduser.Deps{...})` 后挂载其 `Router()`：
 
@@ -227,6 +229,8 @@ r.Route("/v1", func(r chi.Router) {
 ```
 
 示例中的 `device.ConsumerHandler()` 是宿主设备业务模块的示意接口，不属于 accountkit 的公开门面。
+
+客户端侧的完整调用顺序（登录与 pending 补全、刷新协调与宽限、重新认证、各类退出及错误处理）见平台中立的 [HTTP 调用流程](docs/http-client-flows.md)。
 
 ### 关键路由的严格认证
 
@@ -250,7 +254,7 @@ access token 使用 ES256（P-256）签发，header 为 `alg=ES256`、`typ=at+jw
 | `POST /token` `{grant_type:"refresh_token", refresh_token}`（JSON 或 `application/x-www-form-urlencoded`） | 无 | 200 token | RFC 6749：400 `invalid_grant`；403 `invalid_grant`+`reason:USER_FROZEN`；503 `temporarily_unavailable` |
 | `POST /revoke` `{token, token_type_hint?}`（JSON 或 `application/x-www-form-urlencoded`） | 无 | 200 空 | 400 `invalid_request`（缺 token） |
 | `GET /users/me` | 任意 scope | 200 资源 | |
-| `PATCH /users/me` `{display_name?, avatar_url?}` | `user` | 200 资源 | 400 `NO_FIELDS` / `INVALID_ARGUMENT` / `INVALID_ACCOUNT_STATE`；旧适配器缺头像更新能力时 503 `PROFILE_UPDATE_NOT_CONFIGURED` |
+| `PATCH /users/me` `{display_name?, avatar_url?}` | `user` | 200 资源 | 400 `NO_FIELDS` / `INVALID_ARGUMENT` / `INVALID_ACCOUNT_STATE`；自定义 Service 未实现可选 `enduser.ProfileUpdater` 时，含非 null 头像的请求为 503 `PROFILE_UPDATE_NOT_CONFIGURED` |
 | `DELETE /users/me` | `user` + 近期认证 | 200 账号资源（`state=PENDING_DELETION`） | 400 `REAUTHENTICATION_REQUIRED` / `INVALID_ACCOUNT_STATE` / `DELETION_BLOCKED`；403 `USER_FROZEN` |
 | `POST /users/me:undelete` | `user:undelete` | 200 账号资源（`state=ACTIVE`） | 400 `INVALID_ACCOUNT_STATE`；403 `USER_FROZEN` |
 | `POST /users/me:sendReauthenticationCode` `{channel, target}` | `user` | 200 `{code_id, expire_time}` | 400 `TARGET_NOT_ANCHOR` |
@@ -268,7 +272,7 @@ access token 使用 ES256（P-256）签发，header 为 `alg=ES256`、`typ=at+jw
 
 `authn.WithPrincipal` 仅用于受信任宿主/测试注入 Principal（例如宿主自己的上游网关已经做过身份校验）：`Bearer` 中间件发现 ctx 里已有 Principal 会直接放行，不再调用 `Authenticate`，业务代码不应依赖它来绕过正常的 token 校验路径。
 
-## IdP 登录（阶段 4a）
+## IdP 登录
 
 `POST /users:signInWithIdp`，body 为统一凭证信封 `{"kind","credential"}`，kind 只接受第三方类型，设备头同验证码登录：
 
@@ -283,7 +287,7 @@ access token 使用 ES256（P-256）签发，header 为 `alg=ES256`、`typ=at+jw
 {"kind": "WEIBO", "credential": {"app_id": "1234567890", "access_token": "synthetic-sdk-access-token"}}
 ```
 
-所有接收凭证的端点使用同一信封；手机/邮箱为 `{"kind":"PHONE","credential":{"target","code_id","code"}}`。旧的 `phone`/`email`/`wechat`/`apple`/`google` 成员返回 400 `MALFORMED_BODY`；`kind` 或 `credential` 缺失、credential 字段缺失或未知为 400 `CREDENTIAL_INCOMPLETE`，类型不属于该端点允许的类别为 400 `CREDENTIAL_KIND_NOT_ALLOWED`。完整规则见 [OpenAPI 说明](docs/openapi.md#统一凭证信封)。
+所有接收凭证的端点使用同一信封；手机/邮箱为 `{"kind":"PHONE","credential":{"target","code_id","code"}}`。信封外的未知顶层成员按严格 JSON 返回 400 `MALFORMED_BODY`；`kind` 或 `credential` 缺失、credential 字段缺失或未知为 400 `CREDENTIAL_INCOMPLETE`，类型不属于该端点允许的类别为 400 `CREDENTIAL_KIND_NOT_ALLOWED`。完整规则见 [OpenAPI 说明](docs/openapi.md#统一凭证信封)。
 
 - **微信**：`WeChatApps` 的 OAuth 应用调用 `sns/oauth2/access_token`，`WeChatMiniProgramApps` 的小程序调用 `sns/jscode2session`；客户端均提交上述 `kind=WECHAT`、`credential.app_id/code`，不选择接口或模式。两组 AppID 必须唯一且不能含冒号，Secret 可含冒号。`WeChatSubjectMode` 对全部应用固定生效，默认为 `UNIONID`：subject 为 `unionid:<unionid>`，缺 UnionID 返回 500，不降级。`OPENID` 使用 `openid:<appid>:<openid>`，不同 AppID 相互隔离；已验证 UnionID 和 OpenID 保存到 `provider_meta.unionid/openids`，缺失不清空旧值，矛盾标识拒绝写入。微信 token、session_key 和 Secret 不保存。UnionID 模式的应用应属于同一微信开放平台。
 - **Apple**：仅 RS256；校验 `iss`、`aud ∈ AppleBundleIDs`、`exp`（30s leeway）、`nonce = sha256hex(原值)`；通过后 nonce 以 `SETNX` 登记 `AppleNonceTTL`，重复 → 400 `IDP_NONCE_REPLAYED`。JWKS 懒加载、缓存，未知 kid 触发 ≥ 60s 节流的刷新。`email` 仅在 `email_verified` 为真时作为 `hint_email` 返回，**不会**自动绑定为 EMAIL 身份。
@@ -296,12 +300,12 @@ access token 使用 ES256（P-256）签发，header 为 `alg=ES256`、`typ=at+jw
 - **错误**：400 `IDP_CREDENTIAL_INVALID` / `IDP_APP_NOT_ALLOWED`（含 IdP 未启用）/ `IDP_NONCE_REPLAYED`；503 `IDP_UNAVAILABLE`（IdP 网络、JWKS 不可得、Redis 不可用；带 `Retry-After: 1`）；500（appid/secret 无效、缺 unionid）。
 - **Facebook**：同时接受 Limited Login 的 ID token（`{"id_token","nonce"}`）与 Classic Login 的 access token（`{"access_token"}`），两种字段并列、缺失或为空为 400 `CREDENTIAL_INCOMPLETE`。身份 subject 是该 App 下的 Facebook 用户 id，两种凭证命中同一身份；邮箱、姓名、头像不作主键。ID token 仅 RS256，`iss` 为 `https://www.facebook.com`，`aud` 及出现的 `azp` 须等于 `FacebookAppID`，nonce 与原始值比较并登记。access token 由服务端经 Graph API `debug_token` 确认属于本 App 的用户 token，再读 `/me` 核对 id，所有调用附 `appsecret_proof`；同一 token 在有效期内可重复登录（风险见 [Go 集成指南](docs/go-integration.md#facebook-登录)）。其他 App 的凭证为 `IDP_APP_NOT_ALLOWED`；JWKS 无缓存可用、Graph 超时或 5xx 为 503 `IDP_UNAVAILABLE`，已有缓存密钥在刷新失败时继续验签并计入 `facebook_cached_key_fallback`；Graph 拒绝 App 凭据按服务端配置错误返回固定消息 500 并记录告警。`email` 只作 `hint_email`，Facebook 不提供邮箱已验证声明，不查号不合并。`FACEBOOK` 不能放入 `RequiredIdentityKinds`。数据删除回调见 [Go 集成指南](docs/go-integration.md#facebook-数据删除回调)。
 - **OIDC**：`Config.OIDCProviders` 或下表 `OIDC_*` 变量启用任意数量的配置类型。仅 RS256，`iss` 与配置精确相等，`aud` 以及出现的 `azp` 须在 client ID 列表中，`exp` 必填且允许 30 秒偏差，nonce 与原始值常量时间比较并按实例前缀与类型隔离登记（`<KeyPrefix>nonce:oidc:<KIND>:`）。生产环境的 issuer 与 JWKS 地址应使用 https；`http` 仅供测试或受信网络内代理，明文 JWKS 可被链路上的攻击者替换密钥。同一类型名不能同时出现在 `OIDCProviders` 与宿主 `user.Deps.Providers` 中，重复在 `New` 时报错。`sub` 为身份主键；`email_verified` 为真时 `email` 作为 `hint_email`；昵称与头像按配置声明名读取并与 Google 使用同一清洗与统一填充规则。JWKS 不可用为 503 `IDP_UNAVAILABLE`，缓存密钥继续验签计入 `oidc_cached_key_fallback`。指标方法统一为 `oidc`，类型名只出现在审计中。
-- **微信升级与模式**：带前缀 subject 不兼容历史裸 UnionID，没有旧数据转换或迁移工具；部署前须审查已有身份。模式应固定且所有实例副本一致，切换可能产生不同身份，不自动升级、降级、通过元数据关联或合并账号。切换模式或应用所属组会使未完成登录补全流程失效；只轮换 Secret 或重排列表不会。
+- **微信标识模式**：模式应固定且所有实例副本一致，切换可能产生不同身份，不自动升级、降级、通过元数据关联或合并账号。切换模式或应用所属组会使未完成登录补全流程失效；只轮换 Secret 或重排列表不会。
 - **配置**：宿主前缀加 `WECHAT_APPS`、`WECHAT_MINI_PROGRAM_APPS`、`WECHAT_SUBJECT_MODE`、`APPLE_BUNDLE_IDS`、`APPLE_NONCE_TTL`、`GOOGLE_CLIENT_IDS`、`GOOGLE_NONCE_TTL`、`FACEBOOK_APP_ID`、`FACEBOOK_APP_SECRET`、`FACEBOOK_GRAPH_API_VERSION`、`FACEBOOK_NONCE_TTL`；`WECHAT_API_BASE_URL` / `APPLE_JWKS_URL` / `GOOGLE_JWKS_URL` / `FACEBOOK_GRAPH_API_BASE_URL` / `FACEBOOK_JWKS_URL` 仅供测试或代理部署覆盖。空的客户端标识列表表示未启用。`Deps.HTTPClient` 默认 10 秒超时。去掉客户端标识只停止新的 Google 登录，不删除已有身份行。
 
 只有第三方身份的账号需要近期认证时，重新走普通 IdP 登录；同设备会话被替换，客户端更新 token pair 并确认仍为同一 user_id 后再继续敏感动作。手机/邮箱重新认证仍只更新当前会话 auth_time 和 access，不延长 refresh。纯第三方账号没有手机/邮箱自助恢复路径；普通 IdP 登录仍拒绝冷静期账号，合法管理员恢复保持。
 
-## 身份绑定（阶段 4b）
+## 身份绑定
 
 | 端点 | scope | 近期认证 | 成功 | 失败 |
 |---|---|---|---|---|
@@ -314,15 +318,15 @@ access token 使用 ES256（P-256）签发，header 为 `alg=ES256`、`typ=at+jw
 
 ## 当前会话与客户端描述
 
-以下能力随 v0.4.0 发布，v0.3.0 不含此查询、来源撤销或客户端描述。曾跟随开发分支接入的调用者须按[兼容说明](docs/compatibility.md#会话认证依据与客户端描述)调整；迁移和部署须按[会话升级说明](docs/migrations.md#会话认证依据初始整合)协调切换。
+当前会话详情、按认证来源撤销与客户端描述的协议见下文；迁移与部署协调见[迁移手册](docs/migrations.md#升级前)。
 
 GET /users/me/sessions/current 返回真实会话 name（末段是 s_ ID）、原设备/时间字段、is_current=true、数据库最新 RFC3339 auth_time 和非空 authentication_identities。身份摘要只有 name/kind，按具体 ID 排序；客户端按完整 name 匹配拟解绑身份，不能只比较 kind。来源缺失或失效是内部不变量错误，返回固定500，不返回正常空集合，也不从身份列表或审计补造来源。查询是快照，最终影响以提交时状态为准。重新认证成功后保存新 access、保留原 refresh，再重查详情；旧 JWT 不被改写，查询也不赋予旧 token 新的近期认证证明。
 
-普通登录来源只有本次验证的身份，补全包含该次最终成功验证的具体身份；新建会话在事务内校验身份归属和有效状态，写入非空去重集合。重新认证先检查当前来源，再用本次手机/邮箱身份替换整个集合，同时更新 auth_time。刷新、普通绑定和换绑 BIND 证明不改来源。成功解绑在同事务撤销同账号来源命中的所有未吊销会话，包括当前及 refresh 已到期但未清理的会话；同账号任一未吊销会话缺少有效来源时整事务拒绝，不能当作未命中放行。原204仍表示成功，后续认证失效时客户端清理凭据并重新登录，不能将成功解绑重试成失败。
+普通登录来源只有本次验证的身份，补全包含该次最终成功验证的具体身份；新建会话在事务内校验身份归属和有效状态，写入非空去重集合。重新认证先检查当前来源，再用本次手机/邮箱身份替换整个集合，同时更新 auth_time。刷新、普通绑定和换绑 BIND 证明不改来源。成功解绑在同事务撤销同账号来源命中的所有未吊销会话（吊销原因 `IDENTITY_UNBOUND`），包括当前及 refresh 已到期但未清理的会话；同账号任一未吊销会话缺少有效来源时整事务拒绝，不能当作未命中放行。解绑成功即返回 204，后续认证失效时客户端清理凭据并重新登录，不能将成功解绑重试成失败。
 
-查询支持 user/user:bind，user:undelete 返回403；缺少可选 CurrentSessionService 的自定义 HTTP 宿主返回503 SESSION_QUERY_NOT_CONFIGURED。数据库会话缺失、归属不符、撤销或 refresh 到期返回401 TOKEN_INVALID与Bearer挑战；可识别依赖不可用503、内部错误固定500，所有响应 no-store。普通 Authenticate/内省仍为JWT和Redis校验，不增加数据库查询；Redis吊销失败仍保留原fail-open与告警，数据库会拒绝已撤销会话的refresh/详情查询。
+查询支持 user/user:bind，user:undelete 返回403；缺少可选 CurrentSessionService 的自定义 HTTP 宿主返回503 SESSION_QUERY_NOT_CONFIGURED。数据库会话缺失、归属不符、撤销或 refresh 到期返回401 TOKEN_INVALID与Bearer挑战；可识别依赖不可用503、内部错误固定500，所有响应 no-store。普通 Authenticate/内省仍为JWT和Redis校验，不增加数据库查询；Redis吊销失败按 fail-open 放行并告警，数据库会拒绝已撤销会话的refresh/详情查询。
 
-客户端描述只在成功验证码登录、IdP登录、补全、重新认证及新一轮刷新观察；发码、绑定、换绑、普通GET/业务请求、Authenticate和内省不采集。原 X-Device-Id / X-Device-Name 和请求体不变，下列头全部可选：
+客户端描述只在成功验证码登录、IdP登录、补全、重新认证及新一轮刷新观察；发码、绑定、换绑、普通GET/业务请求、Authenticate和内省不采集。X-Device-Id / X-Device-Name 和请求体保持各自语义，下列客户端描述头全部可选：
 
 | 请求头 | 值/限制 |
 |---|---|
@@ -352,13 +356,13 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 
 调用前须有 `user` scope 和有效当前会话，近期认证沿用 `REAUTH_MAX_AGE`（默认5分钟）及 `SENSITIVE_OP_VERIFICATION`（默认true）。需要时先走既有重新认证流程，再通过 `users/me:sendBindCode` 获取新地址 BIND 码。近期登录也满足现有新鲜度语义，不保证本次专门向旧地址发送验证码；首版不提供失去全部既有凭据的账号找回。
 
-身份替换和会话撤销在一个数据库事务内完成。其他会话继续撤销；当前会话先检查有效非空来源，仅在来源不含被替换身份时保留，命中则一并撤销，来源缺失或失效返回内部错误并回滚。新目标 BIND 证明不替换来源；200 成功不发 token，当前会话也可能需要退出。正常 Redis 下被撤销会话的 access/内省无效，refresh 由数据库拒绝；Redis 吊销故障仍按原 fail-open 规则处理。旧地址不再进入原账号，但新的独立登录仍可能按原规则自动注册另一个账号。
+身份替换和会话撤销在一个数据库事务内完成，被撤销会话的吊销原因为 `IDENTITY_REPLACED`。其他会话一律撤销；当前会话先检查有效非空来源，仅在来源不含被替换身份时保留，命中则一并撤销，来源缺失或失效返回内部错误并回滚。新目标 BIND 证明不替换来源；200 成功不发 token，当前会话也可能需要退出。正常 Redis 下被撤销会话的 access/内省无效，refresh 由数据库拒绝；Redis 吊销故障按 fail-open 规则处理。旧地址不再进入原账号，但新的独立登录仍可能按原规则自动注册另一个账号。
 
-只支持 PHONE→PHONE、EMAIL→EMAIL，原绑定/解绑接口不变。同目标返回400 `IDENTITY_UNCHANGED`；旧资源不存在/已删除/归属其他用户返回404；新目标已经绑定返回409 `IDENTITY_ALREADY_BOUND`。已消费的验证码不随数据库回滚退还，重取码仍受冷却/额度限制。成功后仍有效会话重试旧 identity 路径返回404，原会话已撤销则按认证失效拒绝；响应丢失时用仍有效会话或重新登录后列出身份确认状态，不盲目自动重发。新旧摘要版本、密文格式与冻结迁移保持兼容。
+只支持 PHONE→PHONE、EMAIL→EMAIL，绑定/解绑接口独立于换绑。同目标返回400 `IDENTITY_UNCHANGED`；旧资源不存在/已删除/归属其他用户返回404；新目标已经绑定返回409 `IDENTITY_ALREADY_BOUND`。已消费的验证码不随数据库回滚退还，重取码仍受冷却/额度限制。成功后仍有效会话重试旧 identity 路径返回404，原会话已撤销则按认证失效拒绝；响应丢失时用仍有效会话或重新登录后列出身份确认状态，不盲目自动重发。成功写入 `IDENTITY_UNBOUND`（reason `IDENTITY_REPLACED`）与 `IDENTITY_BOUND` 两条审计；被拒绝的换绑写入 `IDENTITY_REPLACE_REJECTED` 审计，不撤销会话。换绑在多个摘要与密文密钥版本并存时同样适用。
 
 直接库调用使用 `Auth.Users().ReplaceIdentity(...)` 并传入已认证 Principal。领域层同样检查 scope、新鲜度、账号/会话和身份归属。自定义 `enduser.Service` 无需增加必需方法；实现可选 `enduser.IdentityReplacer` 即可启用新端点，否则认证后的调用返回503 `IDENTITY_REPLACEMENT_NOT_CONFIGURED`。实际检查与验收边界见[换绑验收记录](openspec/changes/archive/2026-10-03-add-identity-replacement/verification.md)。
 
-## 账号生命周期（阶段 5a）
+## 账号生命周期
 
 | 端点 | scope | 近期认证 | 成功 | 失败 |
 |---|---|---|---|---|
@@ -371,15 +375,15 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 - **宿主匿名化器**：实现 `anonymize.Anonymizer{Name() string; Tables() []string; Anonymize(ctx, tx pgx.Tx, userID string) error}` 并通过 `Deps.Anonymizers` 注册（`Name` 唯一；业务表须与库表同库）。宿主应仿照库内 `TestPurgeCoversEveryTableWithUserID` 写覆盖性测试：每张含 `user_id` 的业务表要么被某个 `Anonymizer.Tables()` 覆盖，要么逐表写明豁免理由。
 - **维护任务**（`auth.Start` 的 ticker，多副本用 advisory lock 互斥；`auth.RunMaintenanceOnce(ctx)` 供一次性作业/测试手动跑一轮）：`purge_users`（每批 100 个账号，逐账号独立事务，批内失败记日志继续、下一轮重试）→ `cleanup_sessions`（物理删除吊销或 refresh 过期 30 天以上的会话行，每批 1000；正被刷新/吊销事务锁住的行本轮跳过，下一轮再删）。完整任务列表见下节。
 
-## 审计落库与密钥回填（阶段 5b）
+## 审计落库与密钥回填
 
 - **默认本地审计**：不注入 `Deps.Audit/AuditReader` 时，库创建 `audit.Async(audit.Store)` 并配置本地管理查询。队列容量 1024，单 worker 每 100 条或每 1 秒批量写入 `audit_event`；`auth.Start` 启动 worker，`auth.Close` 刷出残留（默认关闭等待上限 5 秒）。写失败、生成失败、队列满及关闭后到达都不改变认证结果，允许丢失事件。`Async.Stats()` 区分 Written、Duplicate、Invalid、Conflicts、Dropped、Failed；丢弃和写失败日志分别节流，只输出安全计数，不输出宿主原始错误或事件正文。
-- **事件模型**：`audit.Event` 是生产事件，ID 为生产方首次投递前生成的 UUIDv7；`audit.RecordView` 增加存储首次生成的 `CreateTime`。`Actor` 用 namespace + id 表示主体，`Resource` 用 namespace + type + id 表示资源；认证字段位于 `data.accountkit`。凭证、完整手机号/邮箱、完整摘要和原始请求不进入审计。公开 Go 类型和读侧的破坏性迁移见[兼容说明](docs/compatibility.md#通用审计公开接口与协议迁移)。
-- **校验职责**：审计业务内容由 Go 的 `audit/event.Freeze` 统一校验，包括字段格式、资源数量和完整事件 64 KiB 上限；默认异步入队与本地 Store 直接写入分别调用。数据库保留 UUIDv7、JSON 基本形状、非空和唯一性等基础结构，不再提供自定义审计校验函数。导入和修数必须复用 Go 校验，直接 SQL 不获得完整业务校验；其他表 CHECK 表达式保持。已有同号库不会因重复 Up 自动移除旧函数；仍使用 identity_flow 的旧库明确拒绝接管，见[迁移手册](docs/migrations.md#当前初始基线)。
+- **事件模型**：`audit.Event` 是生产事件，ID 为生产方首次投递前生成的 UUIDv7；`audit.RecordView` 增加存储首次生成的 `CreateTime`。`Actor` 用 namespace + id 表示主体，`Resource` 用 namespace + type + id 表示资源；认证字段位于 `data.accountkit`。凭证、完整手机号/邮箱、完整摘要和原始请求不进入审计。公开 Go 类型与读侧契约见[兼容指南](docs/compatibility.md#通用审计公开接口)。
+- **校验职责**：审计业务内容由 Go 的 `audit/event.Freeze` 统一校验，包括字段格式、资源数量和完整事件 64 KiB 上限；默认异步入队与本地 Store 直接写入分别调用。数据库只保留 UUIDv7、JSON 基本形状、非空和唯一性等基础结构，不提供自定义审计校验函数。导入和修数必须复用 Go 校验，直接 SQL 不获得完整业务校验。
 - **保留期与排序**：`audit_retention` 按配置 source 删除 `occur_time` 早于 `now − AuditRetentionDays`（默认 180 天）的本地事件，每批 1000，包含没有消费者资源的匿名/管理员事件。管理时间线按 `occur_time, UUID` 升序查询，索引覆盖 source、主体及 JSONB 资源关联。
 - **密钥回填**：任务 `rekey_digests` / `reencrypt_subjects` 逐批（100）把仍用非 active 版本的活跃手机/邮箱身份重算摘要 / 重加密（CAS 更新，与并发登录/绑定不冲突；查找始终覆盖全部已配置版本，回填期间登录不受影响）。单行失败只记日志（`identity_id`）、计数，下一轮重试；第三方身份与已解绑/已 purge 的行不参与。
 - **启动期校验**：`auth.Migrate` 在迁移后检查 `identity` 活跃行使用的密钥版本都在配置内，否则返回 `user.ErrUnknownKeyVersion`——在回填完成前移除旧密钥会在启动时失败，而不是在第一次登录时。
-- **维护任务全集**（`auth.Start` 的 ticker；`auth.RunMaintenanceOnce(ctx)` 手动跑一轮）：`cleanup_sign_in_completion_flows`（每批最多1000条到期流程，清除密文与结果）→ `purge_users` → `cleanup_sessions` → `audit_retention` → `rekey_digests` → `reencrypt_subjects`，顺序执行、失败互不影响。流程清理任务原名为 `cleanup_identity_flows`，运维指标、日志检索和告警规则须同步采用新名称。
+- **维护任务全集**（`auth.Start` 的 ticker；`auth.RunMaintenanceOnce(ctx)` 手动跑一轮）：`cleanup_sign_in_completion_flows`（每批最多1000条到期流程，清除密文与结果）→ `purge_users` → `cleanup_purged_users`（仅在配置保留期时删除超期记录）→ `cleanup_sessions` → `audit_retention` → `rekey_digests` → `reencrypt_subjects`，顺序执行、失败互不影响。
 
 ### 宿主审计装配与清理责任
 
@@ -391,7 +395,7 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 
 只注入 Reader 在 `New` 时被拒绝。未配置管理员验证时仍优先返回 `503 ADMIN_NOT_CONFIGURED`；已配置读侧故障或返回不合规数据时返回安全的 `503 AUDIT_QUERY_UNAVAILABLE`，不会伪装成空列表。
 
-`audit.Query.Actions` 是可选动作集合，空集合保留通用全部动作查询。宿主 Reader 须校验、排序去重并在分页 Limit 前执行过滤，可复用 `Query.NormalizedActions()`。管理时间线固定传入 `authentication.Actions()` 导出的认证动作集合，同表业务事件不占用认证页；外部结果仍逐条复核，含 lookahead。流程归属证据独立于此动作过滤。审计 v2 游标绑定 source、完整资源及规范动作集合，旧 v1 UUID/旧 `e_` 游标或动作范围改变均返回 400，客户端清空 token 重新开始；用户列表游标不变。
+`audit.Query.Actions` 是可选动作集合，空集合保留通用全部动作查询。宿主 Reader 须校验、排序去重并在分页 Limit 前执行过滤，可复用 `Query.NormalizedActions()`。管理时间线固定传入 `authentication.Actions()` 导出的认证动作集合，同表业务事件不占用认证页；外部结果仍逐条复核，含 lookahead。流程归属证据独立于此动作过滤。审计游标绑定 source、完整资源及规范动作集合，格式不符或动作范围改变的游标返回 400，客户端清空 token 重新开始；用户列表游标独立。
 
 本地 Reader 按各匹配分支取时间/ID 候选，去重取页后仅读取最终页的完整事件；`Page.FlowLinks` 只提供当前页关联所需的去重流程归属，不能用它枚举账号全部历史流程。历史归属在数据库内匹配，证明查找不受页面动作或游标范围限制。资源候选和流程历史仍可能随历史量增长而增加扫描，分页不承诺恒定查询时间。
 
@@ -401,7 +405,7 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 
 外部保留期、账号及流程关联脱敏由宿主负责。宿主须有独立于可丢弃审计通知的持久化清理流程，记录待清理资源、重试状态和完成核验；同库匿名化回调可在传入事务中写入宿主自己的清理任务，不能等待远端调用或另开连接提交。仅收到 `USER_PURGED` 不能作为外部清理完成证据。外部应按完整 namespace/type/id 关联账号及流程，删除规定的展示、请求隐私和身份提示字段，并核验迟到/重放不会恢复已清理值。切换到外部模式不会自动迁移或删除旧本地副本，本地保留和匿名化任务继续承担旧副本责任；外部历史回填另作受控操作。
 
-## 管理面（阶段 6）
+## 管理面
 
 宿主挂到 `/admin/v1`，前置 OIDC verifier 的 `Middleware()`；库内每条路由只检查一个角色名（`super-admin` 是包含 `operator` 的 composite role）。handler 内不判角色；C 端 token 打管理面在 verifier 处 401。
 
@@ -421,7 +425,7 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 
 - **`filter`（AIP-160 子集）**：`term (AND term)*`，`term := field op value`，值为 `"…"` 或无空白裸词；时间戳值必须加双引号（含 `:`）。字段：`state = ACTIVE|FROZEN|PENDING_DELETION|DELETED`；`create_time >= <RFC3339>`、`create_time < <RFC3339>`；`identity.phone = <手机号>`、`identity.email = <邮箱>`（服务端归一化后按摘要等值查找）；`identity.phone_prefix`（如 `"+86138"`）、`identity.phone_suffix`（后 4 位）、`identity.email_prefix`、`identity.email_domain`。身份条件须同属一种 kind 且落在同一条活跃身份上；不支持 `OR` / `NOT` / 括号。`show_deleted=true` 才包含 `PENDING_DELETION` / `DELETED`（AIP-164）。
 - **分页**：`page_size` 默认 20、上限 100；`page_token` 不透明 keyset 游标（用户按 `create_time, id`，审计按 `occur_time, id`）；`next_page_token` 为空表示最后一页。
-- **DTO**：与 C 端分开定义；时间戳 RFC 3339（UTC）；身份默认掩码，明文只在 `:reveal` 响应中出现；审计事件的可空字段输出 `null`，result 未知/不适用为 `null`，已知结果仍为 `SUCCESS` / `FAILURE`。审计资源 name 使用 `users/{user}/auditEvents/{标准小写 UUID}`；旧审计游标返回 400，客户端清除 page_token 后重新翻页，用户列表游标保持。
+- **DTO**：与 C 端分开定义；时间戳 RFC 3339（UTC）；身份默认掩码，明文只在 `:reveal` 响应中出现；审计事件的可空字段输出 `null`，result 未知/不适用为 `null`，已知结果仍为 `SUCCESS` / `FAILURE`。审计资源 name 使用 `users/{user}/auditEvents/{标准小写 UUID}`；不匹配的审计游标返回 400，客户端清除 page_token 后重新翻页，用户列表游标独立。
 - **审计**：每个写操作一条 `actor_kind=ADMIN` 事件（`admin_issuer/subject/username`、`request_id`、`ip`）：`USER_FROZEN` / `USER_UNFROZEN`（reason 为管理员填写值）、`SESSION_REVOKED`（reason `ADMIN`，冻结时为 `USER_FROZEN`）、`USER_DELETED` / `USER_UNDELETED`、`IDENTITY_REVEALED`（只记 kind + hint）。读取端点不产生事件。`ADMIN_FORBIDDEN` 由宿主经 `auth.RecordAdminForbidden` 在 verifier 的 `OnForbidden` 钩子里写入。
 - **状态码语义**：管理面上 403 只表示管理员角色不足（来自 verifier）；目标账号的状态问题一律 400 `FAILED_PRECONDITION`（`INVALID_ACCOUNT_STATE` / `USER_FROZEN`）；用户/身份/会话不存在或不属于该用户 → 404。
 
@@ -471,7 +475,7 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 | `GOOGLE_JWKS_URL` | `https://www.googleapis.com/oauth2/v3/certs` | 测试/代理部署钩子 |
 | `FACEBOOK_APP_ID` | 空（未启用） | Facebook App ID；非空即启用 FACEBOOK，同一实例只对接一个 App |
 | `FACEBOOK_APP_SECRET` | 空 | App ID 非空时必填；用于 Graph 调用的 `appsecret_proof` 和 `signed_request` 校验，不进入日志与响应 |
-| `FACEBOOK_GRAPH_API_VERSION` | `v26.0` | 格式 `vN.N`；仅 App ID 非空时校验。默认版本随发布升级，属于兼容变更，见发布说明 |
+| `FACEBOOK_GRAPH_API_VERSION` | `v26.0` | 格式 `vN.N`；仅 App ID 非空时校验。默认版本随库发布升级，属于兼容变更 |
 | `FACEBOOK_NONCE_TTL` | `10m` | Limited Login nonce 登记下限（不小于 `1m`，仅 App ID 非空时校验），实际取它与 `exp` + 30s 的较大者 |
 | `FACEBOOK_GRAPH_API_BASE_URL` | `https://graph.facebook.com` | 测试/代理部署钩子 |
 | `FACEBOOK_JWKS_URL` | `https://www.facebook.com/.well-known/oauth/openid/jwks/` | 测试/代理部署钩子 |
@@ -495,18 +499,18 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 
 三组密钥分别使用“版本列表 + active 版本”，版本编号对应的密钥材料不可改写。JWT、身份 HMAC 和身份 AES 密钥独立轮换，不要求它们的 active 编号一致。JWT 仍按原有 access 有效期要求保留旧验签版本；以下说明身份密钥及验证码的正常轮换。
 
-1. 保持 HMAC active=K1，先将所有服务进程升级到支持必需 code_id 和多版本验证码处理的实现。
+1. 保持 HMAC active=K1，确保所有进程使用相同密钥集合与相同的库版本。
 2. 向全部进程分发相同的完整 K1、K2 密钥集合，仍使用 K1；确认验证码有效期、次数、冷却和额度策略一致，再滚动切换 active=K2。配置在重新装配或服务重启后生效，不提供热加载；实例 Redis 前缀保持不变。
-3. 全部已配置 HMAC 版本共同定位轮次、目标失败预算、目标冷却和目标 UTC 日额度。同一新协议内的旧 active 轮次保留标识、绑定、原到期时间、错误次数和一次性消费语义；无 code_id 的旧协议轮次不接管，新发码替换全部版本的同用途旧码；目标冷却跨用途共享，日额度合计不同物理键的实际计数。IP 日额度原本就不依赖 HMAC，每次占额仍只增加一次 IP 计数。投递失败不退还冷却或额度。
+3. 全部已配置 HMAC 版本共同定位轮次、目标失败预算、目标冷却和目标 UTC 日额度。旧 active 签发的轮次保留标识、绑定、原到期时间、错误次数和一次性消费语义；新发码替换全部版本的同用途旧码；目标冷却跨用途共享，日额度合计不同物理键的实际计数。IP 日额度原本就不依赖 HMAC，每次占额仍只增加一次 IP 计数。投递失败不退还冷却或额度。
 4. 记录最后一个 K1 active 进程及其在途请求、维护操作全部结束的时刻 T0，然后按下述条件退役 K1。
 
 混合 active 期间同一手机/邮箱在不同进程下会得到不同摘要，摘要唯一索引无法互相拦截；可能新建该 subject 身份的事务（首次登录、补全、绑定、换绑、导入）因此先对 AllDigests 全部版本取事务级 advisory lock，再加任何行锁。该互斥依赖所有进程持有相同完整密钥集合，即上面第 2 步。
 
-周期性 `rekey_digests` / `reencrypt_subjects` 回填及默认5分钟维护间隔保持原状。混合 active 期间，不同进程可能把数据库回填到各自的 active，方向仍可能变化；应在 T0 后确认实际回填结果，不能以等待一个维护周期或重启成功代替检查。HMAC 退役要求实际 `Config.Schema` 下未删除的手机/邮箱 `identity` 不再引用 K1 的 `digest_key_version`。若同时独立轮换 AES，另行确认旧 AES 的 `cipher_key_version` 引用归零；只轮换 HMAC 不要求密文也切到相同版本编号。
+周期性 `rekey_digests` / `reencrypt_subjects` 回填按默认5分钟维护间隔运行。混合 active 期间，不同进程可能把数据库回填到各自的 active，方向仍可能变化；应在 T0 后确认实际回填结果，不能以等待一个维护周期或重启成功代替检查。HMAC 退役要求实际 `Config.Schema` 下未删除的手机/邮箱 `identity` 不再引用 K1 的 `digest_key_version`。若同时独立轮换 AES，另行确认旧 AES 的 `cipher_key_version` 引用归零；只轮换 HMAC 不要求密文也切到相同版本编号。
 
 HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额度的业务窗口结束，截止为 `max(T0 + 旧 CodeTTL, T0 + 旧 CodeFailureWindow, T0 + 旧 CodeCooldown, T0 之后的下一个 UTC 零点)`。配置曾变化时使用仍可能存活记录对应的最大旧期限，并留出部署时钟偏差余量。日额度键额外1小时仅用于垃圾回收，不延长业务窗口。数据库引用与这些 Redis 条件同时满足后，才从全部运行配置移除旧 HMAC 并重新部署；AES 退役还须确认有效 sign_in_completion_flow 的 cipher_version 不再引用旧版本；等待流程原期限或完成清理后再移除。`Migrate` 缺少仍被未删除身份引用的密钥时返回 `user.ErrUnknownKeyVersion`，但它不检查 Redis 状态，启动成功不证明 HMAC 可以退役。为仍需恢复的旧备份受控保留相应历史密钥，从运行配置移除不等于立即永久销毁。
 
-旧程序曾在不同 active 下留下多份同用途存活验证码时，无法可靠判断签发先后；新实现原子作废全部冲突码并返回原 `CODE_EXPIRED`，冷却和额度保留，用户按原限制重新发码。连续性仅适用于所有进程已升级、持有相同完整密钥集合且策略一致的正常轮换，不覆盖缺失密钥、丢失 Redis 状态或泄露密钥的紧急撤销。回退优先保留支持本能力的程序与完整密钥集合，仅切回 active 并重新计算退役窗口；切回旧程序不能承诺轮换后状态连续。实际验证与未验证项见[轮换验收记录](openspec/changes/archive/2026-10-04-harden-code-key-rotation/verification.md)。
+不同 active 下留下多份同用途存活验证码时，无法可靠判断签发先后；实现原子作废全部冲突码并返回 `CODE_EXPIRED`，冷却和额度保留，用户按原限制重新发码。连续性仅适用于所有进程持有相同完整密钥集合且策略一致的正常轮换，不覆盖缺失密钥、丢失 Redis 状态或泄露密钥的紧急撤销。回退时保留完整密钥集合，仅切回 active 并重新计算退役窗口。实际验证与未验证项见[轮换验收记录](openspec/changes/archive/2026-10-04-harden-code-key-rotation/verification.md)。
 
 ## 测试
 
@@ -516,14 +520,10 @@ HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额
 
 ## 仓库与发布状态
 
-当前最新版本为 [v0.7.2](https://github.com/bbxx111/accountkit/releases/tag/v0.7.2)：在 v0.7.1 之上仅让管理面 `:reveal` 处理器写出的所有响应带 `Cache-Control: no-store`，库契约其余不变。使用 `go get github.com/bbxx111/accountkit@v0.7.2` 接入；范围与升级边界见[发布说明](docs/releases/v0.7.2.md)，候选 `453527b` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/40865352107)已通过，实际证据见[发布验收](openspec/changes/archive/2026-10-29-prepare-v0-7-2-release/verification.md)。v0.7.1 见[其发布说明](docs/releases/v0.7.1.md)：在 v0.7.0（ES256 access 与 JWKS、严格认证与以数据库为准的内省、已清理用户拉取、accountsvc 阿里云短信、`ACCOUNTSVC_` 统一前缀、服务调用 Bearer 认证与多语言邮件模板清单）之上，仅增加 accountsvc 开发模式的明文 HTTP 签发方例外，库契约不变。使用 `go get github.com/bbxx111/accountkit@v0.7.1` 接入；范围与升级边界见[发布说明](docs/releases/v0.7.1.md)，候选 `e67d262` 的[完整 CI](https://github.com/bbxx111/accountkit/actions/runs/40806251482)已通过，实际证据见[发布验收](openspec/changes/archive/2026-10-29-prepare-v0-7-1-release/verification.md)；v0.7.0 见[其发布说明](docs/releases/v0.7.0.md)。
+当前版本为 v1.0.0（候选）。打 tag 后可用 `go get github.com/bbxx111/accountkit@v1.0.0` 接入；公开 Go API 自 v1.0.0 起受语义化版本约束，破坏性变化发布新主版本。开发期（v1.0.0 之前）版本见[1.0 前历史](docs/releases/pre-1.0-history.md)。
 
-远程仓库：https://github.com/bbxx111/accountkit.git
+Go module：github.com/bbxx111/accountkit；远程仓库：https://github.com/bbxx111/accountkit.git。发布及产品上线要求见[检查表](docs/release-checklist.md)。
 
-Go module：github.com/bbxx111/accountkit。`v0.4.0` 的会话来源、客户端描述及数据库运行加固见其[历史发布说明](docs/releases/v0.4.0.md)和[验收记录](openspec/changes/archive/2026-10-20-prepare-v0-4-0-release/verification.md)；v0.1.0–v0.4.0 的说明和 tag 均保留。发布及产品上线要求见[检查表](docs/release-checklist.md)。
+库版本发布与各产品生产上线分别验收。产品实际环境接入、真实服务商与预发布升级/恢复仍待完成；产品各自配置 schema、Redis 前缀、issuer/audience 和密钥，并承担自己的匿名化与网关接入责任。当前未附开源 LICENSE，本版本供自有产品接入，尚未向外部使用方定义复用许可。
 
-库版本发布与各产品生产上线分别验收。产品实际环境接入、真实服务商与预发布升级/恢复仍待完成；产品各自配置 schema、Redis 前缀、issuer/audience 和密钥，并承担自己的匿名化与网关接入责任。当前未附开源 LICENSE，本次版本供自有产品接入，尚未向外部使用方定义复用许可。
-
-此前流程改名已纳入 v0.3.0 的初始定义。v0.4.0 发布前，会话0002先经明确授权合入当时未发布的0001，又经用户明确批准简化为必有来源与单行JSONB描述；该会话初始定义已随 v0.4.0 发布，此前有限授权不再适用于修改它；v0.5.0 发布前另经明确授权将资料单列和头像列纳入当前初始定义，该定义现已随 v0.5.0 固定，已发布 tag 内字节保持；同步down、baseline、固定哈希和sqlc，不新增生产0002，新安装仍为version=1/dirty=false。**旧v0.3.0 v1、前一`b414fef`双快照v1及撤回会话v2均不能直接接管**，返回不兼容错误并保留数据、结构和版本。新部署须人工核验新空资源，需保留旧数据时另行制定并验证迁移方案，不Force、改版本或自动清库。公共`Down`仍拒绝；详见[迁移手册](docs/migrations.md#会话认证依据初始整合)。所有已发布标签、其中的历史SQL和固定源快照保持，历史与当前定义分别校验，两次有限授权均不允许日常改写初始SQL。
-
-原 migrations.Down 保留签名但默认拒绝执行；新基线的一次性测试清库使用显式 UnsafeReset。升级、故障处理与恢复步骤见 [迁移手册](docs/migrations.md)，本次边界见[兼容说明](docs/compatibility.md#初始数据库基线整合)。
+`migrations.Down` 保留签名但默认拒绝执行；一次性测试清库使用显式 `UnsafeReset`。升级、故障处理与恢复步骤见[迁移手册](docs/migrations.md)。

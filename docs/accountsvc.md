@@ -4,11 +4,11 @@ accountsvc 是 accountkit 的可选官方宿主。同一个 Go module 同时支�
 
 ## 会话上下文部署
 
-v0.4.0 提供GET /v1/users/me/sessions/current，允许user/user:bind的Bearer，返回数据库最新的非空具体身份来源，以及可选单份nested client_info和client_info_update_time；所有响应no-store。user:undelete不允许；数据库无效会话401 TOKEN_INVALID，依赖故障503；来源缺失或失效、已存客户端描述非法均为固定500内部错误，不能统一映射为401或正常空集合。普通access验证仍只做JWT/Redis验证，不增加数据库热路径，Redis故障边界保持；内省按 sid 读取会话吊销状态（见[内省](#内省)），不读取来源或客户端描述。
+GET /v1/users/me/sessions/current 允许user/user:bind的Bearer，返回数据库最新的非空具体身份来源，以及可选单份nested client_info和client_info_update_time；所有响应no-store。user:undelete不允许；数据库无效会话401 TOKEN_INVALID，依赖故障503；来源缺失或失效、已存客户端描述非法均为固定500内部错误，不能统一映射为401或正常空集合。普通access验证仍只做JWT/Redis验证，不增加数据库热路径，Redis故障边界保持；内省按 sid 读取会话吊销状态（见[内省](#内省)），不读取来源或客户端描述。
 
-默认HTTP解析已装配，无新增必需配置、任意JSON输入或制造商/build显式头；显式可选头、UA与Client Hints由[网关/CORS清单](gateway-integration.md#客户端描述透传与-cors)按实际使用透传。只在成功登录、补全、重新认证和新轮refresh观察；规范化非空描述整体替换单行JSONB，nil/空描述保留已有值与时间，孤立version/build合法，app/browser可以并存。pending完成本次非空描述优先，否则整体沿用加密首次描述及原观察时间；失败、回滚和重放不更新。业务读写校验而非数据库JSON对象/业务CHECK。不收集业务请求活动，不保存原始UA/IP/位置；原设备头仍有独立设备合并与pending一致性语义，描述不构成可信设备证明。嵌入式宿主可通过Deps.ClientInfo覆盖解析并提供Extensions，但须管理来源、语义和隐私白名单，详见[Go指南](go-integration.md#当前会话解绑与客户端描述)；accountsvc不提供任意转发UA信任配置。
+默认HTTP解析已装配，无额外必需配置、任意JSON输入或制造商/build显式头；显式可选头、UA与Client Hints由[网关/CORS清单](gateway-integration.md#客户端描述透传与-cors)按实际使用透传。只在成功登录、补全、重新认证和新轮refresh观察；规范化非空描述整体替换单行JSONB，nil/空描述保留已有值与时间，孤立version/build合法，app/browser可以并存。pending完成本次非空描述优先，否则整体沿用加密首次描述及原观察时间；失败、回滚和重放不更新。业务读写校验而非数据库JSON对象/业务CHECK。不收集业务请求活动，不保存原始UA/IP/位置；设备头X-Device-Id/X-Device-Name有独立的设备合并与pending一致性语义，描述不构成可信设备证明。嵌入式宿主可通过Deps.ClientInfo覆盖解析并提供Extensions，但须管理来源、语义和隐私白名单，详见[Go指南](go-integration.md#当前会话解绑与客户端描述)；accountsvc不提供任意转发UA信任配置。
 
-v0.4.0 的0001包含完整会话上下文；部署须按[迁移手册](migrations.md#会话认证依据初始整合)人工核验新空目标，安装完整七表且version=1/dirty=false，并协调切换全部认证副本。旧v0.3.0 v1、前一`b414fef`双快照v1与撤回会话v2均拒绝直接接管，需要保留数据时另行制定迁移方案。旧v0.3.0 Migrate可能接受同号新结构，不能依赖旧预检防止旧来源/撤销规则混跑，部署方须显式阻止。解绑命中任一来源仍会撤销相应会话；同账号任一未吊销会话缺少有效来源时整事务报内部错误并回滚。换绑检查当前来源，成功204/200仍为操作成功，客户端重查并处理退出。恢复先落独立空库核验，不能清Redis、改版本或Down代替。当前验证状态见[简化验收](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)。
+解绑命中任一来源会撤销相应会话；同账号任一未吊销会话缺少有效来源时整事务报内部错误并回滚。换绑检查当前来源，成功204/200即为操作成功，客户端重查并处理退出。恢复先落独立空库核验，不能清Redis、改版本或Down代替，见[迁移手册](migrations.md)。
 
 ## 两种集成方式
 
@@ -17,11 +17,11 @@ v0.4.0 的0001包含完整会话上下文；部署须按[迁移手册](migration
 | 嵌入 accountkit | 连接、发送器、HTTP 挂载、管理员验证和业务匿名化回调 | 需要同库业务事务或定制装配 |
 | 运行 accountsvc | 运行配置、TLS、SMTP、外部管理员提供方、业务端授权 | 通过消费者 API、JWKS 本地验签及关键路由内省接入 |
 
-服务提供可选 SMTP 邮件验证码与可选阿里云短信验证码；显式身份策略启用 EMAIL 时要求 SMTP，禁用 EMAIL 时不解析或要求 SMTP；显式启用 PHONE 时要求配置短信服务商（见[短信服务商](#短信服务商)）。未设置新策略保留原 SMTP 装配，短信显式禁用（即使配置了短信服务商也不自动启用 PHONE）；禁用渠道请求返回 400 `CHANNEL_NOT_ENABLED`，不生成验证码、不扣发送额度。库宿主原有短信/邮件发送器继续可用。
+服务提供可选 SMTP 邮件验证码与可选阿里云短信验证码；显式身份策略启用 EMAIL 时要求 SMTP，禁用 EMAIL 时不解析或要求 SMTP；显式启用 PHONE 时要求配置短信服务商（见[短信服务商](#短信服务商)）。未设置身份策略时使用默认的 SMTP 装配，短信禁用（即使配置了短信服务商也不自动启用 PHONE）；禁用渠道请求返回 400 `CHANNEL_NOT_ENABLED`，不生成验证码、不扣发送额度。嵌入库的宿主仍自行注入短信/邮件发送器。
 
 服务默认使用库管理的本地有界异步审计及本地管理查询，`Auth.Start/Close` 管理 worker，服务管理连接。`ACCOUNTSVC_AUDIT_SOURCE` / `ACCOUNTSVC_AUDIT_NAMESPACE` 可显式设置，默认分别为 `accountkit/<schema>` / `accountkit/<schema>/resources`；同库共享审计时保持实例范围稳定。服务未内置远端审计适配器或任意业务审计 HTTP 写入接口。嵌入宿主的读写接管与仅写入模式见 [examples/audit](../examples/audit/main.go) 和[库装配说明](../README.md#宿主审计装配与清理责任)。
 
-当前审计使用UUIDv7标准字符串，管理HTTP仍返回认证投影；result未知时为null。旧审计page_token返回400，客户端清除后重新翻页。已发布v0.3.0和v0.4.0均安装为version=1，但v0.4.0的0001额外包含简化后的完整会话上下文，不能根据版本号直接接管旧库。旧identity_flow、旧十七列审计、双表并存、缺少会话结构的v0.3.0 v1、前一`b414fef`双快照v1和撤回v2均拒绝；重复migrate不自动改名、转换或补表。新部署使用经人工核验的新空资源，保留数据需求另行制定迁移方案，见[迁移手册](migrations.md#会话认证依据初始整合)。外部清理须有持久化流程和完成核验，`USER_PURGED`不能独立证明清理完成；切换后旧本地副本仍受保留和匿名化责任约束，详见[审计迁移说明](compatibility.md#通用审计公开接口与协议迁移)。
+审计 ID 为 UUIDv7 标准字符串，管理 HTTP 返回认证投影；result 未知时为 null。不匹配的审计 page_token 返回400，客户端清除后重新翻页。外部清理须有持久化流程和完成核验，`USER_PURGED`不能独立证明清理完成；切换到外部模式后本地副本仍受保留和匿名化责任约束，详见[审计接口说明](compatibility.md#外部隐私与模式切换)。
 
 ## 构建与运行
 
@@ -52,15 +52,15 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 
 ## 身份策略与登录补全
 
-服务读取 `ACCOUNTSVC_ENABLED_IDENTITY_KINDS` 和 `ACCOUNTSVC_REQUIRED_IDENTITY_KINDS`。省略 E 沿用原装配，省略 R 为 PHONE/EMAIL any-of；非空 R 只能包含 PHONE/EMAIL 且为 E 子集，`[]` 显式不限定类型。仅邮件可设 E=EMAIL、R=EMAIL；纯微信可设 E=WECHAT、R=[] 并配置微信应用，无需 SMTP。仅小程序部署可配置 `ACCOUNTSVC_WECHAT_MINI_PROGRAM_APPS=appid:secret`，OAuth 应用使用 `ACCOUNTSVC_WECHAT_APPS`，两组不能重复 AppID。全局 `ACCOUNTSVC_WECHAT_SUBJECT_MODE` 缺省为 `UNIONID`，显式只接受 `UNIONID` / `OPENID`，空值非法；管理员 audience 不能等于任一组的 AppID。客户端统一提交 `{"kind":"WECHAT","credential":{"app_id":"wx…","code":"…"}}`。小程序 code 来自小程序登录，OAuth code 来自对应授权流程；接口由服务端应用分组决定。subject 使用 `unionid:<unionid>` 或 `openid:<appid>:<openid>`；与历史裸 UnionID 不兼容，不自动转换旧数据或合并账号，也无旧数据迁移工具。模式应固定，切换模式或分组可能产生不同身份并使已有 pending 失效，所有副本须一致。配置的 OIDC 类型同理：在 `ACCOUNTSVC_OIDC_PROVIDERS` 列出类型名，并为每个类型设置 `ACCOUNTSVC_OIDC_<KIND>_ISSUER`、`_JWKS_URL`、`_CLIENT_IDS`（可选 `_NONCE_TTL`、`_NAME_CLAIMS`、`_PICTURE_CLAIMS`，后两者设为空表示不读取）；缺失或非法时启动失败并指出具体变量名，不输出配置值。显式 E 中未配置的非内置类型指向 `ACCOUNTSVC_ENABLED_IDENTITY_KINDS`。未设置任何 OIDC 变量时 migrate 不受影响；已列出类型但配置不完整或非法时，migrate 与 serve 同样失败并指出变量名。类型名本身由 OIDC 配置定义，因此引用未定义类型的静态策略在 migrate 中同样无效。未在 `ACCOUNTSVC_OIDC_PROVIDERS` 列出的类型，其 `ACCOUNTSVC_OIDC_<KIND>_*` 变量被忽略，列表拼写错误会使该提供方保持关闭。显式启用 PHONE 时须配置短信服务商，否则启动失败并指出 `ACCOUNTSVC_SMS_PROVIDER`。配置在重启后生效，所有同实例副本须一致。
+服务读取 `ACCOUNTSVC_ENABLED_IDENTITY_KINDS` 和 `ACCOUNTSVC_REQUIRED_IDENTITY_KINDS`。省略 E 沿用原装配，省略 R 为 PHONE/EMAIL any-of；非空 R 只能包含 PHONE/EMAIL 且为 E 子集，`[]` 显式不限定类型。仅邮件可设 E=EMAIL、R=EMAIL；纯微信可设 E=WECHAT、R=[] 并配置微信应用，无需 SMTP。仅小程序部署可配置 `ACCOUNTSVC_WECHAT_MINI_PROGRAM_APPS=appid:secret`，OAuth 应用使用 `ACCOUNTSVC_WECHAT_APPS`，两组不能重复 AppID。全局 `ACCOUNTSVC_WECHAT_SUBJECT_MODE` 缺省为 `UNIONID`，显式只接受 `UNIONID` / `OPENID`，空值非法；管理员 audience 不能等于任一组的 AppID。客户端统一提交 `{"kind":"WECHAT","credential":{"app_id":"wx…","code":"…"}}`。小程序 code 来自小程序登录，OAuth code 来自对应授权流程；接口由服务端应用分组决定。subject 使用 `unionid:<unionid>` 或 `openid:<appid>:<openid>`，不自动合并账号。模式应固定，切换模式或分组可能产生不同身份并使已有 pending 失效，所有副本须一致。配置的 OIDC 类型同理：在 `ACCOUNTSVC_OIDC_PROVIDERS` 列出类型名，并为每个类型设置 `ACCOUNTSVC_OIDC_<KIND>_ISSUER`、`_JWKS_URL`、`_CLIENT_IDS`（可选 `_NONCE_TTL`、`_NAME_CLAIMS`、`_PICTURE_CLAIMS`，后两者设为空表示不读取）；缺失或非法时启动失败并指出具体变量名，不输出配置值。显式 E 中未配置的非内置类型指向 `ACCOUNTSVC_ENABLED_IDENTITY_KINDS`。未设置任何 OIDC 变量时 migrate 不受影响；已列出类型但配置不完整或非法时，migrate 与 serve 同样失败并指出变量名。类型名本身由 OIDC 配置定义，因此引用未定义类型的静态策略在 migrate 中同样无效。未在 `ACCOUNTSVC_OIDC_PROVIDERS` 列出的类型，其 `ACCOUNTSVC_OIDC_<KIND>_*` 变量被忽略，列表拼写错误会使该提供方保持关闭。显式启用 PHONE 时须配置短信服务商，否则启动失败并指出 `ACCOUNTSVC_SMS_PROVIDER`。配置在重启后生效，所有同实例副本须一致。
 
-消费者沿用 `/v1/users`，管理面沿用 `/admin/v1/users`；资源 name 使用 users 及其子资源。此前未发布的 accounts 路径返回 404，不注册别名或重定向。未知第三方身份不满足 R 时返回 pending，尚不建号。客户端调用 `/v1/users:sendSignInCompletionCode` 和 `/v1/users:completeSignIn`，只用 `sign_in_completion_token` 和 PHONE/EMAIL 轮次；验证后关联已有活动账号或注册，详见 [库协议](../README.md#身份策略与登录补全)及[协议升级说明](compatibility.md#身份策略与登录补全协议升级)。
+消费者沿用 `/v1/users`，管理面沿用 `/admin/v1/users`；资源 name 使用 users 及其子资源。未知第三方身份不满足 R 时返回 pending，尚不建号。客户端调用 `/v1/users:sendSignInCompletionCode` 和 `/v1/users:completeSignIn`，只用 `sign_in_completion_token` 和 PHONE/EMAIL 轮次；验证后关联已有活动账号或注册，详见[库协议](../README.md#身份策略与登录补全)。
 
 普通第三方绑定从已登录账号设置发起。纯第三方近期认证要重新登录并替换 token pair，核对 user_id 后继续；普通 IdP 仍不能恢复冷静期账号，手机/邮箱和管理员恢复保留。migrate 只检查静态 E/R 与迁移依赖，不构造发送器、IdP 或认证 handler；serve 才校验显式启用类型的真实运行能力。
 
 ## 配置
 
-服务的全部配置只使用 `ACCOUNTSVC_` 前缀：库配置项沿用 [README](../README.md) 变量表中的名称，只是前缀为 `ACCOUNTSVC_`；服务配置项名称与库配置项不重叠。环境中出现任何非空的 `ACCOUNTKIT_` 变量时，serve 与 migrate 都会启动失败并指出旧名与对应新名（不回显值），迁移见[兼容指南](compatibility.md#accountsvc-配置前缀统一)。例如 `ACCOUNTSVC_AUTH_SCHEMA`、`ACCOUNTSVC_AUTH_KEY_PREFIX`、`ACCOUNTSVC_JWT_KEYS`、`ACCOUNTSVC_JWT_ISSUER`。当前版本的 `ACCOUNTSVC_AUTH_SCHEMA` 未设置或为空时默认 `account`，Compose 也显式使用 `account`；合法的显式 schema 仍按配置使用。已有宿主的环境变量契约不变。`ACCOUNTSVC_PROVIDER_PROFILE_BACKFILL`（默认 `true`）控制已有账号在第三方登录、绑定或补全关联时是否补填空的显示名与头像；非法值使 `serve` 与 `migrate` 启动失败并指出该变量名，不回显取值。
+服务的全部配置只使用 `ACCOUNTSVC_` 前缀：库配置项沿用 [README](../README.md) 变量表中的名称，只是前缀为 `ACCOUNTSVC_`；服务配置项名称与库配置项不重叠。环境中出现任何非空的 `ACCOUNTKIT_` 变量时，serve 与 migrate 都会启动失败，并列出这些变量名及对应的 `ACCOUNTSVC_` 名称（不回显值）。例如 `ACCOUNTSVC_AUTH_SCHEMA`、`ACCOUNTSVC_AUTH_KEY_PREFIX`、`ACCOUNTSVC_JWT_KEYS`、`ACCOUNTSVC_JWT_ISSUER`。`ACCOUNTSVC_AUTH_SCHEMA` 未设置或为空时默认 `account`，Compose 也显式使用 `account`；合法的显式 schema 按配置使用。`ACCOUNTSVC_PROVIDER_PROFILE_BACKFILL`（默认 `true`）控制已有账号在第三方登录、绑定或补全关联时是否补填空的显示名与头像；非法值使 `serve` 与 `migrate` 启动失败并指出该变量名，不回显取值。
 
 Facebook 登录使用 `ACCOUNTSVC_FACEBOOK_APP_ID`、`ACCOUNTSVC_FACEBOOK_APP_SECRET`，可选 `ACCOUNTSVC_FACEBOOK_GRAPH_API_VERSION`（默认 `v26.0`）、`ACCOUNTSVC_FACEBOOK_NONCE_TTL`（默认 `10m`），以及仅供测试或代理部署的 `ACCOUNTSVC_FACEBOOK_GRAPH_API_BASE_URL`、`ACCOUNTSVC_FACEBOOK_JWKS_URL`。App ID 为空表示未启用，非空时 App Secret 必填；App Secret 只通过环境或密钥注入，不写入镜像、Compose 文件或日志。accountsvc 不提供 Facebook 数据删除回调路由：部署方须在 Meta 后台配置数据删除说明页，或另行用嵌入式库的 `HandleFacebookDataDeletion` 实现回调，见 [Go 集成指南](go-integration.md#facebook-数据删除回调)。
 
@@ -84,7 +84,7 @@ QQ App SDK 登录使用 `ACCOUNTSVC_QQ_APP_IDS`（逗号分隔的唯一 1–20 �
 | `DATABASE_URL` | 必填 PostgreSQL DSN |
 | `REDIS_URL` | 必填 Redis URI，支持认证、数据库编号及 rediss |
 | `HTTP_ADDR` | 单一监听地址；127.0.0.1:8080 |
-| `INTERNAL_ADDR` | 已移除；serve 读取到任意非空值即报错，必须删除旧注入 |
+| `INTERNAL_ADDR` | 不支持（服务只有单监听器）；serve 读取到任意非空值即报错，必须删除该注入 |
 | `TLS_ENABLED` | 未设置/空沿用原模式默认；true 强制 HTTPS；false 显式 HTTP |
 | `TLS_CERT_FILE` / `TLS_KEY_FILE` | 有效 TLS 模式启用时要求完整有效证书对；false 与任一证书项冲突 |
 | `METRICS_ENABLED` | 未设置、空或 false 时关闭；true 启用 Prometheus；非法布尔在监听前拒绝 |
@@ -114,7 +114,7 @@ QQ App SDK 登录使用 `ACCOUNTSVC_QQ_APP_IDS`（逗号分隔的唯一 1–20 �
 openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 | openssl pkcs8 -topk8 -nocrypt -outform DER | base64 -w0
 ```
 
-旧的 HS256 随机字节密钥会在启动时被拒绝并指出变量名。内省 JSON 示例中的值是占位符，须替换为至少32随机字节的 base64 编码：
+HS256 随机字节密钥不是合法的 ES256 私钥，会在启动时被拒绝并指出变量名。内省 JSON 示例中的值是占位符，须替换为至少32随机字节的 base64 编码：
 
 ```json
 {"business-service":["<base64-secret>"]}
@@ -152,7 +152,7 @@ openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 | openssl pkcs8 -
 
 ## 身份密钥与验证码轮换
 
-服务使用库的 [密钥轮换规则](../README.md#密钥轮换)：保持旧 active 时先升级全部进程，再向所有进程分发相同完整的 `ACCOUNTSVC_SUBJECT_HMAC_KEYS`，确认验证码策略一致后，滚动修改 `ACCOUNTSVC_SUBJECT_HMAC_ACTIVE_KEY` 并重启。配置在进程启动时读取，不新增轮换命令、端点或热加载；实例 schema、Redis 前缀和既有策略保持一致。
+服务使用库的 [密钥轮换规则](../README.md#密钥轮换)：保持旧 active，先向所有进程分发相同完整的 `ACCOUNTSVC_SUBJECT_HMAC_KEYS`，确认验证码策略一致后，滚动修改 `ACCOUNTSVC_SUBJECT_HMAC_ACTIVE_KEY` 并重启。配置在进程启动时读取，不新增轮换命令、端点或热加载；实例 schema、Redis 前缀和既有策略保持一致。
 
 满足此前提时，不同 active 进程和重启后的服务可消费旧码，共用目标冷却及累计 UTC 日额度；IP 额度原本独立于 HMAC。旧码不会延长寿命或重置错误次数，历史多份冲突码返回原 `CODE_EXPIRED` 并作废，重新发码仍受原冷却和额度约束。
 
@@ -162,7 +162,7 @@ openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 | openssl pkcs8 -
 
 | 监听地址 | 路径 | 身份 |
 |---|---|---|
-| HTTP_ADDR | /v1 | 原消费者登录、身份、会话与生命周期接口 |
+| HTTP_ADDR | /v1 | 消费者登录、身份、会话与生命周期接口 |
 | HTTP_ADDR | /admin/v1 | 独立外部管理员 JWT，关闭时503 |
 | HTTP_ADDR | POST /v1/introspect | 独立服务调用：Basic 凭据或服务 Bearer 令牌 |
 | HTTP_ADDR | GET /v1/purgedUsers | 已清理用户拉取：独立 Basic 凭据（`PURGE_FEED_BASIC_CLIENTS`）或服务 Bearer 令牌；内部入口 |
@@ -170,7 +170,7 @@ openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 | openssl pkcs8 -
 | HTTP_ADDR | GET /healthz、GET /readyz | 无认证探针；访问范围由部署策略限制 |
 | HTTP_ADDR | GET /metrics | 指标开关启用时提供，无内建鉴权；仅允许监控来源 |
 
-服务只绑定一个监听器，路径不构成网络隔离。公网明确允许消费者路由、分别设置管理员策略并阻断内省、探针和指标；不得直接公开全部 `/v1/*`，后端端口也须限制直连来源。具体接入规则见[网关接入手册](gateway-integration.md)。旧 `/internal/v1/introspect` 返回404，无别名或重定向；旧配置、端口、调用方与整体回退见[兼容迁移说明](compatibility.md#服务单监听与传输迁移)。服务无管理前端，不提供 Cookie 登录或默认宽松 CORS。
+服务只绑定一个监听器，路径不构成网络隔离。公网明确允许消费者路由、分别设置管理员策略并阻断内省、探针和指标；不得直接公开全部 `/v1/*`，后端端口也须限制直连来源。具体接入规则见[网关接入手册](gateway-integration.md)，回退要求见[停机与回退](#邮件匿名化与停机)。服务无管理前端，不提供 Cookie 登录或默认宽松 CORS。
 
 healthz 只表示进程存活。readyz 要求启动完成、未停机且 PostgreSQL/Redis 在两秒内可用；SMTP 或运行期 OIDC 故障不影响整个服务就绪，但对应功能会失败。请求/响应携带 X-Request-Id 用于关联；不要记录 Authorization 或请求体中的凭据。
 
@@ -316,7 +316,7 @@ JWKS 最多缓存1小时；未知 kid 刷新合并并按60秒节流，无法取�
 
 ## 邮件、匿名化与停机
 
-EMAIL 启用时，服务用内置布局和一份清单渲染 HTML 与纯文本两部分的验证码邮件，并按请求的 `Accept-Language` 选择语言（见[邮件模板清单](#邮件模板清单)）。未设置 `SMTP_TEMPLATES_FILE` 时使用嵌入的无品牌默认清单（简体、繁体、英文），启动时记录 WARN；正式部署应提供自己的清单。服务不再使用库的 `LegacyChineseRenderer`，该渲染器仍是嵌入式宿主 `smtp.New` 的默认值。EMAIL 关闭时仍不要求 SMTP，`migrate` 不装配发送器。嵌入式宿主需要本地化时，可参考[双语渲染实现](../examples/codeemail/renderer.go)和[装配示例](../examples/codeemail/example_test.go)，通过自己的 context 约定选择语言；并发、取消、HTML 转义和安全日志责任见 [README 发送器契约](../README.md#发送器)。新旧名称与回退说明见[兼容指南](compatibility.md#验证码发送器命名与渲染接入)。
+EMAIL 启用时，服务用内置布局和一份清单渲染 HTML 与纯文本两部分的验证码邮件，并按请求的 `Accept-Language` 选择语言（见[邮件模板清单](#邮件模板清单)）。未设置 `SMTP_TEMPLATES_FILE` 时使用嵌入的无品牌默认清单（简体、繁体、英文），启动时记录 WARN；正式部署应提供自己的清单。服务不使用库的 `LegacyChineseRenderer`（它是嵌入式宿主 `smtp.New` 的默认渲染器）。EMAIL 关闭时仍不要求 SMTP，`migrate` 不装配发送器。嵌入式宿主需要本地化时，可参考[双语渲染实现](../examples/codeemail/renderer.go)和[装配示例](../examples/codeemail/example_test.go)，通过自己的 context 约定选择语言；并发、取消、HTML 转义和安全日志责任见 [README 发送器契约](../README.md#发送器)。
 
 ### 邮件模板清单
 
@@ -366,7 +366,7 @@ SMTP 认证使用 AUTH PLAIN，并在生产模式要求证书验证和加密；�
 
 accountsvc 只匿名化自己拥有的认证数据，不知道使用方的业务表。额外 user_id 关联数据需选择嵌入式同库回调，或使用下文的[已清理用户拉取](#已清理用户拉取)由业务服务自行清理。切换部署前，不得让 accountsvc 与依赖业务匿名化回调的宿主同时运行同一实例的维护任务，否则服务可能先取得锁并跳过业务清理责任。
 
-SIGINT/SIGTERM 触发撤销就绪、统一监听器 HTTP 排空、维护停止/审计刷新、连接关闭。进程管理器的终止宽限应大于 SHUTDOWN_TIMEOUT；超时非零退出，不能据此声称全部审计已落库。回退须成套恢复二进制、监听/证书配置、调用方和网关策略，步骤见[兼容迁移说明](compatibility.md#服务单监听与传输迁移)；不调用数据库 Down 或 UnsafeReset。
+SIGINT/SIGTERM 触发撤销就绪、统一监听器 HTTP 排空、维护停止/审计刷新、连接关闭。进程管理器的终止宽限应大于 SHUTDOWN_TIMEOUT；超时非零退出，不能据此声称全部审计已落库。回退须成套恢复二进制、监听/证书配置、调用方和网关策略；不调用数据库 Down 或 UnsafeReset。
 
 ## 已清理用户拉取
 
@@ -407,8 +407,8 @@ services:
       - ./profile-schema.json:/etc/accountsvc/profile-schema.json:ro
 ```
 
-同一账号实例各副本必须使用一致 Schema；文件变更在重启后生效，不热更新、不自动修改旧资料。全部属性均对本人开放，不能依赖 readOnly/writeOnly 隐藏内部数据；收紧或删除声明前按[兼容说明](compatibility.md#可选用户资料属性的-go-与-http-接口)处理历史资料。
+同一账号实例各副本必须使用一致 Schema；文件变更在重启后生效，不热更新、不自动修改旧资料。全部属性均对本人开放，不能依赖 readOnly/writeOnly 隐藏内部数据；收紧或删除声明前按[资料 Schema 规则](../README.md#可选用户资料属性go-与本人-http-接口)处理已有资料。
 
 ## 验证边界
 
-现有库完整门禁仍使用 `scripts/verify.sh`；服务门禁使用 `scripts/verify-accountsvc.sh`，要求一次性 PostgreSQL 和 Redis，内部启动隔离 SMTP/HTTPS OIDC fixtures，缺依赖时失败。首次服务交付的历史证据见[初始验收记录](../openspec/changes/archive/2026-10-03-add-accountsvc/verification.md)，本次单监听器、TLS 模式及本地代理结果见[传输变更验收记录](../openspec/changes/archive/2026-10-06-simplify-accountsvc-transport/verification.md)。外部 SMTP 实际送达、实际 OIDC 提供方、真实网关/网格和产品环境均属于待执行的部署验收，本地 fixture 通过不代替这些联调。
+现有库完整门禁仍使用 `scripts/verify.sh`；服务门禁使用 `scripts/verify-accountsvc.sh`，要求一次性 PostgreSQL 和 Redis，内部启动隔离 SMTP/HTTPS OIDC fixtures，缺依赖时失败。服务交付证据见[初始验收记录](../openspec/changes/archive/2026-10-03-add-accountsvc/verification.md)，单监听器、TLS 模式及本地代理结果见[传输验收记录](../openspec/changes/archive/2026-10-06-simplify-accountsvc-transport/verification.md)。外部 SMTP 实际送达、实际 OIDC 提供方、真实网关/网格和产品环境均属于待执行的部署验收，本地 fixture 通过不代替这些联调。

@@ -1,6 +1,6 @@
 # 指标与宿主观测
 
-v0.3.0 提供可选的类型化 `observability.Observer`，以及 OpenTelemetry 和原生 Prometheus 适配器。未配置 `Deps.Observer` 时使用 no-op；包装 nil 的实现也视为未配置。核心领域不导入具体后端。项目仍为单 Go module，适配器依赖存在于根 `go.mod`，使用核心包不要求启动监控服务。
+库提供可选的类型化 `observability.Observer`，以及 OpenTelemetry 和原生 Prometheus 适配器。未配置 `Deps.Observer` 时使用 no-op；包装 nil 的实现也视为未配置。核心领域不导入具体后端。项目仍为单 Go module，适配器依赖存在于根 `go.mod`，使用核心包不要求启动监控服务。
 
 ## 先运行合成示例
 
@@ -13,7 +13,7 @@ GOWORK=off go run ./examples/metricsprometheus
 
 PowerShell 先设置 `$env:GOWORK = 'off'`，再运行对应 `go run`。两者均构造本地设施、记录两个合成 access 校验成功事件、采集一次并退出；次数为 2，耗时分别为 0.125、0.375 秒，总和为 0.5 秒。示例没有执行真实认证，不需要 PostgreSQL、Redis、真实凭证或远程 Collector，也不启动 listener。OTel 使用 SDK `ManualReader`，Prometheus 使用独立 `Registry.Gather` 并输出文本格式。
 
-代码与输出断言见 [OTel 示例](../examples/metricsotel/main.go)、[Prometheus 示例](../examples/metricsprometheus/main.go)。这些示例只验证合成事件的适配和采集；真实领域路径的验证状态见[本次验收记录](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)。
+代码与输出断言见 [OTel 示例](../examples/metricsotel/main.go)、[Prometheus 示例](../examples/metricsprometheus/main.go)。这些示例只验证合成事件的适配和采集，不代表真实领域路径的联调结果。
 
 ## 真实宿主装配
 

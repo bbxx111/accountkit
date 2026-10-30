@@ -26,7 +26,7 @@ func (failingHostAnonymizer) Anonymize(ctx context.Context, tx pgx.Tx, id string
 func TestHostContracts(t *testing.T) {
 	rdb := testRedis(t)
 	a, pool, sent := integrationInstance(t, minimal(), rdb)
-	f, _ := seedFormatFixture(t, pool, a.Config())
+	f, _ := seedSyntheticAccount(t, pool, a.Config())
 	ctx := context.Background()
 	if err := a.Migrate(ctx); err != nil {
 		t.Fatal(err)
@@ -36,7 +36,6 @@ func TestHostContracts(t *testing.T) {
 	if recorder.Code != 503 {
 		t.Fatalf("admin without verifier = %d", recorder.Code)
 	}
-	// Consumer usability is covered by TestHistoricalFormatsOnInitialSchema with no admin dependencies.
 	for _, q := range []string{
 		"CREATE TABLE host_note(user_id text PRIMARY KEY, body text)",
 		"INSERT INTO host_note VALUES('u_0000000000001','original')",

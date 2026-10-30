@@ -32,11 +32,11 @@ func hostActiveUsers(t *testing.T, a *accountkit.Auth) activeUsers {
 	return s
 }
 
-func hostLifecycleFixture(t *testing.T, hook func(context.Context, pgx.Tx, string) error) (*accountkit.Auth, *pgxpool.Pool, sourceFixture) {
+func hostLifecycleFixture(t *testing.T, hook func(context.Context, pgx.Tx, string) error) (*accountkit.Auth, *pgxpool.Pool, syntheticFixture) {
 	t.Helper()
 	rdb := testRedis(t)
 	a, pool, sent := integrationInstance(t, minimal(), rdb)
-	f, _ := seedFormatFixture(t, pool, a.Config())
+	f, _ := seedSyntheticAccount(t, pool, a.Config())
 	if err := a.Migrate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +364,7 @@ func TestBeforeDeleteHTTPErrorClassification(t *testing.T) {
 				ctx := context.Background()
 				rdb := testRedis(t)
 				a, pool, sent := integrationInstance(t, minimal(), rdb)
-				f, access := seedFormatFixture(t, pool, a.Config())
+				f, access := seedSyntheticAccount(t, pool, a.Config())
 				if err := a.Migrate(ctx); err != nil {
 					t.Fatal(err)
 				}

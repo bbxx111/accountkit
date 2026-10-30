@@ -20,7 +20,7 @@ func TestRecoveryAvatarFixture(t *testing.T) {
 	cfg := minimal()
 	cfg.ProfileAttributes = recoveryProfileAttributesConfig()
 	a, pool, _ := integrationInstance(t, cfg, testRedis(t))
-	f, _ := seedFormatFixture(t, pool, a.Config())
+	f, _ := seedSyntheticAccount(t, pool, a.Config())
 	seedRecoveryProfileAttributes(t, a, f.UserID)
 	m, err := a.Users().GetMe(context.Background(), f.UserID)
 	if err != nil || m.AvatarURL != "https://example.test/recovery-avatar.png?version=1" {
@@ -82,7 +82,7 @@ func TestRecoveryProfileAttributesSnapshot(t *testing.T) {
 	cfg := minimal()
 	cfg.ProfileAttributes = recoveryProfileAttributesConfig()
 	a, pool, _ := integrationInstance(t, cfg, testRedis(t))
-	f, _ := seedFormatFixture(t, pool, a.Config())
+	f, _ := seedSyntheticAccount(t, pool, a.Config())
 	state := recoveryState{Fixture: f, ProfileAttributes: seedRecoveryProfileAttributes(t, a, f.UserID), AvatarURL: recoveryAvatarURL}
 	assertRecoveryProfileAttributes(t, a, state)
 	before := snapshotRecovery(t, pool)

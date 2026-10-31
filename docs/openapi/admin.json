@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "accountkit 管理 HTTP API",
-    "version": "v0.7.2",
-    "description": "v0.7.2 的内置管理 HTTP 契约，操作与字段与 v0.7.1 相同（v0.7.1 与 v0.7.0 相同，同 v0.6.0），adminRevealIdentity 的 200 响应声明 Cache-Control: no-store；身份类型字符串可包含 v0.6.0 新增的内置及配置提供方类型。用户资源的 avatar_url 自 v0.5.0 起提供。宿主配置实际挂载地址。请求体为单个 JSON 对象，默认上限 64 KiB，拒绝未知字段与尾随内容。领域状态、事务、故障策略以规格与 README 为准。"
+    "version": "v1.0.0",
+    "description": "v1.0.0 的内置管理 HTTP 契约：宿主配置实际挂载地址，请求体为单个 JSON 对象（默认上限 64 KiB，拒绝未知字段与尾随内容），adminRevealIdentity 的响应带 Cache-Control: no-store，领域状态、事务与故障策略以规格与 README 为准。"
   },
   "servers": [
     {
@@ -93,7 +93,21 @@
             }
           }
         ],
-        "x-required-role": "operator"
+        "x-required-role": "operator",
+        "x-error-reasons": {
+          "400": [
+            "INVALID_FILTER",
+            "INVALID_PAGE_SIZE",
+            "INVALID_PAGE_TOKEN",
+            "INVALID_SHOW_DELETED"
+          ],
+          "401": [
+            "TOKEN_MISSING"
+          ],
+          "503": [
+            "ADMIN_NOT_CONFIGURED"
+          ]
+        }
       }
     },
     "/users/{user}": {
@@ -145,7 +159,21 @@
             }
           }
         ],
-        "x-required-role": "operator"
+        "x-required-role": "operator",
+        "x-error-reasons": {
+          "400": [
+            "INVALID_ID"
+          ],
+          "401": [
+            "TOKEN_MISSING"
+          ],
+          "404": [
+            "NOT_FOUND"
+          ],
+          "503": [
+            "ADMIN_NOT_CONFIGURED"
+          ]
+        }
       },
       "delete": {
         "operationId": "adminDeleteUser",
@@ -195,7 +223,24 @@
             }
           }
         ],
-        "x-required-role": "super-admin"
+        "x-required-role": "super-admin",
+        "x-error-reasons": {
+          "400": [
+            "DELETION_BLOCKED",
+            "INVALID_ACCOUNT_STATE",
+            "INVALID_ID",
+            "USER_FROZEN"
+          ],
+          "401": [
+            "TOKEN_MISSING"
+          ],
+          "404": [
+            "NOT_FOUND"
+          ],
+          "503": [
+            "ADMIN_NOT_CONFIGURED"
+          ]
+        }
       }
     },
     "/users/{user}:freeze": {
@@ -257,6 +302,24 @@
               }
             }
           }
+        },
+        "x-error-reasons": {
+          "400": [
+            "INVALID_ACCOUNT_STATE",
+            "INVALID_ARGUMENT",
+            "INVALID_ID",
+            "MALFORMED_BODY",
+            "USER_FROZEN"
+          ],
+          "401": [
+            "TOKEN_MISSING"
+          ],
+          "404": [
+            "NOT_FOUND"
+          ],
+          "503": [
+            "ADMIN_NOT_CONFIGURED"
+          ]
         }
       }
     },
@@ -319,6 +382,23 @@
               }
             }
           }
+        },
+        "x-error-reasons": {
+          "400": [
+            "INVALID_ACCOUNT_STATE",
+            "INVALID_ARGUMENT",
+            "INVALID_ID",
+            "MALFORMED_BODY"
+          ],
+          "401": [
+            "TOKEN_MISSING"
+          ],
+          "404": [
+            "NOT_FOUND"
+          ],
+          "503": [
+            "ADMIN_NOT_CONFIGURED"
+          ]
         }
       }
     },
@@ -371,7 +451,23 @@
             }
           }
         ],
-        "x-required-role": "super-admin"
+        "x-required-role": "super-admin",
+        "x-error-reasons": {
+          "400": [
+            "INVALID_ACCOUNT_STATE",
+            "INVALID_ID",
+            "USER_FROZEN"
+          ],
+          "401": [
+            "TOKEN_MISSING"
+          ],
+          "404": [
+            "NOT_FOUND"
+          ],
+          "503": [
+            "ADMIN_NOT_CONFIGURED"
+          ]
+        }
       }
     },
     "/users/{user}/identities/{identity}:reveal": {
@@ -439,7 +535,21 @@
             }
           }
         ],
-        "x-required-role": "super-admin"
+        "x-required-role": "super-admin",
+        "x-error-reasons": {
+          "400": [
+            "INVALID_ID"
+          ],
+          "401": [
+            "TOKEN_MISSING"
+          ],
+          "404": [
+            "NOT_FOUND"
+          ],
+          "503": [
+            "ADMIN_NOT_CONFIGURED"
+          ]
+        }
       }
     },
     "/users/{user}/sessions": {
@@ -491,7 +601,21 @@
             }
           }
         ],
-        "x-required-role": "operator"
+        "x-required-role": "operator",
+        "x-error-reasons": {
+          "400": [
+            "INVALID_ID"
+          ],
+          "401": [
+            "TOKEN_MISSING"
+          ],
+          "404": [
+            "NOT_FOUND"
+          ],
+          "503": [
+            "ADMIN_NOT_CONFIGURED"
+          ]
+        }
       }
     },
     "/users/{user}/sessions/{session}": {
@@ -543,7 +667,21 @@
             }
           }
         ],
-        "x-required-role": "operator"
+        "x-required-role": "operator",
+        "x-error-reasons": {
+          "400": [
+            "INVALID_ID"
+          ],
+          "401": [
+            "TOKEN_MISSING"
+          ],
+          "404": [
+            "NOT_FOUND"
+          ],
+          "503": [
+            "ADMIN_NOT_CONFIGURED"
+          ]
+        }
       }
     },
     "/users/{user}/sessions:revokeAll": {
@@ -595,7 +733,21 @@
             }
           }
         ],
-        "x-required-role": "operator"
+        "x-required-role": "operator",
+        "x-error-reasons": {
+          "400": [
+            "INVALID_ID"
+          ],
+          "401": [
+            "TOKEN_MISSING"
+          ],
+          "404": [
+            "NOT_FOUND"
+          ],
+          "503": [
+            "ADMIN_NOT_CONFIGURED"
+          ]
+        }
       }
     },
     "/users/{user}/auditEvents": {
@@ -665,7 +817,25 @@
             }
           }
         ],
-        "x-required-role": "operator"
+        "x-required-role": "operator",
+        "x-error-reasons": {
+          "400": [
+            "INVALID_ID",
+            "INVALID_PAGE_SIZE",
+            "INVALID_PAGE_TOKEN"
+          ],
+          "401": [
+            "TOKEN_MISSING"
+          ],
+          "404": [
+            "NOT_FOUND"
+          ],
+          "503": [
+            "ADMIN_NOT_CONFIGURED",
+            "AUDIT_QUERY_NOT_CONFIGURED",
+            "AUDIT_QUERY_UNAVAILABLE"
+          ]
+        }
       }
     }
   },
@@ -690,7 +860,7 @@
     },
     "responses": {
       "Error400": {
-        "description": "输入、轮次或前置条件不满足。FAILED_PRECONDITION 映射为 400。",
+        "description": "输入、轮次或前置条件不满足。FAILED_PRECONDITION 映射为 400。通用 reason：INVALID_ID、MALFORMED_BODY；操作特有 reason 见各操作的 x-error-reasons。",
         "headers": {},
         "content": {
           "application/json": {
@@ -701,7 +871,7 @@
         }
       },
       "Error401": {
-        "description": "宿主管理员认证/角色校验拒绝；错误体与 challenge 由宿主 verifier 定义。库内缺失管理员主体时返回 ApiError。"
+        "description": "宿主管理员认证/角色校验拒绝；错误体与 challenge 由宿主 verifier 定义。库内缺失管理员主体时返回 ApiError。通用 reason：TOKEN_MISSING；操作特有 reason 见各操作的 x-error-reasons。"
       },
       "Error403": {
         "description": "宿主管理员认证/角色校验拒绝；错误体与 challenge 由宿主 verifier 定义。库内缺失管理员主体时返回 ApiError。"
@@ -759,7 +929,7 @@
         }
       },
       "Error503": {
-        "description": "依赖或可选能力未配置/不可用；不降级绕过验证。",
+        "description": "依赖或可选能力未配置/不可用；不降级绕过验证。通用 reason：ADMIN_NOT_CONFIGURED；操作特有 reason 见各操作的 x-error-reasons。",
         "headers": {
           "Retry-After": {
             "description": "存在时为等待秒数。",
@@ -838,7 +1008,8 @@
                 ]
               },
               "reason": {
-                "type": "string"
+                "type": "string",
+                "description": "稳定的机器可读错误原因（UPPER_SNAKE_CASE）。每个操作可能出现的值列在该操作的 x-error-reasons（按 HTTP 状态分组），完整说明见本文件 x-error-reason-catalog；客户端按 reason 分支，message 仅供人读且可能变化。部分响应不带 reason，只能按 code/status 处理。"
               },
               "retry_after_seconds": {
                 "type": "integer",
@@ -1475,5 +1646,22 @@
         }
       }
     }
+  },
+  "x-error-reason-catalog": {
+    "ADMIN_NOT_CONFIGURED": "宿主未注入 AdminVerifier/AdminPrincipal，管理面整体不可用（503 UNAVAILABLE）。",
+    "AUDIT_QUERY_NOT_CONFIGURED": "宿主只注入了审计写侧、未注入 Reader，审计查询不可用（503）。",
+    "AUDIT_QUERY_UNAVAILABLE": "审计 Reader 返回错误、超出页限、记录非法、顺序错乱、越出账号范围或无法投影为认证事件（503，不伪装成空列表）。",
+    "DELETION_BLOCKED": "宿主 BeforeDelete 回调返回 user.ErrDeletionBlocked，拒绝注销（400 FAILED_PRECONDITION）。",
+    "INVALID_ACCOUNT_STATE": "账号当前状态不允许该状态迁移或写入（如非 ACTIVE 更新资料、非 PENDING_DELETION 恢复、已 purge）（400 FAILED_PRECONDITION）。",
+    "INVALID_ARGUMENT": "通用参数错误：kind 格式非法、code_id 非 32 位小写十六进制、display_name/avatar_url/reason 非法、设备字段超长、换绑身份类型不匹配等；message 携带具体说明。",
+    "INVALID_FILTER": "管理面 filter 语法/字段/运算符不受支持，或 identity.phone/identity.email 值无法归一化。",
+    "INVALID_ID": "路径中的资源 ID（u_/i_/s_ + 13 位 Crockford base32）格式非法。",
+    "INVALID_PAGE_SIZE": "page_size 不是非负整数。",
+    "INVALID_PAGE_TOKEN": "page_token 无法解析、字段缺失，或审计游标版本/source/资源/动作集合不匹配；应从第一页重新开始。",
+    "INVALID_SHOW_DELETED": "show_deleted 不是 true/false。",
+    "MALFORMED_BODY": "请求体缺失、非法 JSON、顶层非对象、含未知字段、超过大小上限或有尾随内容；updateMe 的 avatar_url 非字符串/null 亦归此类。",
+    "NOT_FOUND": "资源不存在、已解绑/已吊销，或不属于该用户/账号（404；不暴露存在性）。",
+    "TOKEN_MISSING": "Authorization 头缺失或不是合法的 Bearer 形式（401，WWW-Authenticate: Bearer realm=\"user\"）；管理面表示宿主 verifier 未在 ctx 注入 Principal（realm=\"admin\"）。",
+    "USER_FROZEN": "账号被管理端冻结。C 端为 403 PERMISSION_DENIED；管理面为 400 FAILED_PRECONDITION（需先解冻）。"
   }
 }

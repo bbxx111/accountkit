@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "accountkit 消费者 HTTP API",
-    "version": "v0.7.2",
-    "description": "v0.7.2 的内置消费者 HTTP 契约，与 v0.7.1 相同；v0.7.1 与 v0.7.0 相同；v0.7.0 的操作集合与 v0.6.0 相同，四个发码操作补充 400 TARGET_NOT_SUPPORTED；v0.6.0 在 v0.5.0 上将身份凭证请求体统一为 {\"kind\",\"credential\"} 并增加各第三方提供方类型。宿主配置实际挂载地址。请求体为单个 JSON 对象，默认上限 64 KiB，拒绝未知字段与尾随内容。领域状态、事务、故障策略以规格与 README 为准。"
+    "version": "v1.0.0",
+    "description": "v1.0.0 的内置消费者 HTTP 契约：宿主配置实际挂载地址，请求体为单个 JSON 对象（默认上限 64 KiB，拒绝未知字段与尾随内容），领域状态、事务与故障策略以规格与 README 为准。"
   },
   "servers": [
     {
@@ -75,6 +75,26 @@
               }
             }
           }
+        },
+        "x-error-reasons": {
+          "400": [
+            "CHANNEL_INVALID",
+            "CHANNEL_NOT_ENABLED",
+            "IDENTITY_KIND_NOT_ENABLED",
+            "INVALID_TARGET",
+            "MALFORMED_BODY",
+            "REAUTHENTICATION_REQUIRED",
+            "TARGET_NOT_SUPPORTED"
+          ],
+          "429": [
+            "COOLDOWN",
+            "IP_LIMIT",
+            "TARGET_LIMIT",
+            "TARGET_VERIFY_LIMIT"
+          ],
+          "503": [
+            "DEPENDENCY_UNAVAILABLE"
+          ]
         }
       }
     },
@@ -208,6 +228,33 @@
               }
             }
           }
+        },
+        "x-error-reasons": {
+          "400": [
+            "CODE_EXPIRED",
+            "CODE_INVALID",
+            "CREDENTIAL_INCOMPLETE",
+            "CREDENTIAL_KIND_NOT_ALLOWED",
+            "DEVICE_ID_INVALID",
+            "DEVICE_NAME_INVALID",
+            "IDENTITY_KIND_NOT_ENABLED",
+            "INVALID_ARGUMENT",
+            "INVALID_CLIENT_INFO",
+            "INVALID_TARGET",
+            "MALFORMED_BODY",
+            "REAUTHENTICATION_REQUIRED",
+            "SIGN_IN_COMPLETION_INVALID"
+          ],
+          "403": [
+            "INSUFFICIENT_SCOPE",
+            "USER_FROZEN"
+          ],
+          "429": [
+            "TARGET_VERIFY_LIMIT"
+          ],
+          "503": [
+            "DEPENDENCY_UNAVAILABLE"
+          ]
         }
       }
     },
@@ -215,7 +262,7 @@
       "post": {
         "operationId": "signInWithIdp",
         "summary": "微信或 Apple 登录",
-        "description": "第三方提示邮箱不证明本地邮箱归属；冷静期账号返回 403 USER_PENDING_DELETION，不提供第三方恢复认证。 可选客户端描述只在成功认证时观察：登录保存INITIAL/LATEST，重新认证及新轮刷新仅更新LATEST；宽限刷新和补全重放不更新。非法显式描述在凭证消费前拒绝。",
+        "description": "第三方提示邮箱不证明本地邮箱归属；冷静期账号返回 403 USER_PENDING_DELETION，不提供第三方恢复认证。 可选客户端描述只在成功认证时观察：登录保存INITIAL/LATEST，重新认证及新轮刷新仅更新LATEST；宽限刷新和补全重放不更新。非法显式描述在凭证消费前拒绝。 第三方身份已被另一账号占用或并发注册冲突时返回 409 IDENTITY_ALREADY_BOUND。",
         "responses": {
           "200": {
             "description": "成功。",
@@ -248,6 +295,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
           },
           "500": {
             "$ref": "#/components/responses/Error500"
@@ -338,6 +388,35 @@
               }
             }
           }
+        },
+        "x-error-reasons": {
+          "400": [
+            "CREDENTIAL_INCOMPLETE",
+            "CREDENTIAL_KIND_NOT_ALLOWED",
+            "DEVICE_ID_INVALID",
+            "DEVICE_NAME_INVALID",
+            "IDENTITY_KIND_NOT_ENABLED",
+            "IDP_APP_NOT_ALLOWED",
+            "IDP_CREDENTIAL_INVALID",
+            "IDP_NONCE_REPLAYED",
+            "INVALID_ARGUMENT",
+            "INVALID_CLIENT_INFO",
+            "MALFORMED_BODY",
+            "REAUTHENTICATION_REQUIRED",
+            "SIGN_IN_COMPLETION_INVALID"
+          ],
+          "403": [
+            "INSUFFICIENT_SCOPE",
+            "USER_FROZEN",
+            "USER_PENDING_DELETION"
+          ],
+          "409": [
+            "IDENTITY_ALREADY_BOUND"
+          ],
+          "503": [
+            "DEPENDENCY_UNAVAILABLE",
+            "IDP_UNAVAILABLE"
+          ]
         }
       }
     },
@@ -416,6 +495,35 @@
               }
             }
           }
+        },
+        "x-error-reasons": {
+          "400": [
+            "CHANNEL_INVALID",
+            "CHANNEL_NOT_ENABLED",
+            "CODE_EXPIRED",
+            "DEVICE_ID_INVALID",
+            "DEVICE_NAME_INVALID",
+            "IDENTITY_KIND_NOT_ENABLED",
+            "INVALID_TARGET",
+            "MALFORMED_BODY",
+            "REAUTHENTICATION_REQUIRED",
+            "SIGN_IN_ALREADY_COMPLETED",
+            "SIGN_IN_COMPLETION_INVALID",
+            "TARGET_NOT_SUPPORTED"
+          ],
+          "403": [
+            "INSUFFICIENT_SCOPE"
+          ],
+          "429": [
+            "COOLDOWN",
+            "IP_LIMIT",
+            "TARGET_LIMIT",
+            "TARGET_VERIFY_LIMIT"
+          ],
+          "503": [
+            "DEPENDENCY_UNAVAILABLE",
+            "SIGN_IN_COMPLETION_NOT_CONFIGURED"
+          ]
         }
       }
     },
@@ -552,6 +660,40 @@
               }
             }
           }
+        },
+        "x-error-reasons": {
+          "400": [
+            "CODE_EXPIRED",
+            "CODE_INVALID",
+            "CREDENTIAL_INCOMPLETE",
+            "CREDENTIAL_KIND_NOT_ALLOWED",
+            "DEVICE_ID_INVALID",
+            "DEVICE_NAME_INVALID",
+            "IDENTITY_KIND_NOT_ENABLED",
+            "INVALID_ARGUMENT",
+            "INVALID_CLIENT_INFO",
+            "INVALID_TARGET",
+            "MALFORMED_BODY",
+            "REAUTHENTICATION_REQUIRED",
+            "SIGN_IN_ALREADY_COMPLETED",
+            "SIGN_IN_COMPLETION_INVALID"
+          ],
+          "403": [
+            "INSUFFICIENT_SCOPE",
+            "USER_FROZEN",
+            "USER_PENDING_DELETION"
+          ],
+          "409": [
+            "IDENTITY_ALREADY_BOUND",
+            "IDENTITY_KIND_LIMIT"
+          ],
+          "429": [
+            "TARGET_VERIFY_LIMIT"
+          ],
+          "503": [
+            "DEPENDENCY_UNAVAILABLE",
+            "SIGN_IN_COMPLETION_NOT_CONFIGURED"
+          ]
         }
       }
     },
@@ -559,7 +701,7 @@
       "post": {
         "operationId": "refreshToken",
         "summary": "刷新并轮换令牌",
-        "description": "仅接受 JSON refresh_token grant，不是完整 OAuth 授权服务器。默认宽限内重复返回同一 pair；客户端协调并发与原子保存，宽限外按重放规则处理。 可选客户端描述只在成功认证时观察：登录保存INITIAL/LATEST，重新认证及新轮刷新仅更新LATEST；宽限刷新和补全重放不更新。非法显式描述在凭证消费前拒绝。",
+        "description": "仅接受 refresh_token grant，不是完整 OAuth 授权服务器。默认宽限内重复返回同一 pair；客户端协调并发与原子保存，宽限外按重放规则处理。 可选客户端描述只在成功认证时观察：登录保存INITIAL/LATEST，重新认证及新轮刷新仅更新LATEST；宽限刷新和补全重放不更新。非法显式描述在凭证消费前拒绝。 请求体接受 application/json（既有行为，不要求 Content-Type，拒绝未知字段）或 Content-Type 媒体类型为 application/x-www-form-urlencoded 的表单（RFC 6749 §3.2：忽略 charset 等参数，只读请求体而忽略 URL 查询串，同名参数重复（无论是否识别）为 invalid_request，未识别参数忽略）；两种编码共用同一大小上限、校验、错误映射与响应。 请求中的 scope 按 RFC 6749 §3.3 忽略，携带与否结果相同；签发 scope 由账号当前状态推导并在响应 scope 字段返回。",
         "responses": {
           "200": {
             "description": "成功。",
@@ -759,6 +901,11 @@
               "schema": {
                 "$ref": "#/components/schemas/RefreshRequest"
               }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshRequest"
+              }
             }
           }
         }
@@ -768,7 +915,7 @@
       "post": {
         "operationId": "revokeToken",
         "summary": "撤销凭证",
-        "description": "未知凭证也返回 200 空响应；token_type_hint 仅作提示。",
+        "description": "未知凭证也返回 200 空响应；token_type_hint 仅作提示。 请求体接受 application/json（既有行为，不要求 Content-Type，拒绝未知字段）或 Content-Type 媒体类型为 application/x-www-form-urlencoded 的表单（RFC 6749 §3.2：忽略 charset 等参数，只读请求体而忽略 URL 查询串，同名参数重复（无论是否识别）为 invalid_request，未识别参数忽略）；两种编码共用同一大小上限、校验、错误映射与响应。",
         "responses": {
           "200": {
             "description": "成功，无响应体。",
@@ -906,6 +1053,11 @@
               "schema": {
                 "$ref": "#/components/schemas/RevokeRequest"
               }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeRequest"
+              }
             }
           }
         }
@@ -945,7 +1097,19 @@
           {
             "$ref": "#/components/parameters/RequestID"
           }
-        ]
+        ],
+        "x-error-reasons": {
+          "401": [
+            "TOKEN_INVALID",
+            "TOKEN_MISSING"
+          ],
+          "404": [
+            "NOT_FOUND"
+          ],
+          "503": [
+            "DEPENDENCY_UNAVAILABLE"
+          ]
+        }
       },
       "patch": {
         "operationId": "updateMe",
@@ -999,6 +1163,29 @@
               }
             }
           }
+        },
+        "x-error-reasons": {
+          "400": [
+            "INVALID_ACCOUNT_STATE",
+            "INVALID_ARGUMENT",
+            "MALFORMED_BODY",
+            "NO_FIELDS",
+            "REAUTHENTICATION_REQUIRED"
+          ],
+          "401": [
+            "TOKEN_INVALID",
+            "TOKEN_MISSING"
+          ],
+          "403": [
+            "INSUFFICIENT_SCOPE"
+          ],
+          "404": [
+            "NOT_FOUND"
+          ],
+          "503": [
+            "DEPENDENCY_UNAVAILABLE",
+            "PROFILE_UPDATE_NOT_CONFIGURED"
+          ]
         }
       },
       "delete": {
@@ -1044,7 +1231,25 @@
         "x-allowed-scopes": [
           "user"
         ],
-        "x-recent-authentication": true
+        "x-recent-authentication": true,
+        "x-error-reasons": {
+          "400": [
+            "DELETION_BLOCKED",
+            "INVALID_ACCOUNT_STATE",
+            "REAUTHENTICATION_REQUIRED"
+          ],
+          "401": [
+            "TOKEN_INVALID",
+            "TOKEN_MISSING"
+          ],
+          "403": [
+            "INSUFFICIENT_SCOPE",
+            "USER_FROZEN"
+          ],
+          "503": [
+            "DEPENDENCY_UNAVAILABLE"
+          ]
+        }
       }
     },
     "/users/me:undelete": {
@@ -1090,7 +1295,24 @@
         ],
         "x-allowed-scopes": [
           "user:undelete"
-        ]
+        ],
+        "x-error-reasons": {
+          "400": [
+            "INVALID_ACCOUNT_STATE",
+            "REAUTHENTICATION_REQUIRED"
+          ],
+          "401": [
+            "TOKEN_INVALID",
+            "TOKEN_MISSING"
+          ],
+          "403": [
+            "INSUFFICIENT_SCOPE",
+            "USER_FROZEN"
+          ],
+          "503": [
+            "DEPENDENCY_UNAVAILABLE"
+          ]
+        }
       }
     },
     "/users/me:sendReauthenticationCode": {
@@ -1154,6 +1376,34 @@
               }
             }
           }
+        },
+        "x-error-reasons": {
+          "400": [
+            "CHANNEL_INVALID",
+            "CHANNEL_NOT_ENABLED",
+            "IDENTITY_KIND_NOT_ENABLED",
+            "INVALID_TARGET",
+            "MALFORMED_BODY",
+            "REAUTHENTICATION_REQUIRED",
+            "TARGET_NOT_ANCHOR",
+            "TARGET_NOT_SUPPORTED"
+          ],
+          "401": [
+            "TOKEN_INVALID",
+            "TOKEN_MISSING"
+          ],
+          "403": [
+            "INSUFFICIENT_SCOPE"
+          ],
+          "429": [
+            "COOLDOWN",
+            "IP_LIMIT",
+            "TARGET_LIMIT",
+            "TARGET_VERIFY_LIMIT"
+          ],
+          "503": [
+            "DEPENDENCY_UNAVAILABLE"
+          ]
         }
       }
     },
@@ -1273,6 +1523,35 @@
               }
             }
           }
+        },
+        "x-error-reasons": {
+          "400": [
+            "CODE_EXPIRED",
+            "CODE_INVALID",
+            "CREDENTIAL_INCOMPLETE",
+            "CREDENTIAL_KIND_NOT_ALLOWED",
+            "IDENTITY_KIND_NOT_ENABLED",
+            "INVALID_ARGUMENT",
+            "INVALID_CLIENT_INFO",
+            "INVALID_TARGET",
+            "MALFORMED_BODY",
+            "REAUTHENTICATION_REQUIRED",
+            "TARGET_NOT_ANCHOR"
+          ],
+          "401": [
+            "TOKEN_INVALID",
+            "TOKEN_MISSING"
+          ],
+          "403": [
+            "INSUFFICIENT_SCOPE",
+            "USER_FROZEN"
+          ],
+          "429": [
+            "TARGET_VERIFY_LIMIT"
+          ],
+          "503": [
+            "DEPENDENCY_UNAVAILABLE"
+          ]
         }
       }
     },
@@ -1313,7 +1592,19 @@
         ],
         "x-allowed-scopes": [
           "user"
-        ]
+        ],
+        "x-error-reasons": {
+          "401": [
+            "TOKEN_INVALID",
+            "TOKEN_MISSING"
+          ],
+          "403": [
+            "INSUFFICIENT_SCOPE"
+          ],
+          "503": [
+            "DEPENDENCY_UNAVAILABLE"
+          ]
+        }
       }
     },
     "/users/me/sessions/{session}": {
@@ -1359,7 +1650,26 @@
         ],
         "x-allowed-scopes": [
           "user"
-        ]
+        ],
+        "x-error-reasons": {
+          "400": [
+            "INVALID_ID",
+            "REAUTHENTICATION_REQUIRED"
+          ],
+          "401": [
+            "TOKEN_INVALID",
+            "TOKEN_MISSING"
+          ],
+          "403": [
+            "INSUFFICIENT_SCOPE"
+          ],
+          "404": [
+            "NOT_FOUND"
+          ],
+          "503": [
+            "DEPENDENCY_UNAVAILABLE"
+          ]
+        }
       }
     },
     "/users/me/sessions:revokeOthers": {
@@ -1402,7 +1712,22 @@
         ],
         "x-allowed-scopes": [
           "user"
-        ]
+        ],
+        "x-error-reasons": {
+          "400": [
+            "REAUTHENTICATION_REQUIRED"
+          ],
+          "401": [
+            "TOKEN_INVALID",
+            "TOKEN_MISSING"
+          ],
+          "403": [
+            "INSUFFICIENT_SCOPE"
+          ],
+          "503": [
+            "DEPENDENCY_UNAVAILABLE"
+          ]
+        }
       }
     },
     "/users/me:sendBindCode": {
@@ -1470,6 +1795,33 @@
               }
             }
           }
+        },
+        "x-error-reasons": {
+          "400": [
+            "CHANNEL_INVALID",
+            "CHANNEL_NOT_ENABLED",
+            "IDENTITY_KIND_NOT_ENABLED",
+            "INVALID_TARGET",
+            "MALFORMED_BODY",
+            "REAUTHENTICATION_REQUIRED",
+            "TARGET_NOT_SUPPORTED"
+          ],
+          "401": [
+            "TOKEN_INVALID",
+            "TOKEN_MISSING"
+          ],
+          "403": [
+            "INSUFFICIENT_SCOPE"
+          ],
+          "429": [
+            "COOLDOWN",
+            "IP_LIMIT",
+            "TARGET_LIMIT",
+            "TARGET_VERIFY_LIMIT"
+          ],
+          "503": [
+            "DEPENDENCY_UNAVAILABLE"
+          ]
         }
       }
     },
@@ -1511,7 +1863,19 @@
         "x-allowed-scopes": [
           "user",
           "user:bind"
-        ]
+        ],
+        "x-error-reasons": {
+          "401": [
+            "TOKEN_INVALID",
+            "TOKEN_MISSING"
+          ],
+          "403": [
+            "INSUFFICIENT_SCOPE"
+          ],
+          "503": [
+            "DEPENDENCY_UNAVAILABLE"
+          ]
+        }
       },
       "post": {
         "operationId": "bindIdentity",
@@ -1580,6 +1944,40 @@
               }
             }
           }
+        },
+        "x-error-reasons": {
+          "400": [
+            "CODE_EXPIRED",
+            "CODE_INVALID",
+            "CREDENTIAL_INCOMPLETE",
+            "IDENTITY_KIND_NOT_ENABLED",
+            "IDP_APP_NOT_ALLOWED",
+            "IDP_CREDENTIAL_INVALID",
+            "IDP_NONCE_REPLAYED",
+            "INVALID_ARGUMENT",
+            "INVALID_TARGET",
+            "MALFORMED_BODY",
+            "REAUTHENTICATION_REQUIRED"
+          ],
+          "401": [
+            "TOKEN_INVALID",
+            "TOKEN_MISSING"
+          ],
+          "403": [
+            "INSUFFICIENT_SCOPE",
+            "USER_FROZEN"
+          ],
+          "409": [
+            "IDENTITY_ALREADY_BOUND",
+            "IDENTITY_KIND_LIMIT"
+          ],
+          "429": [
+            "TARGET_VERIFY_LIMIT"
+          ],
+          "503": [
+            "DEPENDENCY_UNAVAILABLE",
+            "IDP_UNAVAILABLE"
+          ]
         }
       }
     },
@@ -1627,7 +2025,28 @@
         "x-allowed-scopes": [
           "user"
         ],
-        "x-recent-authentication": true
+        "x-recent-authentication": true,
+        "x-error-reasons": {
+          "400": [
+            "INVALID_ID",
+            "LAST_ANCHOR_IDENTITY",
+            "REAUTHENTICATION_REQUIRED"
+          ],
+          "401": [
+            "TOKEN_INVALID",
+            "TOKEN_MISSING"
+          ],
+          "403": [
+            "INSUFFICIENT_SCOPE",
+            "USER_FROZEN"
+          ],
+          "404": [
+            "NOT_FOUND"
+          ],
+          "503": [
+            "DEPENDENCY_UNAVAILABLE"
+          ]
+        }
       }
     },
     "/users/me/identities/{identity}:replace": {
@@ -1698,6 +2117,44 @@
               }
             }
           }
+        },
+        "x-error-reasons": {
+          "400": [
+            "CODE_EXPIRED",
+            "CODE_INVALID",
+            "CREDENTIAL_INCOMPLETE",
+            "CREDENTIAL_KIND_NOT_ALLOWED",
+            "IDENTITY_KIND_NOT_ENABLED",
+            "IDENTITY_UNCHANGED",
+            "INVALID_ARGUMENT",
+            "INVALID_ID",
+            "INVALID_TARGET",
+            "LAST_ANCHOR_IDENTITY",
+            "MALFORMED_BODY",
+            "REAUTHENTICATION_REQUIRED"
+          ],
+          "401": [
+            "TOKEN_INVALID",
+            "TOKEN_MISSING"
+          ],
+          "403": [
+            "INSUFFICIENT_SCOPE",
+            "USER_FROZEN"
+          ],
+          "404": [
+            "NOT_FOUND"
+          ],
+          "409": [
+            "IDENTITY_ALREADY_BOUND",
+            "IDENTITY_KIND_LIMIT"
+          ],
+          "429": [
+            "TARGET_VERIFY_LIMIT"
+          ],
+          "503": [
+            "DEPENDENCY_UNAVAILABLE",
+            "IDENTITY_REPLACEMENT_NOT_CONFIGURED"
+          ]
         }
       }
     },
@@ -1819,6 +2276,19 @@
               }
             }
           }
+        },
+        "x-error-reasons": {
+          "401": [
+            "TOKEN_INVALID",
+            "TOKEN_MISSING"
+          ],
+          "403": [
+            "INSUFFICIENT_SCOPE"
+          ],
+          "503": [
+            "DEPENDENCY_UNAVAILABLE",
+            "SESSION_QUERY_NOT_CONFIGURED"
+          ]
         }
       }
     },
@@ -1968,6 +2438,26 @@
               }
             }
           }
+        },
+        "x-error-reasons": {
+          "400": [
+            "INVALID_ACCOUNT_STATE",
+            "REAUTHENTICATION_REQUIRED"
+          ],
+          "401": [
+            "TOKEN_INVALID",
+            "TOKEN_MISSING"
+          ],
+          "403": [
+            "INSUFFICIENT_SCOPE"
+          ],
+          "404": [
+            "NOT_FOUND"
+          ],
+          "503": [
+            "DEPENDENCY_UNAVAILABLE",
+            "PROFILE_ATTRIBUTES_NOT_CONFIGURED"
+          ]
         }
       },
       "patch": {
@@ -2134,6 +2624,28 @@
               }
             }
           }
+        },
+        "x-error-reasons": {
+          "400": [
+            "INVALID_ACCOUNT_STATE",
+            "INVALID_PROFILE_ATTRIBUTES",
+            "MALFORMED_BODY",
+            "REAUTHENTICATION_REQUIRED"
+          ],
+          "401": [
+            "TOKEN_INVALID",
+            "TOKEN_MISSING"
+          ],
+          "403": [
+            "INSUFFICIENT_SCOPE"
+          ],
+          "404": [
+            "NOT_FOUND"
+          ],
+          "503": [
+            "DEPENDENCY_UNAVAILABLE",
+            "PROFILE_ATTRIBUTES_NOT_CONFIGURED"
+          ]
         }
       }
     }
@@ -2323,7 +2835,7 @@
     },
     "responses": {
       "Error400": {
-        "description": "输入、轮次或前置条件不满足。FAILED_PRECONDITION 映射为 400。",
+        "description": "输入、轮次或前置条件不满足。FAILED_PRECONDITION 映射为 400。通用 reason：INVALID_ID、MALFORMED_BODY、REAUTHENTICATION_REQUIRED；操作特有 reason 见各操作的 x-error-reasons。",
         "headers": {},
         "content": {
           "application/json": {
@@ -2334,7 +2846,7 @@
         }
       },
       "Error401": {
-        "description": "Bearer 缺失、格式错误或凭证失效。",
+        "description": "Bearer 缺失、格式错误或凭证失效。通用 reason：TOKEN_INVALID、TOKEN_MISSING；操作特有 reason 见各操作的 x-error-reasons。",
         "headers": {
           "WWW-Authenticate": {
             "description": "消费者 Bearer 401 的认证 challenge。",
@@ -2352,7 +2864,7 @@
         }
       },
       "Error403": {
-        "description": "作用域不足或账号状态拒绝。",
+        "description": "作用域不足或账号状态拒绝。通用 reason：INSUFFICIENT_SCOPE；操作特有 reason 见各操作的 x-error-reasons。",
         "headers": {},
         "content": {
           "application/json": {
@@ -2415,7 +2927,7 @@
         }
       },
       "Error503": {
-        "description": "依赖或可选能力未配置/不可用；不降级绕过验证。",
+        "description": "依赖或可选能力未配置/不可用；不降级绕过验证。通用 reason：DEPENDENCY_UNAVAILABLE；操作特有 reason 见各操作的 x-error-reasons。",
         "headers": {
           "Retry-After": {
             "description": "存在时为等待秒数。",
@@ -2516,7 +3028,8 @@
           "app_id",
           "code"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "WECHAT 使用的凭证：OAuth 应用或小程序的 code，服务端按 app_id 对应的配置选择流程。"
       },
       "SendCodeRequest": {
         "type": "object",
@@ -2558,7 +3071,10 @@
         "properties": {
           "next_action": {
             "type": "string",
-            "const": "COMPLETE_IDENTITY"
+            "enum": [
+              "COMPLETE_IDENTITY"
+            ],
+            "description": "待补全结果的下一步动作。当前唯一值 COMPLETE_IDENTITY 表示调用 sendSignInCompletionCode / completeSignIn 补全身份。该枚举可能在后续版本追加值：客户端 MUST 拒绝并提示未知的 next_action，不得当作已登录或按 COMPLETE_IDENTITY 处理。"
           },
           "sign_in_completion_token": {
             "type": "string",
@@ -2755,7 +3271,8 @@
                 ]
               },
               "reason": {
-                "type": "string"
+                "type": "string",
+                "description": "稳定的机器可读错误原因（UPPER_SNAKE_CASE）。每个操作可能出现的值列在该操作的 x-error-reasons（按 HTTP 状态分组），完整说明见本文件 x-error-reason-catalog；客户端按 reason 分支，message 仅供人读且可能变化。部分响应不带 reason，只能按 code/status 处理。"
               },
               "retry_after_seconds": {
                 "type": "integer",
@@ -2841,7 +3358,7 @@
           },
           "credential": {
             "type": "object",
-            "description": "由 kind 对应的提供方解析，原始 JSON 不超过 16 KiB；字段缺失、未知或格式错误返回 CREDENTIAL_INCOMPLETE。"
+            "description": "由 kind 对应的提供方解析，原始 JSON 不超过 16 KiB；字段缺失、未知或格式错误返回 CREDENTIAL_INCOMPLETE。credential 形状由 kind 决定（allOf 条件分支）：WECHAT 为 WeChatCredential；ALIPAY 为 AlipayCredential；QQ、WEIBO 为 AppAccessTokenCredential；APPLE、GOOGLE 与任何非内置（配置的 OIDC）类型为 IdTokenCredential；FACEBOOK 为 FacebookCredential（二者择一）。"
           }
         },
         "required": [
@@ -2891,6 +3408,97 @@
                 }
               }
             }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "FACEBOOK"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "credential": {
+                  "$ref": "#/components/schemas/FacebookCredential"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "ALIPAY"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "credential": {
+                  "$ref": "#/components/schemas/AlipayCredential"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "QQ",
+                    "WEIBO"
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "credential": {
+                  "$ref": "#/components/schemas/AppAccessTokenCredential"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "not": {
+                    "enum": [
+                      "PHONE",
+                      "EMAIL",
+                      "WECHAT",
+                      "APPLE",
+                      "GOOGLE",
+                      "FACEBOOK",
+                      "ALIPAY",
+                      "QQ",
+                      "WEIBO"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "credential": {
+                  "$ref": "#/components/schemas/IdTokenCredential"
+                }
+              }
+            }
           }
         ]
       },
@@ -2901,7 +3509,8 @@
             "$ref": "#/components/schemas/IdentityKind"
           },
           "credential": {
-            "type": "object"
+            "type": "object",
+            "description": "由 kind 对应的类型解析；字段缺失、未知或格式错误返回 CREDENTIAL_INCOMPLETE。credential 形状由 kind 决定（allOf 条件分支）：PHONE/EMAIL 为 CodeCredential；WECHAT 为 WeChatCredential；ALIPAY 为 AlipayCredential；QQ、WEIBO 为 AppAccessTokenCredential；APPLE、GOOGLE 与任何非内置（配置的 OIDC）类型为 IdTokenCredential；FACEBOOK 为 FacebookCredential（二者择一）。"
           }
         },
         "required": [
@@ -2960,6 +3569,97 @@
                     "APPLE",
                     "GOOGLE"
                   ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "credential": {
+                  "$ref": "#/components/schemas/IdTokenCredential"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "FACEBOOK"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "credential": {
+                  "$ref": "#/components/schemas/FacebookCredential"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "ALIPAY"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "credential": {
+                  "$ref": "#/components/schemas/AlipayCredential"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "QQ",
+                    "WEIBO"
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "credential": {
+                  "$ref": "#/components/schemas/AppAccessTokenCredential"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "not": {
+                    "enum": [
+                      "PHONE",
+                      "EMAIL",
+                      "WECHAT",
+                      "APPLE",
+                      "GOOGLE",
+                      "FACEBOOK",
+                      "ALIPAY",
+                      "QQ",
+                      "WEIBO"
+                    ]
+                  }
                 }
               },
               "required": [
@@ -3129,7 +3829,7 @@
             "$ref": "#/components/schemas/PendingSignIn"
           }
         ],
-        "description": "HTTP 200 的两种互斥响应：令牌对或待补全。不得把 pending 当作已有账号。"
+        "description": "HTTP 200 的两种互斥响应：令牌对或待补全。无 discriminator，客户端按是否存在 access_token 收窄：有则为 TokenPair，否则读取 next_action 并校验其为已知值。不得把 pending 当作已有账号。"
       },
       "IdentityList": {
         "type": "object",
@@ -3172,6 +3872,10 @@
             "type": "string",
             "minLength": 1,
             "description": "敏感凭证，不得写入日志、URL 或审计。"
+          },
+          "scope": {
+            "type": "string",
+            "description": "可选且被忽略（RFC 6749 §3.3）：签发 scope 始终由账号当前状态推导并在响应 scope 字段返回，携带与否结果相同；仅为兼容刷新时回传 scope 的客户端而声明。"
           }
         },
         "required": [
@@ -3459,8 +4163,124 @@
           "nonce"
         ],
         "additionalProperties": false,
-        "description": "APPLE、GOOGLE 与配置的 OIDC 类型使用的凭证；nonce 为原始值。"
+        "description": "APPLE、GOOGLE、FACEBOOK Limited Login 与配置的 OIDC 类型使用的凭证：提供方签发的 ID token 与客户端生成的原始 nonce。"
+      },
+      "AlipayCredential": {
+        "type": "object",
+        "properties": {
+          "app_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "支付宝应用 AppID，须在服务端 AlipayApps 配置中。"
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "description": "App 极简授权返回的 auth code。敏感凭证，不得写入日志、URL 或审计。"
+          }
+        },
+        "required": [
+          "app_id",
+          "code"
+        ],
+        "additionalProperties": false,
+        "description": "ALIPAY 使用的凭证：App 极简授权码，服务端以 RSA2 兑换并验签。"
+      },
+      "AppAccessTokenCredential": {
+        "type": "object",
+        "properties": {
+          "app_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "移动 SDK 的 AppID（微博为 AppKey），须在服务端允许列表中。"
+          },
+          "access_token": {
+            "type": "string",
+            "minLength": 1,
+            "description": "提供方 SDK 取得的 access token。敏感凭证，不得写入日志、URL 或审计。"
+          }
+        },
+        "required": [
+          "app_id",
+          "access_token"
+        ],
+        "additionalProperties": false,
+        "description": "QQ、WEIBO 使用的凭证：服务端调用提供方接口校验令牌归属与有效期；令牌在有效期内可重复用于登录，客户端须保密。"
+      },
+      "FacebookAccessTokenCredential": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Facebook Classic Login 的用户 access token。敏感凭证，不得写入日志、URL 或审计。"
+          }
+        },
+        "required": [
+          "access_token"
+        ],
+        "additionalProperties": false
+      },
+      "FacebookCredential": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/IdTokenCredential"
+          },
+          {
+            "$ref": "#/components/schemas/FacebookAccessTokenCredential"
+          }
+        ],
+        "description": "FACEBOOK 使用的凭证，二者择一：Limited Login 为 {id_token, nonce}，Classic Login 为 {access_token}；混合或缺失字段返回 CREDENTIAL_INCOMPLETE。"
       }
     }
+  },
+  "x-error-reason-catalog": {
+    "CHANNEL_INVALID": "请求体 channel 不是 PHONE 或 EMAIL。",
+    "CHANNEL_NOT_ENABLED": "该验证码渠道的发送器被宿主显式禁用（sender.Disabled / Enabled()=false）（400 FAILED_PRECONDITION）。",
+    "CODE_EXPIRED": "验证码轮次未知、已过期、已被新轮次替换、已消费或主体绑定不符；补全发码时也表示票据剩余期限不足一秒。",
+    "CODE_INVALID": "验证码与当前轮次不匹配（含末次错误尝试），或登录事务内重查身份归属已变化。",
+    "COOLDOWN": "同渠道同目标处于重发冷却期（429，带 retry_after_seconds）。",
+    "CREDENTIAL_INCOMPLETE": "统一凭证信封缺 kind/credential、credential 非对象或超 16 KiB、字段缺失/未知/类型错误，或第三方提供方判定凭证格式不完整（idp.ErrMalformedCredential）。",
+    "CREDENTIAL_KIND_NOT_ALLOWED": "kind 格式合法但不属于该端点接受的类别（仅 PHONE/EMAIL 的端点收到第三方类型，或仅第三方的端点收到 PHONE/EMAIL）。",
+    "DELETION_BLOCKED": "宿主 BeforeDelete 回调返回 user.ErrDeletionBlocked，拒绝注销（400 FAILED_PRECONDITION）。",
+    "DEPENDENCY_UNAVAILABLE": "Redis（验证码/吊销检查）或数据库连接类故障导致依赖不可用，fail-closed（503，retry_after_seconds=1，Retry-After: 1）。",
+    "DEVICE_ID_INVALID": "X-Device-Id 缺失或不匹配 ^[A-Za-z0-9._-]{1,64}$（补全端点仅在提供时校验）。",
+    "DEVICE_NAME_INVALID": "X-Device-Name 非法 UTF-8、超过 64 个字符或含控制字符。",
+    "IDENTITY_ALREADY_BOUND": "该身份已绑定到另一账号（含并发唯一冲突、补全时多个账号归属、UnionID/OpenID 元数据矛盾）（409 ALREADY_EXISTS）。",
+    "IDENTITY_KIND_LIMIT": "该用户同类身份数量已达 MaxIdentitiesPerKind（409 ALREADY_EXISTS）。",
+    "IDENTITY_KIND_NOT_ENABLED": "部署策略 EnabledIdentityKinds 未启用该身份类型（400 FAILED_PRECONDITION）；省略 Enabled 的宿主对未配置第三方类型改返回 IDP_APP_NOT_ALLOWED。",
+    "IDENTITY_REPLACEMENT_NOT_CONFIGURED": "注入的 Service 未实现 IdentityReplacer，换绑端点不可用（503）。",
+    "IDENTITY_UNCHANGED": "换绑的新目标与当前身份相同。",
+    "IDP_APP_NOT_ALLOWED": "第三方 app_id/aud/azp 不在允许列表、与凭证不符，或该第三方类型未配置提供方。",
+    "IDP_CREDENTIAL_INVALID": "第三方凭证无效：code 已用/过期、id_token 验签/iss/exp/nonce 不通过、access_token 失效，或提供方返回的主体为空/类型不符。",
+    "IDP_NONCE_REPLAYED": "同一 nonce 在 TTL 内被再次使用。",
+    "IDP_UNAVAILABLE": "第三方提供方网络/5xx、JWKS 不可得或 nonce 登记 Redis 不可用（503，retry_after_seconds=1）。",
+    "INSUFFICIENT_SCOPE": "access token 的 scope 不允许该操作（403 PERMISSION_DENIED），中间件与领域层均可返回。",
+    "INVALID_ACCOUNT_STATE": "账号当前状态不允许该状态迁移或写入（如非 ACTIVE 更新资料、非 PENDING_DELETION 恢复、已 purge）（400 FAILED_PRECONDITION）。",
+    "INVALID_ARGUMENT": "通用参数错误：kind 格式非法、code_id 非 32 位小写十六进制、display_name/avatar_url/reason 非法、设备字段超长、换绑身份类型不匹配等；message 携带具体说明。",
+    "INVALID_CLIENT_INFO": "显式客户端描述头（或宿主 ClientInfo 回调结果）含非法枚举、控制字符、超长字段或非法扩展。",
+    "INVALID_ID": "路径中的资源 ID（u_/i_/s_ + 13 位 Crockford base32）格式非法。",
+    "INVALID_PROFILE_ATTRIBUTES": "profile_attributes 内层补丁编码/容量/对象结构或 Schema 校验失败（不返回具体值）。",
+    "INVALID_TARGET": "手机号/邮箱无法归一化为有效目标。",
+    "IP_LIMIT": "同渠道按客户端 IP 的当日发送额度已用尽（429，retry_after_seconds 指向 UTC 次日零点）。",
+    "LAST_ANCHOR_IDENTITY": "解绑/换绑后账号将不再满足身份完整性策略或无可用身份（400 FAILED_PRECONDITION）。",
+    "MALFORMED_BODY": "请求体缺失、非法 JSON、顶层非对象、含未知字段、超过大小上限或有尾随内容；updateMe 的 avatar_url 非字符串/null 亦归此类。",
+    "NOT_FOUND": "资源不存在、已解绑/已吊销，或不属于该用户/账号（404；不暴露存在性）。",
+    "NO_FIELDS": "PATCH /users/me 未提供任何可更新字段（display_name、avatar_url 均缺失或为 null）。",
+    "PROFILE_ATTRIBUTES_NOT_CONFIGURED": "宿主未配置 ProfileAttributes Schema，或注入的 Service 未实现 ProfileAttributesService（503）。",
+    "PROFILE_UPDATE_NOT_CONFIGURED": "注入的旧 Service 未实现 ProfileUpdater 且请求包含非 null 的 avatar_url（503）。",
+    "REAUTHENTICATION_REQUIRED": "敏感操作要求近期认证：auth_time 缺失或距今超过 ReauthMaxAge（400 FAILED_PRECONDITION）；中间件与领域层均可返回。",
+    "SESSION_QUERY_NOT_CONFIGURED": "注入的 Service 未实现 CurrentSessionService，当前会话查询不可用（503）。",
+    "SIGN_IN_ALREADY_COMPLETED": "登录补全流程已完成且无法重放原 token pair（refresh 已轮换、会话失效、请求不同等）（400 FAILED_PRECONDITION）。",
+    "SIGN_IN_COMPLETION_INVALID": "sign_in_completion_token 缺失、格式错误、未知、已过期、策略/设备不匹配、修订号冲突或证明归属已变化；首次登录时凭证期限已过导致无法创建待补全流程亦归此类（400 FAILED_PRECONDITION）。",
+    "SIGN_IN_COMPLETION_NOT_CONFIGURED": "注入的 Service 未实现 SignInCompletionService（503）。",
+    "TARGET_LIMIT": "同渠道同目标的当日发送额度已用尽（429，retry_after_seconds 指向 UTC 次日零点）。",
+    "TARGET_NOT_ANCHOR": "重新认证目标不是该账号已绑定的手机/邮箱身份（400 FAILED_PRECONDITION）。",
+    "TARGET_NOT_SUPPORTED": "短信发送器通过 SupportsTarget 声明不支持该号码（400 FAILED_PRECONDITION），在占用额度前拒绝。",
+    "TARGET_VERIFY_LIMIT": "同渠道同目标在失败窗口内累计错误次数达到上限，发码与验证均拒绝（429，retry_after_seconds 指向窗口结束）。",
+    "TOKEN_INVALID": "Bearer access token 无效/过期/已吊销，或领域层判定会话不存在、已吊销、已过期、账号已注销（401，带 WWW-Authenticate: Bearer realm=\"user\", error=\"invalid_token\"）。",
+    "TOKEN_MISSING": "Authorization 头缺失或不是合法的 Bearer 形式（401，WWW-Authenticate: Bearer realm=\"user\"）；管理面表示宿主 verifier 未在 ctx 注入 Principal（realm=\"admin\"）。",
+    "USER_FROZEN": "账号被管理端冻结。C 端为 403 PERMISSION_DENIED；管理面为 400 FAILED_PRECONDITION（需先解冻）。",
+    "USER_PENDING_DELETION": "账号处于注销冷静期，第三方登录/补全被拒绝，须用手机/邮箱登录恢复（403 PERMISSION_DENIED）。"
   }
 }

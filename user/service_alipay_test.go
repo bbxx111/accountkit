@@ -70,7 +70,7 @@ func TestAlipayLaterLoginBackfillsOnlyEmptyFields(t *testing.T) {
 			f := newFixture(t)
 			useAlipay(t, f, nil, []enum.IdentityKind{})
 			first := requireSignInTokens(t, mustSignInWithIdp(t, f, alipayCred("", "")))
-			rows, err := f.repo.Q().ListActiveIdentitiesByUser(context.Background(), first.UserID)
+			rows, err := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(context.Background(), first.UserID)
 			if err != nil || len(rows) != 1 {
 				t.Fatal(err)
 			}
@@ -78,7 +78,7 @@ func TestAlipayLaterLoginBackfillsOnlyEmptyFields(t *testing.T) {
 			if _, err := f.svc.UpdateProfile(context.Background(), first.UserID, user.ProfilePatch{DisplayName: &tc.name, AvatarURL: &tc.avatar}); err != nil {
 				t.Fatal(err)
 			}
-			before, err := f.repo.Q().GetUserByID(context.Background(), first.UserID)
+			before, err := user.TestRepoQueries(f.repo).GetUserByID(context.Background(), first.UserID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -88,12 +88,12 @@ func TestAlipayLaterLoginBackfillsOnlyEmptyFields(t *testing.T) {
 				t.Fatal("later sign-in changed user")
 			}
 			assertAlipayProfile(t, f, first.UserID, tc.wantName, tc.wantAvatar)
-			rows, err = f.repo.Q().ListActiveIdentitiesByUser(context.Background(), first.UserID)
+			rows, err = user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(context.Background(), first.UserID)
 			if err != nil || len(rows) != 1 || rows[0].ID != id {
 				t.Fatal("later sign-in changed identity")
 			}
 			if tc.name != "" && tc.avatar != "" {
-				after, _ := f.repo.Q().GetUserByID(context.Background(), first.UserID)
+				after, _ := user.TestRepoQueries(f.repo).GetUserByID(context.Background(), first.UserID)
 				if !after.UpdateTime.Equal(before.UpdateTime) {
 					t.Fatal("nonempty profile changed update_time")
 				}
@@ -125,7 +125,7 @@ func TestAlipayLoginProfileRollbackAfterSessionFailure(t *testing.T) {
 		t.Fatal("session failure succeeded")
 	}
 	assertAlipayProfile(t, f, first.UserID, "", "")
-	rows, _ := f.repo.Q().ListActiveIdentitiesByUser(context.Background(), first.UserID)
+	rows, _ := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(context.Background(), first.UserID)
 	if strings.Contains(string(rows[0].ProviderMeta), "Rollback") {
 		t.Fatal("provider metadata survived rollback")
 	}
@@ -203,9 +203,6 @@ func alipayPendingPayload(t *testing.T, f *fixture, mutate func(map[string]any))
 	searchPath, _, _ := strings.Cut(f.pool.Config().ConnConfig.RuntimeParams["search_path"], ",")
 	searchPath = strings.Trim(strings.TrimSpace(searchPath), `"`)
 	extra := f.deps.SignInCompletionFlowContext
-	if extra == "" {
-		extra = f.deps.IdentityFlowContext
-	}
 	wire, _ := json.Marshal(struct{ SearchPath, Prefix, JWT, Extra string }{searchPath, f.deps.Codes.InstancePrefix(), f.deps.Signer.ContextFingerprint(), extra})
 	hash := sha256.Sum256(wire)
 	aad, _ := json.Marshal([]string{"accountkit-sign-in-completion-v1", fmt.Sprintf("%x", hash), id})
@@ -332,7 +329,7 @@ func TestAlipayConcurrentAppsShareSingleUnionIdentity(t *testing.T) {
 	if pa.UserID != pb.UserID || pa.IsNewUser == pb.IsNewUser || calls.Load() != 2 {
 		t.Fatal("concurrent union identity duplicated or reverified")
 	}
-	rows, err := f.repo.Q().ListActiveIdentitiesByUser(context.Background(), pa.UserID)
+	rows, err := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(context.Background(), pa.UserID)
 	if err != nil || len(rows) != 1 || !strings.Contains(string(rows[0].ProviderMeta), "app-one-open") || !strings.Contains(string(rows[0].ProviderMeta), "app-two-open") {
 		t.Fatalf("union metadata=%+v %v", rows, err)
 	}
@@ -415,7 +412,7 @@ func TestAlipayLoginCannotRestoreProfileAfterConcurrentPurge(t *testing.T) {
 	if out := finishReplacementRace(t, ctx, login); !errors.Is(out.err, idp.ErrInvalidCredential) {
 		t.Fatalf("stale identity accepted after purge: %v", out.err)
 	}
-	row, err := f.repo.Q().GetUserByID(ctx, first.UserID)
+	row, err := user.TestRepoQueries(f.repo).GetUserByID(ctx, first.UserID)
 	if err != nil || row.State != enum.UserDeleted || row.DisplayName != nil || row.AvatarUrl != nil {
 		t.Fatalf("login restored anonymized profile: %+v %v", row, err)
 	}
@@ -464,7 +461,7 @@ func TestAlipayConflictingMetadataRollsBackProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertAlipayProfile(t, f, first.UserID, "", "")
-	rows, err := f.repo.Q().ListActiveIdentitiesByUser(context.Background(), first.UserID)
+	rows, err := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(context.Background(), first.UserID)
 	if err != nil || len(rows) != 1 || strings.Contains(string(rows[0].ProviderMeta), "conflicting-open") {
 		t.Fatalf("conflict modified metadata: %+v %v", rows, err)
 	}

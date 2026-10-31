@@ -11,6 +11,7 @@ import (
 
 // ---- UserState ----
 
+// UserState 是账号生命周期状态（user_account.state），只经领域状态迁移方法改变。
 type UserState int16
 
 const (
@@ -89,6 +90,7 @@ func ParseIdentityKind(v string) (IdentityKind, error) {
 
 // ---- RevokeReason ----
 
+// RevokeReason 是会话吊销原因（session.revoke_reason）。
 type RevokeReason int16
 
 const (
@@ -109,6 +111,7 @@ var revokeReasonNames = [...]string{"UNSPECIFIED", "USER_LOGOUT", "USER_REVOKED_
 func (r RevokeReason) String() string { return name(revokeReasonNames[:], int(r)) }
 func (r RevokeReason) Valid() bool    { return r >= RevokeUserLogout && r <= RevokeIdentityUnbound }
 
+// ParseRevokeReason 只接受精确的 UPPER_SNAKE 名；UNSPECIFIED 与未知值均报错。
 func ParseRevokeReason(v string) (RevokeReason, error) {
 	i, err := parse(revokeReasonNames[:], v, "RevokeReason")
 	return RevokeReason(i), err
@@ -116,6 +119,7 @@ func ParseRevokeReason(v string) (RevokeReason, error) {
 
 // ---- CodePurpose ----
 
+// CodePurpose 是验证码用途；不同用途的轮次、额度键与邮件文案互相隔离。
 type CodePurpose int16
 
 const (
@@ -137,6 +141,7 @@ func (p CodePurpose) Key() string { return name(codePurposeKeys[:], int(p)) }
 
 // ---- ActorKind / Result / EventType（审计） ----
 
+// ActorKind 是认证审计事件的操作者类别。
 type ActorKind int16
 
 const (
@@ -151,6 +156,7 @@ var actorKindNames = [...]string{"UNSPECIFIED", "USER", "ADMIN", "SYSTEM"}
 func (a ActorKind) String() string { return name(actorKindNames[:], int(a)) }
 func (a ActorKind) Valid() bool    { return a >= ActorUser && a <= ActorSystem }
 
+// Result 是审计事件的结果。
 type Result int16
 
 const (
@@ -164,6 +170,7 @@ var resultNames = [...]string{"UNSPECIFIED", "SUCCESS", "FAILURE"}
 func (r Result) String() string { return name(resultNames[:], int(r)) }
 func (r Result) Valid() bool    { return r == ResultSuccess || r == ResultFailure }
 
+// EventType 是认证审计事件类型，映射为通用审计事件的 action 名。
 type EventType int16
 
 const (
@@ -209,6 +216,7 @@ var eventTypeNames = [...]string{
 func (e EventType) String() string { return name(eventTypeNames[:], int(e)) }
 func (e EventType) Valid() bool    { return e >= EventCodeSent && e <= EventProviderDataDeletionProcessed }
 
+// ParseEventType 只接受精确的 UPPER_SNAKE 名；UNSPECIFIED 与未知值均报错。
 func ParseEventType(v string) (EventType, error) {
 	i, err := parse(eventTypeNames[:], v, "EventType")
 	return EventType(i), err
@@ -232,6 +240,7 @@ func parse(names []string, v, typ string) (int, error) {
 	return 0, fmt.Errorf("enum: invalid %s %q", typ, v)
 }
 
+// FlowState 是登录补全流程状态（sign_in_completion_flow.state）。
 type FlowState int16
 
 const (
@@ -247,6 +256,8 @@ var flowStateNames = [...]string{"UNSPECIFIED", "PENDING", "VERIFIED", "COMPLETE
 
 func (s FlowState) String() string { return name(flowStateNames[:], int(s)) }
 func (s FlowState) Valid() bool    { return s >= FlowPending && s <= FlowRejected }
+
+// ParseFlowState 只接受精确的 UPPER_SNAKE 名；UNSPECIFIED 与未知值均报错。
 func ParseFlowState(v string) (FlowState, error) {
 	i, err := parse(flowStateNames[:], v, "FlowState")
 	return FlowState(i), err

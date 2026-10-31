@@ -11,8 +11,8 @@ import (
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/user/code"
-	"github.com/bbxx111/accountkit/user/db"
 )
 
 // ReplaceIdentity 使用新目标的 BIND 证明原子替换同类锚点身份。宿主传入已认证的
@@ -59,7 +59,7 @@ func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID s
 	}
 	digest, _ := s.d.Digester.Digest(norm)
 	ev.SubjectHint = audit.Hint(digest)
-	old, _, err := s.replacementPreflight(ctx, s.d.Repo.Q(), p, identityID, channel, norm)
+	old, _, err := s.replacementPreflight(ctx, s.d.Repo.queries(), p, identityID, channel, norm)
 	if err != nil {
 		return IdentityInfo{}, err
 	}
@@ -142,7 +142,7 @@ func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID s
 		}
 		row, createErr := s.createAnchorIdentity(ctx, q, p.UserID, channel, norm, hintPrefix, hintSuffix)
 		if createErr != nil {
-			if IsUniqueViolation(createErr) {
+			if isUniqueViolation(createErr) {
 				return ErrIdentityConflict
 			}
 			return fmt.Errorf("user: create replacement identity: %w", createErr)

@@ -18,7 +18,7 @@ import (
 )
 
 type recoveryState struct {
-	Fixture                      sourceFixture
+	Fixture                      syntheticFixture
 	Access, Snapshot             string
 	PendingToken, CompletedToken string
 	PendingCode, CompletedCode   user.CodeCredential
@@ -71,7 +71,7 @@ func TestRecoveryFixture(t *testing.T) {
 	}
 	defer a.Close()
 	if mode == "seed" {
-		f, access := seedFormatFixture(t, pool, a.Config())
+		f, access := seedSyntheticAccount(t, pool, a.Config())
 		if err := a.Migrate(ctx); err != nil {
 			t.Fatal(err)
 		}
@@ -230,7 +230,7 @@ func snapshotRecovery(t *testing.T, pool *pgxpool.Pool) string {
       'client_info',(SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY session_id),'[]'::jsonb) FROM session_client_info t))::text`).Scan(&contextSnapshot); err != nil {
 		t.Fatal(err)
 	}
-	return snapshotSource(t, pool) + "\n" + flows + "\n" + contextSnapshot
+	return snapshotSyntheticAccount(t, pool) + "\n" + flows + "\n" + contextSnapshot
 }
 
 func assertRecoveryFlows(t *testing.T, pool *pgxpool.Pool, state recoveryState) {
@@ -277,7 +277,7 @@ func assertRecoveryFlows(t *testing.T, pool *pgxpool.Pool, state recoveryState) 
 // Detects recovery/source-preservation snapshots omitting either session context table.
 func TestRecoverySessionContextSnapshot(t *testing.T) {
 	a, pool, _ := integrationInstance(t, minimal(), testRedis(t))
-	f, _ := seedFormatFixture(t, pool, a.Config())
+	f, _ := seedSyntheticAccount(t, pool, a.Config())
 	ctx := context.Background()
 	before := snapshotRecovery(t, pool)
 	if _, err := pool.Exec(ctx, "INSERT INTO session_authentication_identity(session_id,identity_id) VALUES($1,$2)", f.SessionID, f.IdentityID); err != nil {

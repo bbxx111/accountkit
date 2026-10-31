@@ -81,7 +81,7 @@ func TestSignInCompletionAssociatesOrCreatesAndReplays(t *testing.T) {
 			if pair.IsNewUser == existing || pair.Scope != user.ScopeUser || (existing && pair.UserID != wantUser) {
 				t.Fatalf("wrong completion: %+v", pair)
 			}
-			rows, err := f.repo.Q().ListActiveIdentitiesByUser(ctx, pair.UserID)
+			rows, err := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, pair.UserID)
 			if err != nil || len(rows) != 2 {
 				t.Fatalf("identities: %d %v", len(rows), err)
 			}
@@ -227,7 +227,7 @@ func TestSignInCompletionIncompleteProofsAndExistingBindScope(t *testing.T) {
 			if err != nil || r.Tokens == nil {
 				t.Fatalf("additional proof: %v", err)
 			}
-			idents, _ := f.repo.Q().ListActiveIdentitiesByUser(ctx, r.Tokens.UserID)
+			idents, _ := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, r.Tokens.UserID)
 			if len(idents) != 3 {
 				t.Fatalf("lost earlier proof: %d", len(idents))
 			}

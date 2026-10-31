@@ -11,9 +11,9 @@ import (
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	ob "github.com/bbxx111/accountkit/observability"
 	"github.com/bbxx111/accountkit/user/code"
-	"github.com/bbxx111/accountkit/user/db"
 	"github.com/bbxx111/accountkit/user/idp"
 	"github.com/jackc/pgx/v5"
 )
@@ -337,7 +337,7 @@ func sameProof(a, b completionProof) bool {
 func (s *Service) persistCompletionProof(ctx context.Context, row db.SignInCompletionFlow, p completionPayload, proof completionProof, request string, dev Device, meta Meta) (db.SignInCompletionFlow, completionPayload, error) {
 	// Only the newly verified target may discover an existing owner here. Earlier
 	// proofs retain their original ownership snapshot throughout the flow.
-	current, err := s.findProof(ctx, s.d.Repo.Q(), proof)
+	current, err := s.findProof(ctx, s.d.Repo.queries(), proof)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return row, p, err
 	}
@@ -603,7 +603,7 @@ func (s *Service) finalizeSignIn(ctx context.Context, token string, row db.SignI
 		}
 		return s.finalizeSignIn(ctx, token, fresh, fp, request, dev, meta)
 	}
-	if IsUniqueViolation(err) {
+	if isUniqueViolation(err) {
 		return SignInResult{}, ErrIdentityConflict
 	}
 	if err != nil {

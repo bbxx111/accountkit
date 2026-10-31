@@ -66,7 +66,7 @@ func TestProfileAttributesLifecycle(t *testing.T) {
 	if n, err := f.svc.PurgeDueUsers(ctx); err != nil || n != 1 {
 		t.Fatal("purge", n, err)
 	}
-	row, err := f.repo.Q().GetUserByID(ctx, id)
+	row, err := user.TestRepoQueries(f.repo).GetUserByID(ctx, id)
 	if err != nil || string(row.ProfileAttributes) != "{}" || !row.UpdateTime.Equal(*f.clock) {
 		t.Fatal("purge must clear profile_attributes and advance metadata", err)
 	}
@@ -114,7 +114,7 @@ func TestProfileAttributesPurgeBoundaries(t *testing.T) {
 			if n, err := f.svc.PurgeDueUsers(ctx); err != nil || n != 1 {
 				t.Fatal(n, err)
 			}
-			row, err := f.repo.Q().GetUserByID(ctx, id)
+			row, err := user.TestRepoQueries(f.repo).GetUserByID(ctx, id)
 			if err != nil || string(row.ProfileAttributes) != "{}" {
 				t.Fatal("boundary purge metadata", err)
 			}
@@ -154,7 +154,7 @@ func TestProfileAttributesPurgeRollback(t *testing.T) {
 	if _, err := f.svc.AdminDeleteUser(ctx, admin1, id, meta1); err != nil {
 		t.Fatal(err)
 	}
-	before, err := f.repo.Q().GetUserByID(ctx, id)
+	before, err := user.TestRepoQueries(f.repo).GetUserByID(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestProfileAttributesPurgeRollback(t *testing.T) {
 	if n, err := f.svc.PurgeDueUsers(ctx); err == nil || n != 0 || !a.seen {
 		t.Fatal("expected callback rollback", n, err)
 	}
-	after, err := f.repo.Q().GetUserByID(ctx, id)
+	after, err := user.TestRepoQueries(f.repo).GetUserByID(ctx, id)
 	if err != nil || !reflect.DeepEqual(before, after) {
 		t.Fatal("callback failure must restore entire account row", err)
 	}

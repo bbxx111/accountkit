@@ -3,8 +3,8 @@ package admin
 import (
 	"net/http"
 
-	"github.com/bbxx111/accountkit/httpapi/jsonbody"
-	"github.com/bbxx111/accountkit/httpapi/reqid"
+	"github.com/bbxx111/accountkit/httpapi/internal/jsonbody"
+	"github.com/bbxx111/accountkit/httpapi/internal/reqid"
 )
 
 // reasonRequest 是 :freeze / :unfreeze 的请求体。

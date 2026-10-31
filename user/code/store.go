@@ -23,9 +23,6 @@ var (
 	ErrInvalid = errors.New("code: invalid code")
 	// ErrExpired: an unknown, expired, replaced, consumed or misbound challenge.
 	ErrExpired = errors.New("code: code expired")
-	// ErrExhausted is retained for source compatibility; challenge verification returns
-	// ErrInvalid on the final wrong attempt and ErrExpired thereafter.
-	ErrExhausted = errors.New("code: attempts exhausted")
 )
 
 // RateLimitedError 表示发送被冷却或日限拒绝。
@@ -34,6 +31,7 @@ type RateLimitedError struct {
 	RetryAfter time.Duration
 }
 
+// Error 返回包含限流维度与重试等待时间的文本。
 func (e *RateLimitedError) Error() string {
 	return fmt.Sprintf("code: rate limited (%s), retry after %s", e.Dimension, e.RetryAfter)
 }

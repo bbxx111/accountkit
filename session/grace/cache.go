@@ -21,11 +21,11 @@ var ErrUnavailable = errors.New("grace: redis unavailable")
 
 // Pair 是要在宽限期内原样返回的凭证对。
 type Pair struct {
-	AccessToken      string    `json:"at"`
-	RefreshToken     string    `json:"rt"`
-	AccessExpiresAt  time.Time `json:"ae"`
-	RefreshExpiresAt time.Time `json:"re"`
-	Scope            string    `json:"sc"`
+	AccessToken       string    `json:"at"`
+	RefreshToken      string    `json:"rt"`
+	AccessExpireTime  time.Time `json:"ae"`
+	RefreshExpireTime time.Time `json:"re"`
+	Scope             string    `json:"sc"`
 }
 
 // Cache 是宽限缓存。

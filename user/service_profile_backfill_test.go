@@ -39,7 +39,7 @@ func emptyCred(kind enum.IdentityKind) user.IdpCredential {
 
 func assertProviderMetaHas(t *testing.T, f *fixture, uid string, kind enum.IdentityKind, text string) {
 	t.Helper()
-	rows, err := f.repo.Q().ListActiveIdentitiesByUser(context.Background(), uid)
+	rows, err := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(context.Background(), uid)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +199,7 @@ func TestProviderProfileBackfillRollbackAfterSessionFailure(t *testing.T) {
 		t.Fatal("session failure succeeded")
 	}
 	assertAlipayProfile(t, f, first.UserID, "", "")
-	rows, err := f.repo.Q().ListActiveIdentitiesByUser(context.Background(), first.UserID)
+	rows, err := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(context.Background(), first.UserID)
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("identities=%d %v", len(rows), err)
 	}

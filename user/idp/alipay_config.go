@@ -22,6 +22,7 @@ type AlipayApp struct {
 // AlipaySubjectMode 决定实例内所有支付宝应用的固定身份识别方式。
 type AlipaySubjectMode string
 
+// 支付宝身份识别模式：UNIONID 使用支付宝 union_id，OPENID 使用应用内 open_id。
 const (
 	AlipaySubjectModeUnionID AlipaySubjectMode = "UNIONID"
 	AlipaySubjectModeOpenID  AlipaySubjectMode = "OPENID"

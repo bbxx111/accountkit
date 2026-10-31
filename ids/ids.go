@@ -16,14 +16,12 @@ import (
 // Kind 是资源类型前缀（不含下划线）。
 type Kind string
 
+// 资源类型前缀：账号 u、身份 i、会话 s、登录补全流程 f。审计事件使用 UUIDv7。
 const (
 	User                 Kind = "u"
 	Identity             Kind = "i"
 	Session              Kind = "s"
-	AuditEvent           Kind = "e"
 	SignInCompletionFlow Kind = "f"
-	// Deprecated: use SignInCompletionFlow.
-	IdentityFlow Kind = SignInCompletionFlow
 )
 
 // Alphabet 是小写 Crockford base32 字符集，剔除 i/l/o/u。

@@ -14,8 +14,8 @@ import (
 
 	"github.com/bbxx111/accountkit/anonymize"
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/user"
-	"github.com/bbxx111/accountkit/user/db"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -34,7 +34,7 @@ func clientLogin(t *testing.T, f *fixture, info *user.ClientInfo) user.TokenResu
 }
 func clientSnapshot(t *testing.T, f *fixture, p user.Principal) db.SessionClientInfo {
 	t.Helper()
-	r, err := f.repo.Q().GetSessionClientInfo(context.Background(), db.GetSessionClientInfoParams{UserID: p.UserID, SessionID: p.SessionID})
+	r, err := user.TestRepoQueries(f.repo).GetSessionClientInfo(context.Background(), db.GetSessionClientInfoParams{UserID: p.UserID, SessionID: p.SessionID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestSignInCompletionClientInfoSelection(t *testing.T) {
 				}
 				var before db.SessionClientInfo
 				if !first && !last {
-					if _, err = f.repo.Q().GetSessionClientInfo(ctx, db.GetSessionClientInfoParams{UserID: p.UserID, SessionID: p.SessionID}); !errors.Is(err, pgx.ErrNoRows) {
+					if _, err = user.TestRepoQueries(f.repo).GetSessionClientInfo(ctx, db.GetSessionClientInfoParams{UserID: p.UserID, SessionID: p.SessionID}); !errors.Is(err, pgx.ErrNoRows) {
 						t.Fatal("fabricated observation", err)
 					}
 					if current.ClientInfo != nil || current.ClientInfoUpdateTime != nil {
@@ -219,7 +219,7 @@ func TestSignInCompletionClientInfoSelection(t *testing.T) {
 					if got := clientSnapshot(t, f, p); !reflect.DeepEqual(got, before) {
 						t.Fatal("replay updated")
 					}
-				} else if _, err = f.repo.Q().GetSessionClientInfo(ctx, db.GetSessionClientInfoParams{UserID: p.UserID, SessionID: p.SessionID}); !errors.Is(err, pgx.ErrNoRows) {
+				} else if _, err = user.TestRepoQueries(f.repo).GetSessionClientInfo(ctx, db.GetSessionClientInfoParams{UserID: p.UserID, SessionID: p.SessionID}); !errors.Is(err, pgx.ErrNoRows) {
 					t.Fatal("replay fabricated observation", err)
 				}
 			})
@@ -319,9 +319,6 @@ func stripPendingClientInfo(t *testing.T, f *fixture) {
 	searchPath, _, _ := strings.Cut(f.pool.Config().ConnConfig.RuntimeParams["search_path"], ",")
 	searchPath = strings.Trim(strings.TrimSpace(searchPath), `"`)
 	extra := f.deps.SignInCompletionFlowContext
-	if extra == "" {
-		extra = f.deps.IdentityFlowContext
-	}
 	wire, _ := json.Marshal(struct{ SearchPath, Prefix, JWT, Extra string }{searchPath, f.deps.Codes.InstancePrefix(), f.deps.Signer.ContextFingerprint(), extra})
 	hash := sha256.Sum256(wire)
 	aad, _ := json.Marshal([]string{"accountkit-sign-in-completion-v1", fmt.Sprintf("%x", hash), id})
@@ -469,7 +466,7 @@ func TestSessionContextCleanupBoundedAndAtomic(t *testing.T) {
 		t.Fatalf("children escaped rollback %d %v", n, err)
 	}
 	mustExec(t, f, `DROP TRIGGER reject_session_delete ON session`)
-	if n, err := f.repo.Q().DeleteStaleSessions(ctx, db.DeleteStaleSessionsParams{Before: f.clock.Add(-user.SessionRetention), BatchSize: 2}); err != nil || n != 2 {
+	if n, err := user.TestRepoQueries(f.repo).DeleteStaleSessions(ctx, db.DeleteStaleSessionsParams{Before: f.clock.Add(-user.SessionRetention), BatchSize: 2}); err != nil || n != 2 {
 		t.Fatalf("bounded batch %d %v", n, err)
 	}
 	if n, err := f.svc.CleanupSessions(ctx); err != nil || n != 3 {
@@ -607,7 +604,7 @@ func TestSessionClientInfoSparseObservations(t *testing.T) {
 				t.Fatalf("sparse login: %+v %v", current, err)
 			}
 			if expected == nil {
-				if _, err = f.repo.Q().GetSessionClientInfo(ctx, db.GetSessionClientInfoParams{UserID: p.UserID, SessionID: p.SessionID}); !errors.Is(err, pgx.ErrNoRows) {
+				if _, err = user.TestRepoQueries(f.repo).GetSessionClientInfo(ctx, db.GetSessionClientInfoParams{UserID: p.UserID, SessionID: p.SessionID}); !errors.Is(err, pgx.ErrNoRows) {
 					t.Fatal("empty observation stored", err)
 				}
 			} else if got := clientObservation(t, clientSnapshot(t, f, p)); !reflect.DeepEqual(got, expected) {

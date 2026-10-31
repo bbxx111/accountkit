@@ -11,9 +11,9 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/user"
 	"github.com/bbxx111/accountkit/user/code"
-	"github.com/bbxx111/accountkit/user/db"
 )
 
 // Only the service clock advances concurrently. The code-store fixture clock is
@@ -35,7 +35,7 @@ func reauthAtomicClock(t *testing.T, f *fixture, at time.Time, sensitive bool) *
 
 func reauthSession(t *testing.T, ctx context.Context, f *fixture, p user.Principal) db.Session {
 	t.Helper()
-	sess, err := f.repo.Q().GetActiveSessionByIDAndUser(ctx, db.GetActiveSessionByIDAndUserParams{ID: p.SessionID, UserID: p.UserID})
+	sess, err := user.TestRepoQueries(f.repo).GetActiveSessionByIDAndUser(ctx, db.GetActiveSessionByIDAndUserParams{ID: p.SessionID, UserID: p.UserID})
 	if err != nil {
 		t.Fatal(err)
 	}

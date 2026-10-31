@@ -15,16 +15,16 @@ import (
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/internal/obstest"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	ob "github.com/bbxx111/accountkit/observability"
 	"github.com/bbxx111/accountkit/user"
 	"github.com/bbxx111/accountkit/user/code"
-	"github.com/bbxx111/accountkit/user/db"
 )
 
 func assertContextRevoked(t *testing.T, f *fixture, pair user.TokenResult, revoked bool, reason string) {
 	t.Helper()
 	ctx := context.Background()
-	sess, err := f.repo.Q().GetSessionByRefreshHash(ctx, sha256Of(pair.RefreshToken))
+	sess, err := user.TestRepoQueries(f.repo).GetSessionByRefreshHash(ctx, sha256Of(pair.RefreshToken))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -327,7 +327,7 @@ func TestSessionContextConcurrentRevocation(t *testing.T) {
 			if err := <-b; !errors.Is(err, want) {
 				t.Fatalf("second mutation: %v want %v", err, want)
 			}
-			sess, err := f.repo.Q().LockSessionByID(ctx, p.SessionID)
+			sess, err := user.TestRepoQueries(f.repo).LockSessionByID(ctx, p.SessionID)
 			if err != nil || (sess.RevokeTime != nil) != revoked {
 				t.Fatalf("final revocation=%v want=%v err=%v", sess.RevokeTime, revoked, err)
 			}
@@ -408,7 +408,7 @@ func TestIdentityUnbindRejectsCompletedFlowReplay(t *testing.T) {
 	}
 	pair := requireSignInTokens(t, result)
 	p := principalOf(t, f, pair)
-	rows, err := f.repo.Q().ListActiveIdentitiesByUser(ctx, p.UserID)
+	rows, err := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, p.UserID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -623,7 +623,7 @@ func TestIdentityUnbindChecksUnrevokedSourceInvariants(t *testing.T) {
 				if err == nil || errors.Is(err, user.ErrInvalidToken) || errors.Is(err, user.ErrUnavailable) {
 					t.Fatalf("other unrevoked session missing sources must reject as internal invariant: %v", err)
 				}
-				if _, err := f.repo.Q().GetActiveIdentityByIDAndUser(ctx, db.GetActiveIdentityByIDAndUserParams{ID: phoneID, UserID: p.UserID}); err != nil {
+				if _, err := user.TestRepoQueries(f.repo).GetActiveIdentityByIDAndUser(ctx, db.GetActiveIdentityByIDAndUserParams{ID: phoneID, UserID: p.UserID}); err != nil {
 					t.Fatalf("rejected unbind changed identity: %v", err)
 				}
 				assertContextRevoked(t, f, current, false, "")

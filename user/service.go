@@ -19,6 +19,7 @@ import (
 	"github.com/bbxx111/accountkit/ids"
 	"github.com/bbxx111/accountkit/internal/auditconfig"
 	"github.com/bbxx111/accountkit/internal/profileattributes"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/observability"
 	"github.com/bbxx111/accountkit/phone"
 	"github.com/bbxx111/accountkit/pii"
@@ -26,7 +27,6 @@ import (
 	"github.com/bbxx111/accountkit/session/revocation"
 	"github.com/bbxx111/accountkit/tokens"
 	"github.com/bbxx111/accountkit/user/code"
-	"github.com/bbxx111/accountkit/user/db"
 	"github.com/bbxx111/accountkit/user/idp"
 	"github.com/bbxx111/accountkit/user/sender"
 
@@ -47,8 +47,6 @@ type Deps struct {
 	ProfileAttributes *ProfileAttributesConfig
 	// SignInCompletionFlowContext 可补充宿主稳定实例标识；内置数据库/Redis/JWT域仍自动绑定。
 	SignInCompletionFlowContext string
-	// Deprecated: use SignInCompletionFlowContext. Used only when that field is empty.
-	IdentityFlowContext string
 	// ProviderConfiguration 是宿主附加的稳定配置标识，并入登录补全配置指纹；不含秘密。
 	// 已登记提供方的 PolicyFingerprint 会自动并入。
 	ProviderConfiguration string
@@ -413,7 +411,7 @@ func (s *Service) tokensFor(sess db.Session, refreshPlain, scope string, now tim
 // withRetryOnUnique 在唯一冲突（TSID 碰撞、并发首次登录同一 subject）时整体重试一次。
 func (s *Service) withRetryOnUnique(ctx context.Context, fn func(q *db.Queries) error) error {
 	err := s.d.Repo.withDomainTx(ctx, fn)
-	if IsUniqueViolation(err) {
+	if isUniqueViolation(err) {
 		s.d.Logger.Info("user: unique violation, retrying transaction once")
 		err = s.d.Repo.withDomainTx(ctx, fn)
 	}

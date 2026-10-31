@@ -19,6 +19,21 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+func auditPrivacyListByUser(t *testing.T, f *fixture, ctx context.Context, userID string) ([]audit.RecordView, error) {
+	t.Helper()
+	o := localAuditOptions(f.pool)
+	store, err := audit.NewStoreWithOptions(f.pool, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := store.ListByResource(ctx, audit.Query{
+		Source:   o.Source,
+		Resource: audit.Resource{Type: "USER", Namespace: o.Namespace, ID: userID},
+		Limit:    100,
+	})
+	return page.Records, err
+}
+
 func auditPrivacyFixture(t *testing.T) (*fixture, string, audit.Event) {
 	t.Helper()
 	f := newFixture(t)
@@ -67,7 +82,7 @@ func auditPrivacyAssertScrubbed(t *testing.T, f *fixture, e audit.Event) {
 	if err := f.pool.QueryRow(context.Background(), `SELECT count(*) FROM audit_event WHERE id=$1 AND (actor ? 'name' OR EXISTS(SELECT 1 FROM jsonb_array_elements(targets || COALESCE(context->'related_resources','[]')) r WHERE r ? 'name') OR context ?| ARRAY['client_ip','device_id','user_agent'] OR data#>'{accountkit}' ? 'subject_hint')`, e.ID).Scan(&n); err != nil || n != 0 {
 		t.Fatalf("privacy remains: %d %v", n, err)
 	}
-	rows, err := audit.NewStore(f.pool).ListByUser(context.Background(), authenticationUser(t, e), nil, 100)
+	rows, err := auditPrivacyListByUser(t, f, context.Background(), authenticationUser(t, e))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,7 +449,7 @@ func TestAuditCleanupPreservesBusinessData(t *testing.T) {
 			}
 			// The real reader freezes every stored event, so this also proves
 			// bulk SQL cleanup preserves the full Go event contract.
-			rows, err := audit.NewStore(f.pool).ListByUser(ctx, uid, nil, 100)
+			rows, err := auditPrivacyListByUser(t, f, ctx, uid)
 			if err != nil {
 				t.Fatalf("read cleaned events: %v", err)
 			}
@@ -483,7 +498,7 @@ func TestAuditSharedFlowPrivacyDoesNotExpandReaderScope(t *testing.T) {
 	if _, err := store.InsertBatch(ctx, []audit.Event{e}); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := store.ListByUser(ctx, a, nil, 100)
+	rows, err := auditPrivacyListByUser(t, f, ctx, a)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -503,7 +518,7 @@ func TestAuditSharedFlowPrivacyDoesNotExpandReaderScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	auditPrivacyAssertScrubbed(t, f, late)
-	rows, err = store.ListByUser(ctx, a, nil, 100)
+	rows, err = auditPrivacyListByUser(t, f, ctx, a)
 	if err != nil {
 		t.Fatal(err)
 	}

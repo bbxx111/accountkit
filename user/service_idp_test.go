@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/user"
-	"github.com/bbxx111/accountkit/user/db"
 	"github.com/bbxx111/accountkit/user/idp"
 )
 
@@ -65,7 +65,7 @@ func TestSignInWithIdpWeChatEmptyRequiredRegistersAndMergesOpenIDs(t *testing.T)
 	if err != nil || !res.IsNewUser || res.Scope != user.ScopeUser || res.RefreshToken == "" || res.HintEmail != "" {
 		t.Fatalf("first wechat login: %+v %v", res, err)
 	}
-	idents, _ := f.repo.Q().ListActiveIdentitiesByUser(ctx, res.UserID)
+	idents, _ := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, res.UserID)
 	if len(idents) != 1 || idents[0].Kind != enum.IdentityWeChat || idents[0].ProviderSubject == nil || *idents[0].ProviderSubject != "U1" || idents[0].SubjectDigest != nil || !strings.Contains(string(idents[0].ProviderMeta), `"wx1": "o-wx1"`) {
 		t.Fatalf("identity row: %+v", idents)
 	}
@@ -78,7 +78,7 @@ func TestSignInWithIdpWeChatEmptyRequiredRegistersAndMergesOpenIDs(t *testing.T)
 	if err != nil || res2.IsNewUser || res2.UserID != res.UserID || res2.Scope != user.ScopeUser {
 		t.Fatalf("second app login: %+v %v", res2, err)
 	}
-	idents, _ = f.repo.Q().ListActiveIdentitiesByUser(ctx, res.UserID)
+	idents, _ = user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, res.UserID)
 	if len(idents) != 1 || !strings.Contains(string(idents[0].ProviderMeta), `"wx1": "o-wx1"`) || !strings.Contains(string(idents[0].ProviderMeta), `"wx2": "o-wx2"`) {
 		t.Fatalf("openids must merge: %s", idents[0].ProviderMeta)
 	}
@@ -110,7 +110,7 @@ func TestSignInWithIdpAppleHintEmailAndReplay(t *testing.T) {
 	if err != nil || !res.IsNewUser || res.Scope != user.ScopeUser || res.HintEmail != "x@privaterelay.appleid.com" {
 		t.Fatalf("apple login: %+v %v", res, err)
 	}
-	idents, _ := f.repo.Q().ListActiveIdentitiesByUser(ctx, res.UserID)
+	idents, _ := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, res.UserID)
 	if len(idents) != 1 || idents[0].Kind != enum.IdentityApple || *idents[0].ProviderSubject != "apple-tok1+email" || idents[0].ProviderMeta != nil {
 		t.Fatalf("identity: %+v", idents)
 	}
@@ -190,7 +190,7 @@ func TestSignInWithIdpWeChatIgnoresEmptyOpenID(t *testing.T) {
 		t.Fatalf("signin: %v", err)
 	}
 	res := requireSignInTokens(t, outcome)
-	idents, _ := f.repo.Q().ListActiveIdentitiesByUser(ctx, res.UserID)
+	idents, _ := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, res.UserID)
 	if len(idents) != 1 || idents[0].ProviderMeta != nil {
 		t.Fatalf("empty openid must not be persisted: %+v", idents)
 	}
@@ -200,7 +200,7 @@ func TestSignInWithIdpWeChatIgnoresEmptyOpenID(t *testing.T) {
 	if err != nil || res2.UserID != res.UserID {
 		t.Fatalf("second empty-openid login: %+v %v", res2, err)
 	}
-	idents, _ = f.repo.Q().ListActiveIdentitiesByUser(ctx, res.UserID)
+	idents, _ = user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, res.UserID)
 	if len(idents) != 1 || idents[0].ProviderMeta != nil {
 		t.Fatalf("merge path must not persist empty openid either: %+v", idents)
 	}
@@ -256,7 +256,7 @@ func TestSignInWithIdpWeChatConcurrentFirstLoginCreatesOneUser(t *testing.T) {
 	if userRows != 1 {
 		t.Fatalf("user_account rows: %d want 1", userRows)
 	}
-	idents, err := f.repo.Q().ListActiveIdentitiesByUser(ctx, userID)
+	idents, err := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, userID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +308,7 @@ func TestSignInWithIdpRejectsPendingDeletionAccount(t *testing.T) {
 			t.Fatalf("SIGN_IN_FAILED must carry the user id (rejected after the account was found): %+v", e)
 		}
 	}
-	if rows, _ := f.repo.Q().ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: p.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)}); len(rows) != 0 {
+	if rows, _ := user.TestRepoQueries(f.repo).ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: p.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)}); len(rows) != 0 {
 		t.Fatalf("rejected login must not create a session: %d", len(rows))
 	}
 	// 锚点登录仍可进入并拿到 user:undelete
@@ -406,7 +406,7 @@ func TestGoogleProfileFillHintAndOpenIDCoexistence(t *testing.T) {
 	if err != nil || me.DisplayName != strings.Repeat("名", 128) || me.AvatarURL != "https://example.test/a.png" {
 		t.Fatalf("filled profile: %+v %v", me, err)
 	}
-	idents, _ := f.repo.Q().ListActiveIdentitiesByUser(ctx, res.UserID)
+	idents, _ := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, res.UserID)
 	if len(idents) != 1 || !strings.Contains(string(idents[0].ProviderMeta), strings.Repeat("名", 256)) || strings.Contains(string(idents[0].ProviderMeta), "\u202e") {
 		t.Fatalf("provider meta: %s", idents[0].ProviderMeta)
 	}
@@ -419,7 +419,7 @@ func TestGoogleProfileFillHintAndOpenIDCoexistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	me, _ = f.svc.GetMe(ctx, res.UserID)
-	idents, _ = f.repo.Q().ListActiveIdentitiesByUser(ctx, res.UserID)
+	idents, _ = user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, res.UserID)
 	meta := string(idents[0].ProviderMeta)
 	if me.DisplayName != strings.Repeat("名", 128) || me.AvatarURL != "https://example.test/a.png" || !strings.Contains(meta, "Updated Name") || !strings.Contains(meta, "https://example.test/a.png") {
 		t.Fatalf("later login changed account profile or dropped picture: %+v %s", me, meta)
@@ -430,7 +430,7 @@ func TestGoogleProfileFillHintAndOpenIDCoexistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	me, _ = f.svc.GetMe(ctx, badRes.UserID)
-	idents, _ = f.repo.Q().ListActiveIdentitiesByUser(ctx, badRes.UserID)
+	idents, _ = user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, badRes.UserID)
 	if me.DisplayName != "Pic" || me.AvatarURL != "" || strings.Contains(string(idents[0].ProviderMeta), "insecure") {
 		t.Fatalf("invalid picture must be skipped: %+v %s", me, idents[0].ProviderMeta)
 	}
@@ -527,14 +527,14 @@ func TestGoogleProfileFillHintAndOpenIDCoexistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows, _ := wx.repo.Q().ListActiveIdentitiesByUser(ctx, firstRes.UserID)
-	if _, err := wx.repo.Q().UpdateIdentityProviderMeta(ctx, db.UpdateIdentityProviderMetaParams{ID: rows[0].ID, ProviderMeta: []byte(`{"openids":{"wx1":"o1"},"profile":{"name":"keep-me"}}`), UpdateTime: time.Now()}); err != nil {
+	rows, _ := user.TestRepoQueries(wx.repo).ListActiveIdentitiesByUser(ctx, firstRes.UserID)
+	if _, err := user.TestRepoQueries(wx.repo).UpdateIdentityProviderMeta(ctx, db.UpdateIdentityProviderMetaParams{ID: rows[0].ID, ProviderMeta: []byte(`{"openids":{"wx1":"o1"},"profile":{"name":"keep-me"}}`), UpdateTime: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := wx.svc.SignInWithIdp(ctx, wechatCred("wx2", "union:profile@o2"), dev2, meta1); err != nil {
 		t.Fatal(err)
 	}
-	rows, _ = wx.repo.Q().ListActiveIdentitiesByUser(ctx, firstRes.UserID)
+	rows, _ = user.TestRepoQueries(wx.repo).ListActiveIdentitiesByUser(ctx, firstRes.UserID)
 	meta = string(rows[0].ProviderMeta)
 	if !strings.Contains(meta, `"wx2": "o2"`) || !strings.Contains(meta, "keep-me") {
 		t.Fatalf("openid merge dropped profile: %s", meta)

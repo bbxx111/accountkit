@@ -9,13 +9,13 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/user"
-	"github.com/bbxx111/accountkit/user/db"
 )
 
 func authenticationSources(t *testing.T, f *fixture, p user.Principal, want ...string) {
 	t.Helper()
-	rows, err := f.repo.Q().ListSessionAuthenticationIdentities(context.Background(), db.ListSessionAuthenticationIdentitiesParams{UserID: p.UserID, SessionID: p.SessionID})
+	rows, err := user.TestRepoQueries(f.repo).ListSessionAuthenticationIdentities(context.Background(), db.ListSessionAuthenticationIdentitiesParams{UserID: p.UserID, SessionID: p.SessionID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestSessionAuthenticationSources(t *testing.T) {
 		ctx := context.Background()
 		first := f.signIn(t, enum.IdentityPhone, phone1, dev1)
 		p := principalOf(t, f, first)
-		ids, err := f.repo.Q().ListActiveIdentitiesByUser(ctx, p.UserID)
+		ids, err := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, p.UserID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -92,7 +92,7 @@ func TestSessionAuthenticationSources(t *testing.T) {
 		}
 		pair := requireSignInTokens(t, result)
 		p := principalOf(t, f, pair)
-		ids, err := f.repo.Q().ListActiveIdentitiesByUser(ctx, p.UserID)
+		ids, err := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, p.UserID)
 		if err != nil || len(ids) != 4 {
 			t.Fatalf("proof identities %d %v", len(ids), err)
 		}
@@ -117,7 +117,7 @@ func TestReauthenticationReplacesSources(t *testing.T) {
 			}
 			pair := requireSignInTokens(t, result)
 			p := principalOf(t, f, pair)
-			ids, _ := f.repo.Q().ListActiveIdentitiesByUser(ctx, p.UserID)
+			ids, _ := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, p.UserID)
 			var emailID string
 			for _, id := range ids {
 				if id.Kind == enum.IdentityEmail {
@@ -223,7 +223,7 @@ func TestCurrentSessionContextDomain(t *testing.T) {
 	pair := f.signIn(t, enum.IdentityPhone, phone1, dev1)
 	p := principalOf(t, f, pair)
 	r := currentReader(t, f)
-	ids, _ := f.repo.Q().ListActiveIdentitiesByUser(ctx, p.UserID)
+	ids, _ := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, p.UserID)
 	info, err := r.GetCurrentSession(ctx, p)
 	if err != nil || info.ID != p.SessionID || !info.IsCurrent || info.DeviceID != dev1.ID || info.DeviceName != dev1.Name || !info.AuthTime.Equal(p.AuthTime) || len(info.AuthenticationIdentities) != 1 || info.AuthenticationIdentities[0].ID != ids[0].ID || info.AuthenticationIdentities[0].Kind != enum.IdentityPhone {
 		t.Fatalf("current: %+v %v", info, err)
@@ -327,7 +327,7 @@ func TestReauthenticationSourceRollback(t *testing.T) {
 	ctx := context.Background()
 	pair := f.signIn(t, enum.IdentityPhone, phone1, dev1)
 	p := principalOf(t, f, pair)
-	ids, _ := f.repo.Q().ListActiveIdentitiesByUser(ctx, p.UserID)
+	ids, _ := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, p.UserID)
 	contextBindEmail(t, f, p, email1)
 	f.advance(2 * time.Minute)
 	if err := f.sendReauthenticationCode(ctx, p, enum.IdentityEmail, email1, meta1); err != nil {
@@ -340,7 +340,7 @@ func TestReauthenticationSourceRollback(t *testing.T) {
 		t.Fatal("source failure ignored")
 	}
 	authenticationSources(t, f, p, ids[0].ID)
-	sess, err := f.repo.Q().GetSessionByRefreshHash(ctx, sha256Of(pair.RefreshToken))
+	sess, err := user.TestRepoQueries(f.repo).GetSessionByRefreshHash(ctx, sha256Of(pair.RefreshToken))
 	if err != nil || !sess.AuthTime.Equal(p.AuthTime) {
 		t.Fatalf("partial reauth %v", err)
 	}
@@ -387,7 +387,7 @@ func TestSessionAuthenticationPendingExistingAccount(t *testing.T) {
 	if pair.UserID != p.UserID {
 		t.Fatal("pending failed to associate account")
 	}
-	ids, _ := f.repo.Q().ListActiveIdentitiesByUser(ctx, p.UserID)
+	ids, _ := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, p.UserID)
 	var wechatID string
 	for _, id := range ids {
 		if id.Kind == enum.IdentityWeChat {
@@ -445,11 +445,11 @@ func TestMissingAuthenticationSourcesRejectSensitiveActions(t *testing.T) {
 			if sourceCount != 0 {
 				t.Fatal("missing authentication sources silently repaired")
 			}
-			identity, err := f.repo.Q().GetActiveIdentityByIDAndUser(ctx, db.GetActiveIdentityByIDAndUserParams{ID: emailID, UserID: p.UserID})
+			identity, err := user.TestRepoQueries(f.repo).GetActiveIdentityByIDAndUser(ctx, db.GetActiveIdentityByIDAndUserParams{ID: emailID, UserID: p.UserID})
 			if err != nil || identity.ID != emailID {
 				t.Fatalf("identity mutated after rejection: %v", err)
 			}
-			sess, err := f.repo.Q().GetSessionByRefreshHash(ctx, sha256Of(pair.RefreshToken))
+			sess, err := user.TestRepoQueries(f.repo).GetSessionByRefreshHash(ctx, sha256Of(pair.RefreshToken))
 			if err != nil || sess.RevokeTime != nil || !sess.AuthTime.Equal(p.AuthTime) {
 				t.Fatalf("session mutated after rejection: %v", err)
 			}

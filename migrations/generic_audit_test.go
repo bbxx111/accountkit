@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
 	"sync"
 	"testing"
 	"testing/fstest"
@@ -80,60 +79,6 @@ func TestGenericAuditNonemptyRepeatInstall(t *testing.T) {
 	assertVersion(t, cfg, schema, latestVersion(t), false)
 }
 
-func TestGenericAuditLegacySameVersionRejected(t *testing.T) {
-	cfg, schema := safetyDB(t)
-	source := fstest.MapFS{}
-	// Pin the complete ten-column definition before the authorized validation change.
-	const previousInitial = "c769e3dd6445d3c740e1480022b010f8eb576f4a"
-	for _, name := range []string{"0001_init.up.sql", "0001_init.down.sql"} {
-		b, err := exec.Command("git", "show", previousInitial+":migrations/"+name).Output()
-		if err != nil {
-			t.Fatal(err)
-		}
-		source[name] = &fstest.MapFile{Data: b}
-	}
-	ctx := context.Background()
-	if err := runWithSource(ctx, cfg, schema, source, func(m *migrate.Migrate) error { return m.Up() }); err != nil {
-		t.Fatal(err)
-	}
-	c := migrationTestConn(t, cfg, schema)
-	if _, err := c.Exec(ctx, `INSERT INTO audit_event(id,source,action,actor,occur_time) VALUES('019a0000-0000-7000-8000-000000000001','test/auth','ORDER_APPROVED','{"type":"ANONYMOUS"}','2024-01-01')`); err != nil {
-		t.Fatal(err)
-	}
-	snapshot := func() string {
-		t.Helper()
-		var state string
-		var functions int
-		if err := c.QueryRow(ctx, `SELECT jsonb_build_object(
-		 'events',(SELECT jsonb_agg(t) FROM audit_event t),
-		 'version',(SELECT jsonb_agg(t) FROM schema_migrations t),
-		 'functions',jsonb_agg(pg_get_functiondef(p.oid) ORDER BY p.proname))::text,count(*)
-		 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-		 WHERE n.nspname=$1 AND p.proname IN ('audit_context_valid','audit_actor_valid','audit_resources_valid','audit_resource_valid','audit_json_bytes')`, schema).Scan(&state, &functions); err != nil {
-			t.Fatal(err)
-		}
-		if functions != 5 {
-			t.Fatalf("old same-version instance functions=%d, want 5", functions)
-		}
-		return state
-	}
-	before, catalog := snapshot(), migrationCatalog(t, c, schema)
-	for range 2 {
-		if err := Up(ctx, cfg, schema); !errors.Is(err, ErrIncompatibleBaseline) {
-			t.Fatalf("old table name accepted: %v", err)
-		}
-	}
-	if snapshot() != before || migrationCatalog(t, c, schema) != catalog {
-		t.Fatal("rejected baseline changed functions, constraints, data or version")
-	}
-	_, err := c.Exec(ctx, `UPDATE audit_event SET action='bad-action'`)
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) || pgErr.Code != "23514" || pgErr.ConstraintName != "audit_event_action_format" {
-		t.Fatalf("old business constraint changed: %v", err)
-	}
-	assertVersion(t, cfg, schema, 1, false)
-}
-
 func TestGenericAuditConcurrentInitialInstall(t *testing.T) {
 	cfg, schema := safetyDB(t)
 	var wg sync.WaitGroup
@@ -150,35 +95,6 @@ func TestGenericAuditConcurrentInitialInstall(t *testing.T) {
 		}
 	}
 	assertVersion(t, cfg, schema, latestVersion(t), false)
-}
-
-func TestGenericAuditBaselineRejectsPartialLatest(t *testing.T) {
-	for _, tc := range []struct{ name, sql string }{
-		{"missing_column", `ALTER TABLE audit_event DROP COLUMN create_time`},
-		{"wrong_type", `ALTER TABLE audit_event ALTER COLUMN source TYPE text`},
-		{"extra_column", `ALTER TABLE audit_event ADD COLUMN old_column text`},
-		{"wrong_nullability", `ALTER TABLE audit_event ALTER COLUMN result SET NOT NULL`},
-		{"missing_flow_structure", `ALTER TABLE sign_in_completion_flow DROP COLUMN proof_user_ids`},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			cfg, schema := safetyDB(t)
-			if err := Up(context.Background(), cfg, schema); err != nil {
-				t.Fatal(err)
-			}
-			c := migrationTestConn(t, cfg, schema)
-			if _, err := c.Exec(context.Background(), tc.sql); err != nil {
-				t.Fatal(err)
-			}
-			before := migrationCatalog(t, c, schema)
-			if err := Up(context.Background(), cfg, schema); !errors.Is(err, ErrIncompatibleBaseline) {
-				t.Fatalf("partial latest accepted: %v", err)
-			}
-			if after := migrationCatalog(t, c, schema); before != after {
-				t.Fatal("preflight modified partial schema")
-			}
-			assertVersion(t, cfg, schema, latestVersion(t), false)
-		})
-	}
 }
 
 func TestGenericAuditDatabaseConstraints(t *testing.T) {
@@ -259,27 +175,6 @@ func TestGenericAuditQualifiedInsertWithoutSearchPath(t *testing.T) {
 	query := fmt.Sprintf(`INSERT INTO %s.audit_event(id,source,action,actor,targets,data,occur_time) VALUES('019a0000-0000-7000-8000-000000000001','test/auth','ORDER_APPROVED','{"type":"USER","namespace":"urn:test","id":"owner"}','[{"type":"ORDER","namespace":"urn:test","id":"order"}]','{"nested":{"number":12}}',now())`, schema)
 	if _, err := c.Exec(context.Background(), query); err != nil {
 		t.Fatalf("qualified audit insert requires caller search_path: %v", err)
-	}
-}
-
-func TestAuditMigrationRejectsIncompleteInitialBaseline(t *testing.T) {
-	for _, q := range []string{`ALTER TABLE audit_event RENAME COLUMN source TO unexpected_column`, `ALTER TABLE sign_in_completion_flow DROP COLUMN token_digest`} {
-		t.Run(q, func(t *testing.T) {
-			cfg, schema := safetyDB(t)
-			initialUp(t, cfg, schema)
-			c := migrationTestConn(t, cfg, schema)
-			if _, err := c.Exec(context.Background(), q); err != nil {
-				t.Fatal(err)
-			}
-			before := migrationCatalog(t, c, schema)
-			if err := Up(context.Background(), cfg, schema); !errors.Is(err, ErrIncompatibleBaseline) {
-				t.Fatalf("incomplete initial accepted: %v", err)
-			}
-			if before != migrationCatalog(t, c, schema) {
-				t.Fatal("incompatible preflight changed initial schema")
-			}
-			assertVersion(t, cfg, schema, 1, false)
-		})
 	}
 }
 

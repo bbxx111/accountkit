@@ -13,7 +13,7 @@ import (
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
-	"github.com/bbxx111/accountkit/user/db"
+	"github.com/bbxx111/accountkit/internal/userdb"
 )
 
 // maxReasonRunes 是 :freeze / :unfreeze 的 reason 上限。
@@ -121,14 +121,14 @@ func (s *Service) AdminListSessions(ctx context.Context, userID string) ([]Sessi
 // AdminRevokeSession 踢出指定会话（reason ADMIN）；会话不属于该用户或已吊销 → ErrNotFound。
 func (s *Service) AdminRevokeSession(ctx context.Context, a Admin, userID, sid string, meta Meta) error {
 	now := s.now()
-	if _, err := s.d.Repo.Q().GetActiveSessionByIDAndUser(ctx, db.GetActiveSessionByIDAndUserParams{ID: sid, UserID: userID}); err != nil {
+	if _, err := s.d.Repo.queries().GetActiveSessionByIDAndUser(ctx, db.GetActiveSessionByIDAndUserParams{ID: sid, UserID: userID}); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
 		return fmt.Errorf("user: lookup session: %w", err)
 	}
 	reason := enum.RevokeAdmin
-	n, err := s.d.Repo.Q().RevokeSession(ctx, db.RevokeSessionParams{ID: sid, Reason: &reason, Now: now})
+	n, err := s.d.Repo.queries().RevokeSession(ctx, db.RevokeSessionParams{ID: sid, Reason: &reason, Now: now})
 	if err != nil {
 		return fmt.Errorf("user: revoke session: %w", err)
 	}
@@ -160,7 +160,7 @@ func (s *Service) AdminRevokeAllSessions(ctx context.Context, a Admin, userID st
 
 // UserExists 把"用户不存在"映射为 ErrNotFound（管理面读路径的前置检查；auditEvents 列表也用它给 404）。
 func (s *Service) UserExists(ctx context.Context, userID string) error {
-	if _, err := s.d.Repo.Q().GetUserByID(ctx, userID); err != nil {
+	if _, err := s.d.Repo.queries().GetUserByID(ctx, userID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -205,7 +205,7 @@ func (s *Service) ListUsers(ctx context.Context, f UserFilter, after *PageCursor
 		t, id := after.Time, after.ID
 		p.AfterTime, p.AfterID = &t, &id
 	}
-	rows, err := s.d.Repo.Q().ListUsersAdmin(ctx, p)
+	rows, err := s.d.Repo.queries().ListUsersAdmin(ctx, p)
 	if err != nil {
 		return UserPage{}, fmt.Errorf("user: list users: %w", err)
 	}
@@ -223,7 +223,7 @@ func (s *Service) ListUsers(ctx context.Context, f UserFilter, after *PageCursor
 
 // GetUserDetail 管理端用户详情：账号 + 掩码身份 + 活跃会话数；用户不存在 → ErrNotFound。
 func (s *Service) GetUserDetail(ctx context.Context, userID string) (AdminUserDetail, error) {
-	q := s.d.Repo.Q()
+	q := s.d.Repo.queries()
 	u, err := q.GetUserByID(ctx, userID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return AdminUserDetail{}, ErrNotFound
@@ -253,7 +253,7 @@ func (s *Service) RevealIdentity(ctx context.Context, a Admin, userID, identityI
 	if !ids.Valid(ids.User, userID) || !ids.Valid(ids.Identity, identityID) {
 		return RevealedIdentity{}, fmt.Errorf("%w: malformed id", ErrInvalidArgument)
 	}
-	row, err := s.d.Repo.Q().GetActiveIdentityByIDAndUser(ctx, db.GetActiveIdentityByIDAndUserParams{ID: identityID, UserID: userID})
+	row, err := s.d.Repo.queries().GetActiveIdentityByIDAndUser(ctx, db.GetActiveIdentityByIDAndUserParams{ID: identityID, UserID: userID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return RevealedIdentity{}, ErrNotFound
 	}

@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/bbxx111/accountkit/audit/authentication"
-	"github.com/bbxx111/accountkit/audit/db"
 	"github.com/bbxx111/accountkit/audit/event"
 	"github.com/bbxx111/accountkit/internal/auditconfig"
+	"github.com/bbxx111/accountkit/internal/auditdb"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,13 +16,19 @@ import (
 	"time"
 )
 
-const RetentionBatchSize = 1000
+// retentionBatchSize 是 DeleteOlderThan 每批删除的事件行数。
+const retentionBatchSize = 1000
 
+// ErrConflict 表示同一事件 ID 已保存了不同的事件内容。
 var ErrConflict = errors.New("audit: event identity conflict")
+
+// ErrInvalid 表示事件未通过校验，或查询来源、资源范围与分页参数不合法。
 var ErrInvalid = errors.New("audit: invalid event or scope")
 
+// StoreOptions 是 authentication.Options 的别名：Store 只读写该来源与资源命名空间内的事件。
 type StoreOptions = authentication.Options
 
+// Store 是 audit_event 表上的本地存储，实现 Inserter 与 Reader。
 type Store struct {
 	pool    *pgxpool.Pool
 	q       *db.Queries
@@ -33,6 +39,8 @@ type Store struct {
 func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool, q: db.New(pool), options: auditconfig.Local(pool)}
 }
+
+// NewStoreWithOptions 以显式来源与资源命名空间构造 Store，不做 I/O；配置不合法时返回错误。
 func NewStoreWithOptions(pool *pgxpool.Pool, o StoreOptions) (*Store, error) {
 	if err := o.Validate(); err != nil {
 		return nil, err
@@ -203,6 +211,8 @@ func recordView(r db.AuditEvent) (RecordView, error) {
 	}
 	return RecordView{Event: e, CreateTime: r.CreateTime}, nil
 }
+
+// ListByResource 实现 Reader：只返回本 Store 来源与命名空间内指定资源的记录，按 occur_time、id 分页。
 func (s *Store) ListByResource(ctx context.Context, query Query) (Page, error) {
 	if query.Source != s.options.Source || query.Resource.Namespace != s.options.Namespace || query.Resource.ID == "" || query.Resource.Type == "" || query.Limit < 1 || query.Limit > 1001 {
 		return Page{}, ErrInvalid
@@ -345,23 +355,19 @@ func validFlowEvidence(e Event, namespace string) bool {
 	return true
 }
 
-// ListByUser is a local convenience; integrations should use the explicit Reader scope.
-func (s *Store) ListByUser(ctx context.Context, userID string, after *EventCursor, limit int) ([]RecordView, error) {
-	page, err := s.ListByResource(ctx, Query{Source: s.options.Source, Resource: Resource{Type: "USER", Namespace: s.options.Namespace, ID: userID}, After: after, Limit: limit})
-	return page.Records, err
-}
+// DeleteOlderThan 分批删除本来源中 occur_time 早于 before 的事件，删到一批不满为止，返回删除总数。
 func (s *Store) DeleteOlderThan(ctx context.Context, before time.Time) (int64, error) {
 	var total int64
 	for {
 		if err := ctx.Err(); err != nil {
 			return total, err
 		}
-		n, err := s.q.DeleteAuditEventsBefore(ctx, db.DeleteAuditEventsBeforeParams{Source: s.options.Source, Before: before, BatchSize: RetentionBatchSize})
+		n, err := s.q.DeleteAuditEventsBefore(ctx, db.DeleteAuditEventsBeforeParams{Source: s.options.Source, Before: before, BatchSize: retentionBatchSize})
 		if err != nil {
 			return total, err
 		}
 		total += n
-		if n < RetentionBatchSize {
+		if n < retentionBatchSize {
 			return total, nil
 		}
 	}

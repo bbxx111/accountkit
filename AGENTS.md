@@ -7,7 +7,7 @@
 ## 项目定位与边界
 
 - accountkit 是可嵌入宿主服务的 C 端账号认证 Go 包，模块为 `github.com/bbxx111/accountkit`，根 Go package 为 `accountkit`。
-- 首版包含验证码登录、多身份与微信/Apple 登录、JWT/刷新会话、重新认证、身份绑定、注销/恢复/匿名化、管理接口、审计和维护任务。功能对照见 [docs/compatibility.md](docs/compatibility.md)。
+- v1.0.0 包含验证码登录、多身份与微信/Apple 登录、JWT/刷新会话、重新认证、身份绑定、注销/恢复/匿名化、管理接口、审计和维护任务。功能对照见 [docs/compatibility.md](docs/compatibility.md)。
 - 单一 Go module，构建必须可在 `GOWORK=off` 下完成，不依赖外部工作区、提交的本地 replace、宿主业务表或部署环境。
 - 当前存储为 PostgreSQL + Redis。库不监听端口，不管理网关，不内置管理员账号系统，不强制 Keycloak，也不承担短信/邮件服务商装配。不要擅自扩展为前端项目或多数据库适配层。
 - accountsvc 是本项目自带的可选服务实现，基于 accountkit 装配运行；库不依赖该服务，其他项目仍可直接嵌入库。入口 `cmd/accountsvc`，装配在 `internal/accountsvc`；现有 `examples/embedded` 保留为开发宿主示例。运行边界见 [docs/accountsvc.md](docs/accountsvc.md)。
@@ -28,22 +28,22 @@
 | `session/grace/`、`session/revocation/` | 刷新宽限缓存与吊销集 |
 | `audit/`、`maintenance/`、`anonymize/` | 审计、维护任务、宿主匿名化契约 |
 | `migrations/` | 嵌入 SQL、迁移锁、开发测试清库入口 |
-| `user/query.sql`、`audit/query.sql` | 手写查询；生成结果分别进入 `user/db/`、`audit/db/` |
+| `user/query.sql`、`audit/query.sql` | 手写查询；生成结果分别进入 `internal/userdb/`、`internal/auditdb/` |
 | `internal/migrationcheck/`、`internal/testgate/` | 发布检查工具，不是宿主公共接口 |
 | `examples/embedded/` | 可独立编译的开发宿主示例 |
+| `examples/httpflows/` | HTTP 调用流程的可执行对照 |
 | `cmd/accountsvc/`、`internal/accountsvc/` | 可选服务入口、配置、生命周期、远程内省及外部管理员认证装配 |
 | `user/sender/smtp/`、`examples/remoteauth/` | 可选 SMTP 发送器、业务服务远程鉴权示例 |
 | `deploy/accountsvc/` | 服务镜像、仅本地开发 Compose 与无秘密配置模板 |
-| `tests/testdata/source-baseline/` | 固定源清单、原始 SQL 和合成数据格式 |
 | `scripts/`、`docs/`、`openspec/` | 验证入口、操作手册、规格与变更 |
 
 ## 架构与宿主契约
 
 - 生命周期固定为 `Config/Deps → New → Migrate → Start → Close`。`New` 校验并装配，不做 I/O；启动前执行 `Migrate`，关闭后不再运行维护任务。宿主创建的 Pool/Redis 由宿主管理和关闭。
 - HTTP handler 只做协议转换；业务规则、事务和状态约束集中在 `user.Service`，由 C 端、管理面和维护任务复用。不要为管理路径绕开领域约束，也不要添加无业务意义的透传 service 层。
-- SQL 放在领域查询文件，经 sqlc 生成。禁止手改 `user/db/`、`audit/db/`；修改查询、schema 或类型映射后运行 `sqlc generate` 并检查生成差异。
+- SQL 放在领域查询文件，经 sqlc 生成。禁止手改 `internal/userdb/`、`internal/auditdb/`；修改查询、schema 或类型映射后运行 `sqlc generate` 并检查生成差异。
 - 配置通过 `Config` 或 `ConfigFromEnv(prefix)` 注入；环境变量前缀由宿主选择，示例使用 `ACCOUNTKIT_`。不要硬编码 `SERVER_`、产品域名、业务 schema 或产品密钥。
-- `EndUserHandler()` 与 `AdminHandler()` 返回相对路由，由宿主分别挂载，示例为 `/v1` 和 `/admin/v1`。直接适配器使用 `httpapi/enduser`；旧 Go 入口迁移见 [兼容指南](docs/compatibility.md#终端用户-http-入口迁移)。包内不重复写死前缀，也不引入 `/api`。
+- `EndUserHandler()` 与 `AdminHandler()` 返回相对路由，由宿主分别挂载，示例为 `/v1` 和 `/admin/v1`。直接适配器使用 `httpapi/enduser`。包内不重复写死前缀，也不引入 `/api`。
 - `AdminVerifier` 与 `AdminPrincipal` 必须成对提供；均未配置时管理面返回 `503 ADMIN_NOT_CONFIGURED`，普通消费者认证仍可用。管理员认证由宿主前置完成，包内继续执行每条管理路由的角色检查。
 - 宿主通过 `Deps.ClientIP` 提供经过可信代理处理的地址，通过 `Deps.RequestID` 关联日志与审计。不能在库内无条件信任客户端的转发头。
 - 匿名化回调使用传入的同一个 `pgx.Tx`；不得自行提交/回滚或另开连接写同批数据。认证表和业务表必须同库，任一回调失败使整个匿名化事务回滚；跨库事务不在契约内。宿主负责其 user_id 关联表的覆盖性检查。
@@ -110,32 +110,13 @@
 
 操作步骤以 [docs/migrations.md](docs/migrations.md) 为准。以下规则不能因版本尚处开发阶段而放宽：
 
-- v0.5.0 已发布，tag 固定到 `102315c3069273f7a8c3ad253c1f4ae01255f8c6`；其中的 0001 已包含资料属性与头像，原始 SQL 字节不可改写。下述资料单列整合及头像直接修改 0001 的限定授权均已完成，不构成后续改写开关；后续真实结构变更从 0002 递增，已发布 tag/SQL 和冻结源保持。用户确认当前尚无正式部署，本次发布不提供旧数据库迁移工具；这不放宽迁移历史保护。证据见 [v0.5.0 发布说明](docs/releases/v0.5.0.md)。
-
-- 本轮 `add-purged-user-feed` 经用户明确要求“直接改 0001，不新增 0002 迁移”，仅授权在当前 `0001_init.up.sql` 末尾新增 `purged_user` 表（`user_id` 主键与格式 CHECK、`seq` identity 唯一约束、`purge_time`）及 `idx_purged_user_purge_time`，并在 `0001_init.down.sql` 最先删除该表；同步 sqlc、运行时预检与当前 `initialFrozen`，并把与旧当前定义逐字节相同的 v0.6.0（tag `ec6802cd221db3ce107e79bac92174bc35a0ba7d`）作为独立 pin。其他表、列、索引与约束保持，不新增 0002；新安装仍为 version=1/dirty=false。v0.6.0 及更早 v1 缺少完整 `purged_user` 结构时无写拒绝，dirty 优先；不补表、不重放同号 SQL、不 Force、改版本或清库，也不提供旧数据迁移。已发布 tag/SQL 和冻结源保持，后续真实增量仍从 0002。见 [OpenSpec 变更](openspec/changes/archive/2026-10-27-add-purged-user-feed/proposal.md)。此授权不构成日常改写初始 SQL 的开关。
-- 本轮 `add-google-sign-in` 经用户明确要求“数据库变更直接修改 0001”，仅授权更新当前 `0001_init.up.sql` 里 `identity.kind` 与 `provider_meta` 的注释（提及 GOOGLE 及 `profile.name` / `profile.picture`），并只同步当前 `initialFrozen`。不新增列、索引、CHECK 或 0002；down、已发布 tag/SQL 和冻结源保持。新安装仍为 version=1/dirty=false。同号数据库不重放 0001，不会自动更新注释。不 Force、改版本或清库。此授权不构成日常改写初始 SQL 的开关。
-- 本轮 `add-identity-provider-registry` 经用户明确要求“直接改 0001”，仅授权把当前 `0001_init.up.sql` 中 `identity.kind` 改为 `VARCHAR(32) COLLATE "C" NOT NULL` 并加格式 CHECK `identity_kind_format`，同步相关注释、sqlc、运行时预检和当前 `initialFrozen`。索引定义文本、其他列与约束、down、已发布 tag/SQL 和冻结源保持，不新增 0002；新安装仍为 version=1/dirty=false。`identity.kind` 仍为 SMALLINT 的 v1 及该列漂移结构无写拒绝，dirty 优先；不转换列、不重放同号 SQL、不 Force、改版本或清库，也不提供旧数据迁移。见 [OpenSpec 变更](openspec/changes/archive/2026-10-23-add-identity-provider-registry/proposal.md)。此授权不构成日常改写初始 SQL 的开关。
-- 本轮 `add-user-avatar-url` 经用户明确要求“不新增 0002 迁移，改现有 0001”，仅授权在当前 `user_account` 增加 `avatar_url TEXT NULL`（无默认值、索引或业务 CHECK），同步 sqlc、运行时预检和当前 initialFrozen。新安装仍为 version=1/dirty=false，down 整表语义保持。前一含资料但无头像的 v1、全部既有历史拒绝结构及撤回 v2 均无写拒绝，dirty 优先，保留 catalog、数据、version/dirty；不补列、重放同号 SQL、Force、改版本、清库或提供旧数据迁移。已发布 tag/SQL、v0.4.0 精确 pin 和冻结源保持；后续增量仍从 0002，测试 probe 使用 latest+1。本条仅覆盖头像列，以下历史授权与验收保持原事实；见[头像计划](docs/superpowers/plans/2026-10-21-add-user-avatar-url.md)和[验收记录](openspec/changes/archive/2026-10-21-add-user-avatar-url/verification.md)。
-
-- 本轮用户明确要求“0002 并入 0001，无需考虑旧数据迁移”，仅授权把 `profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb` 单列合入当前工作树 0001，撤回生产 0002；新空 schema 安装 version=1/dirty=false，其他列、索引和业务行为保持。当前 initialFrozen 新哈希与 v0.4.0 已发布旧定义分别固定；v0.4.0 精确 tag `62f0799b6c6ef1603b33f81834d39033dd0d0c4d`、其他发布 tag/SQL 和冻结源保持。旧 v0.4.0 v1 缺资料列、其他历史 v1 及各代撤回 v2（含单列、四列、五列及混合资料 v2）均无写拒绝，dirty 优先，保留 catalog、数据及 version/dirty；不转换旧数据、不重放同号 SQL、不 Force、改版本或清库。本轮不提供旧数据迁移工具或升级承诺；后续真实增量从 0002 递增，测试 probe 使用 latest+1（当前为 2）。 本轮见[整合计划](docs/superpowers/plans/2026-10-21-consolidate-profile-attributes-initial.md)和[验收记录](openspec/changes/archive/2026-10-21-add-schema-validated-user-extensions/verification.md)。此授权不扩大历史授权，不构成日常改写初始 SQL 的开关。
-
-- v0.4.0 已发布，tag 固定到 62f0799b6c6ef1603b33f81834d39033dd0d0c4d，其中的已发布 0001 原始字节不可改写；当前工作树仅按上述本轮单列整合授权调整并独立固定。下列 `simplify-session-context`、数据库设计评审和 `consolidate-session-context-initial-schema` 等直接修改 0001 的有限授权仅适用于 v0.4.0 发布前，不再适用；后续结构从 0002 递增。发布证据见 [v0.4.0 说明](docs/releases/v0.4.0.md)。
-
-- `simplify-session-context` 经用户本轮明确批准，在前一 `b414fef` 未发布会话初始定义上继续直接修改当前0001：移除known标记和INITIAL/LATEST双快照，来源为必有非空领域不变量，客户端描述以session_id为唯一主键保存单行JSONB及observe/create/update时间；同步down、baseline、当前固定哈希和sqlc，无生产0002，初始化仍为version=1。客户端JSON的对象、核心字段、扩展边界及敏感键均由业务读写验证，数据库只保留主键、ID格式和非空等基础约束，不增加JSON对象/业务CHECK。旧v0.3.0 v1、前一b414fef双快照v1及撤回会话v2均无写拒绝，保留catalog、数据、version/dirty且dirty优先，不自动转换或补来源、不Force、改版本或清库；保留数据需求另行设计迁移。所有历史tag、已发布SQL及冻结source-baseline不变，三代历史保护保持；旧v0.3.0预检可能接受同号新结构，部署须人工阻止混跑和未验证回退。此授权仅覆盖本次简化，不覆盖或改写下列历史授权，也不允许日常改写初始SQL。当前证据统一见[简化验收](openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)。
-
-- 数据库设计评审经用户本轮明确要求“不建新 change、直接修改 0001”，限定为当前未发布 0001 的索引调整：密钥回填复合索引、同用户同设备未吊销会话部分唯一索引 `uk_session_user_id_device_id`（取代 `idx_session_user_id`），以及移除包内无查询使用的四个审计/流程索引；表、列、约束、down 与 version=1 保持，同步当前固定哈希。旧同号数据库不重放 0001，保留旧索引且无新唯一兜底；不 Force、改版本或自动清库。配套查询与锚点 subject 跨摘要版本 advisory lock 属代码改动。此授权不扩展为日常改写初始 SQL，细节见 [迁移手册](docs/migrations.md#当前初始基线)。
-
-- v0.3.0 已发布，tag 固定到 ba2d0412764c659beabdbd0d3f0f0f9bb9007657，其中的 0001 是不可改写的已发布历史。用户本轮明确要求“把 0002 直接并入 0001”：`consolidate-session-context-initial-schema` 仅将未发布会话 0002 的字段、两表及索引整合进当前工作树 0001，同步 down 和当前固定哈希，初始化保持 version=1，生产 0002 撤回。当前 v1 须包含完整会话上下文；旧 v0.3.0 v1 及撤回会话 v2 均无写拒绝，不自动转换、改版本或清库；有保留数据需求时另行设计迁移。v0.1.0/v0.2.0/v0.3.0 标签、其中的已发布 SQL 和固定源快照保持，历史检查分三代独立固定。后续结构仍从 0002 递增，此授权不构成日常改写初始 SQL 或跳过门禁的开关。发布证据见 [v0.3.0 说明](docs/releases/v0.3.0.md)。
-
-- 用户确认尚无实际产品接入后，`consolidate-initial-schema` 执行过一次明确的初始结构整合：`0001_init` 直接定义全部认证及登录补全结构，初始版本为 1。此前 `generalize-audit-events` 经用户明确授权，将十列 UUIDv7 审计定义纳入未发布的 0001、更新其固定校验，并撤回当时新增的 0002/staging 工具。旧完整十七列审计 v1 和旧增量结构 v2 均拒绝且保留数据与版本；固定源快照和已发布历史不变。当前初始 SQL 按独立固定哈希保护，不提供日常改写、squash 或跳过历史检查的开关。
-- `rename-sign-in-completion-flow` 经用户本次明确要求“不新增 0002，直接改 0001 中的表定义”，限定为修改当前未发布 0001 的流程表、五个独立索引、主键与格式 CHECK 名称及配套 down，并同步当前固定哈希；列、约束表达式和索引定义保持。撤回本分支新增的 0002，初始化保持 version=1，后续真实增量从 0002 开始。旧表名 v1、双表并存及已撤回旧 v2（包括此前新表名 v2）均拒绝且保留数据、结构和版本，重复 Up 不自动改名或接管。采用新定义须人工核验后使用新空资源，需保留数据时另行制定并验证迁移方案，不 Force、不修改版本、不自动清库；公共 Down 仍拒绝。内部使用 `SignInCompletionFlow`，公开旧 `ids.IdentityFlow`、`user.Deps.IdentityFlowContext`、`CleanupIdentityFlows` 保留 deprecated 兼容入口，新上下文字段非空时优先、否则回退旧字段；密文 AAD、`f_`、审计 `IDENTITY_FLOW` 和 JSON `flow_id` 保持。本次授权不扩展为日常改写初始 SQL 或修改冻结源与已发布历史。
-- 此前索引命名维护另经用户明确要求“不新增迁移”，限定为直接将未发布 0001 的 22 个普通索引改用 `idx_`、4 个独立唯一索引改用 `uk_` 前缀并同步固定校验；当次主键、索引定义、初始版本和历史源快照未变。旧同号数据库不会重放 0001，也不会自动得到该次索引命名调整；这些有限授权不扩展为后续任意改写初始 SQL。
-- `tests/testdata/source-baseline/` 的原始 SQL 与 manifest 仍冻结；已发布 v0.1.0/v0.2.0/v0.3.0 的精确标签提交和历史 SQL 保持。历史检查分别核验源快照、v0.3.0、v0.4.0、v0.5.0、v0.6.0 已发布定义和当前整合定义的独立基线，不能改写源快照或移动旧 tag 来让检查通过。旧数据库不自动接管，使用新基线须经人工核验后使用新空资源；不得 Force、修改版本或自动清库。
-- 新业务结构使用递增 `NNNN_name.up.sql` / `.down.sql`，已发布版本不可修改、删除、重编号或 squash。测试专用下一版本放 `migrations/testdata/`，不混入生产嵌入目录。
-- `schema_migrations` 记录当前 version/dirty，不是完整历史账本。重复 Up 只忽略无新迁移；dirty 必须阻断后续升级，禁止自动 Force、清除 dirty 或把失败标记为成功。
+- v1.0.0 是第一个正式版本。当前 `0001_init.up.sql` / `0001_init.down.sql` 自 v1.0.0 tag 起字节冻结，哈希固定在 `internal/migrationcheck` 的 `initialFrozen`；后续真实结构变更从 0002 递增，使用 `NNNN_name.up.sql` / `.down.sql`，已发布版本不可修改、删除、重编号或 squash。测试专用下一版本放 `migrations/testdata/`，不混入生产嵌入目录。
+- v1.0.0 之前的开发期版本（v0.1.0 到 v0.7.2）未被正式使用，其 tag 与 Release 已退役；按用户 2026-10-31 的明确要求，在 v1.0.0 发布与远端消费验证完成后删除（尚未删除）：不再创建低于 v1.0.0 的 tag，不提供从它们升级的路径，历史检查忽略主版本为 0 的 tag。背景见 [开发期版本](docs/releases/pre-1.0-history.md)。
+- 运行时预检只有两条：`schema_migrations` dirty 优先阻断；数据库版本高于当前源时返回 `migrations.ErrIncompatibleBaseline`。两者都在写入前发生并保留 catalog、数据与 version/dirty；禁止自动 Force、清除 dirty 或把失败标记为成功。预检不反查结构。
+- `schema_migrations` 记录当前 version/dirty，不是完整历史账本。重复 Up 只忽略无新迁移。
 - 保留从 schema 初始化开始的外层锁，以及与旧工具兼容的引擎锁。锁等待必须支持取消和超时，所有错误路径必须释放连接及锁；不能假定底层 WithInstance 初始化失败会自动释放借出的连接。
 - `Down` 保留签名但无 I/O 返回 `ErrDestructiveOperation`；`UnsafeReset` 仅用于一次性开发测试数据，必须精确确认目标 schema。生产恢复不调用全量清库入口。
-- 历史检查覆盖固定源基线及全部可达正式 `vX.Y.Z` tag，包括合并分支和 HEAD；需要完整历史和 tags，不能只看第一父链或跳过浅克隆检查。
+- 历史检查覆盖当前初始定义及全部可达的 v1.0.0 及以上正式 `vX.Y.Z` tag，包括合并分支和 HEAD；需要完整历史和 tags，不能只看第一父链或跳过浅克隆检查。
 - 应用回退必须验证新结构兼容旧代码；数据库恢复先落到独立空库核验。备份不包含 Redis 和密钥系统，不能宣称零数据损失或通过清空 Redis 实现安全恢复。
 
 ## 认证行为与兼容性
@@ -207,7 +188,7 @@ bash scripts/verify.sh
 
 - 修改限定在本次任务范围；沿用现有结构，避免顺带重构与引入不必要依赖。
 - 不提交真实 `.env`、密钥、服务商凭据、数据库备份或用户数据；测试使用合成数据，日志与审计也不得输出完整凭证。
-- 不手改生成代码，不修改源基线，不为逃避门禁删除测试或放宽验证，不擅自变更既有公开契约。
-- 用 `rg` 搜索，修改 Go 后 gofmt；遵守 `.gitattributes` 的 Go/SQL/shell LF，保留固定源快照的原始字节及当前迁移的固定校验值。
+- 不手改生成代码，不改写已冻结的初始迁移，不为逃避门禁删除测试或放宽验证，不擅自变更既有公开契约。
+- 用 `rg` 搜索，修改 Go 后 gofmt；遵守 `.gitattributes` 的 Go/SQL/shell LF，保留当前迁移的固定校验值。
 - 使用可识别的一次性测试资源，结束后只清理本任务创建的容器/数据库；不得操作产品数据库或未经核验的目录。
 - 当前任务的用户授权优先于默认流程；遵守执行环境的文件与网络权限，不绕过权限检查。遇到实质信息缺失再询问，不重复索取已有授权。

@@ -16,7 +16,7 @@ import (
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/httpapi/authn"
 	"github.com/bbxx111/accountkit/httpapi/clientinfo"
-	"github.com/bbxx111/accountkit/httpapi/reqid"
+	"github.com/bbxx111/accountkit/httpapi/internal/reqid"
 	"github.com/bbxx111/accountkit/user"
 )
 

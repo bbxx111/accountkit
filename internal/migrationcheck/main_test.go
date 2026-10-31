@@ -35,8 +35,7 @@ var fixtureInitial = map[string][]byte{
 }
 
 type repositoryFixture struct {
-	root   string
-	legacy map[string]string
+	root string
 }
 
 func (r repositoryFixture) check() error {
@@ -45,52 +44,26 @@ func (r repositoryFixture) check() error {
 		sum := sha256.Sum256(data)
 		hashes[name] = hex.EncodeToString(sum[:])
 	}
-	return checkWithBaselines(r.root, hashes, r.legacy)
+	return checkWithInitial(r.root, hashes)
 }
 
+// fixture 创建只含当前初始定义的仓库；tag=true 时在 v1.0.0 固定该定义并再提交一次。
 func fixture(t *testing.T, tag bool) repositoryFixture {
 	t.Helper()
 	root := t.TempDir()
 	gitTest(t, root, "init")
-	for _, n := range []string{"0001_init.up.sql", "0001_init.down.sql", "manifest.json"} {
-		b, err := os.ReadFile(filepath.Join("..", "..", "tests", "testdata", "source-baseline", n))
-		if err != nil {
-			t.Fatal(err)
-		}
-		write(t, root, "tests/testdata/source-baseline/"+n, b)
-		if n != "manifest.json" {
-			write(t, root, "migrations/"+n, b)
-		}
-	}
-	legacy := map[string]string{}
-	if tag {
-		gitTest(t, root, "add", ".")
-		gitTest(t, root, "commit", "-m", "baseline")
-		gitTest(t, root, "tag", "v0.1.0")
-		commit, err := git(root, "rev-parse", "HEAD")
-		if err != nil {
-			t.Fatal(err)
-		}
-		legacy["refs/tags/v0.1.0"] = strings.TrimSpace(string(commit))
-		write(t, root, "README.md", []byte("second historical release"))
-		gitTest(t, root, "add", ".")
-		gitTest(t, root, "commit", "-m", "second historical release")
-		gitTest(t, root, "tag", "-a", "v0.2.0", "-m", "historical release")
-		commit, err = git(root, "rev-parse", "HEAD")
-		if err != nil {
-			t.Fatal(err)
-		}
-		legacy["refs/tags/v0.2.0"] = strings.TrimSpace(string(commit))
-	}
 	for name, data := range fixtureInitial {
 		write(t, root, "migrations/"+name, data)
 	}
 	if tag {
+		gitTest(t, root, "add", ".")
+		gitTest(t, root, "commit", "-m", "v1.0.0 baseline")
+		gitTest(t, root, "tag", "-a", "v1.0.0", "-m", "first formal release")
 		write(t, root, "README.md", []byte("next"))
 		gitTest(t, root, "add", ".")
 		gitTest(t, root, "commit", "-m", "next")
 	}
-	return repositoryFixture{root, legacy}
+	return repositoryFixture{root}
 }
 func TestMigrationHistoryCheck(t *testing.T) {
 	for _, tag := range []bool{false, true} {
@@ -139,27 +112,17 @@ func TestHeadTagCannotBlessHistoricalRewrite(t *testing.T) {
 	write(t, r.root, "migrations/0001_init.up.sql", []byte("SELECT 1;"))
 	gitTest(t, r.root, "add", ".")
 	gitTest(t, r.root, "commit", "-m", "bad release")
-	gitTest(t, r.root, "tag", "v0.3.0")
+	gitTest(t, r.root, "tag", "v1.1.0")
 	if err := r.check(); err == nil {
 		t.Fatal("HEAD tag bypassed history check")
 	}
 }
-func TestFrozenBaselineCannotBeRewritten(t *testing.T) {
-	r := fixture(t, false)
-	b := []byte("SELECT 1;")
-	write(t, r.root, "migrations/0001_init.up.sql", b)
-	write(t, r.root, "tests/testdata/source-baseline/0001_init.up.sql", b)
-	if err := r.check(); err == nil {
-		t.Fatal("rewritten baseline accepted")
-	}
-}
-
 func TestWorkingTreeCannotRewriteMigrationAtHeadRelease(t *testing.T) {
 	r := fixture(t, true)
 	write(t, r.root, "migrations/0002_extra.up.sql", []byte("SELECT 1;"))
 	gitTest(t, r.root, "add", ".")
 	gitTest(t, r.root, "commit", "-m", "release")
-	gitTest(t, r.root, "tag", "v0.3.0")
+	gitTest(t, r.root, "tag", "v1.1.0")
 	write(t, r.root, "migrations/0002_extra.up.sql", []byte("SELECT 2;"))
 	if err := r.check(); err == nil {
 		t.Fatal("working tree rewrote a migration in the HEAD release")
@@ -175,7 +138,7 @@ func TestMergedReleaseHistoryIsImmutable(t *testing.T) {
 			write(t, r.root, "migrations/0002_extra.up.sql", []byte("SELECT 1;"))
 			gitTest(t, r.root, "add", ".")
 			gitTest(t, r.root, "commit", "-m", "release migration")
-			gitTest(t, r.root, "tag", "-a", "v0.3.0", "-m", "release")
+			gitTest(t, r.root, "tag", "-a", "v1.1.0", "-m", "release")
 			gitTest(t, r.root, "checkout", "mainline")
 			write(t, r.root, "README.md", []byte("mainline work"))
 			gitTest(t, r.root, "add", ".")
@@ -196,69 +159,18 @@ func TestMergedReleaseHistoryIsImmutable(t *testing.T) {
 	}
 }
 
-func TestPinnedLegacyReleaseCannotMove(t *testing.T) {
-	for _, tag := range []string{"v0.1.0", "v0.2.0"} {
-		t.Run(tag, func(t *testing.T) {
-			r := fixture(t, true)
-			gitTest(t, r.root, "tag", "-f", tag)
-			if err := r.check(); err == nil || !strings.Contains(err.Error(), "tag moved") {
-				t.Fatalf("moved legacy tag received the old baseline exception: %v", err)
-			}
-		})
-	}
-}
-
-func TestLegacyReleaseSQLIsVerified(t *testing.T) {
-	r := fixture(t, false)
-	write(t, r.root, "migrations/0001_init.up.sql", []byte("SELECT 1;"))
-	gitTest(t, r.root, "add", ".")
-	gitTest(t, r.root, "commit", "-m", "invalid legacy SQL")
-	gitTest(t, r.root, "tag", "v0.1.0")
-	commit, err := git(r.root, "rev-parse", "HEAD")
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.legacy["refs/tags/v0.1.0"] = strings.TrimSpace(string(commit))
-	for name, data := range fixtureInitial {
-		write(t, r.root, "migrations/"+name, data)
-	}
-	if err := r.check(); err == nil {
-		t.Fatal("pinned release accepted SQL outside the original baseline")
-	}
-}
-
-func TestNewReleaseCannotUseLegacyInitialSQL(t *testing.T) {
-	r := fixture(t, true)
-	for name := range fixtureInitial {
-		data, err := os.ReadFile(filepath.Join(r.root, "tests/testdata/source-baseline", name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		write(t, r.root, "migrations/"+name, data)
-	}
-	gitTest(t, r.root, "add", ".")
-	gitTest(t, r.root, "commit", "-m", "new release with legacy initial SQL")
-	gitTest(t, r.root, "tag", "v0.3.0")
-	for name, data := range fixtureInitial {
-		write(t, r.root, "migrations/"+name, data)
-	}
-	if err := r.check(); err == nil {
-		t.Fatal("new release reused the legacy initial baseline")
-	}
-}
-
 func TestPublishedIncrementCannotDisappearInLaterRelease(t *testing.T) {
 	r := fixture(t, true)
 	write(t, r.root, "migrations/0002_extra.up.sql", []byte("SELECT 1;"))
 	gitTest(t, r.root, "add", ".")
 	gitTest(t, r.root, "commit", "-m", "publish increment")
-	gitTest(t, r.root, "tag", "v0.3.0")
+	gitTest(t, r.root, "tag", "v1.1.0")
 	if err := os.Remove(filepath.Join(r.root, "migrations/0002_extra.up.sql")); err != nil {
 		t.Fatal(err)
 	}
 	gitTest(t, r.root, "add", ".")
 	gitTest(t, r.root, "commit", "-m", "delete increment")
-	gitTest(t, r.root, "tag", "v0.4.0")
+	gitTest(t, r.root, "tag", "v1.2.0")
 	// Restore only the working tree: historical release deletion must still fail.
 	write(t, r.root, "migrations/0002_extra.up.sql", []byte("SELECT 1;"))
 	if err := r.check(); err == nil {
@@ -287,14 +199,43 @@ func TestReleaseVersionsMustIncrease(t *testing.T) {
 				write(t, r.root, "migrations/"+tc.prior, []byte("SELECT 3;"))
 				gitTest(t, r.root, "add", ".")
 				gitTest(t, r.root, "commit", "-m", "prior increment")
-				gitTest(t, r.root, "tag", "v0.3.0")
+				gitTest(t, r.root, "tag", "v1.1.0")
 			}
 			write(t, r.root, "migrations/"+tc.added, []byte("SELECT 2;"))
 			gitTest(t, r.root, "add", ".")
 			gitTest(t, r.root, "commit", "-m", "lower increment")
-			gitTest(t, r.root, "tag", "v0.4.0")
+			gitTest(t, r.root, "tag", "v1.2.0")
 			if err := r.check(); err == nil {
 				t.Fatal("release introduced a nonincrementing migration")
+			}
+		})
+	}
+}
+
+// 开发期 v0.x.y 标签已退役：即使仍存在且其迁移与当前基线不同，也不参与检查。
+func TestPreReleaseTagsAreIgnored(t *testing.T) {
+	for _, tc := range []struct{ name, tag string }{
+		{"old minor", "v0.7.2"},
+		{"old zero", "v0.0.1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := fixture(t, true)
+			write(t, r.root, "migrations/0001_init.up.sql", []byte("SELECT 'retired';"))
+			write(t, r.root, "migrations/0002_retired.up.sql", []byte("SELECT 1;"))
+			gitTest(t, r.root, "add", ".")
+			gitTest(t, r.root, "commit", "-m", "retired development release")
+			gitTest(t, r.root, "tag", tc.tag)
+			// 恢复工作树到当前基线；退役标签内的篡改与多余增量都不能影响结果。
+			for name, data := range fixtureInitial {
+				write(t, r.root, "migrations/"+name, data)
+			}
+			if err := os.Remove(filepath.Join(r.root, "migrations/0002_retired.up.sql")); err != nil {
+				t.Fatal(err)
+			}
+			gitTest(t, r.root, "add", ".")
+			gitTest(t, r.root, "commit", "-m", "back to baseline")
+			if err := r.check(); err != nil {
+				t.Fatalf("pre-1.0 tag must be ignored: %v", err)
 			}
 		})
 	}

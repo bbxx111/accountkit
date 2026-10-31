@@ -19,6 +19,7 @@ import (
 	"github.com/bbxx111/accountkit/email"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/internal/testkeys"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/phone"
 	"github.com/bbxx111/accountkit/pii"
 	"github.com/bbxx111/accountkit/session/grace"
@@ -26,7 +27,6 @@ import (
 	"github.com/bbxx111/accountkit/tokens"
 	"github.com/bbxx111/accountkit/user"
 	"github.com/bbxx111/accountkit/user/code"
-	"github.com/bbxx111/accountkit/user/db"
 	"github.com/bbxx111/accountkit/user/idp"
 	"github.com/bbxx111/accountkit/user/sender"
 )
@@ -193,7 +193,7 @@ func TestSignInCreatesUserThenReusesIt(t *testing.T) {
 		t.Fatalf("second sign-in must reuse the user: %+v vs %+v", first, second)
 	}
 	// 身份行：密文可解密为 E.164，hint 正确，digest 是 active 版本
-	idents, err := f.repo.Q().ListActiveIdentitiesByUser(ctx, first.UserID)
+	idents, err := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, first.UserID)
 	if err != nil || len(idents) != 1 {
 		t.Fatalf("identities: %v %v", idents, err)
 	}
@@ -218,7 +218,7 @@ func TestSignInCreatesUserThenReusesIt(t *testing.T) {
 func TestSignInWithEmailNormalizes(t *testing.T) {
 	f := newFixture(t)
 	res := f.signIn(t, enum.IdentityEmail, " Bo.Bai@Shifang.CO ", dev1)
-	idents, _ := f.repo.Q().ListActiveIdentitiesByUser(context.Background(), res.UserID)
+	idents, _ := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(context.Background(), res.UserID)
 	if len(idents) != 1 || idents[0].Kind != enum.IdentityEmail || *idents[0].HintPrefix != "bo" || *idents[0].HintSuffix != "shifang.co" {
 		t.Fatalf("email identity: %+v", idents)
 	}
@@ -259,14 +259,14 @@ func TestSignInSameDeviceReplacesSession(t *testing.T) {
 	ctx := context.Background()
 	first := f.signIn(t, enum.IdentityPhone, phone1, dev1)
 	second := f.signIn(t, enum.IdentityPhone, phone1, dev1)
-	active, _ := f.repo.Q().ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: first.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)})
+	active, _ := user.TestRepoQueries(f.repo).ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: first.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)})
 	if len(active) != 1 {
 		t.Fatalf("same device re-login must leave exactly one active session, got %d", len(active))
 	}
 	if second.RefreshToken == first.RefreshToken {
 		t.Fatal("new session must carry a new refresh token")
 	}
-	old, err := f.repo.Q().GetSessionByRefreshHash(ctx, sha256Of(first.RefreshToken))
+	old, err := user.TestRepoQueries(f.repo).GetSessionByRefreshHash(ctx, sha256Of(first.RefreshToken))
 	if err != nil || old.RevokeTime == nil || *old.RevokeReason != enum.RevokeReplacedByRelogin {
 		t.Fatalf("old session must be revoked with REPLACED_BY_RELOGIN: %+v %v", old, err)
 	}
@@ -464,7 +464,7 @@ func TestRefreshReplayAfterGraceRevokesSession(t *testing.T) {
 	if !hasEvent(f.audit, enum.EventRefreshReuseDetected, enum.ResultFailure) {
 		t.Fatal("audit REFRESH_REUSE_DETECTED")
 	}
-	sess, _ := f.repo.Q().GetSessionByRefreshHash(ctx, sha256Of(next.RefreshToken))
+	sess, _ := user.TestRepoQueries(f.repo).GetSessionByRefreshHash(ctx, sha256Of(next.RefreshToken))
 	if sess.RevokeReason == nil || *sess.RevokeReason != enum.RevokeReuseDetected {
 		t.Fatalf("revoke_reason must be REUSE_DETECTED: %+v", sess)
 	}
@@ -520,7 +520,7 @@ func TestRefreshFrozenAndPendingDeletionRevoke(t *testing.T) {
 	if _, err := f.svc.Refresh(ctx, res2.RefreshToken, meta1); !errors.Is(err, user.ErrInvalidGrant) {
 		t.Fatalf("pending deletion refresh: %v", err)
 	}
-	sess, _ := f.repo.Q().GetSessionByRefreshHash(ctx, sha256Of(res2.RefreshToken))
+	sess, _ := user.TestRepoQueries(f.repo).GetSessionByRefreshHash(ctx, sha256Of(res2.RefreshToken))
 	if sess.RevokeReason == nil || *sess.RevokeReason != enum.RevokeUserDeleted {
 		t.Fatalf("revoke_reason must be USER_DELETED: %+v", sess)
 	}
@@ -548,7 +548,7 @@ func TestRefreshConcurrentOnlyOneRotatesOthersGetSamePair(t *testing.T) {
 			t.Fatal("all concurrent refreshes must yield the same rotated pair")
 		}
 	}
-	active, _ := f.repo.Q().ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: res.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)})
+	active, _ := user.TestRepoQueries(f.repo).ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: res.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)})
 	if len(active) != 1 || active[0].RevokeTime != nil {
 		t.Fatalf("session must remain active and single: %+v", active)
 	}
@@ -564,7 +564,7 @@ func TestRefreshGraceDegradesWhenRedisDown(t *testing.T) {
 	if _, err := f.svc.Refresh(ctx, res.RefreshToken, meta1); !errors.Is(err, user.ErrInvalidGrant) {
 		t.Fatalf("grace with redis down: %v", err)
 	}
-	sess, _ := f.repo.Q().GetSessionByRefreshHash(ctx, sha256Of(next.RefreshToken))
+	sess, _ := user.TestRepoQueries(f.repo).GetSessionByRefreshHash(ctx, sha256Of(next.RefreshToken))
 	if sess.RevokeTime != nil {
 		t.Fatal("redis outage during grace must not revoke the session")
 	}
@@ -662,7 +662,7 @@ func TestRefreshReuseDetectedContainmentFailurePropagatesError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initial refresh: %v", err)
 	}
-	sess, err := f.repo.Q().GetSessionByRefreshHash(ctx, sha256Of(next.RefreshToken))
+	sess, err := user.TestRepoQueries(f.repo).GetSessionByRefreshHash(ctx, sha256Of(next.RefreshToken))
 	if err != nil {
 		t.Fatalf("lookup session: %v", err)
 	}
@@ -693,7 +693,7 @@ FOR EACH ROW EXECUTE FUNCTION test_block_reuse_revoke()`)
 		t.Fatal("revocation set must still be written even when the DB revoke fails")
 	}
 	// 会话行确实没有被吊销（触发器拦下了这次 UPDATE）
-	sess2, err := f.repo.Q().GetSessionByRefreshHash(ctx, sha256Of(next.RefreshToken))
+	sess2, err := user.TestRepoQueries(f.repo).GetSessionByRefreshHash(ctx, sha256Of(next.RefreshToken))
 	if err != nil || sess2.RevokeTime != nil {
 		t.Fatalf("session must remain unrevoked in the DB when the revoke write failed: %+v %v", sess2, err)
 	}
@@ -835,7 +835,7 @@ func TestCleanupSessionsDeletesOnlyStaleRows(t *testing.T) {
 	var sids []string
 	for _, d := range devs {
 		res := f.signIn(t, enum.IdentityPhone, phone1, d)
-		sess, err := f.repo.Q().GetSessionByRefreshHash(ctx, sha256Of(res.RefreshToken))
+		sess, err := user.TestRepoQueries(f.repo).GetSessionByRefreshHash(ctx, sha256Of(res.RefreshToken))
 		if err != nil {
 			t.Fatal(err)
 		}

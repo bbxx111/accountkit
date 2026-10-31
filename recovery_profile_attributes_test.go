@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"testing"
 
 	"github.com/bbxx111/accountkit"
@@ -20,7 +21,7 @@ func TestRecoveryAvatarFixture(t *testing.T) {
 	cfg := minimal()
 	cfg.ProfileAttributes = recoveryProfileAttributesConfig()
 	a, pool, _ := integrationInstance(t, cfg, testRedis(t))
-	f, _ := seedFormatFixture(t, pool, a.Config())
+	f, _ := seedSyntheticAccount(t, pool, a.Config())
 	seedRecoveryProfileAttributes(t, a, f.UserID)
 	m, err := a.Users().GetMe(context.Background(), f.UserID)
 	if err != nil || m.AvatarURL != "https://example.test/recovery-avatar.png?version=1" {
@@ -34,7 +35,7 @@ func TestRecoveryAvatarFixture(t *testing.T) {
 		t.Fatal("source-unchanged snapshot omitted avatar")
 	}
 	assertRecoveryProfileAttributesCleanup(t, a, pool, f.UserID)
-	row, err := user.NewRepo(pool).Q().GetUserByID(context.Background(), f.UserID)
+	row, err := db.New(pool).GetUserByID(context.Background(), f.UserID)
 	if err != nil || row.AvatarUrl != nil {
 		t.Fatal("recovered avatar purge", err)
 	}
@@ -82,7 +83,7 @@ func TestRecoveryProfileAttributesSnapshot(t *testing.T) {
 	cfg := minimal()
 	cfg.ProfileAttributes = recoveryProfileAttributesConfig()
 	a, pool, _ := integrationInstance(t, cfg, testRedis(t))
-	f, _ := seedFormatFixture(t, pool, a.Config())
+	f, _ := seedSyntheticAccount(t, pool, a.Config())
 	state := recoveryState{Fixture: f, ProfileAttributes: seedRecoveryProfileAttributes(t, a, f.UserID), AvatarURL: recoveryAvatarURL}
 	assertRecoveryProfileAttributes(t, a, state)
 	before := snapshotRecovery(t, pool)

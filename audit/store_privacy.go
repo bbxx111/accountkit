@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/audit/authentication"
-	"github.com/bbxx111/accountkit/audit/db"
 	"github.com/bbxx111/accountkit/audit/event"
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/auditdb"
 	"github.com/google/uuid"
 )
 

@@ -32,11 +32,11 @@ func hostActiveUsers(t *testing.T, a *accountkit.Auth) activeUsers {
 	return s
 }
 
-func hostLifecycleFixture(t *testing.T, hook func(context.Context, pgx.Tx, string) error) (*accountkit.Auth, *pgxpool.Pool, sourceFixture) {
+func hostLifecycleFixture(t *testing.T, hook func(context.Context, pgx.Tx, string) error) (*accountkit.Auth, *pgxpool.Pool, syntheticFixture) {
 	t.Helper()
 	rdb := testRedis(t)
 	a, pool, sent := integrationInstance(t, minimal(), rdb)
-	f, _ := seedFormatFixture(t, pool, a.Config())
+	f, _ := seedSyntheticAccount(t, pool, a.Config())
 	if err := a.Migrate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestBeforeDeleteSharedTransaction(t *testing.T) {
 					}
 					return hookErr
 				})
-				before := snapshotSource(t, pool)
+				before := snapshotSyntheticAccount(t, pool)
 				var err error
 				if admin {
 					_, err = a.Users().AdminDeleteUser(context.Background(), user.Admin{Subject: "fixture-admin"}, f.UserID, user.Meta{})
@@ -96,7 +96,7 @@ func TestBeforeDeleteSharedTransaction(t *testing.T) {
 					t.Fatal(err)
 				}
 				if hookErr != nil {
-					if snapshotSource(t, pool) != before || body != "original" {
+					if snapshotSyntheticAccount(t, pool) != before || body != "original" {
 						t.Fatal("rejected delete mutated authentication or host data")
 					}
 				} else {
@@ -171,7 +171,7 @@ func TestWithActiveUsersRollback(t *testing.T) {
 			s := hostActiveUsers(t, a)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			before := snapshotSource(t, pool)
+			before := snapshotSyntheticAccount(t, pool)
 			marker := errors.New("callback failure")
 			func() {
 				if panics {
@@ -196,7 +196,7 @@ func TestWithActiveUsersRollback(t *testing.T) {
 					t.Fatalf("callback error: %v", err)
 				}
 			}()
-			if snapshotSource(t, pool) != before {
+			if snapshotSyntheticAccount(t, pool) != before {
 				t.Fatal("account write escaped rollback")
 			}
 			var body string
@@ -364,7 +364,7 @@ func TestBeforeDeleteHTTPErrorClassification(t *testing.T) {
 				ctx := context.Background()
 				rdb := testRedis(t)
 				a, pool, sent := integrationInstance(t, minimal(), rdb)
-				f, access := seedFormatFixture(t, pool, a.Config())
+				f, access := seedSyntheticAccount(t, pool, a.Config())
 				if err := a.Migrate(ctx); err != nil {
 					t.Fatal(err)
 				}
@@ -385,7 +385,7 @@ func TestBeforeDeleteHTTPErrorClassification(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer withHost.Close()
-				before := snapshotSource(t, pool)
+				before := snapshotSyntheticAccount(t, pool)
 				req := httptest.NewRequest("DELETE", "/users/me", nil)
 				handler := withHost.EndUserHandler()
 				req.Header.Set("Authorization", "Bearer "+access)
@@ -412,7 +412,7 @@ func TestBeforeDeleteHTTPErrorClassification(t *testing.T) {
 				if strings.Contains(rec.Body.String(), "private") {
 					t.Fatal("private hook detail leaked")
 				}
-				if snapshotSource(t, pool) != before {
+				if snapshotSyntheticAccount(t, pool) != before {
 					t.Fatal("failed hook mutated authentication")
 				}
 				var body string

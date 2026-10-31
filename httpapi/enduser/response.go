@@ -186,8 +186,6 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, r *http.Request, err 
 		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "CODE_INVALID", "verification code is incorrect"))
 	case errors.Is(err, code.ErrExpired):
 		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "CODE_EXPIRED", "verification code has expired or was never issued for this purpose"))
-	case errors.Is(err, code.ErrExhausted):
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "CODE_ATTEMPTS_EXHAUSTED", "too many incorrect attempts; request a new code"))
 	case errors.Is(err, user.ErrInvalidTarget):
 		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_TARGET", "target is not a valid phone number or email address"))
 	case errors.Is(err, user.ErrInvalidArgument):
@@ -237,7 +235,7 @@ func (h *Handler) writeOAuthError(w http.ResponseWriter, r *http.Request, err er
 	case errors.Is(err, user.ErrInvalidClientInfo):
 		apierror.WriteOAuth(w, http.StatusBadRequest, "invalid_request", "invalid client information", nil)
 	case errors.Is(err, errMalformedBody):
-		apierror.WriteOAuth(w, http.StatusBadRequest, "invalid_request", "request body must be a single JSON object with known fields", nil)
+		apierror.WriteOAuth(w, http.StatusBadRequest, "invalid_request", "request body must be application/json (a single object with known fields) or application/x-www-form-urlencoded (no repeated parameters)", nil)
 	case errors.Is(err, user.ErrUserFrozen):
 		apierror.WriteOAuth(w, http.StatusForbidden, "invalid_grant", "user is frozen", map[string]any{"reason": "USER_FROZEN"})
 	case errors.Is(err, user.ErrInvalidGrant):

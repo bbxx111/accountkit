@@ -15,8 +15,8 @@ import (
 	"github.com/bbxx111/accountkit/anonymize"
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/user"
-	"github.com/bbxx111/accountkit/user/db"
 )
 
 // recordingAnonymizer 是宿主匿名化器的替身：在同一事务内把 host_note.user_id 改成 'purged'；fail 非空时报错。
@@ -93,7 +93,7 @@ func TestPurgeAnonymizesAccountIdentitiesSessionsAuditAndHostTables(t *testing.T
 	}
 	mustExec(t, f, `INSERT INTO host_note (user_id, body) VALUES ($1, 'secret')`, p.UserID)
 	seed := seedAuditInput(t, f.pool, audit.AuthenticationEvent{Type: enum.EventSignIn, UserID: p.UserID, IP: "203.0.113.5", DeviceID: "dev-x", SubjectHint: "abcdefgh"})
-	before, err := f.repo.Q().ListIdentitiesByUserIncludingDeleted(ctx, p.UserID)
+	before, err := user.TestRepoQueries(f.repo).ListIdentitiesByUserIncludingDeleted(ctx, p.UserID)
 	if err != nil || len(before) != 3 {
 		t.Fatalf("identities before: %d %v", len(before), err)
 	}
@@ -128,12 +128,12 @@ func TestPurgeAnonymizesAccountIdentitiesSessionsAuditAndHostTables(t *testing.T
 	}
 	now := *f.clock
 	// 账号行
-	u, err := f.repo.Q().GetUserByID(ctx, p.UserID)
+	u, err := user.TestRepoQueries(f.repo).GetUserByID(ctx, p.UserID)
 	if err != nil || u.State != enum.UserDeleted || u.DisplayName != nil || u.PurgeTime == nil || !u.PurgeTime.Equal(now) || u.DeleteTime == nil {
 		t.Fatalf("user row after purge: %+v %v", u, err)
 	}
 	// 身份：3 行全部软删、PII 清空、subject 列换成 64 位十六进制且不等于原值
-	after, _ := f.repo.Q().ListIdentitiesByUserIncludingDeleted(ctx, p.UserID)
+	after, _ := user.TestRepoQueries(f.repo).ListIdentitiesByUserIncludingDeleted(ctx, p.UserID)
 	if len(after) != 3 {
 		t.Fatalf("identities after: %d", len(after))
 	}
@@ -157,7 +157,7 @@ func TestPurgeAnonymizesAccountIdentitiesSessionsAuditAndHostTables(t *testing.T
 		seen[subject] = true
 	}
 	// 会话：全部吊销；冷静期会话的 access 被吊销集拒绝
-	if rows, _ := f.repo.Q().ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: p.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)}); len(rows) != 0 {
+	if rows, _ := user.TestRepoQueries(f.repo).ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: p.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)}); len(rows) != 0 {
 		t.Fatalf("active sessions after purge: %d", len(rows))
 	}
 	if _, err := f.svc.Authenticate(ctx, pending.AccessToken); !errors.Is(err, user.ErrInvalidToken) {
@@ -228,11 +228,11 @@ func TestPurgeRollsBackWhenAnonymizerFailsAndSkipsUndueOrUndeleted(t *testing.T)
 		t.Fatalf("failed anonymizer must fail the round: n=%d err=%v", n, err)
 	}
 	// 整事务回滚：状态、身份、会话吊销状态都未变
-	u, _ := f.repo.Q().GetUserByID(ctx, p.UserID)
+	u, _ := user.TestRepoQueries(f.repo).GetUserByID(ctx, p.UserID)
 	if u.State != enum.UserPendingDeletion {
 		t.Fatalf("state after rollback: %s", u.State)
 	}
-	idents, _ := f.repo.Q().ListActiveIdentitiesByUser(ctx, p.UserID)
+	idents, _ := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, p.UserID)
 	if len(idents) != 1 || idents[0].SubjectCiphertext == nil || idents[0].HintSuffix == nil {
 		t.Fatalf("identity must be intact after rollback: %+v", idents)
 	}
@@ -240,7 +240,7 @@ func TestPurgeRollsBackWhenAnonymizerFailsAndSkipsUndueOrUndeleted(t *testing.T)
 		t.Fatal("no USER_PURGED on rollback")
 	}
 	// 第二个账号未被碰（ACTIVE 不在批内）
-	if u2, _ := f.repo.Q().GetUserByID(ctx, p2.UserID); u2.State != enum.UserActive || u2.PurgeTime == nil {
+	if u2, _ := user.TestRepoQueries(f.repo).GetUserByID(ctx, p2.UserID); u2.State != enum.UserActive || u2.PurgeTime == nil {
 		t.Fatalf("undeleted user must be untouched: %+v", u2)
 	}
 	// 宿主恢复后下一轮成功，且只处理第一个账号
@@ -249,7 +249,7 @@ func TestPurgeRollsBackWhenAnonymizerFailsAndSkipsUndueOrUndeleted(t *testing.T)
 	if err != nil || n != 1 {
 		t.Fatalf("retry: n=%d err=%v", n, err)
 	}
-	if u, _ = f.repo.Q().GetUserByID(ctx, p.UserID); u.State != enum.UserDeleted {
+	if u, _ = user.TestRepoQueries(f.repo).GetUserByID(ctx, p.UserID); u.State != enum.UserDeleted {
 		t.Fatalf("state after retry: %s", u.State)
 	}
 }
@@ -267,7 +267,7 @@ func TestPurgeIsANoopWhenContextCanceled(t *testing.T) {
 	if n, err := f.svc.PurgeDueUsers(canceled); n != 0 || err == nil {
 		t.Fatalf("canceled ctx: n=%d err=%v", n, err)
 	}
-	if u, _ := f.repo.Q().GetUserByID(ctx, res.UserID); u.State != enum.UserPendingDeletion {
+	if u, _ := user.TestRepoQueries(f.repo).GetUserByID(ctx, res.UserID); u.State != enum.UserPendingDeletion {
 		t.Fatalf("canceled round must not change state: %s", u.State)
 	}
 }
@@ -286,7 +286,7 @@ func uncoveredUserIDTables(t *testing.T, f *fixture) (all, uncovered []string) {
 			t.Fatal(err)
 		}
 		all = append(all, tbl)
-		if strings.TrimSpace(user.PurgeCoveredTables[tbl]) == "" {
+		if strings.TrimSpace(user.PurgeCoveredTables()[tbl]) == "" {
 			uncovered = append(uncovered, tbl)
 		}
 	}
@@ -313,7 +313,7 @@ func TestPurgeCoversEveryTableWithUserID(t *testing.T) {
 	if err := f.pool.QueryRow(context.Background(), "SELECT to_regclass('audit_event') IS NOT NULL").Scan(&auditTable); err != nil || !auditTable {
 		t.Fatal("generic audit relation missing")
 	}
-	if user.PurgeCoveredTables["audit_event"] == "" {
+	if user.PurgeCoveredTables()["audit_event"] == "" {
 		t.Fatal("generic JSON audit references lack purge registration")
 	}
 	existing["audit_event"] = true
@@ -321,7 +321,7 @@ func TestPurgeCoversEveryTableWithUserID(t *testing.T) {
 		existing[tbl] = true
 	}
 	var stale []string
-	for tbl := range user.PurgeCoveredTables {
+	for tbl := range user.PurgeCoveredTables() {
 		if !existing[tbl] {
 			stale = append(stale, tbl)
 		}

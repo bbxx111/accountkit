@@ -25,18 +25,3 @@ type SMSCodeSender interface {
 type EmailCodeSender interface {
 	SendEmail(ctx context.Context, address string, m CodeMessage) error
 }
-
-// SMSSender 是 SMSCodeSender 的兼容名称。
-//
-// Deprecated: use SMSCodeSender.
-type SMSSender = SMSCodeSender
-
-// EmailSender 是 EmailCodeSender 的兼容名称。
-//
-// Deprecated: use EmailCodeSender.
-type EmailSender = EmailCodeSender
-
-// Message 是 CodeMessage 的兼容名称。
-//
-// Deprecated: use CodeMessage.
-type Message = CodeMessage

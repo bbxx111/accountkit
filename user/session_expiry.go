@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bbxx111/accountkit/user/db"
+	"github.com/bbxx111/accountkit/internal/userdb"
 )
 
 // errSessionExpired 保留公开错误分类，同时让重新认证审计区分自然到期与明确吊销。

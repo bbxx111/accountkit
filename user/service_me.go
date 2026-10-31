@@ -13,9 +13,9 @@ import (
 
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	ob "github.com/bbxx111/accountkit/observability"
 	"github.com/bbxx111/accountkit/user/code"
-	"github.com/bbxx111/accountkit/user/db"
 )
 
 const maxDisplayNameRunes = 128
@@ -45,7 +45,7 @@ func meFrom(u db.UserAccount) Me {
 
 // GetMe 读取用户资料。
 func (s *Service) GetMe(ctx context.Context, userID string) (Me, error) {
-	u, err := s.d.Repo.Q().GetUserByID(ctx, userID)
+	u, err := s.d.Repo.queries().GetUserByID(ctx, userID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Me{}, ErrNotFound
 	}
@@ -143,7 +143,7 @@ func (s *Service) UpdateDisplayName(ctx context.Context, userID, name string) (M
 	if name != "" {
 		p = &name
 	}
-	u, err := s.d.Repo.Q().UpdateUserDisplayName(ctx, db.UpdateUserDisplayNameParams{ID: userID, DisplayName: p})
+	u, err := s.d.Repo.queries().UpdateUserDisplayName(ctx, db.UpdateUserDisplayNameParams{ID: userID, DisplayName: p})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Me{}, ErrNotFound
 	}
@@ -188,7 +188,7 @@ func (s *Service) sendReauthenticationCode(ctx context.Context, p Principal, cha
 	if err != nil {
 		return CodeChallenge{}, err
 	}
-	ok, err := s.anchorOfUser(ctx, s.d.Repo.Q(), p.UserID, channel, norm)
+	ok, err := s.anchorOfUser(ctx, s.d.Repo.queries(), p.UserID, channel, norm)
 	if err != nil {
 		return CodeChallenge{}, err
 	}
@@ -227,7 +227,7 @@ func (s *Service) reauthenticate(ctx context.Context, p Principal, cred CodeCred
 		return TokenResult{}, err
 	}
 
-	ok, err := s.anchorOfUser(ctx, s.d.Repo.Q(), p.UserID, channel, norm)
+	ok, err := s.anchorOfUser(ctx, s.d.Repo.queries(), p.UserID, channel, norm)
 	if err != nil {
 		return TokenResult{}, err
 	}

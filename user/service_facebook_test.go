@@ -65,7 +65,7 @@ func TestFacebookLimitedThenClassicSameAccount(t *testing.T) {
 	if err != nil || me.DisplayName != "Ada" || me.AvatarURL != "https://example.test/fb.png" {
 		t.Fatalf("profile must keep first fill: %+v %v", me, err)
 	}
-	idents, _ := f.repo.Q().ListActiveIdentitiesByUser(ctx, first.UserID)
+	idents, _ := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, first.UserID)
 	if len(idents) != 1 || idents[0].Kind != enum.IdentityFacebook {
 		t.Fatalf("identities: %+v", idents)
 	}

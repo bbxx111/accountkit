@@ -78,7 +78,7 @@ func TestAvatarLifecycle(t *testing.T) {
 	if _, err := f.svc.AdminDeleteUser(ctx, admin1, id, meta1); err != nil {
 		t.Fatal(err)
 	}
-	before, err := f.repo.Q().GetUserByID(ctx, id)
+	before, err := user.TestRepoQueries(f.repo).GetUserByID(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestAvatarLifecycle(t *testing.T) {
 	if n, err := f.svc.PurgeDueUsers(ctx); err == nil || n != 0 || !a.seen {
 		t.Fatal("callback rollback", n, err)
 	}
-	after, _ := f.repo.Q().GetUserByID(ctx, id)
+	after, _ := user.TestRepoQueries(f.repo).GetUserByID(ctx, id)
 	if !reflect.DeepEqual(before, after) {
 		t.Fatal("failed callback changed row")
 	}
@@ -96,7 +96,7 @@ func TestAvatarLifecycle(t *testing.T) {
 	if n, err := f.svc.PurgeDueUsers(ctx); err != nil || n != 1 {
 		t.Fatal("purge", n, err)
 	}
-	after, _ = f.repo.Q().GetUserByID(ctx, id)
+	after, _ = user.TestRepoQueries(f.repo).GetUserByID(ctx, id)
 	if after.AvatarUrl != nil {
 		t.Fatal("purge retained avatar")
 	}
@@ -172,7 +172,7 @@ func TestAvatarConcurrency(t *testing.T) {
 			if err := <-done; !errors.Is(err, user.ErrInvalidState) {
 				t.Fatal("must recheck latest state", err)
 			}
-			row, _ := f.repo.Q().GetUserByID(ctx, id)
+			row, _ := user.TestRepoQueries(f.repo).GetUserByID(ctx, id)
 			if row.AvatarUrl != nil {
 				t.Fatal("non-active write stored avatar")
 			}

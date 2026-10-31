@@ -9,9 +9,9 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/user"
 	"github.com/bbxx111/accountkit/user/code"
-	"github.com/bbxx111/accountkit/user/db"
 )
 
 // A real blocking transaction makes the identity read precede the deletion
@@ -67,7 +67,7 @@ func TestSignInRejectsIdentityRemovedWhileWaiting(t *testing.T) {
 		t.Fatal(err)
 	}
 	plain := f.sent.code(phone1)
-	idents, err := f.repo.Q().ListActiveIdentitiesByUser(ctx, first.UserID)
+	idents, err := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, first.UserID)
 	if err != nil || len(idents) != 1 {
 		t.Fatalf("identities: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestSignInRejectsIdentityRemovedWhileWaiting(t *testing.T) {
 	if err := <-done; !errors.Is(err, code.ErrInvalid) {
 		t.Fatalf("stale identity must reject sign-in with CODE_INVALID, got %v", err)
 	}
-	sessions, err := f.repo.Q().ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: first.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)})
+	sessions, err := user.TestRepoQueries(f.repo).ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: first.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)})
 	if err != nil || len(sessions) != 1 {
 		t.Fatalf("stale proof created a session: count=%d err=%v", len(sessions), err)
 	}
@@ -109,7 +109,7 @@ func TestReauthenticateRejectsIdentityRemovedWhileWaiting(t *testing.T) {
 		t.Fatal(err)
 	}
 	plain := f.sent.code(phone1)
-	idents, err := f.repo.Q().ListActiveIdentitiesByUser(ctx, first.UserID)
+	idents, err := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, first.UserID)
 	if err != nil || len(idents) != 1 {
 		t.Fatalf("identities: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestReauthenticateRejectsIdentityRemovedWhileWaiting(t *testing.T) {
 	if err := <-done; !errors.Is(err, user.ErrNotAnchor) {
 		t.Fatalf("stale identity must reject reauth with TARGET_NOT_ANCHOR, got %v", err)
 	}
-	sess, err := f.repo.Q().GetActiveSessionByIDAndUser(ctx, db.GetActiveSessionByIDAndUserParams{ID: p.SessionID, UserID: p.UserID})
+	sess, err := user.TestRepoQueries(f.repo).GetActiveSessionByIDAndUser(ctx, db.GetActiveSessionByIDAndUserParams{ID: p.SessionID, UserID: p.UserID})
 	if err != nil || !sess.AuthTime.Equal(p.AuthTime) {
 		t.Fatalf("stale proof advanced auth_time: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestBulkSessionRevocationSerializesOnUser(t *testing.T) {
 			if err := <-done; err != nil {
 				t.Fatal(err)
 			}
-			sessions, err := f.repo.Q().ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: p.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)})
+			sessions, err := user.TestRepoQueries(f.repo).ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: p.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)})
 			want := 1
 			if admin {
 				want = 0

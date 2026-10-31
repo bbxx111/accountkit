@@ -12,6 +12,7 @@ import (
 // QQSubjectMode 决定实例内所有 QQ 应用的固定身份识别方式。
 type QQSubjectMode string
 
+// QQ 身份识别模式：UNIONID 使用 QQ 互联 unionid，OPENID 使用应用内 openid。
 const (
 	QQSubjectModeUnionID QQSubjectMode = "UNIONID"
 	QQSubjectModeOpenID  QQSubjectMode = "OPENID"

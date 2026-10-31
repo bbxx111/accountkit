@@ -11,10 +11,10 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/bbxx111/accountkit/user/db"
+	"github.com/bbxx111/accountkit/internal/userdb"
 )
 
-// Repo 封装连接池与 sqlc Queries。
+// Repo 是领域服务的 PostgreSQL 存储依赖；查询和事务入口仅供包内使用。
 type Repo struct {
 	pool *pgxpool.Pool
 	q    *db.Queries
@@ -25,12 +25,12 @@ func NewRepo(pool *pgxpool.Pool) *Repo {
 	return &Repo{pool: pool, q: db.New(pool)}
 }
 
-// Q 返回非事务 Queries。
-func (r *Repo) Q() *db.Queries { return r.q }
+// queries 返回非事务 Queries。
+func (r *Repo) queries() *db.Queries { return r.q }
 
-// WithTxRaw 在一个事务内执行 fn，同时把 pgx.Tx 交给 fn（purge 需要把同一事务传给宿主 Anonymizer）；
+// withTxRaw 在一个事务内执行 fn，同时把 pgx.Tx 交给 fn（purge 需要把同一事务传给宿主 Anonymizer）；
 // fn 返回错误或 panic 时回滚。
-func (r *Repo) WithTxRaw(ctx context.Context, fn func(tx pgx.Tx, q *db.Queries) error) (err error) {
+func (r *Repo) withTxRaw(ctx context.Context, fn func(tx pgx.Tx, q *db.Queries) error) (err error) {
 	return r.withTxRawOptions(ctx, pgx.TxOptions{}, fn)
 }
 
@@ -68,13 +68,13 @@ func (r *Repo) withTxRawOptions(ctx context.Context, options pgx.TxOptions, fn f
 	return nil
 }
 
-// WithTx 在一个事务内执行 fn；fn 返回错误或 panic 时回滚。
-func (r *Repo) WithTx(ctx context.Context, fn func(q *db.Queries) error) error {
-	return r.WithTxRaw(ctx, func(_ pgx.Tx, q *db.Queries) error { return fn(q) })
+// withTx 在一个事务内执行 fn；fn 返回错误或 panic 时回滚。
+func (r *Repo) withTx(ctx context.Context, fn func(q *db.Queries) error) error {
+	return r.withTxRaw(ctx, func(_ pgx.Tx, q *db.Queries) error { return fn(q) })
 }
 
-// IsUniqueViolation 报告 err 是否为 PostgreSQL 唯一约束冲突（SQLSTATE 23505）。
-func IsUniqueViolation(err error) bool {
+// isUniqueViolation 报告 err 是否为 PostgreSQL 唯一约束冲突（SQLSTATE 23505）。
+func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }

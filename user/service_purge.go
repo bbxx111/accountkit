@@ -13,12 +13,12 @@ import (
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/audit/authentication"
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/observability"
-	"github.com/bbxx111/accountkit/user/db"
 )
 
-// PurgeBatchSize 是 purge 任务每次取批的账号数；批内每个账号独立事务。
-const PurgeBatchSize = 100
+// purgeBatchSize 是 purge 任务每次取批的账号数；批内每个账号独立事务。
+const purgeBatchSize = 100
 
 // Use the existing authentication enum as the single action registry. Business
 // events keep all data, even when their JSON contains an accountkit-shaped key.
@@ -26,10 +26,10 @@ func authenticationAuditActions() []string {
 	return authentication.Actions()
 }
 
-// PurgeCoveredTables 登记含 user_id 列或通用审计 JSON 账号引用的表在 purge 中的处理方式或豁免理由。
+// purgeCoveredTables 登记含 user_id 列或通用审计 JSON 账号引用的表在 purge 中的处理方式或豁免理由。
 // 新增含 user_id 的表必须在此登记并在 purgeOne 中处理（或写明豁免理由），否则 TestPurgeCoversEveryTableWithUserID
 // 会失败。宿主业务表由宿主的 Anonymizer.Tables 与宿主自己的覆盖性测试负责。
-var PurgeCoveredTables = map[string]string{
+var purgeCoveredTables = map[string]string{
 	"sign_in_completion_flow": "按 user_id 与 proof_user_ids 在账号锁之后删除关联流程，清除加密证明及完成结果",
 	"identity":                "全部行（含已解绑的软删行）软删；subject_digest / provider_subject 替换为随机值；密文、provider_meta、hint、密钥版本置 NULL（AnonymizeIdentity）",
 	"session":                 "豁免 user_id 置空：全部会话在 purge 事务内吊销并写吊销集；账号行与身份已匿名化，user_id 不再指向可识别的自然人；行由 CleanupSessions 在 SessionRetention 后物理删除",
@@ -37,8 +37,18 @@ var PurgeCoveredTables = map[string]string{
 	"purged_user":             "豁免：本表即 purge 事务写入的已清理记录，只含 user_id 与时间，供外部业务服务拉取后幂等清理；不含身份目标或资料，按可选保留期由 CleanupPurgedUsers 删除",
 }
 
+// PurgeCoveredTables 返回库内账号引用表的清理覆盖登记快照。
+// 调用方修改返回的 map 不影响库内登记；宿主业务表仍由 Anonymizer.Tables 及宿主覆盖性测试负责。
+func PurgeCoveredTables() map[string]string {
+	covered := make(map[string]string, len(purgeCoveredTables))
+	for table, reason := range purgeCoveredTables {
+		covered[table] = reason
+	}
+	return covered
+}
+
 // PurgeDueUsers 匿名化所有 purge_time 已到的 PENDING_DELETION 账号（§3.5），返回成功 purge 的账号数。
-// 按批取（PurgeBatchSize）、逐账号独立事务：某账号失败则记 Error 日志、跳过，批结束后返回首个错误
+// 按批取（每批 100 个账号）、逐账号独立事务：某账号失败则记 Error 日志、跳过，批结束后返回首个错误
 // （维护运行器记日志，下一轮重试），且不再取下一批——避免在同一个坏账号上空转。
 // 一批全部成功且批满时继续取下一批。
 func (s *Service) PurgeDueUsers(ctx context.Context) (total int, resultErr error) {
@@ -50,7 +60,7 @@ func (s *Service) PurgeDueUsers(ctx context.Context) (total int, resultErr error
 			return total, err
 		}
 		now := s.now()
-		ids, err := s.d.Repo.Q().ListUsersDueForPurge(ctx, db.ListUsersDueForPurgeParams{Now: now, BatchSize: PurgeBatchSize})
+		ids, err := s.d.Repo.queries().ListUsersDueForPurge(ctx, db.ListUsersDueForPurgeParams{Now: now, BatchSize: purgeBatchSize})
 		if err != nil {
 			return total, fmt.Errorf("user: list users due for purge: %w", err)
 		}
@@ -74,7 +84,7 @@ func (s *Service) PurgeDueUsers(ctx context.Context) (total int, resultErr error
 		if firstErr != nil {
 			return total, firstErr
 		}
-		if len(ids) < PurgeBatchSize {
+		if len(ids) < purgeBatchSize {
 			return total, nil
 		}
 	}

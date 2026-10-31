@@ -52,6 +52,7 @@ type Error struct {
 	RetryAfterSeconds int
 }
 
+// Error 返回 "<Status>[/<Reason>]: <Message>" 形式的文本，供日志与测试使用。
 func (e *Error) Error() string {
 	if e.Reason != "" {
 		return e.Status + "/" + e.Reason + ": " + e.Message

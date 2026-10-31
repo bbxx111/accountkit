@@ -12,10 +12,10 @@ import (
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	ob "github.com/bbxx111/accountkit/observability"
 	"github.com/bbxx111/accountkit/session/grace"
 	"github.com/bbxx111/accountkit/session/revocation"
-	"github.com/bbxx111/accountkit/user/db"
 )
 
 // refresh 实现 refresh_token grant。
@@ -28,7 +28,7 @@ func (s *Service) refresh(ctx context.Context, refreshToken string, meta Meta) (
 	hash := hashRefresh(refreshToken)
 	ev := audit.AuthenticationEvent{IP: meta.IP, RequestID: meta.RequestID}
 
-	sess, err := s.d.Repo.Q().GetSessionByRefreshHash(ctx, hash)
+	sess, err := s.d.Repo.queries().GetSessionByRefreshHash(ctx, hash)
 	switch {
 	case err == nil:
 		ev.UserID, ev.SessionID, ev.DeviceID = sess.UserID, sess.ID, sess.DeviceID
@@ -50,7 +50,7 @@ func (s *Service) refresh(ctx context.Context, refreshToken string, meta Meta) (
 		return TokenResult{}, fmt.Errorf("user: lookup session: %w", err)
 	}
 
-	sess, err = s.d.Repo.Q().GetSessionByPreviousRefreshHash(ctx, hash)
+	sess, err = s.d.Repo.queries().GetSessionByPreviousRefreshHash(ctx, hash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		s.observationReason(ctx, ob.ReasonUnknownToken)
 		ev.Type, ev.Result, ev.Reason = enum.EventRefreshRejected, enum.ResultFailure, "UNKNOWN_TOKEN"
@@ -87,7 +87,7 @@ func (s *Service) refresh(ctx context.Context, refreshToken string, meta Meta) (
 	if err := s.ensureRefreshSessionActive(ctx, sess, now, ev); err != nil {
 		return TokenResult{}, err
 	}
-	if err != nil || !ok || !pair.AccessExpiresAt.After(now) || !pair.RefreshExpiresAt.After(now) {
+	if err != nil || !ok || !pair.AccessExpireTime.After(now) || !pair.RefreshExpireTime.After(now) {
 		switch {
 		case err != nil:
 			s.observationReason(ctx, ob.ReasonGraceReadError)
@@ -106,7 +106,7 @@ func (s *Service) refresh(ctx context.Context, refreshToken string, meta Meta) (
 	s.observationMode(ctx, ob.RefreshGrace)
 	return TokenResult{
 		AccessToken: pair.AccessToken, RefreshToken: pair.RefreshToken,
-		ExpiresIn: int(pair.AccessExpiresAt.Sub(now).Seconds()), RefreshExpiresIn: int(pair.RefreshExpiresAt.Sub(now).Seconds()),
+		ExpiresIn: int(pair.AccessExpireTime.Sub(now).Seconds()), RefreshExpiresIn: int(pair.RefreshExpireTime.Sub(now).Seconds()),
 		Scope: pair.Scope, UserID: sess.UserID,
 	}, nil
 }
@@ -134,7 +134,7 @@ func (s *Service) ensureSessionRefreshable(ctx context.Context, sess db.Session,
 	if err := s.ensureRefreshSessionActive(ctx, sess, now, ev); err != nil {
 		return now, err
 	}
-	u, err := s.d.Repo.Q().GetUserByID(ctx, sess.UserID)
+	u, err := s.d.Repo.queries().GetUserByID(ctx, sess.UserID)
 	if err != nil {
 		return now, fmt.Errorf("user: load user for refresh: %w", err)
 	}
@@ -175,7 +175,7 @@ func (s *Service) ensureSessionRefreshable(ctx context.Context, sess db.Session,
 // （拉黑 access token 代价低且安全）；但 DB 更新失败时把错误包装后返回，调用方必须
 // 向上传播——不能把一次失败的遏制动作当作已完成的业务拒绝来审计或返回哨兵错误。
 func (s *Service) revokeSession(ctx context.Context, sid string, reason enum.RevokeReason, now time.Time) error {
-	_, dbErr := s.d.Repo.Q().RevokeSession(ctx, db.RevokeSessionParams{ID: sid, Reason: &reason, Now: now})
+	_, dbErr := s.d.Repo.queries().RevokeSession(ctx, db.RevokeSessionParams{ID: sid, Reason: &reason, Now: now})
 	s.revokeInSet(ctx, sid)
 	if dbErr != nil {
 		s.d.Logger.Error("user: revoke session failed", "sid", sid, "reason", reason.String(), "err", dbErr)
@@ -240,7 +240,7 @@ func (s *Service) rotate(ctx context.Context, sess db.Session, oldHash []byte, e
 		}
 		if err := s.gracePut(ctx, oldHash, grace.Pair{
 			AccessToken: res.AccessToken, RefreshToken: plain, Scope: scope,
-			AccessExpiresAt: now.Add(s.d.AccessTTL), RefreshExpiresAt: expire,
+			AccessExpireTime: now.Add(s.d.AccessTTL), RefreshExpireTime: expire,
 		}, s.d.RefreshGrace); err != nil {
 			graceWriteFailed = true
 			// Redis 不可用：轮换仍然成功，只是宽限内重放会被拒绝（退化语义，见 Refresh 的宽限分支）。
@@ -262,9 +262,9 @@ func (s *Service) rotate(ctx context.Context, sess db.Session, oldHash []byte, e
 func (s *Service) Revoke(ctx context.Context, refreshToken string, meta Meta) error {
 	now := s.now()
 	hash := hashRefresh(refreshToken)
-	sess, err := s.d.Repo.Q().GetSessionByRefreshHash(ctx, hash)
+	sess, err := s.d.Repo.queries().GetSessionByRefreshHash(ctx, hash)
 	if errors.Is(err, pgx.ErrNoRows) {
-		sess, err = s.d.Repo.Q().GetSessionByPreviousRefreshHash(ctx, hash)
+		sess, err = s.d.Repo.queries().GetSessionByPreviousRefreshHash(ctx, hash)
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
@@ -276,7 +276,7 @@ func (s *Service) Revoke(ctx context.Context, refreshToken string, meta Meta) er
 		return nil
 	}
 	reason := enum.RevokeUserLogout
-	if _, err := s.d.Repo.Q().RevokeSession(ctx, db.RevokeSessionParams{ID: sess.ID, Reason: &reason, Now: now}); err != nil {
+	if _, err := s.d.Repo.queries().RevokeSession(ctx, db.RevokeSessionParams{ID: sess.ID, Reason: &reason, Now: now}); err != nil {
 		return fmt.Errorf("user: revoke: %w", err)
 	}
 	s.revokeInSet(ctx, sess.ID)
@@ -321,7 +321,7 @@ func (s *Service) authenticateStrict(ctx context.Context, rawAccess string) (Pri
 	if !ids.Valid(ids.User, c.UserID) || !ids.Valid(ids.Session, c.SessionID) {
 		return Principal{}, fmt.Errorf("%w: malformed sub/sid", ErrInvalidToken)
 	}
-	_, err = s.d.Repo.Q().GetActiveSessionByIDAndUser(ctx, db.GetActiveSessionByIDAndUserParams{ID: c.SessionID, UserID: c.UserID})
+	_, err = s.d.Repo.queries().GetActiveSessionByIDAndUser(ctx, db.GetActiveSessionByIDAndUserParams{ID: c.SessionID, UserID: c.UserID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		s.observationReason(ctx, ob.ReasonSessionRevoked)
 		return Principal{}, fmt.Errorf("%w: session revoked or not found", ErrInvalidToken)
@@ -346,7 +346,7 @@ type SessionInfo struct {
 
 // ListSessions 列出用户的活跃会话（不分页）。
 func (s *Service) ListSessions(ctx context.Context, userID, currentSID string) ([]SessionInfo, error) {
-	rows, err := s.d.Repo.Q().ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: userID, Now: sessionTime(s.now())})
+	rows, err := s.d.Repo.queries().ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: userID, Now: sessionTime(s.now())})
 	if err != nil {
 		return nil, fmt.Errorf("user: list sessions: %w", err)
 	}
@@ -356,7 +356,7 @@ func (s *Service) ListSessions(ctx context.Context, userID, currentSID string) (
 	}
 	snapshots := map[string]db.SessionClientInfo{}
 	if len(sessionIDs) > 0 {
-		infos, err := s.d.Repo.Q().ListSessionClientInfosByUser(ctx, db.ListSessionClientInfosByUserParams{UserID: userID, SessionIds: sessionIDs})
+		infos, err := s.d.Repo.queries().ListSessionClientInfosByUser(ctx, db.ListSessionClientInfosByUserParams{UserID: userID, SessionIds: sessionIDs})
 		if err != nil {
 			return nil, fmt.Errorf("user: list session client snapshots: %w", err)
 		}
@@ -385,14 +385,14 @@ func (s *Service) ListSessions(ctx context.Context, userID, currentSID string) (
 // RevokeSession 踢出指定设备；不属于该用户或已吊销 → ErrNotFound（AGENTS.md：外部/不存在资源一律 404）。
 func (s *Service) RevokeSession(ctx context.Context, userID, sid string, meta Meta) error {
 	now := s.now()
-	if _, err := s.d.Repo.Q().GetActiveSessionByIDAndUser(ctx, db.GetActiveSessionByIDAndUserParams{ID: sid, UserID: userID}); err != nil {
+	if _, err := s.d.Repo.queries().GetActiveSessionByIDAndUser(ctx, db.GetActiveSessionByIDAndUserParams{ID: sid, UserID: userID}); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
 		return fmt.Errorf("user: lookup session: %w", err)
 	}
 	reason := enum.RevokeUserRevokedDevice
-	n, err := s.d.Repo.Q().RevokeSession(ctx, db.RevokeSessionParams{ID: sid, Reason: &reason, Now: now})
+	n, err := s.d.Repo.queries().RevokeSession(ctx, db.RevokeSessionParams{ID: sid, Reason: &reason, Now: now})
 	if err != nil {
 		return fmt.Errorf("user: revoke session: %w", err)
 	}
@@ -451,7 +451,7 @@ func (s *Service) CleanupSessions(ctx context.Context) (total int64, resultErr e
 		if err := ctx.Err(); err != nil {
 			return total, err
 		}
-		n, err := s.d.Repo.Q().DeleteStaleSessions(ctx, db.DeleteStaleSessionsParams{Before: before, BatchSize: sessionCleanupBatch})
+		n, err := s.d.Repo.queries().DeleteStaleSessions(ctx, db.DeleteStaleSessionsParams{Before: before, BatchSize: sessionCleanupBatch})
 		if err != nil {
 			return total, fmt.Errorf("user: delete stale sessions: %w", err)
 		}

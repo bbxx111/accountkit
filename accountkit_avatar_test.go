@@ -2,10 +2,9 @@ package accountkit_test
 
 import (
 	"encoding/json"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"strings"
 	"testing"
-
-	"github.com/bbxx111/accountkit/user"
 )
 
 func TestAvatarHTTPIntegration(t *testing.T) {
@@ -28,7 +27,7 @@ func TestAvatarHTTPIntegration(t *testing.T) {
 	if status := call(`{"display_name":"name","avatar_url":" https://example.com/a?size=64 "}`); status != 200 {
 		t.Fatal(status)
 	}
-	row, err := user.NewRepo(pool).Q().GetUserByID(t.Context(), token.UserID)
+	row, err := db.New(pool).GetUserByID(t.Context(), token.UserID)
 	if err != nil || row.AvatarUrl == nil || *row.AvatarUrl != "https://example.com/a?size=64" || row.DisplayName == nil || *row.DisplayName != "name" {
 		t.Fatalf("persisted %+v %v", row, err)
 	}
@@ -36,7 +35,7 @@ func TestAvatarHTTPIntegration(t *testing.T) {
 		if status := call(body); status != 400 {
 			t.Fatalf("invalid status %d", status)
 		}
-		after, _ := user.NewRepo(pool).Q().GetUserByID(t.Context(), token.UserID)
+		after, _ := db.New(pool).GetUserByID(t.Context(), token.UserID)
 		if !after.UpdateTime.Equal(row.UpdateTime) || *after.DisplayName != "name" || *after.AvatarUrl != *row.AvatarUrl {
 			t.Fatal("invalid request changed account")
 		}
@@ -51,7 +50,7 @@ func TestAvatarHTTPIntegration(t *testing.T) {
 	if status := call(`{"avatar_url":""}`); status != 200 {
 		t.Fatal(status)
 	}
-	row, _ = user.NewRepo(pool).Q().GetUserByID(t.Context(), token.UserID)
+	row, _ = db.New(pool).GetUserByID(t.Context(), token.UserID)
 	if row.AvatarUrl != nil || *row.DisplayName != "other" {
 		t.Fatal("clear semantics")
 	}

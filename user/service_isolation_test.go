@@ -11,9 +11,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/user"
 	"github.com/bbxx111/accountkit/user/code"
-	"github.com/bbxx111/accountkit/user/db"
 )
 
 // Give every service connection the host default, including connections opened
@@ -49,7 +49,7 @@ func TestServiceTransactionsUseReadCommitted(t *testing.T) {
 				first := f.signIn(t, enum.IdentityPhone, phone1, dev1)
 				p := principalOf(t, f, first)
 				contextBindEmail(t, f, p, email1)
-				idents, err := f.repo.Q().ListActiveIdentitiesByUser(ctx, p.UserID)
+				idents, err := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, p.UserID)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -155,24 +155,26 @@ func TestServiceTransactionsUseReadCommitted(t *testing.T) {
 				}
 			})
 
-			t.Run("public-repo-host-default", func(t *testing.T) {
+			// The raw helper's host-default isolation is an internal invariant;
+			// the domain operations above are the public READ COMMITTED contract.
+			t.Run("internal-repo-host-default", func(t *testing.T) {
 				f := isolationFixture(t, isolation)
 				ctx := context.Background()
 				first := f.signIn(t, enum.IdentityPhone, phone1, dev1)
-				if err := f.repo.WithTxRaw(ctx, func(tx pgx.Tx, _ *db.Queries) error {
+				if err := user.TestRepoWithTxRaw(f.repo, ctx, func(tx pgx.Tx, _ *db.Queries) error {
 					var got string
 					if err := tx.QueryRow(ctx, `SHOW transaction_isolation`).Scan(&got); err != nil {
 						return err
 					}
 					if got != isolation {
-						return fmt.Errorf("public WithTxRaw isolation=%q want=%q", got, isolation)
+						return fmt.Errorf("internal withTxRaw isolation=%q want=%q", got, isolation)
 					}
 					return nil
 				}); err != nil {
 					t.Fatal(err)
 				}
 				// Both higher host levels must retain their first-read snapshot.
-				if err := f.repo.WithTx(ctx, func(q *db.Queries) error {
+				if err := user.TestRepoWithTx(f.repo, ctx, func(q *db.Queries) error {
 					before, err := q.GetUserByID(ctx, first.UserID)
 					if err != nil {
 						return err
@@ -185,7 +187,7 @@ func TestServiceTransactionsUseReadCommitted(t *testing.T) {
 						return err
 					}
 					if before.DisplayName != nil || after.DisplayName != nil {
-						return errors.New("public WithTx lost host snapshot isolation")
+						return errors.New("internal withTx lost host snapshot isolation")
 					}
 					return nil
 				}); err != nil {

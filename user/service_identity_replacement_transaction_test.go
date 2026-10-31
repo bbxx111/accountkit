@@ -14,11 +14,11 @@ import (
 
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/pii"
 	"github.com/bbxx111/accountkit/session/revocation"
 	"github.com/bbxx111/accountkit/user"
 	"github.com/bbxx111/accountkit/user/code"
-	"github.com/bbxx111/accountkit/user/db"
 	"github.com/jackc/pgx/v5"
 	"github.com/redis/go-redis/v9"
 )
@@ -66,7 +66,7 @@ func TestReplaceIdentityConflictAndKeyRotation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			row, err := f.repo.Q().GetActiveIdentityByIDAndUser(ctx, db.GetActiveIdentityByIDAndUserParams{ID: out.ID, UserID: p.UserID})
+			row, err := user.TestRepoQueries(f.repo).GetActiveIdentityByIDAndUser(ctx, db.GetActiveIdentityByIDAndUserParams{ID: out.ID, UserID: p.UserID})
 			if err != nil || row.DigestKeyVersion == nil || *row.DigestKeyVersion != 2 || row.CipherKeyVersion == nil || *row.CipherKeyVersion != 2 {
 				t.Fatalf("active key versions: %+v %v", row, err)
 			}
@@ -105,7 +105,7 @@ func TestReplaceIdentityRollback(t *testing.T) {
 			if err != nil || len(list) != 1 || list[0].ID != id {
 				t.Fatalf("rollback identity: %+v %v", list, err)
 			}
-			sessions, err := f.repo.Q().ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: p.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)})
+			sessions, err := user.TestRepoQueries(f.repo).ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: p.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)})
 			if err != nil || len(sessions) != 2 {
 				t.Fatalf("partial revocation: %+v %v", sessions, err)
 			}
@@ -404,7 +404,7 @@ func TestReplaceIdentityUniqueInsertConflict(t *testing.T) {
 		t.Fatal(err)
 	}
 	dv, ev := int16(version), int16(cv)
-	if _, err := f.repo.Q().CreateIdentity(ctx, db.CreateIdentityParams{ID: newID, UserID: other.UserID, Kind: enum.IdentityPhone, SubjectDigest: &digest, DigestKeyVersion: &dv, SubjectCiphertext: ct, CipherKeyVersion: &ev}); err != nil {
+	if _, err := user.TestRepoQueries(f.repo).CreateIdentity(ctx, db.CreateIdentityParams{ID: newID, UserID: other.UserID, Kind: enum.IdentityPhone, SubjectDigest: &digest, DigestKeyVersion: &dv, SubjectCiphertext: ct, CipherKeyVersion: &ev}); err != nil {
 		t.Fatal(err)
 	}
 	if err := barrier.Commit(ctx); err != nil {

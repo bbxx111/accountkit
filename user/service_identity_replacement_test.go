@@ -98,7 +98,7 @@ func TestReplaceIdentity(t *testing.T) {
 			if _, err := f.svc.Authenticate(ctx, other.AccessToken); !errors.Is(err, user.ErrInvalidToken) {
 				t.Fatalf("other access: %v", err)
 			}
-			sess, err := f.repo.Q().GetSessionByRefreshHash(ctx, sha256Of(rotated.RefreshToken))
+			sess, err := user.TestRepoQueries(f.repo).GetSessionByRefreshHash(ctx, sha256Of(rotated.RefreshToken))
 			if err != nil || sess.RevokeReason == nil || *sess.RevokeReason != enum.RevokeIdentityReplaced {
 				t.Fatalf("revoke reason: %+v %v", sess, err)
 			}
@@ -271,7 +271,7 @@ func TestReplaceIdentityNewTargetProof(t *testing.T) {
 		wrong = "999999"
 	}
 	for range 5 {
-		if _, err := f.svc.ReplaceIdentity(context.Background(), p, id, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, wrong), meta1); !errors.Is(err, code.ErrInvalid) && !errors.Is(err, code.ErrExhausted) {
+		if _, err := f.svc.ReplaceIdentity(context.Background(), p, id, f.credential(enum.PurposeBind, enum.IdentityPhone, phone2, wrong), meta1); !errors.Is(err, code.ErrInvalid) {
 			t.Fatalf("bad attempt: %v", err)
 		}
 	}

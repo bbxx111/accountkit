@@ -11,7 +11,8 @@ import (
 
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
-	"github.com/bbxx111/accountkit/user/db"
+	"github.com/bbxx111/accountkit/internal/userdb"
+	"github.com/bbxx111/accountkit/user"
 )
 
 // TestSessionExpiryQueries 验证严格到期过滤与写入保护，并保留旧 access 所需的未吊销查询/撤销范围。
@@ -21,7 +22,7 @@ func TestSessionExpiryQueries(t *testing.T) {
 		ctx := context.Background()
 		at := time.Date(2030, 1, 2, 3, 4, 5, 123456000, time.UTC)
 		*f.clock = at.In(time.FixedZone("UTC+8", 8*3600)).Add(999 * time.Nanosecond)
-		q := f.repo.Q()
+		q := user.TestRepoQueries(f.repo)
 		uid, _ := ids.New(ids.User)
 		other, _ := ids.New(ids.User)
 		for _, id := range []string{uid, other} {

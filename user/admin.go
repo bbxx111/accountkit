@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/enum"
-	"github.com/bbxx111/accountkit/user/db"
+	"github.com/bbxx111/accountkit/internal/userdb"
 )
 
 // Admin 是执行管理动作的管理端主体，来自宿主的 OIDC verifier（Issuer + Subject 才唯一标识一个人）。

@@ -4,9 +4,9 @@
 
 ## 客户端描述透传与 CORS
 
-以下能力随v0.4.0发布。旧客户端只带X-Device-Id/Name仍可认证。新描述只用于成功验证码/IdP登录、completeSignIn、reauthenticate和新轮POST /token；发码、绑定、换绑、当前GET、普通业务、Authenticate/内省不解析或写入它们。显式非法描述在消费凭证前400 INVALID_CLIENT_INFO，token为OAuth invalid_request；自动输入缺失/无法识别不阻断认证。
+只带X-Device-Id/Name的客户端可正常认证，客户端描述头均可选。描述只用于成功验证码/IdP登录、completeSignIn、reauthenticate和新轮POST /token；发码、绑定、换绑、当前GET、普通业务、Authenticate/内省不解析或写入它们。显式非法描述在消费凭证前400 INVALID_CLIENT_INFO，token为OAuth invalid_request；自动输入缺失/无法识别不阻断认证。
 
-按使用场景将下列可选头加入代理透传与跨域Access-Control-Allow-Headers，并保留原Authorization、Content-Type、X-Device-Id、X-Device-Name、X-Request-Id：
+按使用场景将下列可选头加入代理透传与跨域Access-Control-Allow-Headers，并保留Authorization、Content-Type、X-Device-Id、X-Device-Name、X-Request-Id：
 
 - X-Client-Type、X-Client-OS-Name、X-Client-OS-Version。
 - X-Client-Browser-Name、X-Client-Browser-Version、X-Client-App-Name、X-Client-App-Version。
@@ -15,11 +15,11 @@
 
 默认解析也使用User-Agent与浏览器可用的Sec-CH-UA、Sec-CH-UA-Full-Version-List、Sec-CH-UA-Platform、Sec-CH-UA-Platform-Version、Sec-CH-UA-Model、Sec-CH-UA-Mobile；代理不要丢弃这些实际可用输入。浏览器控制的头由浏览器决定是否发送，不要求前端脚本强行设置、不主动请求额外高熵提示；字段可以缺省。UA和全部Sec-CH-UA*值分别限2048字节，超限/畸形只忽略相应自动解析部分，保留合法显式字段。
 
-跨域预检由宿主/网关配置允许Origin、方法及这些实际使用的头，库不自动提供通用CORS策略。按客户端读取需要Expose-Headers包含WWW-Authenticate、Retry-After、X-Request-Id；保留Cache-Control: no-store和错误体。新GET所有响应都no-store；查询数据库依赖故障保持503，不能被代理改成401以触发用户退出。
+跨域预检由宿主/网关配置允许Origin、方法及这些实际使用的头，库不自动提供通用CORS策略。`/token`、`/revoke` 接受 `application/x-www-form-urlencoded` 后，这两个端点的表单 POST 属于 CORS 简单请求、不触发预检；端点不依赖 Cookie、凭据随请求体携带，不构成新的凭据暴露面，但允许的 Origin 与响应头暴露仍须由网关显式配置。按客户端读取需要Expose-Headers包含WWW-Authenticate、Retry-After、X-Request-Id；保留Cache-Control: no-store和错误体。当前会话GET所有响应都no-store；查询数据库依赖故障保持503，不能被代理改成401以触发用户退出。
 
 优先级为合法显式值、Client Hints、UA。全部描述均自报，不能用于授权、限流身份或可信设备判断，也不代替可信ClientIP。默认不信任X-Forwarded-User-Agent等任意转发头；BFF由宿主Deps.ClientInfo明确适配原客户端信息，不能将BFF客户端库UA称为终端浏览器。原始UA、hints与完整描述不得进入日志/追踪/审计正文或指标标签；仅持久化有界结构化摘要，不保存原始UA、IP或位置。
 
-这些输入只在同一请求内overlay；规范化非空描述作为单份观察整体替换，nil/空不写入，没有跨请求补字段。app/browser可并存，孤立version/build合法。制造商、build和extensions可由Go/宿主回调提供，本次没有新增对应显式头、任意JSON请求体或JSON头；网关不应自行引入此类透传协议。宿主仍须确定扩展允许来源、语义与隐私白名单，固定敏感键检查不能识别任意值中的隐私。nested响应与扩展限制见[README](../README.md#当前会话与客户端描述)及[Go指南](go-integration.md#当前会话解绑与客户端描述)，当前验收见[简化记录](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)。
+这些输入只在同一请求内overlay；规范化非空描述作为单份观察整体替换，nil/空不写入，没有跨请求补字段。app/browser可并存，孤立version/build合法。制造商、build和extensions可由Go/宿主回调提供，没有对应显式头、任意JSON请求体或JSON头；网关不应自行引入此类透传协议。宿主仍须确定扩展允许来源、语义与隐私白名单，固定敏感键检查不能识别任意值中的隐私。nested响应与扩展限制见[README](../README.md#当前会话与客户端描述)及[Go指南](go-integration.md#当前会话解绑与客户端描述)。
 
 ## 入口与直连边界
 
@@ -33,11 +33,11 @@
 | 探针 | `GET /healthz`、`GET /readyz` | 仅编排系统和运维来源可达；探针无消费者/管理员认证 |
 | 指标 | `GET /metrics`（显式启用时） | 仅授权监控来源可达；无内建鉴权，禁止公网访问 |
 
-JWKS 是公开信息，开放它不得连带开放内省、管理、探针或 `/v1/*` 通配路由；网关若缓存 JWKS，缓存时长不得超过服务端的 `Cache-Control: public, max-age=300`，否则密钥轮换的等待顺序会失效。业务服务全部在内网时可以不对公网开放 JWKS。禁止因内省位于 `/v1` 下就无条件公开 `/v1/*`。公网访问内省、探针和指标应在网关被拒绝，且不进入后端；是否允许管理员入口由单独策略决定。旧 `/internal/v1/introspect` 返回404，不重定向含凭据请求。网络策略、防火墙或工作负载策略还须把后端端口限制为网关与受信任内部调用方，验证未授权来源不能直连绕过。路径名称、回环开发示例和 Basic 认证都不能自动建立生产网络隔离。
+JWKS 是公开信息，开放它不得连带开放内省、管理、探针或 `/v1/*` 通配路由；网关若缓存 JWKS，缓存时长不得超过服务端的 `Cache-Control: public, max-age=300`，否则密钥轮换的等待顺序会失效。业务服务全部在内网时可以不对公网开放 JWKS。禁止因内省位于 `/v1` 下就无条件公开 `/v1/*`。公网访问内省、探针和指标应在网关被拒绝，且不进入后端；是否允许管理员入口由单独策略决定。网络策略、防火墙或工作负载策略还须把后端端口限制为网关与受信任内部调用方，验证未授权来源不能直连绕过。路径名称、回环开发示例和 Basic 认证都不能自动建立生产网络隔离。
 
-账号资源沿用 `/v1/users` 及其子资源和自定义动作；管理账号资源沿用 `/admin/v1/users`，响应 name 使用 users 前缀。公网清单须明确包含 `POST /v1/users:sendSignInCompletionCode` 与 `POST /v1/users:completeSignIn`，并分别配置匿名请求频率、突发与在途并发。此前未发布的 `/accounts` 路径不映射、不重定向；`/token`、`/revoke` 和内部内省规则保持。客户端须适配[登录联合结果](compatibility.md#身份策略与登录补全协议升级)。
+账号资源沿用 `/v1/users` 及其子资源和自定义动作；管理账号资源沿用 `/admin/v1/users`，响应 name 使用 users 前缀。公网清单须明确包含 `POST /v1/users:sendSignInCompletionCode` 与 `POST /v1/users:completeSignIn`，并分别配置匿名请求频率、突发与在途并发。客户端须处理登录的 token/pending 联合结果，见 [README](../README.md#身份策略与登录补全)。
 
-v0.4.0 起还须明确增加 GET /v1/users/me/sessions/current（嵌入宿主替换实际前缀），保留消费者Bearer与user/user:bind scope检查；新GET不扩大内部内省/管理/探针开放范围。
+公网清单还须明确包含 GET /v1/users/me/sessions/current（嵌入宿主替换实际前缀），保留消费者Bearer与user/user:bind scope检查；该GET不扩大内部内省/管理/探针开放范围。
 
 网关认证不替代服务认证，也不把消费者 token 转换成管理员或内省身份。内部入口必须原样透传业务服务的 `Authorization: Bearer`，不得剥离、替换，也不得用网关自身的令牌代替业务服务调用内省或已清理用户拉取；`azp` 授权以原调用方令牌为准，见[服务调用认证](accountsvc.md#服务调用认证内省与已清理用户拉取)。直接嵌入库的宿主依原契约注入管理员验证和可信请求元信息，不应仅因请求经过代理就注入未经验证的 Principal。
 
@@ -59,7 +59,7 @@ v0.4.0 起还须明确增加 GET /v1/users/me/sessions/current（嵌入宿主替
 
 生产默认仍要求服务端 TLS；未设/空开关和证书冲突矩阵见[服务手册](accountsvc.md#配置)。显式关闭只控制服务的 HTTP 监听，不影响生产 SMTP TLS、OIDC HTTPS、数据库或 Redis 连接协议，不会自动部署网关/网格。日志说明实际监听协议，不声明外部加密已经验证。第三种方式不能把 Basic 秘密和 token 跨主机无保护地传输，也不能仅凭客户端 `X-Forwarded-Proto` 声称安全；外部代理到应用的每一段都需明确边界和保护措施。
 
-HTTPS 调用方必须校验证书；内省客户端默认拒绝 HTTP，只有调用方主动选择才允许受控应用段 HTTP。客户端不因服务开关、响应 Location 或转发头自动降级，也不跟随内省重定向。配置重启生效，迁移与整体回退见[兼容说明](compatibility.md#服务单监听与传输迁移)。
+HTTPS 调用方必须校验证书；内省客户端默认拒绝 HTTP，只有调用方主动选择才允许受控应用段 HTTP。客户端不因服务开关、响应 Location 或转发头自动降级，也不跟随内省重定向。配置重启生效；回退须成套恢复二进制、监听/证书配置、调用方和网关策略，见[服务手册](accountsvc.md#邮件匿名化与停机)。
 
 ## 来源 IP 与请求标识
 

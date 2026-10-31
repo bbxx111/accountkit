@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bbxx111/accountkit/user/db"
+	"github.com/bbxx111/accountkit/internal/userdb"
 )
 
 // ErrPurgedUserCursorAhead 表示游标超过了已分配的最大序号：数据库被恢复到较早备份或重新部署后，
@@ -35,7 +35,7 @@ func (s *Service) ListPurgedUsers(ctx context.Context, after int64, limit int) (
 	if after < 0 || limit < 1 || limit > MaxPurgedUserPage {
 		return nil, after, fmt.Errorf("%w: cursor must be non-negative and limit within 1..%d", ErrInvalidArgument, MaxPurgedUserPage)
 	}
-	q := s.d.Repo.Q()
+	q := s.d.Repo.queries()
 	if after > 0 {
 		last, err := q.GetPurgedUserSeqLastValue(ctx)
 		if err != nil {
@@ -69,7 +69,7 @@ func (s *Service) CleanupPurgedUsers(ctx context.Context) (total int64, err erro
 		if err := ctx.Err(); err != nil {
 			return total, err
 		}
-		n, err := s.d.Repo.Q().DeletePurgedUsersBefore(ctx, db.DeletePurgedUsersBeforeParams{Before: before, BatchSize: purgedUserCleanupBatch})
+		n, err := s.d.Repo.queries().DeletePurgedUsersBefore(ctx, db.DeletePurgedUsersBeforeParams{Before: before, BatchSize: purgedUserCleanupBatch})
 		if err != nil {
 			return total, fmt.Errorf("user: delete expired purged users: %w", err)
 		}

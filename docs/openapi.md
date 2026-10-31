@@ -1,6 +1,6 @@
 # HTTP OpenAPI 契约
 
-本契约描述 v0.7.2 的内置 HTTP handler：操作集合、字段与错误码与 v0.7.1 相同，仅管理面 `:reveal` 的 200 响应新增 `Cache-Control: no-store` 头声明；v0.7.1 与 v0.7.0 相同，v0.7.0 的操作集合与 v0.6.0 相同，四个发码操作补充部署的短信发送器不支持号码时的 400 `TARGET_NOT_SUPPORTED`；v0.6.0 在 v0.5.0 上将身份凭证请求体统一为 `{"kind","credential"}` 并增加各第三方提供方类型。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
+本契约描述 v1.0.0（候选）的内置 HTTP handler。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
 
 ## 两个独立 HTTP 面
 
@@ -11,7 +11,9 @@
 
 两份文件各自独立，使用 [OpenAPI 3.1.0](https://spec.openapis.org/oas/v3.1.0.html) 与 JSON Schema 描述。所有 paths 均为相对 handler 路由，`servers[0].variables.basePath.default` 由宿主调整为实际挂载前缀或完整服务 URL。路径中的 `user` / `session` / `identity` 是原始 `u_` / `s_` / `i_` ID；响应 `name` 才是 `users/{id}` 等资源名。
 
-`info.version` 标识已发布的 v0.7.2 接口契约，操作集合与 v0.7.1 相同，管理契约增加 `:reveal` 响应头声明。文件不包含 accountsvc 专属的 `/v1/introspect`、`/v1/purgedUsers`、探针或管理员登录流程，也不描述宿主自有业务接口；这些不能由库契约自动推导。
+`info.version` 为 `v1.0.0`，与库版本一致。文件不包含 accountsvc 专属的 `/v1/introspect`、`/v1/purgedUsers`、探针或管理员登录流程，也不描述宿主自有业务接口；这些不能由库契约自动推导。
+
+`POST /token` 与 `POST /revoke` 的 `requestBody` 同时声明 `application/json` 与 `application/x-www-form-urlencoded`：`Content-Type` 媒体类型为表单时按 RFC 6749 §3.2 / RFC 7009 §2.1 解析（忽略 `charset`，只读请求体，同名参数重复（无论是否识别）为 `invalid_request`，未识别参数忽略），其他情况（含缺失 `Content-Type`）沿用严格 JSON 规则并拒绝未知字段；两种编码共用大小上限、校验、错误映射与响应。请求中的 `scope` 按 RFC 6749 §3.3 忽略（`RefreshRequest.scope` 为可选字段，仅为兼容回传 scope 的客户端），签发 scope 以响应 `scope` 为准。其余操作只接受严格 JSON。
 
 消费者使用自己的 Bearer access token。`x-allowed-scopes` 表示允许的 scope 列表，`x-recent-authentication` 表示现有近期认证要求；这些扩展与说明用于接入核对，代码生成器不会自动替宿主实施授权。未标 scope 的 `GET /users/me` 接受任何有效消费者 Bearer scope。
 
@@ -20,26 +22,32 @@
 ## 客户端需要区分的响应
 
 - 登录和 `completeSignIn` 的 HTTP 200 是 `TokenPair` / `PendingSignIn` 的 `oneOf`。补全成功响应仍可能 pending，或返回 `user:bind`；只看状态码不能判断已获得普通业务权限。
+- `oneOf` 没有 discriminator：按响应是否含 `access_token` 收窄，有则为 `TokenPair`，否则为 `PendingSignIn`。`next_action` 是可扩展枚举，当前唯一值 `COMPLETE_IDENTITY`；客户端必须拒绝并提示未知值，不得当作已登录或按补全处理。生成 SDK 时为该字段保留未知值分支。
 - `reauthenticate` 使用独立 `AccessToken` schema，不含 refresh 字段。客户端保留原 refresh 和原绝对期限；普通登录/刷新才更新完整 pair。
 - 身份绑定新增返回 201，幂等命中返回 200。单会话撤销和解绑返回 204 无内容；`revoke` 返回 200 无内容；`revokeOthers` 返回 200 `{}`。账号注销返回更新后的资源。
-- 普通错误为 `{"error":{"code":400,"message":"…","status":"INVALID_ARGUMENT","reason":"…"}}`；`code` 是数字 HTTP 状态，`reason` 才是细分原因。`token` / `revoke` 使用独立 OAuth 错误体，不能按普通错误解析。
+- 普通错误为 `{"error":{"code":400,"message":"…","status":"INVALID_ARGUMENT","reason":"…"}}`；`code` 是数字 HTTP 状态，`reason` 才是细分原因。每个操作可能出现的 `reason` 按状态码列在该操作的 `x-error-reasons`（含认证中间件与通用解析错误），全部 `reason` 的说明在文件级 `x-error-reason-catalog`；不带 `reason` 的响应（固定 500、部分 404）只能按 `code`/`status` 处理。生成 SDK 时据此产出类型化错误并为未知 `reason` 保留兜底分支。管理面的 401/403 由宿主 verifier 定义，`x-error-reasons` 只列库自身产生的值。`token` / `revoke` 使用独立 OAuth 错误体，不能按普通错误解析。
 - 消费者 Bearer 401 带 `WWW-Authenticate`；限流 429 带 `Retry-After` 和 `retry_after_seconds`，部分 503 也带等待提示。凭证响应包含 `Cache-Control: no-store`，管理面 `:reveal` 的身份明文响应同样带 `Cache-Control: no-store`，token/pending/OAuth 错误还带 `Pragma: no-cache`。
-- 枚举使用大写字符串。身份类型为 `^[A-Z][A-Z0-9_]{1,31}$`：内置 PHONE、EMAIL、WECHAT、APPLE、GOOGLE，部署可另配 OIDC 等类型。凭证请求统一为 `{"kind","credential"}`，见下节；未知字段拒绝。POST token/revoke 也使用 JSON，不使用表单编码。
+- 枚举使用大写字符串。身份类型为 `^[A-Z][A-Z0-9_]{1,31}$`：内置 PHONE、EMAIL、WECHAT、APPLE、GOOGLE、FACEBOOK、ALIPAY、QQ、WEIBO，部署可另配 OIDC 类型，任何非内置类型按 OIDC 凭证形状解析。凭证请求统一为 `{"kind","credential"}`，见下节；未知字段拒绝。POST token/revoke 另接受 `application/x-www-form-urlencoded`，见上文。
 - nullable 字段和 optional 字段不同：例如 `delete_time` 必须出现但可以为 null；审计 `flow_id` 可以省略。管理 DTO 与消费者 DTO 独立，管理会话没有 `is_current`。
+
+按状态机串联这些响应的完整客户端流程（pending 补全、刷新协调、重新认证与退出）见 [HTTP 调用流程](http-client-flows.md)。
 
 示例 token、验证码和票据只能使用合成值，不应把真实响应导入公开文档。刷新重放、验证码失败预算、事务回滚、账号状态及外部审计治理仍以 [README](../README.md)、[主规格](../openspec/specs)和对应实现为准，schema 不能表达或证明所有行为。
 
 ## 统一凭证信封
 
-`signInWithCode`、`signInWithIdp`、`completeSignIn`、`reauthenticate`、绑定和换绑的请求体都是顶层 `kind` 加 `credential` 对象（`completeSignIn` 另带 `sign_in_completion_token`）。不再接受 `phone`、`email`、`wechat`、`apple`、`google` 成员，带这些字段返回 `400 MALFORMED_BODY`。
+`signInWithCode`、`signInWithIdp`、`completeSignIn`、`reauthenticate`、绑定和换绑的请求体都是顶层 `kind` 加 `credential` 对象（`completeSignIn` 另带 `sign_in_completion_token`）。信封外的未知顶层成员按严格 JSON 返回 `400 MALFORMED_BODY`。
 
 | kind | credential | 可用端点 |
 |---|---|---|
 | PHONE / EMAIL | `{"target","code_id","code"}` | 验证码登录、重新认证、换绑、登录补全、绑定 |
 | WECHAT | `{"app_id","code"}` | 第三方登录、绑定 |
 | APPLE / GOOGLE / 配置的 OIDC 类型 | `{"id_token","nonce"}`，nonce 为原始值 | 第三方登录、绑定 |
+| FACEBOOK | `{"id_token","nonce"}`（Limited Login）或 `{"access_token"}`（Classic Login），二者择一 | 第三方登录、绑定 |
+| ALIPAY | `{"app_id","code"}` | 第三方登录、绑定 |
+| QQ / WEIBO | `{"app_id","access_token"}`，微博的 app_id 即 AppKey | 第三方登录、绑定 |
 
-`kind` 或 `credential` 缺失、`credential` 不是对象、第三方 credential 原始 JSON 超过 16 KiB，或 credential 字段缺失、未知、类型错误时返回 `400 CREDENTIAL_INCOMPLETE`；kind 格式非法为 `400 INVALID_ARGUMENT`；类型不属于该端点允许的类别为 `400 CREDENTIAL_KIND_NOT_ALLOWED`。这些拒绝都发生在消费验证码、访问提供方和登记 nonce 之前。未配置的第三方类型在未显式设置 Enabled 时为 `400 IDP_APP_NOT_ALLOWED`，显式设置时为 `IDENTITY_KIND_NOT_ENABLED`。PHONE/EMAIL 的 `code_id` 缺失或格式错误沿用原分类 `400 INVALID_ARGUMENT`，其 credential 只受 64 KiB 请求体上限约束。同一对象内的重复键按标准 JSON 解码取最后一个值，客户端不应发送重复键。旧格式迁移见[兼容说明](compatibility.md#统一凭证信封与身份类型字符串)。
+`kind` 或 `credential` 缺失、`credential` 不是对象、第三方 credential 原始 JSON 超过 16 KiB，或 credential 字段缺失、未知、类型错误时返回 `400 CREDENTIAL_INCOMPLETE`；kind 格式非法为 `400 INVALID_ARGUMENT`；类型不属于该端点允许的类别为 `400 CREDENTIAL_KIND_NOT_ALLOWED`。这些拒绝都发生在消费验证码、访问提供方和登记 nonce 之前。未配置的第三方类型在未显式设置 Enabled 时为 `400 IDP_APP_NOT_ALLOWED`，显式设置时为 `IDENTITY_KIND_NOT_ENABLED`。PHONE/EMAIL 的 `code_id` 缺失或格式错误为 `400 INVALID_ARGUMENT`，其 credential 只受 64 KiB 请求体上限约束。同一对象内的重复键按标准 JSON 解码取最后一个值，客户端不应发送重复键。
 
 ## 基础资料与头像
 
@@ -47,7 +55,7 @@
 
 省略或 `null` 保持原字段，`""` 清空；两个字段都没有非 null 值时为 `400 NO_FIELDS`。头像去除首尾空白后最长 2048 **字节**，必须是具有非空主机的绝对 HTTPS URL，无用户信息、fragment、反斜线、内部空白或控制字符且为合法 UTF-8；允许普通查询参数。库不请求该地址，上传和存储由宿主提供。
 
-地址错误为 `400 INVALID_ARGUMENT`，JSON 类型/格式错误为 `400 MALFORMED_BODY`，锁后非 ACTIVE 为 `400 FAILED_PRECONDITION / INVALID_ACCOUNT_STATE`，目标不存在为 404。显示名去掉首尾空白后最多 128 个 Unicode 码位；超出或含有控制字符、双向格式符时整次拒绝，原值不变。自定义旧 Service 没有可选 `ProfileUpdater` 时，显示名请求仍可处理，含非 null 头像的请求返回 `503 PROFILE_UPDATE_NOT_CONFIGURED`，两字段都不写入。头像是内置公开资料，不依赖资料扩展 Schema，不能在 profile_attributes 顶层重复声明。
+地址错误为 `400 INVALID_ARGUMENT`，JSON 类型/格式错误为 `400 MALFORMED_BODY`，锁后非 ACTIVE 为 `400 FAILED_PRECONDITION / INVALID_ACCOUNT_STATE`，目标不存在为 404。显示名去掉首尾空白后最多 128 个 Unicode 码位；超出或含有控制字符、双向格式符时整次拒绝，原值不变。自定义 Service 未实现可选 `enduser.ProfileUpdater` 时，显示名请求仍可处理，含非 null 头像的请求返回 `503 PROFILE_UPDATE_NOT_CONFIGURED`，两字段都不写入。头像是内置公开资料，不依赖资料扩展 Schema，不能在 profile_attributes 顶层重复声明。
 
 ## 本人资料属性
 
@@ -63,13 +71,13 @@
 
 ## 当前会话和客户端摘要
 
-GET /users/me/sessions/current支持user/user:bind；返回真实s_资源名、数据库最新RFC3339 auth_time及非空authentication_identities，摘要只有name/kind且按具体ID稳定排序。客户端用完整name匹配，重新认证保存新access后重查。来源缺失或失效为内部错误，不返回正常空集合。开发分支曾出现的authentication_identities_known/initial_client_info已移除；详情和两面的列表均只可含单份client_info与client_info_update_time，管理面不增加身份来源详情。开发调用者须更新解析，见[兼容说明](compatibility.md#会话认证依据与客户端描述)。
+GET /users/me/sessions/current支持user/user:bind；返回真实s_资源名、数据库最新RFC3339 auth_time及非空authentication_identities，摘要只有name/kind且按具体ID稳定排序。客户端用完整name匹配，重新认证保存新access后重查。来源缺失或失效为内部错误，不返回正常空集合。详情和两面的列表均只可含单份client_info与client_info_update_time，管理面不增加身份来源详情。
 
 client_info采用`{type,os:{name,version},device:{type,manufacturer,model},app:{name,version,build},browser:{name,version},extensions:{...}}`嵌套结构，缺失成员省略。app/browser可并存，version/build可单独出现；名称/制造商/型号64字符、版本32、build64，规范化完整JSON含转义最多2048字节。业务codec在解析前将完整原始JSON和每个RawMessage各限16KiB；合法指数数值精确规范化为有界十进制，展开后仍受完整2048字节限制。核心未知字段、重复键、非法类型/枚举及UTF-8/控制字符均由业务读写拒绝，存储非法描述为内部错误；数据库不定义JSON对象/业务CHECK。extensions的深度、节点、敏感键和宿主隐私职责见[Go指南](go-integration.md#当前会话解绑与客户端描述)。
 
-新详情在数据库会话缺失、归属错误、撤销或refresh期限已到时返回401 TOKEN_INVALID并带Bearer挑战；依赖不可用503、内部错误固定500，缺可选宿主能力503 SESSION_QUERY_NOT_CONFIGURED，所有响应no-store。当前详情、重新认证、换绑均检查有效非空来源；解绑时同账号任一未吊销会话缺少有效来源则内部错误并整事务回滚，包含自然过期但未清理者。普通Authenticate/内省保留JWT/Redis判定，无额外数据库热路径；旧JWT不会因查询而取得新auth_time。解绑仍204、换绑仍200且不发token，成功也可能让当前会话退出。
+详情在数据库会话缺失、归属错误、撤销或refresh期限已到时返回401 TOKEN_INVALID并带Bearer挑战；依赖不可用503、内部错误固定500，缺可选宿主能力503 SESSION_QUERY_NOT_CONFIGURED，所有响应no-store。当前详情、重新认证、换绑均检查有效非空来源；解绑时同账号任一未吊销会话缺少有效来源则内部错误并整事务回滚，包含自然过期但未清理者。普通Authenticate/内省保留JWT/Redis判定，无额外数据库热路径；旧JWT不会因查询而取得新auth_time。解绑仍204、换绑仍200且不发token，成功也可能让当前会话退出。
 
-九个显式客户端头只在验证码/IdP登录、completeSignIn、reauthenticate与新一轮refresh解析；UA和Client Hints可补充，自动解析失败放行，显式非法值凭证消费前400 INVALID_CLIENT_INFO（token为OAuth invalid_request）。没有新增制造商/build显式头或任意JSON HTTP输入；扩展仅来自直接Go或宿主回调。请求体不变，token、JWT、内省和身份列表不增加来源/描述。非空观察整体替换描述，nil/空不写；pending完成本次优先，否则整体沿用加密首次描述及原观察时间，失败、回滚和重放不更新。描述可缺省且不构成设备证明；采集/替换/清理边界见[README](../README.md#当前会话与客户端描述)，代理/CORS见[网关说明](gateway-integration.md#客户端描述透传与-cors)，当前验证状态见[简化验收](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)。
+九个显式客户端头只在验证码/IdP登录、completeSignIn、reauthenticate与新一轮refresh解析；UA和Client Hints可补充，自动解析失败放行，显式非法值凭证消费前400 INVALID_CLIENT_INFO（token为OAuth invalid_request）。没有制造商/build显式头或任意JSON HTTP输入；扩展仅来自直接Go或宿主回调。请求体不变，token、JWT、内省和身份列表不增加来源/描述。非空观察整体替换描述，nil/空不写；pending完成本次优先，否则整体沿用加密首次描述及原观察时间，失败、回滚和重放不更新。描述可缺省且不构成设备证明；采集/替换/清理边界见[README](../README.md#当前会话与客户端描述)，代理/CORS见[网关说明](gateway-integration.md#客户端描述透传与-cors)，当前验证状态见[简化验收](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)。
 
 ## 管理查询
 
@@ -84,17 +92,19 @@ filter 是 `term (AND term)*` 子集，不支持 OR、NOT 或括号。支持：
 
 身份条件必须同一种 kind 且作用于同一活跃身份。手机号/邮箱过滤值属于隐私数据，网关与日志应脱敏。游标按返回值原样传递，不能作为授权凭据或自行推断 ID 时间顺序。
 
-审计只接受 `page_size` / `page_token`，按 `(occur_time, UUID)` 升序，限定认证动作及账号关联范围。审计使用独立 v2 游标，绑定 source、资源与认证动作集合；旧或跨范围游标返回 `400 INVALID_PAGE_TOKEN`，客户端从第一页重新开始，不复用用户列表游标。
+审计只接受 `page_size` / `page_token`，按 `(occur_time, UUID)` 升序，限定认证动作及账号关联范围。审计使用独立游标，绑定 source、资源与认证动作集合；格式不符或跨范围游标返回 `400 INVALID_PAGE_TOKEN`，客户端从第一页重新开始，不复用用户列表游标。
+
+`GET /users/{user}/identities/{identity}:reveal` 由处理器在入口设置 `Cache-Control: no-store`，其写出的全部响应（200 明文与 400/401/404/500 错误）都带该头；宿主 verifier、角色中间件和未配置管理面的拒绝发生在处理器之前，不含明文，也不带该头。其他管理响应不含明文手机号/邮箱、不加该头，宿主仍须保证网关不缓存管理面响应并保护访问日志。
 
 ## 验证与维护
 
-JSON 文档直接维护，修改路由、DTO、scope、状态码或错误时同步更新；不从本文反向生成服务器实现。无依赖的源码对应检查：
+JSON 文档直接维护，修改路由、DTO、scope、状态码或错误时同步更新，新增或改名 `reason` 时同步该操作的 `x-error-reasons` 与 `x-error-reason-catalog`；不从本文反向生成服务器实现。无依赖的源码对应检查：
 
 ```powershell
 node scripts/check-openapi.cjs
 ```
 
-此检查从现有 Router 提取方法与路径，核对覆盖、引用、路径参数及主要响应DTO字段与必填/可空规则（明确读取response.go及消费者current_session.go）；同时检查新查询状态码/scope/no-store、恰好五个采集入口的可选头、登录oneOf和token/身份列表字段边界；它不是完整 OpenAPI schema 校验，也不代替真实 HTTP 测试。提取器只处理当前 handler.go 中直接使用字符串字面量的 Get/Post 等注册；发现 Route/Mount/Method/Handle 或非字面量路径会要求更新提取器。若将注册逻辑移到其他文件或自定义辅助函数，也须同步调整检查范围，不能把它当作通用 Go 路由分析器。
+此检查从现有 Router 提取方法与路径，核对覆盖、引用、路径参数及主要响应DTO字段与必填/可空规则（明确读取response.go及消费者current_session.go）；同时检查当前会话查询的状态码/scope/no-store、恰好五个采集入口的可选头、登录oneOf和token/身份列表字段边界；它不是完整 OpenAPI schema 校验，也不代替真实 HTTP 测试。提取器只处理当前 handler.go 中直接使用字符串字面量的 Get/Post 等注册；发现 Route/Mount/Method/Handle 或非字面量路径会要求更新提取器。若将注册逻辑移到其他文件或自定义辅助函数，也须同步调整检查范围，不能把它当作通用 Go 路由分析器。
 
 正式结构校验可将工具安装到仓库忽略目录，不修改 Go module 或全局工具：
 
@@ -104,7 +114,3 @@ node -e "const p=require('./.test-output/contract-tools/node_modules/@apidevtool
 ```
 
 随后按改动范围运行 `GOWORK=off go test -count=1 ./httpapi/...` 与相关领域测试。标准工具通过只证明文档结构与引用合法；生成客户端、Mock、产品网关和真实业务链路仍需按宿主环境验收。
-
-v0.3.0基础文档验收记录见 [document-go-integration-and-http-contracts](../openspec/changes/archive/2026-10-18-document-go-integration-and-http-contracts/verification.md)。
-
-v0.4.0 会话变更的整体验证与未验证项由[本变更验收记录](../openspec/changes/archive/2026-10-20-add-session-authentication-context/verification.md)汇总；不能用历史验收代替当前检查。

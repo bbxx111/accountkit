@@ -4,9 +4,11 @@
 
 ## 当前状态
 
-当前处于 v1.0.0（候选）阶段，见[发布说明](releases/v1.0.0.md)和[发布准备](../openspec/changes/prepare-v1-0-0-release/proposal.md)。开发期版本的说明与证据索引见 [开发期历史](releases/pre-1.0-history.md)。
+当前正式版本为 v1.0.0（已发布），见[发布说明](releases/v1.0.0.md)和[发布准备](../openspec/changes/prepare-v1-0-0-release/proposal.md)。开发期版本的说明与证据索引见 [开发期历史](releases/pre-1.0-history.md)。
 
 ### v1.0.0 专属门禁
+
+本次发布、远端消费及旧版本清理已完成；精确对象和门禁证据见[验收记录](../openspec/changes/prepare-v1-0-0-release/verification.md)。下方通用清单保留为未来发布模板，不代表 v1.0.0 仍未完成。
 
 用户于 2026-10-31 明确指定先发布 v1.0.0，发布及远端消费完成后再删除九个 v0 tag 和现存对应 Release。本次仅调整下方“发布前远端不存在 v0 tag”的执行顺序；同名正式 tag 不存在、最终候选 CI、完整验证及不移动 tag 的要求保持。完成状态与精确 SHA/CI/消费证据统一维护在[本次验收记录](../openspec/changes/prepare-v1-0-0-release/verification.md)，任务进度见[任务清单](../openspec/changes/prepare-v1-0-0-release/tasks.md)。
 
@@ -26,7 +28,7 @@
 - [ ] 准备快照在 `tests/Dockerfile` 构建的 Linux 验证镜像中通过：`openspec validate --all --strict`、`bash scripts/check-generated.sh`、`bash scripts/check-migrations.sh`（需完整历史与 tags）、`node scripts/check-openapi.cjs`、`bash scripts/verify.sh`（完整库 race 与必需门禁）、`bash scripts/verify-accountsvc.sh`（服务 race 与进程信号）、`bash scripts/verify-recovery.sh` 的 seed/verify/source-unchanged 三阶段；缺依赖或必需测试 skip 不视为通过（普通套件的 `TestRecoveryFixture` 按既有规则 skip），结果写入该版本准备变更的 `verification.md`。
 - [ ] 以 `--no-ff` 合入 develop，再以独立 merge commit 合入 main 并推送；确认工作区干净，记录最终候选 SHA。
 - [ ] 最终候选的在线 CI（`.github/workflows/ci.yml`）全部通过，包括 `check-generated.sh`、`verify.sh` 与 `verify-accountsvc.sh` 步骤，且 `head_sha` 与候选 SHA 精确匹配；不以准备快照或旧候选的结果替代。
-- [ ] 远端不存在同名 tag，也不存在低于 v1.0.0 的 tag（开发期 tag 计划在 v1.0.0 发布前删除）；人工核对 `git ls-remote --tags origin`。
+- [ ] 远端不存在同名 tag，也不存在低于 v1.0.0 的 tag（开发期 tag 已按 v1.0.0 的明确执行顺序在发布后清理）；人工核对 `git ls-remote --tags origin`。
 - [ ] 发布说明及其余待交付文件均包含在最终候选提交内；后续改动产生新候选提交时，重新核对该提交对应的门禁。
 
 本地复核使用[开发与验证入口](development.md)，测试数据库权限限定到一次性数据库；生产密钥不进入示例或测试。各次变更的实际结果保存在对应 `openspec/changes/.../verification.md`，原始日志和恢复材料保留于 ignored `.test-output/`。

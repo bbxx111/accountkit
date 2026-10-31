@@ -17,8 +17,8 @@ import (
 
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/user"
-	"github.com/bbxx111/accountkit/user/db"
 	"github.com/bbxx111/accountkit/user/idp"
 )
 
@@ -79,11 +79,11 @@ func assertNoRawSubject(t *testing.T, f *fixture, from int, subject string) {
 func identitiesOf(t *testing.T, f *fixture, userID string) (active, all []db.Identity) {
 	t.Helper()
 	ctx := context.Background()
-	active, err := f.repo.Q().ListActiveIdentitiesByUser(ctx, userID)
+	active, err := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, userID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	all, err = f.repo.Q().ListIdentitiesByUserIncludingDeleted(ctx, userID)
+	all, err = user.TestRepoQueries(f.repo).ListIdentitiesByUserIncludingDeleted(ctx, userID)
 	if err != nil {
 		t.Fatal(err)
 	}

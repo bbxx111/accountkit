@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/bbxx111/accountkit/httpapi/reqid"
+	"github.com/bbxx111/accountkit/httpapi/internal/reqid"
 )
 
 func TestMiddlewareSetsHeaderAndContext(t *testing.T) {

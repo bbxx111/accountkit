@@ -90,7 +90,7 @@ func TestDeliveryPurposesAndFailureQuota(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(d.messages) != 1 || d.messages[0].Purpose != purpose || d.messages[0].TTL != 5*time.Minute || len(d.messages[0].Code) != 6 {
-			t.Fatal("legacy delivery lost code message")
+			t.Fatal("delivery lost code message")
 		}
 	}
 	oldErr := errors.New("old sender error")

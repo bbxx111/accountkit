@@ -34,7 +34,7 @@ func (s *Service) BatchPublicProfiles(ctx context.Context, userIDs []string) (ma
 			uniqueIDs = append(uniqueIDs, id)
 		}
 	}
-	rows, err := s.d.Repo.Q().BatchPublicProfiles(ctx, uniqueIDs)
+	rows, err := s.d.Repo.queries().BatchPublicProfiles(ctx, uniqueIDs)
 	if err != nil {
 		return nil, fmt.Errorf("user: batch public profiles: %w", err)
 	}

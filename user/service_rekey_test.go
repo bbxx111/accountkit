@@ -9,9 +9,9 @@ import (
 	"testing"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/pii"
 	"github.com/bbxx111/accountkit/user"
-	"github.com/bbxx111/accountkit/user/db"
 )
 
 // rotate 用两版本密钥重建 Service（active = 2）；1 号密钥与 newFixture 相同，旧行仍可查找/解密。
@@ -38,7 +38,7 @@ func rotate(t *testing.T, f *fixture) (*pii.Digester, *pii.Cipher, *bytes.Buffer
 // findKind 返回该用户指定 kind 的身份行：includeDeleted=false 取活跃行，true 取已软删的行。
 func findKind(t *testing.T, f *fixture, userID string, kind enum.IdentityKind, includeDeleted bool) db.Identity {
 	t.Helper()
-	rows, err := f.repo.Q().ListIdentitiesByUserIncludingDeleted(context.Background(), userID)
+	rows, err := user.TestRepoQueries(f.repo).ListIdentitiesByUserIncludingDeleted(context.Background(), userID)
 	if err != nil {
 		t.Fatal(err)
 	}

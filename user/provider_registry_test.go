@@ -112,7 +112,10 @@ func TestProviderDispatchErrors(t *testing.T) {
 	if _, err := g.svc.SignInWithIdp(ctx, corpCred(corpSSO, "unclassified"), dev1, meta1); err == nil || errors.Is(err, idp.ErrInvalidCredential) || errors.Is(err, user.ErrInvalidArgument) {
 		t.Fatalf("unclassified provider error must be isolated from sentinels: %v", err)
 	}
-	wechat := idp.NewWeChat([]idp.App{{AppID: "wx1", Secret: "s"}}, "http://127.0.0.1:1", nil, nil)
+	wechat, err := idp.NewWeChat(idp.WeChatConfig{Apps: []idp.App{{AppID: "wx1", Secret: "s"}}, BaseURL: "http://127.0.0.1:1"}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	h := newFixture(t)
 	newServiceWith(t, h, func(d *user.Deps) { *d = withProvider(*d, wechat) })
 	if _, err := h.svc.SignInWithIdp(ctx, providerCred(enum.IdentityWeChat, map[string]string{}), dev1, meta1); !errors.Is(err, idp.ErrMalformedCredential) {
@@ -175,7 +178,7 @@ func TestProviderProfileClaimsAreKindIndependent(t *testing.T) {
 	if err != nil || me.DisplayName != "Corp Person" || me.AvatarURL != "https://example.test/corp.png" {
 		t.Fatalf("configured kind profile seed: %+v %v", me, err)
 	}
-	idents, _ := f.repo.Q().ListActiveIdentitiesByUser(ctx, res.UserID)
+	idents, _ := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, res.UserID)
 	if len(idents) != 1 || idents[0].Kind != corpSSO || !strings.Contains(string(idents[0].ProviderMeta), "Corp Person") {
 		t.Fatalf("provider meta: %+v", idents)
 	}
@@ -184,7 +187,7 @@ func TestProviderProfileClaimsAreKindIndependent(t *testing.T) {
 	newServiceWith(t, w, func(d *user.Deps) { d.RequiredIdentityKinds = []enum.IdentityKind{} })
 	wres := requireSignInTokens(t, mustSignInWithIdp(t, w, wechatCred("wx1", "union:no-profile@o")))
 	me, _ = w.svc.GetMe(ctx, wres.UserID)
-	idents, _ = w.repo.Q().ListActiveIdentitiesByUser(ctx, wres.UserID)
+	idents, _ = user.TestRepoQueries(w.repo).ListActiveIdentitiesByUser(ctx, wres.UserID)
 	if me.DisplayName != "" || me.AvatarURL != "" || len(idents) != 1 || strings.Contains(string(idents[0].ProviderMeta), "profile") {
 		t.Fatalf("wechat must not write profile: %+v %s", me, idents[0].ProviderMeta)
 	}
@@ -260,7 +263,7 @@ func TestUnregisteredHistoricalKind(t *testing.T) {
 	if n, err := f.svc.PurgeDueUsers(ctx); err != nil || n != 1 {
 		t.Fatalf("purge: %d %v", n, err)
 	}
-	rows, _ := f.repo.Q().ListIdentitiesByUserIncludingDeleted(ctx, phone.UserID)
+	rows, _ := user.TestRepoQueries(f.repo).ListIdentitiesByUserIncludingDeleted(ctx, phone.UserID)
 	for _, row := range rows {
 		if row.Kind == acme && (row.ProviderSubject == nil || *row.ProviderSubject == "acme-1" || row.DeleteTime == nil) {
 			t.Fatalf("historical identity not anonymized: %+v", row)

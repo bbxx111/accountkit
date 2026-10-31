@@ -117,8 +117,6 @@ func codeFailure(err error) (string, error) {
 		return "CODE_INVALID", err
 	case errors.Is(err, code.ErrExpired):
 		return "CODE_EXPIRED", err
-	case errors.Is(err, code.ErrExhausted):
-		return "CODE_ATTEMPTS_EXHAUSTED", err
 	case errors.Is(err, code.ErrUnavailable):
 		return "UNAVAILABLE", fmt.Errorf("%w: %v", ErrUnavailable, err)
 	default:

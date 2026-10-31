@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bbxx111/accountkit/user/db"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -21,7 +21,7 @@ func TestSessionContextInitialRepeat(t *testing.T) {
 	initialUp(t, cfg, schema)
 	c := migrationTestConn(t, cfg, schema)
 	ctx := context.Background()
-	seedRenameFlow(t, c)
+	seedInitialFlow(t, c)
 	original := func() string {
 		t.Helper()
 		var data string
@@ -259,7 +259,7 @@ func TestSessionContextStorageConstraints(t *testing.T) {
 			t.Fatal("missing format/unique/not-null constraint", sql)
 		}
 	}
-	seedRenameFlow(t, c)
+	seedInitialFlow(t, c)
 	q := db.New(c)
 	if n, err := q.AddSessionAuthenticationIdentity(ctx, db.AddSessionAuthenticationIdentityParams{UserID: "u_0000000000001", SessionID: "s_0000000000001", IdentityID: "i_0000000000001"}); err != nil || n != 0 {
 		t.Fatalf("generated duplicate write %d %v", n, err)
@@ -325,7 +325,7 @@ func TestSessionContextReadLock(t *testing.T) {
 	}
 	c := migrationTestConn(t, cfg, schema)
 	writer := migrationTestConn(t, cfg, schema)
-	seedRenameFlow(t, c)
+	seedInitialFlow(t, c)
 	tx, err := c.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)

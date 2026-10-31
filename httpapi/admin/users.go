@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/bbxx111/accountkit/httpapi/apierror"
-	"github.com/bbxx111/accountkit/httpapi/jsonbody"
+	"github.com/bbxx111/accountkit/httpapi/internal/jsonbody"
 	"github.com/bbxx111/accountkit/user"
 )
 

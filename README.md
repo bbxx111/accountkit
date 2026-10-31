@@ -137,7 +137,7 @@ Go 的 nil 表示省略；非 nil 空切片表示显式空。E 省略时沿用 P
 
 补全通过 `SendSignInCompletionCode(ctx, token, channel, target, dev, meta)` 获取专用轮次，再调用 `CompleteSignIn(ctx, token, cred, dev, meta)`。初次登录必须提供设备 ID；后续设备字段可省略，重复提供则须与首次一致。补全只接受已启用的 PHONE/EMAIL 验证码。目标属于活动账号 B 时关联尚未占用的本次身份并沿用 B 的 user_id；目标无归属且满足 R 时原子注册。页面应说明“验证并继续”会关联本次身份，未注册时自动注册。第三方 hint_email 不能证明邮箱归属，已有两个账号不会自动合并。R=[] 时未知第三方直接注册，不能自动发现另一邮箱账号；应先登录原账号再主动绑定。
 
-HTTP 端点为 `POST /users:sendSignInCompletionCode`（`{sign_in_completion_token,channel,target}`）和 `POST /users:completeSignIn`（`{sign_in_completion_token,phone|email:{target,code_id,code}}`）。唯一票据字段为 `sign_in_completion_token`，普通发码不接收它，也不接收公开 purpose。pending 返回 HTTP 200、no-store，仅含 `next_action=COMPLETE_IDENTITY`、票据、`expire_time`、`enabled_identity_kinds`、`required_identity_kinds`；成功继续使用顶层 RFC 6749 token 字段。
+HTTP 端点为 `POST /users:sendSignInCompletionCode`（`{sign_in_completion_token,channel,target}`）和 `POST /users:completeSignIn`（`{sign_in_completion_token,kind,credential:{target,code_id,code}}`，`kind` 为 `PHONE` 或 `EMAIL`）。唯一票据字段为 `sign_in_completion_token`，普通发码不接收它，也不接收公开 purpose。pending 返回 HTTP 200、no-store，仅含 `next_action=COMPLETE_IDENTITY`、票据、`expire_time`、`enabled_identity_kinds`、`required_identity_kinds`；成功继续使用顶层 RFC 6749 token 字段。
 
 票据使用独立随机秘密，数据库仅存摘要；`sign_in_completion_flow` 中的证明、设备与完成结果按版本加密并绑定实例和流程。原期限最多5分钟，取原证明更早期限，追加证明和重试不续期。只有相同完成请求、原期限内且账号/会话/refresh 仍有效时才能读取原 token pair；refresh 已轮换则返回 `SIGN_IN_ALREADY_COMPLETED`，票据过期返回 `SIGN_IN_COMPLETION_INVALID`。验证码消费不会随 SQL 回滚恢复，证明落库失败须按原额度重新取证；数据库备份不含 Redis，恢复不能跳过缺失证明。
 
@@ -199,13 +199,13 @@ deps := accountkit.Deps{EmailSender: email /* 其余依赖由宿主装配 */}
 _ = deps
 ```
 
-[可编译本地化示例](examples/codeemail/example_test.go)与[渲染实现](examples/codeemail/renderer.go)覆盖四种用途、中文/英文、Text/HTML 和请求语言回退。`Render(context.Context, sender.CodeMessage) (smtp.EmailContent, error)` 返回 Subject、必需 Text 和可选 HTML；模板必须正确表达用途、实际验证码与有效期，动态 HTML 值由宿主使用 `html/template` 等方式转义。SMTP 负责 MIME 编码，不能验证任意语言的文案语义。`smtp.New(cfg)` 使用 `smtp.LegacyChineseRenderer{}`：四种用途的中文纯文本，有效期分钟数向上取整。
+[可编译本地化示例](examples/codeemail/example_test.go)与[渲染实现](examples/codeemail/renderer.go)覆盖四种用途、中文/英文、Text/HTML 和请求语言回退。`Render(context.Context, sender.CodeMessage) (smtp.EmailContent, error)` 返回 Subject、必需 Text 和可选 HTML；模板必须正确表达用途、实际验证码与有效期，动态 HTML 值由宿主使用 `html/template` 等方式转义。SMTP 负责 MIME 编码，不能验证任意语言的文案语义。`smtp.New(cfg)` 使用 `smtp.ChineseRenderer{}`：四种用途的中文纯文本，有效期分钟数向上取整。
 
 宿主在自己的中间件或 Go 入口选择语言，再用示例的 `codeemail.WithLanguage(ctx, "zh-CN")` 派生 context 并传入本次服务调用；核心不解析 Accept-Language，不读取业务偏好，不增加消息字段。示例只支持 `zh-CN`/`en`：缺失或未知请求提示回退到实例默认，未知默认语言回退到 `zh-CN`。同一渲染器可并发复用，配置和模板构造后不再修改；不要通过共享字段设置“当前语言”。
 
 渲染与 SMTP 共用一次总超时预算，派生 context 保留宿主值。宿主回调必须及时响应取消，避免无界 I/O；库不会通过遗留 goroutine 强制中断不合作的回调。渲染失败、非法内容或取消返回固定 `sender.ErrUnavailable`，沿用 503 和额度/冷却保留契约，不回退默认模板、不自动重试。宿主不得在日志中输出验证码、完整地址、正文或原始渲染错误。示例只做本地渲染与构造，不发送网络请求、不读取真实凭据，输出仅为非敏感标题或装配结果。
 
-库提供可选的阿里云短信发送器 `github.com/bbxx111/accountkit/user/sender/aliyun`：`aliyun.New(aliyun.Config{AccessKeyID, AccessKeySecret, SignName, Templates: map[enum.CodePurpose]string{…四个用途…}})`，构造不做网络 I/O，只发中国大陆手机号，发送失败返回 `sender.ErrUnavailable`（503），错误只含服务商错误码与 RequestId；可选 `Logger` 以 Warn 记录同样脱敏的失败信息。发送器可选实现 `SupportsTarget(e164 string) bool`：返回 false 的号码在占用验证码轮次、冷却与额度之前以 `sender.ErrTargetNotSupported` 拒绝，HTTP 为 400 `TARGET_NOT_SUPPORTED`，未实现该方法的发送器行为不变。宿主若用日志或指标装饰器包装发送器，须同时转发 `SupportsTarget`（及 `Enabled`），否则预检失效，不支持的号码会在占用额度后才失败。内置 `smtp.LegacyChineseRenderer{Brand: "品牌"}` 可为标题和正文添加品牌前缀（先用 `smtp.ValidateBrand` 校验），零值文案不变。
+库提供可选的阿里云短信发送器 `github.com/bbxx111/accountkit/user/sender/aliyun`：`aliyun.New(aliyun.Config{AccessKeyID, AccessKeySecret, SignName, Templates: map[enum.CodePurpose]string{…四个用途…}})`，构造不做网络 I/O，只发中国大陆手机号，发送失败返回 `sender.ErrUnavailable`（503），错误只含服务商错误码与 RequestId；可选 `Logger` 以 Warn 记录同样脱敏的失败信息。发送器可选实现 `SupportsTarget(e164 string) bool`：返回 false 的号码在占用验证码轮次、冷却与额度之前以 `sender.ErrTargetNotSupported` 拒绝，HTTP 为 400 `TARGET_NOT_SUPPORTED`，未实现该方法的发送器行为不变。宿主若用日志或指标装饰器包装发送器，须同时转发 `SupportsTarget`（及 `Enabled`），否则预检失效，不支持的号码会在占用额度后才失败。内置 `smtp.ChineseRenderer{Brand: "品牌"}` 可为标题和正文添加品牌前缀（先用 `smtp.ValidateBrand` 校验），零值文案不变。
 
 使用服务商托管模板时，直接实现 `EmailCodeSender.SendEmail(ctx, target, message)` 或 `SMSCodeSender.SendSMS(ctx, target, message)` 并注入对应 Deps 字段。宿主把 `message.Purpose` 映射到服务商模板 ID，把 `message.Code`、`message.TTL` 转换为模板参数，并自行选择语言、处理取消及安全错误；这种适配无需 SMTP Renderer，也无需先生成正文。不要将模板 ID 或服务商参数加入核心 CodeMessage。
 
@@ -436,7 +436,7 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 - 所有 Redis 键以 `Config.KeyPrefix`（默认 `auth:`）开头。
 - `Deps.Pool` 的连接 `search_path` 首位必须是 `Config.Schema`；`Migrate` 会校验并返回 `ErrSearchPath`。宿主业务表建议通过明确的 schema 限定名访问，避免 search_path 名称冲突。
 - `Deps.Pool` 的 `MaxConns` 必须至少为 2；`New` 在不连接数据库的情况下拒绝更小容量。维护轮次持有一条池连接用于 advisory lock，任务查询还需要连接容量。pgx v5.10 默认上限为 `max(4, runtime.NumCPU())`，本包不覆盖该默认值；显式 `pool_max_conns=1` 的宿主须调整配置，连接池仍由宿主管理。
-- 库自行开启的账号、身份和会话领域事务显式使用 `READ COMMITTED`，在既有账号/会话锁之后通过后续语句复核最新状态；宿主默认设置为 `REPEATABLE READ` 或 `SERIALIZABLE` 不改变这一内部保证。公开 `user.Repo.WithTx` / `WithTxRaw` 仍遵循宿主默认隔离；`ImportAccounts` 使用宿主传入的事务，仍要求停写导入。
+- 库自行开启的账号、身份和会话领域事务显式使用 `READ COMMITTED`，在既有账号/会话锁之后通过后续语句复核最新状态；宿主默认设置为 `REPEATABLE READ` 或 `SERIALIZABLE` 不改变这一内部保证。`user.Repo` 不再提供原始查询或事务入口；宿主联合事务使用 `WithActiveUsers`、`BeforeDelete`、`Anonymizer` 等既有领域接口和回调。`ImportAccounts` 使用宿主传入的事务，仍要求停写导入。
 - 建议对认证连接关闭 PostgreSQL JIT（`jit=off`）。本包查询均为按索引读写少量行的短事务，JIT 无法摊销其编译成本；pgx 缓存的预编译语句改用通用计划后估算代价可能偏高而触发 JIT，每次执行额外付出约数百毫秒编译时间（实测审计资源查询约 10 ms 变为约 380 ms）。范围限定在认证连接：在 `PoolConfig` 返回的配置上设置 `cfg.ConnConfig.RuntimeParams["jit"] = "off"`，或对认证专用角色执行 `ALTER ROLE <role> SET jit = off`；不要为此修改共享实例的全局配置，以免影响同实例上的分析型查询。不便关闭时可调高 `jit_above_cost`。本包不自动修改该参数；未编译 LLVM 的 PostgreSQL 不受影响。
 
 ## 配置（环境变量，前缀由宿主传给 ConfigFromEnv）

@@ -7,7 +7,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func seedRenameFlow(t *testing.T, c *pgx.Conn) {
+func seedInitialFlow(t *testing.T, c *pgx.Conn) {
 	t.Helper()
 	for _, statement := range []string{
 		`INSERT INTO user_account(id,state,display_name) VALUES('u_0000000000001',1,'preserved')`,
@@ -22,7 +22,7 @@ func seedRenameFlow(t *testing.T, c *pgx.Conn) {
 	}
 }
 
-func renameDataSnapshot(t *testing.T, c *pgx.Conn) string {
+func migrationDataSnapshot(t *testing.T, c *pgx.Conn) string {
 	t.Helper()
 	var result string
 	if err := c.QueryRow(context.Background(), `SELECT jsonb_build_array((SELECT jsonb_agg(t ORDER BY id) FROM user_account t),(SELECT jsonb_agg(t ORDER BY id) FROM identity t),(SELECT jsonb_agg(t ORDER BY id) FROM session t),(SELECT jsonb_agg(t ORDER BY id) FROM sign_in_completion_flow t),(SELECT jsonb_agg(t ORDER BY id) FROM audit_event t))::text`).Scan(&result); err != nil {
@@ -49,9 +49,9 @@ func TestSignInCompletionFlowNonemptyRepeatAndIsolation(t *testing.T) {
 	initialUp(t, cfg, otherSchema)
 	c := migrationTestConn(t, cfg, schema)
 	other := migrationTestConn(t, cfg, otherSchema)
-	seedRenameFlow(t, c)
-	seedRenameFlow(t, other)
-	before, otherBefore := renameDataSnapshot(t, c), renameDataSnapshot(t, other)
+	seedInitialFlow(t, c)
+	seedInitialFlow(t, other)
+	before, otherBefore := migrationDataSnapshot(t, c), migrationDataSnapshot(t, other)
 	catalog, otherCatalog := migrationCatalog(t, c, schema), migrationCatalog(t, other, otherSchema)
 	var oldOID uint32
 	if err := c.QueryRow(context.Background(), `SELECT 'sign_in_completion_flow'::regclass::oid`).Scan(&oldOID); err != nil {
@@ -59,11 +59,11 @@ func TestSignInCompletionFlowNonemptyRepeatAndIsolation(t *testing.T) {
 	}
 	initialUp(t, cfg, schema)
 	assertVersion(t, cfg, schema, 1, false)
-	if got := renameDataSnapshot(t, c); got != before {
+	if got := migrationDataSnapshot(t, c); got != before {
 		t.Fatal("repeat Up changed records or encrypted bytes")
 	}
-	renamedCatalog := migrationCatalog(t, c, schema)
-	if renamedCatalog != catalog {
+	repeatedCatalog := migrationCatalog(t, c, schema)
+	if repeatedCatalog != catalog {
 		t.Fatal("repeat Up changed catalog")
 	}
 	var newOID uint32
@@ -72,12 +72,12 @@ func TestSignInCompletionFlowNonemptyRepeatAndIsolation(t *testing.T) {
 		t.Fatalf("repeat Up recreated table: %d -> %d old=%v err=%v", oldOID, newOID, oldExists, err)
 	}
 	initialUp(t, cfg, schema)
-	if renameDataSnapshot(t, c) != before || migrationCatalog(t, c, schema) != renamedCatalog {
+	if migrationDataSnapshot(t, c) != before || migrationCatalog(t, c, schema) != repeatedCatalog {
 		t.Fatal("repeat Up changed schema or records")
 	}
 	assertVersion(t, cfg, schema, 1, false)
 	assertVersion(t, cfg, otherSchema, 1, false)
-	if renameDataSnapshot(t, other) != otherBefore || migrationCatalog(t, other, otherSchema) != otherCatalog {
+	if migrationDataSnapshot(t, other) != otherBefore || migrationCatalog(t, other, otherSchema) != otherCatalog {
 		t.Fatal("repeat Up changed another instance")
 	}
 }

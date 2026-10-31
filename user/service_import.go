@@ -8,7 +8,7 @@ import (
 
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
-	"github.com/bbxx111/accountkit/user/db"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -162,7 +162,7 @@ func (e *importFailure) Error() string {
 }
 func (e *importFailure) Unwrap() error { return e.cause }
 func importDatabaseError(index int, operation string, err error) error {
-	if IsUniqueViolation(err) {
+	if isUniqueViolation(err) {
 		err = errors.Join(ErrIdentityConflict, err)
 	}
 	return &importFailure{operation: operation, index: index, cause: err}

@@ -4,7 +4,7 @@
 
 ## v1.0.0 调用者须知
 
-下列开发期符号在 v1.0.0 中移除，引用它们的代码编译失败。前六项按右列改用正式名称，签名与行为不变；后两项是内部批量参数，改为未导出，没有替换。
+下列开发期符号在 v1.0.0 中移除或调整，旧调用需要按右列迁移。前六项只替换名称，其他项涉及公开边界或签名变化；不保留旧别名。
 
 | 已移除符号 | 替换 |
 |---|---|
@@ -16,8 +16,24 @@
 | `sender.Message` | `sender.CodeMessage` |
 | `user.KeyBackfillBatchSize` | 无替换：密钥回填的内部批量大小，不可配置 |
 | `user.PurgeBatchSize` | 无替换：到期匿名化的内部批量大小，不可配置 |
+| `authentication.MapLegacy` | 不再提供开发期事件转换；在线认证事件使用 `Recorder` / `Map`，通用事件使用 `audit.Event`；既有私有快照的读取兼容保持 |
+| `ids.AuditEvent` | 审计事件使用 `uuid.NewV7()`；不再用 `e_` 作为审计资源 ID |
+| `code.ErrExhausted` | 移除不可达哨兵；实际最后一次错误尝试仍为 `ErrInvalid`，之后为 `ErrExpired` |
+| `(*audit.Store).ListByUser` | 使用 `ListByResource(ctx, audit.Query{Source: source, Resource: audit.Resource{Namespace: namespace, Type: "USER", ID: userID}, After: after, Limit: limit})`，source/namespace 与记录器配置一致 |
+| `audit.RetentionBatchSize`、`user.IsUniqueViolation` | 不再公开内部批量参数和数据库错误 helper；宿主诊断自身数据库错误可使用 `errors.As` / `pgconn.PgError`，业务冲突仍用领域错误 |
+| `user.PurgeCoveredTables`（map 变量） | 改为 `user.PurgeCoveredTables()`，每次返回独立登记副本；修改副本不能改变库登记，也不改变匿名化 SQL |
+| 旧 `idp.NewWeChat(apps, baseURL, httpClient, logger)`、`NewWeChatWithConfig` | 改为 `idp.NewWeChat(idp.WeChatConfig{Apps: apps, BaseURL: baseURL, ...}, httpClient, logger)` 并处理返回的 error；subject 模式与应用配置需按原配置明确提供 |
+| `smtp.LegacyChineseRenderer` | `smtp.ChineseRenderer`；品牌、四用途标题/正文和 `smtp.New` 的默认行为保持 |
+| `grace.Pair.AccessExpiresAt`、`RefreshExpiresAt` | `AccessExpireTime`、`RefreshExpireTime`；JSON `ae`/`re`、缓存加密和过期语义保持 |
+| `Repo.Q`、`Repo.WithTx`、`Repo.WithTxRaw` | 不再提供原始查询/事务访问；使用 `user.Service` 领域操作，联合业务写入使用 `WithActiveUsers`、`BeforeDelete`、`Anonymizer` 等既有事务契约，不能以直接 SQL 替代领域约束 |
+| `user/db`、`audit/db` | sqlc 模型已内部化，无公开替代包；按使用场景改用领域 DTO、服务或 `audit.Reader` |
+| `httpapi/jsonbody`、`httpapi/reqid` | HTTP 内部工具不再供外部导入；宿主负责自身协议解析，通过 `Deps.RequestID` 提供可信请求 ID |
 
 `accountkit.Deps.SMSSender` / `EmailSender` 与 `user.Deps.SMS` / `Email` 是字段名，不在移除之列。
+
+`user.Repo` 与 `NewRepo(pool)` 继续作为直接 `user.NewService` 的不透明装配依赖，`Deps.Codes/Revocation/Grace` 及两种 `CheckKeyVersions` 保留。独立迁移工具可检查密钥而不装配发送器或提供方。内部账号、身份与会话事务使用 READ COMMITTED；宿主自身连接池和业务事务的配置不被改写，传入领域回调的事务不得自行提交、回滚或另开连接替代。
+
+IdP 统一调用入口是 `Provider.Verify(context.Context, json.RawMessage)`。具体 `VerifyApple`、`VerifyGoogle`、`VerifyIDToken` 等方法继续表达各协议的强类型凭证；构造器的错误返回与配置复杂度有关，不机械统一。Apple/Google/Facebook/OIDC 不返回 error 的构造器不承诺完整启动前校验，缺少 nonce registry 等依赖仍可能在验证时返回 `ErrMisconfigured`；根 `Config.Validate` 的部署校验职责保持。
 
 公开 Go API 自 v1.0.0 起受语义化版本约束，后续破坏性变化须发布新主版本并改用 `/v2` 模块路径。数据库结构变化从 `0002` 迁移递增，见[迁移手册](migrations.md)。
 
@@ -59,7 +75,7 @@ source/action 最长 128 个 ASCII 字符，source 匹配 `[A-Za-z0-9][A-Za-z0-9
 
 业务内容规则统一由 Go 校验：默认 `Async.Record` 在入队前调用 `event.Freeze`，本地 `Store.InsertBatch` 在写入前独立调用同一入口，Go 脱敏投影写回前也经过校验。数据库只保留 UUIDv7、JSON 基本形状、非空、列类型、默认值、主键和索引，不用自定义函数校验主体、资源、上下文、事件大小或业务时间范围。直接 SQL 可以写入形状合法但业务内容非法的数据；导入和修数必须复用应用校验，读侧仍可能拒绝这些非法记录。
 
-认证映射可省略无效 IP、超长设备字段、自定义 request_id 或可选 name，并单独安全计数/告警；这些边界不收紧认证 HTTP 输入。已验证管理员 issuer/sub 超过 512 字节时拒绝该审计事件并安全观测，认证结果不变。`authentication.MapLegacy` 仅供受控的历史事件转换：必须提供显式 legacy 事件标识，遇到不兼容的可选字段拒绝转换，不采用在线事件的安全省略策略；库不提供旧库自动升级。
+认证映射可省略无效 IP、超长设备字段、自定义 request_id 或可选 name，并单独安全计数/告警；这些边界不收紧认证 HTTP 输入。已验证管理员 issuer/sub 超过 512 字节时拒绝该审计事件并安全观测，认证结果不变。库不再提供开发期事件写侧转换或旧库自动升级；在线认证映射不生成 `legacy_event_id`。既有带该标记的私有快照保持原读取及隐私清理兼容，这不表示存在真实生产历史数据或提供旧库迁移承诺。
 
 ### 配置、所有权与读侧
 

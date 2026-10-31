@@ -51,7 +51,7 @@ func seedSyntheticAccount(t *testing.T, pool *pgxpool.Pool, cfg accountkit.Confi
 	}
 	// Synthetic rows on the current initial schema.
 	now := time.Now().UTC().Truncate(time.Second)
-	exec("INSERT INTO user_account(id,state,display_name) VALUES($1,1,'Source user')", f.UserID)
+	exec("INSERT INTO user_account(id,state,display_name) VALUES($1,1,'Synthetic user')", f.UserID)
 	mac := hmac.New(sha256.New, cfg.SubjectHMACKeys[1])
 	mac.Write([]byte(f.Phone))
 	block, err := aes.NewCipher(cfg.SubjectCipherKeys[1])
@@ -66,7 +66,7 @@ func seedSyntheticAccount(t *testing.T, pool *pgxpool.Pool, cfg accountkit.Confi
 	ct := gcm.Seal(nonce, nonce, []byte(f.Phone), nil)
 	exec("INSERT INTO identity(id,user_id,kind,subject_digest,digest_key_version,subject_ciphertext,cipher_key_version,hint_prefix,hint_suffix) VALUES($1,$2,'PHONE',$3,1,$4,1,'+86138','1234')", f.IdentityID, f.UserID, hex.EncodeToString(mac.Sum(nil)), ct)
 	hash := sha256.Sum256([]byte(f.RefreshToken))
-	exec("INSERT INTO session(id,user_id,device_id,auth_time,refresh_token_hash,refresh_expire_time) VALUES($1,$2,'source-device',$3,$4,$5)", f.SessionID, f.UserID, now, hash[:], now.Add(24*time.Hour))
+	exec("INSERT INTO session(id,user_id,device_id,auth_time,refresh_token_hash,refresh_expire_time) VALUES($1,$2,'synthetic-device',$3,$4,$5)", f.SessionID, f.UserID, now, hash[:], now.Add(24*time.Hour))
 	// Synthetic audit row; legacy_event_id is a live field of the audit/authentication decoder.
 	exec(`INSERT INTO audit_event(id,source,action,result,actor,targets,data,occur_time)
  VALUES('019a0000-0000-7000-8000-000000000001',$1,'CODE_SENT',1,
@@ -86,7 +86,7 @@ func seedSyntheticAccount(t *testing.T, pool *pgxpool.Pool, cfg accountkit.Confi
 	return f, signed + "." + b64(sig)
 }
 
-func snapshotSource(t *testing.T, pool *pgxpool.Pool) string {
+func snapshotSyntheticAccount(t *testing.T, pool *pgxpool.Pool) string {
 	t.Helper()
 	var out string
 	err := pool.QueryRow(context.Background(), `

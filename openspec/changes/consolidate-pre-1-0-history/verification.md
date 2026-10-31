@@ -1,6 +1,59 @@
 # consolidate-pre-1-0-history 验收记录
 
-## 当前状态
+## 2026-10-31 追加实施：当前状态
+
+本节记录用户授权“把 13 项逐项评估后的必要 API 调整也纳入本变更”后的收尾。下方原验收作为历史证据保留，其中“13 项待决定”、遗留小项及非 root 权限测试未验证的描述以本节结果为准；历史日志不代表本次代码已验证。
+
+- 工作基点：`bf2f0ff`，分支 `chore/consolidate-pre-1-0-history`；本次修改保持未提交。完整分支审查以本地 `develop`（`fb00c89`）到当前工作区为范围。
+- 13 项已逐项裁定：12 项包含必要修改，1 项保留协议专用 IdP 构造器/Verify 差异。保留不透明 `user.Repo/NewRepo`、具体装配依赖和两种 `CheckKeyVersions`；隐藏原始查询与事务方法。完整理由见 [design D12](design.md#d12-2026-10-31-用户授权的-api-收尾)，调用替换见 [兼容指南](../../../docs/compatibility.md)。
+- 原遗留测试及文档小项均已处理；三个实施步骤独立审查均通过。全分支最终审查发现的升级测试覆盖缺口及 README 请求示例错误均已修复并独立复核关闭，规格与代码质量均为 Approve。29/29 项任务完成。
+- 已同步五个相关主规格；没有归档。冻结 `0001`、生产查询 SQL、认证及领域事务行为未改。
+
+## 追加实施的验证证据
+
+环境为 `tests/Dockerfile` 对应的 Linux 镜像 `accountkit-verify:c1h`，Go 1.26.5、`GOWORK=off`、PostgreSQL 17、Redis 7。完整演练使用新建且执行前核对为空的两个独立库 `c1h_followup_20261031_src` / `c1h_followup_20261031_dst`；原有恢复库未重用。
+
+演练完成后核对两个新库均无连接，仅删除这两个本次创建的库；既有测试容器、普通测试库及此前恢复库均保留。备份和三阶段日志仍在被忽略的 `.test-output/recovery.ZhJ6Yu/`，后续重跑需要另建独立空库。
+
+| 检查 | 实际结果 |
+|---|---|
+| 遗留测试收尾 | migrations/pii/httpflows、宿主回调、会话来源及恢复快照定向真实 PostgreSQL 测试通过，零 skip；迁移拒绝、HTTP 刷新及隔离相关定向 race 通过；相关 vet 通过。dirty/超前拒绝均重复核对 catalog、业务记录、version/dirty，并显式核验两层锁与迁移连接释放。 |
+| API 符号行为 | 可变覆盖登记测试在旧 map 实现上真实失败，副本函数实现后通过；手工旧 `ae/re` 加密缓存及审计旧快照读/清理测试通过。Task 2 中间态全仓非 race 测试 1163 个顶层 pass、31 skip、0 fail，因未配置真实 Redis，不能用其代替完整门禁；最终结果见后。 |
+| 存储与 HTTP 边界 | 独立消费者模块 12/12 编译断言通过：公开装配可编译，3 个旧 Repo 方法不可用，4 个新 internal 包拒绝导入，4 个旧路径不存在。每项核对准确编译器诊断，没有把下载失败作为拒绝证明。HTTP/audit 179 与领域/迁移/accountsvc 40 个顶层测试通过，零 fail/skip。 |
+| 生成内容与构建 | sqlc 1.31.1 重新生成，六个生成文件与移动前逐字节相同；两个 HTTP 实现文件逐字节相同。`scripts/check-generated.sh`、全仓 build/vet 通过。首次 vet 的测试 import 遗漏已修复，失败日志保留，不计为通过。 |
+| 规格及协议 | `openspec validate --all --strict`：41 pass、0 fail；`node scripts/check-openapi.cjs`：enduser 24、admin 11 操作及会话上下文边界通过。 |
+| 文档引用 | 检查 450 个 Markdown 文件、662 条本地链接：源文件/新增链接无断链；另有 197 条指向被忽略历史证据的链接在本机不可用，均在本次修改前已存在。不宣称历史原始材料全部可取。 |
+| 完整 Linux 库门禁 | `bash scripts/verify.sh` 通过：迁移历史、build、vet、全仓 race、981 项必需测试及恢复演练。race 顶层 1192 pass、0 fail、2 skip；含子测试 3552 pass。日志 `c1h-followup-verify.log` 与 `tests.jsonl`。 |
+| accountsvc 进程门禁 | `bash scripts/verify-accountsvc.sh` 通过：build、vet、进程/race 及 62 项必需门禁；顶层 203 pass、0 fail、1 skip，含子测试 820 pass。日志 `c1h-followup-accountsvc.log` 与 `accountsvc-tests.jsonl`；两个完整脚本的串行 runner 最终退出码 0。 |
+| 新恢复演练 | pg_dump/pg_restore 17.11；`recovery.ZhJ6Yu/` 下 seed、verify、source-unchanged 的 `TestRecoveryFixture` 各 1 pass、0 skip。校验恢复后来源、客户端 JSON、流程密文、资料精确值、账号时间、access/refresh、匿名化及源库不变。 |
+| 非 root 权限补验 | 编译 accountsvc 测试二进制，以 UID/GID 65534:65534 在 Linux 容器运行 `TestProfileAttributesUnreadableFile`：1 pass、0 skip，退出 0。日志 `c1h-followup-permissions.log`。首次未引用的 PowerShell 参数被拆分，未执行测试；修正引用后通过。 |
+| 审查后的升级测试补验 | `go test -race -json -count=1 ./migrations`：41 个顶层 pass、129 个含子测试 pass、0 fail/skip；`go vet ./migrations` 通过，串行 runner 退出 0。日志 `c1h-followup-upgrade-race.jsonl`、`c1h-followup-upgrade-vet.log`。全仓现存 Go 文件 gofmt 检查无输出，`git diff --check` 通过。 |
+
+完整脚本里的 skip 仅为普通套件预期跳过的 `TestRecoveryFixture` 和 root 可读取权限受限文件时的 `TestProfileAttributesUnreadableFile`；分别由上述恢复三阶段和非 root 用例补验，未修改测试的 skip 条件或必需清单。统计保存于 `.test-output/c1h-followup-summary.json`。完整脚本运行后新增的升级用例只修改测试文件；其最终单独迁移包 race/vet 结果另记，不能把先前全仓运行冒称为已执行后来补充的断言。
+
+最终审查修复：`TestUpgradePreservesDataAndIsRepeatable` 补齐八表非空基线，在当前重复 Up、首次及重复 latest+1 后逐次验证原数据、列/约束/索引、资料精确数字、账号与观察时间。新增 HMAC 检索/身份解密、原 JWT 与未吊销会话关联、refresh 哈希正负例、有效来源、真实客户端 codec 及流程 AAD 解密断言；流程 payload 明确为存储层合成数据，不冒充完整领域登录补全。catalog helper 默认排除规则不变，只有该用例额外排除新增 probe 表。README 的 completeSignIn 示例改为实际 `kind/credential`。两项均经最终审查复核，无未关闭发现。
+
+原始材料集中在被忽略的 `.test-output/`：`c1h-followup-task2-{red,green,suite,vet,final-unit}.log`、`task3-boundary/{red,green}/`、`task3-validation/`、`c1h-followup-links.json`；逐步报告、差异与独立审查在 `.superpowers/sdd/2026-10-31-consolidate-pre-1-0-history-followup/`。这些为本地工作材料，验收结论以本文件为持久记录。
+
+追加实施中的测试变更与替代覆盖：
+
+- 删除 `TestAuthenticationLegacyRejectsIncompatibleOptionalFields`：仅针对已退役 `MapLegacy` 写转换器；在线映射的可选字段/actor 验证与旧快照读取覆盖保留。
+- 原 `TestAuthenticationLegacyAdminForbiddenPreservesResources` 改为 `TestAuthenticationLegacyAdminForbiddenSnapshotReadable`，用手工持久化事件验证旧读取；保留在线 ADMIN_FORBIDDEN 不推测请求目标的断言。
+- 两个 SMTP renderer 测试仅随正式名称改名；`ErrExhausted` 不可达错误映射行移除，真实错误尝试计数、最终 `ErrInvalid`/后续 `ErrExpired` 及限流测试保留。
+- 新增必需测试 `TestPurgeCoveredTablesReturnsIndependentSnapshots`、`TestGetPreviouslyEncodedPair`；HTTP helper 必需测试路径随包移动。必需清单从 980 变为 981 项（新增 2、退役 1，其余改名/移包），未以放宽 skip 或删门禁处理失败。
+- 原始 Repo 事务测试改经仅存在于 `export_test.go` 的桥接调用同一私有实现，保留默认隔离与领域 READ COMMITTED 测试，并补 panic 回滚/连接归还场景；没有复制另一套事务实现。
+
+## 追加实施的边界与后续动作
+
+- 未提交、推送、合并、运行在线 GitHub Actions、删除远端 v0 tag/Release、发布 v1.0.0 或归档；这些不是本次本地实施完成的隐含动作。
+- `docs/features.md` 的真实外部环境验证缺口未补做；Windows 权限语义未验证。API 调整已有迁移说明，不据本次盘点声称所有公开 API 已正式冻结。
+- 下方历史记录中的延期小项与 13 项待决限制已被本次授权和实施取代；原测试删除附表及其他历史裁定保留用于追溯。
+
+## 历史验收（追加实施之前）
+
+以下为原记录，所有“当前”“本次”及未验证项均指追加实施之前的工作状态。
+
+### 原当前状态
 
 - 日期：2026-10-31
 - 分支：`chore/consolidate-pre-1-0-history`

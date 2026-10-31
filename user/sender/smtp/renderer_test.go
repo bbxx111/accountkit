@@ -351,17 +351,17 @@ func TestSMTPRendererSharesDeliveryBudget(t *testing.T) {
 	}
 }
 
-func TestLegacyChineseRendererShortTTL(t *testing.T) {
-	content, err := (delivery.LegacyChineseRenderer{}).Render(context.Background(), sender.CodeMessage{Purpose: enum.PurposeSignIn, Code: "123456", TTL: time.Nanosecond})
+func TestChineseRendererShortTTL(t *testing.T) {
+	content, err := (delivery.ChineseRenderer{}).Render(context.Background(), sender.CodeMessage{Purpose: enum.PurposeSignIn, Code: "123456", TTL: time.Nanosecond})
 	if err != nil || !strings.Contains(content.Text, "有效期：1 分钟。") || content.HTML != "" {
 		t.Fatal("positive short legacy TTL rounded down")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err = (delivery.LegacyChineseRenderer{}).Render(ctx, validCodeMessage()); err != sender.ErrUnavailable {
+	if _, err = (delivery.ChineseRenderer{}).Render(ctx, validCodeMessage()); err != sender.ErrUnavailable {
 		t.Fatal("legacy renderer ignored cancellation")
 	}
-	if _, err = (delivery.LegacyChineseRenderer{}).Render(context.Background(), sender.CodeMessage{}); err != sender.ErrUnavailable {
+	if _, err = (delivery.ChineseRenderer{}).Render(context.Background(), sender.CodeMessage{}); err != sender.ErrUnavailable {
 		t.Fatal("legacy renderer accepted invalid code message")
 	}
 }
@@ -431,7 +431,7 @@ func TestSMTPRendererFoldsLongSubject(t *testing.T) {
 	}
 }
 
-func TestLegacyChineseRendererBrand(t *testing.T) {
+func TestChineseRendererBrand(t *testing.T) {
 	ctx := context.Background()
 	purposes := map[enum.CodePurpose]string{
 		enum.PurposeSignIn:         "登录",
@@ -442,7 +442,7 @@ func TestLegacyChineseRendererBrand(t *testing.T) {
 	for purpose, label := range purposes {
 		m := sender.CodeMessage{Purpose: purpose, Code: "123456", TTL: 5 * time.Minute}
 		// 空品牌：与既有文案逐字一致。
-		plain, err := (delivery.LegacyChineseRenderer{}).Render(ctx, m)
+		plain, err := (delivery.ChineseRenderer{}).Render(ctx, m)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -450,7 +450,7 @@ func TestLegacyChineseRendererBrand(t *testing.T) {
 		if plain.Subject != label+"验证码" || plain.Text != wantText {
 			t.Fatalf("%v: unbranded output changed: %q / %q", purpose, plain.Subject, plain.Text)
 		}
-		branded, err := (delivery.LegacyChineseRenderer{Brand: "食方"}).Render(ctx, m)
+		branded, err := (delivery.ChineseRenderer{Brand: "食方"}).Render(ctx, m)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -471,7 +471,7 @@ func TestLegacyChineseRendererBrand(t *testing.T) {
 		if delivery.ValidateBrand(brand) == nil {
 			t.Errorf("%s: ValidateBrand must reject %q", name, brand)
 		}
-		if _, err := (delivery.LegacyChineseRenderer{Brand: brand}).Render(ctx, validCodeMessage()); err != sender.ErrUnavailable {
+		if _, err := (delivery.ChineseRenderer{Brand: brand}).Render(ctx, validCodeMessage()); err != sender.ErrUnavailable {
 			t.Errorf("%s: Render must refuse invalid brand: %v", name, err)
 		}
 	}
@@ -482,12 +482,12 @@ func TestLegacyChineseRendererBrand(t *testing.T) {
 	}
 	// 内置渲染器的非法品牌在构造时即被拒绝，而不是在占用额度后的每次发送时失败。
 	f := newSMTPFixture(t, "implicit", nil)
-	for _, r := range []delivery.Renderer{delivery.LegacyChineseRenderer{Brand: "食\r\n方"}, &delivery.LegacyChineseRenderer{Brand: " 食方"}} {
+	for _, r := range []delivery.Renderer{delivery.ChineseRenderer{Brand: "食\r\n方"}, &delivery.ChineseRenderer{Brand: " 食方"}} {
 		if _, err := delivery.NewWithRenderer(f.config(), r); err == nil {
 			t.Errorf("NewWithRenderer accepted invalid brand renderer %#v", r)
 		}
 	}
-	if _, err := delivery.NewWithRenderer(f.config(), delivery.LegacyChineseRenderer{Brand: "食方"}); err != nil {
+	if _, err := delivery.NewWithRenderer(f.config(), delivery.ChineseRenderer{Brand: "食方"}); err != nil {
 		t.Fatalf("valid brand renderer: %v", err)
 	}
 	for _, ok := range []string{"", "食方", strings.Repeat("食", 32), "Zavelo App"} {

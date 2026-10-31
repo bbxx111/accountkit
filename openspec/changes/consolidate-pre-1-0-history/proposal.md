@@ -14,11 +14,15 @@ v0.1.0 到 v0.7.2 共九个版本均未被正式使用：仓库自身无正式�
 - **旧结构测试按用例三分**：只证明“旧结构被拒绝”的用例删除；证明当前安装、重复 Up、并发、锁、dirty、latest+1 升级、UnsafeReset 的用例保留；少数改为针对 v1.0.0 单一基线的断言。`scripts/required-tests.txt` 同步删除对应条目，并在验收记录中核对删后清单仍覆盖全部存活用例。
 - **BREAKING 删除 6 处 Deprecated 兼容入口**：`ids.IdentityFlow`、`user.Deps.IdentityFlowContext`、`(*user.Service).CleanupIdentityFlows`、`sender.SMSSender`、`sender.EmailSender`、`sender.Message`；对应兼容测试与文档迁移说明一并退役。
 - **公开 Go API 冻结前盘点**：用 `go doc -all` 通读根包、`user`、`httpapi/*`、`tokens`、`audit` 等公开面，发现的命名不一致或不该导出的符号在 v1.0.0 前处理或明确记录为接受；不新增功能。
-- **改写代理规则**：AGENTS.md「迁移安全」节改为只描述 v1.0.0 基线（0001 自 v1.0.0 tag 起冻结，后续结构从 0002 递增，低于 v1.0.0 的 tag 不再存在也不再承认）；删除“已发布 v0 tag 不可删除”与“不修改冻结源”两条已无保护对象的规则。
+- **改写代理规则**：AGENTS.md「迁移安全」节改为只描述 v1.0.0 基线（0001 自 v1.0.0 tag 起冻结，后续结构从 0002 递增，低于 v1.0.0 的 tag 已退役、尚待单独删除且不参与历史保护）；删除“已发布 v0 tag 不可删除”与“不修改冻结源”两条已无保护对象的规则。
 - **明确排除**：其余四项候选功能（HTTP 客户端 SDK、纯第三方账号自助恢复、更多认证方式、两个已有账号合并）不进入本变更；六项真实环境验证缺口作为已记录边界随版本发布，不阻塞。
 - **后续独立动作**：删除远端 v0.1.0 至 v0.7.2 的 tag 与 GitHub Release 是对外且不可逆的动作，须在本变更合入后单独取得确认再执行；v1.0.0 发布准备另起变更。
 
 ## Capabilities
+
+### 2026-10-31 扩展范围
+
+用户明确要求将 13 项 API 盘点后的必要调整纳入本变更，具体决策见 design D12。新增范围包括：删除开发期审计写侧转换与无用符号、公开覆盖登记改为副本函数、微信配置构造器及 SMTP/grace 名称整理、Repo 的查询/事务方法私有化、sqlc 输出与 HTTP 工具包内部化；保留直接领域服务、不透明 Repo、独立密钥检查、审计读取兼容及已有 IdP 协议差异。相关调用说明与规格同步，补齐延期测试。允许调整 sqlc 输出路径并重新生成，不修改查询、数据库结构或冻结迁移字节。
 
 ### New Capabilities
 
@@ -34,7 +38,7 @@ v0.1.0 到 v0.7.2 共九个版本均未被正式使用：仓库自身无正式�
 
 ## Impact
 
-- 代码：`internal/migrationcheck/`、`migrations/`（预检、基线文件、测试、testdata）、`compatibility_test.go`、`ids/`、`user/`、`user/sender/` 的 Deprecated 符号及其测试；新增 HTTP 流程示例测试。不修改 `0001_init.up.sql` / `0001_init.down.sql` 的字节、sqlc 查询、生成代码或数据库结构；新空 schema 安装仍为 version=1/dirty=false。
+- 代码：`internal/migrationcheck/`、`migrations/`（预检、基线文件、测试、testdata）、`compatibility_test.go`、`ids/`、`user/`、`user/sender/` 的 Deprecated 符号及其测试；新增 HTTP 流程示例测试。不修改 `0001_init.up.sql` / `0001_init.down.sql` 的字节、sqlc 查询或数据库结构；按 2026-10-31 扩展范围调整生成包位置并重新生成；新空 schema 安装仍为 version=1/dirty=false。
 - 公开 Go API：删除 6 个 Deprecated 符号，属破坏性变化；没有任何已知调用方使用，接入方 ai-food 升级到 v1.0.0 时须同步改用正式名称。v1.0.0 起公开 API 受 semver 约束，后续破坏性变化须升 v2 模块路径。
 - 门禁：`scripts/required-tests.txt` 删除退役用例；`scripts/check-migrations.sh`、`verify.sh`、恢复演练脚本继续执行，CI 工作流不变。检查工具静默忽略低于 v1.0.0 的 tag，因此工具改动与远端 tag 删除的先后顺序互不影响 CI。
 - 文档与规则：`docs/` 全量重写，AGENTS.md 规则改写，`.test-output/` 下的旧版本消费缓存不受影响（已被 Git 忽略）。

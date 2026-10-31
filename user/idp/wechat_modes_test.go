@@ -41,7 +41,7 @@ func TestWeChatApplicationModes(t *testing.T) {
 				} else {
 					cfg.Apps = []idp.App{{AppID: "wx1", Secret: "app-secret"}}
 				}
-				verifier, err := idp.NewWeChatWithConfig(cfg, srv.Client(), nil)
+				verifier, err := idp.NewWeChat(cfg, srv.Client(), nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -70,13 +70,13 @@ func TestWeChatConfigurationValidation(t *testing.T) {
 		"colon": {Apps: []idp.App{{AppID: "wx:1", Secret: "SECRET:VALUE"}}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := idp.NewWeChatWithConfig(cfg, nil, nil)
+			_, err := idp.NewWeChat(cfg, nil, nil)
 			if err == nil || strings.Contains(err.Error(), "SECRET:VALUE") {
 				t.Fatalf("unsafe or missing error: %v", err)
 			}
 		})
 	}
-	if _, err := idp.NewWeChatWithConfig(idp.WeChatConfig{Apps: []idp.App{valid}}, nil, nil); err != nil {
+	if _, err := idp.NewWeChat(idp.WeChatConfig{Apps: []idp.App{valid}}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -110,7 +110,7 @@ func TestWeChatMissingIdentifiersAndSafeErrors(t *testing.T) {
 			} else {
 				cfg.Apps = apps
 			}
-			verifier, err := idp.NewWeChatWithConfig(cfg, srv.Client(), slog.New(slog.NewTextHandler(&logs, nil)))
+			verifier, err := idp.NewWeChat(cfg, srv.Client(), slog.New(slog.NewTextHandler(&logs, nil)))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -131,7 +131,7 @@ func TestWeChatMissingIdentifiersAndSafeErrors(t *testing.T) {
 func TestWeChatPolicyIncludesModeAndGroups(t *testing.T) {
 	fingerprint := func(cfg idp.WeChatConfig) string {
 		t.Helper()
-		v, err := idp.NewWeChatWithConfig(cfg, nil, nil)
+		v, err := idp.NewWeChat(cfg, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

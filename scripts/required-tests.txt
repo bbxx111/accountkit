@@ -82,8 +82,8 @@ github.com/bbxx111/accountkit/httpapi/enduser/TestUpdateMe
 github.com/bbxx111/accountkit/httpapi/enduser/TestWriteOAuthErrorMapping
 github.com/bbxx111/accountkit/httpapi/enduser/TestWriteServiceErrorInvalidArgumentEmptyDetail
 github.com/bbxx111/accountkit/httpapi/enduser/TestWriteServiceErrorMapping
-github.com/bbxx111/accountkit/httpapi/jsonbody/TestDecodeAcceptsObjectRejectsEverythingElse
-github.com/bbxx111/accountkit/httpapi/reqid/TestMiddlewareSetsHeaderAndContext
+github.com/bbxx111/accountkit/httpapi/internal/jsonbody/TestDecodeAcceptsObjectRejectsEverythingElse
+github.com/bbxx111/accountkit/httpapi/internal/reqid/TestMiddlewareSetsHeaderAndContext
 github.com/bbxx111/accountkit/ids/TestNewHasPrefixAndLength
 github.com/bbxx111/accountkit/ids/TestNewIsTimeOrderedAcrossMilliseconds
 github.com/bbxx111/accountkit/ids/TestNewRandomBitsVary
@@ -464,7 +464,7 @@ github.com/bbxx111/accountkit/user/sender/smtp/TestSMTPRendererFailureIsSafe
 github.com/bbxx111/accountkit/user/sender/smtp/TestSMTPRendererContextAndConcurrency
 github.com/bbxx111/accountkit/user/sender/smtp/TestSMTPRendererCancellation
 github.com/bbxx111/accountkit/user/sender/smtp/TestSMTPRendererSharesDeliveryBudget
-github.com/bbxx111/accountkit/user/sender/smtp/TestLegacyChineseRendererShortTTL
+github.com/bbxx111/accountkit/user/sender/smtp/TestChineseRendererShortTTL
 github.com/bbxx111/accountkit/user/TestSMTPRendererFailurePreservesDeliveryContract
 github.com/bbxx111/accountkit/user/TestSMTPRendererFailureCannotDiscardNewerRound
 github.com/bbxx111/accountkit/user/TestSMTPRendererFailureHTTPAgainstRealDB
@@ -483,7 +483,7 @@ github.com/bbxx111/accountkit/examples/codeemail/TestRendererTTL
 github.com/bbxx111/accountkit/examples/codeemail/TestRendererRejectsInvalidInput
 github.com/bbxx111/accountkit/examples/codeemail/TestRendererCancellation
 github.com/bbxx111/accountkit/user/sender/smtp/TestSMTPRendererFoldsLongSubject
-github.com/bbxx111/accountkit/user/sender/smtp/TestLegacyChineseRendererBrand
+github.com/bbxx111/accountkit/user/sender/smtp/TestChineseRendererBrand
 github.com/bbxx111/accountkit/audit/TestMemoryFreezesInputAndOutput
 github.com/bbxx111/accountkit/audit/TestAsyncFreezesQueueAndAccountsClassifications
 github.com/bbxx111/accountkit/audit/TestStoreScrubbedReplay
@@ -511,8 +511,9 @@ github.com/bbxx111/accountkit/audit/authentication/TestAuthenticationActorKindMu
 github.com/bbxx111/accountkit/audit/authentication/TestAuthenticationEventMapping
 github.com/bbxx111/accountkit/audit/authentication/TestAuthenticationIDFailureDoesNotChangeResult
 github.com/bbxx111/accountkit/audit/authentication/TestAuthenticationInvalidInputs
-github.com/bbxx111/accountkit/audit/authentication/TestAuthenticationLegacyAdminForbiddenPreservesResources
-github.com/bbxx111/accountkit/audit/authentication/TestAuthenticationLegacyRejectsIncompatibleOptionalFields
+github.com/bbxx111/accountkit/audit/authentication/TestAuthenticationLegacyAdminForbiddenSnapshotReadable
+github.com/bbxx111/accountkit/user/TestPurgeCoveredTablesReturnsIndependentSnapshots
+github.com/bbxx111/accountkit/session/grace/TestGetPreviouslyEncodedPair
 github.com/bbxx111/accountkit/audit/authentication/TestAuthenticationOptionalFieldsAndStableIdentityLimits
 github.com/bbxx111/accountkit/audit/authentication/TestAuthenticationProjectionRejectsUntrustedSnapshots
 github.com/bbxx111/accountkit/audit/authentication/TestAuthenticationScrub

@@ -22,14 +22,14 @@ func profileAttributesOldData(t *testing.T, c *pgx.Conn) string {
 func TestProfileAttributesMigration(t *testing.T) {
 	cfg, schema, c := consolidatedProfileAttributesInitial(t)
 	ctx := context.Background()
-	seedRenameFlow(t, c)
+	seedInitialFlow(t, c)
 	if _, err := c.Exec(ctx, `INSERT INTO session_authentication_identity VALUES('s_0000000000001','i_0000000000001'); INSERT INTO session_client_info(session_id,client_info,observe_time) VALUES('s_0000000000001','{"os":{"name":"synthetic"}}','2024-01-02T03:04:05Z')`); err != nil {
 		t.Fatal(err)
 	}
 	before := profileAttributesOldData(t, c)
 	// Keep a second independently configured instance at the current baseline.
 	_, otherSchema, other := consolidatedProfileAttributesInitial(t)
-	seedRenameFlow(t, other)
+	seedInitialFlow(t, other)
 	otherCatalog, otherData := migrationCatalog(t, other, otherSchema), profileAttributesOldData(t, other)
 	assertVersion(t, cfg, schema, 1, false)
 	if err := Up(ctx, cfg, schema); err != nil {
@@ -43,11 +43,11 @@ func TestProfileAttributesMigration(t *testing.T) {
 	if err := c.QueryRow(ctx, `SELECT profile_attributes='{}'::jsonb FROM user_account`).Scan(&defaults); err != nil || !defaults {
 		t.Fatalf("defaults=%v: %v", defaults, err)
 	}
-	catalog, data := migrationCatalog(t, c, schema), renameDataSnapshot(t, c)
+	catalog, data := migrationCatalog(t, c, schema), migrationDataSnapshot(t, c)
 	if err := Up(ctx, cfg, schema); err != nil {
 		t.Fatal(err)
 	}
-	if catalog != migrationCatalog(t, c, schema) || data != renameDataSnapshot(t, c) {
+	if catalog != migrationCatalog(t, c, schema) || data != migrationDataSnapshot(t, c) {
 		t.Fatal("repeat changed data/catalog")
 	}
 	for _, invalid := range []string{
@@ -69,7 +69,7 @@ func TestProfileAttributesMigration(t *testing.T) {
 	}
 	t.Run("concurrent_v1_repeat", func(t *testing.T) {
 		cfg, schema, c := consolidatedProfileAttributesInitial(t)
-		seedRenameFlow(t, c)
+		seedInitialFlow(t, c)
 		before := profileAttributesOldData(t, c)
 		var wg sync.WaitGroup
 		errs := make(chan error, 4)

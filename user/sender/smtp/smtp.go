@@ -41,7 +41,7 @@ type Sender struct {
 
 // New 只校验和复制配置，不进行网络 I/O。错误只包含配置项名。
 func New(cfg Config) (*Sender, error) {
-	return NewWithRenderer(cfg, LegacyChineseRenderer{})
+	return NewWithRenderer(cfg, ChineseRenderer{})
 }
 
 // NewWithRenderer 只校验和复制连接配置，既不渲染也不进行网络 I/O。
@@ -59,11 +59,11 @@ func NewWithRenderer(cfg Config, renderer Renderer) (*Sender, error) {
 	}
 	// 内置渲染器的品牌在构造时校验，避免每次发送都在占用额度之后才失败。
 	switch r := renderer.(type) {
-	case LegacyChineseRenderer:
+	case ChineseRenderer:
 		if ValidateBrand(r.Brand) != nil {
 			return nil, errors.New("smtp: invalid Renderer Brand")
 		}
-	case *LegacyChineseRenderer:
+	case *ChineseRenderer:
 		if ValidateBrand(r.Brand) != nil {
 			return nil, errors.New("smtp: invalid Renderer Brand")
 		}

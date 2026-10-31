@@ -230,7 +230,7 @@ func snapshotRecovery(t *testing.T, pool *pgxpool.Pool) string {
       'client_info',(SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY session_id),'[]'::jsonb) FROM session_client_info t))::text`).Scan(&contextSnapshot); err != nil {
 		t.Fatal(err)
 	}
-	return snapshotSource(t, pool) + "\n" + flows + "\n" + contextSnapshot
+	return snapshotSyntheticAccount(t, pool) + "\n" + flows + "\n" + contextSnapshot
 }
 
 func assertRecoveryFlows(t *testing.T, pool *pgxpool.Pool, state recoveryState) {

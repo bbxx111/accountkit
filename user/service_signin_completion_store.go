@@ -17,8 +17,8 @@ import (
 
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	ob "github.com/bbxx111/accountkit/observability"
-	"github.com/bbxx111/accountkit/user/db"
 	"github.com/bbxx111/accountkit/user/idp"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -133,7 +133,7 @@ func (s *Service) loadFlow(ctx context.Context, token string, dev Device) (db.Si
 	if err != nil || len(b) != 32 {
 		return db.SignInCompletionFlow{}, completionPayload{}, ErrSignInCompletionInvalid
 	}
-	row, err := s.d.Repo.Q().GetSignInCompletionFlowByTokenDigest(ctx, hex.EncodeToString(hashRefresh(token)))
+	row, err := s.d.Repo.queries().GetSignInCompletionFlowByTokenDigest(ctx, hex.EncodeToString(hashRefresh(token)))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return row, completionPayload{}, ErrSignInCompletionInvalid
 	}
@@ -206,5 +206,5 @@ func (s *Service) CleanupSignInCompletionFlows(ctx context.Context) (total int64
 	if s.observer.Enabled() {
 		defer s.observeMaintenance(ctx, ob.TaskCleanupSignInCompletionFlows, func() int64 { return total }, &resultErr, time.Now())
 	}
-	return s.d.Repo.Q().DeleteExpiredSignInCompletionFlows(ctx, db.DeleteExpiredSignInCompletionFlowsParams{Now: s.now(), BatchSize: 1000})
+	return s.d.Repo.queries().DeleteExpiredSignInCompletionFlows(ctx, db.DeleteExpiredSignInCompletionFlowsParams{Now: s.now(), BatchSize: 1000})
 }

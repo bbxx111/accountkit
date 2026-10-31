@@ -50,6 +50,7 @@ type Facebook struct {
 }
 
 // NewFacebook 构造校验器。不做 I/O；JWKS 首次 Limited 验证时加载。
+// 构造不承诺完整启动校验；缺少验证依赖等配置问题可能在 Verify 时返回 ErrMisconfigured。
 func NewFacebook(o FacebookOptions) *Facebook {
 	if o.Logger == nil {
 		o.Logger = slog.Default()

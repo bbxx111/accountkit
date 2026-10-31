@@ -280,14 +280,21 @@ func TestHTTPFlows(t *testing.T) {
 		old := str(pair, "refresh_token")
 		// 多个请求同时发现 access 过期：所有并发刷新都拿到同一 pair。
 		var wg sync.WaitGroup
+		var ready sync.WaitGroup
+		start := make(chan struct{})
 		results := make([]reply, 4)
+		ready.Add(len(results))
 		for i := range results {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()
+				ready.Done()
+				<-start
 				results[i] = e.call("POST", "/token", "", "", map[string]any{"grant_type": "refresh_token", "refresh_token": old})
 			}(i)
 		}
+		ready.Wait()
+		close(start)
 		wg.Wait()
 		for i, r := range results {
 			if r.status != 200 || str(r.body, "access_token") == "" || str(r.body, "access_token") != str(results[0].body, "access_token") || str(r.body, "refresh_token") != str(results[0].body, "refresh_token") {

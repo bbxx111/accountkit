@@ -132,8 +132,6 @@ func classifyOperation(err error) (ob.Result, ob.Reason) {
 		return ob.ResultRejected, ob.ReasonCodeInvalid
 	case errors.Is(err, code.ErrExpired):
 		return ob.ResultRejected, ob.ReasonCodeExpired
-	case errors.Is(err, code.ErrExhausted):
-		return ob.ResultRejected, ob.ReasonCodeAttemptsExhausted
 	case errors.Is(err, idp.ErrInvalidCredential), errors.Is(err, idp.ErrNonceReplayed), errors.Is(err, idp.ErrAppNotAllowed):
 		return ob.ResultRejected, ob.ReasonInvalidCredential
 	case errors.Is(err, ErrUserFrozen):

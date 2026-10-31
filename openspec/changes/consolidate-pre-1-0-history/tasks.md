@@ -2,7 +2,7 @@
 
 - [x] 1.1 在 `internal/migrationcheck/main.go` 删除 `frozen`、`legacyReleases`、`publishedInitialReleases` 及 `sourceBaseline` 逻辑，`releasedHistory` 跳过主版本为 0 的 tag；保留 `initialFrozen`、可达 tag 迁移不可改写与版本递增三项检查。验证：`bash scripts/check-migrations.sh` 在仍带 v0 tag 的检出上通过。
 - [x] 1.2 重写 `internal/migrationcheck/main_test.go` 与 `published_initial_test.go`：删除源快照与各代 pin 用例，新增“v0 tag 被忽略”“v1.x tag 改写迁移失败”“当前 0001 哈希不一致失败”“新版本号必须递增”用例。验证：`GOWORK=off go test ./internal/migrationcheck/...` 通过。
-- [x] 1.3 删除 `tests/testdata/source-baseline/` 整目录与 `migrations/testdata/legacy_integrated_v1.sql`；核对仓库内无残留引用。验证：`rg 'source-baseline|legacy_integrated_v1' --glob '!openspec/changes/archive/**' --glob '!docs/superpowers/**'` 无结果。
+- [x] 1.3 删除 `tests/testdata/source-baseline/` 整目录与 `migrations/testdata/legacy_integrated_v1.sql`；核对当前生产代码、测试和脚本不再依赖旧源。验证：`rg 'source-baseline|legacy_integrated_v1' --glob '*.go' --glob '*.sh'` 无结果；历史计划、验收与退役说明中的名称保留用于追溯。
 
 ## 2. 运行时预检收缩（第 3 层：库）
 
@@ -32,7 +32,7 @@
 
 ## 7. 文档重写为 v1.0.0 基线（第 1 层）
 
-- [x] 7.1 将九份 `docs/releases/v0.*.md` 压缩为 `docs/releases/pre-1.0-history.md`（每个 tag 的提交、日期、一句话摘要，以及未正式使用、不提供升级路径、tag 已删除的声明），删除原九份。验证：`rg 'releases/v0\.' --glob '!openspec/changes/archive/**' --glob '!docs/superpowers/**'` 无结果。
+- [x] 7.1 将九份 `docs/releases/v0.*.md` 压缩为 `docs/releases/pre-1.0-history.md`（每个 tag 的提交、日期、一句话摘要，以及未正式使用、不提供升级路径、tag 已退役、尚待单独删除的声明），删除原九份。验证：`rg 'releases/v0\.' --glob '!openspec/changes/archive/**' --glob '!docs/superpowers/**'` 无结果。
 - [x] 7.2 重写 `docs/migrations.md`：只描述当前初始基线、预检两条规则、升级前检查、诊断失败、回退选择、UnsafeReset、历史检查与恢复演练；删除逐轮授权叙述。验证：文内无 v0.x tag、SHA 或“本轮授权”字样。
 - [x] 7.3 重写 `docs/compatibility.md`：只保留功能对照表与当前 Go/HTTP 契约边界；删除开发版之间升级章节与三节“历史提取索引”。验证：文件内无指向 v0 发布说明或源快照的链接。
 - [x] 7.4 重写 `docs/release-checklist.md` 为可复用通用检查表（发布前门禁、发布动作、消费确认、状态措辞约定、产品上线清单），加入“远端不存在 v0 tag”的人工核对项；版本专属门禁留待发布准备变更追加。验证：无 v0.x 版本门禁勾选记录。
@@ -41,10 +41,18 @@
 
 ## 8. 代理规则改写
 
-- [x] 8.1 按 design D9 重写 AGENTS.md「迁移安全」节，删除源快照冻结、v0 tag 不可移动及全部逐轮“直接改 0001”授权记录；修正其他节中引用源快照、旧 tag 或旧预检语义的句子；「技术栈与目录」表删除 `tests/testdata/source-baseline/` 行。验证：`rg 'source-baseline|v0\.[0-9]+\.[0-9]+|直接改 0001' AGENTS.md` 无结果。
+- [x] 8.1 按 design D9 重写 AGENTS.md「迁移安全」节，删除源快照冻结、v0 tag 不可移动及全部逐轮“直接改 0001”授权记录；修正其他节中引用源快照、旧 tag 或旧预检语义的句子；「技术栈与目录」表删除 `tests/testdata/source-baseline/` 行。验证：规则保留当前 0001 哈希及 v1.0.0 以上正式历史保护，不再保护 v0；保留 v0 tag/Release 已退役且尚未删除的事实说明。
 
 ## 9. 完整验证与交付
 
 - [x] 9.1 运行 `openspec validate --all --strict`、`bash scripts/check-generated.sh`、`bash scripts/check-migrations.sh`、`node scripts/check-openapi.cjs`。验证：全部通过并记录输出。
 - [x] 9.2 在 Linux 验证镜像（`tests/Dockerfile`）执行 `bash scripts/verify.sh`、`bash scripts/verify-accountsvc.sh` 与 `bash scripts/verify-recovery.sh`（三个一次性数据库）。验证：完整库/服务 race、必需测试门禁、恢复 seed/verify/source-unchanged 全部通过。
 - [x] 9.3 编写本变更 `verification.md`：实际运行的检查、测试删除附表、格式覆盖核对、API 盘点结论、未验证项；明确远端 v0 tag/Release 删除与 v1.0.0 发布准备为后续单独确认的动作。验证：记录与实际输出一致。
+
+## 10. 2026-10-31 收尾与公开 API 必要调整
+
+- [x] 10.1 完成验收记录列出的遗留测试和相邻文档修正：dirty 无写断言、锁释放、并发刷新屏障、格式测试错误处理、合成测试措辞、解绑前提与 Down 注释；相关真实数据库测试通过。
+- [x] 10.2 按 design D12 完成公开符号调整及迁移说明，覆盖登记返回副本、旧缓存读取和审计读取兼容由行为测试固定；必需清单与退役测试记录同步。
+- [x] 10.3 将 sqlc 生成包和 HTTP 工具内部化，封装 Repo 查询/事务入口并保留领域/装配能力；生成检查、外部消费者编译与事务测试通过。
+- [x] 10.4 同步 proposal/design、13 项决策、相关文档及主规格，清除失实状态和未决占位；严格规格校验及链接检查通过。
+- [x] 10.5 完成独立审查、当前代码 Linux 完整验证和新的恢复演练，追加本次 verification；明确未执行的远端集成、tag/Release 删除、发布和归档动作。

@@ -29,7 +29,7 @@
 
 ### D1 文档采用“当前状态”重写，不做逐篇归并
 
-备选是把九份发布说明与各文档的历史章节合并、去重后保留。否决理由：增量叙述的问题不在重复，而在叙述方式本身；归并后读者仍要沿时间线读。重写后每份文档只回答“v1.0.0 是什么”。历史只保留一份 `docs/releases/pre-1.0-history.md`，内容限于每个 v0 tag 的提交、日期与一句话摘要，以及“这些版本未被正式使用、不提供从它们升级的路径、tag 已删除”的声明。`docs/release-checklist.md` 改为可重复使用的通用检查表，版本专属门禁只在发布准备变更里按版本追加。`docs/compatibility.md` 只保留功能对照表；开发版之间的升级章节和三节“历史提取索引”随源快照退役一并删除。
+备选是把九份发布说明与各文档的历史章节合并、去重后保留。否决理由：增量叙述的问题不在重复，而在叙述方式本身；归并后读者仍要沿时间线读。重写后每份文档只回答“v1.0.0 是什么”。历史只保留一份 `docs/releases/pre-1.0-history.md`，内容限于每个 v0 tag 的提交、日期与一句话摘要，以及“这些版本未被正式使用、不提供从它们升级的路径、tag 已退役、计划在 v1.0.0 前删除（尚未删除）”的声明。`docs/release-checklist.md` 改为可重复使用的通用检查表，版本专属门禁只在发布准备变更里按版本追加。`docs/compatibility.md` 只保留功能对照表；开发版之间的升级章节和三节“历史提取索引”随源快照退役一并删除。
 
 ### D2 HTTP 调用流程文档：协议层状态机加 httptest 示例测试
 
@@ -67,11 +67,11 @@ v1.0.0 打 tag 后 0001 永久冻结，“version=1 等价于当前 0001 结构�
 
 ### D8 公开 API 盘点是一次有产出的通读，不是重构许可
 
-用 `GOWORK=off go doc -all` 导出根包、`user`、`user/sender`、`user/code`、`user/idp`、`httpapi/enduser`、`httpapi/admin`、`httpapi/authn`、`httpapi/apierror`、`tokens`、`audit`、`maintenance`、`anonymize`、`migrations`、`ids`、`enum`、`pii`、`session/*` 的公开面，逐包记录三类发现：命名与既有约定不一致、不应导出的符号、文档缺失。每条发现要么在本变更内处理，要么写入 design 的附录“接受的 API 现状”并说明理由。盘点不引入新能力，不改行为；处理项若涉及规格要求，走对应规格的 delta。
+用 `GOWORK=off go doc -all` 导出根包、`user`、`user/sender`、`user/code`、`user/idp`、`httpapi/enduser`、`httpapi/admin`、`httpapi/authn`、`httpapi/apierror`、`tokens`、`audit`、`maintenance`、`anonymize`、`migrations`、`ids`、`enum`、`pii`、`session/*` 的公开面，逐包记录三类发现：命名与既有约定不一致、不应导出的符号、文档缺失。每条发现要么在本变更内处理，要么写入 design 的附录“接受的 API 现状”并说明理由；2026-10-31 用户授权扩展后的决策以 D12 为准。盘点不引入新能力，不改行为；处理项若涉及规格要求，走对应规格的 delta。
 
 ### D9 AGENTS.md 规则改写范围
 
-「迁移安全」节替换为：当前 0001 自 v1.0.0 tag 起字节冻结；后续结构变更从 0002 递增，已发布版本不可修改、删除、重编号或 squash；低于 v1.0.0 的 tag 已退役、不再存在也不再承认；历史检查只覆盖 v1.0.0 及以上可达正式 tag 与当前 initialFrozen。删除“tests/testdata/source-baseline 冻结”“已发布 v0 tag 不可移动”及全部逐轮“直接改 0001”授权记录。其他节中引用源快照、旧 tag 或 `ErrIncompatibleBaseline` 旧语义的句子同步修正。「开发与验证命令」与「Git 与 OpenSpec 工作流」不变。
+「迁移安全」节替换为：当前 0001 自 v1.0.0 tag 起字节冻结；后续结构变更从 0002 递增，已发布版本不可修改、删除、重编号或 squash；低于 v1.0.0 的 tag 已退役、尚未删除且不再参与迁移历史保护；历史检查只覆盖 v1.0.0 及以上可达正式 tag 与当前 initialFrozen。删除“tests/testdata/source-baseline 冻结”“已发布 v0 tag 不可移动”及全部逐轮“直接改 0001”授权记录。其他节中引用源快照、旧 tag 或 `ErrIncompatibleBaseline` 旧语义的句子同步修正。「开发与验证命令」与「Git 与 OpenSpec 工作流」不变。
 
 ### D10 执行顺序与不可逆点
 
@@ -82,7 +82,29 @@ v1.0.0 打 tag 后 0001 永久冻结，“version=1 等价于当前 0001 结构�
 
 ### D11 合成种子保留
 
-原项目源快照（`tests/testdata/source-baseline/`）整体退役，但其中的合成 fixture 仍被恢复演练、宿主契约与实例隔离测试用作种子数据，因此没有随目录删除，而是移到 `tests/testdata/synthetic/fixture.json`，由根包 `synthetic_fixture_test.go` 读取（`seedSyntheticAccount`、`snapshotSource` 等辅助函数随之改用正式名称）。这与 D5 的“证明能读原项目字节”不同：它只是合成测试数据，不再承担历史格式证明。“历史格式”这一证明（原 `TestHistoricalFormatsOnInitialSchema`）被丢弃，格式覆盖改由包内单元测试固定：`pii.TestStoredFormatsSurviveKeyRotation`（AES-GCM 与 HMAC 摘要的版本化格式及轮换）、`user.TestRefreshTokenHashFormat`（refresh 令牌 SHA-256 存储格式）以及 `tokens` 包的 kid 测试（`TestSignParseRoundTrip`、`TestParseAcceptsOldKeyVersionDuringOverlap`）。这是对计划中“直接删除 fixture”做法的偏离，原因是仍有三类测试依赖该数据。
+原项目源快照（`tests/testdata/source-baseline/`）整体退役，但其中的合成 fixture 仍被恢复演练、宿主契约与实例隔离测试用作种子数据，因此没有随目录删除，而是移到 `tests/testdata/synthetic/fixture.json`，由根包 `synthetic_fixture_test.go` 读取（`seedSyntheticAccount`、`snapshotSyntheticAccount` 等辅助函数随之改用正式名称）。这与 D5 的“证明能读原项目字节”不同：它只是合成测试数据，不再承担历史格式证明。“历史格式”这一证明（原 `TestHistoricalFormatsOnInitialSchema`）被丢弃，格式覆盖改由包内单元测试固定：`pii.TestStoredFormatsSurviveKeyRotation`（AES-GCM 与 HMAC 摘要的版本化格式及轮换）、`user.TestRefreshTokenHashFormat`（refresh 令牌 SHA-256 存储格式）以及 `tokens` 包的 kid 测试（`TestSignParseRoundTrip`、`TestParseAcceptsOldKeyVersionDuringOverlap`）。这是对计划中“直接删除 fixture”做法的偏离，原因是仍有三类测试依赖该数据。
+
+### D12 2026-10-31 用户授权的 API 收尾
+
+用户在继续实施时明确将 13 项盘点后的必要公开 API 调整纳入本变更，取代此前仅记录待决定项的实施限制。评估以实际调用、当前领域规格和 v1.0.0 前减少无用公开承诺为依据，不以形式统一扩大认证行为。
+
+| 原盘点项 | 本次决策 | 边界与理由 |
+|---|---|---|
+| 1 MapLegacy / legacy_event_id | 删除公开 MapLegacy 及写侧转换分支；保留私有快照的既有读取兼容 | 没有非测试转换调用；在线映射不生成 legacy_event_id。保留读取兼容避免把 API 清理扩大成审计投影行为变更，不宣称存在真实历史生产数据。 |
+| 2 ids.AuditEvent | 删除常量 | 审计使用 UUIDv7；通用 Kind/New/Valid 的行为不变，不额外禁止自定义 Kind("e")。 |
+| 3 code.ErrExhausted | 删除常量及不可达错误映射 | 实际最后一次错误尝试返回 ErrInvalid、后续返回 ErrExpired；保留现有观测枚举与限流语义。 |
+| 4 旧 NewWeChat | 配置构造器正式命名为 NewWeChat(WeChatConfig, *http.Client, *slog.Logger) (*WeChat, error) | 删除吞配置错误的旧签名和 NewWeChatWithConfig 名称，不保留转发别名；空配置、subject 模式及小程序协议保持。 |
+| 5 Store.ListByUser | 删除 | 使用显式 Source 和 Resource.Namespace 的 ListByResource，避免隐式查询范围。 |
+| 6 RetentionBatchSize / IsUniqueViolation | 私有化 | 内部批量参数与 SQL 错误判定无宿主公共用途；测试不成为保留生产导出的理由。 |
+| 7 PurgeCoveredTables | 改为同名函数，每次返回独立 map | 保护覆盖登记免受外部修改及数据竞争；此登记不驱动实际匿名化 SQL，不声称修复匿名化绕过。 |
+| 8 Repo / Deps / CheckKeyVersions | 保留不透明 Repo、NewRepo、具体存储依赖和两种密钥检查；Q/WithTx/WithTxRaw 私有化 | 直接领域服务和独立 migrate 有真实需求；宿主联合事务继续使用 BeforeDelete/Anonymizer 回调及同一 pgx.Tx。内部领域事务仍显式 READ COMMITTED。 |
+| 9 user/db、audit/db | sqlc 输出移到根 internal/userdb、internal/auditdb | package db 保持；无旧包 alias，生成模型不再成为外部公开契约。查询、结构和生成内容语义不变。 |
+| 10 HTTP 工具包 | 移到 httpapi/internal/jsonbody、httpapi/internal/reqid | 调用全部在 HTTP 子树，严格 JSON 与可信 request ID 行为保持。 |
+| 11 LegacyChineseRenderer | 改为 ChineseRenderer | 正式默认中文模板保留逐字输出、品牌及验证行为，不保留开发期别名。 |
+| 12 grace.Pair 时间字段 | 改为 AccessExpireTime / RefreshExpireTime | JSON ae/re、加密缓存和 TTL 语义保持；手工旧 JSON 固定兼容。 |
+| 13 IdP 构造器及 Verify 方法 | 接受现有差异（第 4 项除外） | 统一分派已有 Provider.Verify；具体方法表达不同凭证协议。构造器是否返回 error 取决于实际配置解析；不返回 error 的构造器不承诺完整启动校验，缺依赖仍可能在 Verify 返回 ErrMisconfigured。 |
+
+这是公开 Go API 的破坏性整理，适用于首个正式版本之前；所有调用替换集中在 docs/compatibility.md。公开仓储事务的旧规格随本次 delta 移除，但内部事务行为、锁序、回滚及宿主 pgx.Tx 回调契约保留。测试专用访问器只存在于 export_test.go，不进入生产包。旧计划与历史验收保持原文，本次结果追加记录。
 
 ## Risks / Trade-offs
 
@@ -90,7 +112,7 @@ v1.0.0 打 tag 后 0001 永久冻结，“version=1 等价于当前 0001 结构�
 - [删除旧结构测试后出现覆盖缺口] → D6 的逐条表格列出替代覆盖；保留用例必须仍覆盖新安装、重复 Up、并发、锁、dirty、latest+1 与 UnsafeReset。
 - [删除源快照后格式回归无人察觉] → D5 核对 `pii`、`tokens`、`user/code` 的格式测试覆盖，缺口在本变更内补单元测试。
 - [v1.0.0 之后发现公开 API 命名问题] → D8 盘点在 tag 前完成；接受项显式记录，不留“以后再改”。
-- [ai-food 构建失败] → 删除 v0 tag 后其 go.mod 必须升到 v1.0.0；在删除动作前通知接入方，并在 v1.0.0 发布说明列出 6 个被删符号的替换名。
+- [ai-food 构建失败] → 删除 v0 tag 后其 go.mod 必须升到 v1.0.0；在删除动作前通知接入方，并在 v1.0.0 发布说明引用完整调用迁移表。
 - [文档重写遗漏交叉链接或与规格矛盾] → `openspec validate --all --strict`、链接检查与一次独立审查作为验收项；功能对照表与主规格逐项核对。
 - [HTTP 流程示例测试因随机凭证不稳定] → 测试断言结构与状态机而非具体 token 值；文档不复制随机值。
 
@@ -107,7 +129,7 @@ v1.0.0 打 tag 后 0001 永久冻结，“version=1 等价于当前 0001 结构�
 
 ## 附录：接受的 API 现状
 
-盘点范围为模块内 `internal/`、`examples/`、`cmd/` 以外的全部 33 个包（`GOWORK=off go doc -all` 输出位于被忽略的 `.test-output/api-inventory/`）。只列实际发现；“修改”为本变更内已处理，“接受”为保持现状，“待用户决定”为可能值得在 v1.0.0 前做、但属于破坏性改名/取消导出或牵涉规格与包外引用、超出本次盘点许可的项。
+盘点范围为模块内 `internal/`、`examples/`、`cmd/` 以外的全部 33 个包（`GOWORK=off go doc -all` 输出位于被忽略的 `.test-output/api-inventory/`）。只列实际发现；“修改”为本变更处理项，“接受”为保持现状，原“待用户决定”的 13 项已获用户授权按 D12 处理；下表记录最终决策，不表示实施或验证已完成，进度以 tasks 第 10 节为准。
 
 | 符号 | 包 | 类别 | 处理 | 理由 |
 |---|---|---|---|---|
@@ -117,20 +139,20 @@ v1.0.0 打 tag 后 0001 永久冻结，“version=1 等价于当前 0001 结构�
 | `UserState`、`RevokeReason`、`CodePurpose`、`ActorKind`、`Result`、`EventType`、`FlowState` 及 `ParseRevokeReason`、`ParseEventType`、`ParseFlowState`、`ParseClientType`、`ParseDeviceType` | `enum` | 文档缺失 | 修改 | 补充类型用途（对应存储列）与 Parse 只接受精确 UPPER_SNAKE 名的注释。 |
 | 支付宝/QQ/微信 `SubjectMode` 常量组、`Deps.AuditReader` | 根包 | 文档缺失 | 修改 | 常量组补注释；`AuditReader` 原英文注释未说明须与外部 `Audit` 同时注入，改为中文并补全约束。 |
 | `ErrSignInCompletionInvalid`、`ErrSignInAlreadyCompleted`、`ErrProfileAttributesNotConfigured`、`ProfileAttributesValidationError.Error/Is`、`IdentityPolicy.Allows/Complete/EnabledKinds/RequiredKinds`、`Service.SignInWithCode` | `user` | 文档缺失 | 修改 | 补充错误映射与策略方法注释；`SignInWithCode` 的 godoc 混入了一段描述包内包装器的英文说明，已与方法注释分开。 |
-| `Kind` 常量组、`ErrDestructiveOperation`、`ReasonTokenMissing/Invalid`、`Error.Error`、`RateLimitedError.Error`、`Disabled` 三个方法、`Alipay.Kind/Verify`、`QQ.Kind`、`Weibo.Kind`、支付宝/QQ 模式常量组 | `ids`、`migrations`、`httpapi/authn`、`httpapi/apierror`、`user/code`、`user/sender`、`user/idp` | 文档缺失 | 修改 | 补充注释；`ids` 常量组注明 `AuditEvent`（`e`）仅用于历史审计 ID 格式。 |
-| `MapLegacy`、认证快照 `legacy_event_id` | `audit/authentication` | 开发期兼容残留 | 待用户决定 | 开发期审计兼容路径，按控制方裁定保留进入 v1.0.0；`docs/compatibility.md`、`docs/migrations.md` 与 `versioned-auth-storage` 规格仍引用，删除需规格 delta。 |
-| `AuditEvent`（`e`） | `ids` | 开发期兼容残留 | 待用户决定 | 当前审计事件 ID 为 UUIDv7，`e` 前缀只剩历史格式追溯；仅 `ids` 外部测试包引用，删除属破坏性变更。 |
-| `ErrExhausted` | `user/code` | 开发期兼容残留 | 待用户决定 | 注释写明“为源码兼容保留”，`code` 包已不再返回它；`user` 与 `httpapi/enduser` 仍有对应的映射分支，删除需同步清理。 |
-| `NewWeChat` | `user/idp` | 开发期兼容残留 | 待用户决定 | 早期仅 OAuth、固定 UNIONID 的构造器，库内装配已改用 `NewWeChatWithConfig`；仅外部测试包引用。 |
-| `Store.ListByUser` | `audit` | 不应导出 | 待用户决定 | 注释自称本地便捷方法、集成应使用 `Reader`；仅 `user` 外部测试包使用。 |
-| `RetentionBatchSize`、`IsUniqueViolation` | `audit`、`user` | 不应导出 | 待用户决定 | 内部批量参数与 pgx 唯一冲突判定，但被同目录外部测试包（`audit_test`、`user_test`）引用；取消导出需配套测试导出垫片，超出本次许可。 |
-| `PurgeCoveredTables` | `user` | 不应导出 | 待用户决定 | 导出的可变 map，宿主可改写库内覆盖登记；`docs/compatibility.md` 把它作为宿主覆盖检查入口，改为返回副本的函数属破坏性变更。 |
-| `Repo`、`NewRepo`、`Repo.Q/WithTx/WithTxRaw`、函数 `CheckKeyVersions`，以及 `Deps` 中的 `*Repo`、`*code.Store`、`*grace.Cache`、`*revocation.Set` | `user` | 不应导出 | 待用户决定 | 使 sqlc 生成的 `*db.Queries` 成为公开签名的一部分，v1 后修改查询即可能构成破坏性变更；`internal/accountsvc` 依赖 `NewRepo` 与 `CheckKeyVersions`，收窄需另行设计装配入口。 |
-| `user/db`、`audit/db` 包 | — | 包结构 | 待用户决定 | sqlc 生成包可被宿主直接导入，生成命名也不完全符合 Go 缩写约定（如 `FlowIds`、`ProofUserIds`）；移入 `internal/` 受上一行牵连。 |
-| `httpapi/jsonbody`、`httpapi/reqid` 包 | `httpapi` | 包结构 | 待用户决定 | 两个 HTTP 面共用的内部工具包，`httpapi` 之外无引用，文档也未将其作为宿主接口；移入 `internal/` 属包路径级破坏性变更，不在符号级许可内。 |
-| `LegacyChineseRenderer` | `user/sender/smtp` | 命名不一致 | 待用户决定 | 实为 `smtp.New` 的默认渲染器，名称中的 Legacy 是开发期措辞；README 与兼容文档引用，改名属破坏性变更。 |
-| `Pair.AccessExpiresAt`、`Pair.RefreshExpiresAt` | `session/grace` | 命名不一致 | 待用户决定 | 时间字段约定为 `<verb>_time`（Go 名应为 `…ExpireTime`），JSON 标签是 Redis 内部短名不受影响；`user` 包引用。 |
-| 构造器与校验方法：`NewApple/NewGoogle/NewFacebook/NewOIDC` 不返回 error 而 `NewAlipay/NewQQ/NewWeibo/NewWeChatWithConfig` 返回；`AppleOptions` 平铺字段而 `AlipayOptions` 内嵌 `Config`；`VerifyApple/VerifyGoogle/VerifyWeChat/VerifyIDToken` 各自命名 | `user/idp` | 命名不一致 | 待用户决定 | 各提供方分批引入形成的不同风格；统一须改签名，影响自行装配提供方的宿主。 |
+| `Kind` 常量组、`ErrDestructiveOperation`、`ReasonTokenMissing/Invalid`、`Error.Error`、`RateLimitedError.Error`、`Disabled` 三个方法、`Alipay.Kind/Verify`、`QQ.Kind`、`Weibo.Kind`、支付宝/QQ 模式常量组 | `ids`、`migrations`、`httpapi/authn`、`httpapi/apierror`、`user/code`、`user/sender`、`user/idp` | 文档缺失 | 修改 | 补充注释；后续 D12 移除无用的 AuditEvent 常量，并补全破坏性操作错误的语义。 |
+| `MapLegacy`、认证快照 `legacy_event_id` | `audit/authentication` | 开发期兼容残留 | 修改 | 见 D12 第 1 项。移除开发期写侧转换；私有旧快照读取与隐私清理保留，不宣称存在生产旧数据。 |
+| `AuditEvent`（`e`） | `ids` | 开发期兼容残留 | 修改 | 见 D12 第 2 项。移除未使用的 e 前缀常量；审计 UUIDv7 与通用自定义 Kind 的行为保持。 |
+| `ErrExhausted` | `user/code` | 开发期兼容残留 | 修改 | 见 D12 第 3 项。移除实际不会返回的错误及不可达映射；保留 ErrInvalid/ErrExpired 和限流语义。 |
+| `NewWeChat` | `user/idp` | 开发期兼容残留 | 修改 | 见 D12 第 4 项。配置构造器采用正式 NewWeChat 名称并返回错误，移除吞错的旧签名。 |
+| `Store.ListByUser` | `audit` | 不应导出 | 修改 | 见 D12 第 5 项。改用显式 Source/Namespace 的 ListByResource，避免隐式查询范围。 |
+| `RetentionBatchSize`、`IsUniqueViolation` | `audit`、`user` | 不应导出 | 修改 | 见 D12 第 6 项。仅供内部实现，取消导出；测试使用专用测试桥接或数据库错误断言。 |
+| `PurgeCoveredTables` | `user` | 不应导出 | 修改 | 见 D12 第 7 项。同名函数每次返回副本，保护覆盖登记；不改变实际匿名化 SQL。 |
+| `Repo`、`NewRepo`、`Repo.Q/WithTx/WithTxRaw`、函数 `CheckKeyVersions`，以及 `Deps` 中的 `*Repo`、`*code.Store`、`*grace.Cache`、`*revocation.Set` | `user` | 不应导出 | 修改 | 见 D12 第 8 项。保留不透明 Repo/装配依赖和独立密钥检查；原始查询与事务方法私有化，领域事务语义保持。 |
+| `user/db`、`audit/db` 包 | — | 包结构 | 修改 | 见 D12 第 9 项。根 internal/userdb、internal/auditdb 收纳生成实现，输出由 sqlc 重新生成。 |
+| `httpapi/jsonbody`、`httpapi/reqid` 包 | `httpapi` | 包结构 | 修改 | 见 D12 第 10 项。移到 httpapi/internal，无外部宿主调用需求。 |
+| `LegacyChineseRenderer` | `user/sender/smtp` | 命名不一致 | 修改 | 见 D12 第 11 项。改名 ChineseRenderer，保持默认模板输出和品牌校验。 |
+| `Pair.AccessExpiresAt`、`Pair.RefreshExpiresAt` | `session/grace` | 命名不一致 | 修改 | 见 D12 第 12 项。采用 AccessExpireTime/RefreshExpireTime，JSON ae/re 与缓存兼容保持。 |
+| 构造器与校验方法：`NewApple/NewGoogle/NewFacebook/NewOIDC` 不返回 error 而 `NewAlipay/NewQQ/NewWeibo/NewWeChatWithConfig` 返回；`AppleOptions` 平铺字段而 `AlipayOptions` 内嵌 `Config`；`VerifyApple/VerifyGoogle/VerifyWeChat/VerifyIDToken` 各自命名 | `user/idp` | 命名不一致 | 接受 | 见 D12 第 13 项。统一分派已有 Provider.Verify；协议专用方法和配置复杂度有实际差异，不返回 error 的构造器不承诺完整启动校验。 |
 | `SessionRetention` | `user` | 不应导出 | 接受 | 无包外引用，但它是 `CleanupSessions` 文档引用的固定保留期，宿主可据此说明会话记录可查期限。 |
 | `Alphabet`、`TSIDLength`、`MaxResources`、`HTTPStatus`、`StatusInternal` | `ids`、`audit/event`、`httpapi/apierror` | 不应导出 | 接受 | 无包外引用，但分别描述 ID 格式、事件校验上限与错误体状态映射，属宿主可依赖的契约。 |
 | `IdentityPolicy.RequiredKinds/ValidateCapabilities`、`NonceRegistry.RegisterScoped`、`OIDC.VerifyIDToken`、`Auth.RunMaintenanceOnce` | `user`、`user/idp`、根包 | 不应导出 | 接受 | 无包外调用，但所属类型面向宿主：策略经 `Service.IdentityPolicy` 返回，自定义提供方可复用 nonce 登记，`VerifyIDToken` 与 Apple/Google 同类方法对称，`RunMaintenanceOnce` 是宿主一次性作业入口。 |

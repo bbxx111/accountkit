@@ -14,6 +14,15 @@ import (
 	"github.com/bbxx111/accountkit/user/idp"
 )
 
+func newTestWeChat(t *testing.T, config idp.WeChatConfig, hc *http.Client, logger *slog.Logger) *idp.WeChat {
+	t.Helper()
+	w, err := idp.NewWeChat(config, hc, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return w
+}
+
 // fakeWeChat 按 code 返回预设响应，并记录最后一次请求的 query。
 func fakeWeChat(t *testing.T, responses map[string]string) (*httptest.Server, *string) {
 	t.Helper()
@@ -58,7 +67,7 @@ func TestWeChatVerify(t *testing.T) {
 	})
 	var logs strings.Builder
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
-	w := idp.NewWeChat([]idp.App{{AppID: "wx1", Secret: "s3cret"}}, srv.URL, srv.Client(), logger)
+	w := newTestWeChat(t, idp.WeChatConfig{Apps: []idp.App{{AppID: "wx1", Secret: "s3cret"}}, BaseURL: srv.URL}, srv.Client(), logger)
 	ctx := context.Background()
 
 	id, err := w.VerifyWeChat(ctx, "wx1", "good")
@@ -113,7 +122,7 @@ func TestWeChatNetworkErrorIsUnavailable(t *testing.T) {
 	srv.Close()
 	var logs strings.Builder
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
-	w := idp.NewWeChat([]idp.App{{AppID: "wx1", Secret: "s3cret-NET"}}, url, &http.Client{}, logger)
+	w := newTestWeChat(t, idp.WeChatConfig{Apps: []idp.App{{AppID: "wx1", Secret: "s3cret-NET"}}, BaseURL: url}, &http.Client{}, logger)
 	_, err := w.VerifyWeChat(context.Background(), "wx1", "code-NET")
 	if !errors.Is(err, idp.ErrUnavailable) {
 		t.Fatalf("closed server: %v", err)
@@ -132,7 +141,7 @@ func TestWeChatNetworkErrorIsUnavailable(t *testing.T) {
 }
 
 func TestWeChatNoAppsMeansNotAllowed(t *testing.T) {
-	w := idp.NewWeChat(nil, "http://127.0.0.1:1", &http.Client{}, nil)
+	w := newTestWeChat(t, idp.WeChatConfig{Apps: nil, BaseURL: "http://127.0.0.1:1"}, &http.Client{}, nil)
 	if _, err := w.VerifyWeChat(context.Background(), "wx1", "c"); !errors.Is(err, idp.ErrAppNotAllowed) {
 		t.Fatalf("disabled: %v", err)
 	}
@@ -153,7 +162,7 @@ func TestWeChatDoesNotFollowRedirects(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	w := idp.NewWeChat([]idp.App{{AppID: "wx1", Secret: "s3cret-redirect"}}, srv.URL, srv.Client(), nil)
+	w := newTestWeChat(t, idp.WeChatConfig{Apps: []idp.App{{AppID: "wx1", Secret: "s3cret-redirect"}}, BaseURL: srv.URL}, srv.Client(), nil)
 	if _, err := w.VerifyWeChat(context.Background(), "wx1", "code-redirect"); !errors.Is(err, idp.ErrUnavailable) {
 		t.Fatalf("redirect: got %v want ErrUnavailable", err)
 	}

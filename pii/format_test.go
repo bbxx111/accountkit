@@ -60,13 +60,22 @@ func TestStoredFormatsSurviveKeyRotation(t *testing.T) {
 	}
 
 	// 当前实现产出的密文同样是 nonce||ciphertext。
-	c, _ := pii.NewCipher(keys(), 1)
+	c, err := pii.NewCipher(keys(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ct, _, err := c.Encrypt(plain)
 	if err != nil {
 		t.Fatal(err)
 	}
-	block, _ := aes.NewCipher(keys()[1])
-	gcm, _ := cipher.NewGCM(block)
+	block, err := aes.NewCipher(keys()[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if out, err := gcm.Open(nil, ct[:gcm.NonceSize()], ct[gcm.NonceSize():], nil); err != nil || string(out) != plain {
 		t.Fatalf("Encrypt output must be nonce||ciphertext: %q %v", out, err)
 	}

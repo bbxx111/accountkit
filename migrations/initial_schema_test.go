@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// The published initial schema and its production increments install seven business tables.
+// The published initial schema and its production increments install eight business tables.
 func TestConsolidatedInitialSchema(t *testing.T) {
 	entries, err := fs.ReadDir(".")
 	if err != nil {
@@ -65,21 +65,22 @@ func migrationTestConn(t *testing.T, cfg *pgx.ConnConfig, schema string) *pgx.Co
 	}
 	return c
 }
-func migrationCatalog(t *testing.T, c *pgx.Conn, schema string) string {
+func migrationCatalog(t *testing.T, c *pgx.Conn, schema string, excludedTables ...string) string {
 	t.Helper()
+	excludedTables = append([]string{"schema_migrations"}, excludedTables...)
 	var result string
 	err := c.QueryRow(context.Background(), `
  SELECT jsonb_build_object(
  'columns',(SELECT jsonb_agg(to_jsonb(x) ORDER BY x.table_name,x.ordinal_position) FROM (
  SELECT table_name,ordinal_position,column_name,data_type,udt_name,is_nullable,column_default,collation_name,character_maximum_length,datetime_precision,numeric_precision,numeric_scale
- FROM information_schema.columns WHERE table_schema=$1 AND table_name <> 'schema_migrations') x),
+ FROM information_schema.columns WHERE table_schema=$1 AND table_name <> ALL($2::text[])) x),
  'constraints',(SELECT jsonb_agg(to_jsonb(x) ORDER BY x.table_name,x.name) FROM (
  SELECT r.relname AS table_name,c.conname AS name,c.contype,pg_get_constraintdef(c.oid) AS definition
  FROM pg_constraint c JOIN pg_class r ON r.oid=c.conrelid JOIN pg_namespace n ON n.oid=r.relnamespace
- WHERE n.nspname=$1 AND r.relname <> 'schema_migrations') x),
+ WHERE n.nspname=$1 AND r.relname <> ALL($2::text[])) x),
  'indexes',(SELECT jsonb_agg(to_jsonb(x) ORDER BY x.tablename,x.indexname) FROM (
  SELECT tablename,indexname,replace(indexdef,quote_ident($1)||'.','') AS definition FROM pg_indexes
- WHERE schemaname=$1 AND tablename <> 'schema_migrations') x))::text`, schema).Scan(&result)
+ WHERE schemaname=$1 AND tablename <> ALL($2::text[])) x))::text`, schema, excludedTables).Scan(&result)
 	if err != nil {
 		t.Fatal(err)
 	}

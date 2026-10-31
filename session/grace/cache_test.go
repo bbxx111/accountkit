@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"testing"
 	"time"
@@ -29,7 +31,38 @@ func newCache(t *testing.T) (*grace.Cache, *miniredis.Miniredis, *redis.Client) 
 
 func samplePair() grace.Pair {
 	now := time.Now().Truncate(time.Second)
-	return grace.Pair{AccessToken: "acc.ess.token", RefreshToken: "refresh-token-value", AccessExpiresAt: now.Add(15 * time.Minute), RefreshExpiresAt: now.Add(720 * time.Hour), Scope: "user"}
+	return grace.Pair{AccessToken: "acc.ess.token", RefreshToken: "refresh-token-value", AccessExpireTime: now.Add(15 * time.Minute), RefreshExpireTime: now.Add(720 * time.Hour), Scope: "user"}
+}
+
+func TestGetPreviouslyEncodedPair(t *testing.T) {
+	c, _, rdb := newCache(t)
+	ctx := context.Background()
+	cipher, err := pii.NewCipher(map[uint16][]byte{1: bytes.Repeat([]byte{3}, 32)}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Hand-written previous cache JSON fixes the wire names independently of Pair.
+	plain := `{"at":"cached-access","rt":"cached-refresh","ae":"2026-10-31T10:15:00Z","re":"2026-11-30T10:00:00Z","sc":"user"}`
+	ct, version, err := cipher.Encrypt(plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := make([]byte, 2+len(ct))
+	binary.BigEndian.PutUint16(raw[:2], version)
+	copy(raw[2:], ct)
+	hash := sha256.Sum256([]byte("previous-refresh"))
+	if err := rdb.Set(ctx, "t:grace:"+hex.EncodeToString(hash[:]), raw, time.Minute).Err(); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := c.Get(ctx, hash[:])
+	if err != nil || !ok {
+		t.Fatalf("previous cache: ok=%v err=%v", ok, err)
+	}
+	if got.AccessToken != "cached-access" || got.RefreshToken != "cached-refresh" || got.Scope != "user" ||
+		!got.AccessExpireTime.Equal(time.Date(2026, 10, 31, 10, 15, 0, 0, time.UTC)) ||
+		!got.RefreshExpireTime.Equal(time.Date(2026, 11, 30, 10, 0, 0, 0, time.UTC)) {
+		t.Fatal("previous cache lost tokens, scope or expiry times")
+	}
 }
 
 func TestPutGetRoundTripEncryptedAndExpires(t *testing.T) {
@@ -44,7 +77,7 @@ func TestPutGetRoundTripEncryptedAndExpires(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("get: ok=%v err=%v", ok, err)
 	}
-	if got.AccessToken != p.AccessToken || got.RefreshToken != p.RefreshToken || !got.RefreshExpiresAt.Equal(p.RefreshExpiresAt) || got.Scope != "user" {
+	if got.AccessToken != p.AccessToken || got.RefreshToken != p.RefreshToken || !got.RefreshExpireTime.Equal(p.RefreshExpireTime) || got.Scope != "user" {
 		t.Fatalf("pair mismatch: %+v", got)
 	}
 	// 值必须是密文：原文 token 不能在 Redis 里直接出现

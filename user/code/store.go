@@ -23,9 +23,6 @@ var (
 	ErrInvalid = errors.New("code: invalid code")
 	// ErrExpired: an unknown, expired, replaced, consumed or misbound challenge.
 	ErrExpired = errors.New("code: code expired")
-	// ErrExhausted is retained for source compatibility; challenge verification returns
-	// ErrInvalid on the final wrong attempt and ErrExpired thereafter.
-	ErrExhausted = errors.New("code: attempts exhausted")
 )
 
 // RateLimitedError 表示发送被冷却或日限拒绝。

@@ -186,8 +186,6 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, r *http.Request, err 
 		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "CODE_INVALID", "verification code is incorrect"))
 	case errors.Is(err, code.ErrExpired):
 		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "CODE_EXPIRED", "verification code has expired or was never issued for this purpose"))
-	case errors.Is(err, code.ErrExhausted):
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "CODE_ATTEMPTS_EXHAUSTED", "too many incorrect attempts; request a new code"))
 	case errors.Is(err, user.ErrInvalidTarget):
 		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_TARGET", "target is not a valid phone number or email address"))
 	case errors.Is(err, user.ErrInvalidArgument):

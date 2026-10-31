@@ -17,15 +17,15 @@ import (
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/migrations"
 	"github.com/bbxx111/accountkit/user"
-	"github.com/bbxx111/accountkit/user/db"
 )
 
 func TestRepoProfileAttributes(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
-	q := user.NewRepo(pool).Q()
+	q := user.TestRepoQueries(user.NewRepo(pool))
 	id, _ := ids.New(ids.User)
 	if _, err := q.CreateUser(ctx, db.CreateUserParams{ID: id, State: enum.UserActive}); err != nil {
 		t.Fatal(err)
@@ -102,7 +102,7 @@ func TestRepoRotateIsCAS(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
 	r := user.NewRepo(pool)
-	q := r.Q()
+	q := user.TestRepoQueries(r)
 	uid, _ := ids.New(ids.User)
 	if _, err := q.CreateUser(ctx, db.CreateUserParams{ID: uid, State: enum.UserActive}); err != nil {
 		t.Fatal(err)
@@ -132,7 +132,7 @@ func TestRepoRotateIsCAS(t *testing.T) {
 func TestRepoRevokeSessionsByUserExceptCurrent(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
-	q := user.NewRepo(pool).Q()
+	q := user.TestRepoQueries(user.NewRepo(pool))
 	uid, _ := ids.New(ids.User)
 	_, _ = q.CreateUser(ctx, db.CreateUserParams{ID: uid, State: enum.UserActive})
 	now := time.Now()
@@ -163,7 +163,7 @@ func TestRepoIdentityDigestsAndUniqueViolation(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
 	r := user.NewRepo(pool)
-	q := r.Q()
+	q := user.TestRepoQueries(r)
 	uid, _ := ids.New(ids.User)
 	_, _ = q.CreateUser(ctx, db.CreateUserParams{ID: uid, State: enum.UserActive})
 	iid, _ := ids.New(ids.Identity)
@@ -180,7 +180,7 @@ func TestRepoIdentityDigestsAndUniqueViolation(t *testing.T) {
 	}
 	iid2, _ := ids.New(ids.Identity)
 	_, err = q.CreateIdentity(ctx, db.CreateIdentityParams{ID: iid2, UserID: uid, Kind: enum.IdentityPhone, SubjectDigest: &digest, DigestKeyVersion: ptr16(1), SubjectCiphertext: []byte("ct"), CipherKeyVersion: ptr16(1)})
-	if !user.IsUniqueViolation(err) {
+	if !user.TestIsUniqueViolation(err) {
 		t.Fatalf("duplicate active digest must be a unique violation: %v", err)
 	}
 }
@@ -189,18 +189,43 @@ func TestRepoWithTxRollsBackOnError(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
 	r := user.NewRepo(pool)
-	uid, _ := ids.New(ids.User)
-	err := r.WithTx(ctx, func(q *db.Queries) error {
-		if _, err := q.CreateUser(ctx, db.CreateUserParams{ID: uid, State: enum.UserActive}); err != nil {
-			return err
-		}
-		return fmt.Errorf("boom")
-	})
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if _, err := r.Q().GetUserByID(ctx, uid); err != pgx.ErrNoRows {
-		t.Fatalf("user must not exist after rollback: %v", err)
+	for _, panics := range []bool{false, true} {
+		t.Run(fmt.Sprintf("panic=%v", panics), func(t *testing.T) {
+			uid, err := ids.New(ids.User)
+			if err != nil {
+				t.Fatal(err)
+			}
+			failure := errors.New("transaction callback failed")
+			func() {
+				if panics {
+					defer func() {
+						if got := recover(); got != failure {
+							t.Errorf("panic = %v, want callback failure", got)
+						}
+					}()
+				}
+				err := user.TestRepoWithTx(r, ctx, func(q *db.Queries) error {
+					if _, err := q.CreateUser(ctx, db.CreateUserParams{ID: uid, State: enum.UserActive}); err != nil {
+						return err
+					}
+					if panics {
+						panic(failure)
+					}
+					return failure
+				})
+				if panics {
+					t.Error("transaction swallowed callback panic")
+				} else if !errors.Is(err, failure) {
+					t.Errorf("error = %v, want callback failure", err)
+				}
+			}()
+			if _, err := user.TestRepoQueries(r).GetUserByID(ctx, uid); !errors.Is(err, pgx.ErrNoRows) {
+				t.Fatalf("user must not exist after rollback: %v", err)
+			}
+			if got := pool.Stat().AcquiredConns(); got != 0 {
+				t.Fatalf("transaction leaked %d connections", got)
+			}
+		})
 	}
 }
 
@@ -209,7 +234,7 @@ func TestRepoWithTxRollsBackOnError(t *testing.T) {
 func TestRepoLockUserByIDSerializes(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
-	q := user.NewRepo(pool).Q()
+	q := user.TestRepoQueries(user.NewRepo(pool))
 	uid, _ := ids.New(ids.User)
 	if _, err := q.CreateUser(ctx, db.CreateUserParams{ID: uid, State: enum.UserActive}); err != nil {
 		t.Fatal(err)
@@ -254,7 +279,7 @@ func TestRepoProviderIdentityLookupAndMetaMerge(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
 	repo := user.NewRepo(pool)
-	q := repo.Q()
+	q := user.TestRepoQueries(repo)
 	uid, _ := ids.New(ids.User)
 	if _, err := q.CreateUser(ctx, db.CreateUserParams{ID: uid, State: enum.UserActive}); err != nil {
 		t.Fatal(err)
@@ -287,7 +312,7 @@ func TestRepoProviderIdentityLookupAndMetaMerge(t *testing.T) {
 	// 同 (kind, provider_subject) 第二条活动身份 → 唯一冲突
 	iid2, _ := ids.New(ids.Identity)
 	_, err = q.CreateIdentity(ctx, db.CreateIdentityParams{ID: iid2, UserID: uid, Kind: enum.IdentityWeChat, ProviderSubject: &subject})
-	if !user.IsUniqueViolation(err) {
+	if !user.TestIsUniqueViolation(err) {
 		t.Fatalf("duplicate provider subject must be a unique violation: %v", err)
 	}
 }
@@ -295,7 +320,7 @@ func TestRepoProviderIdentityLookupAndMetaMerge(t *testing.T) {
 func TestRepoGetAndSoftDeleteIdentity(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
-	q := user.NewRepo(pool).Q()
+	q := user.TestRepoQueries(user.NewRepo(pool))
 	uid, _ := ids.New(ids.User)
 	other, _ := ids.New(ids.User)
 	for _, id := range []string{uid, other} {
@@ -344,7 +369,7 @@ func TestRepoGetAndSoftDeleteIdentity(t *testing.T) {
 func TestRepoSoftDeleteUndeletePurgeUser(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
-	q := user.NewRepo(pool).Q()
+	q := user.TestRepoQueries(user.NewRepo(pool))
 	uid, _ := ids.New(ids.User)
 	if _, err := q.CreateUser(ctx, db.CreateUserParams{ID: uid, State: enum.UserActive}); err != nil {
 		t.Fatal(err)
@@ -398,7 +423,7 @@ func TestRepoSoftDeleteUndeletePurgeUser(t *testing.T) {
 func TestRepoAnonymizeIdentityKeepsExactlyOneSubjectAndCoversSoftDeleted(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
-	q := user.NewRepo(pool).Q()
+	q := user.TestRepoQueries(user.NewRepo(pool))
 	uid, _ := ids.New(ids.User)
 	if _, err := q.CreateUser(ctx, db.CreateUserParams{ID: uid, State: enum.UserPendingDeletion}); err != nil {
 		t.Fatal(err)
@@ -477,7 +502,7 @@ func TestRepoAnonymizeIdentityKeepsExactlyOneSubjectAndCoversSoftDeleted(t *test
 func TestRepoScrubAuditEventsAndDeleteStaleSessions(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
-	q := user.NewRepo(pool).Q()
+	q := user.TestRepoQueries(user.NewRepo(pool))
 	uid, _ := ids.New(ids.User)
 	other, _ := ids.New(ids.User)
 	for _, id := range []string{uid, other} {
@@ -546,7 +571,7 @@ func TestRepoScrubAuditEventsAndDeleteStaleSessions(t *testing.T) {
 func TestRepoUnrevokedSessionUniquePerUserDevice(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
-	q := user.NewRepo(pool).Q()
+	q := user.TestRepoQueries(user.NewRepo(pool))
 	uid, _ := ids.New(ids.User)
 	other, _ := ids.New(ids.User)
 	for _, id := range []string{uid, other} {
@@ -564,7 +589,7 @@ func TestRepoUnrevokedSessionUniquePerUserDevice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := mk(uid, "dev-a"); !user.IsUniqueViolation(err) {
+	if _, err := mk(uid, "dev-a"); !user.TestIsUniqueViolation(err) {
 		t.Fatalf("second unrevoked session on same device: %v, want unique violation", err)
 	}
 	if _, err := mk(uid, "dev-b"); err != nil {
@@ -586,7 +611,7 @@ func TestRepoUnrevokedSessionUniquePerUserDevice(t *testing.T) {
 func TestRepoDeleteStaleSessionsSkipsLockedRows(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
-	q := user.NewRepo(pool).Q()
+	q := user.TestRepoQueries(user.NewRepo(pool))
 	uid, _ := ids.New(ids.User)
 	if _, err := q.CreateUser(ctx, db.CreateUserParams{ID: uid, State: enum.UserActive}); err != nil {
 		t.Fatal(err)
@@ -626,7 +651,7 @@ func TestRepoDeleteStaleSessionsSkipsLockedRows(t *testing.T) {
 func TestRepoKeyVersionQueries(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
-	q := user.NewRepo(pool).Q()
+	q := user.TestRepoQueries(user.NewRepo(pool))
 	uid, _ := ids.New(ids.User)
 	if _, err := q.CreateUser(ctx, db.CreateUserParams{ID: uid, State: enum.UserActive}); err != nil {
 		t.Fatal(err)
@@ -693,7 +718,7 @@ func TestRepoKeyVersionQueries(t *testing.T) {
 func TestRepoFreezeUnfreezeAndCountSessions(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
-	q := user.NewRepo(pool).Q()
+	q := user.TestRepoQueries(user.NewRepo(pool))
 	uid, _ := ids.New(ids.User)
 	if _, err := q.CreateUser(ctx, db.CreateUserParams{ID: uid, State: enum.UserActive}); err != nil {
 		t.Fatal(err)
@@ -728,7 +753,7 @@ func ptrReason(r enum.RevokeReason) *enum.RevokeReason { return &r }
 func TestRepoListUsersAdminFiltersAndPaginates(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
-	q := user.NewRepo(pool).Q()
+	q := user.TestRepoQueries(user.NewRepo(pool))
 	base := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 	mk := func(i int, state enum.UserState) string {
 		uid, _ := ids.New(ids.User)

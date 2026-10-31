@@ -316,7 +316,7 @@ JWKS 最多缓存1小时；未知 kid 刷新合并并按60秒节流，无法取�
 
 ## 邮件、匿名化与停机
 
-EMAIL 启用时，服务用内置布局和一份清单渲染 HTML 与纯文本两部分的验证码邮件，并按请求的 `Accept-Language` 选择语言（见[邮件模板清单](#邮件模板清单)）。未设置 `SMTP_TEMPLATES_FILE` 时使用嵌入的无品牌默认清单（简体、繁体、英文），启动时记录 WARN；正式部署应提供自己的清单。服务不使用库的 `LegacyChineseRenderer`（它是嵌入式宿主 `smtp.New` 的默认渲染器）。EMAIL 关闭时仍不要求 SMTP，`migrate` 不装配发送器。嵌入式宿主需要本地化时，可参考[双语渲染实现](../examples/codeemail/renderer.go)和[装配示例](../examples/codeemail/example_test.go)，通过自己的 context 约定选择语言；并发、取消、HTML 转义和安全日志责任见 [README 发送器契约](../README.md#发送器)。
+EMAIL 启用时，服务用内置布局和一份清单渲染 HTML 与纯文本两部分的验证码邮件，并按请求的 `Accept-Language` 选择语言（见[邮件模板清单](#邮件模板清单)）。未设置 `SMTP_TEMPLATES_FILE` 时使用嵌入的无品牌默认清单（简体、繁体、英文），启动时记录 WARN；正式部署应提供自己的清单。服务不使用库的 `ChineseRenderer`（它是嵌入式宿主 `smtp.New` 的默认渲染器）。EMAIL 关闭时仍不要求 SMTP，`migrate` 不装配发送器。嵌入式宿主需要本地化时，可参考[双语渲染实现](../examples/codeemail/renderer.go)和[装配示例](../examples/codeemail/example_test.go)，通过自己的 context 约定选择语言；并发、取消、HTML 转义和安全日志责任见 [README 发送器契约](../README.md#发送器)。
 
 ### 邮件模板清单
 

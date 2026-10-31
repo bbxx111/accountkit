@@ -207,7 +207,6 @@ func TestIdentityReplacementErrors(t *testing.T) {
 		{"limit", user.ErrIdentityKindLimit, 409, "ALREADY_EXISTS/IDENTITY_KIND_LIMIT"},
 		{"code invalid", code.ErrInvalid, 400, "INVALID_ARGUMENT/CODE_INVALID"},
 		{"code expired", code.ErrExpired, 400, "INVALID_ARGUMENT/CODE_EXPIRED"},
-		{"code exhausted", code.ErrExhausted, 400, "INVALID_ARGUMENT/CODE_ATTEMPTS_EXHAUSTED"},
 		{"rate limited", &code.RateLimitedError{Dimension: "TARGET_VERIFY_LIMIT", RetryAfter: 1500 * time.Millisecond}, 429, "RESOURCE_EXHAUSTED/TARGET_VERIFY_LIMIT"},
 		{"unavailable", user.ErrUnavailable, 503, "UNAVAILABLE/DEPENDENCY_UNAVAILABLE"},
 		{"internal", errors.New("private database detail"), 500, "INTERNAL/"},

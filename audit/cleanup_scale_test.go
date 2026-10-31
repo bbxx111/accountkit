@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	userdb "github.com/bbxx111/accountkit/user/db"
+	userdb "github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/google/uuid"
 )
 

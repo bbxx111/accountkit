@@ -270,6 +270,7 @@ device-a, unbinding the identity it signed in with:
 - 会话列表中的 `name` 形如 `users/<user_id>/sessions/<session_id>`，单个撤销用其末段 `s_` ID 作为路径参数，成功返回 204；`revokeOthers` 保留当前会话、撤销本账号其他会话，返回 200 `{}`。
 - 被撤销的设备不会收到推送通知；它在下一次请求时得到 401，按状态机先刷新，刷新得到 `invalid_grant` 后退出。
 - 解绑前可用 `GET /users/me/sessions/current` 查看当前会话的 `authentication_identities`，按完整 `name` 与拟解绑身份比对，不能只比较 `kind`。解绑会撤销同账号中以该身份为登录来源的所有会话，包括当前会话。
+- 解绑后仍须保留可用身份并满足部署的身份策略。示例启用 EMAIL/WECHAT、要求 EMAIL，且设置 `MaxIdentitiesPerKind=2`：先绑定第二个邮箱，再解绑作为当前来源的第一个邮箱。只有一个邮箱时直接解绑会返回 400 `LAST_ANCHOR_IDENTITY`；默认每种身份上限为 1，未调整上限就绑定第二个邮箱会返回 409 `IDENTITY_KIND_LIMIT`。客户端须依据实际部署策略准备剩余身份，不能直接照抄成功片段。
 - 解绑成功的 204 表示操作已生效。随后出现的 401 是预期结果：清理凭据并重新登录，不能把已成功的解绑当成失败重试。
 - 退出登录时用 `POST /v1/revoke`（`{"token":"<refresh>"}`，也接受表单编码）注销本设备的 refresh，返回 200 无内容；未知 token 同样返回 200。之后本地清理凭据。该端点不在本节子测试中走查，根包 `TestConsumerEndToEndAgainstRealDB` 覆盖其吊销效果。
 

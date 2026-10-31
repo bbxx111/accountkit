@@ -15,8 +15,8 @@ import (
 
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/httpapi/apierror"
-	"github.com/bbxx111/accountkit/httpapi/jsonbody"
-	"github.com/bbxx111/accountkit/httpapi/reqid"
+	"github.com/bbxx111/accountkit/httpapi/internal/jsonbody"
+	"github.com/bbxx111/accountkit/httpapi/internal/reqid"
 	"github.com/bbxx111/accountkit/ids"
 	"github.com/bbxx111/accountkit/user"
 )

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bbxx111/accountkit/httpapi/jsonbody"
+	"github.com/bbxx111/accountkit/httpapi/internal/jsonbody"
 )
 
 func TestDecodeAcceptsObjectRejectsEverythingElse(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 )
 
 func TestNewHasPrefixAndLength(t *testing.T) {
-	for _, k := range []ids.Kind{ids.User, ids.Identity, ids.Session, ids.AuditEvent} {
+	for _, k := range []ids.Kind{ids.User, ids.Identity, ids.Session, ids.Kind("e")} {
 		id, err := ids.New(k)
 		if err != nil {
 			t.Fatal(err)

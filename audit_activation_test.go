@@ -67,7 +67,7 @@ func TestMigrateAuditConfigurationMinimumPoolCapacity(t *testing.T) {
 		t.Fatal(err)
 	}
 	seedSyntheticAccount(t, pool, single.Config())
-	before := snapshotSource(t, pool)
+	before := snapshotSyntheticAccount(t, pool)
 	// source belongs to runtime query scope, not the initial database definition.
 	other := single.Config()
 	other.AuditSource = "other/source"
@@ -81,7 +81,7 @@ func TestMigrateAuditConfigurationMinimumPoolCapacity(t *testing.T) {
 			t.Fatalf("minimum-capacity migration blocked: %v", err)
 		}
 	}
-	if snapshotSource(t, pool) != before {
+	if snapshotSyntheticAccount(t, pool) != before {
 		t.Fatal("repeat root Migrate changed data")
 	}
 	var version int

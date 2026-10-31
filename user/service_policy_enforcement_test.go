@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/user"
-	"github.com/bbxx111/accountkit/user/db"
 )
 
 func setIdentityPolicy(t *testing.T, f *fixture, enabled, required []enum.IdentityKind) {
@@ -305,7 +305,7 @@ func TestIdentityPolicyRefreshAndReauthenticationScopes(t *testing.T) {
 	if err != nil || rotated.Scope != user.ScopeBind {
 		t.Fatalf("new rotation must require EMAIL: %+v %v", rotated, err)
 	}
-	before, err := f.repo.Q().GetSessionByRefreshHash(ctx, sha256Of(rotated.RefreshToken))
+	before, err := user.TestRepoQueries(f.repo).GetSessionByRefreshHash(ctx, sha256Of(rotated.RefreshToken))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,7 +317,7 @@ func TestIdentityPolicyRefreshAndReauthenticationScopes(t *testing.T) {
 	if err != nil || res.Scope != user.ScopeBind || res.RefreshToken != "" || res.RefreshExpiresIn != 0 {
 		t.Fatalf("reauth must require EMAIL and preserve refresh: %+v %v", res, err)
 	}
-	after, err := f.repo.Q().GetSessionByRefreshHash(ctx, sha256Of(rotated.RefreshToken))
+	after, err := user.TestRepoQueries(f.repo).GetSessionByRefreshHash(ctx, sha256Of(rotated.RefreshToken))
 	if err != nil || !after.RefreshExpireTime.Equal(before.RefreshExpireTime) || !after.AuthTime.After(before.AuthTime) {
 		t.Fatalf("reauth changed expiry or failed freshness: %+v %v", after, err)
 	}

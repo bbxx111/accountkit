@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"testing"
 
 	"github.com/bbxx111/accountkit"
@@ -34,7 +35,7 @@ func TestRecoveryAvatarFixture(t *testing.T) {
 		t.Fatal("source-unchanged snapshot omitted avatar")
 	}
 	assertRecoveryProfileAttributesCleanup(t, a, pool, f.UserID)
-	row, err := user.NewRepo(pool).Q().GetUserByID(context.Background(), f.UserID)
+	row, err := db.New(pool).GetUserByID(context.Background(), f.UserID)
 	if err != nil || row.AvatarUrl != nil {
 		t.Fatal("recovered avatar purge", err)
 	}

@@ -498,7 +498,7 @@ func identityProviders(cfg Config, deps Deps) ([]idp.Provider, error) {
 			}
 			return out
 		}
-		provider, err := idp.NewWeChatWithConfig(idp.WeChatConfig{Apps: convert(cfg.WeChatApps), MiniProgramApps: convert(cfg.WeChatMiniProgramApps), SubjectMode: cfg.WeChatSubjectMode, BaseURL: cfg.WeChatAPIBaseURL}, deps.HTTPClient, deps.Logger)
+		provider, err := idp.NewWeChat(idp.WeChatConfig{Apps: convert(cfg.WeChatApps), MiniProgramApps: convert(cfg.WeChatMiniProgramApps), SubjectMode: cfg.WeChatSubjectMode, BaseURL: cfg.WeChatAPIBaseURL}, deps.HTTPClient, deps.Logger)
 		if err != nil {
 			return nil, err
 		}

@@ -12,8 +12,8 @@ import (
 	"github.com/bbxx111/accountkit/audit/authentication"
 	"github.com/bbxx111/accountkit/audit/event"
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/user"
-	"github.com/bbxx111/accountkit/user/db"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -311,7 +311,7 @@ func TestAuditCleanupIsolationDoesNotChangePublicRepoDefault(t *testing.T) {
 	}
 	defer rp.Close()
 	var isolation string
-	if err := user.NewRepo(rp).WithTxRaw(ctx, func(tx pgx.Tx, _ *db.Queries) error {
+	if err := user.TestRepoWithTxRaw(user.NewRepo(rp), ctx, func(tx pgx.Tx, _ *db.Queries) error {
 		return tx.QueryRow(ctx, `SHOW transaction_isolation`).Scan(&isolation)
 	}); err != nil {
 		t.Fatal(err)

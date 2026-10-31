@@ -28,7 +28,7 @@
 | `session/grace/`、`session/revocation/` | 刷新宽限缓存与吊销集 |
 | `audit/`、`maintenance/`、`anonymize/` | 审计、维护任务、宿主匿名化契约 |
 | `migrations/` | 嵌入 SQL、迁移锁、开发测试清库入口 |
-| `user/query.sql`、`audit/query.sql` | 手写查询；生成结果分别进入 `user/db/`、`audit/db/` |
+| `user/query.sql`、`audit/query.sql` | 手写查询；生成结果分别进入 `internal/userdb/`、`internal/auditdb/` |
 | `internal/migrationcheck/`、`internal/testgate/` | 发布检查工具，不是宿主公共接口 |
 | `examples/embedded/` | 可独立编译的开发宿主示例 |
 | `examples/httpflows/` | HTTP 调用流程的可执行对照 |
@@ -41,7 +41,7 @@
 
 - 生命周期固定为 `Config/Deps → New → Migrate → Start → Close`。`New` 校验并装配，不做 I/O；启动前执行 `Migrate`，关闭后不再运行维护任务。宿主创建的 Pool/Redis 由宿主管理和关闭。
 - HTTP handler 只做协议转换；业务规则、事务和状态约束集中在 `user.Service`，由 C 端、管理面和维护任务复用。不要为管理路径绕开领域约束，也不要添加无业务意义的透传 service 层。
-- SQL 放在领域查询文件，经 sqlc 生成。禁止手改 `user/db/`、`audit/db/`；修改查询、schema 或类型映射后运行 `sqlc generate` 并检查生成差异。
+- SQL 放在领域查询文件，经 sqlc 生成。禁止手改 `internal/userdb/`、`internal/auditdb/`；修改查询、schema 或类型映射后运行 `sqlc generate` 并检查生成差异。
 - 配置通过 `Config` 或 `ConfigFromEnv(prefix)` 注入；环境变量前缀由宿主选择，示例使用 `ACCOUNTKIT_`。不要硬编码 `SERVER_`、产品域名、业务 schema 或产品密钥。
 - `EndUserHandler()` 与 `AdminHandler()` 返回相对路由，由宿主分别挂载，示例为 `/v1` 和 `/admin/v1`。直接适配器使用 `httpapi/enduser`。包内不重复写死前缀，也不引入 `/api`。
 - `AdminVerifier` 与 `AdminPrincipal` 必须成对提供；均未配置时管理面返回 `503 ADMIN_NOT_CONFIGURED`，普通消费者认证仍可用。管理员认证由宿主前置完成，包内继续执行每条管理路由的角色检查。

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/observability"
 	"github.com/bbxx111/accountkit/pii"
-	"github.com/bbxx111/accountkit/user/db"
 )
 
 // keyBackfillBatchSize 是密钥回填任务每批处理的身份行数。
@@ -83,7 +83,7 @@ func (s *Service) RekeyDigests(ctx context.Context) (total int, resultErr error)
 		n, err := s.runBackfill(ctx, backfillStep{
 			name: "rekey_digests",
 			list: func(ctx context.Context, v uint16) ([]db.Identity, error) {
-				return s.d.Repo.Q().ListIdentitiesByDigestKeyVersion(ctx, db.ListIdentitiesByDigestKeyVersionParams{Version: int16(v), BatchSize: keyBackfillBatchSize})
+				return s.d.Repo.queries().ListIdentitiesByDigestKeyVersion(ctx, db.ListIdentitiesByDigestKeyVersionParams{Version: int16(v), BatchSize: keyBackfillBatchSize})
 			},
 			apply: func(ctx context.Context, row db.Identity, now time.Time) (int64, error) {
 				plain, err := s.decryptSubject(row)
@@ -91,7 +91,7 @@ func (s *Service) RekeyDigests(ctx context.Context) (total int, resultErr error)
 					return 0, err
 				}
 				digest, ver := s.d.Digester.Digest(plain)
-				return s.d.Repo.Q().UpdateIdentityDigest(ctx, db.UpdateIdentityDigestParams{ID: row.ID, Digest: digest, Version: int16(ver), OldVersion: int16(oldV), Now: now})
+				return s.d.Repo.queries().UpdateIdentityDigest(ctx, db.UpdateIdentityDigestParams{ID: row.ID, Digest: digest, Version: int16(ver), OldVersion: int16(oldV), Now: now})
 			},
 		}, old)
 		total += n
@@ -116,7 +116,7 @@ func (s *Service) ReencryptSubjects(ctx context.Context) (total int, resultErr e
 		n, err := s.runBackfill(ctx, backfillStep{
 			name: "reencrypt_subjects",
 			list: func(ctx context.Context, v uint16) ([]db.Identity, error) {
-				return s.d.Repo.Q().ListIdentitiesByCipherKeyVersion(ctx, db.ListIdentitiesByCipherKeyVersionParams{Version: int16(v), BatchSize: keyBackfillBatchSize})
+				return s.d.Repo.queries().ListIdentitiesByCipherKeyVersion(ctx, db.ListIdentitiesByCipherKeyVersionParams{Version: int16(v), BatchSize: keyBackfillBatchSize})
 			},
 			apply: func(ctx context.Context, row db.Identity, now time.Time) (int64, error) {
 				plain, err := s.decryptSubject(row)
@@ -127,7 +127,7 @@ func (s *Service) ReencryptSubjects(ctx context.Context) (total int, resultErr e
 				if err != nil {
 					return 0, err
 				}
-				return s.d.Repo.Q().UpdateIdentityCiphertext(ctx, db.UpdateIdentityCiphertextParams{ID: row.ID, Ciphertext: ct, Version: int16(ver), OldVersion: int16(oldV), Now: now})
+				return s.d.Repo.queries().UpdateIdentityCiphertext(ctx, db.UpdateIdentityCiphertextParams{ID: row.ID, Ciphertext: ct, Version: int16(ver), OldVersion: int16(oldV), Now: now})
 			},
 		}, old)
 		total += n
@@ -146,7 +146,7 @@ func (s *Service) CheckKeyVersions(ctx context.Context) error {
 
 // CheckKeyVersions 只检查存储所需密钥，迁移宿主不必装配认证发送器或提供方。
 func CheckKeyVersions(ctx context.Context, repo *Repo, digester *pii.Digester, cipher *pii.Cipher, now time.Time) error {
-	q := repo.Q()
+	q := repo.queries()
 	digestUsed, err := q.ListActiveDigestKeyVersions(ctx)
 	if err != nil {
 		return fmt.Errorf("user: list digest key versions: %w", err)

@@ -49,9 +49,9 @@ SELECT tablename FROM pg_tables WHERE schemaname = 'account' ORDER BY tablename;
 
 数据库备份不包含密钥存储和 Redis。恢复时须保留对应的历史签名/HMAC/加密密钥，协调 session 数据、吊销集、刷新宽限缓存及验证码有效期；无法证明状态一致时，在产品切换流程中明确撤销受影响会话并要求重新登录，不能把清空 Redis 当成安全会话恢复。包内演练使用合成账号和独立 Redis，不代替产品生产灾备验收。
 
-## BREAKING：全量 Down 默认禁用
+## 全量 Down 禁用与开发测试清库
 
-原 migrations.Down(ctx, connCfg, schema) 签名保留，但始终返回 ErrDestructiveOperation，并且不访问数据库。常规生产升级与回退均不得调用它。
+migrations.Down(ctx, connCfg, schema) 始终返回 ErrDestructiveOperation，并且不访问数据库。常规生产升级与回退均不得调用它。
 
 一次性开发测试数据库清理须显式调用：
 
@@ -60,7 +60,7 @@ err := migrations.UnsafeReset(ctx, connCfg, schema,
     migrations.UnsafeResetOptions{ConfirmSchema: schema})
 ```
 
-此操作删除目标 schema 的认证迁移对象，保留 schema 本身；确认值必须完全一致。它不是权限控制，也不是生产回滚。现有调用 Down 的测试清理应迁移到该接口或使用测试自己持有的临时 schema 清理逻辑。
+此操作删除目标 schema 的认证迁移对象，保留 schema 本身；确认值必须完全一致，否则在数据库 I/O 前返回 ErrDestructiveOperation。它不是权限控制，也不是生产回滚。测试清理使用该接口或测试自己持有的临时 schema 清理逻辑。
 
 ## 历史检查与恢复演练
 

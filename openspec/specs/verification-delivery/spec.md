@@ -10,7 +10,7 @@
 
 项目 SHALL 提供可选的 SMTP 邮件发送能力，支持登录、绑定、重新认证和登录补全四种用途。消息 SHALL 包含对应的验证码和有效期。补全投递 SHALL 通过独立的 /users:sendSignInCompletionCode 触发，普通的 /users:sendSignInCode 不接收补全票据，也不切换用途。accountsvc SHALL 在 EMAIL 启用时使用 SMTP 邮件，EMAIL 未启用时不需要邮件依赖；现有未配置身份策略的默认部署继续使用 SMTP 并禁用短信，不使用日志发送器作为运行时回退。
 
-旧的 smtp.New(Config) 函数签名及 Config 结构 SHALL 保持，继续采用独立的 LegacyChineseRenderer 提供既有的四用途中文纯文本文案。新宿主 SHALL 能通过 NewWithRenderer 显式选择自己的渲染器。accountsvc SHALL 使用内置布局与清单提供的多语言文字渲染 HTML 和纯文本两部分，未配置清单时使用嵌入的无品牌默认清单，不得按用途或语言部分回落；accountsvc SHALL 不再使用 LegacyChineseRenderer，EMAIL 禁用行为保持；语言 SHALL 按请求的 `Accept-Language` 在已配置的语言间选择，不按 IP、手机号或保存的用户偏好推断。accountsvc SHALL 不内嵌图片或附件。
+smtp.New(Config) 函数签名及 Config 结构 SHALL 保持，继续采用独立的 ChineseRenderer 提供既有的四用途中文纯文本文案。新宿主 SHALL 能通过 NewWithRenderer 显式选择自己的渲染器。accountsvc SHALL 使用内置布局与清单提供的多语言文字渲染 HTML 和纯文本两部分，未配置清单时使用嵌入的无品牌默认清单，不得按用途或语言部分回落；accountsvc SHALL 不再使用 ChineseRenderer，EMAIL 禁用行为保持；语言 SHALL 按请求的 `Accept-Language` 在已配置的语言间选择，不按 IP、手机号或保存的用户偏好推断。accountsvc SHALL 不内嵌图片或附件。
 
 #### Scenario: 邮件登录闭环
 
@@ -97,25 +97,6 @@ SMTP 适配器的渲染错误、渲染结果校验错误及请求取消 SHALL �
 
 - **WHEN** SMTP 服务器已接受 DATA，但随后 QUIT 失败
 - **THEN** 仍按已接受投递返回成功，不触发重发或作废该次成功轮次
-
-### Requirement: 验证码专用公共类型与源码兼容
-
-系统 SHALL 提供 sender.SMSCodeSender、sender.EmailCodeSender 和 sender.CodeMessage 作为验证码投递的正式公共名称，分别保留 SendSMS(context.Context, string, CodeMessage) error 与 SendEmail(context.Context, string, CodeMessage) error。CodeMessage SHALL 保留 Purpose、Code、TTL 的字段名称、类型及语义。旧 SMSSender、EmailSender、Message SHALL 作为带 Deprecated 文档的类型别名保留，既有 Deps.SMSSender / Deps.EmailSender 字段名及渠道可用性契约 SHALL 保持。两个接口 SHALL 继续区分短信与邮件，不要求宿主增加新的必需方法。
-
-#### Scenario: 旧发送器无需改写
-
-- **WHEN** 宿主用 sender.Message 声明原 SendSMS / SendEmail 方法，并通过原 Deps 字段注入
-- **THEN** 源码继续编译，能够赋值给对应新接口，继续收到同样的用途、验证码和有效期
-
-#### Scenario: 新名称保持双向类型兼容
-
-- **WHEN** 宿主混合使用新旧消息名及新旧发送器接口名
-- **THEN** 不需要显式转换或复制数据，单独实现 SendSMS 的类型不会自动满足 EmailCodeSender
-
-#### Scenario: 各用途保持渠道和数据
-
-- **WHEN** 分别发起 SIGN_IN、BIND、REAUTH、SIGN_IN_COMPLETE 的合法 PHONE 或 EMAIL 发码请求
-- **THEN** 仅调用所选渠道发送器，传入对应用途和实际签发的验证码，TTL 继续遵循普通发码与受流程到期时间约束的补全发码规则
 
 ### Requirement: 宿主可注入 SMTP 验证码渲染
 
@@ -206,3 +187,19 @@ SMTP 适配器的渲染错误、渲染结果校验错误及请求取消 SHALL �
 #### Scenario: 拒绝邮件头注入
 - **WHEN** 品牌包含 CR/LF、其他控制字符、超过 32 个码位或首尾空白
 - **THEN** 配置被拒绝并指出配置项，不发送邮件
+
+### Requirement: 验证码专用公共类型
+
+系统 SHALL 提供 sender.SMSCodeSender、sender.EmailCodeSender 和 sender.CodeMessage 作为验证码投递的唯一公共名称，分别保留 SendSMS(context.Context, string, CodeMessage) error 与 SendEmail(context.Context, string, CodeMessage) error。CodeMessage SHALL 保留 Purpose、Code、TTL 的字段名称、类型及语义。开发期别名 SMSSender、EmailSender、Message SHALL 不再提供；既有 Deps.SMSSender / Deps.EmailSender 字段名及渠道可用性契约 SHALL 保持。两个接口 SHALL 继续区分短信与邮件，不要求宿主增加新的必需方法。
+
+#### Scenario: 正式名称直接实现
+- **WHEN** 宿主用 sender.CodeMessage 实现 SendSMS / SendEmail 并通过 Deps 字段注入
+- **THEN** 源码编译，发送器收到对应用途、验证码和有效期；引用已移除别名的源码编译失败
+
+#### Scenario: 接口保持渠道区分
+- **WHEN** 宿主只实现 SendSMS
+- **THEN** 该类型满足 SMSCodeSender，不会自动满足 EmailCodeSender
+
+#### Scenario: 各用途保持渠道和数据
+- **WHEN** 分别发起 SIGN_IN、BIND、REAUTH、SIGN_IN_COMPLETE 的合法 PHONE 或 EMAIL 发码请求
+- **THEN** 仅调用所选渠道发送器，传入对应用途和实际签发的验证码，TTL 继续遵循普通发码与受流程到期时间约束的补全发码规则

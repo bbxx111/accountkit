@@ -138,7 +138,7 @@ Go的ClientInfo为平坦字段，包括DeviceManufacturer、AppBuild及`Extensio
 | 提供账号管理 API | 独立挂载 `auth.AdminHandler()`，先完成管理员认证，成对注入 `AdminVerifier` / `AdminPrincipal` |
 | 创建与账号关联的业务数据 | 完成业务授权后用 `WithActiveUsers`，同事务确认账号 ACTIVE 并写入业务表 |
 
-优先通过根门面装配；`user.NewService` 是较低层入口，需要自己提供密码学、仓储、策略和审计等依赖，不适合作为首次接入的起点。不要直接读写 `user/db` 生成模型来绕过领域状态机。
+优先通过根门面装配；`user.NewService` 是较低层入口，需要自己提供密码学、仓储、策略和审计等依赖，不适合作为首次接入的起点。`user.NewRepo(pool)` 提供不透明的仓储依赖；原始查询和事务方法不对外开放。sqlc 生成模型位于 `internal/userdb` / `internal/auditdb`，宿主不能直接导入；业务联合事务通过领域接口和回调使用传入的同一 `pgx.Tx`。独立迁移工具仍可调用 `user.CheckKeyVersions`，无需装配完整领域服务。
 
 ## 装配、启动与关闭
 

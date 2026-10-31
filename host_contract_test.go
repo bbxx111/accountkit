@@ -45,7 +45,7 @@ func TestHostContracts(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	before := snapshotSource(t, pool)
+	before := snapshotSyntheticAccount(t, pool)
 	withHost, err := accountkit.New(a.Config(), accountkit.Deps{Pool: pool, Redis: rdb, SMSSender: sent, EmailSender: sent, Audit: audit.Noop{}, Anonymizers: []anonymize.Anonymizer{failingHostAnonymizer{}}})
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +54,7 @@ func TestHostContracts(t *testing.T) {
 	if n, err := withHost.Users().PurgeDueUsers(ctx); err == nil || n != 0 {
 		t.Fatalf("purge = %d, %v", n, err)
 	}
-	if snapshotSource(t, pool) != before {
+	if snapshotSyntheticAccount(t, pool) != before {
 		t.Fatal("authentication changes escaped rollback")
 	}
 	var body string

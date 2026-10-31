@@ -10,9 +10,9 @@ import (
 
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/user"
 	"github.com/bbxx111/accountkit/user/code"
-	"github.com/bbxx111/accountkit/user/db"
 	"github.com/bbxx111/accountkit/user/idp"
 )
 
@@ -39,7 +39,7 @@ func seedExistingBindScopeProvider(t *testing.T, f *fixture, subject string, dev
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	err = f.repo.WithTx(ctx, func(q *db.Queries) error {
+	err = user.TestRepoWithTx(f.repo, ctx, func(q *db.Queries) error {
 		if _, err := q.CreateUser(ctx, db.CreateUserParams{ID: uid, State: enum.UserActive}); err != nil {
 			return err
 		}
@@ -225,7 +225,7 @@ func TestBindWithIdpHappyIdempotentConflictAndLimit(t *testing.T) {
 	if err != nil || created || again.ID != info.ID {
 		t.Fatalf("idempotent: %+v %v %v", again, created, err)
 	}
-	rows, _ := f.repo.Q().ListActiveIdentitiesByUser(ctx, resA.UserID)
+	rows, _ := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, resA.UserID)
 	var meta string
 	for _, r := range rows {
 		if r.Kind == enum.IdentityWeChat {
@@ -568,8 +568,8 @@ func TestBindSameSubjectConcurrentlyFromTwoAccounts(t *testing.T) {
 	if createdCount != 1 || conflictCount != 1 {
 		t.Fatalf("want exactly one created and one ErrIdentityConflict, got created=%v errs=%v", created, errs)
 	}
-	rowsA, _ := f.repo.Q().ListActiveIdentitiesByUser(ctx, resA.UserID)
-	rowsB, _ := f.repo.Q().ListActiveIdentitiesByUser(ctx, resB.UserID)
+	rowsA, _ := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, resA.UserID)
+	rowsB, _ := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, resB.UserID)
 	n := 0
 	for _, r := range rowsA {
 		if r.Kind == enum.IdentityWeChat && r.ProviderSubject != nil && *r.ProviderSubject == "UCONFLICT" {

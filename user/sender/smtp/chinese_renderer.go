@@ -15,9 +15,9 @@ import (
 // MaxBrandLength 是品牌前缀允许的最大 Unicode 码位数。
 const MaxBrandLength = 32
 
-// LegacyChineseRenderer 保留 New 使用的既有四用途中文纯文本邮件。Brand 为空时输出与既有文案逐字一致；
+// ChineseRenderer 保留 New 使用的既有四用途中文纯文本邮件。Brand 为空时输出与既有文案逐字一致；
 // 非空时标题为“<Brand><用途>验证码”，正文以“【<Brand>】”开头。Brand 须先经 ValidateBrand 校验。
-type LegacyChineseRenderer struct {
+type ChineseRenderer struct {
 	Brand string
 }
 
@@ -35,7 +35,7 @@ func ValidateBrand(brand string) error {
 }
 
 // Render 生成兼容中文文案；正有效期向上取整到分钟。品牌不合法时拒绝渲染，不输出未经校验的值。
-func (r LegacyChineseRenderer) Render(ctx context.Context, m sender.CodeMessage) (EmailContent, error) {
+func (r ChineseRenderer) Render(ctx context.Context, m sender.CodeMessage) (EmailContent, error) {
 	if ctx.Err() != nil || !validCodeMessage(m) || ValidateBrand(r.Brand) != nil {
 		return EmailContent{}, sender.ErrUnavailable
 	}

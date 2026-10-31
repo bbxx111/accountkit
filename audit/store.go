@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/bbxx111/accountkit/audit/authentication"
-	"github.com/bbxx111/accountkit/audit/db"
 	"github.com/bbxx111/accountkit/audit/event"
 	"github.com/bbxx111/accountkit/internal/auditconfig"
+	"github.com/bbxx111/accountkit/internal/auditdb"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,8 +16,8 @@ import (
 	"time"
 )
 
-// RetentionBatchSize 是 DeleteOlderThan 每批删除的事件行数。
-const RetentionBatchSize = 1000
+// retentionBatchSize 是 DeleteOlderThan 每批删除的事件行数。
+const retentionBatchSize = 1000
 
 // ErrConflict 表示同一事件 ID 已保存了不同的事件内容。
 var ErrConflict = errors.New("audit: event identity conflict")
@@ -355,12 +355,6 @@ func validFlowEvidence(e Event, namespace string) bool {
 	return true
 }
 
-// ListByUser is a local convenience; integrations should use the explicit Reader scope.
-func (s *Store) ListByUser(ctx context.Context, userID string, after *EventCursor, limit int) ([]RecordView, error) {
-	page, err := s.ListByResource(ctx, Query{Source: s.options.Source, Resource: Resource{Type: "USER", Namespace: s.options.Namespace, ID: userID}, After: after, Limit: limit})
-	return page.Records, err
-}
-
 // DeleteOlderThan 分批删除本来源中 occur_time 早于 before 的事件，删到一批不满为止，返回删除总数。
 func (s *Store) DeleteOlderThan(ctx context.Context, before time.Time) (int64, error) {
 	var total int64
@@ -368,12 +362,12 @@ func (s *Store) DeleteOlderThan(ctx context.Context, before time.Time) (int64, e
 		if err := ctx.Err(); err != nil {
 			return total, err
 		}
-		n, err := s.q.DeleteAuditEventsBefore(ctx, db.DeleteAuditEventsBeforeParams{Source: s.options.Source, Before: before, BatchSize: RetentionBatchSize})
+		n, err := s.q.DeleteAuditEventsBefore(ctx, db.DeleteAuditEventsBeforeParams{Source: s.options.Source, Before: before, BatchSize: retentionBatchSize})
 		if err != nil {
 			return total, err
 		}
 		total += n
-		if n < RetentionBatchSize {
+		if n < retentionBatchSize {
 			return total, nil
 		}
 	}

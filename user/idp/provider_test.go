@@ -30,7 +30,7 @@ func TestProvidersRejectMalformedCredentialBeforeIO(t *testing.T) {
 		kind     enum.IdentityKind
 		extra    []string
 	}{
-		{idp.NewWeChat([]idp.App{{AppID: "wx1", Secret: "s"}}, srv.URL, srv.Client(), nil), enum.IdentityWeChat,
+		{newTestWeChat(t, idp.WeChatConfig{Apps: []idp.App{{AppID: "wx1", Secret: "s"}}, BaseURL: srv.URL}, srv.Client(), nil), enum.IdentityWeChat,
 			[]string{`{"app_id":"wx1"}`, `{"code":"c"}`, `{"app_id":"wx1","code":""}`, `{"app_id":"wx1","code":"c","x":1}`, `{"app_id":1,"code":"c"}`}},
 		{apple.apple, enum.IdentityApple,
 			[]string{`{"id_token":"t"}`, `{"nonce":"n"}`, `{"id_token":"","nonce":"n"}`, `{"id_token":"t","nonce":"n","x":1}`}},
@@ -72,7 +72,7 @@ func TestProvidersVerifyWellFormedCredential(t *testing.T) {
 		t.Fatalf("apple verify: %+v %v", id, err)
 	}
 	srv, _ := fakeWeChat(t, map[string]string{"good": `{"openid":"o_1","unionid":"u_union_1"}`})
-	w := idp.NewWeChat([]idp.App{{AppID: "wx1", Secret: "s"}}, srv.URL, srv.Client(), nil)
+	w := newTestWeChat(t, idp.WeChatConfig{Apps: []idp.App{{AppID: "wx1", Secret: "s"}}, BaseURL: srv.URL}, srv.Client(), nil)
 	if id, err = w.Verify(ctx, json.RawMessage(`{"app_id":"wx1","code":"good"}`)); err != nil || id.Kind != enum.IdentityWeChat || id.Subject != "unionid:u_union_1" {
 		t.Fatalf("wechat verify: %+v %v", id, err)
 	}

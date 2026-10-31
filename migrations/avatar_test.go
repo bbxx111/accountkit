@@ -13,15 +13,15 @@ func TestAvatarInitialMigration(t *testing.T) {
 	if err != nil || nullable != "YES" || typ != "text" || def != nil {
 		t.Fatalf("avatar column %s %s %v: %v", nullable, typ, def, err)
 	}
-	seedRenameFlow(t, c)
+	seedInitialFlow(t, c)
 	if _, err = c.Exec(context.Background(), `UPDATE user_account SET avatar_url='https://example.com/a'`); err != nil {
 		t.Fatal(err)
 	}
-	catalog, data := migrationCatalog(t, c, schema), renameDataSnapshot(t, c)
+	catalog, data := migrationCatalog(t, c, schema), migrationDataSnapshot(t, c)
 	if err = Up(context.Background(), cfg, schema); err != nil {
 		t.Fatal(err)
 	}
-	if catalog != migrationCatalog(t, c, schema) || data != renameDataSnapshot(t, c) {
+	if catalog != migrationCatalog(t, c, schema) || data != migrationDataSnapshot(t, c) {
 		t.Fatal("repeat mutated data/catalog")
 	}
 	assertVersion(t, cfg, schema, 1, false)

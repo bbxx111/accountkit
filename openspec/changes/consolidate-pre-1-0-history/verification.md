@@ -1,5 +1,38 @@
 # consolidate-pre-1-0-history 验收记录
 
+## 2026-10-31 在线 CI 核验
+
+通过 GitHub CLI 实时查询 [verify / run 41157292087](https://github.com/bbxx111/accountkit/actions/runs/41157292087)：触发事件为 develop push，`head_sha` 精确匹配合并提交 `c9a3bf2c5fc7c88190c2c88065d17f085a1d7cb0`，状态 `completed`、结论 `success`。运行时间为 2026-10-31 01:51:11–01:59:14 UTC（北京时间 09:51:11–09:59:14）。
+
+已核对 test job 及全部步骤成功，其中生成代码一致性检查、验证镜像构建、独立恢复数据库创建、`Verify package and recovery`、`Verify accountsvc with real dependencies and process signals` 均为 success，没有失败或跳过步骤。本次核验为 run/job/step 状态查询，未重新触发 CI，也未另行统计在线测试日志中的用例级 skip；本地完整测试的精确统计和补验见下一节。
+
+此结果补齐下方历史记录中的“在线 CI 尚未核验”。本地完整测试与在线 CI 均对应同一合并提交；用户随后授权提交并继续集成本验收记录，沿用独立 merge commit 合入 develop 和推送流程。本轮仅变更 OpenSpec 验收记录，按 CI 的 paths-ignore 规则不预期触发新运行，不将旧 CI 的 head_sha 冒称为后续文档提交。
+
+## 2026-10-31 合并后完整验证
+
+用户要求对合并后的代码执行完整测试。本轮验证对象为 `develop` 的合并提交 `c9a3bf2c5fc7c88190c2c88065d17f085a1d7cb0`；开始和结束测试时工作区均干净，未修改生产代码、测试、必需清单或迁移。验收记录随后在 `test/verify-consolidated-baseline` 分支整理。本节取代上轮合并检查“未重跑完整数据库/race/恢复”的当前限制，不改写历史结果。
+
+环境：由当前 `tests/Dockerfile` 构建 `accountkit-verify:c1h-full-20261031`，镜像 ID `sha256:d7764c3b2a1f08436ba084b5a4f9360327fee0fb6d12b0981380adfa45fb7f74`；Go 1.26.5 linux/amd64、GCC 14.2.0、`GOWORK=off`、`CGO_ENABLED=1`、PostgreSQL 17、Redis 7、pg_dump/pg_restore 17.11。本轮新建专用网络及 PostgreSQL/Redis 容器，不映射宿主端口、不挂载既有数据库数据；普通测试库为 `accountkit_test`，恢复库为新建的 `recovery_source` 与 `recovery_target`。恢复脚本在写入前核对数据库实际身份不同且两库为空。
+
+| 检查 | 本轮实际结果 |
+|---|---|
+| OpenSpec | `openspec validate --all --strict`：41 pass、0 fail。 |
+| 生成代码 | sqlc 1.31.1，`bash scripts/check-generated.sh` 退出 0；生成文件无差异。 |
+| OpenAPI | `node scripts/check-openapi.cjs` 退出 0；enduser 24、admin 11 个操作及会话上下文边界通过。 |
+| 完整库门禁 | `bash scripts/verify.sh` 退出 0：迁移历史、全仓 build/vet、`go test -race -json -count=1 ./...`、981 项必需测试门禁和恢复演练全部通过。顶层 1192 pass、0 fail、2 skip；含子测试 3552 pass。 |
+| accountsvc 门禁 | `bash scripts/verify-accountsvc.sh` 退出 0：build/vet、真实服务进程/race、62 项必需测试通过。顶层 203 pass、0 fail、1 skip；含子测试 820 pass。该套件与库套件有重叠，不将两者相加作为独立用例总数。 |
+| 恢复演练 | `verify.sh` 内调用 `verify-recovery.sh`，真实 pg_dump/pg_restore 成功；seed、verify、source-unchanged 三阶段的 `TestRecoveryFixture` 各 1 pass、0 skip。验证恢复数据、精确资料/时间、认证、来源、客户端/流程快照、匿名化及源库不变。证据目录 `.test-output/recovery.o9axRT/`。 |
+| 非 root 权限补验 | 在同一 Linux 验证容器编译 accountsvc 测试二进制，通过 `runuser -u nobody` 执行 `TestProfileAttributesUnreadableFile`：1 pass、0 skip，退出 0。 |
+| 最终状态 | 串行 runner 退出码 0；所有测试日志无 fail。测试结束后 Git 工作区无变更，本节为唯一新增验收文档改动；`git diff --check` 通过。 |
+
+两类预期 skip 均有实际补验：普通套件的 `TestRecoveryFixture` 只由恢复脚本强制执行；root 可读权限受限文件导致的 `TestProfileAttributesUnreadableFile` 在库及服务套件各跳过一次，已由非 root 执行通过。本轮不存在因缺失 PostgreSQL/Redis 配置而跳过的用例，没有修改 skip 条件或放宽必需门禁。
+
+原始日志和统计保留在被忽略的 `.test-output/`：`c1h-full-20261031-verify.log`、`c1h-full-20261031-tests.jsonl`、`c1h-full-20261031-accountsvc.log`、`c1h-full-20261031-accountsvc-tests.jsonl`、`c1h-full-20261031-permissions.log`、`c1h-full-20261031-summary.json`，以及 runner/汇总脚本和上述恢复目录。库 race 时间为 2026-10-31 01:57:29–02:00:04 UTC，服务套件为 02:00:21–02:03:34 UTC。
+
+资源清理：核对三个容器及网络均带 `accountkit.task=c1h-full-20261031` 标签后，仅停止/移除本轮 runner、PostgreSQL、Redis 容器及匿名数据卷，删除本轮网络；既有测试/产品容器、命名 Go 缓存卷未清理。合成备份和日志保留。首次只读 Docker 标签模板因 PowerShell 引号解析失败，修正后核对成功；未影响测试或清理范围。
+
+本次完成的是仓库规定的本地 Linux 完整验证；没有运行或核验在线 GitHub Actions，也不包含真实短信/邮件/第三方提供方、产品网关和 Windows 权限语义验收。未执行归档、旧 tag/Release 清理或正式发布。
+
 ## 2026-10-31 提交与 develop 集成
 
 用户在状态审查后明确要求提交、本地合入 develop、保留合并记录并推送；本次以 `git merge --no-ff` 执行，取代下方待办表中的默认 PR 路径。归档、旧 tag/Release 删除及 v1.0.0 发布仍为后续独立动作。

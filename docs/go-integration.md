@@ -2,7 +2,7 @@
 
 本指南面向在自己的 Go 进程中嵌入 `github.com/bbxx111/accountkit` 的宿主。可以挂载内置 HTTP handler，也可以直接调用 `auth.Users()`；两者使用同一个领域服务，不需要启动 accountsvc。
 
-本文对应 v1.0.0（候选）的公开契约，接口细节以 [README](../README.md) 和公开 Go 类型为准；v1.0.0 移除的符号及调用者须知见[兼容指南](compatibility.md#v100-调用者须知)。
+本文对应 v1.0.0（已发布）的公开契约，接口细节以 [README](../README.md) 和公开 Go 类型为准；v1.0.0 移除的符号及调用者须知见[兼容指南](compatibility.md#v100-调用者须知)。
 
 ## 基础资料与头像
 

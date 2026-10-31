@@ -8,7 +8,7 @@
 
 ## 当前进度
 
-发布说明和工件已准备并独立审查通过；准备快照完整验证、最终 main CI、正式 tag/Release、两个远端消费者和旧版本清理均已完成。当前文档已补记为已发布；补记分支集成结果见后续记录。
+发布说明和工件已准备并独立审查通过；准备快照完整验证、最终 main CI、正式 tag/Release、两个远端消费者和旧版本清理均已完成。当前文档已补记为已发布并以 merge commit 合入 develop/main、推送及核验；7 项任务全部完成，本发布准备变更尚未归档。
 
 ## 准备审查与静态门禁
 
@@ -57,3 +57,5 @@
 ## 发布补记校验
 
 发布后补记独立审查通过，无 Critical/Important/Minor；仅改文档和任务/证据记录，Go/SQL/go.mod/go.sum 无差异。`openspec validate --all --strict` 为 41 pass、0 fail，OpenAPI 的 24/11 操作及会话上下文边界检查通过，155 个变动文档的本地路径/实际仓库 blob 引用核验通过，`git diff --check` 通过。GitHub Release 正文已同步此份发布说明，target 元数据明确为正式候选 SHA；正式 tag 不移动。补记合并与推送后追加具体集成提交。
+
+补记提交 `1e1aa8c` 已通过独立 merge commit 合入 develop（`0672c6a3eae871d3644a5e5220e9b4615e3897fc`）及 main（`b66ecad528c49502cf695a2ff64ce1d868b13f0e`），均已推送；`git ls-remote` 与本地分支一致，工作区干净，两个分支文件树一致。含正式 v1.0.0 tag 的 main 上重新执行 `GOWORK=off go run ./internal/migrationcheck` 通过；远端 tag 对象及 peeled commit 保持上述固定值。本段与最后任务勾选为集成完成后的证据补记，不改变已发布代码或 tag。

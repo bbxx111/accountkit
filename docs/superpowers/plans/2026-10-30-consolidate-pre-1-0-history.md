@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26（`GOWORK=off`）、PostgreSQL 17（`SERVER_TEST_DB_DSN`）、miniredis、chi、golang-migrate、sqlc（本计划不改查询）、Node（`scripts/check-openapi.cjs`）、openspec CLI 1.13。
 
-**Spec:** `openspec/changes/consolidate-pre-1-0-history/`（proposal.md、design.md、specs/*/spec.md、tasks.md）。本计划的任务编号与 tasks.md 的任务 ID 对应关系写在每个任务标题后的括号内。
+**Spec:** [归档变更](../../../openspec/changes/archive/2026-10-31-consolidate-pre-1-0-history/)（proposal.md、design.md、specs/*/spec.md、tasks.md）。本计划的任务编号与 tasks.md 的任务 ID 对应关系写在每个任务标题后的括号内。
 
 ## Global Constraints
 

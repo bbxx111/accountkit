@@ -1,5 +1,11 @@
 # consolidate-pre-1-0-history 验收记录
 
+## 2026-10-31 归档
+
+用户明确要求归档并提交。归档前工件均为 done，任务 29/29 完成；五份 delta 的 27 条要求已逐块核对主规格，新增/修改正文一致、移除项不存在。通过 `openspec archive consolidate-pre-1-0-history --skip-specs --yes` 归档到 `openspec/changes/archive/2026-10-31-consolidate-pre-1-0-history/`；`--skip-specs` 仅避免重复应用已同步的 delta，没有跳过归档校验。CLI 提示 delta 超过 10 条、建议拆分，属非阻断建议；本次保留已实施并完成验收的范围。
+
+归档一并保留本验收记录及 `.openspec.yaml`，修复本文件到 docs 的三处相对链接和两份实施计划的规格入口。下方“未归档”等表述仅描述各历史检查时点。本次不修改实现、测试、主规格或历史任务正文。归档后 `openspec validate --all --strict` 为 40 pass、0 fail，`openspec list --json` 活动列表为空；7 处受影响本地链接（含归档内锚点）检查通过，全部已跟踪 Markdown 不再有指向旧变更目录的 Markdown 链接；`git diff --check` 通过。纯归档与链接维护未重复运行 Go 测试，完整代码验收及 CI 证据见下文。
+
 ## 2026-10-31 在线 CI 核验
 
 通过 GitHub CLI 实时查询 [verify / run 41157292087](https://github.com/bbxx111/accountkit/actions/runs/41157292087)：触发事件为 develop push，`head_sha` 精确匹配合并提交 `c9a3bf2c5fc7c88190c2c88065d17f085a1d7cb0`，状态 `completed`、结论 `success`。运行时间为 2026-10-31 01:51:11–01:59:14 UTC（北京时间 09:51:11–09:59:14）。
@@ -62,8 +68,8 @@
 | 本变更交付 | 按授权推送完整 followup 分支、通过 PR 合入 develop，保留独立 merge commit；核对对应提交的在线 CI。 | 记录 PR/merge SHA 与匹配的 CI 结果。本地远程跟踪引用不是远端实时证明，本次未 fetch 或查询 GitHub。 |
 | 本变更收尾 | 单独执行 OpenSpec 归档，并检查移动后的相对链接及外部引用。 | 变更进入 archive，严格校验与链接检查通过。当前主规格已同步；本次不执行归档。 |
 | 合入后的独立动作 | 按 D10 单独确认并清理九个 v0 tag、对应 GitHub Release 和本地 tag；同步“尚未删除”的文档措辞，协调接入方版本切换。 | 本次本地仍有九个 v0 tag；远端 tag/Release 实时状态未查。执行后核对远端列表及接入方记录，不能把本地 tag 状态当作远端删除结果。 |
-| 新发布准备变更 | 建立 `prepare-v1-0-0-release`，完成发布说明、调用迁移说明、最终候选与完整门禁、main 集成及对应 CI，再按授权发布 tag/Release，验证独立远端消费并补记状态。 | 遵循 [发布检查表](../../../docs/release-checklist.md)；当前 OpenSpec 列表尚无该变更。正式 tag 的防移动/删除保护方案（含是否增加 v1.0.0 pin）在发布准备中评估，不能把现有迁移内容检查视为 tag 存在性保护。 |
-| 集成方验证 | 六类真实环境缺口：微信/Apple、SMTP、阿里云短信、服务 Bearer、管理面 no-store、production 管理员 OIDC；已在开发期做过的联调须注明尚未在 v1.0.0 候选复验。 | 按 [功能验证边界](../../../docs/features.md#已实现但待真实环境验证) 在产品任务中记录环境、版本和证据；按提案不阻塞本变更实施完成。 |
+| 新发布准备变更 | 建立 `prepare-v1-0-0-release`，完成发布说明、调用迁移说明、最终候选与完整门禁、main 集成及对应 CI，再按授权发布 tag/Release，验证独立远端消费并补记状态。 | 遵循 [发布检查表](../../../../docs/release-checklist.md)；当前 OpenSpec 列表尚无该变更。正式 tag 的防移动/删除保护方案（含是否增加 v1.0.0 pin）在发布准备中评估，不能把现有迁移内容检查视为 tag 存在性保护。 |
+| 集成方验证 | 六类真实环境缺口：微信/Apple、SMTP、阿里云短信、服务 Bearer、管理面 no-store、production 管理员 OIDC；已在开发期做过的联调须注明尚未在 v1.0.0 候选复验。 | 按 [功能验证边界](../../../../docs/features.md#已实现但待真实环境验证) 在产品任务中记录环境、版本和证据；按提案不阻塞本变更实施完成。 |
 | 平台验证边界 | Windows 权限语义尚未验证；Linux 非 root 用例已经补验。 | 有 Windows 验收需求时补做并记录；不重新打开已完成的 Linux 补验任务。 |
 
 HTTP SDK、纯第三方账号自助恢复、更多认证方式和账号合并仍是未立项候选，不计入本变更待办。历史证据中不可取的被忽略链接仍是可追溯性限制，不代表当前源文件断链，也不将补造历史日志列为实施任务。
@@ -75,7 +81,7 @@ HTTP SDK、纯第三方账号自助恢复、更多认证方式和账号合并仍
 本节记录用户授权“把 13 项逐项评估后的必要 API 调整也纳入本变更”后的收尾。下方原验收作为历史证据保留，其中“13 项待决定”、遗留小项及非 root 权限测试未验证的描述以本节结果为准；历史日志不代表本次代码已验证。
 
 - 工作基点：`bf2f0ff`，分支 `chore/consolidate-pre-1-0-history`；本次修改保持未提交。完整分支审查以本地 `develop`（`fb00c89`）到当前工作区为范围。
-- 13 项已逐项裁定：12 项包含必要修改，1 项保留协议专用 IdP 构造器/Verify 差异。保留不透明 `user.Repo/NewRepo`、具体装配依赖和两种 `CheckKeyVersions`；隐藏原始查询与事务方法。完整理由见 [design D12](design.md#d12-2026-10-31-用户授权的-api-收尾)，调用替换见 [兼容指南](../../../docs/compatibility.md)。
+- 13 项已逐项裁定：12 项包含必要修改，1 项保留协议专用 IdP 构造器/Verify 差异。保留不透明 `user.Repo/NewRepo`、具体装配依赖和两种 `CheckKeyVersions`；隐藏原始查询与事务方法。完整理由见 [design D12](design.md#d12-2026-10-31-用户授权的-api-收尾)，调用替换见 [兼容指南](../../../../docs/compatibility.md)。
 - 原遗留测试及文档小项均已处理；三个实施步骤独立审查均通过。全分支最终审查发现的升级测试覆盖缺口及 README 请求示例错误均已修复并独立复核关闭，规格与代码质量均为 Approve。29/29 项任务完成。
 - 已同步五个相关主规格；没有归档。冻结 `0001`、生产查询 SQL、认证及领域事务行为未改。
 

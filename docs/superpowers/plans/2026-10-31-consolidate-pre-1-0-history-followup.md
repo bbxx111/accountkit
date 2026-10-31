@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go、PostgreSQL 17、Redis、sqlc 1.31.1、OpenSpec。
 
-**Spec:** [当前变更 design](../../../openspec/changes/consolidate-pre-1-0-history/design.md)、同目录 specs 与 tasks；本计划续接 2026-10-30 的已完成计划。
+**Spec:** [当前变更 design](../../../openspec/changes/archive/2026-10-31-consolidate-pre-1-0-history/design.md)、同目录 specs 与 tasks；本计划续接 2026-10-30 的已完成计划。
 
 ## Global Constraints
 

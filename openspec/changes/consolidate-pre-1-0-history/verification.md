@@ -1,5 +1,42 @@
 # consolidate-pre-1-0-history 验收记录
 
+## 2026-10-31 提交与 develop 集成
+
+用户在状态审查后明确要求提交、本地合入 develop、保留合并记录并推送；本次以 `git merge --no-ff` 执行，取代下方待办表中的默认 PR 路径。归档、旧 tag/Release 删除及 v1.0.0 发布仍为后续独立动作。
+
+- 已执行 `git fetch origin`：远端与本地 develop 均为 `fb00c89`，且为完整 followup 分支的祖先；无需处理远端分叉。沙箱首次写 FETCH_HEAD 被拒绝，正常提权后成功。
+- 合并前 `openspec validate --all --strict` 为 41 pass、0 fail；OpenAPI 24/11 操作及会话边界校验通过，`git diff --check` 通过。
+- `GOWORK=off go test -json -count=1 ./...` 首次在沙箱内运行：818 个顶层 pass、374 skip、1 fail；唯一失败为 `TestShallowHistoryIsRejected` 启动 Git Bash 时发生 CreateFileMapping Win32 error 5。未修改代码或测试，通过正常提权重跑全仓：819 pass、374 skip、0 fail，退出码 0，浅克隆用例通过。日志分别为 `.test-output/c1h-integration-tests.jsonl` 与 `.test-output/c1h-integration-tests-elevated.jsonl`。本轮未配置真实数据库/Redis，未重跑 race 或恢复演练；这些跳过不计为完整集成验证，完整 Linux 验收仍引用下方追加实施证据。
+
+## 2026-10-31 任务状态复核与后续待办
+
+本节为任务状态审查，不代替完整实现审查或重新执行发布验收。后续章节保留其记录时的事实；其中“未提交”不再代表当前 Git 状态。
+
+### 当前结论
+
+| 维度 | 本次核对结果 |
+|---|---|
+| 任务完整性 | OpenSpec list/apply 均为 29/29 完成、0 剩余；第 1–9 节 24 项与第 10 节追加收尾 5 项均已勾选。没有证据需要重新打开实施任务。 |
+| 已关闭事项 | 原 13 项 API 待决定已按 D12 裁定（12 项调整、1 项接受）；原延期测试/文档小项、第二次恢复演练和非 root Linux 权限补验已有后续完成记录，不再列为待办。 |
+| 规格一致性 | 五份 delta 的 27 条 ADDED/MODIFIED/REMOVED 要求与主规格逐块核对，新增/修改正文一致、移除标题不再存在；严格校验 41 pass、0 fail。实现只做重点静态抽查，未逐场景重新验收。 |
+| Git 集成 | 审查基点 HEAD 为 `4eb346e`，当前分支 `chore/consolidate-pre-1-0-api-followup`；包含原变更分支 `bf2f0ff`，比本地 develop（`fb00c89`）多 24 个提交。审查开始时工作区干净，追加实现已提交，尚未进入本地 develop。集成时应包含 followup 分支，不能仅合入旧的 history 分支。 |
+| 验证证据 | 已读取追加验收及 `.test-output/c1h-followup-summary.json`，记录的库 1192 顶层 pass、服务 203 顶层 pass、恢复三阶段各 1 pass 相符；属于此前运行的证据。本次未重跑 Go build/vet、数据库、race、恢复和外部消费者编译，也未查询在线 CI。 |
+
+### 后续待办及归属
+
+| 顺序/归属 | 待办 | 完成依据 |
+|---|---|---|
+| 本变更交付 | 按授权推送完整 followup 分支、通过 PR 合入 develop，保留独立 merge commit；核对对应提交的在线 CI。 | 记录 PR/merge SHA 与匹配的 CI 结果。本地远程跟踪引用不是远端实时证明，本次未 fetch 或查询 GitHub。 |
+| 本变更收尾 | 单独执行 OpenSpec 归档，并检查移动后的相对链接及外部引用。 | 变更进入 archive，严格校验与链接检查通过。当前主规格已同步；本次不执行归档。 |
+| 合入后的独立动作 | 按 D10 单独确认并清理九个 v0 tag、对应 GitHub Release 和本地 tag；同步“尚未删除”的文档措辞，协调接入方版本切换。 | 本次本地仍有九个 v0 tag；远端 tag/Release 实时状态未查。执行后核对远端列表及接入方记录，不能把本地 tag 状态当作远端删除结果。 |
+| 新发布准备变更 | 建立 `prepare-v1-0-0-release`，完成发布说明、调用迁移说明、最终候选与完整门禁、main 集成及对应 CI，再按授权发布 tag/Release，验证独立远端消费并补记状态。 | 遵循 [发布检查表](../../../docs/release-checklist.md)；当前 OpenSpec 列表尚无该变更。正式 tag 的防移动/删除保护方案（含是否增加 v1.0.0 pin）在发布准备中评估，不能把现有迁移内容检查视为 tag 存在性保护。 |
+| 集成方验证 | 六类真实环境缺口：微信/Apple、SMTP、阿里云短信、服务 Bearer、管理面 no-store、production 管理员 OIDC；已在开发期做过的联调须注明尚未在 v1.0.0 候选复验。 | 按 [功能验证边界](../../../docs/features.md#已实现但待真实环境验证) 在产品任务中记录环境、版本和证据；按提案不阻塞本变更实施完成。 |
+| 平台验证边界 | Windows 权限语义尚未验证；Linux 非 root 用例已经补验。 | 有 Windows 验收需求时补做并记录；不重新打开已完成的 Linux 补验任务。 |
+
+HTTP SDK、纯第三方账号自助恢复、更多认证方式和账号合并仍是未立项候选，不计入本变更待办。历史证据中不可取的被忽略链接仍是可追溯性限制，不代表当前源文件断链，也不将补造历史日志列为实施任务。
+
+本次实际执行：OpenSpec status/apply/list、`openspec validate --all --strict`、Git 状态/分支/提交/tag 核对、五份主规格同步比对、旧符号及预检/API 重点静态抽查、`git diff --check`。主规格比对脚本首次因标题正则跨行匹配误报，修正后 27 条全部一致；未将首次误报计作规格缺陷。本轮仅追加本节，不改任务勾选，不执行提交、推送、合并、归档或发布。
+
 ## 2026-10-31 追加实施：当前状态
 
 本节记录用户授权“把 13 项逐项评估后的必要 API 调整也纳入本变更”后的收尾。下方原验收作为历史证据保留，其中“13 项待决定”、遗留小项及非 root 权限测试未验证的描述以本节结果为准；历史日志不代表本次代码已验证。

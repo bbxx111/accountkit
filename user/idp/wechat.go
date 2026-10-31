@@ -50,21 +50,9 @@ type WeChat struct {
 	logger       *slog.Logger
 }
 
-// NewWeChat 构造默认 UNIONID 模式的 OAuth 微信校验器。
-// apps 为空或非法时保持禁用；需报告配置错误时使用 NewWeChatWithConfig。
-// 返回的 subject 带 unionid: 前缀，与历史裸 UnionID 不自动兼容。
-func NewWeChat(apps []App, baseURL string, hc *http.Client, logger *slog.Logger) *WeChat {
-	w, err := NewWeChatWithConfig(WeChatConfig{Apps: apps, BaseURL: baseURL}, hc, logger)
-	if err != nil {
-		// 兼容无 error 的旧签名；非法配置保持禁用，不能使用部分应用列表。
-		w, _ = NewWeChatWithConfig(WeChatConfig{BaseURL: baseURL}, hc, logger)
-	}
-	return w
-}
-
-// NewWeChatWithConfig 校验应用集合与主标识模式，不进行网络 I/O。
+// NewWeChat 校验应用集合与主标识模式，不进行网络 I/O。
 // 配置错误不回显配置值；空应用集合表示未启用。
-func NewWeChatWithConfig(config WeChatConfig, hc *http.Client, logger *slog.Logger) (*WeChat, error) {
+func NewWeChat(config WeChatConfig, hc *http.Client, logger *slog.Logger) (*WeChat, error) {
 	mode := config.SubjectMode
 	if mode == "" {
 		mode = WeChatSubjectModeUnionID

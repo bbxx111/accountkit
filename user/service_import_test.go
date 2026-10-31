@@ -14,13 +14,13 @@ import (
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
 	"github.com/bbxx111/accountkit/internal/testkeys"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/pii"
 	"github.com/bbxx111/accountkit/session/grace"
 	"github.com/bbxx111/accountkit/session/revocation"
 	"github.com/bbxx111/accountkit/tokens"
 	"github.com/bbxx111/accountkit/user"
 	"github.com/bbxx111/accountkit/user/code"
-	"github.com/bbxx111/accountkit/user/db"
 	"github.com/bbxx111/accountkit/user/idp"
 	"github.com/bbxx111/accountkit/user/sender"
 	"github.com/jackc/pgx/v5"
@@ -224,7 +224,7 @@ func TestProfileAttributesImportPostCommit(t *testing.T) {
 	if _, err := f.svc.PatchProfileAttributes(ctx, deleted.ID, user.ProfileAttributesPatch{Document: []byte(`{"theme":"synthetic-import-private"}`)}, meta1); !errors.Is(err, user.ErrInvalidState) {
 		t.Fatal("deleted import must reject extension writes", err)
 	}
-	row, err := f.repo.Q().GetUserByID(ctx, deleted.ID)
+	row, err := user.TestRepoQueries(f.repo).GetUserByID(ctx, deleted.ID)
 	if err != nil || string(row.ProfileAttributes) != "{}" {
 		t.Fatal("deleted import changed defaults", err)
 	}
@@ -394,7 +394,7 @@ func TestImportAccountsRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 宿主后续业务 SQL 实际失败，调用者回滚也必须撤销成功导入。
-	if _, err := tx.Exec(ctx, `INSERT INTO import_business_ref VALUES ($1)`, first.ID); !user.IsUniqueViolation(err) {
+	if _, err := tx.Exec(ctx, `INSERT INTO import_business_ref VALUES ($1)`, first.ID); !user.TestIsUniqueViolation(err) {
 		t.Fatal("expected actual business uniqueness failure", err)
 	}
 	if err := tx.Rollback(ctx); err != nil {
@@ -480,7 +480,7 @@ func TestImportAccountsConcurrentConflict(t *testing.T) {
 			if !errors.Is(err, user.ErrIdentityConflict) {
 				t.Fatalf("concurrent conflict lost its class: %v", err)
 			}
-			if mode == "unlocked_writer" && !user.IsUniqueViolation(err) {
+			if mode == "unlocked_writer" && !user.TestIsUniqueViolation(err) {
 				t.Fatalf("unique index backstop lost its cause: %v", err)
 			}
 			if err := secondTx.Rollback(ctx); err != nil {

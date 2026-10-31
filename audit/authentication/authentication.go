@@ -79,21 +79,7 @@ func (o Options) Validate() error {
 // Map 生成首次投递身份并返回独立、校验后的事件。已有 UUIDv7 保持不变。
 // 业务调用应使用 Recorder，以获得失败和可选字段省略的安全观测。
 func Map(in Input, o Options) (event.Event, error) {
-	e, _, err := mapEvent(in, o, uuid.NewV7, "")
-	return e, err
-}
-
-// MapLegacy 仅供受控历史预备转换；缺失管理员字段保持 UNKNOWN，
-// 以显式旧事件标识标记受控快照，不能伪造已验证主体。
-// 不兼容的历史可选字段必须停止转换，不沿用在线事件的安全省略策略。
-func MapLegacy(in Input, o Options, legacyID string) (event.Event, error) {
-	if legacyID == "" || !validText(legacyID, 512) {
-		return event.Event{}, errors.New("audit/authentication: invalid legacy_event_id")
-	}
-	e, omitted, err := mapEvent(in, o, uuid.NewV7, legacyID)
-	if err == nil && len(omitted) > 0 {
-		return event.Event{}, errors.New("audit/authentication: incompatible legacy optional field")
-	}
+	e, _, err := mapEvent(in, o, uuid.NewV7)
 	return e, err
 }
 
@@ -103,7 +89,7 @@ type snapshot struct {
 	SessionID     string `json:"session_id,omitempty"`
 	FlowID        string `json:"flow_id,omitempty"`
 	SubjectHint   string `json:"subject_hint,omitempty"`
-	LegacyEventID string `json:"legacy_event_id,omitempty"`
+	LegacyEventID string `json:"legacy_event_id,omitempty"` // 仅保留既有私有快照的读取兼容，在线映射不写入。
 	AdminIssuer   string `json:"admin_issuer,omitempty"`
 	AdminSubject  string `json:"admin_subject,omitempty"`
 }
@@ -112,7 +98,7 @@ type data struct {
 	Accountkit snapshot `json:"accountkit"`
 }
 
-func mapEvent(in Input, o Options, newID func() (uuid.UUID, error), legacyID string) (event.Event, []string, error) {
+func mapEvent(in Input, o Options, newID func() (uuid.UUID, error)) (event.Event, []string, error) {
 	if err := o.Validate(); err != nil {
 		return event.Event{}, nil, err
 	}
@@ -122,7 +108,7 @@ func mapEvent(in Input, o Options, newID func() (uuid.UUID, error), legacyID str
 	if in.Actor == enum.ActorKindUnspecified {
 		in.Actor = enum.ActorUser
 	}
-	if legacyID == "" && !validActorKind(in.Type, in.Actor) {
+	if !validActorKind(in.Type, in.Actor) {
 		return event.Event{}, nil, errors.New("audit/authentication: invalid actor for action")
 	}
 	if !validText(in.Reason, event.MaxEventBytes) {
@@ -133,7 +119,7 @@ func mapEvent(in Input, o Options, newID func() (uuid.UUID, error), legacyID str
 			return event.Event{}, nil, errors.New("audit/authentication: invalid stable identity")
 		}
 	}
-	if in.Actor == enum.ActorAdmin && legacyID == "" && (in.AdminIssuer == "" || in.AdminSubject == "") {
+	if in.Actor == enum.ActorAdmin && (in.AdminIssuer == "" || in.AdminSubject == "") {
 		return event.Event{}, nil, errors.New("audit/authentication: incomplete administrator")
 	}
 	var omitted []string
@@ -205,8 +191,8 @@ func mapEvent(in Input, o Options, newID func() (uuid.UUID, error), legacyID str
 	case enum.EventSignInCompletionStarted, enum.EventSignInCompletionProofVerified, enum.EventSignInCompletionCompleted, enum.EventSignInCompletionRejected:
 		add("IDENTITY_FLOW", in.FlowID, true)
 	}
-	// 在线 ADMIN_FORBIDDEN 不猜请求目标；历史入口保留旧行已保存的关联。
-	if in.Type != enum.EventAdminForbidden || legacyID != "" {
+	// 在线 ADMIN_FORBIDDEN 不猜请求目标。
+	if in.Type != enum.EventAdminForbidden {
 		add("USER", in.UserID, false)
 		add("SESSION", in.SessionID, false)
 		add("IDENTITY_FLOW", in.FlowID, false)
@@ -214,11 +200,7 @@ func mapEvent(in Input, o Options, newID func() (uuid.UUID, error), legacyID str
 			add("IDENTITY", in.IdentityID, false)
 		}
 	}
-	snap := snapshot{ActorKind: in.Actor.String(), FlowID: in.FlowID, SubjectHint: in.SubjectHint, LegacyEventID: legacyID}
-	if legacyID != "" && in.Actor == enum.ActorAdmin && (in.AdminIssuer == "" || in.AdminSubject == "") {
-		snap.AdminIssuer = in.AdminIssuer
-		snap.AdminSubject = in.AdminSubject
-	}
+	snap := snapshot{ActorKind: in.Actor.String(), FlowID: in.FlowID, SubjectHint: in.SubjectHint}
 	if in.IdentityKind.Valid() {
 		snap.IdentityKind = in.IdentityKind.String()
 	}
@@ -256,10 +238,8 @@ func validActorKind(typ enum.EventType, kind enum.ActorKind) bool {
 func actor(in Input, o Options) event.Actor {
 	switch in.Actor {
 	case enum.ActorAdmin:
-		if in.AdminIssuer != "" && in.AdminSubject != "" {
-			return event.Actor{Type: event.ActorUser, Namespace: in.AdminIssuer, ID: in.AdminSubject, Name: in.AdminUsername}
-		}
-		return event.Actor{Type: event.ActorUnknown, Name: in.AdminUsername}
+		// mapEvent 已验证管理员主体完整性。
+		return event.Actor{Type: event.ActorUser, Namespace: in.AdminIssuer, ID: in.AdminSubject, Name: in.AdminUsername}
 	case enum.ActorSystem:
 		return event.Actor{Type: event.ActorSystem, Namespace: o.Namespace, ID: "accountkit"}
 	}
@@ -420,6 +400,7 @@ type Recorder struct {
 	failed, omitted atomic.Uint64
 }
 
+// NewRecorder 绑定下游 Recorder 与来源配置，不做 I/O；out 为 nil 或配置不合法时返回错误。logger 为 nil 时使用 slog.Default()。
 func NewRecorder(out event.Recorder, o Options, logger *slog.Logger) (*Recorder, error) {
 	if out == nil {
 		return nil, errors.New("audit/authentication: recorder required")
@@ -432,8 +413,10 @@ func NewRecorder(out event.Recorder, o Options, logger *slog.Logger) (*Recorder,
 	}
 	return &Recorder{out: out, options: o, logger: logger, observer: observability.NewRecorder(o.Observer, logger), newID: uuid.NewV7}, nil
 }
+
+// Record 把认证输入映射为通用事件后交给下游 Recorder；映射失败只计数、观测并记日志，不返回错误。
 func (r *Recorder) Record(ctx context.Context, in Input) {
-	e, omitted, err := mapEvent(in, r.options, r.newID, "")
+	e, omitted, err := mapEvent(in, r.options, r.newID)
 	for _, field := range omitted {
 		r.omitted.Add(1)
 		if r.observer.Enabled() {
@@ -455,6 +438,8 @@ func (r *Recorder) Record(ctx context.Context, in Input) {
 	}
 	r.out.Record(ctx, e)
 }
+
+// Stats 返回映射失败与可选字段省略的累计计数快照。
 func (r *Recorder) Stats() Stats { return Stats{Failed: r.failed.Load(), Omitted: r.omitted.Load()} }
 
 func observationField(field string) observability.AuditField {

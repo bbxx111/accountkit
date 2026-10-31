@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/pii"
-	"github.com/bbxx111/accountkit/user/db"
 )
 
 // LockAnchorSubjects acquires every key in one statement. Ascending acquisition

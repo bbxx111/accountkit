@@ -116,8 +116,6 @@ func TestSignInWithCode(t *testing.T) {
 			return user.SignInResult{}, code.ErrInvalid
 		case "111111":
 			return user.SignInResult{}, code.ErrExpired
-		case "222222":
-			return user.SignInResult{}, code.ErrExhausted
 		case "333333":
 			return user.SignInResult{}, user.ErrUserFrozen
 		case "444444":
@@ -174,7 +172,7 @@ func TestSignInWithCode(t *testing.T) {
 	}
 
 	// 领域错误映射（码错不是 401）
-	for c, want := range map[string]string{"000000": "400 INVALID_ARGUMENT/CODE_INVALID", "111111": "400 INVALID_ARGUMENT/CODE_EXPIRED", "222222": "400 INVALID_ARGUMENT/CODE_ATTEMPTS_EXHAUSTED", "333333": "403 PERMISSION_DENIED/USER_FROZEN", "444444": "500 INTERNAL/"} {
+	for c, want := range map[string]string{"000000": "400 INVALID_ARGUMENT/CODE_INVALID", "111111": "400 INVALID_ARGUMENT/CODE_EXPIRED", "333333": "403 PERMISSION_DENIED/USER_FROZEN", "444444": "500 INTERNAL/"} {
 		rec = do(t, h, call{method: "POST", path: "/users:signInWithCode", body: map[string]any{"kind": "PHONE", "credential": map[string]string{"code_id": "0123456789abcdef0123456789abcdef", "target": "+8613812341234", "code": c}}, headers: devHeaders()})
 		status, _ := aipError(t, rec)
 		if got := itoa(rec.Code) + " " + status; got != want {

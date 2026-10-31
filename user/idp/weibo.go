@@ -56,6 +56,7 @@ type weiboSDKCredential struct {
 	AccessToken string `json:"access_token"`
 }
 
+// Kind 返回 WEIBO。
 func (*Weibo) Kind() enum.IdentityKind { return enum.IdentityWeibo }
 
 // Verify 实现 Provider：credential 为 {"app_id","access_token"}，app_id 即微博 AppKey。

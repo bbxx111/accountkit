@@ -1,10 +1,10 @@
 # 功能清单与候选功能
 
-更新日期：2026-10-29（含接入方真实环境验收补记）。Go 集成与 HTTP 文档面向已发布的 v0.7.2（库契约在 v0.7.1 之上仅增加管理面 `:reveal` 响应的 `Cache-Control: no-store`）；标准化指标实现与验证状态见[库指标验收](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)，accountsvc 采集端点见[服务指标验收](../openspec/changes/archive/2026-10-19-add-accountsvc-prometheus/verification.md)。版本交付状态以[v0.7.2 发布说明](releases/v0.7.2.md)为准。
+更新日期：2026-10-30。Go 集成与 HTTP 文档面向 v1.0.0（候选）；开发期版本见[1.0 前历史](releases/pre-1.0-history.md)。标准化指标实现与验证状态见[库指标验收](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)，accountsvc 采集端点见[服务指标验收](../openspec/changes/archive/2026-10-19-add-accountsvc-prometheus/verification.md)。
 
-本文统一记录 v0.7.2 已支持能力、已实现但待真实环境验证的项目，以及尚未立项的候选功能。版本发布不表示产品环境已验收；历史版本不包含本表全部能力。目前接入方仅在本地环境联调（见下表的真实环境验证记录），尚无正式产品部署，部署暂不安排。
+本文统一记录 v1.0.0（候选）已支持能力、已实现但待真实环境验证的项目，以及尚未立项的候选功能。版本发布不表示产品环境已验收。目前接入方仅在本地环境联调（见下表的真实环境验证记录），尚无正式产品部署，部署暂不安排。
 
-协议和配置细节以 [README](../README.md)、[主规格](../openspec/specs)及公开 Go 类型为准；调用升级见[兼容指南](compatibility.md)，独立服务边界见[accountsvc 手册](accountsvc.md)。
+协议和配置细节以 [README](../README.md)、[主规格](../openspec/specs)及公开 Go 类型为准；调用者须知见[兼容指南](compatibility.md)，独立服务边界见[accountsvc 手册](accountsvc.md)。
 
 ## 已支持功能
 
@@ -21,14 +21,14 @@
 | 安全与审计 | 验证码轮次和用途隔离、发送额度、跨轮次失败预算、身份加密/摘要、密钥轮换、异步脱敏审计 | Required 不是 MFA；不同依赖操作保留各自故障策略，详见 [Redis 契约](../README.md#redis-键与失败模式) |
 | 标准化指标 | 可选类型化 Observer、OTel/原生 Prometheus、认证/验证码/依赖/降级/审计/维护的 13 项指标；accountsvc 可选 Prometheus 采集端点 | 默认 no-op；嵌入宿主负责 Provider/Registry、导出与端点，见[指标指南](metrics.md)；accountsvc 默认关闭指标，启用后提供同址 GET /metrics，部署方落实采集访问控制，见[服务配置](accountsvc.md#prometheus-指标)；合成示例不替代真实联调 |
 | 宿主事务集成 | 注销前检查、同库业务匿名化回调、已清理用户持久拉取（独立部署时供业务方幂等清理）、活动账号事务保护、受控离线导入 | 导入仅 Go 接口，不发令牌或自动合并；业务表和业务授权仍由宿主负责 |
-| 存储与维护 | PostgreSQL + Redis、schema/键前缀/令牌域隔离、版本迁移、迁移锁、dirty 阻断、定期清理、备份恢复验证 | 新库由 0001 直接定义 sign_in_completion_flow，初始化版本为 1；旧表名 v1、双表和已撤回旧 v2 拒绝接管，见[迁移手册](migrations.md#当前初始基线)；公开 Down 拒绝执行 |
+| 存储与维护 | PostgreSQL + Redis、schema/键前缀/令牌域隔离、版本迁移、迁移锁、dirty 阻断、定期清理、备份恢复验证 | 新库由 0001 安装全部表，初始化版本为 1；dirty 与版本超前在写入前拒绝，见[迁移手册](migrations.md#当前初始基线)；公开 Down 拒绝执行 |
 | 集成与运行形式 | 嵌入式 Go 包；可选 accountsvc，提供 SMTP 与多语言邮件模板清单、阿里云短信、TLS、JWKS 本地验签、以数据库为准的远程令牌内省、已清理用户拉取、服务调用 Basic/Bearer 认证、外部管理员 OIDC 验证、探针和优雅关闭 | 阿里云短信首版只发中国大陆号码；服务配置统一 `ACCOUNTSVC_` 前缀；development 模式另允许管理员与服务令牌签发方使用 `http://`（production 不变）；网关、入口流量控制和实际网络隔离由部署方负责 |
 | Go 接入文档与示例 | 集成指南、生命周期、token/pending 分流、刷新与重新认证、调用层授权、事务回调和错误处理 | [指南](go-integration.md)及[可编译片段](../examples/gointegration/example_test.go)；无 Output 片段不执行依赖 I/O，合成输出不替代产品联调 |
 | HTTP 契约文档 | 消费者与管理面分别提供 OpenAPI 3.1，覆盖现有 24/11 个操作 | [契约与维护说明](openapi.md)；不包含 accountsvc 专属的 JWKS、内省、已清理用户拉取、探针，不代表已有完整客户端 SDK |
 
 登录补全使用 `POST /users:sendSignInCompletionCode` 和 `POST /users:completeSignIn`。它可以将首次出现、尚无账号归属的第三方身份关联到已有账号；这不等于将两个已经存在的账号合并。
 
-主要能力说明：[身份策略与登录补全](../README.md#身份策略与登录补全)、[身份绑定](../README.md#身份绑定阶段-4b)、[手机/邮箱换绑](../README.md#手机号与邮箱换绑)、[宿主事务契约](../README.md#宿主账号事务)、[服务运行](accountsvc.md)。
+主要能力说明：[身份策略与登录补全](../README.md#身份策略与登录补全)、[身份绑定](../README.md#身份绑定)、[手机/邮箱换绑](../README.md#手机号与邮箱换绑)、[宿主事务契约](../README.md#宿主账号事务)、[服务运行](accountsvc.md)。
 
 ## 已实现但待真实环境验证
 
@@ -39,9 +39,9 @@
 | 微信 / Apple | 本地提供方夹具、协议和数据库集成测试 | 真实应用上的既有登录、普通绑定、首次补全关联与注册；目前尚无测试应用配置 |
 | SMTP 邮件 | 本地 SMTP/TLS 夹具和邮件验证码闭环；邮件布局黄金文件与多语言清单渲染测试 | 实际服务商认证、证书、投递和最终收件；真实邮件客户端的 HTML 显示效果 |
 | 阿里云短信 | 本地 HTTP 替身验证签名、模板映射、错误分类与超时 | 真实凭据、已审核签名/模板的实际发送与频控行为 |
-| 服务调用 Bearer 认证 | 本地签发方替身验证 RS256、`azp` 授权、challenge 与依赖故障分类；接入方（ai-food，2026-10-29，accountsvc v0.7.1）以真实 Keycloak 客户端凭据验证已清理用户拉取的 `azp` 允许/拒绝（列表外客户端 403 `CLIENT_NOT_AUTHORIZED`）、realm 密钥先 passive 后 active 轮换时不重启接受新 kid | 内省接口的真实 IdP 端到端；其他 IdP 产品 |
-| 管理面 `:reveal` 响应禁止缓存 | handler 单元测试断言 200 与 404 带 `Cache-Control: no-store`；接入方（ai-food，2026-10-29，accountsvc v0.7.2）经 Kong 用真实 Keycloak super-admin 令牌验证 200、404（未知 identity）、400（畸形 id）均带该头，用户详情等非明文管理路由不带，无令牌时处理器之前的 verifier 401 不带 | 其他网关产品或缓存插件下的透传行为 |
-| 外部管理员 OIDC | 本地 HTTPS（及 development 模式纯 HTTP）discovery/JWKS、签名、角色和换钥测试；接入方（ai-food，2026-10-29）在 `ACCOUNTSVC_MODE=development` 下以真实 Keycloak `http://` issuer 验证启动 WARN 与管理面鉴权 | 实际管理员提供方在 production（HTTPS）下的 audience、角色映射和换钥行为 |
+| 服务调用 Bearer 认证 | 本地签发方替身验证 RS256、`azp` 授权、challenge 与依赖故障分类；接入方（ai-food，2026-10-29，1.0 前开发期 accountsvc 构建 `e67d262`，见[1.0 前历史](releases/pre-1.0-history.md)；未在 v1.0.0 候选上复验）以真实 Keycloak 客户端凭据验证已清理用户拉取的 `azp` 允许/拒绝（列表外客户端 403 `CLIENT_NOT_AUTHORIZED`）、realm 密钥先 passive 后 active 轮换时不重启接受新 kid | 内省接口的真实 IdP 端到端；其他 IdP 产品 |
+| 管理面 `:reveal` 响应禁止缓存 | handler 单元测试断言 200 与 404 带 `Cache-Control: no-store`；接入方（ai-food，2026-10-29，1.0 前开发期 accountsvc 构建 `453527b`，见[1.0 前历史](releases/pre-1.0-history.md)；未在 v1.0.0 候选上复验）经 Kong 用真实 Keycloak super-admin 令牌验证 200、404（未知 identity）、400（畸形 id）均带该头，用户详情等非明文管理路由不带，无令牌时处理器之前的 verifier 401 不带 | 其他网关产品或缓存插件下的透传行为 |
+| 外部管理员 OIDC | 本地 HTTPS（及 development 模式纯 HTTP）discovery/JWKS、签名、角色和换钥测试；接入方（ai-food，2026-10-29，1.0 前开发期 accountsvc 构建，原记录未注明提交，见[1.0 前历史](releases/pre-1.0-history.md)；未在 v1.0.0 候选上复验）在 `ACCOUNTSVC_MODE=development` 下以真实 Keycloak `http://` issuer 验证启动 WARN 与管理面鉴权 | 实际管理员提供方在 production（HTTPS）下的 audience、角色映射和换钥行为 |
 
 实际验证状态以各次变更的 verification.md 为准：[身份策略与登录补全验收](../openspec/changes/archive/2026-10-15-add-identity-policy-sign-in-completion/verification.md)、[初始结构整合验收](../openspec/changes/archive/2026-10-15-consolidate-initial-schema/verification.md)。其他真实服务、网关和产品环境验收边界见 [accountsvc 验证边界](accountsvc.md#验证边界)及[发布与上线检查表](release-checklist.md)。本文不重复维护测试统计或验收报告。
 
@@ -51,13 +51,13 @@
 
 | 候选功能 | 要解决的问题与现有差距 | 建议顺序 |
 |---|---|---|
-| 完整 HTTP 客户端调用示例 | 已提供 Go 集成片段和两套 OpenAPI；仍可按目标客户端补齐真实交互流程、并发刷新协调与安全凭证存储 | 有目标客户端后 |
+| 完整 HTTP 客户端调用示例 | 已提供平台中立版本，见 [HTTP 调用流程](http-client-flows.md)；平台特定示例待目标客户端 | 有目标客户端后 |
 | HTTP 客户端 SDK | 为 HTTP 调用方统一 token/pending 解析、令牌更新和错误处理；不替代已有 Go 库 | 调用示例稳定且有目标客户端后 |
 | 纯第三方账号自助恢复 | Required=[] 允许纯第三方注册，但只有第三方身份的账号在注销冷静期内尚无自助恢复路径，需管理员代办；需要设计对应的控制权证明与恢复授权 | 中，先确认安全与产品规则 |
 | 更多登录与认证方式 | 按目标产品需要评估更多第三方提供方、Passkey、MFA；现有身份完整性策略不提供多因素认证 | 按需分别立项 |
 | 两个已有账号合并 | 首次身份关联已经支持；合并两个已有 user_id 还需要处理业务数据归属、冲突、授权及审计 | 有明确产品需求后 |
 
-Go 集成指南与内置 HTTP 契约已补充，实际验证与限制见[本轮记录](../openspec/changes/archive/2026-10-18-document-go-integration-and-http-contracts/verification.md)。后续根据目标客户端完善完整调用示例；阿里云短信已随 v0.7.0 提供，其他服务商或国际短信按需立项。其余候选不作为当前版本的未完成任务。
+平台特定的客户端调用示例待有目标客户端后补充；短信目前内置阿里云发送器，其他服务商或国际短信按需立项。其余候选不作为当前版本的未完成任务。
 
 ## 维护方式
 

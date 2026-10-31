@@ -195,7 +195,7 @@ func TestProfileAttributesPurgeBeforeWrite(t *testing.T) {
 	if out := finishReplacementRace(t, ctx, write); !errors.Is(out.err, user.ErrInvalidState) {
 		t.Fatal(out.err)
 	}
-	row, err := f.repo.Q().GetUserByID(ctx, id)
+	row, err := user.TestRepoQueries(f.repo).GetUserByID(ctx, id)
 	if err != nil || row.State != enum.UserDeleted || string(row.ProfileAttributes) != "{}" {
 		t.Fatalf("late write restored purged data: %+v %v", row, err)
 	}
@@ -247,7 +247,7 @@ func TestProfileAttributesWriteBeforeLifecycle(t *testing.T) {
 			if out := finishReplacementRace(t, ctx, lifeDone); out.err != nil {
 				t.Fatal(out.err)
 			}
-			row, err := f.repo.Q().GetUserByID(ctx, id)
+			row, err := user.TestRepoQueries(f.repo).GetUserByID(ctx, id)
 			if err != nil || row.State != state {
 				t.Fatalf("lifecycle lost committed extension: %+v %v", row, err)
 			}

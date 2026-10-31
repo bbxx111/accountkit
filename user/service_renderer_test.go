@@ -82,7 +82,7 @@ func TestSMTPRendererFailurePreservesDeliveryContract(t *testing.T) {
 				private = fmt.Errorf("private-template person@example.org %s body language-context", m.Code)
 				return delivery.EmailContent{}, private
 			})
-			s, mr, mem := deliveryService(t, &legacyDelivery{}, transport)
+			s, mr, mem := deliveryService(t, &codeDelivery{}, transport)
 			s.d.Logger = slog.New(slog.NewTextHandler(&logs, nil))
 			deadline := time.Time{}
 			if purpose == enum.PurposeSignInComplete {
@@ -160,7 +160,7 @@ func TestSMTPRendererFailureCannotDiscardNewerRound(t *testing.T) {
 				<-release
 				return delivery.EmailContent{}, errors.New("private render failure")
 			})
-			s, mr, _ := deliveryService(t, &legacyDelivery{}, transport)
+			s, mr, _ := deliveryService(t, &codeDelivery{}, transport)
 			deadline := time.Time{}
 			if purpose == enum.PurposeSignInComplete {
 				deadline = time.Now().Add(3 * time.Minute)

@@ -71,7 +71,7 @@ func TestWeiboFirstSignInFillsProfile(t *testing.T) {
 		t.Fatal("expected new user")
 	}
 	assertAlipayProfile(t, f, first.UserID, "Weibo Name", "https://tvax1.example.test/weibo.png")
-	rows, err := f.repo.Q().ListActiveIdentitiesByUser(context.Background(), first.UserID)
+	rows, err := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(context.Background(), first.UserID)
 	if err != nil || len(rows) != 1 || strings.Contains(string(rows[0].ProviderMeta), "openids") || strings.Contains(string(rows[0].ProviderMeta), "unionid") {
 		t.Fatalf("weibo identity metadata: %+v %v", rows, err)
 	}
@@ -151,7 +151,7 @@ func TestWeiboLoginProfileRollbackAfterSessionFailure(t *testing.T) {
 		t.Fatal("session failure succeeded")
 	}
 	assertAlipayProfile(t, f, first.UserID, "", "")
-	rows, err := f.repo.Q().ListActiveIdentitiesByUser(context.Background(), first.UserID)
+	rows, err := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(context.Background(), first.UserID)
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("list identities: %d %v", len(rows), err)
 	}
@@ -253,7 +253,7 @@ func TestWeiboLoginCannotRestoreProfileAfterConcurrentPurge(t *testing.T) {
 	if out := finishReplacementRace(t, ctx, login); !errors.Is(out.err, idp.ErrInvalidCredential) {
 		t.Fatalf("stale identity accepted after purge: %v", out.err)
 	}
-	row, err := f.repo.Q().GetUserByID(ctx, first.UserID)
+	row, err := user.TestRepoQueries(f.repo).GetUserByID(ctx, first.UserID)
 	if err != nil || row.State != enum.UserDeleted || row.DisplayName != nil || row.AvatarUrl != nil {
 		t.Fatalf("login restored anonymized profile: %+v %v", row, err)
 	}

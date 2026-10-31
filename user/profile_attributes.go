@@ -25,6 +25,7 @@ type ProfileAttributesPatch struct {
 }
 
 var (
+	// ErrProfileAttributesNotConfigured：未配置 ProfileAttributes 时调用资料属性能力 → 503 UNAVAILABLE。
 	ErrProfileAttributesNotConfigured = errors.New("user: profile_attributes not configured")
 )
 
@@ -34,9 +35,12 @@ type ProfileAttributesViolation struct{ Path, Rule string }
 // ProfileAttributesValidationError 不保留原始值或校验器错误，最多包含 16 条原因。
 type ProfileAttributesValidationError struct{ Violations []ProfileAttributesViolation }
 
+// Error 返回固定文本，不包含任何资料值或路径。
 func (*ProfileAttributesValidationError) Error() string {
 	return "user: profile_attributes validation failed"
 }
+
+// Is 使 errors.Is(err, ErrInvalidArgument) 成立。
 func (*ProfileAttributesValidationError) Is(target error) bool { return target == ErrInvalidArgument }
 
 // cloneProfileAttributesConfig 返回配置及其 Schema 字节的独立副本。

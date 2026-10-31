@@ -25,8 +25,8 @@ func TestIndependentInstances(t *testing.T) {
 	cb.JWTKeys = map[uint16]*ecdsa.PrivateKey{1: testkeys.JWT(9)}
 	a, pa, sa := integrationInstance(t, ca, rdb)
 	b, pb, sb := integrationInstance(t, cb, rdb)
-	fa, accessA := seedFormatFixture(t, pa, a.Config())
-	fb, accessB := seedFormatFixture(t, pb, b.Config())
+	fa, accessA := seedSyntheticAccount(t, pa, a.Config())
+	fb, accessB := seedSyntheticAccount(t, pb, b.Config())
 	if err := a.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}

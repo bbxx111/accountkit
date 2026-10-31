@@ -26,12 +26,12 @@ func TestAvatarProfileUpdate(t *testing.T) {
 		t.Fatalf("set: %+v %v", m, err)
 	}
 	for _, bad := range []string{"http://example.com/a", "/relative", "data:image/png;base64,a", "https:///a", "https://user:secret@example.com/a", "https://example.com/#fragment", "https://example.com/#", "https://example.com/a\\b", "https://example.com/a b", "https://example.com/a\tb", "https://example.com/\u00a0x", string([]byte{0xff}), "https://example.com/" + strings.Repeat("x", 2029)} {
-		before, _ := f.repo.Q().GetUserByID(ctx, id)
+		before, _ := user.TestRepoQueries(f.repo).GetUserByID(ctx, id)
 		_, err = f.svc.UpdateProfile(ctx, id, user.ProfilePatch{DisplayName: avatarPointer("wrong"), AvatarURL: avatarPointer(bad)})
 		if !errors.Is(err, user.ErrInvalidArgument) || strings.Contains(err.Error(), bad) {
 			t.Fatalf("invalid avatar: %q: %v", bad, err)
 		}
-		after, _ := f.repo.Q().GetUserByID(ctx, id)
+		after, _ := user.TestRepoQueries(f.repo).GetUserByID(ctx, id)
 		if !after.UpdateTime.Equal(before.UpdateTime) || *after.DisplayName != "new" || *after.AvatarUrl != "https://example.com/a?q=one" {
 			t.Fatal("invalid patch wrote fields/time")
 		}
@@ -46,7 +46,7 @@ func TestAvatarProfileUpdate(t *testing.T) {
 	if _, err = f.svc.UpdateProfile(ctx, id, user.ProfilePatch{AvatarURL: avatarPointer("")}); err != nil {
 		t.Fatal(err)
 	}
-	row, _ := f.repo.Q().GetUserByID(ctx, id)
+	row, _ := user.TestRepoQueries(f.repo).GetUserByID(ctx, id)
 	if row.AvatarUrl != nil || *row.DisplayName != "new" {
 		t.Fatal("clear/omission")
 	}

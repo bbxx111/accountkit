@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bbxx111/accountkit/user/db"
+	"github.com/bbxx111/accountkit/internal/userdb"
 )
 
 func TestSessionActiveAt(t *testing.T) {

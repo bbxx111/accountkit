@@ -26,7 +26,7 @@ func TestMaintenanceObservations(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	if n, err := f.svc.CleanupIdentityFlows(ctx); err != nil || n != 0 {
+	if n, err := f.svc.CleanupSignInCompletionFlows(ctx); err != nil || n != 0 {
 		t.Fatalf("legacy cleanup: n=%d err=%v", n, err)
 	}
 	if n, err := f.svc.CleanupSessions(ctx); err != nil || n != 0 {

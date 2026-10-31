@@ -13,7 +13,7 @@ import (
 
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/enum"
-	"github.com/bbxx111/accountkit/user/db"
+	"github.com/bbxx111/accountkit/internal/userdb"
 )
 
 // ProviderDeletionStatus 是第三方平台数据删除请求的处理结果，不落库。

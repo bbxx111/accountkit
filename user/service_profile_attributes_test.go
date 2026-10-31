@@ -37,7 +37,7 @@ func TestProfileAttributesSchemaEvolution(t *testing.T) {
 	}
 	tight := strings.Replace(profileAttributesSchema, `"theme":{"type":"string"}`, `"theme":{"type":"string","maxLength":2}`, 1)
 	newServiceWith(t, f, func(d *user.Deps) { d.ProfileAttributes = &user.ProfileAttributesConfig{Schema: []byte(tight)} })
-	before, _ := f.repo.Q().GetUserByID(ctx, id)
+	before, _ := user.TestRepoQueries(f.repo).GetUserByID(ctx, id)
 	if v, err := f.svc.GetProfileAttributes(ctx, id); err != nil || !strings.Contains(string(v.Data), "old") {
 		t.Fatal("historical read rejected", err)
 	}
@@ -47,14 +47,14 @@ func TestProfileAttributesSchemaEvolution(t *testing.T) {
 			t.Fatal("invalid complete candidate accepted", err)
 		}
 	}
-	after, _ := f.repo.Q().GetUserByID(ctx, id)
+	after, _ := user.TestRepoQueries(f.repo).GetUserByID(ctx, id)
 	if string(before.ProfileAttributes) != string(after.ProfileAttributes) || !before.UpdateTime.Equal(after.UpdateTime) {
 		t.Fatal("rejected candidate changed account")
 	}
 	if _, err := f.svc.PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{"theme":"ok","score":4}`)}, meta1); err != nil {
 		t.Fatal("same patch repair rejected", err)
 	}
-	after, _ = f.repo.Q().GetUserByID(ctx, id)
+	after, _ = user.TestRepoQueries(f.repo).GetUserByID(ctx, id)
 	if !after.UpdateTime.Equal(*f.clock) {
 		t.Fatal("changed document did not update account time")
 	}
@@ -134,10 +134,10 @@ func TestProfileAttributes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("write: %+v %v", v, err)
 	}
-	before, _ := f.repo.Q().GetUserByID(ctx, id)
+	before, _ := user.TestRepoQueries(f.repo).GetUserByID(ctx, id)
 	f.advance(time.Second)
 	v, err = f.svc.PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{"score":1e0}`)}, meta1)
-	after, _ := f.repo.Q().GetUserByID(ctx, id)
+	after, _ := user.TestRepoQueries(f.repo).GetUserByID(ctx, id)
 	if err != nil || !after.UpdateTime.Equal(before.UpdateTime) {
 		t.Fatalf("noop: %+v %v", v, err)
 	}
@@ -202,14 +202,14 @@ func TestProfileAttributesConfiguration(t *testing.T) {
 func TestProfileAttributesMetadataAndLegacyViews(t *testing.T) {
 	f, id := profileAttributesFixture(t)
 	ctx := context.Background()
-	initial, err := f.repo.Q().GetUserByID(ctx, id)
+	initial, err := user.TestRepoQueries(f.repo).GetUserByID(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err = f.svc.PatchProfileAttributes(ctx, id, user.ProfileAttributesPatch{Document: []byte(`{}`)}, meta1); err != nil {
 		t.Fatal(err)
 	}
-	row, err := f.repo.Q().GetUserByID(ctx, id)
+	row, err := user.TestRepoQueries(f.repo).GetUserByID(ctx, id)
 	if err != nil || !row.UpdateTime.Equal(initial.UpdateTime) {
 		t.Fatal("initial no-op changed metadata", err)
 	}

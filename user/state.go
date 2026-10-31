@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/bbxx111/accountkit/enum"
-	"github.com/bbxx111/accountkit/user/db"
+	"github.com/bbxx111/accountkit/internal/userdb"
 )
 
 // accountMayAct 是"已登录用户能否在账号上产生新的写入"（绑定、解绑等）的统一判定：

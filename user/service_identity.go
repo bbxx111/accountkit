@@ -13,9 +13,9 @@ import (
 	"github.com/bbxx111/accountkit/email"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/phone"
 	"github.com/bbxx111/accountkit/user/code"
-	"github.com/bbxx111/accountkit/user/db"
 	"github.com/bbxx111/accountkit/user/idp"
 )
 
@@ -43,7 +43,7 @@ func identityInfoFrom(id db.Identity) IdentityInfo {
 
 // ListIdentities 列出用户的活动身份（create_time, id 升序）。
 func (s *Service) ListIdentities(ctx context.Context, userID string) ([]IdentityInfo, error) {
-	rows, err := s.d.Repo.Q().ListActiveIdentitiesByUser(ctx, userID)
+	rows, err := s.d.Repo.queries().ListActiveIdentitiesByUser(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("user: list identities: %w", err)
 	}
@@ -209,7 +209,7 @@ func (s *Service) BindWithCode(ctx context.Context, p Principal, cred CodeCreden
 		}
 		row, err := s.createAnchorIdentity(ctx, q, p.UserID, channel, norm, hintPrefix, hintSuffix)
 		if err != nil {
-			if IsUniqueViolation(err) {
+			if isUniqueViolation(err) {
 				return ErrIdentityConflict // 并发绑定同一 subject：唯一索引兜底
 			}
 			return err
@@ -310,7 +310,7 @@ func (s *Service) BindWithIdp(ctx context.Context, p Principal, cred IdpCredenti
 		}
 		row, err := s.createProviderIdentity(ctx, q, p.UserID, ident)
 		if err != nil {
-			if IsUniqueViolation(err) {
+			if isUniqueViolation(err) {
 				return ErrIdentityConflict
 			}
 			return err

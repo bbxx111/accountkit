@@ -18,6 +18,40 @@ import (
 
 var options = Options{Source: "accountkit/test", Namespace: "urn:test:accounts"}
 
+// legacyAdministratorSnapshot constructs a saved generic event independently of
+// the online mapper, which must never create the private legacy marker.
+func legacyAdministratorSnapshot(t *testing.T, in Input) event.Event {
+	t.Helper()
+	actor := event.Actor{Type: event.ActorUnknown, Name: in.AdminUsername}
+	if in.AdminIssuer != "" && in.AdminSubject != "" {
+		actor = event.Actor{Type: event.ActorUser, Namespace: in.AdminIssuer, ID: in.AdminSubject, Name: in.AdminUsername}
+	}
+	accountkit := map[string]any{
+		"actor_kind": "ADMIN", "legacy_event_id": "e_legacy",
+		"admin_issuer": in.AdminIssuer, "admin_subject": in.AdminSubject,
+		"session_id": in.SessionID, "flow_id": in.FlowID,
+		"subject_hint": in.SubjectHint,
+	}
+	wire, err := json.Marshal(map[string]any{"reason": in.Reason, "accountkit": accountkit})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := event.Event{ID: uuid.Must(uuid.NewV7()), Source: options.Source,
+		Action: in.Type.String(), Actor: actor, Data: wire, OccurTime: in.OccurTime,
+		Context: event.EventContext{RequestID: in.RequestID, DeviceID: in.DeviceID, ClientIP: in.IP},
+	}
+	for _, ref := range []struct{ typ, id string }{{"USER", in.UserID}, {"SESSION", in.SessionID}, {"IDENTITY_FLOW", in.FlowID}} {
+		if ref.id != "" {
+			e.Context.RelatedResources = append(e.Context.RelatedResources, event.Resource{Namespace: options.Namespace, Type: ref.typ, ID: ref.id})
+		}
+	}
+	e, err = event.Freeze(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e
+}
+
 func fixture(typ enum.EventType) Input {
 	return Input{Type: typ, Actor: enum.ActorUser, Result: enum.ResultSuccess, Reason: "SAFE_REASON", UserID: "u_test", SessionID: "s_test", IdentityID: "i_test", FlowID: "f_test", IdentityKind: enum.IdentityPhone, SubjectHint: "12345678", IP: "192.0.2.1", DeviceID: "device", RequestID: "request", OccurTime: time.Date(2026, 10, 16, 1, 2, 3, 0, time.UTC)}
 }
@@ -273,10 +307,7 @@ func TestAuthenticationStableIDAndLegacyAdministrator(t *testing.T) {
 		if _, err := Map(in, options); err == nil {
 			t.Fatal("new incomplete administrator accepted")
 		}
-		e, err := MapLegacy(in, options, "e_legacy")
-		if err != nil {
-			t.Fatal(err)
-		}
+		e := legacyAdministratorSnapshot(t, in)
 		if e.Actor.Type != event.ActorUnknown || e.Actor.Namespace != "" || e.Actor.ID != "" {
 			t.Fatalf("legacy missing identity fabricated: %+v", e.Actor)
 		}
@@ -294,8 +325,8 @@ func TestAuthenticationStableIDAndLegacyAdministrator(t *testing.T) {
 		if p.AdminUsername != "" || p.AdminIssuer != tc.issuer || p.AdminSubject != tc.subject {
 			t.Fatalf("legacy scrub destroyed stable identity: %+v", p)
 		}
-		in.AdminIssuer = strings.Repeat("x", 513)
-		if _, err := MapLegacy(in, options, "e_legacy"); err == nil {
+		e.Data = json.RawMessage(`{"accountkit":{"actor_kind":"ADMIN","legacy_event_id":"e_legacy","admin_issuer":"` + strings.Repeat("x", 513) + `"}}`)
+		if _, err := Projection(e); err == nil {
 			t.Fatal("legacy bypassed namespace limit")
 		}
 	}
@@ -363,15 +394,7 @@ func TestAuthenticationActorKindMustMatchAction(t *testing.T) {
 	}
 }
 
-func TestAuthenticationLegacyRejectsIncompatibleOptionalFields(t *testing.T) {
-	in := fixture(enum.EventSignIn)
-	in.RequestID = strings.Repeat("r", 129)
-	if _, err := MapLegacy(in, options, "e_legacy"); err == nil {
-		t.Fatal("history silently discarded incompatible request_id")
-	}
-}
-
-func TestAuthenticationLegacyAdminForbiddenPreservesResources(t *testing.T) {
+func TestAuthenticationLegacyAdminForbiddenSnapshotReadable(t *testing.T) {
 	for _, tc := range []struct {
 		name, userID, sessionID, flowID string
 		related                         []string
@@ -390,10 +413,7 @@ func TestAuthenticationLegacyAdminForbiddenPreservesResources(t *testing.T) {
 			in.SessionID = tc.sessionID
 			in.FlowID = tc.flowID
 			in.IdentityID = ""
-			e, err := MapLegacy(in, options, "e_legacy")
-			if err != nil {
-				t.Fatal(err)
-			}
+			e := legacyAdministratorSnapshot(t, in)
 			if len(e.Targets) != 0 || !reflect.DeepEqual(refs(e.Context.RelatedResources), tc.related) {
 				t.Fatalf("saved historical resources lost: targets=%v related=%v", refs(e.Targets), refs(e.Context.RelatedResources))
 			}

@@ -28,7 +28,7 @@ func useMetadataProvider(t *testing.T, f *fixture, required []enum.IdentityKind)
 }
 func assertMetadata(t *testing.T, f *fixture, uid string) string {
 	t.Helper()
-	rows, err := f.repo.Q().ListActiveIdentitiesByUser(context.Background(), uid)
+	rows, err := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(context.Background(), uid)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestWeChatMetadataPersistence(t *testing.T) {
 			t.Fatal(err)
 		}
 		uid := requireSignInTokens(t, first).UserID
-		rows, _ := f.repo.Q().ListActiveIdentitiesByUser(ctx, uid)
+		rows, _ := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, uid)
 		iid := rows[0].ID
 		if _, err = f.svc.SignInWithIdp(ctx, metadataCred("u1", "o1", ""), dev1, meta1); err != nil {
 			t.Fatal(err)
@@ -159,7 +159,7 @@ func TestWeChatPendingConfigurationFingerprint(t *testing.T) {
 			f := newFixture(t)
 			config := idp.WeChatConfig{MiniProgramApps: []idp.App{{AppID: "wx1", Secret: "secret"}}, SubjectMode: idp.WeChatSubjectModeOpenID, BaseURL: server.URL}
 			install := func() {
-				p, err := idp.NewWeChatWithConfig(config, server.Client(), nil)
+				p, err := idp.NewWeChat(config, server.Client(), nil)
 				if err != nil {
 					t.Fatal(err)
 				}

@@ -2,89 +2,41 @@
 
 发布 module：github.com/bbxx111/accountkit；远程：https://github.com/bbxx111/accountkit.git。
 
-## 当前待办与责任归属
+## 当前状态
 
-**v0.7.2 已发布**：v0.7.1 后的管理面 `:reveal` 响应禁止缓存（`add-admin-reveal-no-store`）已完成、归档并合入 develop/main，同批合入 `caller_cancel` 用例容忍与接入方真实环境验收补记；最终候选 `453527b` 的在线 CI 全部通过，tag `v0.7.2` 与正式 Release 已核验，两个独立宿主远端消费通过。库路由/字段/错误码、数据库结构与依赖相对 v0.7.1 无变化。发布说明见 [v0.7.2](releases/v0.7.2.md)，证据见[发布验收](../openspec/changes/archive/2026-10-29-prepare-v0-7-2-release/verification.md)。产品上线另行执行。
+当前处于 v1.0.0（候选）阶段：开发期版本整合为单一 v1.0.0 基线，具体发布准备另起 OpenSpec 变更，届时在本文追加该版本的专属门禁与发布说明链接。尚无已发布的正式版本说明；开发期版本的说明与证据索引见 [开发期历史](releases/pre-1.0-history.md)。
 
-**v0.7.1 已发布**：v0.7.0 后的 accountsvc 开发模式明文 HTTP 签发方（`allow-development-http-issuer`）已完成、归档并合入 develop/main；最终候选 `e67d262` 的在线 CI 全部通过，tag `v0.7.1` 与正式 Release 已核验，两个独立宿主远端消费通过。库契约、数据库结构与依赖相对 v0.7.0 无变化。发布说明见 [v0.7.1](releases/v0.7.1.md)，证据见[发布验收](../openspec/changes/archive/2026-10-29-prepare-v0-7-1-release/verification.md)。产品上线另行执行。
+本检查表区分三类内容：可复用的发布前门禁、发布动作与消费确认、各产品的上线验收。产品环境验收可以在产品接入过程中完成；库版本发布后，产品仍须完成对应上线条件。当前没有开源 LICENSE，面向自有产品的发布不替外部使用方定义复用许可；后续开放外部使用时再明确许可方式。
 
-**v0.7.0 已发布**：v0.6.0 后的消费者 access ES256 与严格内省、accountsvc 阿里云短信、已清理用户拉取清单（当前 0001 新增 `purged_user`）、`ACCOUNTSVC_` 前缀统一、服务调用 Bearer 认证、邮件模板清单与多语言均已完成并归档，已合入 develop/main；最终候选 `6f3b072` 的在线 CI 全部通过，tag 和正式 Release 已核验，两个独立宿主远端消费通过。本次以新空 schema 安装为目标，不提供旧库、旧令牌或旧配置迁移。发布说明见 [v0.7.0](releases/v0.7.0.md)，候选/CI/tag/Release 与远端消费证据见[发布验收](../openspec/changes/archive/2026-10-29-prepare-v0-7-0-release/verification.md)。产品上线另行执行。
+## 发布前门禁
 
-**v0.6.0 已发布**：v0.5.0 后的身份提供方注册表与统一凭证、Google、OIDC、微信小程序、Facebook 及数据删除、支付宝、QQ、微博和可配置资料补填均已完成并归档，已合入 develop/main；最终候选 `ec6802c` 的在线 CI 全部通过，tag 和正式 Release 已核验，两个独立宿主远端消费通过。本次以新空 schema 安装为目标，不提供旧数据库迁移。发布说明见 [v0.6.0](releases/v0.6.0.md)，候选/CI/tag/Release 与远端消费证据见[发布验收](../openspec/changes/archive/2026-10-24-prepare-v0-6-0-release/verification.md)。产品上线和发布变更归档另行执行。
+以下为不带版本号的通用检查项；每个版本发布时在其准备变更中逐项勾选并保存证据，历史版本的结论不能替代当前候选。
 
-**v0.5.0 已发布**：资料属性、本人资料 HTTP/accountsvc Schema 配置、内置头像均已完成并归档，已合入 develop/main；最终候选 CI 全部通过，tag 和正式 Release 已核验。用户确认尚无正式部署，本次以新空 schema 安装为目标，不安排旧数据库迁移。发布说明见 [v0.5.0](releases/v0.5.0.md)，候选/CI/tag/Release 与远端消费证据见[发布验收](../openspec/changes/archive/2026-10-21-prepare-v0-5-0-release/verification.md)。以下 v0.4.0 及更早记录保留历史事实。
+- [ ] 本版本功能变更已归档并合入 develop；盘点公开 Go API、HTTP/配置、指标/审计、依赖与当前 0001 差异。
+- [ ] 发布说明与升级/回退边界完成独立审查，核对功能范围、Go/存储要求、accountsvc 限制、宿主责任和产品环境未验证项。
+- [ ] 准备快照在 `tests/Dockerfile` 构建的 Linux 验证镜像中通过：`openspec validate --all --strict`、`bash scripts/check-generated.sh`、`bash scripts/check-migrations.sh`（需完整历史与 tags）、`node scripts/check-openapi.cjs`、`bash scripts/verify.sh`（完整库 race 与必需门禁）、`bash scripts/verify-accountsvc.sh`（服务 race 与进程信号）、`bash scripts/verify-recovery.sh` 的 seed/verify/source-unchanged 三阶段；缺依赖或必需测试 skip 不视为通过（普通套件的 `TestRecoveryFixture` 按既有规则 skip），结果写入该版本准备变更的 `verification.md`。
+- [ ] 以 `--no-ff` 合入 develop，再以独立 merge commit 合入 main 并推送；确认工作区干净，记录最终候选 SHA。
+- [ ] 最终候选的在线 CI（`.github/workflows/ci.yml`）全部通过，包括 `check-generated.sh`、`verify.sh` 与 `verify-accountsvc.sh` 步骤，且 `head_sha` 与候选 SHA 精确匹配；不以准备快照或旧候选的结果替代。
+- [ ] 远端不存在同名 tag，也不存在低于 v1.0.0 的 tag（开发期 tag 计划在 v1.0.0 发布前删除）；人工核对 `git ls-remote --tags origin`。
+- [ ] 发布说明及其余待交付文件均包含在最终候选提交内；后续改动产生新候选提交时，重新核对该提交对应的门禁。
 
-## v0.5.0 版本门禁
+本地复核使用[开发与验证入口](development.md)，测试数据库权限限定到一次性数据库；生产密钥不进入示例或测试。各次变更的实际结果保存在对应 `openspec/changes/.../verification.md`，原始日志和恢复材料保留于 ignored `.test-output/`。
 
-- [x] 三项功能任务已完成、已归档并本地集成，规格严格校验问题已修复。
-- [x] 审查 v0.5.0 发布说明，核对公开 API、HTTP/配置、依赖、新实例安装和宿主责任；执行文档/生成/历史检查。
-- [x] 通过 --no-ff 将发布材料合入 develop/main 并推送，确定干净的最终 main 候选 SHA。
-- [x] 最终候选在线 CI 全部通过：生成一致性、完整库/race/必需门禁/真实恢复、accountsvc 专项依赖与进程信号验证。
-- [x] 创建并推送唯一 v0.5.0 annotated tag，核对精确 SHA，发布正式 GitHub Release；历史 tag 不移动。
-- [x] 两个独立宿主 GOWORK=off、无 replace 从远端消费 v0.5.0，验证根门面及直接 enduser 的资料/头像能力、模块版本和 SQL 哈希。
-- [x] 补记实际发布、CI 和消费证据，更新文档发布状态；产品上线和发布变更归档另行执行。
+## 发布动作与消费确认
 
-## v0.6.0 版本门禁
+**状态措辞约定**：发布准备到打 tag 之前，发布说明、README、兼容/功能/集成/OpenAPI 文档统一写“候选”（如“vX.Y.Z（候选）”、“状态：发布候选”），不写“准备中”，并写明 tag 将固定包含该文的提交及可预知的 Release 链接；tag 内容不会也不需要包含自己的 SHA、CI 与消费证据。tag 与 Release 完成、远端消费验证通过后，以补记提交把状态改为“已发布”并写入 tag 对象、提交 SHA、CI 与消费结果，合入 develop 与 main；历史 tag 不移动。不为改一个状态词在 CI 通过后追加提交再打 tag。
 
-用户确认版本号 v0.6.0 并授权开始发布准备；准备授权不扩展为合并 main、推送、tag 或 Release。说明见 [v0.6.0](releases/v0.6.0.md)，证据集中在[发布准备验收](../openspec/changes/archive/2026-10-24-prepare-v0-6-0-release/verification.md)；历史版本勾选不适用于本版本。
+上述发布前门禁通过后，按明确授权执行版本发布；准备授权不扩展为合并 main、推送、tag 或 Release。Go 版本使用完整的 `vX.Y.Z`，实际发布流程见 [Go 模块发布说明](https://go.dev/doc/modules/publishing)。
 
-- [x] 八项功能变更已完成、归档并合入 develop；盘点公开 Go API、HTTP 凭证信封、配置、指标/审计、依赖与当前 0001 差异。
-- [x] 发布说明及迁移/回退边界（统一凭证、`IdentityKind`、提供方装配、`identity.kind` 列类型、微信 subject、资料补填、显示名长度）完成独立审查。
-- [x] 准备快照的 OpenSpec strict、生成一致性、迁移历史、OpenAPI、完整库/服务 race、必需门禁及恢复 seed/verify/source-unchanged 通过，结果写入准备验收。
-- [x] 以 `--no-ff` 将准备内容合入 develop，再将 develop 合入 main 并推送；首个候选 `08c4a4a` 因 v0.5.0 初始定义未固定而 CI 失败，修复后最终 main 候选为 `ec6802cd221db3ce107e79bac92174bc35a0ba7d`。
-- [x] 最终 main 候选在线 CI 的 check-generated.sh、verify.sh、verify-accountsvc.sh 全部成功，head_sha 精确匹配。
-- [x] 确认远端 v0.6.0 不存在，创建并推送 annotated tag，发布 GitHub Release；历史 tag 不移动。
-- [x] 两个独立宿主以 GOWORK=off、无 replace 从远端消费 @v0.6.0，验证根门面与直接 enduser 的统一凭证、提供方装配、模块版本和初始 SQL 哈希。
-- [x] 补记 tag/Release、最终 SHA/CI 与消费结果，长期文档改为已发布状态；发布准备变更已归档。
+- [ ] 创建并推送指向最终候选 SHA 的 annotated tag；核对远端 tag 解析到同一提交，并发布 GitHub Release（使用同一份发布说明，不另维护一套内容）。发布后不移动、覆盖或重建该 tag；修复通过新版本交付。
+- [ ] tag 推送后，在两个独立临时宿主中以 `GOWORK=off`、无本地 replace 执行 `go get github.com/bbxx111/accountkit@vX.Y.Z`；分别编译根 `EndUserHandler` 与直接 `httpapi/enduser` 消费，并核对 `go list -m -json` 返回的版本、初始 SQL 哈希与本版本新增公开符号。临时宿主和输出只放 ignored `.test-output/`。
+- [ ] 远端消费确认后，以补记提交把状态改为已发布，写入 tag/提交、候选 CI 和消费确认依据，合入 develop 与 main；归档发布准备变更按单独明确请求执行。
 
-## v0.7.0 版本门禁
-
-用户确认版本号 v0.7.0 并授权开始发布准备；准备授权不扩展为合并 main、推送、tag 或 Release。说明见 [v0.7.0](releases/v0.7.0.md)，证据集中在[发布准备验收](../openspec/changes/archive/2026-10-29-prepare-v0-7-0-release/verification.md)；历史版本勾选不适用于本版本。
-
-- [x] 六项功能变更已完成、归档并合入 develop；盘点公开 Go API、HTTP/配置、指标/审计、依赖与当前 0001 差异。
-- [x] 发布说明及迁移/回退边界（ES256 与 `JWTKeys`、内省语义、`ACCOUNTSVC_` 前缀与内省变量改名、`purged_user`、服务邮件默认清单）完成独立审查。
-- [x] 准备快照的 OpenSpec strict、生成一致性、迁移历史、OpenAPI、完整库/服务 race、必需门禁及恢复 seed/verify/source-unchanged 通过，结果写入准备验收。
-- [x] 以 `--no-ff` 将准备内容合入 develop（`d88dc6a`），再将 develop 合入 main 并推送；最终 main 候选为 `6f3b072a8372b83be75b508d1ea521f368c80723`。
-- [x] 最终 main 候选在线 CI 的 check-generated.sh、verify.sh、verify-accountsvc.sh 全部成功，head_sha 精确匹配。
-- [x] 确认远端 v0.7.0 不存在，创建并推送 annotated tag，发布 GitHub Release；历史 tag 不移动。
-- [x] 两个独立宿主以 GOWORK=off、无 replace 从远端消费 @v0.7.0，验证 ES256 密钥配置、严格认证中间件、已清理用户与阿里云/SMTP 公开符号、模块版本和初始 SQL 哈希。
-- [x] 补记 tag/Release、最终 SHA/CI 与消费结果，长期文档改为已发布状态；发布准备变更已归档。
-
-## v0.7.2 版本门禁
-
-用户在 v0.7.1 修复合入后指示继续发布准备，版本号按补丁递增为 v0.7.2；准备授权不扩展为合并 main、推送、tag 或 Release。说明见 [v0.7.2](releases/v0.7.2.md)，证据集中在[发布准备验收](../openspec/changes/archive/2026-10-29-prepare-v0-7-2-release/verification.md)；历史版本勾选不适用于本版本。
-
-- [x] `add-admin-reveal-no-store` 已完成、归档并合入 develop；确认公开 Go API、路由/字段/错误码、依赖与当前 0001 相对 v0.7.1 无变化，仅 `:reveal` 响应新增 `Cache-Control: no-store`。
-- [x] 发布说明（响应头范围、OpenAPI 声明、宿主责任不变与回退边界）完成独立审查。
-- [x] 准备快照的 OpenSpec strict、生成一致性、迁移历史、OpenAPI、完整库/服务 race、必需门禁及恢复 seed/verify/source-unchanged 通过，结果写入准备验收。
-- [x] 以 `--no-ff` 将准备内容合入 develop（`ebe0ee7`），再将 develop 合入 main 并推送；最终 main 候选为 `453527beeb276b0e9780ec2ccab4d26a40f57665`。
-- [x] 最终 main 候选在线 CI（[40865352107](https://github.com/bbxx111/accountkit/actions/runs/40865352107)）的 check-generated.sh、verify.sh、verify-accountsvc.sh 全部成功，head_sha 精确匹配。
-- [x] 确认远端 v0.7.2 不存在，创建并推送 annotated tag（对象 `7d93cfe93d7d78613fa0734650e0567ea9d2ebf9`），发布 GitHub Release；历史 tag 不移动。
-- [x] 两个独立宿主以 GOWORK=off、无 replace 从远端消费 @v0.7.2，模块版本 v0.7.2、初始 SQL 哈希 `ef2d1f22…` 与公开符号验证通过；已通知接入方 tag 与提交。
-- [x] 补记 tag/Release、最终 SHA/CI 与消费结果，长期文档改为已发布状态；发布准备变更已归档。
-
-## v0.7.1 版本门禁
-
-用户确认版本号 v0.7.1 并授权开始发布准备；准备授权不扩展为合并 main、推送、tag 或 Release。说明见 [v0.7.1](releases/v0.7.1.md)，证据集中在[发布准备验收](../openspec/changes/archive/2026-10-29-prepare-v0-7-1-release/verification.md)；历史版本勾选不适用于本版本。
-
-- [x] `allow-development-http-issuer` 已完成、归档并合入 develop；确认公开 Go API、HTTP/配置契约、依赖与当前 0001 相对 v0.7.0 无变化。
-- [x] 发布说明（开发模式例外的触发条件、放开范围、WARN 与 production 不变）完成独立审查。
-- [x] 准备快照的 OpenSpec strict、生成一致性、迁移历史、OpenAPI、完整库/服务 race、必需门禁及恢复 seed/verify/source-unchanged 通过，结果写入准备验收。
-- [x] 以 `--no-ff` 将准备内容合入 develop（`3c3a923`），再将 develop 合入 main 并推送；最终 main 候选为 `e67d26286b9c7995f27cc77d1c3642a272cfbe0d`。
-- [x] 最终 main 候选在线 CI（[40806251482](https://github.com/bbxx111/accountkit/actions/runs/40806251482)）的 check-generated.sh、verify.sh、verify-accountsvc.sh 全部成功，head_sha 精确匹配。
-- [x] 确认远端 v0.7.1 不存在，创建并推送 annotated tag（对象 `5d6477655cfd9637ae9661f3c96046e9b0a3e849`），发布 GitHub Release；历史 tag 不移动。
-- [x] 两个独立宿主以 GOWORK=off、无 replace 从远端消费 @v0.7.1，模块版本 v0.7.1、初始 SQL 哈希 `ef2d1f22…` 与公开符号验证通过；已通知接入方 tag 与提交。
-- [x] 补记 tag/Release、最终 SHA/CI 与消费结果，长期文档改为已发布状态；发布准备变更已归档。
+推送 tag 后版本已可供 Go 使用，因此消费确认属于发布后的检查。若发现缺陷，保留版本和证据，通过修复版本处理；不能回写已发布 tag 来掩盖问题。
 
 ## 历史发布与产品责任
 
-v0.4.0 发布前，会话0002先经明确授权合入当时未发布的0001，又经批准简化为必有来源和单行JSONB描述，初始化仍为version=1，与已发布v0.3.0及前一`b414fef`双快照v1结构不同。[v0.4.0 发布说明](releases/v0.4.0.md)已明确旧v0.3.0 v1、前一开发v1和撤回会话v2均不可直接接管，保留数据/结构/version/dirty；公开known/initial字段及快照枚举删除、nested HTTP DTO变化须给开发调用者迁移说明。历史tag/SQL和source-baseline保持。新基线验证与限制见[本次简化记录](../openspec/changes/archive/2026-10-20-simplify-session-context/verification.md)，正式发布仍须重新核验最终候选提交，旧版CI或历史验收不代表当前完整验证通过。
-
-v0.4.0 发布门禁覆盖来源缺失/失效时的事务拒绝、普通JWT不加数据库热路径、客户端非空观察整体替换与无描述不写、pending本次优先/首次原时间回退及重放不更新、单份nested JSON含extensions的pg_dump/pg_restore核验。JSON业务校验、深拷贝与宿主扩展隐私责任按[Go指南](go-integration.md#当前会话解绑与客户端描述)复核；数据库无JSON对象/业务CHECK。完整Linux/race和恢复结果以本次验收实际记录为准，不能提前勾选。
-
-2026-10-19 盘点时无活动 OpenSpec 变更；随后启动[v0.3.0 发布准备](../openspec/changes/archive/2026-10-20-prepare-v0-3-0-release/proposal.md)。归档任务中唯一未勾选的是[身份策略与登录补全任务 8.5](../openspec/changes/archive/2026-10-15-add-identity-policy-sign-in-completion/tasks.md)，属于集成方真实微信/Apple 联调，继续保留未验证状态。归档不代表产品上线验收完成。
-
-仓库侧 v0.3.0 已发布并完成远端固定版本消费确认，其发布变更已于 2026-10-20 归档。2026-10-20 启动 [v0.4.0 发布准备](../openspec/changes/archive/2026-10-20-prepare-v0-4-0-release/proposal.md)；v0.4.0 已于当日发布并完成远端固定版本消费确认，证据见下方版本专属门禁，发布变更已于当日归档。
+开发期各版本的范围、限制与证据索引见 [开发期历史](releases/pre-1.0-history.md)。归档不代表产品上线验收完成；归档任务中仍未勾选的集成方真实联调（如[身份策略与登录补全任务 8.5](../openspec/changes/archive/2026-10-15-add-identity-policy-sign-in-completion/tasks.md) 的微信/Apple 联调）继续保留未验证状态。
 
 以下工作由集成方在自己的环境负责，库侧提供契约、测试工具并配合排查实现问题。应在各产品任务中跟踪负责人、目标环境、采用版本及验收证据；不作为库内尚未实现的功能重复排期。
 
@@ -98,78 +50,6 @@ v0.4.0 发布门禁覆盖来源缺失/失效时的事务拒绝、普通JWT不加
 
 具体条件沿用下方“嵌入式产品上线”和“accountsvc 产品上线”清单。仓库隔离环境测试与产品验收分别保留证据；发现库内缺陷时另行建立对应修复任务。
 
-## v0.1.0 发布范围
-
-初版面向自有产品接入，交付 Go module 和可选 accountsvc 源码。库集成无需运行 accountsvc。发布说明见 [v0.1.0](releases/v0.1.0.md)；tag 发布、GitHub Release、服务镜像/二进制分发和产品部署分别执行。`v0.1.0` 已发布，下面发布阶段的勾选仅对应该版本；后续版本须重新验证自己的候选提交。
-
-本检查表列出三种状态：历史实现验证、待发布版本的门禁、各产品的上线验收。产品环境验收可以在产品接入过程中完成；库版本发布后，产品仍须完成对应上线条件。当前没有开源 LICENSE，本次面向自有产品的发布不替外部使用方定义复用许可；后续开放外部使用时再明确许可方式。
-
-## 历史实现验证
-
-完整功能提取、独立构建、临时宿主消费、race、必需数据库测试、sqlc 一致性、迁移安全和备份恢复已有本地通过记录。最近的[终端用户入口验收](../openspec/changes/archive/2026-10-06-rename-consumer-to-enduser/verification.md)记录了 410 个库顶层测试、338 项库必需测试、65 个服务顶层测试及恢复三阶段通过；P0 迁移安全依据见[恢复验证记录](../openspec/changes/archive/2026-10-03-harden-migration-safety/verification.md)。
-
-这些记录用于追溯已验证源码和限制，不能自动勾选下方待发布版本的门禁，也不等于在线 CI 或产品验收通过。
-
-## 发布前门禁
-
-- [x] 在 `main` 上确定最终候选提交 SHA，确认工作区干净且 `v0.1.0` 在本地与远端均不存在；记录候选 SHA 和 CI 链接。
-- [x] 最终候选提交的 CI 完成且全部通过：`check-generated.sh`、`verify.sh` 和 `verify-accountsvc.sh`。核对完整历史/tags、独立构建、vet、race、全部必需用例及真实恢复结果；缺依赖或必需测试 skip 不视为通过。普通套件的 `TestRecoveryFixture` 允许按既有规则 skip，但恢复脚本的 seed、verify、source-unchanged 必须通过。
-- [x] 核对发布说明中的功能范围、Go/存储要求、当前 Go 入口、accountsvc 限制、宿主责任和产品环境未验证项；声明面向自有产品，未将源码公开可见描述成已经授予开源许可。
-- [x] 发布说明和其余待交付文件均包含在最终候选提交内；后续改动产生新候选提交时，重新核对该提交对应的门禁。
-
-本地复核使用[开发与验证入口](development.md)，测试数据库权限限定到一次性数据库；生产密钥不进入示例或测试。各次变更的实际结果保存在对应 `openspec/changes/.../verification.md`，原始日志和恢复材料保留于 ignored `.test-output/`。
-
-## 发布动作与消费确认
-
-**状态措辞约定**（自 v0.7.1 起）：发布准备到打 tag 之前，发布说明、README、兼容/功能/集成/OpenAPI 文档统一写“候选”（如“v0.7.1（候选）”、“状态：发布候选”），不写“准备中”，并写明 tag 将固定包含该文的提交及可预知的 Release 链接；tag 内容不会也不需要包含自己的 SHA、CI 与消费证据。tag 与 Release 完成、远端消费验证通过后，以补记提交把状态改为“已发布”并写入 tag 对象、提交 SHA、CI 与消费结果，合入 develop 与 main；历史 tag 不移动。不为改一个状态词在 CI 通过后追加提交再打 tag。
-
-上述发布前门禁通过后，按明确授权执行版本发布。Go 版本使用完整的 `v0.1.0`，tag 指向已验证的最终候选提交；实际发布流程见 [Go 模块发布说明](https://go.dev/doc/modules/publishing)。
-
-- [x] 创建并推送指向最终候选 SHA 的 `v0.1.0` tag；核对远端 tag 解析到同一提交。发布后不移动、覆盖或重建该 tag；修复通过新版本交付。
-- [x] tag 推送后，在独立临时宿主中以 `GOWORK=off` 执行 `go get github.com/bbxx111/accountkit@v0.1.0`，不使用本地 replace；分别编译根 `EndUserHandler` 与直接 `httpapi/enduser` 消费，并核对 `go list -m -json` 返回的版本。临时宿主和输出只放 ignored `.test-output/`。
-- [x] 远端消费确认后，将发布说明的状态改为已发布，补充 tag/提交、候选 CI 和消费确认依据。需要 GitHub Release 时使用同一份说明；无需另维护一套版本内容。
-
-推送 tag 后版本已可供 Go 使用，因此消费确认属于发布后的检查。若发现缺陷，保留版本和证据，通过修复版本处理；不能回写已发布 tag 来掩盖问题。
-
-## 宿主账号契约新版本门禁
-
-以下条目用于 `add-host-account-contracts` 的 `v0.2.0` 发布，历史 `v0.1.0` 勾选不能替代。发布授权已取得，说明见 [v0.2.0](releases/v0.2.0.md)，本轮实际执行结果与最终 SHA/CI 集中在[变更验收记录](../openspec/changes/archive/2026-10-09-add-host-account-contracts/verification.md)。
-
-- [x] PHONE/EMAIL 的登录、绑定、重新认证和换绑全部要求 `code_id`，Go/HTTP 调用者和 accountsvc 同步升级，旧无标识验证旁路已移除。
-- [x] 核对默认每轮 5 次、跨用途/轮次 10 次/15m 预算，Redis 原子消费、重发/清理竞争、多版本窗口和别名去重用例实际通过。
-- [x] 批量资料只有公开字段，两个注销入口共用 `BeforeDelete`，ACTIVE 账号锁序、回调错误/panic、导入冲突和同事务回滚在真实 PostgreSQL 执行。
-- [x] 完整库及服务 build/vet/race、sqlc 生成、迁移历史、必需测试门禁和恢复 seed/verify/source-unchanged 对最终候选代码通过，未以 skip 代替；main 候选 e19af85 的在线 verify #37814180599 全部成功。
-- [x] 保存 Go/HTTP/Redis 升级与回退步骤：同实例停止旧验证码写/校验、同步客户端、不清空整个 Redis；HMAC 退役等待失败预算窗口。
-- [x] 单独取得新固定版本发布授权，不修改 `v0.1.0`；v0.2.0 tag 固定到 e19af8542f099f14103627140c0fe23f14c99b7e，两个独立宿主从远端无 replace 消费通过。
-
-## v0.3.0 发布门禁
-
-用户已确认按 v0.3.0 准备，并在准备完成后授权继续提交、合并、推送及正式发布。说明见[v0.3.0 发布说明](releases/v0.3.0.md)，进度、快照和证据集中在[发布验收](../openspec/changes/archive/2026-10-20-prepare-v0-3-0-release/verification.md)。下面分别跟踪准备工作与正式发布，历史版本勾选不适用于本版本。
-
-- [x] 确认版本号 v0.3.0，盘点 v0.2.0 后的最终变更；明确旧数据库不能直接接管、Go/HTTP 登录返回与通用审计的破坏性变化。
-- [x] 对记录的准备代码快照执行生成检查、迁移历史、完整库与服务 race/必需测试门禁，以及恢复 seed/verify/source-unchanged；结果写入本次验收记录。
-- [x] 发布说明及迁移/回退边界完成独立审查，本地链接、差异与 OpenSpec 严格检查通过。
-- [x] 按明确授权将准备内容合入 develop，再以独立 merge commit 将 develop 合入 main；最终候选为 ba2d0412764c659beabdbd0d3f0f0f9bb9007657，发布前工作区干净。
-- [x] 最终 main 候选在线 CI #39203841497 的 check-generated.sh、verify.sh、verify-accountsvc.sh 全部成功；未以准备基线或首轮候选 CI 替代。
-- [x] 发布前确认远端 v0.3.0 不存在，创建并推送固定 tag，GitHub Release 已发布；历史 tag 保持。
-- [x] 两个独立宿主以 GOWORK=off、无 replace 从远端消费 @v0.3.0，根门面和直接 enduser 构建通过，新登录返回、审计/指标装配及模块版本核验通过。
-- [x] 已补记 tag/Release、最终 SHA/CI 与消费结果，说明改为已发布。归档不属于本条完成条件，仍按单独明确请求执行。
-
-正式发布须先通过最终 main 候选门禁；发布授权不扩展为产品部署或归档。真实服务商及各产品部署验收继续由集成方按下列清单执行。
-
-## v0.4.0 发布门禁
-
-用户要求准备下一版本并按 v0.4.0 发布，随后逐步授权合并、推送、tag 与 Release。说明见[v0.4.0 发布说明](releases/v0.4.0.md)，进度、快照和证据集中在[发布准备验收](../openspec/changes/archive/2026-10-20-prepare-v0-4-0-release/verification.md)。准备授权不扩展为提交、合并、推送、tag 或发布；历史版本勾选不适用于本版本。
-
-- [x] 确认版本号 v0.4.0，盘点 v0.3.0 后的最终变更；明确旧库不能直接接管、解绑/换绑撤销、直接 Go 解绑调用、连接池最低容量及开发中字段删除。
-- [x] 对记录的准备代码快照执行生成检查、迁移历史、完整库与服务 race/必需测试门禁，以及恢复 seed/verify/source-unchanged；覆盖数据库设计评审代码，结果写入本次验收记录。
-- [x] 发布说明及迁移/回退边界完成独立审查，本地链接、差异与 OpenSpec 严格检查通过。
-- [x] 准备分支以 `--no-ff` 合入 develop（508b03c）并推送，develop 以独立 merge commit 合入 main 并推送；最终候选为 62f0799b6c6ef1603b33f81834d39033dd0d0c4d，发布前工作区干净。
-- [x] 最终 main 候选在线 CI [#39408975386](https://github.com/bbxx111/accountkit/actions/runs/39408975386) 的 check-generated.sh、verify.sh、verify-accountsvc.sh 全部成功，head_sha 精确匹配；未以准备快照结果替代。
-- [x] 发布前确认远端 v0.4.0 不存在，创建并推送 annotated tag（对象 c95ba43，解引用为最终候选），GitHub Release [v0.4.0](https://github.com/bbxx111/accountkit/releases/tag/v0.4.0) 已发布并设为 Latest；历史 tag 保持。
-- [x] 两个独立宿主以 GOWORK=off、无 replace 从远端消费 @v0.4.0，根门面与直接 enduser 构建通过，当前会话查询、客户端描述装配及模块版本核验通过。
-- [x] 已补记 tag/Release、最终 SHA/CI 与消费结果，长期文档“开发中”标记及 OpenAPI `info.version` 更新为已发布状态。归档不属于本条完成条件，仍按单独明确请求执行。
-
 ## 嵌入式产品上线
 
 - [ ] 产品侧按启用能力确认发送器、微信/Apple 配置、管理员身份验证、可信代理 IP、schema/Redis/issuer/audience/密钥隔离，以及业务数据匿名化回调。
@@ -180,7 +60,7 @@ v0.4.0 发布门禁覆盖来源缺失/失效时的事务拒绝、普通JWT不加
 
 ## accountsvc 产品上线
 
-accountsvc 与库使用同一版本源码；运行配置见[服务手册](accountsvc.md)，网关统一契约见[网关接入手册](gateway-integration.md)，旧部署成套切换与回退见[兼容说明](compatibility.md#服务单监听与传输迁移)。运行该服务的产品在目标环境确认：
+accountsvc 与库使用同一版本源码；运行配置见[服务手册](accountsvc.md)，网关统一契约见[网关接入手册](gateway-integration.md)，成套回退要求见[服务手册](accountsvc.md#邮件匿名化与停机)。运行该服务的产品在目标环境确认：
 
 - [ ] 删除旧 INTERNAL_ADDR/内部端口，更新统一内省和探针地址；保存旧二进制、配置、证书、调用方及网关策略的成套回退材料。
 - [ ] 配置明确公网路由范围和独立管理策略，公网内省/探针被拒绝且不进入后端；授权内部调用可访问，未授权直连不能绕过。

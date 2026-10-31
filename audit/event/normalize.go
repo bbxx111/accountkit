@@ -18,7 +18,10 @@ import (
 	"github.com/google/uuid"
 )
 
+// MaxEventBytes 是规范化事件 JSON 编码的最大字节数，超出时 Freeze 拒绝。
 const MaxEventBytes = 64 * 1024
+
+// MaxResources 是单个资源列表（如 Targets、RelatedResources）允许的最大资源数。
 const MaxResources = 32
 
 var sourcePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]*$`)

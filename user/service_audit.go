@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/bbxx111/accountkit/ids"
-	"github.com/bbxx111/accountkit/user/db"
+	"github.com/bbxx111/accountkit/internal/userdb"
 )
 
 // AuditFlowBelongsToUser checks local flow ownership for the trusted admin adapter.

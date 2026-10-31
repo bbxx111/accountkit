@@ -181,6 +181,7 @@ type OIDC struct {
 }
 
 // NewOIDC 构造校验器，不做 I/O（JWKS 懒加载）。
+// 构造不承诺完整启动校验；缺少验证依赖等配置问题可能在 Verify 时返回 ErrMisconfigured。
 func NewOIDC(o OIDCOptions) *OIDC {
 	if o.Logger == nil {
 		o.Logger = slog.Default()

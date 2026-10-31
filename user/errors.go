@@ -3,8 +3,10 @@ package user
 import "errors"
 
 var (
+	// ErrSignInCompletionInvalid：登录补全令牌缺失、无效或已过期 → 400 FAILED_PRECONDITION。
 	ErrSignInCompletionInvalid = errors.New("user: sign-in completion invalid")
-	ErrSignInAlreadyCompleted  = errors.New("user: sign-in already completed")
+	// ErrSignInAlreadyCompleted：该登录补全流程已完成，需重新登录 → 400 FAILED_PRECONDITION。
+	ErrSignInAlreadyCompleted = errors.New("user: sign-in already completed")
 	// ErrIdentityKindNotEnabled 表示部署策略拒绝使用该身份类型。
 	ErrIdentityKindNotEnabled = errors.New("user: identity kind not enabled")
 	// ErrDeletionBlocked：宿主业务检查拒绝注销 → 400 FAILED_PRECONDITION。

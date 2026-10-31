@@ -221,13 +221,13 @@ func TestAuditModeSwitchMaintainsOldLocalCopies(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(local.Close)
-	f, _ := seedFormatFixture(t, pool, local.Config())
+	f, _ := seedSyntheticAccount(t, pool, local.Config())
 	admin := user.Admin{Issuer: "https://admin.example.test", Subject: "operator", Username: "private-name"}
 	if _, err := local.Users().RevealIdentity(context.Background(), admin, f.UserID, f.IdentityID, user.Meta{IP: "203.0.113.4"}); err != nil {
 		t.Fatal(err)
 	}
 	local.Close()
-	before := snapshotSource(t, pool)
+	before := snapshotSyntheticAccount(t, pool)
 	host := &hostAudit{}
 	d.Audit, d.AuditReader = host, host
 	external, err := accountkit.New(local.Config(), d)
@@ -235,7 +235,7 @@ func TestAuditModeSwitchMaintainsOldLocalCopies(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(external.Close)
-	if snapshotSource(t, pool) != before || len(host.Events()) != 0 {
+	if snapshotSyntheticAccount(t, pool) != before || len(host.Events()) != 0 {
 		t.Fatal("mode switch changed or copied old local data")
 	}
 	ctx := context.Background()
@@ -308,7 +308,7 @@ func TestAuditFailureDoesNotChangeAuthentication(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(a.Close)
-			f, access := seedFormatFixture(t, pool, a.Config())
+			f, access := seedSyntheticAccount(t, pool, a.Config())
 			if mode == "closed" {
 				pipe.Close()
 			}

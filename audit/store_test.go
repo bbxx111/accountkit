@@ -385,7 +385,7 @@ func TestStoreDeleteOlderThanBatches(t *testing.T) {
 	ctx := context.Background()
 	cutoff := time.Now().UTC().Truncate(time.Microsecond)
 	var es []audit.Event
-	for i := 0; i < audit.RetentionBatchSize+5; i++ {
+	for i := 0; i < 1000+5; i++ {
 		e := ev(i)
 		e.OccurTime = cutoff.Add(-time.Hour)
 		if i%2 == 0 {
@@ -407,7 +407,7 @@ func TestStoreDeleteOlderThanBatches(t *testing.T) {
 		t.Fatal(err)
 	}
 	n, err := s.DeleteOlderThan(ctx, cutoff)
-	if err != nil || n != audit.RetentionBatchSize+5 {
+	if err != nil || n != 1000+5 {
 		t.Fatalf("retention: %d %v", n, err)
 	}
 	var left int

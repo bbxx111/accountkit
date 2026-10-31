@@ -23,27 +23,27 @@ import (
 type unavailableChannel struct{}
 
 func (unavailableChannel) Enabled() bool { return false }
-func (unavailableChannel) SendSMS(context.Context, string, sender.Message) error {
+func (unavailableChannel) SendSMS(context.Context, string, sender.CodeMessage) error {
 	return errors.New("disabled sender must never be called")
 }
-func (unavailableChannel) SendEmail(context.Context, string, sender.Message) error {
+func (unavailableChannel) SendEmail(context.Context, string, sender.CodeMessage) error {
 	return errors.New("disabled sender must never be called")
 }
 
-type legacyDelivery struct {
+type codeDelivery struct {
 	err      error
-	messages []sender.Message
+	messages []sender.CodeMessage
 }
 
-func (d *legacyDelivery) SendSMS(_ context.Context, _ string, m sender.Message) error {
+func (d *codeDelivery) SendSMS(_ context.Context, _ string, m sender.CodeMessage) error {
 	d.messages = append(d.messages, m)
 	return d.err
 }
-func (d *legacyDelivery) SendEmail(ctx context.Context, to string, m sender.Message) error {
+func (d *codeDelivery) SendEmail(ctx context.Context, to string, m sender.CodeMessage) error {
 	return d.SendSMS(ctx, to, m)
 }
 
-func deliveryService(t *testing.T, sms sender.SMSSender, email sender.EmailSender) (*Service, *miniredis.Miniredis, *testAuditMemory) {
+func deliveryService(t *testing.T, sms sender.SMSCodeSender, email sender.EmailCodeSender) (*Service, *miniredis.Miniredis, *testAuditMemory) {
 	t.Helper()
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
@@ -82,19 +82,19 @@ func TestDisabledChannel(t *testing.T) {
 	}
 }
 
-func TestLegacyDeliveryPurposesAndFailureQuota(t *testing.T) {
+func TestDeliveryPurposesAndFailureQuota(t *testing.T) {
 	for _, purpose := range []enum.CodePurpose{enum.PurposeSignIn, enum.PurposeBind, enum.PurposeReauth} {
-		d := &legacyDelivery{}
+		d := &codeDelivery{}
 		s, _, _ := deliveryService(t, d, d)
 		if _, err := s.sendCode(context.Background(), enum.IdentityEmail, purpose, "person@example.org", code.Binding{}, Meta{IP: "203.0.113.4"}); err != nil {
 			t.Fatal(err)
 		}
 		if len(d.messages) != 1 || d.messages[0].Purpose != purpose || d.messages[0].TTL != 5*time.Minute || len(d.messages[0].Code) != 6 {
-			t.Fatal("legacy delivery lost code message")
+			t.Fatal("delivery lost code message")
 		}
 	}
 	oldErr := errors.New("old sender error")
-	d := &legacyDelivery{err: oldErr}
+	d := &codeDelivery{err: oldErr}
 	s, _, mem := deliveryService(t, d, d)
 	if _, err := s.SendSignInCode(context.Background(), enum.IdentityEmail, "person@example.org", Meta{IP: "203.0.113.4"}); !errors.Is(err, oldErr) || errors.Is(err, ErrUnavailable) {
 		t.Fatal("ordinary sender error contract changed")
@@ -109,7 +109,7 @@ func TestLegacyDeliveryPurposesAndFailureQuota(t *testing.T) {
 }
 
 func TestUnavailableDeliveryIsSafeAndRetainsQuota(t *testing.T) {
-	d := &legacyDelivery{err: fmt.Errorf("%w: person@example.org password body 123456", sender.ErrUnavailable)}
+	d := &codeDelivery{err: fmt.Errorf("%w: person@example.org password body 123456", sender.ErrUnavailable)}
 	s, mr, mem := deliveryService(t, d, d)
 	_, err := s.SendSignInCode(context.Background(), enum.IdentityEmail, "person@example.org", Meta{IP: "203.0.113.4"})
 	if !errors.Is(err, ErrUnavailable) || strings.Contains(err.Error(), "person@example.org") || strings.Contains(err.Error(), "123456") {

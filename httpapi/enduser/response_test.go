@@ -58,7 +58,6 @@ func TestWriteServiceErrorMapping(t *testing.T) {
 		{&code.RateLimitedError{Dimension: "TARGET_LIMIT", RetryAfter: 0}, 429, "RESOURCE_EXHAUSTED/TARGET_LIMIT", "1"},
 		{fmt.Errorf("wrap: %w", code.ErrInvalid), 400, "INVALID_ARGUMENT/CODE_INVALID", ""},
 		{code.ErrExpired, 400, "INVALID_ARGUMENT/CODE_EXPIRED", ""},
-		{code.ErrExhausted, 400, "INVALID_ARGUMENT/CODE_ATTEMPTS_EXHAUSTED", ""},
 		{user.ErrInvalidTarget, 400, "INVALID_ARGUMENT/INVALID_TARGET", ""},
 		{fmt.Errorf("%w: device id required", user.ErrInvalidArgument), 400, "INVALID_ARGUMENT/INVALID_ARGUMENT", ""},
 		{user.ErrReauthenticationRequired, 400, "FAILED_PRECONDITION/REAUTHENTICATION_REQUIRED", ""},

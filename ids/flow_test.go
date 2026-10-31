@@ -2,9 +2,9 @@ package ids
 
 import "testing"
 
-func TestIdentityFlowID(t *testing.T) {
-	id, err := New(IdentityFlow)
-	if err != nil || !Valid(IdentityFlow, id) || Valid(User, id) || Pattern(IdentityFlow) != `^f_[0-9a-hjkmnp-tv-z]{13}$` {
+func TestSignInCompletionFlowID(t *testing.T) {
+	id, err := New(SignInCompletionFlow)
+	if err != nil || !Valid(SignInCompletionFlow, id) || Valid(User, id) || Pattern(SignInCompletionFlow) != `^f_[0-9a-hjkmnp-tv-z]{13}$` {
 		t.Fatalf("flow id %s %v", id, err)
 	}
 }

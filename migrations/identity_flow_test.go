@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/bbxx111/accountkit/enum"
-	"github.com/bbxx111/accountkit/user/db"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/jackc/pgx/v5"
 	"testing"
 	"time"

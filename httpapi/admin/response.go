@@ -10,7 +10,7 @@ import (
 	"github.com/bbxx111/accountkit/audit/authentication"
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/httpapi/apierror"
-	"github.com/bbxx111/accountkit/httpapi/reqid"
+	"github.com/bbxx111/accountkit/httpapi/internal/reqid"
 	"github.com/bbxx111/accountkit/user"
 )
 

@@ -13,6 +13,8 @@ var clientTypeNames = [...]string{"UNSPECIFIED", "WEB", "NATIVE"}
 
 func (v ClientType) String() string { return name(clientTypeNames[:], int(v)) }
 func (v ClientType) Valid() bool    { return v == ClientWeb || v == ClientNative }
+
+// ParseClientType 只接受精确的 UPPER_SNAKE 名；UNSPECIFIED 与未知值均报错。
 func ParseClientType(v string) (ClientType, error) {
 	i, err := parse(clientTypeNames[:], v, "ClientType")
 	return ClientType(i), err
@@ -32,6 +34,8 @@ var deviceTypeNames = [...]string{"UNSPECIFIED", "DESKTOP", "PHONE", "TABLET"}
 
 func (v DeviceType) String() string { return name(deviceTypeNames[:], int(v)) }
 func (v DeviceType) Valid() bool    { return v == DeviceDesktop || v == DevicePhone || v == DeviceTablet }
+
+// ParseDeviceType 只接受精确的 UPPER_SNAKE 名；UNSPECIFIED 与未知值均报错。
 func ParseDeviceType(v string) (DeviceType, error) {
 	i, err := parse(deviceTypeNames[:], v, "DeviceType")
 	return DeviceType(i), err

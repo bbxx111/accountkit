@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "accountkit 管理 HTTP API",
-    "version": "v0.7.2",
-    "description": "v0.7.2 的内置管理 HTTP 契约，操作与字段与 v0.7.1 相同（v0.7.1 与 v0.7.0 相同，同 v0.6.0），adminRevealIdentity 的 200 响应声明 Cache-Control: no-store；身份类型字符串可包含 v0.6.0 新增的内置及配置提供方类型。用户资源的 avatar_url 自 v0.5.0 起提供。宿主配置实际挂载地址。请求体为单个 JSON 对象，默认上限 64 KiB，拒绝未知字段与尾随内容。领域状态、事务、故障策略以规格与 README 为准。"
+    "version": "v1.0.0",
+    "description": "v1.0.0 的内置管理 HTTP 契约：宿主配置实际挂载地址，请求体为单个 JSON 对象（默认上限 64 KiB，拒绝未知字段与尾随内容），adminRevealIdentity 的响应带 Cache-Control: no-store，领域状态、事务与故障策略以规格与 README 为准。"
   },
   "servers": [
     {

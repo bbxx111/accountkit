@@ -48,6 +48,7 @@ func PrincipalFrom(ctx context.Context) (user.Principal, bool) {
 	return p, ok
 }
 
+// 401 错误体的 reason：请求未携带 Bearer token，或 token 无效、过期或会话已吊销。
 const (
 	ReasonTokenMissing = "TOKEN_MISSING"
 	ReasonTokenInvalid = "TOKEN_INVALID"

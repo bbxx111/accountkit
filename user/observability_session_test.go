@@ -81,7 +81,7 @@ func TestSessionObservationFailureBoundaries(t *testing.T) {
 				wantReason = ob.ReasonGraceReadError
 				wantDependency = ob.ResultError
 			case "pair_expired":
-				if err := cache.Put(ctx, hash[:], grace.Pair{AccessExpiresAt: *f.clock, RefreshExpiresAt: f.clock.Add(time.Hour), Scope: user.ScopeUser}, time.Minute); err != nil {
+				if err := cache.Put(ctx, hash[:], grace.Pair{AccessExpireTime: *f.clock, RefreshExpireTime: f.clock.Add(time.Hour), Scope: user.ScopeUser}, time.Minute); err != nil {
 					t.Fatal(err)
 				}
 				wantReason = ob.ReasonGracePairExpired
@@ -102,7 +102,7 @@ func TestSessionObservationFailureBoundaries(t *testing.T) {
 			if len(deps) != 1 || deps[0].Result != wantDependency {
 				t.Fatal(deps)
 			}
-			sess, err := f.repo.Q().GetSessionByPreviousRefreshHash(ctx, hash[:])
+			sess, err := user.TestRepoQueries(f.repo).GetSessionByPreviousRefreshHash(ctx, hash[:])
 			if err != nil || sess.RevokeTime != nil {
 				t.Fatalf("spurious revocation: %+v %v", sess, err)
 			}
@@ -144,7 +144,7 @@ func TestSessionObservationFailureBoundaries(t *testing.T) {
 			}
 			if commitFailure {
 				hash := sha256.Sum256([]byte(original.RefreshToken))
-				if _, err := f.repo.Q().GetSessionByRefreshHash(ctx, hash[:]); err != nil {
+				if _, err := user.TestRepoQueries(f.repo).GetSessionByRefreshHash(ctx, hash[:]); err != nil {
 					t.Fatal("rollback lost original refresh", err)
 				}
 			}
@@ -269,7 +269,7 @@ func TestSessionObservationFailureBoundaries(t *testing.T) {
 			t.Fatal(deps)
 		}
 		hash := sha256.Sum256([]byte(pair.RefreshToken))
-		sess, err := f.repo.Q().GetSessionByRefreshHash(ctx, hash[:])
+		sess, err := user.TestRepoQueries(f.repo).GetSessionByRefreshHash(ctx, hash[:])
 		if err != nil || sess.RevokeTime == nil {
 			t.Fatalf("database revocation=%v %v", sess.RevokeTime, err)
 		}

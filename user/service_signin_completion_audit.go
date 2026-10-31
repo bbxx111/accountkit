@@ -28,8 +28,6 @@ func (s *Service) recordCompletionRejected(ctx context.Context, token, flowID st
 		reason = "CODE_INVALID"
 	case errors.Is(err, code.ErrExpired):
 		reason = "CODE_EXPIRED"
-	case errors.Is(err, code.ErrExhausted):
-		reason = "CODE_ATTEMPTS_EXHAUSTED"
 	case errors.Is(err, ErrIdentityConflict):
 		reason = "IDENTITY_ALREADY_BOUND"
 	case errors.Is(err, ErrIdentityKindLimit):

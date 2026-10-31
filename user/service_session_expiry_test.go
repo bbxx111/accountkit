@@ -15,9 +15,9 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/session/grace"
 	"github.com/bbxx111/accountkit/user"
-	"github.com/bbxx111/accountkit/user/db"
 )
 
 // 原子时钟只替换服务既有依赖；等待阶段不再访问 fixture 的可变时钟。
@@ -214,7 +214,7 @@ func refreshExpiryService(t *testing.T, f *fixture) {
 
 func refreshExpirySession(t *testing.T, f *fixture, hash []byte) db.Session {
 	t.Helper()
-	sess, err := f.repo.Q().GetSessionByRefreshHash(context.Background(), hash)
+	sess, err := user.TestRepoQueries(f.repo).GetSessionByRefreshHash(context.Background(), hash)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +308,7 @@ func refreshAfterSessionLock(t *testing.T, offset time.Duration, expired bool) {
 		t.Fatalf("token times: %+v %v", claims, err)
 	}
 	pair, ok, err := f.deps.Grace.Get(ctx, sha256Of(first.RefreshToken))
-	if err != nil || !ok || !pair.AccessExpiresAt.Equal(decision.Add(15*time.Minute)) || !pair.RefreshExpiresAt.Equal(after.RefreshExpireTime) {
+	if err != nil || !ok || !pair.AccessExpireTime.Equal(decision.Add(15*time.Minute)) || !pair.RefreshExpireTime.Equal(after.RefreshExpireTime) {
 		t.Fatal("cached pair must use locked decision time", err)
 	}
 }
@@ -375,7 +375,7 @@ func TestRefreshGraceExpiryBoundaries(t *testing.T) {
 			rdb := redis.NewClient(&redis.Options{Addr: f.mr.Addr(), MaxRetries: -1})
 			t.Cleanup(func() { _ = rdb.Close() })
 			f.deps.Grace = grace.NewCache(rdb, "t:", f.ciph)
-			pair := grace.Pair{AccessToken: next.AccessToken, RefreshToken: next.RefreshToken, Scope: next.Scope, AccessExpiresAt: start.Add(tc.accessTTL), RefreshExpiresAt: start.Add(tc.refreshTTL)}
+			pair := grace.Pair{AccessToken: next.AccessToken, RefreshToken: next.RefreshToken, Scope: next.Scope, AccessExpireTime: start.Add(tc.accessTTL), RefreshExpireTime: start.Add(tc.refreshTTL)}
 			if err := f.deps.Grace.Put(ctx, sha256Of(first.RefreshToken), pair, time.Minute); err != nil {
 				t.Fatal(err)
 			}

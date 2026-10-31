@@ -10,9 +10,9 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/bbxx111/accountkit/user"
 	"github.com/bbxx111/accountkit/user/code"
-	"github.com/bbxx111/accountkit/user/db"
 )
 
 type replacementRaceResult struct {
@@ -227,7 +227,7 @@ func TestReplacementConcurrentMutations(t *testing.T) {
 				if !errors.Is(replaced.err, wantReplacement) || !errors.Is(mutated.err, wantMutation) {
 					t.Fatalf("replacement=%v want=%v mutation=%v want=%v", replaced.err, wantReplacement, mutated.err, wantMutation)
 				}
-				rows, err := f.repo.Q().ListActiveIdentitiesByUser(ctx, p.UserID)
+				rows, err := user.TestRepoQueries(f.repo).ListActiveIdentitiesByUser(ctx, p.UserID)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -265,7 +265,7 @@ func TestReplacementConcurrentMutations(t *testing.T) {
 				if (wantPhone == "" && phoneCount != 0) || (wantPhone != "" && phoneCount != 1) {
 					t.Fatal("lost or duplicated phone anchor")
 				}
-				u, err := f.repo.Q().GetUserByID(ctx, p.UserID)
+				u, err := user.TestRepoQueries(f.repo).GetUserByID(ctx, p.UserID)
 				wantState := enum.UserActive
 				if operation == "freeze" {
 					wantState = enum.UserFrozen
@@ -276,7 +276,7 @@ func TestReplacementConcurrentMutations(t *testing.T) {
 				if err != nil || u.State != wantState {
 					t.Fatalf("user state=%v want=%v err=%v", u.State, wantState, err)
 				}
-				active, err := f.repo.Q().ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: p.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)})
+				active, err := user.TestRepoQueries(f.repo).ListActiveSessionsByUser(ctx, db.ListActiveSessionsByUserParams{UserID: p.UserID, Now: f.clock.UTC().Truncate(time.Microsecond)})
 				if err != nil {
 					t.Fatal(err)
 				}

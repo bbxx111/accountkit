@@ -51,7 +51,11 @@ func NewIdentityPolicy(enabled, required []enum.IdentityKind, defaultProviders .
 	slices.SortFunc(p.required, compareIdentityKinds)
 	return p, nil
 }
+
+// Allows 报告 k 是否在启用的身份类型中。
 func (p *IdentityPolicy) Allows(k enum.IdentityKind) bool { return slices.Contains(p.enabled, k) }
+
+// Complete 报告身份类型集合是否满足策略：至少含一个启用的类型，且配置了 Required 时至少含其中之一。
 func (p *IdentityPolicy) Complete(kinds []enum.IdentityKind) bool {
 	for _, k := range kinds {
 		if p.Allows(k) && (len(p.required) == 0 || slices.Contains(p.required, k)) {
@@ -77,7 +81,10 @@ func compareIdentityKinds(a, b enum.IdentityKind) int {
 	return strings.Compare(string(a), string(b))
 }
 
-func (p *IdentityPolicy) EnabledKinds() []enum.IdentityKind  { return slices.Clone(p.enabled) }
+// EnabledKinds 返回启用的身份类型副本（内置类型在前，配置类型按名称排序）。
+func (p *IdentityPolicy) EnabledKinds() []enum.IdentityKind { return slices.Clone(p.enabled) }
+
+// RequiredKinds 返回必需的身份类型副本；空表示任一启用类型即可满足策略。
 func (p *IdentityPolicy) RequiredKinds() []enum.IdentityKind { return slices.Clone(p.required) }
 
 // Fingerprint 对规范化集合生成稳定指纹，不包含提供方秘密。

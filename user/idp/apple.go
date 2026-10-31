@@ -49,6 +49,7 @@ type Apple struct {
 }
 
 // NewApple 构造校验器；BundleIDs 为空表示未启用。不做 I/O（JWKS 懒加载）。
+// 构造不承诺完整启动校验；缺少验证依赖等配置问题可能在 Verify 时返回 ErrMisconfigured。
 func NewApple(o AppleOptions) *Apple {
 	if o.Logger == nil {
 		o.Logger = slog.Default()

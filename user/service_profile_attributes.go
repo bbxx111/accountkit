@@ -7,7 +7,7 @@ import (
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/ids"
 	"github.com/bbxx111/accountkit/internal/profileattributes"
-	"github.com/bbxx111/accountkit/user/db"
+	"github.com/bbxx111/accountkit/internal/userdb"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -30,7 +30,7 @@ func (s *Service) GetProfileAttributes(ctx context.Context, userID string) (Prof
 	if !ids.Valid(ids.User, userID) {
 		return ProfileAttributesView{}, ErrInvalidArgument
 	}
-	row, err := s.d.Repo.Q().GetProfileAttributes(ctx, userID)
+	row, err := s.d.Repo.queries().GetProfileAttributes(ctx, userID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ProfileAttributesView{}, ErrNotFound
 	}

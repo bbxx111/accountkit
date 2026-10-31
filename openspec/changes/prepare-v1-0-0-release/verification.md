@@ -8,7 +8,7 @@
 
 ## 当前进度
 
-发布说明和工件已准备并独立审查通过；准备快照完整验证已通过。最终 main CI、正式 tag/Release、远端消费和旧版本清理仍待执行。后续各阶段仅在有实际证据后追加结果并勾选 tasks。
+发布说明和工件已准备并独立审查通过；准备快照完整验证、最终 main CI、正式 tag/Release、两个远端消费者和旧版本清理均已完成。当前文档已补记为已发布；补记分支集成结果见后续记录。
 
 ## 准备审查与静态门禁
 
@@ -35,4 +35,25 @@
 
 ## 验证边界
 
-真实提供方/产品网关/部署及 Windows 权限语义不属于本次发布执行范围。完整 Linux 库/服务 race、必需门禁、恢复三阶段和非 root 权限验证会使用一次性依赖；原始日志保留于 `.test-output/v1-release/`，恢复材料保留在脚本创建的 ignored 目录。本变更不自动归档。
+真实提供方/产品网关/部署及 Windows 权限语义不属于本次发布执行范围。完整 Linux 库/服务 race、必需门禁、恢复三阶段和非 root 权限验证已使用一次性依赖完成；原始日志保留于 `.test-output/v1-release/`，恢复材料保留在脚本创建的 ignored 目录。本变更不自动归档。
+
+## 最终候选与正式发布
+
+- 发布准备提交 `d6fe357`，develop 合并提交 `e7775ac54ab60f8903ab63380bd35ada92d9cf69`，最终 main 候选为 `e1b93da7d050bce6e94766412a81f5c11d994b1f`；两次合并均保留独立 merge commit，已推送。main 与已验证准备分支的文件树一致，发布前工作区干净。
+- [main 候选 CI 41160615369](https://github.com/bbxx111/accountkit/actions/runs/41160615369) completed/success，headSha 精确匹配上述候选；生成代码、完整库及恢复、accountsvc 真实依赖与进程信号步骤全部 success。[develop CI 41160615371](https://github.com/bbxx111/accountkit/actions/runs/41160615371) 同样 success。CI JSON 与原始日志留在 ignored 验证目录。
+- 创建前本地和远端均无 v1.0.0。annotated tag 对象 `f497dec1dd487f18cb52e5ee3df85f438bde1831`，本地及远端 peeled commit 均为 `e1b93da7d050bce6e94766412a81f5c11d994b1f`。
+- [GitHub Release](https://github.com/bbxx111/accountkit/releases/tag/v1.0.0) 于 `2026-10-31T02:47:09Z` 发布，draft=false、prerelease=false；正文采用 `docs/releases/v1.0.0.md`，发布后同文件补记对象及结果，tag 原内容保持不动。
+
+## 远端消费与旧版本清理
+
+两个独立临时模块分别为 `example.com/accountkit-v1-root-consumer` 和 `example.com/accountkit-v1-direct-consumer`，均在 Windows/amd64 Go 1.27.1 下设置 `GOWORK=off`、无 replace，从远端 `go get github.com/bbxx111/accountkit@v1.0.0`，随后 `go build ./...`、`go run .` 全部退出 0。根门面编译 `EndUserHandler` 及本次清理后的公开符号；直接适配器编译 `httpapi/enduser.New` / `Router`。Linux Go 1.26.5 的验证证据在上节，不能把本消费环境误记为 1.26.5。
+
+两者 `go list -m -json` 均报告 v1.0.0，无 Replace；模块 Sum 均为 `h1:9t00kLrLyu9lopEnOTssxRWbYSnyRaFGbcUftLNRTIk=`，下载的 0001 up/down SHA256 分别为 `ef2d1f229fa15b660cc7ecb4f417615b76866c19494641c96faf25bab24188b6` / `812541721471025056edd1f655d876b2f4d938fffd8f4f7ee2cfa9a97ff490d5`，与正式候选及冻结值一致。模块文件和 `consumers.json` 留在 `.test-output/v1-release/`。
+
+完成发布和消费后，核对备份与现存对象一致，删除 `v0.1.0、v0.2.0、v0.3.0、v0.4.0、v0.5.0、v0.6.0、v0.7.0、v0.7.1、v0.7.2` 九个本地/远端 tag，以及 v0.2.0 至 v0.7.2 的八个 Release（均无附件；v0.1.0 无 Release）。远端 tag 删除使用原子 push，之后核验远端仅剩 v1.0.0 的对象/peeled 两行，Release 列表仅剩 v1.0.0。历史提交及归档文档保留，未操作其他分支或正式 tag。
+
+删除前元信息为 `tags-before.txt`、`releases-before.json`，删除后为 `tags-after.txt`、`releases-after.json`。清理脚本首次因 Windows PowerShell 数组读取导致预检查中止，未执行删除；修正解析后重新核对所有对象并成功完成，不涉及权限拒绝或放宽前置条件。
+
+## 发布补记校验
+
+发布后补记独立审查通过，无 Critical/Important/Minor；仅改文档和任务/证据记录，Go/SQL/go.mod/go.sum 无差异。`openspec validate --all --strict` 为 41 pass、0 fail，OpenAPI 的 24/11 操作及会话上下文边界检查通过，155 个变动文档的本地路径/实际仓库 blob 引用核验通过，`git diff --check` 通过。GitHub Release 正文已同步此份发布说明，target 元数据明确为正式候选 SHA；正式 tag 不移动。补记合并与推送后追加具体集成提交。

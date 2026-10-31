@@ -111,7 +111,7 @@
 操作步骤以 [docs/migrations.md](docs/migrations.md) 为准。以下规则不能因版本尚处开发阶段而放宽：
 
 - v1.0.0 是第一个正式版本。当前 `0001_init.up.sql` / `0001_init.down.sql` 自 v1.0.0 tag 起字节冻结，哈希固定在 `internal/migrationcheck` 的 `initialFrozen`；后续真实结构变更从 0002 递增，使用 `NNNN_name.up.sql` / `.down.sql`，已发布版本不可修改、删除、重编号或 squash。测试专用下一版本放 `migrations/testdata/`，不混入生产嵌入目录。
-- v1.0.0 之前的开发期版本（v0.1.0 到 v0.7.2）未被正式使用，其 tag 与 Release 已退役；按用户 2026-10-31 的明确要求，在 v1.0.0 发布与远端消费验证完成后删除（尚未删除）：不再创建低于 v1.0.0 的 tag，不提供从它们升级的路径，历史检查忽略主版本为 0 的 tag。背景见 [开发期版本](docs/releases/pre-1.0-history.md)。
+- v1.0.0 之前的开发期版本（v0.1.0 到 v0.7.2）未被正式使用，其九个 tag 与当时现存八个 GitHub Release 已于 2026-10-31 在 v1.0.0 发布与远端消费验证完成后删除：不再创建低于 v1.0.0 的 tag，不提供从它们升级的路径，历史检查忽略主版本为 0 的 tag。背景见 [开发期版本](docs/releases/pre-1.0-history.md)。
 - 运行时预检只有两条：`schema_migrations` dirty 优先阻断；数据库版本高于当前源时返回 `migrations.ErrIncompatibleBaseline`。两者都在写入前发生并保留 catalog、数据与 version/dirty；禁止自动 Force、清除 dirty 或把失败标记为成功。预检不反查结构。
 - `schema_migrations` 记录当前 version/dirty，不是完整历史账本。重复 Up 只忽略无新迁移。
 - 保留从 schema 初始化开始的外层锁，以及与旧工具兼容的引擎锁。锁等待必须支持取消和超时，所有错误路径必须释放连接及锁；不能假定底层 WithInstance 初始化失败会自动释放借出的连接。

@@ -520,7 +520,7 @@ HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额
 
 ## 仓库与发布状态
 
-当前版本为 v1.0.0（候选）。打 tag 后可用 `go get github.com/bbxx111/accountkit@v1.0.0` 接入；公开 Go API 自 v1.0.0 起受语义化版本约束，破坏性变化发布新主版本。开发期（v1.0.0 之前）版本见[1.0 前历史](docs/releases/pre-1.0-history.md)。
+当前版本为 v1.0.0（候选），见[发布说明](docs/releases/v1.0.0.md)。打 tag 后可用 `go get github.com/bbxx111/accountkit@v1.0.0` 接入；公开 Go API 自 v1.0.0 起受语义化版本约束，破坏性变化发布新主版本。开发期（v1.0.0 之前）版本见[1.0 前历史](docs/releases/pre-1.0-history.md)。
 
 Go module：github.com/bbxx111/accountkit；远程仓库：https://github.com/bbxx111/accountkit.git。发布及产品上线要求见[检查表](docs/release-checklist.md)。
 

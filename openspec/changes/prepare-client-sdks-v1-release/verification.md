@@ -8,11 +8,39 @@
 - 实现证据见[功能验收记录](../archive/2026-11-01-add-account-client-sdks/verification.md)。发布准备只调整规格、证据引用和文档，不更改 SDK/Go 运行时实现。
 - 候选包清单与 sdk/flutter/v1.0.0、sdk/admin-ts/v1.0.0 元数据检查通过，服务兼容基线 v1.0.0。
 - OpenSpec 全量 strict 45 项通过；OpenAPI 35 操作、SDK 覆盖、两个发布元数据入口、差异空白与归档/当前文档的本地相对文件链接检查通过。三个新主规格保留 delta 的 Purpose 与所有 Requirement 正文。
-- 独立发布审查及限定复核为 Approve：修复 Release 正文相对链接，补充归档记录历史时点；无遗留实质问题。功能基线 develop 的 SDK 三项 CI 已通过，Go 门禁进入 accountsvc 真实依赖/信号验证；最终结果另行补记。
+- 独立发布审查及限定复核为 Approve：修复 Release 正文相对链接，补充归档记录历史时点；无遗留实质问题。
+- 功能基线 develop 792bd6b4c1adc7a08cc14028d68f0bb1f51846d8 的 [Go CI](https://github.com/bbxx111/accountkit/actions/runs/41265770842) 与 [SDK CI](https://github.com/bbxx111/accountkit/actions/runs/41265770843) 全部成功。
+- 发布准备 a8a6040e7ea91dd0db2072b70f5c1e9a42b63e66 的 [Go CI](https://github.com/bbxx111/accountkit/actions/runs/41266298748) 与 [SDK CI](https://github.com/bbxx111/accountkit/actions/runs/41266298695) 四项全部成功；[PR #21](https://github.com/bbxx111/accountkit/pull/21) 以 5888ea005db02f3671cc021efd4179644327cf53 合入 develop。与 Go v1.0.0 对比，Go 文件变化仅新增 sdks/testsupport/fixture，无生产 Go、go.mod/go.sum、OpenAPI 或迁移变更。
 
 ## Candidate and Release
 
-候选 main、最终 CI、正式 tag/Release 与远端消费将在实际完成后登记，当前不声明已发布。
+[PR #22](https://github.com/bbxx111/accountkit/pull/22) 以双亲 merge commit **1a6c60c41a330d568e8795c11c640197ce25c0e6** 合入 main，树内容与发布准备 a8a6040 完全一致。最终候选 [Go CI](https://github.com/bbxx111/accountkit/actions/runs/41267072571) 与 [SDK CI](https://github.com/bbxx111/accountkit/actions/runs/41267072598) 四项全部成功，head SHA 精确一致；发布前再次通过 GitHub API 核对。Go 包含 sqlc、tests/Dockerfile 镜像内独立构建/vet/race、迁移历史、必需测试、恢复 seed/verify/source-unchanged 和 accountsvc 真实依赖/进程信号验证。
+
+最终候选 SDK 三项 job 已成功。下载的候选 artifact 包含 24 项脚本测试通过、55 项 TypeScript 单元测试通过、真实服务与嵌入式策略验证、独立 Git 消费，以及 Android app-debug.apk / iOS Runner.app（14.3MB）构建成功记录。保存于 `.test-output/client-sdks-release/candidate-sdk-artifacts/`；该原生证据使用候选源码的本地固定 Git 快照，尚不代表正式远端 tag 消费。
+
+确认远端不存在同名 SDK tag 后，创建 annotated tags 并用 `git push --atomic` 一次推送。远端解析均为候选 **1a6c60c41a330d568e8795c11c640197ce25c0e6**：
+
+| SDK tag | annotated tag 对象 | Release |
+| --- | --- | --- |
+| sdk/flutter/v1.0.0 | 16c7aa884fd05615af86e418b6d0d6b3e47ce0a6 | [Flutter SDK 1.0.0](https://github.com/bbxx111/accountkit/releases/tag/sdk/flutter/v1.0.0) |
+| sdk/admin-ts/v1.0.0 | d3d8dc5870a821275b3bfa6106aeb28aeb9514a4 | [Admin TypeScript SDK 1.0.0](https://github.com/bbxx111/accountkit/releases/tag/sdk/admin-ts/v1.0.0) |
+
+两个 Release 使用候选提交中的同一份发布说明并指定 `--verify-tag --latest=false`。原 Go v1.0.0 tag 对象 f497dec1dd487f18cb52e5ee3df85f438bde1831、解析提交 e1b93da7d050bce6e94766412a81f5c11d994b1f 均未变化，API 确认仓库 Latest 仍为 v1.0.0。
+
+## Remote Consumption
+
+2026-11-01 在 Windows 独立临时消费目录执行以下命令，两者退出码均为 0，入口完成后自动清理其临时应用。不使用本地快照、path/workspace override 或浮动分支。
+
+- `node scripts/verify-sdk-consumers.mjs --sdk admin-ts --git-url https://github.com/bbxx111/accountkit.git --ref sdk/admin-ts/v1.0.0`：安装、冻结安装、tsc、实际 HTTP 客户端行为测试和 Vite 生产构建通过；日志 `remote-admin-ts.log`。
+- `node scripts/verify-sdk-consumers.mjs --sdk flutter --git-url https://github.com/bbxx111/accountkit.git --ref sdk/flutter/v1.0.0 --platform none`：pub get、冻结安装、analyze 与 scope 行为测试通过；日志 `remote-flutter.log`。Flutter 镜像沿用已验证配置，Git 源为实际 GitHub 仓库。
+
+日志均位于 `.test-output/client-sdks-release/`，开头明确记录 `remote Git` 和对应 tag。两个 tag 经远端解析均匹配上述候选 SHA；本次远端消费不重复原生构建，原生证据来自同一候选 CI。
+
+## Published Documentation
+
+已完成当前文档的已发布状态补记，正式 tag 保留原候选文档不移动。补记将通过独立 merge commit 合入 develop/main；此后的分支 HEAD 与已发布 tag SHA 分开追溯，不把候选 CI 当作补记提交的 CI。
+
+补记 OpenSpec strict 45 项、两个候选元数据及差异检查通过，独立证据与文档审查为 Approve，无遗留问题；仅 8 个 Markdown 文件变化，不重复运行源码功能测试。
 
 ## Boundaries
 

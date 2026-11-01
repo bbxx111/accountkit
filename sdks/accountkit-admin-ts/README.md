@@ -26,7 +26,7 @@ filter 工具支持 state、identity.phone/phone_prefix/phone_suffix/email/email
 
 仅访问配置的 origin/基础路径及前缀。HTTPS 用于远程服务，HTTP 仅支持 localhost/loopback 测试；拒绝点段、编码路径逃逸、凭据、查询和片段。所有请求 `cache: no-store`、拒绝重定向，不依赖 window、React 或 OIDC 库。
 
-源码包首版 1.0.0，目标服务契约 v1.0.0。固定 Git 引用形式（tag 需正式发布后才存在）：
+源码包首版 1.0.0 已发布并通过真实远端 Git 消费验证，目标服务契约 v1.0.0。固定 Git 引用形式：
 
 ```json
 {"dependencies":{"@accountkit/admin-client":"git+https://github.com/bbxx111/accountkit.git#sdk/admin-ts/v1.0.0&path:/sdks/accountkit-admin-ts"}}

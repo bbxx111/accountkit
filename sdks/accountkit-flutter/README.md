@@ -2,7 +2,7 @@
 
 accountkit 消费者 HTTP SDK，版本 1.0.0，首个服务兼容基线为 v1.0.0。独立 `AccountClient` 可连接 accountsvc 或同契约嵌入式宿主；不依赖 Go、数据库或父工作区。授权边界见 LICENSE；未授予外部复用许可。
 
-正式发布后的 Git 引用形式如下，示例不表示 tag 已创建：
+1.0.0 已发布并通过真实远端 Git 消费验证，固定引用如下：
 
 ```yaml
 dependencies:

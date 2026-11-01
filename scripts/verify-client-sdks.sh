@@ -17,23 +17,23 @@ exec > >(tee "$output/verification.log") 2>&1
 node scripts/check-sdk-toolchain.mjs
 node --test scripts/*sdk*.test.mjs
 node scripts/check-sdk-coverage.mjs
-git diff --check -- sdk scripts .github/workflows/client-sdks.yml
+git diff --check -- sdks scripts .github/workflows/client-sdks.yml
 (
-  cd sdk/accountkit-admin-ts
+  cd sdks/accountkit-admin-ts
   pnpm install --frozen-lockfile
   pnpm format:check
   pnpm typecheck
   pnpm test
 )
 (
-  cd sdk/accountkit-flutter
+  cd sdks/accountkit-flutter
   flutter pub get --enforce-lockfile
   dart format --output=none --set-exit-if-changed lib test
   flutter analyze
   flutter test
 )
-go test -count=1 -tags integration ./sdk/testsupport/fixture
-go build -o "$output/fixture" ./sdk/testsupport/fixture
+go test -count=1 -tags integration ./sdks/testsupport/fixture
+go build -o "$output/fixture" ./sdks/testsupport/fixture
 service_pid=''
 embedded_pid=''
 probe_pid=''
@@ -97,19 +97,19 @@ export ACCOUNTKIT_ADMIN_INTEGRATION_CONTROL_ORIGIN=http://127.0.0.1:18081
 export ACCOUNTKIT_FLUTTER_SERVICE_ORIGIN=http://127.0.0.1:18082
 export ACCOUNTKIT_FLUTTER_CONTROL_ORIGIN=http://127.0.0.1:18081
 export ACCOUNTKIT_FLUTTER_EMBEDDED_ORIGIN=http://127.0.0.1:18081
-(cd sdk/accountkit-admin-ts && pnpm test:integration)
-(cd sdk/accountkit-flutter && flutter test test/integration/service_contract.dart)
+(cd sdks/accountkit-admin-ts && pnpm test:integration)
+(cd sdks/accountkit-flutter && flutter test test/integration/service_contract.dart)
 export ACCOUNTKIT_FLUTTER_POLICY_ORIGIN=http://127.0.0.1:18084
 export ACCOUNTKIT_FLUTTER_POLICY_CONTROL_ORIGIN=http://127.0.0.1:18084
 export ACCOUNTKIT_FLUTTER_POLICY_SUBJECT="sdk-ci-policy-$(date +%s)-$$"
-(cd sdk/accountkit-flutter && flutter test --reporter expanded test/integration/policy_seed.dart) | tee "$output/policy-seed.log"
+(cd sdks/accountkit-flutter && flutter test --reporter expanded test/integration/policy_seed.dart) | tee "$output/policy-seed.log"
 ACCOUNTKIT_FLUTTER_POLICY_USER_ID=$(sed -n 's/.*SDK_POLICY_SEED_USER_ID=\(u_[0-9a-z]*\).*/\1/p' "$output/policy-seed.log" | tail -n 1)
 export ACCOUNTKIT_FLUTTER_POLICY_USER_ID
 [[ "$ACCOUNTKIT_FLUTTER_POLICY_USER_ID" =~ ^u_[0-9a-z]{13}$ ]] || { echo 'Policy seed did not return user ID' >&2; exit 1; }
 stop_fixture "$embedded_pid"
 embedded_pid=''
 start_embedded EMAIL required-email
-(cd sdk/accountkit-flutter && flutter test test/integration/policy_contract.dart)
+(cd sdks/accountkit-flutter && flutter test test/integration/policy_contract.dart)
 node scripts/verify-sdk-consumers.mjs --sdk all --platform none
 echo 'SDK unit, real accountsvc, embedded policy, and local fixed-commit Git consumption passed.'
 echo 'Native Android/iOS and remote release-tag consumption are reported separately.'

@@ -1,9 +1,9 @@
 ## 1. Package Foundations and Contract Coverage
 
-- [x] 1.1 建立 `sdk/accountkit-flutter` 的独立 pubspec、许可、公开入口及分析/测试配置，包名为 accountkit_flutter；验证从包目录独立解析依赖且没有父工作区或绝对路径引用。
-- [x] 1.2 建立 `sdk/accountkit-admin-ts` 的独立 package.json、许可、TS/Vitest 配置与 src/index.ts，包名为 @accountkit/admin-client；验证 exports/types 指向源码，独立安装与类型检查成功且无 dist/安装构建要求。
+- [x] 1.1 建立 `sdks/accountkit-flutter` 的独立 pubspec、许可、公开入口及分析/测试配置，包名为 accountkit_flutter；验证从包目录独立解析依赖且没有父工作区或绝对路径引用。
+- [x] 1.2 建立 `sdks/accountkit-admin-ts` 的独立 package.json、许可、TS/Vitest 配置与 src/index.ts，包名为 @accountkit/admin-client；验证 exports/types 指向源码，独立安装与类型检查成功且无 dist/安装构建要求。
 - [x] 1.3 锁定并记录 Flutter/Dart、Node、pnpm、TypeScript、Vite 与直接开发依赖的实测版本，生成各自锁文件；验证两包在声明工具链上冻结安装，Node 满足 pnpm engines。
-- [x] 1.4 添加 sdk/http-coverage.json 和 scripts/check-sdk-coverage.mjs，登记消费者 24 个与管理 11 个当前操作及模型/测试关联；验证对照 OpenAPI 全覆盖，并用缺失/额外条目的检查用例证明会失败。
+- [x] 1.4 添加 sdks/http-coverage.json 和 scripts/check-sdk-coverage.mjs，登记消费者 24 个与管理 11 个当前操作及模型/测试关联；验证对照 OpenAPI 全覆盖，并用缺失/额外条目的检查用例证明会失败。
 
 ## 2. Flutter Protocol and Public API
 
@@ -42,7 +42,7 @@
 
 ## 6. Real Service Contract Tests
 
-- [x] 6.1 添加 sdk/testsupport 测试服务装配，重用现有 accountsvc 启动/迁移方式，提供独立 PostgreSQL/Redis、测试发码与受控管理员 JWKS；验证可启动真实服务，缺少必要依赖时必需套件失败而非跳过。
+- [x] 6.1 添加 sdks/testsupport 测试服务装配，重用现有 accountsvc 启动/迁移方式，提供独立 PostgreSQL/Redis、测试发码与受控管理员 JWKS；验证可启动真实服务，缺少必要依赖时必需套件失败而非跳过。
 - [x] 6.2 用 Flutter SDK 实际调用真实服务，覆盖验证码登录、补全、刷新、四态、重新认证和删除/恢复；验证真实凭据、scope、数据库会话与 SDK 结果一致，网络请求不是另写 HTTP 客户端替代。
 - [x] 6.3 用 Flutter SDK 验证基础/扩展资料、身份绑定/换绑/解绑、当前/其他会话及撤销；验证换绑撤销源会话时业务成功仍保留，并用嵌入式 fixture 覆盖自定义前缀和可选能力未配置。
 - [x] 6.4 用受控提供方 fixture 验证第三方 credential 形状和自定义 kind 流转；验证与真实第三方原生授权测试分别标注，不将合成验证报告为平台授权成功。
@@ -62,3 +62,8 @@
 - [x] 8.2 增加 SDK 独立版本与发布校验入口，检查 manifest/tag 一致、固定 ref 示例和服务兼容矩阵；验证合法/不匹配版本用例，文档明确正式 tag 不由本实现自动创建或推送。
 - [x] 8.3 添加发布后远程 Git 固定 tag 消费的可执行验证入口及运行说明；通过命令参数/fixture验证入口可用，当前未发布时明确记为待发布后执行，不将本地 Git 验证当远端成功。
 - [x] 8.4 在本变更 verification.md 汇总各层真实执行证据、工具版本、服务基线和限制，原始日志放 .test-output；执行 openspec validate --all --strict 并复核所有任务与规格场景对应，确认未实施下游迁移或改变服务端契约。
+
+## 9. Follow-up CI Scope and Directory Naming
+
+- [x] 9.1 Go workflow 的 push/pull_request 排除两个纯客户端包目录，保留 Go fixture、服务端和共享契约变更的验证；核验过滤规则和其他 job/触发行为。
+- [x] 9.2 将 SDK 集合目录统一为 sdks，同步 Git 子目录消费、脚本、覆盖登记、文档及规格，保留包名和 sdk/... 发布 tag；验证脚本、改名后的 Go fixture 和仓库外两包 Git 消费，补录真实证据。

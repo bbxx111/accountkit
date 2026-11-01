@@ -37,10 +37,10 @@ async function main() {
   const [sdk, tag, ...extra] = process.argv.slice(2);
   if (!packages.has(sdk) || !tag || (extra.length && (extra.length!==1||extra[0]!=='--metadata-only'))) throw new Error('usage: node scripts/check-sdk-release.mjs <flutter|admin-ts> <sdk/package/vX.Y.Z> [--metadata-only]');
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-  const manifest = await readFile(resolve(root, sdk === 'flutter' ? 'sdk/accountkit-flutter/pubspec.yaml' : 'sdk/accountkit-admin-ts/package.json'), 'utf8');
+  const manifest = await readFile(resolve(root, sdk === 'flutter' ? 'sdks/accountkit-flutter/pubspec.yaml' : 'sdks/accountkit-admin-ts/package.json'), 'utf8');
   const version = sdk === 'flutter' ? /^version:\s*(\S+)\s*$/m.exec(manifest)?.[1] : JSON.parse(manifest).version;
   const errors = validateSDKRelease(sdk, version, tag);
-  const matrix=JSON.parse(await readFile(resolve(root,'sdk/compatibility.json'),'utf8'));
+  const matrix=JSON.parse(await readFile(resolve(root,'sdks/compatibility.json'),'utf8'));
   errors.push(...validateCompatibility(matrix,sdk,version,extra.length===0));
   for(const row of matrix.filter(row=>row.sdk===sdk&&row.sdkVersion===version)) {
     if(typeof row.evidence==='string'&&row.evidence.startsWith('openspec/')&&!row.evidence.split('/').includes('..')) await readFile(resolve(root,row.evidence),'utf8');

@@ -5,7 +5,7 @@
 *.dart text eol=lf
 *.ts text eol=lf
 *.mjs text eol=lf
-sdk/**/*.yaml text eol=lf
-sdk/**/*.json text eol=lf
+sdks/**/*.yaml text eol=lf
+sdks/**/*.json text eol=lf
 internal/accountsvc/emailtemplates/layout.* text eol=lf
 *.golden.html text eol=lf

@@ -16,7 +16,7 @@ export function validateToolchain(versions, outputs) {
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const versions = JSON.parse(readFileSync(new URL('../sdk/tool-versions.json',import.meta.url),'utf8'));
+    const versions = JSON.parse(readFileSync(new URL('../sdks/tool-versions.json',import.meta.url),'utf8'));
     const outputs = {node:process.version,pnpm:execFileSync('pnpm',['--version'],{encoding:'utf8'}),flutter:execFileSync('flutter',['--version','--machine'],{encoding:'utf8'})};
     console.log(JSON.stringify(validateToolchain(versions,outputs)));
   } catch (error) { console.error(`SDK toolchain check failed: ${error.message}`); process.exitCode = 1; }

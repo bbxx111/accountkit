@@ -5,12 +5,12 @@
 从仓库根目录运行（PowerShell）：
 
 ```powershell
-docker compose -p accountkit-sdk-fixture-20261101 -f sdk/testsupport/compose.yaml up -d --wait
+docker compose -p accountkit-sdk-fixture-20261101 -f sdks/testsupport/compose.yaml up -d --wait
 $env:GOWORK = 'off'
 $env:SDK_FIXTURE_DATABASE_URL = 'postgres://sdk_fixture:synthetic-only@127.0.0.1:15439/sdk_fixture?sslmode=disable'
 $env:SDK_FIXTURE_REDIS_ADDR = '127.0.0.1:16389'
-go test -count=1 -tags integration ./sdk/testsupport/fixture
-go run ./sdk/testsupport/fixture
+go test -count=1 -tags integration ./sdks/testsupport/fixture
+go run ./sdks/testsupport/fixture
 ```
 
 默认监听 `127.0.0.1:18081`；`SDK_FIXTURE_ADDR` 可指定其他 loopback 端口。数据库和 Redis 必填，连接、迁移或管理员发现失败均退出失败。必需集成入口使用 `-tags integration`，没有 skip 路径。默认单元测试不能替代该入口。
@@ -36,7 +36,7 @@ SDK 契约套件必须通过 SDK 公开方法调用服务；此处 Go 测试只�
 结束后先 Ctrl+C 停宿主，再只清理本任务项目：
 
 ```powershell
-docker compose -p accountkit-sdk-fixture-20261101 -f sdk/testsupport/compose.yaml down --volumes
+docker compose -p accountkit-sdk-fixture-20261101 -f sdks/testsupport/compose.yaml down --volumes
 ```
 
 Compose 数据存于 tmpfs，清理后不可恢复。固定 loopback 端口被占用时启动失败，不应停止其他容器。不要把连接串改为现有产品数据库。
@@ -69,7 +69,7 @@ $env:SDK_FIXTURE_SCHEMA = 'sdk_fixture_extended'
 $env:SDK_FIXTURE_REDIS_PREFIX = 'sdk_fixture_extended:'
 $env:SDK_FIXTURE_PROFILE = 'custom-extended'
 $env:SDK_FIXTURE_REQUIRED_KINDS = '[]'
-go run ./sdk/testsupport/fixture
+go run ./sdks/testsupport/fixture
 ```
 
 该实例真实API为 `http://127.0.0.1:18084/custom/account`、`/custom/admin`，控制接口仍在同origin的 `/__fixture/*`。扩展 JSON Schema 声明 Draft 2020-12。

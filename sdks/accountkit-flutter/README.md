@@ -10,7 +10,7 @@ dependencies:
     git:
       url: https://github.com/bbxx111/accountkit.git
       ref: sdk/flutter/v1.0.0 # 或已核验完整 commit SHA
-      path: sdk/accountkit-flutter
+      path: sdks/accountkit-flutter
 ```
 
 应用提交自己的 pubspec.lock，使用 `flutter pub get --enforce-lockfile` 冻结重装。Git 凭据由环境注入，不写入 URL。包内锁文件固定本次开发依赖；不替代消费方固定 ref。

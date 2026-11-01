@@ -6,7 +6,7 @@
 
 ### Requirement: 固定包身份与可独立消费
 
-Flutter 包 SHALL 位于 sdk/accountkit-flutter，名称为 accountkit_flutter，公开入口为 lib/accountkit_flutter.dart；管理 TypeScript 包 SHALL 位于 sdk/accountkit-admin-ts，名称为 @accountkit/admin-client，公开入口为 src/index.ts。两包 SHALL 具备完整清单、许可、文档和直接依赖声明；消费 SHALL 不依赖父仓库工作区、未分发路径别名、本地绝对路径或 Go 构建。源码内部文件 SHALL 不作为受支持公共 API。
+Flutter 包 SHALL 位于 sdks/accountkit-flutter，名称为 accountkit_flutter，公开入口为 lib/accountkit_flutter.dart；管理 TypeScript 包 SHALL 位于 sdks/accountkit-admin-ts，名称为 @accountkit/admin-client，公开入口为 src/index.ts。两包 SHALL 具备完整清单、许可、文档和直接依赖声明；消费 SHALL 不依赖父仓库工作区、未分发路径别名、本地绝对路径或 Go 构建。源码内部文件 SHALL 不作为受支持公共 API。
 
 #### Scenario: 包独立安装
 - **WHEN** 消费项目仅按 SDK 的 Git 路径安装依赖，不复制维护仓库的工作区配置
@@ -74,4 +74,12 @@ SDK CI SHALL 固定并记录消费工具链，运行各自格式/类型/静态�
 
 #### Scenario: SDK 变更触发验证
 - **WHEN** 任一 SDK 或其兼容服务契约改变
-- **THEN** 对应 SDK 及契约门禁执行，Go 的既有必需检查不会因新增语言而被删除或允许跳过
+- **THEN** 对应 SDK 及契约门禁执行，涉及 Go 输入的变更继续执行既有 Go 必需检查
+
+#### Scenario: 仅客户端包变更
+- **WHEN** 整个 PR 的变更仅位于 sdks/accountkit-flutter、sdks/accountkit-admin-ts 或允许排除的规格/计划文档路径
+- **THEN** Go workflow 可不触发；有客户端包变更时 SDK workflow 仍执行
+
+#### Scenario: Go 测试宿主或服务契约变更
+- **WHEN** sdks/testsupport、服务端 Go 代码或共享契约发生变化
+- **THEN** Go 与 SDK workflow 均触发，不因 SDK 集合目录名称而排除 Go fixture

@@ -10,7 +10,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "sendSignInCode"
       }
     ],
@@ -20,8 +20,8 @@
       "SendCodeRequest",
       "CodeChallenge"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -35,7 +35,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "signInWithCode"
       }
     ],
@@ -45,8 +45,8 @@
       "CodeRequest",
       "SignInResult"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -60,7 +60,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "signInWithIdp"
       }
     ],
@@ -70,8 +70,8 @@
       "IdpRequest",
       "SignInResult"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -84,7 +84,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "sendSignInCompletionCode"
       }
     ],
@@ -94,8 +94,8 @@
       "SendCompletionCodeRequest",
       "CodeChallenge"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -109,7 +109,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "completeSignIn"
       }
     ],
@@ -119,8 +119,8 @@
       "CompleteSignInRequest",
       "SignInResult"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -133,7 +133,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "refreshToken"
       }
     ],
@@ -143,8 +143,8 @@
       "RefreshRequest",
       "TokenPair"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -157,7 +157,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "revokeToken"
       }
     ],
@@ -166,8 +166,8 @@
     "wireModels": [
       "RevokeRequest"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -180,7 +180,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "getMe"
       }
     ],
@@ -189,8 +189,8 @@
     "wireModels": [
       "Me"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -204,7 +204,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "updateMe"
       }
     ],
@@ -214,8 +214,8 @@
       "UpdateMeRequest",
       "Me"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -228,7 +228,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "deleteMe"
       }
     ],
@@ -237,8 +237,8 @@
     "wireModels": [
       "Me"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -252,7 +252,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "undeleteMe"
       }
     ],
@@ -261,8 +261,8 @@
     "wireModels": [
       "Me"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -275,7 +275,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "sendReauthenticationCode"
       }
     ],
@@ -285,8 +285,8 @@
       "SendCodeRequest",
       "CodeChallenge"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -300,7 +300,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "reauthenticate"
       }
     ],
@@ -310,8 +310,8 @@
       "CodeRequest",
       "AccessToken"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -324,7 +324,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "listSessions"
       }
     ],
@@ -333,8 +333,8 @@
     "wireModels": [
       "SessionList"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -347,7 +347,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "revokeSession"
       }
     ],
@@ -356,8 +356,8 @@
     "wireModels": [
       "Void"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -370,7 +370,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "revokeOtherSessions"
       }
     ],
@@ -379,8 +379,8 @@
     "wireModels": [
       "Empty"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -393,7 +393,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "sendBindCode"
       }
     ],
@@ -403,8 +403,8 @@
       "SendCodeRequest",
       "CodeChallenge"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -417,7 +417,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "listIdentities"
       }
     ],
@@ -426,8 +426,8 @@
     "wireModels": [
       "IdentityList"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -442,7 +442,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "bindIdentity"
       }
     ],
@@ -452,8 +452,8 @@
       "BindRequest",
       "Identity"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -466,7 +466,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "unbindIdentity"
       }
     ],
@@ -475,8 +475,8 @@
     "wireModels": [
       "Void"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -491,7 +491,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "replaceIdentity"
       }
     ],
@@ -501,8 +501,8 @@
       "CodeRequest",
       "Identity"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -515,7 +515,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "getCurrentSession"
       }
     ],
@@ -524,8 +524,8 @@
     "wireModels": [
       "CurrentSession"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -538,7 +538,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "getMyProfile"
       }
     ],
@@ -547,8 +547,8 @@
     "wireModels": [
       "Profile"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "enduser",
@@ -561,7 +561,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-flutter/test/protocol_test.dart",
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
         "name": "patchMyProfile"
       }
     ],
@@ -571,8 +571,8 @@
       "PatchProfileRequest",
       "Profile"
     ],
-    "sdkSourceFile": "sdk/accountkit-flutter/lib/src/api.dart",
-    "modelSourceFile": "sdk/accountkit-flutter/lib/src/models.dart"
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
   },
   {
     "surface": "admin",
@@ -585,7 +585,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-admin-ts/test/client.test.ts",
+        "file": "sdks/accountkit-admin-ts/test/client.test.ts",
         "name": "adminListUsers"
       }
     ],
@@ -594,8 +594,8 @@
     "wireModels": [
       "AdminUserList"
     ],
-    "sdkSourceFile": "sdk/accountkit-admin-ts/src/client.ts",
-    "modelSourceFile": "sdk/accountkit-admin-ts/src/models.ts"
+    "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
+    "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
   },
   {
     "surface": "admin",
@@ -608,7 +608,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-admin-ts/test/client.test.ts",
+        "file": "sdks/accountkit-admin-ts/test/client.test.ts",
         "name": "adminGetUser"
       }
     ],
@@ -617,8 +617,8 @@
     "wireModels": [
       "AdminUserDetail"
     ],
-    "sdkSourceFile": "sdk/accountkit-admin-ts/src/client.ts",
-    "modelSourceFile": "sdk/accountkit-admin-ts/src/models.ts"
+    "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
+    "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
   },
   {
     "surface": "admin",
@@ -631,7 +631,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-admin-ts/test/client.test.ts",
+        "file": "sdks/accountkit-admin-ts/test/client.test.ts",
         "name": "adminDeleteUser"
       }
     ],
@@ -640,8 +640,8 @@
     "wireModels": [
       "AdminUser"
     ],
-    "sdkSourceFile": "sdk/accountkit-admin-ts/src/client.ts",
-    "modelSourceFile": "sdk/accountkit-admin-ts/src/models.ts"
+    "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
+    "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
   },
   {
     "surface": "admin",
@@ -655,7 +655,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-admin-ts/test/client.test.ts",
+        "file": "sdks/accountkit-admin-ts/test/client.test.ts",
         "name": "adminFreezeUser"
       }
     ],
@@ -665,8 +665,8 @@
       "FreezeRequest",
       "AdminUser"
     ],
-    "sdkSourceFile": "sdk/accountkit-admin-ts/src/client.ts",
-    "modelSourceFile": "sdk/accountkit-admin-ts/src/models.ts"
+    "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
+    "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
   },
   {
     "surface": "admin",
@@ -680,7 +680,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-admin-ts/test/client.test.ts",
+        "file": "sdks/accountkit-admin-ts/test/client.test.ts",
         "name": "adminUnfreezeUser"
       }
     ],
@@ -690,8 +690,8 @@
       "UnfreezeRequest",
       "AdminUser"
     ],
-    "sdkSourceFile": "sdk/accountkit-admin-ts/src/client.ts",
-    "modelSourceFile": "sdk/accountkit-admin-ts/src/models.ts"
+    "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
+    "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
   },
   {
     "surface": "admin",
@@ -704,7 +704,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-admin-ts/test/client.test.ts",
+        "file": "sdks/accountkit-admin-ts/test/client.test.ts",
         "name": "adminUndeleteUser"
       }
     ],
@@ -713,8 +713,8 @@
     "wireModels": [
       "AdminUser"
     ],
-    "sdkSourceFile": "sdk/accountkit-admin-ts/src/client.ts",
-    "modelSourceFile": "sdk/accountkit-admin-ts/src/models.ts"
+    "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
+    "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
   },
   {
     "surface": "admin",
@@ -727,7 +727,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-admin-ts/test/client.test.ts",
+        "file": "sdks/accountkit-admin-ts/test/client.test.ts",
         "name": "adminRevealIdentity"
       }
     ],
@@ -736,8 +736,8 @@
     "wireModels": [
       "RevealIdentity"
     ],
-    "sdkSourceFile": "sdk/accountkit-admin-ts/src/client.ts",
-    "modelSourceFile": "sdk/accountkit-admin-ts/src/models.ts"
+    "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
+    "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
   },
   {
     "surface": "admin",
@@ -750,7 +750,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-admin-ts/test/client.test.ts",
+        "file": "sdks/accountkit-admin-ts/test/client.test.ts",
         "name": "adminListSessions"
       }
     ],
@@ -759,8 +759,8 @@
     "wireModels": [
       "AdminSessionList"
     ],
-    "sdkSourceFile": "sdk/accountkit-admin-ts/src/client.ts",
-    "modelSourceFile": "sdk/accountkit-admin-ts/src/models.ts"
+    "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
+    "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
   },
   {
     "surface": "admin",
@@ -773,7 +773,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-admin-ts/test/client.test.ts",
+        "file": "sdks/accountkit-admin-ts/test/client.test.ts",
         "name": "adminRevokeSession"
       }
     ],
@@ -782,8 +782,8 @@
     "wireModels": [
       "Void"
     ],
-    "sdkSourceFile": "sdk/accountkit-admin-ts/src/client.ts",
-    "modelSourceFile": "sdk/accountkit-admin-ts/src/models.ts"
+    "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
+    "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
   },
   {
     "surface": "admin",
@@ -796,7 +796,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-admin-ts/test/client.test.ts",
+        "file": "sdks/accountkit-admin-ts/test/client.test.ts",
         "name": "adminRevokeAllSessions"
       }
     ],
@@ -805,8 +805,8 @@
     "wireModels": [
       "RevokeAllResult"
     ],
-    "sdkSourceFile": "sdk/accountkit-admin-ts/src/client.ts",
-    "modelSourceFile": "sdk/accountkit-admin-ts/src/models.ts"
+    "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
+    "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
   },
   {
     "surface": "admin",
@@ -819,7 +819,7 @@
     ],
     "tests": [
       {
-        "file": "sdk/accountkit-admin-ts/test/client.test.ts",
+        "file": "sdks/accountkit-admin-ts/test/client.test.ts",
         "name": "adminListAuditEvents"
       }
     ],
@@ -828,7 +828,7 @@
     "wireModels": [
       "AuditEventList"
     ],
-    "sdkSourceFile": "sdk/accountkit-admin-ts/src/client.ts",
-    "modelSourceFile": "sdk/accountkit-admin-ts/src/models.ts"
+    "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
+    "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
   }
 ]

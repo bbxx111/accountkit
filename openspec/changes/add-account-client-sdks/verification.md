@@ -4,7 +4,7 @@
 
 范围仅 accountkit：新增两个 SDK、测试宿主、覆盖与消费检查、SDK CI 和文档。未修改 ai-food、生产 Go 业务契约、OpenAPI、迁移或生成代码；既有 Go workflow 不变。验收完成后，用户单独授权提交、推送任务分支并创建 [PR #20](https://github.com/bbxx111/accountkit/pull/20)，目标为 develop。没有创建、移动或推送发布 tag，也未归档本变更。验收使用的测试 Git 提交仅存在于一次性独立快照仓库。
 
-实际工具：Flutter **3.47.4**、Dart **3.13.3**、Node **24.21.0**、pnpm **11.24.0**、TypeScript **5.8.3**、Vite **6.4.1**、Vitest **3.2.4**、Prettier **3.6.2**、Xcode **26.1.1**、Go **1.26.5**、sqlc **1.31.1**、PostgreSQL **17**（恢复客户端 **17.11**）、Redis **7**、OpenSpec CLI **1.13.0**。精确 SDK 清单见 `sdk/tool-versions.json`。初始设计提及的 Flutter 3.47.1 / Dart 3.13.1 未实测。
+实际工具：Flutter **3.47.4**、Dart **3.13.3**、Node **24.21.0**、pnpm **11.24.0**、TypeScript **5.8.3**、Vite **6.4.1**、Vitest **3.2.4**、Prettier **3.6.2**、Xcode **26.1.1**、Go **1.26.5**、sqlc **1.31.1**、PostgreSQL **17**（恢复客户端 **17.11**）、Redis **7**、OpenSpec CLI **1.13.0**。精确 SDK 清单现位于 `sdks/tool-versions.json`。初始设计提及的 Flutter 3.47.1 / Dart 3.13.1 未实测。
 
 ## Executed Checks
 
@@ -63,7 +63,7 @@ Go 门禁采用三个本任务专用数据库，恢复源/目标实际不同且�
 - 7.1/7.3：独立 Git 消费；7.4：Linux 完整 SDK 门禁及缺依赖失败；7.5：独立 Go 全量门禁；8.1–8.4：文档、候选版本检查、远端固定 ref 入口及本记录与严格校验。
 - **7.2 已完成**：Windows 本地 Android 构建通过；PR CI 又分别在 Linux 完成 Android debug APK、在 macOS / Xcode 26.1.1 完成 iOS 无签名构建。两个原生 job 均从独立固定 Git SHA 消费 SDK，不以纯逻辑测试替代原生编译。
 
-最终任务进度 **41/41**，OpenSpec apply 状态为 `all_done`；未执行归档或合并。已停止本任务宿主 fixture，测试容器与一次性数据库在验收后清理；原始日志和恢复材料保留在 `.test-output/`。
+首轮交付任务进度 **41/41**，当时 OpenSpec apply 状态为 `all_done`；后续两项目录/过滤任务见末节。未执行归档或合并。已停止本任务宿主 fixture，测试容器与一次性数据库在验收后清理；原始日志和恢复材料保留在 `.test-output/`。
 
 正式 SDK tag 尚未发布，真实远程 Git 固定 tag 消费待发布后单独执行。参数校验、临时 Git fixture 和入口已有测试，任务 8.3 不表示远端已成功。真实第三方平台授权、iOS 真机运行和签名发布未验证；无签名构建不代表这些行为已通过。兼容矩阵 verified 表示本记录列出的真实服务协议组合，不代表发布动作已完成。
 
@@ -78,3 +78,27 @@ PR #20 首轮 [SDK CI](https://github.com/bbxx111/accountkit/actions/runs/412602
 第三轮 [SDK CI](https://github.com/bbxx111/accountkit/actions/runs/41261078235) 在提交 `77365dcd613d17b0f79aaaf4b47d65a774585aab` 上三个 job 全部成功，覆盖完整真实契约与两个原生平台。iOS 日志确认 Xcode 26.1.1，生成 `build/ios/iphoneos/Runner.app`（14.3MB）；Android 生成 `app-debug.apk`。临时 Git 快照：iOS `f58539d0845382a55800f4e3c3595610224e8703`，Android `354902dd715945b675495a80e1e5d0a333a7c0af`，两包契约消费者 `c15f8ecb21a87ff2f5598026bb4ea3bdfb2bdb0e`。完整 artifact 已下载到 `.test-output/sdk-pr-ci-success/`，iOS 原始 job 日志为 `sdk-ios-success.log`。前两轮故障及修复不再是未解决项。
 
 同提交的 [Go CI](https://github.com/bbxx111/accountkit/actions/runs/41261078318) 全部成功，包含 sqlc 一致性、完整包/race/真实数据库/PG17 恢复门禁，以及 accountsvc 的真实依赖和进程信号验证。原始 job 日志保留在 `.test-output/sdk-pr-go-ci.log`；上文本地完整 Go 门禁证据亦保留。最终验收补录仅修改 OpenSpec 的 design/tasks/verification，不改变已验证实现；记录提交后 SDK workflow 的重跑结果可在 PR 检查中查看。
+
+## Workflow Path Filters
+
+按用户后续要求，SDK workflow 的 push/pull_request 均增加与 Go 一致的 paths-ignore：`openspec/**`、`docs/superpowers/**`；保留 develop/main 推送、手动触发和所有 job/concurrency 配置。SDK、服务端、OpenAPI、README 等变更仍可触发。PR 过滤依据整个 PR 差异，因此含代码的 PR 后续只提交文档仍会重跑。
+
+本次配置维护已通过 YAML 解析、与 Go 排除规则一致性检查，以及相对 HEAD 的分支/手动入口和全部 job/concurrency 未变检查；`git diff --check` 通过。仅做配置与规格校验，未重新执行 SDK/Go 套件或新的线上 CI；此前成功记录不作为本次路径过滤已在线执行的证明。
+
+## Directory Rename and Go CI Scope
+
+用户随后要求目录统一为 `sdks/`，同时让 Go workflow 的 push/pull_request 额外排除 `sdks/accountkit-flutter/**`、`sdks/accountkit-admin-ts/**`。SDK workflow 继续仅排除规格/计划文档；`sdks/testsupport`、服务端与共享契约仍触发 Go 验证。不排除整个 sdks 目录。以上旧验收命令中的 `sdk/` 保留执行当时的历史语义，不据此声称改名后的原生/数据库验证重新通过。
+
+已同步 Git 子目录依赖、快照收集与边界检查、工具清单/覆盖/发布检查入口、完整 SDK 脚本、Xcode 清单路径、`.gitattributes`、AGENTS、README、设计/规格/任务/计划。两个包名和 `sdk/flutter/v…`、`sdk/admin-ts/v…` tag 前缀不变。改名不提供旧目录别名；消费新提交须同步 Git path，固定旧提交仍使用其原目录。
+
+本轮实际检查：
+
+- 新路径期望先使三个 Git 消费/快照用例失败，修正后 Linux 全部脚本 **24 通过、0 跳过**；原始记录 `.test-output/sdk-rename-red.log`、`sdks-rename-scripts.log`。
+- 仓库外两包固定 Git SHA **fd7c56f6e2d5be19f7d617498765177d47eec9dc** 消费通过：Git path 均为 sdks 下对应包，冻结安装、TS 类型/行为/Vite 生产构建、Flutter analyze/行为测试通过。记录 `.test-output/sdks-rename-consumers.log`。
+- `GOWORK=off go build ./...`、`go vet ./sdks/testsupport/fixture`、`go test -count=1 ./sdks/testsupport/fixture` 均退出 0。未改 Go 源码内容；未重跑真实数据库/race/恢复或 Android/iOS 原生构建。
+- 覆盖检查 35 操作通过；两包候选 manifest/tag/兼容矩阵检查通过。66 个原文件均在新位置，Go/Dart/TS 源码逐个与旧路径 HEAD 内容一致。
+- 新路径文本通过 UTF-8、行尾空白及 EOF 检查，移除了原 Flutter `.gitignore` 的 UTF-8 BOM；未更改忽略规则语义。
+- YAML 解析确认 SDK 两项文档排除、Go 四项排除正确，分支/手动触发及全部 job/concurrency 保持预期；路径扫描未发现活动代码/文档中的旧目录引用，仅保留发布 tag 和此处历史证据。
+- 限定复核指出空白检查命令漏改目录和任务文案误写 tag，均已修复并通过限定复核。Windows 缓存导致整体移动失败后，逐文件核对并迁移全部源码；旧缓存保留在 `.test-output/sdk-rename-cache-20261101/`，未改动外部依赖缓存。
+
+补充任务完成后进度为 **43/43**，OpenSpec 全量严格校验 **42 通过、0 失败**。以上为提交前的本地验收结果；目录与过滤调整的线上 CI 结果以 PR #20 对应提交的检查为准，前述 PR 成功结果属于改名前提交。

@@ -54,10 +54,10 @@ export async function createSDKSnapshot(sourceDirectory) {
   try {
     const working = join(directory, 'working');
     await mkdir(working);
-    const files = git(source, 'ls-files', '--cached', '--others', '--exclude-standard', '-z', '--', 'sdk/').split('\0').filter(Boolean);
+    const files = git(source, 'ls-files', '--cached', '--others', '--exclude-standard', '-z', '--', 'sdks/').split('\0').filter(Boolean);
     if (!files.length) throw new Error('no SDK files to snapshot');
     for (const file of files) {
-      if (isAbsolute(file) || file.split(/[\\/]/).includes('..') || !file.startsWith('sdk/')) throw new Error('unsafe SDK snapshot path');
+      if (isAbsolute(file) || file.split(/[\\/]/).includes('..') || !file.startsWith('sdks/')) throw new Error('unsafe SDK snapshot path');
       const original = resolve(source, file);
       let info;
       try { info = await lstat(original); } catch (error) { if (error.code === 'ENOENT') continue; throw error; }

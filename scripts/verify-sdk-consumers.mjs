@@ -13,8 +13,8 @@ export function dependencySource(sdk, source, ref) {
   if (url.username || url.password || url.search || url.hash || !((url.protocol === 'https:') || (url.protocol === 'git:' && ['127.0.0.1','[::1]','localhost'].includes(url.hostname)))) {
     throw new Error('Git URL must use HTTPS or the loopback test daemon, without credentials/query/fragment');
   }
-  if (sdk === 'flutter') return { git: { url: source, ref, path: 'sdk/accountkit-flutter' } };
-  return `${url.protocol === 'https:' ? 'git+' : ''}${source}#${ref}&path:/sdk/accountkit-admin-ts`;
+  if (sdk === 'flutter') return { git: { url: source, ref, path: 'sdks/accountkit-flutter' } };
+  return `${url.protocol === 'https:' ? 'git+' : ''}${source}#${ref}&path:/sdks/accountkit-admin-ts`;
 }
 export function parseConsumerOptions(args) {
   const result = { sdk: 'all', platform: 'none' };
@@ -149,7 +149,7 @@ void main() {
 async function main() {
   const options = parseConsumerOptions(process.argv.slice(2));
   if (options.url) for (const sdk of options.sdk === 'all' ? ['flutter','admin-ts'] : [options.sdk]) dependencySource(sdk, options.url, options.ref);
-  const versions = JSON.parse(await readFile(join(root, 'sdk/tool-versions.json'),'utf8'));
+  const versions = JSON.parse(await readFile(join(root, 'sdks/tool-versions.json'),'utf8'));
   const cancellation = new AbortController();
   operationSignal = cancellation.signal;
   const cancel = () => cancellation.abort();

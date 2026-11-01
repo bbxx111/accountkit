@@ -93,7 +93,7 @@ async function main() {
   if (args.length > 1) throw new Error('usage: node scripts/check-sdk-coverage.mjs [coverage.json]');
   const readJSON = async path => JSON.parse(await readFile(path, 'utf8'));
   const [records, enduser, admin] = await Promise.all([
-    readJSON(args.length ? resolve(args[0]) : resolve(root, 'sdk/http-coverage.json')),
+    readJSON(args.length ? resolve(args[0]) : resolve(root, 'sdks/http-coverage.json')),
     readJSON(resolve(root, 'docs/openapi/enduser.json')),
     readJSON(resolve(root, 'docs/openapi/admin.json')),
   ]);

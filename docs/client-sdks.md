@@ -19,22 +19,22 @@ dependencies:
     git:
       url: https://github.com/bbxx111/accountkit.git
       ref: sdk/flutter/v1.0.0
-      path: sdk/accountkit-flutter
+      path: sdks/accountkit-flutter
 ```
 
 ```json
 {
   "dependencies": {
-    "@accountkit/admin-client": "git+https://github.com/bbxx111/accountkit.git#sdk/admin-ts/v1.0.0&path:/sdk/accountkit-admin-ts"
+    "@accountkit/admin-client": "git+https://github.com/bbxx111/accountkit.git#sdk/admin-ts/v1.0.0&path:/sdks/accountkit-admin-ts"
   }
 }
 ```
 
-提交应用自己的锁文件，分别使用 `flutter pub get --enforce-lockfile` 和 `pnpm install --frozen-lockfile` 重装。TS 子目录语法属于 pnpm，未承诺 npm/yarn 等价支持。TS 源码由消费方 TypeScript/Vite 转换；包不包含 dist、prepare/postinstall，不承诺任意 JavaScript 运行时可直接加载。精确工具补丁见 [tool-versions.json](../sdk/tool-versions.json)。
+提交应用自己的锁文件，分别使用 `flutter pub get --enforce-lockfile` 和 `pnpm install --frozen-lockfile` 重装。TS 子目录语法属于 pnpm，未承诺 npm/yarn 等价支持。TS 源码由消费方 TypeScript/Vite 转换；包不包含 dist、prepare/postinstall，不承诺任意 JavaScript 运行时可直接加载。精确工具补丁见 [tool-versions.json](../sdks/tool-versions.json)。
 
 ## Flutter 的职责
 
-完整接口和例子见[包 README](../sdk/accountkit-flutter/README.md)。配置 `baseUrl` 为 origin 或反向代理基础路径，`apiPrefix` 可改为宿主实际前缀；远端使用 HTTPS，本机测试显式允许 HTTP。不得把资源名当成任意 URL。
+完整接口和例子见[包 README](../sdks/accountkit-flutter/README.md)。配置 `baseUrl` 为 origin 或反向代理基础路径，`apiPrefix` 可改为宿主实际前缀；远端使用 HTTPS，本机测试显式允许 HTTP。不得把资源名当成任意 URL。
 
 AccountClient 独占 TokenStore、会话 epoch/revision 与刷新协调。AccountController 依赖 AccountApi，通过只读快照观察 SignedOut、NeedsBinding、PendingDeletion、SignedIn；初始化状态单独表示，pending 登录补全仅在内存。测试入口 `package:accountkit_flutter/testing.dart` 提供无平台通道替身。
 
@@ -63,7 +63,7 @@ const page = await client.listUsers({filter: userFilter.eq('state', 'ACTIVE')});
 
 ## 验证与发布
 
-覆盖检查：`node scripts/check-sdk-coverage.mjs`。包内分别运行 Flutter analyze/test 和 pnpm typecheck/test。真实服务装配见 [sdk/testsupport](../sdk/testsupport/README.md)；Go 烟测只证明宿主就绪，SDK 契约必须由 SDK 实际发请求。
+覆盖检查：`node scripts/check-sdk-coverage.mjs`。包内分别运行 Flutter analyze/test 和 pnpm typecheck/test。真实服务装配见 [sdks/testsupport](../sdks/testsupport/README.md)；Go 烟测只证明宿主就绪，SDK 契约必须由 SDK 实际发请求。
 
 发布前 Git 隔离入口在仓库外创建一次性应用、临时本机 Git 服务和固定快照 SHA，不改变源分支或创建 tag：
 
@@ -75,9 +75,9 @@ node scripts/verify-sdk-consumers.mjs --sdk flutter --platform android
 node scripts/verify-sdk-consumers.mjs --sdk flutter --platform ios
 ```
 
-`none` 只验证安装/静态/行为，不等于 Android 或 iOS 构建通过。Android 使用 debug APK，iOS 无签名构建须 macOS 和 Xcode >=26.1.1；当前设备信息插件要求该工具链，CI 按 `sdk/tool-versions.json` 显式选择 Xcode，不能依赖 runner 默认版本。临时 Git 只监听 loopback，完成后清理本次创建的目录和进程。
+`none` 只验证安装/静态/行为，不等于 Android 或 iOS 构建通过。Android 使用 debug APK，iOS 无签名构建须 macOS 和 Xcode >=26.1.1；当前设备信息插件要求该工具链，CI 按 `sdks/tool-versions.json` 显式选择 Xcode，不能依赖 runner 默认版本。临时 Git 只监听 loopback，完成后清理本次创建的目录和进程。
 
-发布检查核对清单、tag 及 [服务兼容矩阵](../sdk/compatibility.json) 的验收状态，未验证服务组合会失败；它不创建 tag，也不代替原生平台与其他发布门禁。仅检查候选元数据可显式追加 `--metadata-only`，不能把该模式当作发布就绪：
+发布检查核对清单、tag 及 [服务兼容矩阵](../sdks/compatibility.json) 的验收状态，未验证服务组合会失败；它不创建 tag，也不代替原生平台与其他发布门禁。仅检查候选元数据可显式追加 `--metadata-only`，不能把该模式当作发布就绪：
 
 ```sh
 node scripts/check-sdk-release.mjs flutter sdk/flutter/v1.0.0

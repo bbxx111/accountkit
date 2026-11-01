@@ -1,8 +1,12 @@
 name: client SDKs
 on:
+  # Keep SDK and service-contract changes covered; skip only planning/spec-only changes.
+  # Pull request path filters evaluate the complete PR diff, not just its latest commit.
   pull_request:
+    paths-ignore: ['openspec/**', 'docs/superpowers/**']
   push:
     branches: [develop, main]
+    paths-ignore: ['openspec/**', 'docs/superpowers/**']
   workflow_dispatch:
 permissions:
   contents: read
@@ -92,7 +96,7 @@ jobs:
         if: matrix.platform == 'ios'
         shell: bash
         run: |
-          xcode_version=$(node -p "require('./sdk/tool-versions.json').xcode")
+          xcode_version=$(node -p "require('./sdks/tool-versions.json').xcode")
           export DEVELOPER_DIR="/Applications/Xcode_${xcode_version}.app/Contents/Developer"
           test -d "$DEVELOPER_DIR"
           echo "DEVELOPER_DIR=$DEVELOPER_DIR" >> "$GITHUB_ENV"

@@ -26,8 +26,8 @@
 
 | 分发单元 | 目录 | 包名 | 公共入口 |
 | --- | --- | --- | --- |
-| Flutter 消费者 | `sdk/accountkit-flutter` | `accountkit_flutter` | `lib/accountkit_flutter.dart` |
-| TypeScript 管理端 | `sdk/accountkit-admin-ts` | `@accountkit/admin-client` | `src/index.ts` |
+| Flutter 消费者 | `sdks/accountkit-flutter` | `accountkit_flutter` | `lib/accountkit_flutter.dart` |
+| TypeScript 管理端 | `sdks/accountkit-admin-ts` | `@accountkit/admin-client` | `src/index.ts` |
 
 Flutter 公开 `AccountApi`、`AccountClient`、`AccountController`；测试入口为 `lib/testing.dart`。TS 公开 `createAccountAdminClient` 及 DTO、请求选项、错误与 filter 类型。名称中不带具体应用、认证提供方或服务部署方式。
 
@@ -79,7 +79,7 @@ Flutter 公开 `AccountApi`、`AccountClient`、`AccountController`；测试入�
 | revokeAllSessions | POST /users/{user}/sessions:revokeAll | operator / super-admin |
 | listAuditEvents | GET /users/{user}/auditEvents | operator / super-admin |
 
-新增 `sdk/http-coverage.json`，每条记录含 surface、operationId、method、path、SDK 方法、测试标识、兼容基线和可选能力说明。`scripts/check-sdk-coverage.mjs` 将登记与两个 OpenAPI 对照；端点数量只是当前快照，不用固定数量掩盖未来新增操作。内省和 purge-feed 不属于这两个 SDK。
+新增 `sdks/http-coverage.json`，每条记录含 surface、operationId、method、path、SDK 方法、测试标识、兼容基线和可选能力说明。`scripts/check-sdk-coverage.mjs` 将登记与两个 OpenAPI 对照；端点数量只是当前快照，不用固定数量掩盖未来新增操作。内省和 purge-feed 不属于这两个 SDK。
 
 公开 DTO 保持 wire 字段含义；Dart 可用惯用属性名并显式序列化 snake_case，TS 保持 snake_case。资源 ID 和分页 token 均不透明。资源名参数只允许预期层级，嵌套资源必须匹配给定父资源；逐段编码，拒绝绝对 URL、点段和编码后的路径逃逸。
 
@@ -145,13 +145,13 @@ dependencies:
     git:
       url: https://github.com/bbxx111/accountkit.git
       ref: sdk/flutter/v1.0.0
-      path: sdk/accountkit-flutter
+      path: sdks/accountkit-flutter
 ```
 
 ```json
 {
   "dependencies": {
-    "@accountkit/admin-client": "git+https://github.com/bbxx111/accountkit.git#sdk/admin-ts/v1.0.0&path:/sdk/accountkit-admin-ts"
+    "@accountkit/admin-client": "git+https://github.com/bbxx111/accountkit.git#sdk/admin-ts/v1.0.0&path:/sdks/accountkit-admin-ts"
   }
 }
 ```
@@ -169,11 +169,13 @@ Flutter 开发使用独立 pubspec/锁文件；管理包使用独立 package.jso
 验证分四层，并在本变更 `verification.md` 分别记载命令、环境、结果和限制，原始日志进入 `.test-output/`：
 
 1. 包内静态检查与单元测试：Flutter 模型、状态机、竞争、失败注入与 fake；TS 路由/编码、响应、错误、取消、token provider 和无自动重试。覆盖登记检查独立运行。
-2. 真实服务契约测试：使用现有 accountsvc 启动/迁移方式和独立 PostgreSQL/Redis，测试验证码 sender、受控 IdP verifier 与管理员 OIDC JWKS 测试提供方。两种 SDK 实际发 HTTP 请求，不用手写 HTTP 冒充 SDK；种子数据优先通过公开 API 建立。必要的服务 fixture 放在 `sdk/testsupport`，沿用根 Go module，只作为测试工具。默认 accountsvc 契约与配置可选能力的嵌入式测试宿主分别报告。真实第三方授权不纳入自动门禁。
+2. 真实服务契约测试：使用现有 accountsvc 启动/迁移方式和独立 PostgreSQL/Redis，测试验证码 sender、受控 IdP verifier 与管理员 OIDC JWKS 测试提供方。两种 SDK 实际发 HTTP 请求，不用手写 HTTP 冒充 SDK；种子数据优先通过公开 API 建立。必要的服务 fixture 放在 `sdks/testsupport`，沿用根 Go module，只作为测试工具。默认 accountsvc 契约与配置可选能力的嵌入式测试宿主分别报告。真实第三方授权不纳入自动门禁。
 3. Git 隔离消费：构造仓库外的临时 Flutter 应用和 TS/Vite 应用，以完整 SHA＋子目录依赖安装，禁止 path override/workspace link。PR 阶段可将待验内容制成临时 Git 仓库的固定提交，经仅监听本机的临时 Git 服务提供给两种包管理器；不创建真实发布 tag、不提交到工作分支。再次执行冻结安装，并完成 analyze/typecheck、测试、Vite 生产构建和 Flutter 平台构建。Linux 验证 Android debug，macOS 验证 iOS 无签名构建；包内纯逻辑测试不冒充原生构建。
 4. 原有 Go 门禁仍独立执行。SDK CI 不能删除或降低既有 Go 单元/数据库/服务测试要求。
 
-新增 SDK workflow 和 `scripts/verify-client-sdks.sh`，版本显式固定。触发条件包含 SDK、HTTP handler、OpenAPI 和影响契约的领域代码；实现可选择不设 paths 过滤，避免误跳过。强制门禁缺少工具或数据库等依赖应失败并解释，不跳过后报成功。
+新增 SDK workflow 和 `scripts/verify-client-sdks.sh`，版本显式固定。触发条件包含 SDK、HTTP handler、OpenAPI 和影响契约的领域代码；push 与 pull_request 沿用 Go workflow 的 paths-ignore，仅排除 `openspec/**` 和 `docs/superpowers/**`，保留 workflow_dispatch。PR 过滤依据整个 PR 差异，含代码的 PR 不因最后一次提交只有文档而跳过。强制门禁缺少工具或数据库等依赖应失败并解释，不跳过后报成功。
+
+Go workflow 在上述文档排除之外，仅额外排除 `sdks/accountkit-flutter/**` 与 `sdks/accountkit-admin-ts/**`，避免纯客户端改动重复执行完整 Go 门禁。`sdks/testsupport` 属于根 Go module，不排除整个 sdks 目录；Go fixture、服务端和共享契约变化继续触发。目录统一为 sdks，Git 子目录引用同步变更；公开包名及 sdk/flutter/v…、sdk/admin-ts/v… tag 前缀保持独立。
 
 真实验收至少包含：验证码登录、补全、刷新与 scope 变化、资料及 merge patch、身份绑定/换绑/解绑、当前/其他 session、删除/恢复；管理端包含分页/filter、角色403、reveal、session revoke、审计字段及错误形态。mock 单独覆盖所有 35 个操作的请求/响应形状及真实场景不易稳定制造的网络、取消、并发和依赖故障。受控第三方凭据需覆盖各内置 credential 形状，自定义 kind 需证明不会被 SDK 的封闭枚举拒绝。
 

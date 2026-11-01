@@ -7,14 +7,14 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 const sha = '6e17c77ba1c45a0ccedbf449cfae6b4e69654476';
 test('generates pnpm and pub fixed Git subdirectory dependency sources', () => {
-  assert.equal(dependencySource('admin-ts', 'https://example.test/accountkit.git', sha), `git+https://example.test/accountkit.git#${sha}&path:/sdk/accountkit-admin-ts`);
-  assert.deepEqual(dependencySource('flutter', 'https://example.test/accountkit.git', sha), { git: { url: 'https://example.test/accountkit.git', ref: sha, path: 'sdk/accountkit-flutter' } });
+  assert.equal(dependencySource('admin-ts', 'https://example.test/accountkit.git', sha), `git+https://example.test/accountkit.git#${sha}&path:/sdks/accountkit-admin-ts`);
+  assert.deepEqual(dependencySource('flutter', 'https://example.test/accountkit.git', sha), { git: { url: 'https://example.test/accountkit.git', ref: sha, path: 'sdks/accountkit-flutter' } });
 });
 test('rejects floating refs, URL credentials and non-local unencrypted sources', () => {
   for (const [url, ref] of [['https://example.test/repo', 'develop'], ['https://token@example.test/repo', sha], ['git://external.test/repo', sha], ['file:///worktree/repo', sha], ['https://example.test/repo#main', sha]]) {
     assert.throws(() => dependencySource('admin-ts', url, ref));
   }
-  assert.match(dependencySource('admin-ts', 'git://127.0.0.1:1234/snapshot.git', sha), /path:\/sdk\/accountkit-admin-ts$/);
+  assert.match(dependencySource('admin-ts', 'git://127.0.0.1:1234/snapshot.git', sha), /path:\/sdks\/accountkit-admin-ts$/);
 });
 test('remote mode requires both URL and immutable ref and validates platform choices', () => {
   assert.deepEqual(parseConsumerOptions(['--sdk','admin-ts']), {sdk:'admin-ts', platform:'none'});

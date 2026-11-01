@@ -30,7 +30,7 @@
 
 ## Task 1: Flutter 包边界、协议与运行时（OpenSpec 1.1、2.1–4.6）
 
-**Files:** 新增 `sdk/accountkit-flutter/pubspec.yaml`、`analysis_options.yaml`、`LICENSE`、`lib/accountkit_flutter.dart`、`lib/testing.dart`；内部按 `models.dart`、`errors.dart`、`transport.dart`、`session.dart`、`client.dart`、`controller.dart`、`platform.dart` 分责；测试位于 `test/`，示例位于 `example/`。
+**Files:** 新增 `sdks/accountkit-flutter/pubspec.yaml`、`analysis_options.yaml`、`LICENSE`、`lib/accountkit_flutter.dart`、`lib/testing.dart`；内部按 `models.dart`、`errors.dart`、`transport.dart`、`session.dart`、`client.dart`、`controller.dart`、`platform.dart` 分责；测试位于 `test/`，示例位于 `example/`。
 
 **Interfaces:** 对外 AccountApi、AccountClient、AccountController；方法和路由逐一遵循 D2。TokenStore 整条记录 read/write/clear；时钟、设备、HTTP 可注入。后续测试宿主只用公开入口。
 
@@ -43,7 +43,7 @@
 
 ## Task 2: 管理 TS 独立包和全部操作（OpenSpec 1.2、5.1–5.6）
 
-**Files:** 新增 `sdk/accountkit-admin-ts/{package.json,pnpm-lock.yaml,tsconfig.json,vitest.config.ts,LICENSE}`；`src/{index,client,models,errors,filter}.ts`；`test/client.test.ts`。
+**Files:** 新增 `sdks/accountkit-admin-ts/{package.json,pnpm-lock.yaml,tsconfig.json,vitest.config.ts,LICENSE}`；`src/{index,client,models,errors,filter}.ts`；`test/client.test.ts`。
 
 **Interfaces:** createAccountAdminClient(config)；配置 baseUrl/apiPrefix/getAccessToken/fetch/requestId。方法名遵循 D2；方法尾参数接受 signal/requestId。DTO 保持 wire snake_case。
 
@@ -54,7 +54,7 @@
 
 ## Task 3: 工具链与覆盖登记（OpenSpec 1.3–1.4）
 
-**Files:** `sdk/tool-versions.json`、`sdk/http-coverage.json`、`scripts/check-sdk-coverage.mjs`、`scripts/check-sdk-coverage.test.mjs`。
+**Files:** `sdks/tool-versions.json`、`sdks/http-coverage.json`、`scripts/check-sdk-coverage.mjs`、`scripts/check-sdk-coverage.test.mjs`。
 
 **Interfaces:** 覆盖记录 surface/operationId/method/path/sdkMethod/models/tests/baseline/optionalCapability；检查器接受可选清单路径，非零退出报告缺失/额外/重复。
 
@@ -64,7 +64,7 @@
 
 ## Task 4: 真实服务契约（OpenSpec 6.1–6.5）
 
-**Files:** `sdk/testsupport/` Go 测试宿主及启动配置；两包 `test/integration/`。
+**Files:** `sdks/testsupport/` Go 测试宿主及启动配置；两包 `test/integration/`。
 
 **Interfaces:** 本机测试服务 origin、验证码测试邮箱和管理员 JWKS；服务 fixture 使用现有 New/Migrate/Start/Close 与 accountsvc 装配规则。缺少依赖直接失败。
 
@@ -74,7 +74,7 @@
 
 ## Task 5: Git 隔离消费与 CI（OpenSpec 7.1–7.5）
 
-**Files:** `scripts/verify-client-sdks.sh`、`scripts/verify-sdk-consumers.*`、`sdk/testsupport/consumers/`、`.github/workflows/client-sdks.yml`。
+**Files:** `scripts/verify-client-sdks.sh`、`scripts/verify-sdk-consumers.*`、`sdks/testsupport/consumers/`、`.github/workflows/client-sdks.yml`。
 
 **Interfaces:** 从工作树快照建立临时 Git SHA；本机 Git 服务只监听 loopback。消费者仅 Git URL/ref/path，临时资源归属可核查。
 
@@ -98,3 +98,11 @@
 - [ ] 独立审查实现与全部场景，修复实质问题后重跑受影响验证。
 - [ ] `openspec validate --all --strict`、`git diff --check`，更新各任务实测状态；日志放 `.test-output/`。
 - [ ] 明确未验证平台/远端/工具组合；不归档、不发布、不改下游。
+# 后续执行：CI 范围与目录命名
+
+对应 OpenSpec tasks 9.1–9.2，沿用当前任务分支及未提交的 SDK workflow 过滤修改。
+
+1. 先将 Git 消费与快照测试期望改为 sdks，确认旧路径实现失败。核对源目录及目标都位于本仓库后迁移源码；逐项同步路径引用，保留 sdk/flutter/v…、sdk/admin-ts/v… tag 和两个公开包名。
+2. Go workflow 只新增两个客户端包目录的 paths-ignore，保留 testsupport/fixture 及其他 Go 输入。用 YAML 解析对照原配置，检查手动入口、分支、job/concurrency 未改变；SDK workflow 继续保留此前用户要求的文档排除。
+3. 执行 Linux 验证脚本、覆盖和发布元数据检查、Go 独立构建及 fixture test/vet、仓库外固定 Git SHA 的 TS/Vite 与 Flutter 消费。原生业务代码不变，不将本次逻辑/Git 检查冒充新的 Android/iOS 构建结果。
+4. 核对残留旧路径、Git tag 格式与文件移动内容，更新 verification/tasks，执行 OpenSpec 全量严格校验。历史原始日志和旧提交证据保留原路径语义。

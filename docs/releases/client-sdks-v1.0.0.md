@@ -1,6 +1,6 @@
 # 客户端 SDK 1.0.0
 
-状态：发布候选。两个 tag 将固定包含本说明且通过最终 CI 的同一个 main 提交；正式发布及消费结果见[发布验收记录](https://github.com/bbxx111/accountkit/blob/develop/openspec/changes/prepare-client-sdks-v1-release/verification.md)。
+状态：已发布（2026-11-01）。两个 tag 均固定到通过最终 Go/SDK CI 的提交 `1a6c60c41a330d568e8795c11c640197ce25c0e6`，两个 SDK 的真实远端 Git 消费均已通过。tag 内文档保留发布时的候选措辞，tag 不移动；发布对象、CI 与消费结果见[发布验收记录](https://github.com/bbxx111/accountkit/blob/develop/openspec/changes/prepare-client-sdks-v1-release/verification.md)。
 
 | 包 | 版本 / 固定 tag | Git 子目录 | Release |
 | --- | --- | --- | --- |

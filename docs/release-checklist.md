@@ -6,7 +6,7 @@
 
 当前正式版本为 v1.0.0（已发布），见[发布说明](releases/v1.0.0.md)和[发布准备](../openspec/changes/prepare-v1-0-0-release/proposal.md)。开发期版本的说明与证据索引见 [开发期历史](releases/pre-1.0-history.md)。
 
-客户端 SDK 独立版本化：Flutter 与管理 TypeScript 的 1.0.0 为发布候选，见[SDK 发布说明](releases/client-sdks-v1.0.0.md)与[发布验收记录](../openspec/changes/prepare-client-sdks-v1-release/verification.md)。SDK 发布使用各自 tag，不变更 Go v1.0.0；候选同时运行 Go/SDK CI，发布后分别验证真实 Git 子目录消费，不套用下方 Go module 的 go get 消费命令。
+客户端 SDK 独立版本化：Flutter 与管理 TypeScript 的 1.0.0 已发布，见[SDK 发布说明](releases/client-sdks-v1.0.0.md)与[发布验收记录](../openspec/changes/prepare-client-sdks-v1-release/verification.md)。SDK 发布使用各自 tag，不变更 Go v1.0.0；候选同时运行 Go/SDK CI，发布后分别验证真实 Git 子目录消费，不套用下方 Go module 的 go get 消费命令。
 
 ### v1.0.0 专属门禁
 

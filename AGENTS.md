@@ -36,6 +36,15 @@
 | `user/sender/smtp/`、`examples/remoteauth/` | 可选 SMTP 发送器、业务服务远程鉴权示例 |
 | `deploy/accountsvc/` | 服务镜像、仅本地开发 Compose 与无秘密配置模板 |
 | `scripts/`、`docs/`、`openspec/` | 验证入口、操作手册、规格与变更 |
+| `sdk/accountkit-flutter/`、`sdk/accountkit-admin-ts/` | 独立 Git 子目录分发的 Flutter 消费者与 TS 管理客户端 |
+| `sdk/testsupport/`、`sdk/http-coverage.json` | 仅测试服务装配与客户端逐操作覆盖登记，不是运行时依赖 |
+
+### 客户端 SDK 边界
+
+- Flutter 包名 `accountkit_flutter`，入口 `lib/accountkit_flutter.dart`，由单个 AccountClient 拥有凭据与刷新协调，Controller 只协调临时流程；平台原生授权由应用完成。
+- 管理包名 `@accountkit/admin-client`，exports/types 指向 `src/index.ts`；无 dist 或安装构建，无 React/OIDC 运行时依赖。应用通过 token provider 提供凭据，自行处理登录、UserInfo、角色、路由和页面状态；SDK 不重试管理请求。
+- 两包独立安装、独立 SemVer，固定 Git SHA 或各自 `sdk/flutter/vX.Y.Z` / `sdk/admin-ts/vX.Y.Z`。实施不隐含创建或推送 tag，SDK 许可沿用当前自有产品授权边界。
+- 修改 HTTP 契约时同步 `sdk/http-coverage.json` 和协议测试；SDK 检查与现有 Go 构建/数据库/race/恢复门禁分别执行。工具精确版本见 `sdk/tool-versions.json`；纯逻辑、真实服务、平台构建和远端 Git 消费结果分别报告，缺依赖不视为通过。
 
 ## 架构与宿主契约
 

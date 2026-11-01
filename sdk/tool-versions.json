@@ -1,0 +1,11 @@
+{
+  "flutter": "3.47.4",
+  "dart": "3.13.3",
+  "node": "24.21.0",
+  "pnpm": "11.24.0",
+  "typescript": "5.8.3",
+  "vite": "6.4.1",
+  "vitest": "3.2.4",
+  "prettier": "3.6.2",
+  "serviceBaseline": "v1.0.0"
+}

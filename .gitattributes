@@ -2,5 +2,10 @@
 *.sql text eol=lf
 *.go text eol=lf
 *.sh text eol=lf
+*.dart text eol=lf
+*.ts text eol=lf
+*.mjs text eol=lf
+sdk/**/*.yaml text eol=lf
+sdk/**/*.json text eol=lf
 internal/accountsvc/emailtemplates/layout.* text eol=lf
 *.golden.html text eol=lf

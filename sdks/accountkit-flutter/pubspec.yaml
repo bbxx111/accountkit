@@ -1,0 +1,17 @@
+name: accountkit_flutter
+description: Official consumer accountkit protocol and session SDK.
+version: 1.0.0
+publish_to: none
+environment:
+  sdk: '>=3.13.0 <4.0.0'
+  flutter: '>=3.47.1'
+dependencies:
+  flutter:
+    sdk: flutter
+  dio: 5.11.1
+  flutter_secure_storage: 11.2.0
+  device_info_plus: 13.3.0
+  package_info_plus: 10.2.2
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

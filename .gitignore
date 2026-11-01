@@ -27,3 +27,6 @@ Thumbs.db
 
 # Linked git worktrees
 .worktrees/
+
+# Node.js dependencies
+node_modules/

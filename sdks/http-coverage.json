@@ -1,0 +1,834 @@
+[
+  {
+    "surface": "enduser",
+    "operationId": "sendSignInCode",
+    "method": "POST",
+    "path": "/users:sendSignInCode",
+    "sdkMethod": "sendSignInCode",
+    "models": [
+      "CodeChallenge"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "sendSignInCode"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "SendCodeRequest",
+      "CodeChallenge"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "signInWithCode",
+    "method": "POST",
+    "path": "/users:signInWithCode",
+    "sdkMethod": "signInWithCode",
+    "models": [
+      "IdentityCredential",
+      "SignInResult"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "signInWithCode"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "CodeRequest",
+      "SignInResult"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "signInWithIdp",
+    "method": "POST",
+    "path": "/users:signInWithIdp",
+    "sdkMethod": "signInWithIdp",
+    "models": [
+      "IdentityCredential",
+      "SignInResult"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "signInWithIdp"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "IdpRequest",
+      "SignInResult"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "sendSignInCompletionCode",
+    "method": "POST",
+    "path": "/users:sendSignInCompletionCode",
+    "sdkMethod": "sendSignInCompletionCode",
+    "models": [
+      "CodeChallenge"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "sendSignInCompletionCode"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "SendCompletionCodeRequest",
+      "CodeChallenge"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "completeSignIn",
+    "method": "POST",
+    "path": "/users:completeSignIn",
+    "sdkMethod": "completeSignIn",
+    "models": [
+      "IdentityCredential",
+      "SignInResult"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "completeSignIn"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "CompleteSignInRequest",
+      "SignInResult"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "refreshToken",
+    "method": "POST",
+    "path": "/token",
+    "sdkMethod": "refreshToken",
+    "models": [
+      "void"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "refreshToken"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "RefreshRequest",
+      "TokenPair"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "revokeToken",
+    "method": "POST",
+    "path": "/revoke",
+    "sdkMethod": "revokeToken",
+    "models": [
+      "void"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "revokeToken"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "RevokeRequest"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "getMe",
+    "method": "GET",
+    "path": "/users/me",
+    "sdkMethod": "getMe",
+    "models": [
+      "AccountUser"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "getMe"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "Me"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "updateMe",
+    "method": "PATCH",
+    "path": "/users/me",
+    "sdkMethod": "updateMe",
+    "models": [
+      "BasicProfilePatch",
+      "AccountUser"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "updateMe"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "UpdateMeRequest",
+      "Me"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "deleteMe",
+    "method": "DELETE",
+    "path": "/users/me",
+    "sdkMethod": "deleteMe",
+    "models": [
+      "AccountUser"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "deleteMe"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "Me"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "undeleteMe",
+    "method": "POST",
+    "path": "/users/me:undelete",
+    "sdkMethod": "undeleteMe",
+    "models": [
+      "AccountMutationResult",
+      "AccountUser"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "undeleteMe"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "Me"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "sendReauthenticationCode",
+    "method": "POST",
+    "path": "/users/me:sendReauthenticationCode",
+    "sdkMethod": "sendReauthenticationCode",
+    "models": [
+      "CodeChallenge"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "sendReauthenticationCode"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "SendCodeRequest",
+      "CodeChallenge"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "reauthenticate",
+    "method": "POST",
+    "path": "/users/me:reauthenticate",
+    "sdkMethod": "reauthenticate",
+    "models": [
+      "IdentityCredential",
+      "AccessTokenResult"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "reauthenticate"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "CodeRequest",
+      "AccessToken"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "listSessions",
+    "method": "GET",
+    "path": "/users/me/sessions",
+    "sdkMethod": "listSessions",
+    "models": [
+      "AccountSession"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "listSessions"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "SessionList"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "revokeSession",
+    "method": "DELETE",
+    "path": "/users/me/sessions/{session}",
+    "sdkMethod": "revokeSession",
+    "models": [
+      "void"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "revokeSession"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "Void"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "revokeOtherSessions",
+    "method": "POST",
+    "path": "/users/me/sessions:revokeOthers",
+    "sdkMethod": "revokeOtherSessions",
+    "models": [
+      "void"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "revokeOtherSessions"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "Empty"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "sendBindCode",
+    "method": "POST",
+    "path": "/users/me:sendBindCode",
+    "sdkMethod": "sendBindCode",
+    "models": [
+      "CodeChallenge"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "sendBindCode"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "SendCodeRequest",
+      "CodeChallenge"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "listIdentities",
+    "method": "GET",
+    "path": "/users/me/identities",
+    "sdkMethod": "listIdentities",
+    "models": [
+      "AccountIdentity"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "listIdentities"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "IdentityList"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "bindIdentity",
+    "method": "POST",
+    "path": "/users/me/identities",
+    "sdkMethod": "bindIdentity",
+    "models": [
+      "IdentityCredential",
+      "AccountMutationResult",
+      "AccountIdentity"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "bindIdentity"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "BindRequest",
+      "Identity"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "unbindIdentity",
+    "method": "DELETE",
+    "path": "/users/me/identities/{identity}",
+    "sdkMethod": "unbindIdentity",
+    "models": [
+      "AccountMutationResult"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "unbindIdentity"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "Void"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "replaceIdentity",
+    "method": "POST",
+    "path": "/users/me/identities/{identity}:replace",
+    "sdkMethod": "replaceIdentity",
+    "models": [
+      "IdentityCredential",
+      "AccountMutationResult",
+      "AccountIdentity"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "replaceIdentity"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": "IDENTITY_REPLACEMENT_NOT_CONFIGURED",
+    "wireModels": [
+      "CodeRequest",
+      "Identity"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "getCurrentSession",
+    "method": "GET",
+    "path": "/users/me/sessions/current",
+    "sdkMethod": "getCurrentSession",
+    "models": [
+      "CurrentSession"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "getCurrentSession"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": "SESSION_QUERY_NOT_CONFIGURED",
+    "wireModels": [
+      "CurrentSession"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "getMyProfile",
+    "method": "GET",
+    "path": "/users/me/profile",
+    "sdkMethod": "getMyProfile",
+    "models": [
+      "AccountProfile"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "getMyProfile"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": "PROFILE_ATTRIBUTES_NOT_CONFIGURED",
+    "wireModels": [
+      "Profile"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "enduser",
+    "operationId": "patchMyProfile",
+    "method": "PATCH",
+    "path": "/users/me/profile",
+    "sdkMethod": "patchMyProfile",
+    "models": [
+      "AccountProfile"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-flutter/test/protocol_test.dart",
+        "name": "patchMyProfile"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": "PROFILE_ATTRIBUTES_NOT_CONFIGURED",
+    "wireModels": [
+      "PatchProfileRequest",
+      "Profile"
+    ],
+    "sdkSourceFile": "sdks/accountkit-flutter/lib/src/api.dart",
+    "modelSourceFile": "sdks/accountkit-flutter/lib/src/models.dart"
+  },
+  {
+    "surface": "admin",
+    "operationId": "adminListUsers",
+    "method": "GET",
+    "path": "/users",
+    "sdkMethod": "listUsers",
+    "models": [
+      "AdminUserList"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-admin-ts/test/client.test.ts",
+        "name": "adminListUsers"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "AdminUserList"
+    ],
+    "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
+    "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
+  },
+  {
+    "surface": "admin",
+    "operationId": "adminGetUser",
+    "method": "GET",
+    "path": "/users/{user}",
+    "sdkMethod": "getUser",
+    "models": [
+      "AdminUserDetail"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-admin-ts/test/client.test.ts",
+        "name": "adminGetUser"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "AdminUserDetail"
+    ],
+    "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
+    "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
+  },
+  {
+    "surface": "admin",
+    "operationId": "adminDeleteUser",
+    "method": "DELETE",
+    "path": "/users/{user}",
+    "sdkMethod": "deleteUser",
+    "models": [
+      "AdminUser"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-admin-ts/test/client.test.ts",
+        "name": "adminDeleteUser"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "AdminUser"
+    ],
+    "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
+    "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
+  },
+  {
+    "surface": "admin",
+    "operationId": "adminFreezeUser",
+    "method": "POST",
+    "path": "/users/{user}:freeze",
+    "sdkMethod": "freezeUser",
+    "models": [
+      "FreezeRequest",
+      "AdminUser"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-admin-ts/test/client.test.ts",
+        "name": "adminFreezeUser"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "FreezeRequest",
+      "AdminUser"
+    ],
+    "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
+    "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
+  },
+  {
+    "surface": "admin",
+    "operationId": "adminUnfreezeUser",
+    "method": "POST",
+    "path": "/users/{user}:unfreeze",
+    "sdkMethod": "unfreezeUser",
+    "models": [
+      "UnfreezeRequest",
+      "AdminUser"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-admin-ts/test/client.test.ts",
+        "name": "adminUnfreezeUser"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "UnfreezeRequest",
+      "AdminUser"
+    ],
+    "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
+    "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
+  },
+  {
+    "surface": "admin",
+    "operationId": "adminUndeleteUser",
+    "method": "POST",
+    "path": "/users/{user}:undelete",
+    "sdkMethod": "undeleteUser",
+    "models": [
+      "AdminUser"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-admin-ts/test/client.test.ts",
+        "name": "adminUndeleteUser"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "AdminUser"
+    ],
+    "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
+    "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
+  },
+  {
+    "surface": "admin",
+    "operationId": "adminRevealIdentity",
+    "method": "GET",
+    "path": "/users/{user}/identities/{identity}:reveal",
+    "sdkMethod": "revealIdentity",
+    "models": [
+      "RevealIdentity"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-admin-ts/test/client.test.ts",
+        "name": "adminRevealIdentity"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "RevealIdentity"
+    ],
+    "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
+    "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
+  },
+  {
+    "surface": "admin",
+    "operationId": "adminListSessions",
+    "method": "GET",
+    "path": "/users/{user}/sessions",
+    "sdkMethod": "listSessions",
+    "models": [
+      "AdminSessionList"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-admin-ts/test/client.test.ts",
+        "name": "adminListSessions"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "AdminSessionList"
+    ],
+    "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
+    "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
+  },
+  {
+    "surface": "admin",
+    "operationId": "adminRevokeSession",
+    "method": "DELETE",
+    "path": "/users/{user}/sessions/{session}",
+    "sdkMethod": "revokeSession",
+    "models": [
+      "void"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-admin-ts/test/client.test.ts",
+        "name": "adminRevokeSession"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "Void"
+    ],
+    "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
+    "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
+  },
+  {
+    "surface": "admin",
+    "operationId": "adminRevokeAllSessions",
+    "method": "POST",
+    "path": "/users/{user}/sessions:revokeAll",
+    "sdkMethod": "revokeAllSessions",
+    "models": [
+      "RevokeAllResult"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-admin-ts/test/client.test.ts",
+        "name": "adminRevokeAllSessions"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": null,
+    "wireModels": [
+      "RevokeAllResult"
+    ],
+    "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
+    "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
+  },
+  {
+    "surface": "admin",
+    "operationId": "adminListAuditEvents",
+    "method": "GET",
+    "path": "/users/{user}/auditEvents",
+    "sdkMethod": "listAuditEvents",
+    "models": [
+      "AuditEventList"
+    ],
+    "tests": [
+      {
+        "file": "sdks/accountkit-admin-ts/test/client.test.ts",
+        "name": "adminListAuditEvents"
+      }
+    ],
+    "baseline": "v1.0.0",
+    "optionalCapability": "AUDIT_QUERY_NOT_CONFIGURED",
+    "wireModels": [
+      "AuditEventList"
+    ],
+    "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
+    "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
+  }
+]

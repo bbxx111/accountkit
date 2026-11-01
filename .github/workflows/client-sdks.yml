@@ -1,0 +1,120 @@
+name: client SDKs
+on:
+  # Keep SDK and service-contract changes covered; skip only planning/spec-only changes.
+  # Pull request path filters evaluate the complete PR diff, not just its latest commit.
+  pull_request:
+    paths-ignore: ['openspec/**', 'docs/superpowers/**']
+  push:
+    branches: [develop, main]
+    paths-ignore: ['openspec/**', 'docs/superpowers/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sdk-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+env:
+  PUB_HOSTED_URL: https://pub.flutter-io.cn
+  FLUTTER_STORAGE_BASE_URL: https://storage.flutter-io.cn
+jobs:
+  contracts:
+    name: SDK unit, real service, embedded policy and Git consumption
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: sdk_fixture
+          POSTGRES_PASSWORD: synthetic-only
+          POSTGRES_DB: sdk_fixture
+        ports: ['15439:5432']
+        options: --health-cmd "pg_isready -U sdk_fixture -d sdk_fixture" --health-interval 1s --health-timeout 5s --health-retries 30
+      redis:
+        image: redis:7-alpine
+        ports: ['16389:6379']
+        options: --health-cmd "redis-cli ping" --health-interval 1s --health-timeout 5s --health-retries 30
+    env:
+      SDK_FIXTURE_DATABASE_URL: postgres://sdk_fixture:synthetic-only@127.0.0.1:15439/sdk_fixture?sslmode=disable
+      SDK_FIXTURE_REDIS_ADDR: 127.0.0.1:16389
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - run: npm install --global pnpm@11.24.0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install exact Flutter SDK
+        run: |
+          git clone --depth 1 --branch 3.47.4 https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+      - name: Required SDK gate
+        run: bash scripts/verify-client-sdks.sh
+      - name: SDK contract evidence (independent of Go release gate)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-contracts
+          path: .test-output/
+          include-hidden-files: true
+          if-no-files-found: error
+  native:
+    name: Flutter Git consumer / ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: android
+          - os: macos-15
+            platform: ios
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - run: npm install --global pnpm@11.24.0
+      - name: Install exact Flutter SDK
+        shell: bash
+        run: |
+          git clone --depth 1 --branch 3.47.4 https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-java@v4
+        if: matrix.platform == 'android'
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Select exact Xcode for native plugins
+        if: matrix.platform == 'ios'
+        shell: bash
+        run: |
+          xcode_version=$(node -p "require('./sdks/tool-versions.json').xcode")
+          export DEVELOPER_DIR="/Applications/Xcode_${xcode_version}.app/Contents/Developer"
+          test -d "$DEVELOPER_DIR"
+          echo "DEVELOPER_DIR=$DEVELOPER_DIR" >> "$GITHUB_ENV"
+          xcodebuild -version
+          test "$(xcodebuild -version | head -n 1)" = "Xcode $xcode_version"
+      - name: Validate toolchain and platform consumer
+        shell: bash
+        run: |
+          mkdir -p .test-output/sdk-native
+          set -o pipefail
+          node scripts/check-sdk-toolchain.mjs | tee .test-output/sdk-native/toolchain.json
+          flutter doctor -v > .test-output/sdk-native/flutter-doctor.log
+          node scripts/verify-sdk-consumers.mjs --sdk flutter --platform '${{ matrix.platform }}' 2>&1 | tee .test-output/sdk-native/build.log
+      - name: Platform evidence (local fixed commit; remote tag not tested)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-native-${{ matrix.platform }}
+          path: .test-output/
+          include-hidden-files: true
+          if-no-files-found: error

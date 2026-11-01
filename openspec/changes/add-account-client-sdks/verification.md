@@ -71,3 +71,5 @@ Go 门禁采用三个本任务专用数据库，恢复源/目标实际不同且�
 PR #20 首轮 [SDK CI](https://github.com/bbxx111/accountkit/actions/runs/41260235990) 的三个 job 均在精确工具链预检失败，尚未进入原生编译。全新 Flutter checkout 首次执行 `--version --machine` 时会在 JSON 之前输出 SDK 下载/初始化进度，旧检查直接 JSON.parse 全部 stdout；本地预热工具链未触发此路径。
 
 新增回归先复现同样的 `Unexpected token '%'`（1 失败、2 通过），修复只提取行首 JSON 对象开始的完整后缀，精确版本比较不变；缺失/畸形 JSON、尾部垃圾及版本不匹配仍拒绝。修复后针对测试 3 通过，Linux 全部脚本测试 **24 通过、0 跳过**。限定规格/质量复核通过，无遗留问题。日志：`.test-output/sdk-ci-first-failure.log`、`sdk-toolchain-ci-red.log`、`sdk-ci-regression.log`。下一轮线上结果另行登记。
+
+第二轮 [SDK CI](https://github.com/bbxx111/accountkit/actions/runs/41260580846) 的完整 SDK 契约 job 通过。iOS 已通过 Git 安装/分析/行为测试，进入真实 Xcode 编译后失败：device_info_plus 13.3.0 引用的 `isiOSAppOnVision` 在 runner 默认 Xcode 16.4 SDK 中不存在。插件[明确要求 Xcode >=26.1.1](https://pub.dev/packages/device_info_plus/versions/13.3.0)，当前 macos-15-arm64 镜像已安装 26.1.1；因此 workflow 从工具版本清单显式设置 DEVELOPER_DIR 并核对 xcodebuild 版本，同时补充宿主文档。未修改 SDK 依赖或关闭插件。日志和 doctor 证据：`.test-output/sdk-ios-second-failure.log`、`sdk-ios-ci-evidence/`；实际原生结果等待下一轮。

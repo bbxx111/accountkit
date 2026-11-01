@@ -75,7 +75,7 @@ node scripts/verify-sdk-consumers.mjs --sdk flutter --platform android
 node scripts/verify-sdk-consumers.mjs --sdk flutter --platform ios
 ```
 
-`none` 只验证安装/静态/行为，不等于 Android 或 iOS 构建通过。Android 使用 debug APK，iOS 无签名构建须 macOS/Xcode。临时 Git 只监听 loopback，完成后清理本次创建的目录和进程。
+`none` 只验证安装/静态/行为，不等于 Android 或 iOS 构建通过。Android 使用 debug APK，iOS 无签名构建须 macOS 和 Xcode >=26.1.1；当前设备信息插件要求该工具链，CI 按 `sdk/tool-versions.json` 显式选择 Xcode，不能依赖 runner 默认版本。临时 Git 只监听 loopback，完成后清理本次创建的目录和进程。
 
 发布检查核对清单、tag 及 [服务兼容矩阵](../sdk/compatibility.json) 的验收状态，未验证服务组合会失败；它不创建 tag，也不代替原生平台与其他发布门禁。仅检查候选元数据可显式追加 `--metadata-only`，不能把该模式当作发布就绪：
 

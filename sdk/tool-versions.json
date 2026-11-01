@@ -7,5 +7,6 @@
   "vite": "6.4.1",
   "vitest": "3.2.4",
   "prettier": "3.6.2",
+  "xcode": "26.1.1",
   "serviceBaseline": "v1.0.0"
 }

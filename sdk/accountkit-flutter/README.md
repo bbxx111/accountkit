@@ -27,7 +27,7 @@ await controller.sendCode(CodePurpose.signIn, 'EMAIL', emailInput);
 await controller.submitCode(codeInput);
 ```
 
-`baseUrl` 不允许查询、fragment、userinfo、点段或编码路径逃逸。HTTP 仅在明确设置 `allowInsecureHttp: true` 后可用。默认平台存储/设备适配面向 Android/iOS；其他平台必须注入 TokenStore 与 DeviceProvider 并单独验证。本机测试 Flutter 3.47.4 / Dart 3.13.3；本包纯逻辑测试不代表原生 Android/iOS 构建已通过。Android 最低 API 23，设备插件要求 Java 17、Kotlin 2.2.0、AGP 8.12.1、Gradle 8.13；iOS 最低 13，遵循各插件的平台配置要求。
+`baseUrl` 不允许查询、fragment、userinfo、点段或编码路径逃逸。HTTP 仅在明确设置 `allowInsecureHttp: true` 后可用。默认平台存储/设备适配面向 Android/iOS；其他平台必须注入 TokenStore 与 DeviceProvider 并单独验证。本机测试 Flutter 3.47.4 / Dart 3.13.3；本包纯逻辑测试不代表原生 Android/iOS 构建已通过。Android 最低 API 23，设备插件要求 Java 17、Kotlin 2.2.0、AGP 8.12.1、Gradle 8.13；iOS 最低 13，构建工具要求 Xcode >=26.1.1（device_info_plus 13.3.0 的要求），遵循各插件的平台配置要求。
 
 `AccountApi` 是完整 24 操作与只读会话契约；`AccountClient` 独占 TokenStore、刷新和串行持久化。控制器只订阅该会话，初始化未完成不可当作登录成功。四态由服务 scope 决定：SignedOut、NeedsBinding、PendingDeletion、SignedIn；不解析 JWT。登录持久化失败抛 AccountStorageError，退出存储失败也可见。
 

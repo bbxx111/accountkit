@@ -88,6 +88,16 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Select exact Xcode for native plugins
+        if: matrix.platform == 'ios'
+        shell: bash
+        run: |
+          xcode_version=$(node -p "require('./sdk/tool-versions.json').xcode")
+          export DEVELOPER_DIR="/Applications/Xcode_${xcode_version}.app/Contents/Developer"
+          test -d "$DEVELOPER_DIR"
+          echo "DEVELOPER_DIR=$DEVELOPER_DIR" >> "$GITHUB_ENV"
+          xcodebuild -version
+          test "$(xcodebuild -version | head -n 1)" = "Xcode $xcode_version"
       - name: Validate toolchain and platform consumer
         shell: bash
         run: |

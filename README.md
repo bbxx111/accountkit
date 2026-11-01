@@ -1,5 +1,7 @@
 # accountkit
 
+客户端接入另提供 [Flutter 消费者 SDK](sdks/accountkit-flutter/README.md) 与 [TypeScript 管理 SDK](sdks/accountkit-admin-ts/README.md)，分别从 Git 固定 ref 的独立子目录安装。版本、职责边界和验证方法见 [客户端 SDK 指南](docs/client-sdks.md)。SDK 发布 tag 尚未创建；当前实现及验收状态见[变更验收记录](openspec/changes/add-account-client-sdks/verification.md)。Go 使用方无需安装 Flutter 或 Node。
+
 ### 用户头像
 
 基础资料包含 `display_name` 和 `avatar_url`，本人及管理端资源、Go 批量公开资料均返回头像；未设置时为空字符串。通过 `PATCH /users/me` 提交 `{"avatar_url":"https://cdn.example.com/avatar.png"}`，也可同时提交显示名，两字段原子更新。省略或 `null` 保持，空字符串清空；全部省略或 null 返回 `NO_FIELDS`。

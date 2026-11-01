@@ -8,7 +8,7 @@
 
 **Tech Stack:** Flutter/Dart、Dio、安全存储，TypeScript 5.8、Vite 6、pnpm 11.24.0，现有 Go accountsvc/PostgreSQL/Redis。
 
-**Spec:** [proposal](../../../openspec/changes/add-account-client-sdks/proposal.md)、[design](../../../openspec/changes/add-account-client-sdks/design.md)、[tasks](../../../openspec/changes/add-account-client-sdks/tasks.md) 及该变更三个 specs。需求和完成状态以 OpenSpec 为准，不在此重写需求。
+**Spec:** [proposal](../../../openspec/changes/archive/2026-11-01-add-account-client-sdks/proposal.md)、[design](../../../openspec/changes/archive/2026-11-01-add-account-client-sdks/design.md)、[tasks](../../../openspec/changes/archive/2026-11-01-add-account-client-sdks/tasks.md) 及该变更三个 specs。需求和完成状态以 OpenSpec 为准，不在此重写需求。
 
 ## Global Constraints
 
@@ -93,7 +93,7 @@
 
 ## Task 7: 汇总验收（OpenSpec 8.4）
 
-**Files:** `openspec/changes/add-account-client-sdks/verification.md`、`tasks.md`。
+**Files:** `openspec/changes/archive/2026-11-01-add-account-client-sdks/verification.md`、`tasks.md`。
 
 - [ ] 独立审查实现与全部场景，修复实质问题后重跑受影响验证。
 - [ ] `openspec validate --all --strict`、`git diff --check`，更新各任务实测状态；日志放 `.test-output/`。

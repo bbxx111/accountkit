@@ -1,6 +1,6 @@
 # accountkit
 
-客户端接入另提供 [Flutter 消费者 SDK](sdks/accountkit-flutter/README.md) 与 [TypeScript 管理 SDK](sdks/accountkit-admin-ts/README.md)，分别从 Git 固定 ref 的独立子目录安装。版本、职责边界和验证方法见 [客户端 SDK 指南](docs/client-sdks.md)。SDK 发布 tag 尚未创建；当前实现及验收状态见[变更验收记录](openspec/changes/add-account-client-sdks/verification.md)。Go 使用方无需安装 Flutter 或 Node。
+客户端接入另提供 [Flutter 消费者 SDK](sdks/accountkit-flutter/README.md) 与 [TypeScript 管理 SDK](sdks/accountkit-admin-ts/README.md)，分别从 Git 固定 ref 的独立子目录安装。版本、职责边界和验证方法见 [客户端 SDK 指南](docs/client-sdks.md)。两包 `1.0.0` 为发布候选，见[发布说明](docs/releases/client-sdks-v1.0.0.md)与[发布验收记录](openspec/changes/prepare-client-sdks-v1-release/verification.md)。Go 使用方无需安装 Flutter 或 Node。
 
 ### 用户头像
 

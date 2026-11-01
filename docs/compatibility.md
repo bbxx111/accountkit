@@ -4,7 +4,7 @@
 
 ## v1.0.0 调用者须知
 
-客户端 SDK 有独立版本轴：`accountkit_flutter` 与 `@accountkit/admin-client` 首版清单为 `1.0.0`，目标 HTTP 基线为服务 `v1.0.0`，不据版本号推断已经完成集成验收。固定 Git 引用、源码分发约束及分层验收见 [SDK 指南](client-sdks.md)，本次实际证据统一保存在[变更记录](../openspec/changes/add-account-client-sdks/verification.md)。本变更不改变下列 Go 或 HTTP 契约，也不迁移下游产品。
+客户端 SDK 有独立版本轴：`accountkit_flutter` 与 `@accountkit/admin-client` 首版清单为 `1.0.0`，目标 HTTP 基线为服务 `v1.0.0`，不据版本号推断已经完成集成验收。固定 Git 引用、源码分发约束及分层验收见 [SDK 指南](client-sdks.md)，本次实际证据统一保存在[变更记录](../openspec/changes/archive/2026-11-01-add-account-client-sdks/verification.md)。本变更不改变下列 Go 或 HTTP 契约，也不迁移下游产品。
 
 下列开发期符号在 v1.0.0 中移除或调整，旧调用需要按右列迁移。前六项只替换名称，其他项涉及公开边界或签名变化；不保留旧别名。
 

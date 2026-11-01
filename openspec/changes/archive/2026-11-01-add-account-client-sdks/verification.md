@@ -1,6 +1,8 @@
 ## Scope and Baseline
 
-本记录汇总 2026-11-01 本轮实施证据，替代实施期间的临时状态。变更为 `add-account-client-sdks`，分支 `feat/add-account-client-sdks`，基线 HEAD 为 `6e17c77ba1c45a0ccedbf449cfae6b4e69654476`，服务基线为 `v1.0.0`。按[实现计划](../../../docs/superpowers/plans/2026-11-01-add-account-client-sdks.md)实施与独立复核。
+历史时点说明：正文各阶段的“未归档/未合并/未发布”描述保留当时状态。PR #20 后续已合入 develop；2026-11-01 按发布授权同步三个主规格并归档本功能变更。后续发布状态以[SDK 发布验收记录](../../prepare-client-sdks-v1-release/verification.md)为准。
+
+本记录汇总 2026-11-01 本轮实施证据，替代实施期间的临时状态。变更为 `add-account-client-sdks`，分支 `feat/add-account-client-sdks`，基线 HEAD 为 `6e17c77ba1c45a0ccedbf449cfae6b4e69654476`，服务基线为 `v1.0.0`。按[实现计划](../../../../docs/superpowers/plans/2026-11-01-add-account-client-sdks.md)实施与独立复核。
 
 范围仅 accountkit：新增两个 SDK、测试宿主、覆盖与消费检查、SDK CI 和文档。未修改 ai-food、生产 Go 业务契约、OpenAPI、迁移或生成代码；既有 Go workflow 不变。验收完成后，用户单独授权提交、推送任务分支并创建 [PR #20](https://github.com/bbxx111/accountkit/pull/20)，目标为 develop。没有创建、移动或推送发布 tag，也未归档本变更。验收使用的测试 Git 提交仅存在于一次性独立快照仓库。
 

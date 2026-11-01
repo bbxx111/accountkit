@@ -11,4 +11,4 @@
 
 ## 3. 发布补记
 
-- [ ] 3.1 更新当前文档为已发布，记录候选、CI、tag、Release、消费证据与未验证边界；补记以 merge commit 集成 develop/main，tag 不移动。
+- [x] 3.1 更新当前文档为已发布，记录候选、CI、tag、Release、消费证据与未验证边界；补记以 merge commit 集成 develop/main，tag 不移动。

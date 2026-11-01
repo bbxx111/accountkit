@@ -51,7 +51,7 @@
 ## 7. Isolated Git Consumers and CI
 
 - [x] 7.1 添加仓库外临时消费者生成与固定 Git 提交快照入口，不修改工作分支或创建正式 tag；验证两消费者只使用 Git URL＋SHA＋子目录，无 path/workspace override，临时 Git 服务仅监听本机并可清理。
-- [ ] 7.2 实现 Flutter 独立消费验证：冻结依赖安装、包入口导入、分析/行为测试以及 Android debug 和 iOS 无签名构建；验证平台构建分别在适用 runner 执行并与纯逻辑测试分开报告。
+- [x] 7.2 实现 Flutter 独立消费验证：冻结依赖安装、包入口导入、分析/行为测试以及 Android debug 和 iOS 无签名构建；验证平台构建分别在适用 runner 执行并与纯逻辑测试分开报告。
 - [x] 7.3 实现 TS/Vite 独立消费验证：pnpm Git ref/path 安装、锁文件冻结、类型检查/测试/生产构建；验证 SDK 原始 TS 被消费者转换且不需要 dist、prepare/postinstall 或根目录配置。
 - [x] 7.4 添加 scripts/verify-client-sdks.sh 与 SDK workflow，固定工具版本并触发相关协议变更检查；验证完整运行包含覆盖检查、两包检查、真实服务和隔离消费，必需依赖缺失不会成功退出。
 - [x] 7.5 验证既有 Go CI、构建、数据库、race 与恢复门禁继续独立运行；执行仓库规定检查并记录命令和结果，确认 Go 使用方不被要求安装 SDK 工具链。

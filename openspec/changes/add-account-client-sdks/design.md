@@ -188,6 +188,7 @@ Flutter 开发使用独立 pubspec/锁文件；管理包使用独立 package.jso
 - 管理 API 错误的默认 `Error.message` 与 stack 使用固定安全描述；原服务端 message 通过只读、不可枚举的 `serverMessage` 显式读取，避免 Node 对象检查绕过 `toString()` 而打印敏感正文。HTTP status、reason、等待值和 request ID 仍可直接读取。
 - Flutter 注入 Dio 时仅借用其 `httpClientAdapter`，SDK 使用独立 Dio 配置、headers 与拦截器，避免匿名账号端点继承调用方默认 Bearer；不继承其 BaseOptions、interceptors 或 transformer。借用 adapter 的生命周期仍由调用方负责，SDK 释放不关闭它。请求级自定义应通过 SDK 的公开 options/provider 入口完成。
 - 本机实际为 Flutter 3.47.4 / Dart 3.13.3、Node 24.21.0。采用实际补丁组合完成本机验证并记录精确依赖；设计初始 Flutter 3.47.1 / Dart 3.13.1 组合不据此宣称已经验证。
+- PR 原生 CI 确认锁定的 device_info_plus 13.3.0 需要 Xcode >=26.1.1；macos-15 runner 默认 Xcode 16.4 无法编译其系统 API。iOS CI 从工具清单显式选择并校验 Xcode 26.1.1，真实无签名构建已通过；构建成功不等于真机运行或签名发布验收。
 
 - 手工模型与服务迭代可能漂移 → operationId 覆盖登记、关键结构解码测试及真实服务门禁共同约束；不依赖单一快照测试。
 - refresh 旋转和持久化存在竞争 → 单一所有者、epoch/revision、串行存储及可控时钟/延迟写测试；失败必须可观察。

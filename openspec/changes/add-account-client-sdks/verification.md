@@ -4,7 +4,7 @@
 
 范围仅 accountkit：新增两个 SDK、测试宿主、覆盖与消费检查、SDK CI 和文档。未修改 ai-food、生产 Go 业务契约、OpenAPI、迁移或生成代码；既有 Go workflow 不变。验收完成后，用户单独授权提交、推送任务分支并创建 [PR #20](https://github.com/bbxx111/accountkit/pull/20)，目标为 develop。没有创建、移动或推送发布 tag，也未归档本变更。验收使用的测试 Git 提交仅存在于一次性独立快照仓库。
 
-实际工具：Flutter **3.47.4**、Dart **3.13.3**、Node **24.21.0**、pnpm **11.24.0**、TypeScript **5.8.3**、Vite **6.4.1**、Vitest **3.2.4**、Prettier **3.6.2**、Go **1.26.5**、sqlc **1.31.1**、PostgreSQL **17**（恢复客户端 **17.11**）、Redis **7**、OpenSpec CLI **1.13.0**。精确 SDK 清单见 `sdk/tool-versions.json`。初始设计提及的 Flutter 3.47.1 / Dart 3.13.1 未实测。
+实际工具：Flutter **3.47.4**、Dart **3.13.3**、Node **24.21.0**、pnpm **11.24.0**、TypeScript **5.8.3**、Vite **6.4.1**、Vitest **3.2.4**、Prettier **3.6.2**、Xcode **26.1.1**、Go **1.26.5**、sqlc **1.31.1**、PostgreSQL **17**（恢复客户端 **17.11**）、Redis **7**、OpenSpec CLI **1.13.0**。精确 SDK 清单见 `sdk/tool-versions.json`。初始设计提及的 Flutter 3.47.1 / Dart 3.13.1 未实测。
 
 ## Executed Checks
 
@@ -13,13 +13,14 @@
 | 层次 | 命令 / 实际结果 | 证据文件（相对 `.test-output/`） |
 | --- | --- | --- |
 | HTTP 覆盖 | `node scripts/check-sdk-coverage.mjs`：消费端 24、管理端 11 操作与 OpenAPI 一致；方法、模型及测试源关联检查通过 | `sdk-coverage-unit.log`、`sdk-scripts-linux-final.log` |
-| 验证脚本 | Linux Node 24.21.0 执行 `node --test scripts/*sdk*.test.mjs`：22 通过、0 失败、0 跳过，含真实 Git 克隆及 TERM/KILL 清理 | `sdk-scripts-linux-final.log` |
+| 验证脚本 | Linux Node 24.21.0 执行 `node --test scripts/*sdk*.test.mjs`：最新 24 通过、0 失败、0 跳过，含首次启动输出、真实 Git 克隆及 TERM/KILL 清理 | `sdk-ci-regression.log` |
 | TypeScript 包 | 独立冻结安装、`pnpm format:check`、`pnpm typecheck`、`pnpm test`：55 项通过 | `admin-sdk-report.md` |
 | Flutter 包 | `flutter pub get --enforce-lockfile`、format、`flutter analyze`、`flutter test`：73 项通过，无分析问题 | `flutter-sdk-report.md` |
 | 测试服务 | fixture 单元、vet 与 `go test -count=1 -tags integration ./sdk/testsupport/fixture` 通过；accountsvc 启动/迁移/SMTP 烟测通过；必需依赖缺失明确失败 | `service-fixture-report.md` |
 | 管理 SDK 真实契约 | `pnpm test:integration`：1 个真实场景通过，公开 SDK 实际调用全部 11 操作；覆盖角色 403、无效凭据 401、生命周期、分页/filter、reveal、会话和审计 nullable/flow_id | `admin-integration-report.md`、`admin-sdk-report.md` |
 | Flutter 真实契约 | `flutter test test/integration/service_contract.dart`：3 个场景通过；另执行 `policy_seed.dart` 与 `policy_contract.dart` 各 1 个场景通过 | `flutter-integration-report.md` |
 | Flutter Git + Android | `node scripts/verify-sdk-consumers.mjs --sdk flutter --platform android`：仓库外固定 SHA + 子目录安装、冻结安装、analyze、公开入口行为测试及 Android debug APK 构建全部通过 | `sdk-flutter-android-consumer.log` |
+| Flutter Git + iOS | macOS 15 / Xcode 26.1.1 执行 `node scripts/verify-sdk-consumers.mjs --sdk flutter --platform ios`：Git 安装、冻结安装、analyze、行为测试和 `flutter build ios --no-codesign` 全部通过，实际生成 Runner.app | `sdk-pr-ci-success/sdk-native-ios/`、`sdk-ios-success.log` |
 | TS Git + Vite | 完整入口内 `node scripts/verify-sdk-consumers.mjs --sdk all --platform none`：仓库外 Git SHA + path 安装、冻结安装、类型/行为检查与 Vite 生产构建通过；原始 TS 直接消费，无 dist/安装构建脚本 | `sdk-full-gate.log` |
 | 完整 SDK 入口 | 隔离 Linux 源码副本中 `bash scripts/verify-client-sdks.sh` 退出 0：22 脚本测试、35 操作覆盖、TS 55 项、Flutter 73 项、真实 accountsvc/嵌入式策略和两包固定 Git 消费全部通过 | `sdk-full-gate.log`、`sdk-ci/` |
 | 缺依赖失败 | 同镜像不提供数据库配置时，完整入口退出 1，明确提示 required/cannot skip；没有成功跳过 | `sdk-missing-deps.log` |
@@ -54,17 +55,17 @@ Go 门禁采用三个本任务专用数据库，恢复源/目标实际不同且�
 
 实施确认已记入 design.md：沿用根仓库保留权利许可；不扩展既有 filter 语法；错误诊断安全；Flutter 注入 Dio 仅借用 adapter 并隔离配置，调用方负责借用 adapter 生命周期；工具补丁版本按实测记录。
 
-## Task Mapping and Remaining Work
+## Task Mapping and Boundaries
 
 - 1.x：独立包、锁文件、实际工具和 35 操作覆盖；2.x/5.x：公开协议与全部 HTTP 操作。
 - 3.x/4.x：单一会话所有者、存储/刷新时序、四态/补全、验证码、设备、业务请求重放、取消及 testing.dart；包内回归与真实场景共同验证。
 - 6.x：真实 accountsvc、嵌入式策略变化、受控 credential、管理权限/审计。
 - 7.1/7.3：独立 Git 消费；7.4：Linux 完整 SDK 门禁及缺依赖失败；7.5：独立 Go 全量门禁；8.1–8.4：文档、候选版本检查、远端固定 ref 入口及本记录与严格校验。
-- **7.2 仍未完成**：Android 实际构建已通过；iOS 无签名构建入口和 macOS workflow 已实现，本机 Windows 无 macOS/Xcode，尚未执行。不能以纯逻辑或 Android 替代。workflow 的 Linux Android/macOS iOS runner 本身尚未在线运行。
+- **7.2 已完成**：Windows 本地 Android 构建通过；PR CI 又分别在 Linux 完成 Android debug APK、在 macOS / Xcode 26.1.1 完成 iOS 无签名构建。两个原生 job 均从独立固定 Git SHA 消费 SDK，不以纯逻辑测试替代原生编译。
 
-最终任务进度 **40/41**，仅 7.2 保持未勾选。已停止本任务宿主 fixture，测试容器与一次性数据库在验收后清理；原始日志和恢复材料保留在 `.test-output/`。
+最终任务进度 **41/41**，OpenSpec apply 状态为 `all_done`；未执行归档或合并。已停止本任务宿主 fixture，测试容器与一次性数据库在验收后清理；原始日志和恢复材料保留在 `.test-output/`。
 
-正式 SDK tag 尚未发布，真实远程 Git 固定 tag 消费待发布后单独执行。参数校验、临时 Git fixture 和入口已有测试，任务 8.3 不表示远端已成功。GitHub Actions 完整通过、iOS 原生构建、真实第三方平台授权仍待验证；兼容矩阵 verified 仅表示本记录列出的真实服务协议组合，不代表所有平台、分发和发布门禁均已满足。
+正式 SDK tag 尚未发布，真实远程 Git 固定 tag 消费待发布后单独执行。参数校验、临时 Git fixture 和入口已有测试，任务 8.3 不表示远端已成功。真实第三方平台授权、iOS 真机运行和签名发布未验证；无签名构建不代表这些行为已通过。兼容矩阵 verified 表示本记录列出的真实服务协议组合，不代表发布动作已完成。
 
 ## Pull Request CI Follow-up
 
@@ -73,3 +74,7 @@ PR #20 首轮 [SDK CI](https://github.com/bbxx111/accountkit/actions/runs/412602
 新增回归先复现同样的 `Unexpected token '%'`（1 失败、2 通过），修复只提取行首 JSON 对象开始的完整后缀，精确版本比较不变；缺失/畸形 JSON、尾部垃圾及版本不匹配仍拒绝。修复后针对测试 3 通过，Linux 全部脚本测试 **24 通过、0 跳过**。限定规格/质量复核通过，无遗留问题。日志：`.test-output/sdk-ci-first-failure.log`、`sdk-toolchain-ci-red.log`、`sdk-ci-regression.log`。下一轮线上结果另行登记。
 
 第二轮 [SDK CI](https://github.com/bbxx111/accountkit/actions/runs/41260580846) 的完整 SDK 契约 job 通过。iOS 已通过 Git 安装/分析/行为测试，进入真实 Xcode 编译后失败：device_info_plus 13.3.0 引用的 `isiOSAppOnVision` 在 runner 默认 Xcode 16.4 SDK 中不存在。插件[明确要求 Xcode >=26.1.1](https://pub.dev/packages/device_info_plus/versions/13.3.0)，当前 macos-15-arm64 镜像已安装 26.1.1；因此 workflow 从工具版本清单显式设置 DEVELOPER_DIR 并核对 xcodebuild 版本，同时补充宿主文档。未修改 SDK 依赖或关闭插件。日志和 doctor 证据：`.test-output/sdk-ios-second-failure.log`、`sdk-ios-ci-evidence/`；实际原生结果等待下一轮。
+
+第三轮 [SDK CI](https://github.com/bbxx111/accountkit/actions/runs/41261078235) 在提交 `77365dcd613d17b0f79aaaf4b47d65a774585aab` 上三个 job 全部成功，覆盖完整真实契约与两个原生平台。iOS 日志确认 Xcode 26.1.1，生成 `build/ios/iphoneos/Runner.app`（14.3MB）；Android 生成 `app-debug.apk`。临时 Git 快照：iOS `f58539d0845382a55800f4e3c3595610224e8703`，Android `354902dd715945b675495a80e1e5d0a333a7c0af`，两包契约消费者 `c15f8ecb21a87ff2f5598026bb4ea3bdfb2bdb0e`。完整 artifact 已下载到 `.test-output/sdk-pr-ci-success/`，iOS 原始 job 日志为 `sdk-ios-success.log`。前两轮故障及修复不再是未解决项。
+
+同提交的 [Go CI](https://github.com/bbxx111/accountkit/actions/runs/41261078318) 全部成功，包含 sqlc 一致性、完整包/race/真实数据库/PG17 恢复门禁，以及 accountsvc 的真实依赖和进程信号验证。原始 job 日志保留在 `.test-output/sdk-pr-go-ci.log`；上文本地完整 Go 门禁证据亦保留。最终验收补录仅修改 OpenSpec 的 design/tasks/verification，不改变已验证实现；记录提交后 SDK workflow 的重跑结果可在 PR 检查中查看。

@@ -11,3 +11,15 @@ test('requires exact installed versions', () => {
   assert.throws(() => validateToolchain(versions,{...outputs,flutter:'{}'}), /flutter/);
   assert.throws(() => validateToolchain(versions,{...outputs,flutter:JSON.stringify({frameworkVersion:'3.47.4',dartSdkVersion:'3.13.2'})}), /dart/);
 });
+
+test('accepts Flutter first-run bootstrap output before machine JSON', () => {
+  const bootstrap = '  % Total    % Received % Xferd\r\nDownloading Dart SDK...\r\nBuilding flutter tool...\r\n';
+  assert.deepEqual(validateToolchain(versions, {...outputs, flutter:bootstrap + outputs.flutter}), versions);
+  assert.throws(() => validateToolchain(versions, {...outputs, flutter:bootstrap + JSON.stringify({frameworkVersion:'3.47.3',dartSdkVersion:'3.13.3'})}), /flutter.*3\.47\.4/);
+});
+
+test('bootstrap output cannot substitute for complete version JSON', () => {
+  for (const flutter of ['Building flutter tool...', 'Downloading...\n{"frameworkVersion":', 'Downloading...\n{}', outputs.flutter + '\nfailed after version']) {
+    assert.throws(() => validateToolchain(versions, {...outputs, flutter}));
+  }
+});

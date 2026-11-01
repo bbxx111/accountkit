@@ -3,7 +3,11 @@ import {execFileSync} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
 
 export function validateToolchain(versions, outputs) {
-  const flutter = JSON.parse(outputs.flutter);
+  // A fresh Flutter checkout prints SDK/bootstrap progress before --machine JSON.
+  // Parse the complete JSON suffix; missing, malformed or trailing output still fails.
+  const jsonStart = outputs.flutter.search(/^\s*\{/m);
+  if (jsonStart < 0) throw new Error('Flutter machine version JSON missing; SDK checks cannot skip');
+  const flutter = JSON.parse(outputs.flutter.slice(jsonStart));
   const actual = {node:outputs.node.trim().replace(/^v/,''),pnpm:outputs.pnpm.trim(),flutter:flutter.frameworkVersion,dart:flutter.dartSdkVersion};
   for (const name of ['node','pnpm','flutter','dart']) {
     if (actual[name] !== versions[name]) throw new Error(`${name}: expected ${versions[name]}, got ${actual[name] ?? 'missing'}; SDK checks cannot skip`);

@@ -2,7 +2,7 @@
 
 本记录汇总 2026-11-01 本轮实施证据，替代实施期间的临时状态。变更为 `add-account-client-sdks`，分支 `feat/add-account-client-sdks`，基线 HEAD 为 `6e17c77ba1c45a0ccedbf449cfae6b4e69654476`，服务基线为 `v1.0.0`。按[实现计划](../../../docs/superpowers/plans/2026-11-01-add-account-client-sdks.md)实施与独立复核。
 
-范围仅 accountkit：新增两个 SDK、测试宿主、覆盖与消费检查、SDK CI 和文档。未修改 ai-food、生产 Go 业务契约、OpenAPI、迁移或生成代码；既有 Go workflow 不变。验收完成后，用户单独授权提交当前分支；未推送远端，没有创建、移动或推送发布 tag，也未归档本变更。验收使用的测试 Git 提交仅存在于一次性独立快照仓库。
+范围仅 accountkit：新增两个 SDK、测试宿主、覆盖与消费检查、SDK CI 和文档。未修改 ai-food、生产 Go 业务契约、OpenAPI、迁移或生成代码；既有 Go workflow 不变。验收完成后，用户单独授权提交、推送任务分支并创建 [PR #20](https://github.com/bbxx111/accountkit/pull/20)，目标为 develop。没有创建、移动或推送发布 tag，也未归档本变更。验收使用的测试 Git 提交仅存在于一次性独立快照仓库。
 
 实际工具：Flutter **3.47.4**、Dart **3.13.3**、Node **24.21.0**、pnpm **11.24.0**、TypeScript **5.8.3**、Vite **6.4.1**、Vitest **3.2.4**、Prettier **3.6.2**、Go **1.26.5**、sqlc **1.31.1**、PostgreSQL **17**（恢复客户端 **17.11**）、Redis **7**、OpenSpec CLI **1.13.0**。精确 SDK 清单见 `sdk/tool-versions.json`。初始设计提及的 Flutter 3.47.1 / Dart 3.13.1 未实测。
 
@@ -64,4 +64,10 @@ Go 门禁采用三个本任务专用数据库，恢复源/目标实际不同且�
 
 最终任务进度 **40/41**，仅 7.2 保持未勾选。已停止本任务宿主 fixture，测试容器与一次性数据库在验收后清理；原始日志和恢复材料保留在 `.test-output/`。
 
-正式 SDK tag 尚未发布，真实远程 Git 固定 tag 消费待发布后单独执行。参数校验、临时 Git fixture 和入口已有测试，任务 8.3 不表示远端已成功。GitHub Actions 线上运行、iOS 原生构建、真实第三方平台授权均未验证；兼容矩阵 verified 仅表示本记录列出的真实服务协议组合，不代表所有平台、分发和发布门禁均已满足。
+正式 SDK tag 尚未发布，真实远程 Git 固定 tag 消费待发布后单独执行。参数校验、临时 Git fixture 和入口已有测试，任务 8.3 不表示远端已成功。GitHub Actions 完整通过、iOS 原生构建、真实第三方平台授权仍待验证；兼容矩阵 verified 仅表示本记录列出的真实服务协议组合，不代表所有平台、分发和发布门禁均已满足。
+
+## Pull Request CI Follow-up
+
+PR #20 首轮 [SDK CI](https://github.com/bbxx111/accountkit/actions/runs/41260235990) 的三个 job 均在精确工具链预检失败，尚未进入原生编译。全新 Flutter checkout 首次执行 `--version --machine` 时会在 JSON 之前输出 SDK 下载/初始化进度，旧检查直接 JSON.parse 全部 stdout；本地预热工具链未触发此路径。
+
+新增回归先复现同样的 `Unexpected token '%'`（1 失败、2 通过），修复只提取行首 JSON 对象开始的完整后缀，精确版本比较不变；缺失/畸形 JSON、尾部垃圾及版本不匹配仍拒绝。修复后针对测试 3 通过，Linux 全部脚本测试 **24 通过、0 跳过**。限定规格/质量复核通过，无遗留问题。日志：`.test-output/sdk-ci-first-failure.log`、`sdk-toolchain-ci-red.log`、`sdk-ci-regression.log`。下一轮线上结果另行登记。

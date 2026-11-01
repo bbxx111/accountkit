@@ -38,9 +38,11 @@
 
 ## Published Documentation
 
-已完成当前文档的已发布状态补记，正式 tag 保留原候选文档不移动。补记将通过独立 merge commit 合入 develop/main；此后的分支 HEAD 与已发布 tag SHA 分开追溯，不把候选 CI 当作补记提交的 CI。
+已完成当前文档的已发布状态补记，正式 tag 保留原候选文档不移动。补记提交 ecc3c1c 通过 [PR #23](https://github.com/bbxx111/accountkit/pull/23) 以 5ba535dbf135d3a4954e24af3e10f58c61be338a 合入 develop，再通过 [PR #24](https://github.com/bbxx111/accountkit/pull/24) 以 e56a62a4791ae875ffd85cec9d66c88054f09209 合入 main，均保留 merge commit。此后的分支 HEAD 与已发布 tag SHA 分开追溯，不把候选 CI 当作补记提交的 CI。两个 Release 正文也使用同一份已发布状态说明补记。
 
 补记 OpenSpec strict 45 项、两个候选元数据及差异检查通过，独立证据与文档审查为 Approve，无遗留问题；仅 8 个 Markdown 文件变化，不重复运行源码功能测试。
+
+实际集成完成后任务更新为 6/6；本次结项只补充 OpenSpec 任务状态及上述已发生的合并证据。发布准备变更不自动归档，功能变更已归档。发布后的文档 CI 与发布候选 CI 分开记录；当前发布结论依据精确 tag 候选的成功 CI 和真实远端消费。
 
 ## Boundaries
 

@@ -4,13 +4,13 @@
     "sdkVersion": "1.0.0",
     "serviceVersion": "v1.0.0",
     "verification": "verified",
-    "evidence": "openspec/changes/add-account-client-sdks/verification.md"
+    "evidence": "openspec/changes/archive/2026-11-01-add-account-client-sdks/verification.md"
   },
   {
     "sdk": "admin-ts",
     "sdkVersion": "1.0.0",
     "serviceVersion": "v1.0.0",
     "verification": "verified",
-    "evidence": "openspec/changes/add-account-client-sdks/verification.md"
+    "evidence": "openspec/changes/archive/2026-11-01-add-account-client-sdks/verification.md"
   }
 ]

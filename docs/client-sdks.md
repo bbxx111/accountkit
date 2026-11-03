@@ -7,7 +7,7 @@ Go 库可直接嵌入宿主，accountsvc 是可选独立服务；两个客户端
 | `accountkit_flutter` | `lib/accountkit_flutter.dart` | `/v1` | `v1.0.0` |
 | `@accountkit/admin-client` | `src/index.ts` | `/admin/v1` | `v1.0.0` |
 
-两包首版均为 `1.0.0`（已发布），发布版本独立递增。发布范围见[发布说明](releases/client-sdks-v1.0.0.md)，候选 CI 和远端消费结果见[发布验收记录](../openspec/changes/prepare-client-sdks-v1-release/verification.md)。实际 SDK 单元、真实服务、Git 消费和平台实现结果另见[功能验收记录](../openspec/changes/archive/2026-11-01-add-account-client-sdks/verification.md)。
+两包首版均为 `1.0.0`（已发布），发布版本独立递增。发布范围见[发布说明](releases/client-sdks-v1.0.0.md)，候选 CI 和远端消费结果见[发布验收记录](../openspec/changes/archive/2026-11-04-prepare-client-sdks-v1-release/verification.md)。实际 SDK 单元、真实服务、Git 消费和平台实现结果另见[功能验收记录](../openspec/changes/archive/2026-11-01-add-account-client-sdks/verification.md)。
 
 ## 固定 Git 安装
 

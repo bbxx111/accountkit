@@ -1,6 +1,6 @@
 ## Scope and Baseline
 
-历史时点说明：正文各阶段的“未归档/未合并/未发布”描述保留当时状态。PR #20 后续已合入 develop；2026-11-01 按发布授权同步三个主规格并归档本功能变更。后续发布状态以[SDK 发布验收记录](../../prepare-client-sdks-v1-release/verification.md)为准。
+历史时点说明：正文各阶段的“未归档/未合并/未发布”描述保留当时状态。PR #20 后续已合入 develop；2026-11-01 按发布授权同步三个主规格并归档本功能变更。后续发布状态以[SDK 发布验收记录](../2026-11-04-prepare-client-sdks-v1-release/verification.md)为准。
 
 本记录汇总 2026-11-01 本轮实施证据，替代实施期间的临时状态。变更为 `add-account-client-sdks`，分支 `feat/add-account-client-sdks`，基线 HEAD 为 `6e17c77ba1c45a0ccedbf449cfae6b4e69654476`，服务基线为 `v1.0.0`。按[实现计划](../../../../docs/superpowers/plans/2026-11-01-add-account-client-sdks.md)实施与独立复核。
 

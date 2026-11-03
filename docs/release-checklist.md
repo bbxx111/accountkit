@@ -4,15 +4,15 @@
 
 ## 当前状态
 
-当前正式版本为 v1.0.0（已发布），见[发布说明](releases/v1.0.0.md)和[发布准备](../openspec/changes/prepare-v1-0-0-release/proposal.md)。开发期版本的说明与证据索引见 [开发期历史](releases/pre-1.0-history.md)。
+当前正式版本为 v1.0.0（已发布），见[发布说明](releases/v1.0.0.md)和[发布准备](../openspec/changes/archive/2026-11-04-prepare-v1-0-0-release/proposal.md)。开发期版本的说明与证据索引见 [开发期历史](releases/pre-1.0-history.md)。
 
-客户端 SDK 独立版本化：Flutter 与管理 TypeScript 的 1.0.0 已发布，见[SDK 发布说明](releases/client-sdks-v1.0.0.md)与[发布验收记录](../openspec/changes/prepare-client-sdks-v1-release/verification.md)。SDK 发布使用各自 tag，不变更 Go v1.0.0；候选同时运行 Go/SDK CI，发布后分别验证真实 Git 子目录消费，不套用下方 Go module 的 go get 消费命令。
+客户端 SDK 独立版本化：Flutter 与管理 TypeScript 的 1.0.0 已发布，见[SDK 发布说明](releases/client-sdks-v1.0.0.md)与[发布验收记录](../openspec/changes/archive/2026-11-04-prepare-client-sdks-v1-release/verification.md)。SDK 发布使用各自 tag，不变更 Go v1.0.0；候选同时运行 Go/SDK CI，发布后分别验证真实 Git 子目录消费，不套用下方 Go module 的 go get 消费命令。
 
 ### v1.0.0 专属门禁
 
-本次发布、远端消费及旧版本清理已完成；精确对象和门禁证据见[验收记录](../openspec/changes/prepare-v1-0-0-release/verification.md)。下方通用清单保留为未来发布模板，不代表 v1.0.0 仍未完成。
+本次发布、远端消费及旧版本清理已完成；精确对象和门禁证据见[验收记录](../openspec/changes/archive/2026-11-04-prepare-v1-0-0-release/verification.md)。下方通用清单保留为未来发布模板，不代表 v1.0.0 仍未完成。
 
-用户于 2026-10-31 明确指定先发布 v1.0.0，发布及远端消费完成后再删除九个 v0 tag 和现存对应 Release。本次仅调整下方“发布前远端不存在 v0 tag”的执行顺序；同名正式 tag 不存在、最终候选 CI、完整验证及不移动 tag 的要求保持。完成状态与精确 SHA/CI/消费证据统一维护在[本次验收记录](../openspec/changes/prepare-v1-0-0-release/verification.md)，任务进度见[任务清单](../openspec/changes/prepare-v1-0-0-release/tasks.md)。
+用户于 2026-10-31 明确指定先发布 v1.0.0，发布及远端消费完成后再删除九个 v0 tag 和现存对应 Release。本次仅调整下方“发布前远端不存在 v0 tag”的执行顺序；同名正式 tag 不存在、最终候选 CI、完整验证及不移动 tag 的要求保持。完成状态与精确 SHA/CI/消费证据统一维护在[本次验收记录](../openspec/changes/archive/2026-11-04-prepare-v1-0-0-release/verification.md)，任务进度见[任务清单](../openspec/changes/archive/2026-11-04-prepare-v1-0-0-release/tasks.md)。
 
 - 初始 0001 up/down 哈希保持，首次正式版本不提供开发期数据库原地升级；Go 调用切换使用[兼容指南](compatibility.md#v100-调用者须知)。
 - 公开 API、HTTP/配置、指标/审计及依赖沿用已归档整合结果，本发布只维护文档和外部版本对象；不新增功能或生产迁移。

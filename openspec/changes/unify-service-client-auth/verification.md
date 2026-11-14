@@ -1,6 +1,60 @@
 # Verification
 
-## Apply 最终验收（2026-11-14）
+## 单一配置模式收敛（2026-11-14，本轮最终验收）
+
+用户在提交 `b25ec98` 后要求“去掉旧配置模式，整合配置文件”。本轮 tasks 5.1–5.4 已完成，原 18 项仅是初次实现历史；当前最终契约及实现均只有统一注册表。计划见[单一服务客户端配置](../../../docs/superpowers/plans/2026-11-14-service-clients-only.md)。验收完成时保留当前任务分支与未提交工作区，未推送、发布、部署或归档；用户随后明确要求本地提交，见下方补记。
+
+### 当前实现
+
+- 移除旧四项 Config 映射/名单、模式标识、JSON 解析、弃用元数据/警告及旧装配/认证分支；删除失去生产调用的 `introspection/clients.go`、basicclients.Parse 和 SharedSecret。Matcher、固定长度秘密摘要、常数时间轮换匹配保留。
+- SERVICE_CLIENTS 未设置、空或全空白均生成非 nil 空注册表；无客户端时服务可启动、两个能力返回 NOT_CONFIGURED 503。孤立字段仍拒绝；任一旧变量非空白（含 {}、[]，仅旧或混合配置）在监听前明确报错，不回显值，空白旧占位忽略。migrate 仍不解析新旧服务运行变量。
+- serviceauth 只使用 Registry、RequiredPermission、BearerVerifier；nil Registry 只转换为空注册表且仍要求合法权限。Basic-only 便利构造也进入同一路径。Basic/Bearer、两个权限、JWT/缓存/挑战/503 与消费者数据库吊销、feed 事务/分页保持。
+- 基础 `compose.yaml` 直接 `env_file: ./.env`，删除 `compose.service-clients.yaml` 和四项旧变量默认映射。模板默认空注册表，保留三种认证组合及轮换示例。主机真实展开验证动态别名与显式旧变量拒绝；文档要求 CLI --env-file 与服务 env_file 指向同一文件。
+- 活跃接入文档仅描述统一配置和显式迁移；当前二进制不能恢复旧模式，回退需配套旧二进制与匹配配置。支付宝、QQ、微博三份指南只修正 env_file 导致过时的透传说明，没有登录行为变化。
+- SDK HTTP 覆盖检查通过，35 个操作与 OpenAPI 一致。相对 b25ec98，SDK、数据库、消费者/管理员协议、模块与令牌领域文件无差异；旧字段/解析器名称搜索无残留，gofmt 与 diff --check 通过。
+
+### 本轮实际验证
+
+使用本轮专用 Linux runner、PostgreSQL **17.11**、Redis **7.4.11** 和两个独立空恢复数据库；Go **1.26.5**，GOWORK=off。下表未另列目录的日志均位于 `.test-output/service-clients-only/`。
+
+| 检查 | 结果与证据 |
+|---|---|
+| TDD 与定向配置/认证 | task-2-red.log 复现旧 [] 被接受、缺省 nil 注册表及 nil 绕过权限；修改后 task-2-green.log、final-config/runtime 等日志通过。没有把中间编译/夹具错误冒充行为 RED |
+| 定向真实进程与 race | 9 个相关进程用例实际通过，覆盖旧变量监听前拒绝、缺省能力、双方式权限/轮换、数据库吊销及清理 feed；task-2-race-process.log。认证/handler 四子包完整 race 通过 |
+| 配置模板与 Compose | 主机模板 4 场景、真实 Docker Compose config 16 场景全部 PASS、无 skip；覆盖缺省/空/空白、旧空白占位、三种认证组合、动态下划线别名、四旧变量的仅旧/混合拒绝；task3-green.log |
+| 局部 vet 与示例 | 新鲜 `go vet ./internal/accountsvc/...` 和 remoteauth 定向回归通过；task-2-vet.log、task3-remoteauth.log、task3-vet.log |
+| 独立 race 构建 | `go build -race ./...` 通过；race-build.log |
+| 完整 verify.sh | 修复测试清单遗漏后，从完整入口重跑退出 0：迁移历史、build、vet、全库 race、必需测试门禁通过；54 个测试包、1227 个顶层测试通过，零失败；tests.jsonl、full-result.txt |
+| 恢复演练 | verify.sh 内真实 pg_dump/pg_restore 及 seed/verify/source-unchanged 三阶段全部通过；`.test-output/recovery.PgYjs9/` 保留合成数据证据 |
+| accountsvc 专项 | `bash scripts/verify-accountsvc.sh` 退出 0；10 个测试包、233 个顶层测试通过，零失败；真实 TLS/OIDC/SMTP fixture、SIGTERM、带 race 的服务子进程及必需门禁通过；accountsvc-tests.jsonl、accountsvc-result.json |
+| 规格 | 当前 change strict 通过，无错误/警告；全库 strict 仍为 44 项、37 通过、7 份未修改主规格因正文 >500 字符失败，openspec-all.json |
+
+### 首次完整验证失败与修复
+
+首次 verify.sh 仅 `TestServiceAndLibraryEnvNamesDoNotOverlap` 失败，保存在 full-attempt-1.jsonl；其余 53 个测试包通过，恢复阶段未执行。原因是该测试仍要求源码扫描出已退休的 INTROSPECTION_BASIC_CLIENTS，且动态拼接的服务客户端字段未纳入库命名空间探针。
+
+仅修改 config_prefix_test.go：sentinel 改为 SERVICE_CLIENTS，加入含下划线别名 COLLISION_PROBE 的 ID/AUTH_METHODS/PERMISSIONS/BASIC_SECRETS 四项真实 ConfigFromEnv 隔离探针；保留原静态检查、命名空间限制和 AUTH_SCHEMA 正向控制。单项 RED 复现后，43 个子例 race 全部通过、无 skip（task-2-prefix-red.log、task-2-prefix-green.log），独立限定复审通过，再完成上述全套重跑。没有删除或跳过该门禁。
+
+阶段报告曾误称空输出 PowerShell Tee 已生成 task-2-vet.log，复核发现文件不存在后已纠正，并真实重跑 vet、显式保存命令及 exit 0；最终证据不依赖那条不准确的路径声明。
+
+### 测试迁移、审查和边界
+
+- 两份必需清单只将 EmptyAndLegacyModes 重命名为 EmptyRegistry、UnifiedCapabilityAndLegacyWarnings 重命名为 ServiceCapabilityWarnings，并新增 RejectsRemovedSettings、ServiceAuthenticatorNilRegistryIsEmpty 和 ServiceIntegrationRejectsRemovedSettings。其余原条目保留。
+- 未登记为必需的旧 JSON 格式专用 Parse 测试随解析器移除，声明/ID/秘密/重复项/脱敏由现行 Config 与 Registry 测试覆盖；MatcherAndSharedSecret 改为 MatcherAndRotation，保留匹配、多头和两秘密轮换断言，重复秘密由 Registry 拒绝测试承担。有效 Basic 缺权限改为 403；错误秘密的 401 断言仍保留。
+- 核心和文档独立审查均通过；全量最终审查未发现 Critical/Important 问题。核心初审发现的配置前缀测试问题已修复并经限定复审确认。
+- Linux 两套件的 ComposeExamples 因无 Docker CLI 跳过，已由主机 16 场景实跑覆盖；既有 ProfileAttributesUnreadableFile 因容器 root 可读受限文件而跳过，该权限分支本环境未验证。普通套件 RecoveryFixture 按契约跳过，但专用三阶段实际通过。完整发布门禁在 Linux 执行，不把非 Linux 进程用例的 skip 当作通过。
+- 全库 OpenSpec 的 7 份既有失败仍是 accountsvc-runtime、accountsvc-service-authentication、consumer-token-introspection、embedded-auth-package、purged-user-feed、verification-delivery、versioned-auth-storage；主规格与基线无差异，没有放宽校验或报告全库通过。
+- 下方历史验收表中的通用 tests.jsonl/accountsvc-tests.jsonl 已在本轮重写前保存为 `.test-output/unify-service-client-auth/b25ec98-tests.jsonl` 和 `b25ec98-accountsvc-tests.jsonl`，保留 b25ec98 原事实。本轮原始日志及合成恢复材料不提交。
+- 执行选择：沿用同一未归档 change，保留已提交的历史阶段；旧变量用明确拒绝代替静默忽略；基础 Compose 要求按文档准备同目录 .env，不再维护额外配置文件。运行时与文档只在不重叠文件范围并行，最终统一验证。
+- 验收结束后按容器 ID 核对并清理本轮三个测试容器及匿名数据卷、专用 network 和两个命名缓存卷；另经绝对路径/非 reparse point 核对后清理本轮生成的 Go 构建缓存。未操作其他容器、数据库或目录，代码和日志/合成恢复证据保留。
+
+### 本轮提交前复核
+
+- 用户后续要求“提交”，本次只创建本地提交，不推送或归档。
+- 提交前重新运行 `GOWORK=off go test -count=1 ./internal/accountsvc/... ./examples/remoteauth`，通过；这是 Windows 快速回归，平台及数据库条件不满足的用例按契约跳过，完整 Linux 验证仍以上述本轮实跑证据为准。
+- 核对改动范围及差异格式，未包含实际 `.env`、测试输出、缓存或恢复备份。
+
+## Apply 最终验收（2026-11-14，b25ec98 初次实现历史）
 
 18 项实施任务已完成。实现计划见[统一服务客户端认证](../../../docs/superpowers/plans/2026-11-14-unify-service-client-auth.md)。验收完成时保留现有 `feat/unify-service-client-auth` 分支和未提交工件，未执行提交、推送、发布、部署或归档；后续本地提交授权见下方补记。
 

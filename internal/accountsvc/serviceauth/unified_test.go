@@ -102,8 +102,6 @@ func TestUnifiedCapabilityAndConstructor(t *testing.T) {
 		{Realm: realm, Registry: registry, RequiredPermission: "*", BearerVerifier: tokensFor(t, e)},
 		{Realm: realm, Registry: registry, BearerVerifier: tokensFor(t, e)},
 		{Realm: realm, Registry: mustRegistry(t, nil), RequiredPermission: "tokens.introspect", BearerVerifier: tokensFor(t, e)},
-		{Realm: realm, Registry: registry, RequiredPermission: "purged_users.read", BearerVerifier: tokensFor(t, e), BearerClients: []string{"legacy"}},
-		{Realm: realm, Registry: registry, RequiredPermission: "purged_users.read", BearerVerifier: tokensFor(t, e), Basic: map[string][]string{"legacy": {basicSecret}}},
 	} {
 		if _, err := serviceauth.New(cfg); err == nil {
 			t.Fatal("invalid unified config accepted")

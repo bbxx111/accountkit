@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"net/http/httptest"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -14,7 +13,7 @@ import (
 func unifiedClientEnvironment(t *testing.T) {
 	t.Helper()
 	serveEnvironment(t)
-	t.Setenv("ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS", "")
+	clearServiceClientEnvironment(t)
 	t.Setenv("ACCOUNTSVC_SERVICE_CLIENTS", "AI_FOOD")
 	t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_AI_FOOD_ID", "ai-food-server")
 	t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_AI_FOOD_AUTH_METHODS", "basic")
@@ -83,13 +82,19 @@ func TestConfigServiceClientModeConflicts(t *testing.T) {
 			})
 		}
 	}
-	t.Run("orphan field without main list", func(t *testing.T) {
-		serveEnvironment(t)
-		t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_ORPHAN_ID", "")
-		if _, err := LoadConfig("serve"); err == nil || !strings.Contains(err.Error(), "ACCOUNTSVC_SERVICE_CLIENT_ORPHAN_ID") {
-			t.Fatalf("expected orphan field rejection: %v", err)
-		}
-	})
+	for _, raw := range []string{"unset", "", " \t "} {
+		t.Run("orphan field without clients/"+raw, func(t *testing.T) {
+			serveEnvironment(t)
+			clearServiceClientEnvironment(t)
+			if raw != "unset" {
+				t.Setenv("ACCOUNTSVC_SERVICE_CLIENTS", raw)
+			}
+			t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_ORPHAN_ID", "")
+			if _, err := LoadConfig("serve"); err == nil || !strings.Contains(err.Error(), "ACCOUNTSVC_SERVICE_CLIENT_ORPHAN_ID") {
+				t.Fatalf("expected orphan field rejection: %v", err)
+			}
+		})
+	}
 }
 
 func unifiedBearerEnvironment(t *testing.T) {
@@ -175,7 +180,7 @@ func TestConfigServiceClientLoadedPolicies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.ServiceClients == nil || c.Service.Enabled() || c.IntrospectionBasicClients != nil || c.PurgeFeedBasicClients != nil || len(c.deprecatedServiceVariables) > 0 {
+	if c.ServiceClients == nil || c.Service.Enabled() {
 		t.Fatal("wrong unified Basic-only mode")
 	}
 	for _, permission := range []string{"tokens.introspect", "purged_users.read"} {
@@ -194,39 +199,6 @@ func TestConfigServiceClientLoadedPolicies(t *testing.T) {
 			}
 		}
 	}
-}
-
-func TestConfigServiceClientEmptyAndLegacyModes(t *testing.T) {
-	for _, mode := range []string{"production", "development"} {
-		for _, raw := range []string{"", " \t "} {
-			t.Run(mode+raw, func(t *testing.T) {
-				serveEnvironment(t)
-				t.Setenv("ACCOUNTSVC_MODE", mode)
-				t.Setenv("ACCOUNTSVC_SERVICE_CLIENTS", raw)
-				for _, name := range legacyServiceVariables {
-					t.Setenv(name, " \t ")
-				}
-				c, err := LoadConfig("serve")
-				if err != nil {
-					t.Fatal(err)
-				}
-				if c.ServiceClients == nil || c.Service.Enabled() || c.ServiceClients.HasPermission("tokens.introspect") || c.ServiceClients.HasPermission("purged_users.read") {
-					t.Fatal("explicit empty list must disable both capabilities")
-				}
-			})
-		}
-	}
-	t.Run("legacy with deprecation metadata", func(t *testing.T) {
-		serviceTokenEnvironment(t)
-		c, err := LoadConfig("serve")
-		if err != nil {
-			t.Fatal(err)
-		}
-		want := []string{"ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS", "ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS", "ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS"}
-		if c.ServiceClients != nil || !reflect.DeepEqual(c.deprecatedServiceVariables, want) {
-			t.Fatalf("wrong legacy mode or deprecation metadata: %v", c.deprecatedServiceVariables)
-		}
-	})
 }
 
 func TestConfigServiceClientBearerModes(t *testing.T) {
@@ -248,7 +220,7 @@ func TestConfigServiceClientBearerModes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if c.ServiceClients == nil || !c.Service.Enabled() || c.Service.Issuer != issuer || c.Service.AllowHTTP != (mode == "development") || len(c.Service.IntrospectionBearerClients) > 0 || len(c.Service.PurgeFeedBearerClients) > 0 {
+			if c.ServiceClients == nil || !c.Service.Enabled() || c.Service.Issuer != issuer || c.Service.AllowHTTP != (mode == "development") {
 				t.Fatal("unified Bearer not enabled independently from legacy lists")
 			}
 		})
@@ -283,7 +255,7 @@ func TestConfigServiceClientMigrateIgnoresFields(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if c.ServiceClients != nil || c.Service.Enabled() || c.Service.Issuer != "" || len(c.deprecatedServiceVariables) > 0 {
+			if c.ServiceClients != nil || c.Service.Enabled() || c.Service.Issuer != "" {
 				t.Fatal("migrate parsed service configuration")
 			}
 		})
@@ -295,7 +267,7 @@ func TestConfigServiceClientEnvironmentIsolation(t *testing.T) {
 	t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_ORPHAN_ID", "")
 	serveEnvironment(t)
 	c, err := LoadConfig("serve")
-	if err != nil || c.ServiceClients != nil {
+	if err != nil || c.ServiceClients == nil || !c.ServiceClients.HasPermission("tokens.introspect") {
 		t.Fatalf("test fixture must unset presence-sensitive variables: %v", err)
 	}
 }
@@ -304,7 +276,7 @@ func TestConfigServiceClientIdentifierLimits(t *testing.T) {
 	for _, id := range []string{"x", strings.Repeat("x", 256), strings.Repeat("中", 85) + "x"} {
 		t.Run(id[:1], func(t *testing.T) {
 			serveEnvironment(t)
-			t.Setenv("ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS", "")
+			clearServiceClientEnvironment(t)
 			alias := strings.Repeat("A", 32)
 			t.Setenv("ACCOUNTSVC_SERVICE_CLIENTS", alias)
 			t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_"+alias+"_ID", id)

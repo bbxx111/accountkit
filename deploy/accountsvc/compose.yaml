@@ -25,8 +25,10 @@ services:
     ports:
       - "127.0.0.1:${MAILPIT_HTTP_PORT:-18025}:8025"
   accountsvc:
-    # Legacy-compatible by default: do not inject an empty SERVICE_CLIENTS here.
-    # Unified clients use the explicit compose.service-clients.yaml env_file override.
+    # Use the same file for CLI --env-file interpolation and container injection.
+    # Import dynamic SERVICE_CLIENT_<ALIAS>_* fields without extra Compose files.
+    env_file:
+      - ./.env
     build:
       context: ../..
       dockerfile: deploy/accountsvc/Dockerfile
@@ -67,12 +69,8 @@ services:
       ACCOUNTSVC_SMS_ALIYUN_TEMPLATE_BIND: ${ACCOUNTSVC_SMS_ALIYUN_TEMPLATE_BIND:-}
       ACCOUNTSVC_SMS_ALIYUN_TEMPLATE_REAUTH: ${ACCOUNTSVC_SMS_ALIYUN_TEMPLATE_REAUTH:-}
       ACCOUNTSVC_SMS_ALIYUN_TEMPLATE_SIGN_IN_COMPLETE: ${ACCOUNTSVC_SMS_ALIYUN_TEMPLATE_SIGN_IN_COMPLETE:-}
-      ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS: ${ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS:-}
-      ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS: ${ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS:-}
       ACCOUNTSVC_SERVICE_ISSUER: ${ACCOUNTSVC_SERVICE_ISSUER:-}
       ACCOUNTSVC_SERVICE_AUDIENCE: ${ACCOUNTSVC_SERVICE_AUDIENCE:-}
-      ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS: ${ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS:-}
-      ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS: ${ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS:-}
       ACCOUNTSVC_AUTH_SCHEMA: account
       ACCOUNTSVC_AUTH_KEY_PREFIX: "accountsvc-dev:"
       ACCOUNTSVC_ENABLED_IDENTITY_KINDS: ${ACCOUNTSVC_ENABLED_IDENTITY_KINDS:-EMAIL}

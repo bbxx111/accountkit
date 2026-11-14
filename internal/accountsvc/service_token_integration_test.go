@@ -19,13 +19,10 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// unifiedServiceClients deliberately removes all legacy declarations: migration
-// must be explicit and must never merge permissions from old endpoint lists.
+// unifiedServiceClients explicitly replaces the configured registry.
 func (f *integrationFixture) unifiedServiceClients() {
 	f.t.Helper()
-	for _, name := range []string{"INTROSPECTION_BASIC_CLIENTS", "PURGE_FEED_BASIC_CLIENTS", "INTROSPECTION_BEARER_CLIENTS", "PURGE_FEED_BEARER_CLIENTS"} {
-		delete(f.env, "ACCOUNTSVC_"+name)
-	}
+	f.clearServiceClients()
 	f.env["ACCOUNTSVC_SERVICE_CLIENTS"] = "BUSINESS,INTRO,CLEANUP,BASIC_ONLY,BEARER_ONLY"
 	for _, c := range []struct{ alias, id, methods, permissions, secret string }{
 		{"BUSINESS", "business", "basic,bearer", "tokens.introspect,purged_users.read", f.secrets[1]},
@@ -39,6 +36,15 @@ func (f *integrationFixture) unifiedServiceClients() {
 		if c.secret != "" {
 			f.env[prefix+"BASIC_SECRETS"] = c.secret
 			f.secrets = append(f.secrets, c.secret)
+		}
+	}
+}
+
+func (f *integrationFixture) clearServiceClients() {
+	f.t.Helper()
+	for name := range f.env {
+		if name == "ACCOUNTSVC_SERVICE_CLIENTS" || strings.HasPrefix(name, "ACCOUNTSVC_SERVICE_CLIENT_") {
+			delete(f.env, name)
 		}
 	}
 }
@@ -64,10 +70,6 @@ func TestServiceIntegrationUnifiedServiceClients(t *testing.T) {
 	f := newIntegration(t)
 	var down atomic.Bool
 	sign := f.serviceTokenIssuer(&down)
-	oldEnv := make(map[string]string, len(f.env))
-	for k, v := range f.env {
-		oldEnv[k] = v
-	}
 	f.unifiedServiceClients()
 	basic, bearer := serviceBasic("business", f.secrets[1]), "Bearer "+sign("business")
 	p := f.start(nil)
@@ -156,17 +158,6 @@ func TestServiceIntegrationUnifiedServiceClients(t *testing.T) {
 	p = f.start(nil)
 	f.serviceRequest(p, "/v1/introspect", bearer, access, 403)
 	f.serviceRequest(p, "/v1/introspect", newBasic, access, 401)
-	// Explicitly restoring saved old configuration preserves old endpoint isolation.
-	p.stop()
-	f.env = oldEnv
-	p = f.start(nil)
-	f.serviceRequest(p, "/v1/introspect", basic, access, 200)
-	f.serviceRequest(p, "/v1/purgedUsers", basic, "", 401)
-	f.serviceRequest(p, "/v1/purgedUsers", "Bearer "+sign("intro-svc"), "", 403)
-	p.stop()
-	if strings.Count(p.output.String(), "settings are deprecated") != 1 {
-		t.Fatalf("expected one legacy startup warning: %s", p.output.String())
-	}
 	f.assertAuditPrivate()
 }
 
@@ -202,9 +193,8 @@ func TestServiceIntegrationUnifiedIssuerFailure(t *testing.T) {
 
 func TestServiceIntegrationUnifiedUnconfiguredCapabilities(t *testing.T) {
 	f := newIntegration(t)
-	delete(f.env, "ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS")
-	// Assign directly: fixture extra maps treat an empty string as deletion,
-	// whereas the unified mode selector intentionally distinguishes unset/empty.
+	f.clearServiceClients()
+	// Assign directly because fixture extra maps treat an empty string as deletion.
 	f.env["ACCOUNTSVC_SERVICE_CLIENTS"] = ""
 	p := f.start(nil)
 	for _, endpoint := range []string{"/v1/introspect", "/v1/purgedUsers"} {
@@ -293,8 +283,11 @@ func (f *integrationFixture) serviceTokenIssuer(down *atomic.Bool) (sign func(az
 	f.t.Cleanup(s.Close)
 	f.env["ACCOUNTSVC_SERVICE_ISSUER"] = s.URL
 	f.env["ACCOUNTSVC_SERVICE_AUDIENCE"] = "integration-service"
-	f.env["ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS"] = `["intro-svc"]`
-	f.env["ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS"] = `["purge-svc"]`
+	f.env["ACCOUNTSVC_SERVICE_CLIENTS"] += ",INTRO_SVC,PURGE_SVC"
+	for _, c := range []struct{ alias, id, permission string }{{"INTRO_SVC", "intro-svc", "tokens.introspect"}, {"PURGE_SVC", "purge-svc", "purged_users.read"}} {
+		prefix := "ACCOUNTSVC_SERVICE_CLIENT_" + c.alias + "_"
+		f.env[prefix+"ID"], f.env[prefix+"AUTH_METHODS"], f.env[prefix+"PERMISSIONS"] = c.id, "bearer", c.permission
+	}
 	return func(azp string) string {
 		now := time.Now()
 		token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{"iss": s.URL, "aud": "integration-service", "azp": azp, "exp": now.Add(5 * time.Minute).Unix(), "iat": now.Unix()})
@@ -356,7 +349,8 @@ func TestServiceIntegrationServiceBearerTokens(t *testing.T) {
 // Without any introspection callers the service still starts; the route answers 503.
 func TestServiceIntegrationIntrospectionNotConfigured(t *testing.T) {
 	f := newIntegration(t)
-	p := f.start(map[string]string{"ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS": ""})
+	f.clearServiceClients()
+	p := f.start(nil)
 	basic := "Basic " + base64.StdEncoding.EncodeToString([]byte("business:"+f.secrets[1]))
 	h, out := transportRequest(t, f.client, "POST", p.baseURL+"/v1/introspect", "application/x-www-form-urlencoded", "token=not-a-consumer-token", map[string]string{"Authorization": basic}, 503)
 	if out["error"] != "introspection_not_configured" || h.Get("WWW-Authenticate") != "" || h.Get("Cache-Control") != "no-store" {
@@ -365,5 +359,31 @@ func TestServiceIntegrationIntrospectionNotConfigured(t *testing.T) {
 	p.stop()
 	if !strings.Contains(p.output.String(), "introspection is not configured") {
 		t.Fatal("unconfigured introspection was not logged at startup")
+	}
+}
+
+// Removed settings must fail before dependencies or a listening socket are created.
+func TestServiceIntegrationRejectsRemovedSettings(t *testing.T) {
+	f := newIntegration(t)
+	for _, mixed := range []bool{false, true} {
+		for _, name := range []string{"ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS", "ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS", "ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS", "ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS"} {
+			t.Run(name+map[bool]string{false: "/alone", true: "/mixed"}[mixed], func(t *testing.T) {
+				saved := f.env
+				f.env = make(map[string]string, len(saved))
+				for k, v := range saved {
+					f.env[k] = v
+				}
+				defer func() { f.env = saved }()
+				if !mixed {
+					f.clearServiceClients()
+				}
+				for _, value := range []string{"{}", "[]", "sensitive-removed-value"} {
+					out, err := f.command(map[string]string{name: value})
+					if err == nil || !strings.Contains(out, name) || !strings.Contains(out, "removed") || strings.Contains(out, "listener started") || strings.Contains(out, "sensitive-removed-value") {
+						t.Fatalf("removed setting startup result err=%v output=%s", err, out)
+					}
+				}
+			})
+		}
 	}
 }

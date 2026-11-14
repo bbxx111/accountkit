@@ -26,10 +26,15 @@ func bearerHandler(t *testing.T, p *oidcjwttest.Provider, basic bool, calls *int
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := serviceauth.Config{Realm: introspectionRealm, Endpoint: "introspect", BearerVerifier: tokens, BearerClients: []string{"intro-client"}}
+	clients := []serviceauth.ClientConfig{{ID: "intro-client", AuthMethods: []string{"bearer"}, Permissions: []string{"tokens.introspect"}}, {ID: "purge-client", AuthMethods: []string{"bearer"}, Permissions: []string{"purged_users.read"}}}
 	if basic {
-		cfg.Basic = map[string][]string{"business": {secret(1)}}
+		clients = append(clients, serviceauth.ClientConfig{ID: "business", AuthMethods: []string{"basic"}, Permissions: []string{"tokens.introspect"}, BasicSecrets: []string{secret(1)}})
 	}
+	registry, err := serviceauth.NewRegistry(clients)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := serviceauth.Config{Realm: introspectionRealm, Endpoint: "introspect", Registry: registry, RequiredPermission: "tokens.introspect", BearerVerifier: tokens}
 	auth, err := serviceauth.New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -125,7 +130,7 @@ func TestBearerIntrospectionProviderUnavailable(t *testing.T) {
 }
 
 func TestIntrospectionNotConfiguredWithoutAnyMethod(t *testing.T) {
-	auth, err := serviceauth.New(serviceauth.Config{Realm: introspectionRealm})
+	auth, err := serviceauth.New(serviceauth.Config{Realm: introspectionRealm, RequiredPermission: "tokens.introspect"})
 	if err != nil {
 		t.Fatal(err)
 	}

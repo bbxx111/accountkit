@@ -3,6 +3,7 @@ package accountsvc
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"os"
 	"regexp"
 	"slices"
@@ -35,21 +36,18 @@ func serviceClientCSV(raw, variable string) ([]string, error) {
 	return items, nil
 }
 
-// loadServiceClients 在旧解析器运行前按存在性选择模式。
+// loadServiceClients 始终构造注册表，并拒绝已移除的逐接口配置。
 // 别名可含下划线，因此生成完整预期变量名，不拆分后缀推断别名。
 func (c *Config) loadServiceClients() error {
-	raw, unified := os.LookupEnv("ACCOUNTSVC_SERVICE_CLIENTS")
+	raw := os.Getenv("ACCOUNTSVC_SERVICE_CLIENTS")
 	for _, name := range legacyServiceVariables {
 		if strings.TrimSpace(os.Getenv(name)) != "" {
-			if unified {
-				return invalidConfig(name + " (conflicts with ACCOUNTSVC_SERVICE_CLIENTS)")
-			}
-			c.deprecatedServiceVariables = append(c.deprecatedServiceVariables, name)
+			return errors.New("accountsvc: " + name + " has been removed; use ACCOUNTSVC_SERVICE_CLIENTS")
 		}
 	}
 	var aliases []string
 	var err error
-	if unified && strings.TrimSpace(raw) != "" {
+	if strings.TrimSpace(raw) != "" {
 		aliases, err = serviceClientCSV(raw, "ACCOUNTSVC_SERVICE_CLIENTS")
 		if err != nil {
 			return err
@@ -69,9 +67,6 @@ func (c *Config) loadServiceClients() error {
 		if strings.HasPrefix(name, "ACCOUNTSVC_SERVICE_CLIENT_") && !expected[name] {
 			return invalidConfig(name + " (undeclared client or unknown field)")
 		}
-	}
-	if !unified {
-		return nil
 	}
 	clients := make([]serviceauth.ClientConfig, 0, len(aliases))
 	ids := map[string]bool{}
@@ -128,6 +123,5 @@ func (c *Config) loadServiceClients() error {
 	if err != nil {
 		return invalidConfig("ACCOUNTSVC_SERVICE_CLIENTS")
 	}
-	c.Service.unifiedBearerEnabled = c.ServiceClients.BearerEnabled()
 	return nil
 }

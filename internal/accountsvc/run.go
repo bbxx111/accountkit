@@ -271,10 +271,11 @@ const serviceTokenPreloadTimeout = 10 * time.Second
 // verifier（延迟加载）；preload 为 nil 表示未启用 Bearer。client 仅供测试注入。
 func serviceAuthenticators(cfg Config, logger *slog.Logger, client *http.Client) (intro, purge *serviceauth.Authenticator, preload func(context.Context) error, err error) {
 	var tokens *oidcjwt.Verifier
-	bearerEnabled := cfg.Service.Enabled()
-	if cfg.ServiceClients != nil {
-		bearerEnabled = cfg.ServiceClients.BearerEnabled()
+	registry := cfg.ServiceClients
+	if registry == nil {
+		registry, _ = serviceauth.NewRegistry(nil)
 	}
+	bearerEnabled := registry.BearerEnabled()
 	if bearerEnabled {
 		tokens, err = oidcjwt.New(cfg.Service.Issuer, cfg.Service.Audience, oidcjwt.Options{HTTPClient: client, RefreshInterval: serviceTokenRefreshInterval, RefreshTimeout: serviceTokenRefreshTimeout, Logger: logger, AllowHTTP: cfg.Service.AllowHTTP})
 		if err != nil {
@@ -282,24 +283,13 @@ func serviceAuthenticators(cfg Config, logger *slog.Logger, client *http.Client)
 		}
 		preload = tokens.Load
 	}
-	build := func(realm, endpoint, permission string, basic map[string][]string, clients []string) (*serviceauth.Authenticator, error) {
-		c := serviceauth.Config{Realm: realm, Endpoint: endpoint, Logger: logger}
-		if cfg.ServiceClients != nil {
-			c.Registry, c.RequiredPermission, c.BearerVerifier = cfg.ServiceClients, permission, tokens
-			return serviceauth.New(c)
-		}
-		if len(basic) > 0 {
-			c.Basic = basic
-		}
-		if len(clients) > 0 {
-			c.BearerClients, c.BearerVerifier = clients, tokens
-		}
-		return serviceauth.New(c)
+	build := func(realm, endpoint, permission string) (*serviceauth.Authenticator, error) {
+		return serviceauth.New(serviceauth.Config{Realm: realm, Endpoint: endpoint, Logger: logger, Registry: registry, RequiredPermission: permission, BearerVerifier: tokens})
 	}
-	if intro, err = build(introspection.Realm, "introspect", "tokens.introspect", cfg.IntrospectionBasicClients, cfg.Service.IntrospectionBearerClients); err != nil {
+	if intro, err = build(introspection.Realm, "introspect", "tokens.introspect"); err != nil {
 		return nil, nil, nil, errors.New("accountsvc: introspection configuration failed")
 	}
-	if purge, err = build(purgefeed.Realm, "purged_users", "purged_users.read", cfg.PurgeFeedBasicClients, cfg.Service.PurgeFeedBearerClients); err != nil {
+	if purge, err = build(purgefeed.Realm, "purged_users", "purged_users.read"); err != nil {
 		return nil, nil, nil, errors.New("accountsvc: purged user feed configuration failed")
 	}
 	return intro, purge, preload, nil
@@ -308,16 +298,10 @@ func serviceAuthenticators(cfg Config, logger *slog.Logger, client *http.Client)
 // warnUnconfigured 为未配置、只会返回 503 *_NOT_CONFIGURED 的可选接口各记一条 WARN，
 // 使漏配在启动日志中可见，而不是等到调用失败才发现。只写变量名，不写值。
 func warnUnconfigured(cfg Config, logger *slog.Logger) {
-	introEnabled := len(cfg.IntrospectionBasicClients) > 0 || len(cfg.Service.IntrospectionBearerClients) > 0
-	purgeEnabled := len(cfg.PurgeFeedBasicClients) > 0 || len(cfg.Service.PurgeFeedBearerClients) > 0
-	introSettings := "ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS, ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS"
-	purgeSettings := "ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS, ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS"
-	if cfg.ServiceClients != nil {
-		introEnabled = cfg.ServiceClients.HasPermission("tokens.introspect")
-		purgeEnabled = cfg.ServiceClients.HasPermission("purged_users.read")
-		introSettings = "ACCOUNTSVC_SERVICE_CLIENTS, ACCOUNTSVC_SERVICE_CLIENT_<ALIAS>_PERMISSIONS"
-		purgeSettings = introSettings
-	}
+	introEnabled := cfg.ServiceClients.HasPermission("tokens.introspect")
+	purgeEnabled := cfg.ServiceClients.HasPermission("purged_users.read")
+	introSettings := "ACCOUNTSVC_SERVICE_CLIENTS, ACCOUNTSVC_SERVICE_CLIENT_<ALIAS>_PERMISSIONS"
+	purgeSettings := introSettings
 	if !introEnabled {
 		logger.Warn("accountsvc: introspection is not configured; POST /v1/introspect answers 503 introspection_not_configured",
 			"settings", introSettings)
@@ -438,10 +422,6 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 		logger.Info("accountsvc: HTTP listener started; HTTP TLS is disabled in this process", "http_tls_enabled", false)
 	}
 	logEmailTemplates(cfg, logger)
-	if len(cfg.deprecatedServiceVariables) > 0 {
-		logger.Warn("accountsvc: per-interface service authentication settings are deprecated; migrate to ACCOUNTSVC_SERVICE_CLIENTS",
-			"settings", strings.Join(cfg.deprecatedServiceVariables, ", "))
-	}
 	warnUnconfigured(cfg, logger)
 	state.ready.Store(true)
 	cancelStartup()

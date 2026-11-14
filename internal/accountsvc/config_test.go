@@ -122,7 +122,25 @@ func serveEnvironment(t *testing.T) {
 	t.Setenv("ACCOUNTSVC_SMTP_FROM", "sender@example.org")
 	t.Setenv("ACCOUNTSVC_SMTP_USERNAME", "smtp-user")
 	t.Setenv("ACCOUNTSVC_SMTP_PASSWORD", "synthetic-smtp-password")
-	t.Setenv("ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS", fmt.Sprintf(`{"test-client":["%s"]}`, base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{8}, 32))))
+	t.Setenv("ACCOUNTSVC_SERVICE_CLIENTS", "TEST_CLIENT")
+	t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_TEST_CLIENT_ID", "test-client")
+	t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_TEST_CLIENT_AUTH_METHODS", "basic")
+	t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_TEST_CLIENT_PERMISSIONS", "tokens.introspect")
+	t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_TEST_CLIENT_BASIC_SECRETS", base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{8}, 32)))
+}
+
+// clearServiceClientEnvironment removes even empty dynamic fields: undeclared fields are errors.
+func clearServiceClientEnvironment(t *testing.T) {
+	t.Helper()
+	for _, entry := range os.Environ() {
+		name, _, _ := strings.Cut(entry, "=")
+		if name == "ACCOUNTSVC_SERVICE_CLIENTS" || strings.HasPrefix(name, "ACCOUNTSVC_SERVICE_CLIENT_") {
+			t.Setenv(name, "")
+			if err := os.Unsetenv(name); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 }
 
 func certificateFiles(t *testing.T) (string, string) {
@@ -162,7 +180,7 @@ func TestConfigProductionDefaultsAndMigrate(t *testing.T) {
 		if c.Mode != "production" || c.HTTPAddr != "127.0.0.1:8080" || c.StartupTimeout != time.Minute || c.ShutdownTimeout != 30*time.Second || c.SMTP.TLSMode != "implicit" || c.SMTP.Timeout != 10*time.Second || c.AdminEnabled {
 			t.Fatal("unsafe service defaults")
 		}
-		if c.Library.Schema != "account" || c.Library.KeyPrefix != "auth:" || len(c.IntrospectionBasicClients) != 1 {
+		if c.Library.Schema != "account" || c.Library.KeyPrefix != "auth:" || !c.ServiceClients.HasPermission("tokens.introspect") {
 			t.Fatal("library defaults/clients not loaded")
 		}
 	})
@@ -409,7 +427,7 @@ func TestConfigRejectsUnsafeValuesWithoutLeaks(t *testing.T) {
 		{"ACCOUNTSVC_SMTP_PORT", "synthetic-secret", "SMTP_PORT"},
 		{"ACCOUNTSVC_SMTP_TIMEOUT", "0s", "SMTP_TIMEOUT"},
 		{"ACCOUNTSVC_SMTP_FROM", "sender@example.org\r\nBcc: synthetic-secret@example.org", "SMTP_FROM"},
-		{"ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS", `{"id":["synthetic-secret"]}`, "INTROSPECTION_BASIC_CLIENTS"},
+		{"ACCOUNTSVC_SERVICE_CLIENT_TEST_CLIENT_BASIC_SECRETS", "synthetic-secret", "SERVICE_CLIENT_TEST_CLIENT_BASIC_SECRETS"},
 		{"ACCOUNTSVC_TRUSTED_PROXY_CIDRS", "synthetic-secret", "TRUSTED_PROXY_CIDRS"},
 		{"ACCOUNTSVC_ADMIN_ENABLED", "synthetic-secret", "ADMIN_ENABLED"},
 		{"ACCOUNTSVC_ADMIN_ISSUER", "https://synthetic-secret.example.org", "ADMIN_ISSUER"},

@@ -42,12 +42,16 @@ func TestServiceIntegrationPurgedUserFeed(t *testing.T) {
 	feedSecret := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{6}, 32))
 	f.secrets = append(f.secrets, feedSecret)
 	p := f.start(map[string]string{
-		"ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS": `{"ai-food":["` + feedSecret + `"]}`,
-		"ACCOUNTSVC_DELETION_COOLING_PERIOD":  "1s",
-		"ACCOUNTSVC_MAINTENANCE_INTERVAL":     "1s",
+		"ACCOUNTSVC_SERVICE_CLIENTS": "BUSINESS,FEED", "ACCOUNTSVC_SERVICE_CLIENT_FEED_ID": "ai-food", "ACCOUNTSVC_SERVICE_CLIENT_FEED_AUTH_METHODS": "basic", "ACCOUNTSVC_SERVICE_CLIENT_FEED_PERMISSIONS": "purged_users.read", "ACCOUNTSVC_SERVICE_CLIENT_FEED_BASIC_SECRETS": feedSecret,
+		"ACCOUNTSVC_DELETION_COOLING_PERIOD": "1s",
+		"ACCOUNTSVC_MAINTENANCE_INTERVAL":    "1s",
 	})
 	// 内省凭据不能读取已清理清单。
 	f.purgedUsers(p, f.secrets[1], "", 401)
+	h, _ := f.serviceRequest(p, "/v1/purgedUsers", serviceBasic("business", f.secrets[1]), "", 403)
+	if h.Get("WWW-Authenticate") != "" {
+		t.Fatal("Basic permission refusal challenged")
+	}
 	start := f.purgedUsers(p, feedSecret, "", 200)
 	if len(start.PurgedUsers) != 0 || start.NextPageToken == "" {
 		t.Fatalf("initial feed: %+v", start)

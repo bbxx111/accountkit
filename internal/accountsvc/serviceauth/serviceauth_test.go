@@ -43,16 +43,21 @@ func newEnv(t *testing.T, basic, bearer bool) *env {
 	t.Helper()
 	e := &env{p: oidcjwttest.New(t), now: time.Now().Truncate(time.Second)}
 	e.unix.Store(e.now.Unix())
-	cfg := serviceauth.Config{Realm: realm, Endpoint: "introspect", Logger: slog.New(slog.NewTextHandler(&e.logs, nil))}
+	cfg := serviceauth.Config{Realm: realm, Endpoint: "introspect", RequiredPermission: "tokens.introspect", Logger: slog.New(slog.NewTextHandler(&e.logs, nil))}
+	var clients []serviceauth.ClientConfig
 	if basic {
-		cfg.Basic = map[string][]string{"basic-client": {basicSecret}}
+		clients = append(clients, serviceauth.ClientConfig{ID: "basic-client", AuthMethods: []string{"basic"}, Permissions: []string{"tokens.introspect"}, BasicSecrets: []string{basicSecret}})
 	}
+	if bearer {
+		clients = append(clients, serviceauth.ClientConfig{ID: "intro-client", AuthMethods: []string{"bearer"}, Permissions: []string{"tokens.introspect"}}, serviceauth.ClientConfig{ID: "purge-client", AuthMethods: []string{"bearer"}, Permissions: []string{"purged_users.read"}})
+	}
+	cfg.Registry = mustRegistry(t, clients)
 	if bearer {
 		v, err := oidcjwt.New(e.p.URL(), oidcjwttest.Audience, oidcjwt.Options{HTTPClient: e.p.Client(), Now: e.clock, RefreshInterval: 10 * time.Second})
 		if err != nil {
 			t.Fatal(err)
 		}
-		cfg.BearerVerifier, cfg.BearerClients = v, []string{"intro-client"}
+		cfg.BearerVerifier = v
 	}
 	a, err := serviceauth.New(cfg)
 	if err != nil {
@@ -288,7 +293,7 @@ func TestIssuerMismatchIsUnavailable(t *testing.T) {
 
 func TestProviderTimeoutIsUnavailable(t *testing.T) {
 	e := newEnv(t, false, true)
-	e.auth = mustNew(t, serviceauth.Config{Realm: realm, Endpoint: "introspect", BearerVerifier: tokensFor(t, e), BearerClients: []string{"intro-client"}, Timeout: 100 * time.Millisecond})
+	e.auth = mustNew(t, serviceauth.Config{Realm: realm, Endpoint: "introspect", BearerVerifier: tokensFor(t, e), Registry: mustRegistry(t, []serviceauth.ClientConfig{{ID: "intro-client", AuthMethods: []string{"bearer"}, Permissions: []string{"tokens.introspect"}}}), RequiredPermission: "tokens.introspect", Timeout: 100 * time.Millisecond})
 	e.p.Block()
 	defer e.p.Unblock()
 	res, ch := e.do(e.bearer(e.p.Claims(e.now, "intro-client"), "initial"))
@@ -355,18 +360,19 @@ func TestHeaderHandling(t *testing.T) {
 func TestNewValidation(t *testing.T) {
 	e := newEnv(t, false, true)
 	tokens := tokensFor(t, e)
+	registry := mustRegistry(t, []serviceauth.ClientConfig{{ID: "a", AuthMethods: []string{"bearer"}, Permissions: []string{"tokens.introspect"}}})
 	for name, cfg := range map[string]serviceauth.Config{
-		"clients without verifier": {Realm: realm, Endpoint: "introspect", BearerClients: []string{"a"}},
-		"verifier without clients": {Realm: realm, Endpoint: "introspect", BearerVerifier: tokens},
-		"empty client":             {Realm: realm, Endpoint: "introspect", BearerVerifier: tokens, BearerClients: []string{""}},
-		"invalid basic":            {Realm: realm, Endpoint: "introspect", Basic: map[string][]string{"a": {"short"}}},
-		"missing realm":            {Endpoint: "introspect", BearerVerifier: tokens, BearerClients: []string{"a"}},
+		"clients without verifier": {Realm: realm, Registry: registry, RequiredPermission: "tokens.introspect"},
+		"verifier without clients": {Realm: realm, RequiredPermission: "tokens.introspect", BearerVerifier: tokens},
+		"missing permission":       {Realm: realm, Registry: registry, BearerVerifier: tokens},
+		"invalid permission":       {Realm: realm, Registry: registry, RequiredPermission: "*", BearerVerifier: tokens},
+		"missing realm":            {Registry: registry, RequiredPermission: "tokens.introspect", BearerVerifier: tokens},
 	} {
 		if _, err := serviceauth.New(cfg); err == nil {
 			t.Errorf("%s accepted", name)
 		}
 	}
-	a := mustNew(t, serviceauth.Config{Realm: realm, Endpoint: "introspect"})
+	a := mustNew(t, serviceauth.Config{Realm: realm, Endpoint: "introspect", RequiredPermission: "tokens.introspect"})
 	if a.Enabled() {
 		t.Fatal("authenticator without methods reports enabled")
 	}

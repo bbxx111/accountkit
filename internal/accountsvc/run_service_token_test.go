@@ -49,10 +49,7 @@ func TestServiceAuthenticatorsWithUnavailableIssuer(t *testing.T) {
 	if res := request(intro, "Bearer "+p.Token(p.Claims(time.Now(), "intro-client"), "initial")); res.Outcome != serviceauth.Unavailable {
 		t.Fatalf("bearer outcome with unavailable issuer = %v", res.Outcome)
 	}
-	var basic string
-	for id, secrets := range cfg.IntrospectionBasicClients {
-		basic = "Basic " + base64.StdEncoding.EncodeToString([]byte(id+":"+secrets[0]))
-	}
+	basic := "Basic " + base64.StdEncoding.EncodeToString([]byte("test-client:"+os.Getenv("ACCOUNTSVC_SERVICE_CLIENT_TEST_CLIENT_BASIC_SECRETS")))
 	if res := request(intro, basic); res.Outcome != serviceauth.OK {
 		t.Fatalf("basic outcome with unavailable issuer = %v", res.Outcome)
 	}

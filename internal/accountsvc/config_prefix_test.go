@@ -84,6 +84,12 @@ func serviceEnvNames(t *testing.T) []string {
 	for _, key := range aliyunTemplateKeys {
 		seen["SMS_ALIYUN_"+key.suffix] = true
 	}
+	// Service client fields are read through a dynamically constructed prefix,
+	// so literal-reader scanning cannot discover them. Probe a valid alias with
+	// an underscore, exercising the same namespace as deployed client settings.
+	for _, field := range []string{"ID", "AUTH_METHODS", "PERMISSIONS", "BASIC_SECRETS"} {
+		seen["SERVICE_CLIENT_COLLISION_PROBE_"+field] = true
+	}
 	names := make([]string, 0, len(seen))
 	for name := range seen {
 		names = append(names, name)
@@ -102,7 +108,7 @@ func libraryConfigWith(t *testing.T, name, value string) (accountkit.Config, err
 
 func TestServiceAndLibraryEnvNamesDoNotOverlap(t *testing.T) {
 	names := serviceEnvNames(t)
-	for _, required := range []string{"DATABASE_URL", "HTTP_ADDR", "INTROSPECTION_BASIC_CLIENTS", "SMTP_HOST", "SMS_ALIYUN_TEMPLATE_SIGN_IN"} {
+	for _, required := range []string{"DATABASE_URL", "HTTP_ADDR", "SERVICE_CLIENTS", "SERVICE_CLIENT_COLLISION_PROBE_ID", "SERVICE_CLIENT_COLLISION_PROBE_AUTH_METHODS", "SERVICE_CLIENT_COLLISION_PROBE_PERMISSIONS", "SERVICE_CLIENT_COLLISION_PROBE_BASIC_SECRETS", "SMTP_HOST", "SMS_ALIYUN_TEMPLATE_SIGN_IN"} {
 		if i := sort.SearchStrings(names, required); i == len(names) || names[i] != required {
 			t.Fatalf("service variable scan missed %s; got %v", required, names)
 		}

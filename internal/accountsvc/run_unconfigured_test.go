@@ -26,17 +26,12 @@ func TestWarnUnconfiguredInterfaces(t *testing.T) {
 		}
 	}
 
-	for name, cfg := range map[string]Config{
-		"basic": {
-			IntrospectionBasicClients: map[string][]string{"business": {"secret"}},
-			PurgeFeedBasicClients:     map[string][]string{"ai-food": {"secret"}},
-			AdminEnabled:              true,
-		},
-		"bearer": {
-			Service:      ServiceConfig{IntrospectionBearerClients: []string{"intro"}, PurgeFeedBearerClients: []string{"purge"}},
-			AdminEnabled: true,
-		},
-	} {
+	for name, method := range map[string]string{"basic": "basic", "bearer": "bearer"} {
+		registry, err := serviceauth.NewRegistry([]serviceauth.ClientConfig{{ID: "business", AuthMethods: []string{method}, Permissions: []string{"tokens.introspect", "purged_users.read"}, BasicSecrets: map[string][]string{"basic": {basicSecretForWarnings()}}[method]}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg := Config{ServiceClients: registry, AdminEnabled: true}
 		t.Run(name, func(t *testing.T) {
 			buf.Reset()
 			cfg.Library.ProfileAttributes = &user.ProfileAttributesConfig{}
@@ -49,7 +44,7 @@ func TestWarnUnconfiguredInterfaces(t *testing.T) {
 	}
 }
 
-func TestUnifiedCapabilityAndLegacyWarnings(t *testing.T) {
+func TestServiceCapabilityWarnings(t *testing.T) {
 	for _, permissions := range [][]string{nil, {"tokens.introspect"}, {"purged_users.read"}, {"tokens.introspect", "purged_users.read"}} {
 		t.Run(strings.Join(permissions, ","), func(t *testing.T) {
 			var clients []serviceauth.ClientConfig
@@ -82,20 +77,10 @@ func TestUnifiedCapabilityAndLegacyWarnings(t *testing.T) {
 			}
 		})
 	}
-	// This exercises the actual startup path: one grouped deprecation warning per
-	// startup, including nonblank empty old JSON placeholders, without values.
-	out := runServe(t, 3*time.Second, func(cfg *Config, _ *application) {
-		cfg.deprecatedServiceVariables = []string{"ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS", "ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS"}
-	}, nil)
-	if strings.Count(out, "deprecated") != 1 {
-		t.Fatalf("want one legacy deprecation warning at startup: %s", out)
-	}
-	for _, name := range []string{"ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS", "ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS"} {
-		if !strings.Contains(out, name) {
-			t.Fatalf("missing deprecated variable %s: %s", name, out)
-		}
-	}
-	if strings.Contains(out, "business") {
-		t.Fatalf("legacy warning leaked a client ID: %s", out)
+	out := runServe(t, 3*time.Second, func(*Config, *application) {}, nil)
+	if strings.Contains(out, "deprecated") || strings.Contains(out, "BASIC_CLIENTS") || strings.Contains(out, "BEARER_CLIENTS") {
+		t.Fatalf("startup retained removed configuration warning: %s", out)
 	}
 }
+
+func basicSecretForWarnings() string { return "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" }

@@ -34,7 +34,7 @@ func TestServiceAuthenticatorsWithUnavailableIssuer(t *testing.T) {
 		t.Fatal(err)
 	}
 	var logs bytes.Buffer
-	intro, purge, preload, err := serviceAuthenticators(cfg, slog.New(slog.NewTextHandler(&logs, nil)), p.Client())
+	intro, purge, _, preload, err := serviceAuthenticators(cfg, slog.New(slog.NewTextHandler(&logs, nil)), p.Client())
 	if err != nil || preload == nil {
 		t.Fatalf("authenticators: %v", err)
 	}
@@ -64,7 +64,7 @@ func TestServiceAuthenticatorsWithoutTokens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	intro, purge, preload, err := serviceAuthenticators(cfg, slog.New(slog.DiscardHandler), nil)
+	intro, purge, _, preload, err := serviceAuthenticators(cfg, slog.New(slog.DiscardHandler), nil)
 	if err != nil || preload != nil || !intro.Enabled() || purge.Enabled() {
 		t.Fatalf("basic-only wiring: err=%v preload=%v intro=%v purge=%v", err, preload != nil, intro.Enabled(), purge.Enabled())
 	}
@@ -79,7 +79,7 @@ func TestUnifiedServiceAuthenticators(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	intro, purge, preload, err := serviceAuthenticators(cfg, slog.New(slog.DiscardHandler), p.Client())
+	intro, purge, _, preload, err := serviceAuthenticators(cfg, slog.New(slog.DiscardHandler), p.Client())
 	if err != nil || preload == nil {
 		t.Fatalf("unified authenticators: err=%v preload=%v", err, preload != nil)
 	}
@@ -124,7 +124,7 @@ func TestUnifiedServiceAuthenticators(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	intro, purge, _, err = serviceAuthenticators(cfg, slog.New(slog.DiscardHandler), p.Client())
+	intro, purge, _, _, err = serviceAuthenticators(cfg, slog.New(slog.DiscardHandler), p.Client())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestUnifiedBasicOnlyHasNoOIDCIO(t *testing.T) {
 		calls.Add(1)
 		return nil, errors.New("unexpected OIDC I/O")
 	})}
-	intro, purge, preload, err := serviceAuthenticators(cfg, slog.New(slog.DiscardHandler), client)
+	intro, purge, _, preload, err := serviceAuthenticators(cfg, slog.New(slog.DiscardHandler), client)
 	if err != nil || preload != nil {
 		t.Fatalf("basic-only construction: %v preload=%v", err, preload != nil)
 	}

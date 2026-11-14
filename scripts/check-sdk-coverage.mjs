@@ -3,6 +3,7 @@ import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const methods = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace']);
+const surfaces = new Set(['enduser', 'admin', 'service']);
 const nonempty = value => typeof value === 'string' && value.trim().length > 0;
 
 /** Compare SDK registrations with the actual protocol operation set. */
@@ -11,6 +12,7 @@ export function validateCoverage(records, documents) {
   const errors = [];
   const expected = new Map();
   for (const [surface, document] of Object.entries(documents)) {
+    if (!surfaces.has(surface)) errors.push(`unknown surface: ${surface}`);
     for (const [path, operations] of Object.entries(document.paths ?? {})) {
       for (const [method, operation] of Object.entries(operations)) {
         if (!methods.has(method)) continue;
@@ -31,7 +33,7 @@ export function validateCoverage(records, documents) {
       continue;
     }
     const key = `${record.surface}:${record.operationId}`;
-    if (!Object.hasOwn(documents, record.surface)) errors.push(`unknown surface: ${key}`);
+    if (!surfaces.has(record.surface) || !Object.hasOwn(documents, record.surface)) errors.push(`unknown surface: ${key}`);
     if (seen.has(key)) errors.push(`duplicate operation: ${key}`);
     seen.add(key);
     const operation = expected.get(key);
@@ -39,10 +41,14 @@ export function validateCoverage(records, documents) {
     else if (record.method !== operation.method || record.path !== operation.path) {
       errors.push(`route mismatch: ${key}; expected ${operation.method} ${operation.path}`);
     }
-    for (const field of ['sdkMethod', 'baseline']) {
+    const service = record.surface === 'service';
+    if (service ? record.sdkApplicable !== false : record.sdkApplicable === false) {
+      errors.push(`${key}: sdkApplicable must be false only for service operations`);
+    }
+    for (const field of service ? ['baseline'] : ['sdkMethod', 'baseline']) {
       if (!nonempty(record[field])) errors.push(`${key}: ${field} is required`);
     }
-    if (!Array.isArray(record.models) || !record.models.length || !record.models.every(nonempty)) {
+    if (!service && (!Array.isArray(record.models) || !record.models.length || !record.models.every(nonempty))) {
       errors.push(`${key}: models must identify request/response models (Void for empty bodies)`);
     }
     if (!Array.isArray(record.tests) || !record.tests.length || !record.tests.every(test => test && nonempty(test.file) && nonempty(test.name))) {
@@ -75,6 +81,18 @@ export async function validateCoverageLinks(records, root) {
   }
   for (const record of records) {
     const key = `${record.surface}:${record.operationId}`;
+    if (record.surface === 'service') {
+      for (const test of record.tests ?? []) {
+        const content = await source(test.file,`${key} Go test file`);
+        // A mention in a comment or string is not a test declaration.
+        const code = content.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:\\.|[^"\\])*"|`[^`]*`|'(?:\\.|[^'\\])*'/g, ' ');
+        if (!nonempty(test.file) || !test.file.endsWith('_test.go') || !/^Test[A-Z0-9_][A-Za-z0-9_]*$/.test(test.name ?? '') ||
+            !new RegExp(`^func\\s+${test.name}\\s*\\(\\s*[A-Za-z_][A-Za-z0-9_]*\\s+\\*testing\\.T\\s*\\)\\s*\\{`, 'm').test(code)) {
+          errors.push(`${key}: top-level Go test not found: ${test.name}`);
+        }
+      }
+      continue;
+    }
     const client = await source(record.sdkSourceFile,`${key} SDK source`);
     if (!hasSymbol(client,record.sdkMethod)) errors.push(`${key}: SDK method not found: ${record.sdkMethod}`);
     const models = await source(record.modelSourceFile,`${key} model source`);
@@ -92,12 +110,13 @@ async function main() {
   const args = process.argv.slice(2);
   if (args.length > 1) throw new Error('usage: node scripts/check-sdk-coverage.mjs [coverage.json]');
   const readJSON = async path => JSON.parse(await readFile(path, 'utf8'));
-  const [records, enduser, admin] = await Promise.all([
+  const [records, enduser, admin, service] = await Promise.all([
     readJSON(args.length ? resolve(args[0]) : resolve(root, 'sdks/http-coverage.json')),
     readJSON(resolve(root, 'docs/openapi/enduser.json')),
     readJSON(resolve(root, 'docs/openapi/admin.json')),
+    readJSON(resolve(root, 'docs/openapi/service.json')),
   ]);
-  const errors = validateCoverage(records, { enduser, admin });
+  const errors = validateCoverage(records, { enduser, admin, service });
   if (!errors.length) errors.push(...await validateCoverageLinks(records,root));
   if (errors.length) {
     process.stderr.write(`${errors.join('\n')}\n`);

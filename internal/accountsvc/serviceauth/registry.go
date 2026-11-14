@@ -30,7 +30,7 @@ type Registry struct {
 }
 
 func validPermission(permission string) bool {
-	return permission == "tokens.introspect" || permission == "purged_users.read"
+	return permission == "tokens.introspect" || permission == "purged_users.read" || permission == "identities.resolve"
 }
 
 // NewRegistry validates and snapshots clients. An empty list disables all capabilities.

@@ -16,6 +16,7 @@ import (
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/internal/accountsvc/adminauth"
+	"github.com/bbxx111/accountkit/internal/accountsvc/identityresolve"
 	"github.com/bbxx111/accountkit/internal/accountsvc/introspection"
 	"github.com/bbxx111/accountkit/internal/accountsvc/oidcjwt"
 	"github.com/bbxx111/accountkit/internal/accountsvc/purgefeed"
@@ -47,6 +48,7 @@ type application struct {
 	close                      func()
 	endUser, admin, introspect http.Handler
 	purgeFeed                  http.Handler
+	identityResolve            http.Handler
 	jwks                       http.Handler
 	metrics                    http.Handler
 }
@@ -170,12 +172,21 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 		app.endUser = acceptLanguage(app.endUser)
 	}
 	if cfg.command == "serve" {
-		intro, purge, preload, err := serviceAuthenticators(cfg, logger, nil)
+		intro, purge, resolve, preload, err := serviceAuthenticators(cfg, logger, nil)
 		if err != nil {
 			auth.Close()
 			return nil, err
 		}
 		app.preloadServiceTokens = preload
+		namespace := cfg.Library.AuditNamespace
+		if namespace == "" {
+			namespace = "accountkit/" + cfg.Library.Schema + "/resources"
+		}
+		app.identityResolve, err = identityresolve.NewWithAuthenticator(resolve, auth.Users().ResolveIdentity, namespace, requestID)
+		if err != nil {
+			auth.Close()
+			return nil, err
+		}
 		app.introspect, err = introspection.NewWithAuthenticator(intro, auth.Users().AuthenticateStrict)
 		if err != nil {
 			auth.Close()
@@ -269,7 +280,7 @@ const serviceTokenPreloadTimeout = 10 * time.Second
 
 // serviceAuthenticators 为内省与已清理用户拉取构造调用认证。两个接口共享一个服务令牌
 // verifier（延迟加载）；preload 为 nil 表示未启用 Bearer。client 仅供测试注入。
-func serviceAuthenticators(cfg Config, logger *slog.Logger, client *http.Client) (intro, purge *serviceauth.Authenticator, preload func(context.Context) error, err error) {
+func serviceAuthenticators(cfg Config, logger *slog.Logger, client *http.Client) (intro, purge, resolve *serviceauth.Authenticator, preload func(context.Context) error, err error) {
 	var tokens *oidcjwt.Verifier
 	registry := cfg.ServiceClients
 	if registry == nil {
@@ -279,7 +290,7 @@ func serviceAuthenticators(cfg Config, logger *slog.Logger, client *http.Client)
 	if bearerEnabled {
 		tokens, err = oidcjwt.New(cfg.Service.Issuer, cfg.Service.Audience, oidcjwt.Options{HTTPClient: client, RefreshInterval: serviceTokenRefreshInterval, RefreshTimeout: serviceTokenRefreshTimeout, Logger: logger, AllowHTTP: cfg.Service.AllowHTTP})
 		if err != nil {
-			return nil, nil, nil, errors.New("accountsvc: service token configuration failed")
+			return nil, nil, nil, nil, errors.New("accountsvc: service token configuration failed")
 		}
 		preload = tokens.Load
 	}
@@ -287,17 +298,23 @@ func serviceAuthenticators(cfg Config, logger *slog.Logger, client *http.Client)
 		return serviceauth.New(serviceauth.Config{Realm: realm, Endpoint: endpoint, Logger: logger, Registry: registry, RequiredPermission: permission, BearerVerifier: tokens})
 	}
 	if intro, err = build(introspection.Realm, "introspect", "tokens.introspect"); err != nil {
-		return nil, nil, nil, errors.New("accountsvc: introspection configuration failed")
+		return nil, nil, nil, nil, errors.New("accountsvc: introspection configuration failed")
 	}
 	if purge, err = build(purgefeed.Realm, "purged_users", "purged_users.read"); err != nil {
-		return nil, nil, nil, errors.New("accountsvc: purged user feed configuration failed")
+		return nil, nil, nil, nil, errors.New("accountsvc: purged user feed configuration failed")
 	}
-	return intro, purge, preload, nil
+	if resolve, err = build(identityresolve.Realm, "identities_resolve", "identities.resolve"); err != nil {
+		return nil, nil, nil, nil, err
+	}
+	return intro, purge, resolve, preload, nil
 }
 
 // warnUnconfigured 为未配置、只会返回 503 *_NOT_CONFIGURED 的可选接口各记一条 WARN，
 // 使漏配在启动日志中可见，而不是等到调用失败才发现。只写变量名，不写值。
 func warnUnconfigured(cfg Config, logger *slog.Logger) {
+	if !cfg.ServiceClients.HasPermission("identities.resolve") {
+		logger.Warn("accountsvc: identity resolution is not configured; POST /v1/identities:resolve answers 503 IDENTITY_RESOLUTION_NOT_CONFIGURED", "settings", "ACCOUNTSVC_SERVICE_CLIENTS, ACCOUNTSVC_SERVICE_CLIENT_<ALIAS>_PERMISSIONS")
+	}
 	introEnabled := cfg.ServiceClients.HasPermission("tokens.introspect")
 	purgeEnabled := cfg.ServiceClients.HasPermission("purged_users.read")
 	introSettings := "ACCOUNTSVC_SERVICE_CLIENTS, ACCOUNTSVC_SERVICE_CLIENT_<ALIAS>_PERMISSIONS"
@@ -403,7 +420,7 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 	defer cancelRequests()
 	tracker := newRequestTracker()
 	state := &healthState{database: d.databasePing, redis: d.redisPing}
-	handler := serviceHandler(cfg, app.endUser, app.admin, app.introspect, app.purgeFeed, app.jwks, state, app.metrics)
+	handler := serviceHandler(cfg, app.endUser, app.admin, app.introspect, app.purgeFeed, app.jwks, app.identityResolve, state, app.metrics)
 	server := newHTTPServer(cfg.HTTPAddr, requestMetadata(cfg.TrustedProxyCIDRs, tracker.wrap(handler)), requestCtx)
 	if cfg.TLSEnabled {
 		server.TLSConfig = cfg.tlsConfig.Clone()

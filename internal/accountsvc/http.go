@@ -57,7 +57,7 @@ func (s *healthState) serveReady(w http.ResponseWriter, r *http.Request) {
 }
 
 // serviceHandler 组装单监听器路由；purgeFeed / jwks 为 nil 时不挂载对应路由（仅供不涉及它们的测试）。
-func serviceHandler(cfg Config, endUser, admin, introspect, purgeFeed, jwks http.Handler, state *healthState, metrics ...http.Handler) http.Handler {
+func serviceHandler(cfg Config, endUser, admin, introspect, purgeFeed, jwks, identityResolve http.Handler, state *healthState, metrics ...http.Handler) http.Handler {
 	router := chi.NewRouter()
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -66,6 +66,9 @@ func serviceHandler(cfg Config, endUser, admin, introspect, purgeFeed, jwks http
 		})
 	})
 	router.Handle("/v1/introspect", introspect)
+	if identityResolve != nil {
+		router.Handle("/v1/identities:resolve", identityResolve)
+	}
 	if purgeFeed != nil {
 		// 内部入口：独立 Basic 凭据；网关不得对公网开放。
 		router.Handle("/v1/purgedUsers", purgeFeed)

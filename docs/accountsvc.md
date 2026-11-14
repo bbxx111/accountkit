@@ -435,3 +435,27 @@ services:
 ## 验证边界
 
 现有库完整门禁仍使用 `scripts/verify.sh`；服务门禁使用 `scripts/verify-accountsvc.sh`，要求一次性 PostgreSQL 和 Redis，内部启动隔离 SMTP/HTTPS OIDC fixtures，缺依赖时失败。服务交付证据见[初始验收记录](../openspec/changes/archive/2026-10-03-add-accountsvc/verification.md)，单监听器、TLS 模式及本地代理结果见[传输验收记录](../openspec/changes/archive/2026-10-06-simplify-accountsvc-transport/verification.md)。外部 SMTP 实际送达、实际 OIDC 提供方、真实网关/网格和产品环境均属于待执行的部署验收，本地 fixture 通过不代替这些联调。
+
+## 服务身份解析
+
+`POST /v1/identities:resolve` 仅供可信业务服务调用，使用统一服务客户端认证并显式要求 `identities.resolve`。该权限不会自动授予内省或清理能力；消费者和管理员令牌不能替代服务凭据。默认未授权任何客户端时返回 `503 IDENTITY_RESOLUTION_NOT_CONFIGURED`，启动记录一次配置警告。
+
+请求使用 `application/json`，仅含字符串 `kind`（`PHONE` 或 `EMAIL`）及 `subject`。请求上限 4 KiB，不接受 query、批量、未知或重复字段。示例：
+
+```json
+{"kind":"EMAIL","subject":"person@example.test"}
+```
+
+成功响应固定为 `user_id`、`state`、`display_name`、`avatar_url`，未设置的资料返回空字符串。ACTIVE、FROZEN、PENDING_DELETION 均返回当前关联及保留资料；调用方自行判断业务资格和展示权限。未注册、解绑或匿名化后无当前关联返回 404 NOT_FOUND；数据库不可用或读取超时返回 503 DEPENDENCY_UNAVAILABLE；内部不变量错误返回固定 500 INTERNAL。错误方法为 405（Allow: POST），媒体类型为 415，超限为 413，其余输入错误为 400 INVALID_ARGUMENT。所有响应均为 `Cache-Control: no-store`，解析不缓存、不登录、不修改账号，也不构成后续业务授权保证。
+
+配置示例仅授予解析能力，Basic-only 无需 OIDC 配置：
+
+```dotenv
+ACCOUNTSVC_SERVICE_CLIENTS=RESOLVER
+ACCOUNTSVC_SERVICE_CLIENT_RESOLVER_ID=business-resolver
+ACCOUNTSVC_SERVICE_CLIENT_RESOLVER_AUTH_METHODS=basic
+ACCOUNTSVC_SERVICE_CLIENT_RESOLVER_PERMISSIONS=identities.resolve
+ACCOUNTSVC_SERVICE_CLIENT_RESOLVER_BASIC_SECRETS=<独立生成的32字节随机秘密的标准Base64>
+```
+
+可沿用上文 Bearer-only 或双方式配置，只将权限明确设为 `identities.resolve`；Bearer 的 scope 和角色不扩大注册权限。Basic 与 Bearer 同一客户端产生相同 SERVICE 审计主体。使用 TLS，并限制网关访问和调用频率；不要把服务秘密或敏感标识传给终端用户。权限变更须重启全部实例生效；回退不识别此权限的旧二进制前，须先移除该权限并恢复匹配配置，旧版本会拒绝未知权限。

@@ -45,7 +45,7 @@ func TestConfigServiceClientRejectsInvalidDeclarations(t *testing.T) {
 		{"duplicate method", "SERVICE_CLIENT_AI_FOOD_AUTH_METHODS", "basic,basic"},
 		{"empty permissions", "SERVICE_CLIENT_AI_FOOD_PERMISSIONS", ""},
 		{"unknown permission", "SERVICE_CLIENT_AI_FOOD_PERMISSIONS", "sensitive-permission"},
-		{"future permission", "SERVICE_CLIENT_AI_FOOD_PERMISSIONS", "identities.resolve"},
+		{"singular permission", "SERVICE_CLIENT_AI_FOOD_PERMISSIONS", "identity.resolve"},
 		{"case permission", "SERVICE_CLIENT_AI_FOOD_PERMISSIONS", "TOKENS.INTROSPECT"},
 		{"wildcard permission", "SERVICE_CLIENT_AI_FOOD_PERMISSIONS", "*"},
 		{"empty permission item", "SERVICE_CLIENT_AI_FOOD_PERMISSIONS", ",tokens.introspect"},
@@ -285,6 +285,19 @@ func TestConfigServiceClientIdentifierLimits(t *testing.T) {
 			t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_"+alias+"_BASIC_SECRETS", base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{11}, 32)))
 			if _, err := LoadConfig("serve"); err != nil {
 				t.Fatalf("valid identifier boundary rejected: %v", err)
+			}
+		})
+	}
+}
+
+func TestConfigIdentityResolutionPermissions(t *testing.T) {
+	for _, permissions := range []string{"identities.resolve", "tokens.introspect,purged_users.read,identities.resolve"} {
+		t.Run(permissions, func(t *testing.T) {
+			unifiedClientEnvironment(t)
+			t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_AI_FOOD_PERMISSIONS", permissions)
+			cfg, err := LoadConfig("serve")
+			if err != nil || !cfg.ServiceClients.HasPermission("identities.resolve") {
+				t.Fatalf("%v", err)
 			}
 		})
 	}

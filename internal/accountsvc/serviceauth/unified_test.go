@@ -19,11 +19,11 @@ func TestUnifiedAuthenticationMatrix(t *testing.T) {
 	e := newEnv(t, false, true)
 	secondSecret := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{9}, 32))
 	registry := mustRegistry(t, []serviceauth.ClientConfig{
-		{ID: "both", AuthMethods: []string{"basic", "bearer"}, Permissions: []string{"tokens.introspect", "purged_users.read"}, BasicSecrets: []string{basicSecret, secondSecret}},
+		{ID: "both", AuthMethods: []string{"basic", "bearer"}, Permissions: []string{"tokens.introspect", "purged_users.read", "identities.resolve"}, BasicSecrets: []string{basicSecret, secondSecret}},
 		{ID: "basic-only", AuthMethods: []string{"basic"}, Permissions: []string{"purged_users.read"}, BasicSecrets: []string{base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{10}, 32))}},
 		{ID: "bearer-only", AuthMethods: []string{"bearer"}, Permissions: []string{"purged_users.read"}},
 	})
-	for _, permission := range []string{"tokens.introspect", "purged_users.read"} {
+	for _, permission := range []string{"tokens.introspect", "purged_users.read", "identities.resolve"} {
 		e.auth = mustNew(t, serviceauth.Config{Realm: realm, Registry: registry, RequiredPermission: permission, BearerVerifier: tokensFor(t, e), Logger: slog.New(slog.NewTextHandler(&e.logs, nil))})
 		for _, header := range []string{basicHeader("both", basicSecret), basicHeader("both", secondSecret), e.bearer(e.p.Claims(e.now, "both"), "initial")} {
 			res, ch := e.do(header)

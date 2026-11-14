@@ -1871,6 +1871,51 @@ func (q *Queries) RequiredSignInCompletionFlowCipherVersions(ctx context.Context
 	return items, nil
 }
 
+const resolveActiveIdentity = `-- name: ResolveActiveIdentity :many
+SELECT u.id, COALESCE(u.state, 0)::smallint AS state, u.display_name, u.avatar_url
+FROM identity i LEFT JOIN user_account u ON u.id = i.user_id
+WHERE i.kind = $1 AND i.subject_digest = ANY($2::text[]) AND i.delete_time IS NULL
+LIMIT 2
+`
+
+type ResolveActiveIdentityParams struct {
+	Kind    enum.IdentityKind
+	Digests []string
+}
+
+type ResolveActiveIdentityRow struct {
+	ID          *string
+	State       int16
+	DisplayName *string
+	AvatarUrl   *string
+}
+
+// 单条语句保留悬空身份并检测跨密钥版本重复；不隐藏冷静期账号。
+func (q *Queries) ResolveActiveIdentity(ctx context.Context, arg ResolveActiveIdentityParams) ([]ResolveActiveIdentityRow, error) {
+	rows, err := q.db.Query(ctx, resolveActiveIdentity, arg.Kind, arg.Digests)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ResolveActiveIdentityRow
+	for rows.Next() {
+		var i ResolveActiveIdentityRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.State,
+			&i.DisplayName,
+			&i.AvatarUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const revokeSession = `-- name: RevokeSession :execrows
 UPDATE session SET revoke_time = $1::timestamptz, revoke_reason = $2, update_time = $1::timestamptz
 WHERE id = $3 AND revoke_time IS NULL

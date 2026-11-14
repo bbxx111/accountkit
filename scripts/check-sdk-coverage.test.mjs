@@ -69,3 +69,34 @@ test('checks actual method, model and test associations rather than accepting in
     assert.match((await validateCoverageLinks([{...record,sdkSourceFile:'../outside.ts'}],directory)).join('\n'),/path/);
   } finally { await rm(directory,{recursive:true,force:true}); }
 });
+const service = { surface: 'service', operationId: 'resolveIdentity', method: 'POST', path: '/identities:resolve', sdkApplicable: false, baseline: 'identity-resolution', optionalCapability: null, tests: [{file:'handler_test.go',name:'TestIdentityResolveProtocol'}] };
+const serviceDocuments = {...documents,service:{paths:{'/identities:resolve':{post:{operationId:'resolveIdentity'}}}}};
+test('accepts service-only protocol coverage without invented SDK links',()=>{
+  assert.deepEqual(validateCoverage([...records,service],serviceDocuments),[]);
+});
+test('service coverage requires explicit exemption and protocol tests',()=>{
+  for(const change of [{sdkApplicable:undefined},{sdkApplicable:true},{tests:[]}]) assert.notEqual(validateCoverage([...records,{...service,...change}],serviceDocuments).length,0);
+});
+test('service checks routes, duplicates and rejects unknown dynamic surfaces',()=>{
+  assert.match(validateCoverage([...records,{...service,method:'GET'}],serviceDocuments).join('\n'),/route mismatch/);
+  assert.match(validateCoverage([...records,{...service,path:'/other'}],serviceDocuments).join('\n'),/route mismatch/);
+  assert.match(validateCoverage([...records,service,service],serviceDocuments).join('\n'),/duplicate operation/);
+  const extra={...service,surface:'future',sdkMethod:'resolve',models:['Result']};
+  assert.match(validateCoverage([...records,extra],{...documents,future:serviceDocuments.service}).join('\n'),/unknown surface/);
+});
+test('SDK surfaces cannot opt out of their existing method and model gates',()=>{
+  for(const record of records) assert.match(validateCoverage(records.map(r=>r===record?{...r,sdkApplicable:false}:r),documents).join('\n'),/sdkApplicable/);
+});
+test('service links require an actual top-level Go test declaration',async()=>{
+  const directory=await mkdtemp(join(tmpdir(),'accountkit-service-coverage-'));
+  try {
+    await writeFile(join(directory,'handler_test.go'),'package example\nimport "testing"\nfunc TestIdentityResolveProtocol(t *testing.T) {}\n');
+    assert.deepEqual(await validateCoverageLinks([service],directory),[]);
+    assert.match((await validateCoverageLinks([{...service,tests:[{file:'missing_test.go',name:'TestIdentityResolveProtocol'}]}],directory)).join('\n'),/missing file/);
+    for(const body of ['// func TestIdentityResolveProtocol(t *testing.T) {}','func Example() { /* TestIdentityResolveProtocol */ }','func TestIdentityResolveProtocol() {}']) {
+      await writeFile(join(directory,'handler_test.go'),body);
+      assert.match((await validateCoverageLinks([service],directory)).join('\n'),/Go test/);
+    }
+    assert.match((await validateCoverageLinks([{...service,tests:[{file:'handler.go',name:'TestIdentityResolveProtocol'}]}],directory)).join('\n'),/Go test/);
+  } finally {await rm(directory,{recursive:true,force:true});}
+});

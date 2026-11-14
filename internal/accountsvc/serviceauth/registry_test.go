@@ -43,7 +43,7 @@ func TestRegistryRejectsInvalidClients(t *testing.T) {
 			case "permissions empty":
 				c.Permissions = nil
 			case "permission unknown":
-				c.Permissions = []string{"identities.resolve"}
+				c.Permissions = []string{"identity.resolve"}
 			case "permission duplicate":
 				c.Permissions = []string{"tokens.introspect", "tokens.introspect"}
 			case "secret missing":

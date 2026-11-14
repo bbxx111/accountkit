@@ -1,5 +1,22 @@
 # Verification
 
+## 主规格同步（2026-11-14）
+
+用户在 `c3ddfe6` 后要求将当前 delta 同步到主规格。本次只同步下列四份主规格并记录结果，保留活动 change、delta 工件与历史验收记录，未修改产品代码。同步完成后用户要求本地提交；提交前重跑主规格普通校验仍为 43/43 通过，未推送或归档。
+
+| 主规格 | 修改要求 | 新增要求 |
+|---|---:|---:|
+| accountsvc-runtime | 4 | 3 |
+| accountsvc-service-authentication | 4 | 7 |
+| consumer-token-introspection | 1 | 0 |
+| purged-user-feed | 1 | 0 |
+
+- 按现行 specs 指令读取规则后合并，共修改 10 项、增加 10 项要求。保留各主规格原 Purpose、未涉及的要求及场景；原修改项的所有场景标题均在 delta 中，不存在被遗漏的原场景。主规格仅有普通 Requirements，不含 ADDED/MODIFIED 等 delta 操作标题。
+- 核对差异及需求块：JWT 校验、提供方缓存/故障处理、数据库吊销、清理事务/分页、其他 runtime 功能等未涉及内容保持。旧逐接口配置只作为明确拒绝和迁移说明出现，不再描述为可用配置；同一客户端可按权限访问两项能力。
+- 合并后的四份主规格与 delta 对应块一致；重复执行同步预览均显示无变化，确认幂等。git diff --check 通过。
+- `openspec validate --specs --json`：退出 0，43/43 主规格通过普通校验。`openspec validate --all --strict --json`：退出 1，44 项中 37 通过、7 失败；当前 change 通过且无 issues，失败仍为同样七份主规格的 >500 字符正文警告，没有为校验拆分/删减已确认要求。原始结果为 `.test-output/service-client-sync-specs.json` 与 `service-client-sync-strict.json`。
+- 本次为规格同步，未重跑 Go/数据库测试；实现验收证据仍见下文。本节记录同步之后的状态，下文“主规格未修改”等说明属于各自历史验收时点。
+
 ## 单一配置模式收敛（2026-11-14，本轮最终验收）
 
 用户在提交 `b25ec98` 后要求“去掉旧配置模式，整合配置文件”。本轮 tasks 5.1–5.4 已完成，原 18 项仅是初次实现历史；当前最终契约及实现均只有统一注册表。计划见[单一服务客户端配置](../../../docs/superpowers/plans/2026-11-14-service-clients-only.md)。验收完成时保留当前任务分支与未提交工作区，未推送、发布、部署或归档；用户随后明确要求本地提交，见下方补记。

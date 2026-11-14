@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、现有 basicclients/oidcjwt、PostgreSQL 17、Redis、Go testing 与隔离 OIDC fixture。
 
-**Spec:** [OpenSpec design](../../../openspec/changes/unify-service-client-auth/design.md)，同目录 proposal、tasks 与四份 specs 是需求权威。
+**Spec:** [OpenSpec design](../../../openspec/changes/archive/2026-11-14-unify-service-client-auth/design.md)，同目录 proposal、tasks 与四份 specs 是需求权威。
 
 ## Global Constraints
 

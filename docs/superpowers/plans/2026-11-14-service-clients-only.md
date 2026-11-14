@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、现有 Matcher/OIDC verifier、PostgreSQL 17、Redis 7、Docker Compose。
 
-**Spec:** [现有变更](../../../openspec/changes/unify-service-client-auth/design.md)，由用户新要求修订 proposal/design/四份 delta；不新建重复 change、不归档。
+**Spec:** [现有变更](../../../openspec/changes/archive/2026-11-14-unify-service-client-auth/design.md)，由用户新要求修订 proposal/design/四份 delta；不新建重复 change、不归档。
 
 ## Global Constraints
 
@@ -30,7 +30,7 @@
 
 ### Task 1: 修订当前变更契约
 
-**Files:** `openspec/changes/unify-service-client-auth/proposal.md`、`design.md`、四份 `specs/*/spec.md`、`tasks.md`。
+**Files:** `openspec/changes/archive/2026-11-14-unify-service-client-auth/proposal.md`、`design.md`、四份 `specs/*/spec.md`、`tasks.md`。
 
 **Interfaces:** 最终契约采用 Global Constraints；原已完成18项保留为 b25ec98 历史阶段并明确被新要求覆盖，新增 5.1–5.4 待完成项，覆盖核心实现、夹具回归、Compose文档、最终验收。
 

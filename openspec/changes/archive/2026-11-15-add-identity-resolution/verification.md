@@ -2,7 +2,7 @@
 
 ## Scope
 
-2026-11-15，变更 add-identity-resolution，分支 feat/add-identity-resolution。实施计划见 [详细计划](../../../docs/superpowers/plans/2026-11-15-identity-resolution.md)。已完成领域、服务 HTTP、权限、审计、协议登记与文档，16/16 任务完成。最终全仓库 race、必需测试与恢复门禁通过；全局 OpenSpec 既有长度告警仍单列。
+2026-11-15，变更 add-identity-resolution，分支 feat/add-identity-resolution。实施计划见 [详细计划](../../../../docs/superpowers/plans/2026-11-15-identity-resolution.md)。已完成领域、服务 HTTP、权限、审计、协议登记与文档，16/16 任务完成。最终全仓库 race、必需测试与恢复门禁通过；全局 OpenSpec 既有长度告警仍单列。
 
 接口为 POST /v1/identities:resolve，独立权限 identities.resolve；输入单个 PHONE/EMAIL，返回 user_id、state、display_name、avatar_url。当前未解绑身份可解析 ACTIVE、FROZEN、PENDING_DELETION，未匹配404，数据与关联采用单语句快照。
 
@@ -31,7 +31,7 @@
 | 全仓库规格 | openspec validate --all --strict：37 项通过、7 项既有主规格因 >500 字符 warning 在 strict 下失败 |
 | 最终完整入口 | scripts/verify.sh 及服务必需测试核验均 exit 0；55 个包、1245 个顶层测试 PASS，无 FAIL |
 
-全局 strict 的既有失败项（本次未修改对应主规格）：
+实施验收时全局 strict 的既有失败项（归档同步保持这些超长 requirement 不变）：
 
 - accountsvc-runtime：requirements[27]。
 - accountsvc-service-authentication：requirements[6]。
@@ -58,8 +58,14 @@ Linux root 容器中的 TestConfigServiceClientComposeExamples（无 Docker CLI�
 
 ## Artifacts and Boundaries
 
-原始日志保存在 [本次测试目录](../../../.test-output/identity-resolution/)，完整入口日志和恢复材料还使用项目标准 .test-output/tests.jsonl 与 recovery.* 目录。必需测试清单登记12个领域与6个服务相关新顶层测试。
+原始日志保存在 [本次测试目录](../../../../.test-output/identity-resolution/)，完整入口日志和恢复材料还使用项目标准 .test-output/tests.jsonl 与 recovery.* 目录。必需测试清单登记12个领域与6个服务相关新顶层测试。
 
 代码保留于当前任务分支，提交按用户后续授权执行；本次验收不包含推送、归档、创建 tag 或部署。SDK 的平台构建与远端 Git 消费未运行，本次未修改 SDK 实现。全仓库 OpenSpec 既有长度问题单列，不以本变更严格校验通过替代全仓库通过。
 
 任务结束后已核对 accountkit.task 标签并移除本任务 PostgreSQL、Redis 容器及专用 Docker 网络；既有镜像和缓存卷未清理。最后 git diff --check 通过，迁移文件无差异。
+
+## Archive
+
+2026-11-15：按用户要求同步三份增量规格并归档至本目录，16/16 任务完成。主规格逐 requirement 与场景核对一致，openspec validate --specs 为44/44通过。实现代码仍对应已完成完整验证的5aab360，本轮仅整理规格、记录与相对链接；按授权采用独立 merge commit 合入本地 develop，不包含推送。
+
+归档后校验：活动变更列表为空；identity-resolution 主规格 strict 通过；全局 strict 仍为37通过、7项既有长度告警失败。已修复验收记录到计划／原始日志的相对链接及实施计划到归档设计的引用。

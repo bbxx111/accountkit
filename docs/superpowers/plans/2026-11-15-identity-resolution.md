@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、PostgreSQL 17、sqlc 1.31.1、Chi、pgx、现有 boundedjson 和 audit。
 
-**Spec:** [变更设计](../../../openspec/changes/add-identity-resolution/design.md) 与同目录 specs 下三份增量规格。
+**Spec:** [变更设计](../../../openspec/changes/archive/2026-11-15-add-identity-resolution/design.md) 与同目录 specs 下三份增量规格。
 
 ## Global Constraints
 
@@ -63,7 +63,7 @@
 
 ### Task 4: 集成与验收记录
 
-**Files:** scripts/required-tests.txt、openspec/changes/add-identity-resolution/tasks.md、verification.md 与本计划。
+**Files:** scripts/required-tests.txt、openspec/changes/archive/2026-11-15-add-identity-resolution/tasks.md、verification.md 与本计划。
 
 **Interfaces:** Consumes前三项全部测试及报告；输出逐项证据。
 

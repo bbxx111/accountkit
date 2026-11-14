@@ -29,6 +29,11 @@ func configEnvironment(t *testing.T) {
 		name, _, _ := strings.Cut(entry, "=")
 		if strings.HasPrefix(name, "ACCOUNTKIT_") || strings.HasPrefix(name, "ACCOUNTSVC_") {
 			t.Setenv(name, "")
+			if name == "ACCOUNTSVC_SERVICE_CLIENTS" || strings.HasPrefix(name, "ACCOUNTSVC_SERVICE_CLIENT_") {
+				if err := os.Unsetenv(name); err != nil {
+					t.Fatal(err)
+				}
+			}
 		}
 	}
 	key := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))

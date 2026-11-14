@@ -1,0 +1,8 @@
+# Explicit unified-client override. Use the SAME file for CLI --env-file and env_file.
+# Relative paths resolve from compose.yaml's directory; custom files need this path updated too.
+# Import dynamic SERVICE_CLIENT_<ALIAS>_* fields without inventing an empty SERVICE_CLIENTS.
+# The base environment mapping still overrides shared/legacy values using CLI interpolation.
+services:
+  accountsvc:
+    env_file:
+      - ./.env

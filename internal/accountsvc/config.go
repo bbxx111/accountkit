@@ -35,30 +35,32 @@ import (
 
 // Config 区分库配置和服务运行配置；其中的秘密不得整体写入日志。
 type Config struct {
-	Library                   accountkit.Config
-	Mode                      string
-	DatabaseURL               string
-	RedisURL                  string
-	HTTPAddr                  string
-	TLSEnabled                bool // LoadConfig 解析后的有效 HTTP TLS 模式。
-	TLSCertFile               string
-	TLSKeyFile                string
-	StartupTimeout            time.Duration
-	ShutdownTimeout           time.Duration
-	TrustedProxyCIDRs         []netip.Prefix
-	SMTP                      smtp.Config
-	SMS                       *aliyun.Config           // nil 表示未配置短信服务商
-	EmailTemplates            *emailtemplates.Renderer // nil 表示使用嵌入的无品牌默认清单
-	EmailTemplatesDigest      string                   // 清单 SHA-256 的前 12 位十六进制，仅用于启动日志核对
-	IntrospectionBasicClients map[string][]string      // 与 Service.IntrospectionBearerClients 都为空时 /v1/introspect 返回 503 introspection_not_configured
-	PurgeFeedBasicClients     map[string][]string      // 与 Service.PurgeFeedBearerClients 都为空时 /v1/purgedUsers 返回 503 PURGE_FEED_NOT_CONFIGURED
-	Service                   ServiceConfig
-	AdminEnabled              bool
-	Admin                     adminauth.Config
-	MetricsEnabled            bool
-	MetricsInstance           string
-	command                   string
-	tlsConfig                 *tls.Config
+	Library                    accountkit.Config
+	Mode                       string
+	DatabaseURL                string
+	RedisURL                   string
+	HTTPAddr                   string
+	TLSEnabled                 bool // LoadConfig 解析后的有效 HTTP TLS 模式。
+	TLSCertFile                string
+	TLSKeyFile                 string
+	StartupTimeout             time.Duration
+	ShutdownTimeout            time.Duration
+	TrustedProxyCIDRs          []netip.Prefix
+	SMTP                       smtp.Config
+	SMS                        *aliyun.Config           // nil 表示未配置短信服务商
+	EmailTemplates             *emailtemplates.Renderer // nil 表示使用嵌入的无品牌默认清单
+	EmailTemplatesDigest       string                   // 清单 SHA-256 的前 12 位十六进制，仅用于启动日志核对
+	IntrospectionBasicClients  map[string][]string      // 与 Service.IntrospectionBearerClients 都为空时 /v1/introspect 返回 503 introspection_not_configured
+	PurgeFeedBasicClients      map[string][]string      // 与 Service.PurgeFeedBearerClients 都为空时 /v1/purgedUsers 返回 503 PURGE_FEED_NOT_CONFIGURED
+	Service                    ServiceConfig
+	ServiceClients             *serviceauth.Registry // nil 使用旧逐接口配置；非 nil（含空注册表）使用统一模式。
+	AdminEnabled               bool
+	Admin                      adminauth.Config
+	MetricsEnabled             bool
+	MetricsInstance            string
+	command                    string
+	tlsConfig                  *tls.Config
+	deprecatedServiceVariables []string // 完整旧变量名，供启动时一次性记录弃用警告。
 }
 
 func invalidConfig(name string) error { return errors.New("accountsvc: invalid or missing " + name) }
@@ -273,12 +275,15 @@ func LoadConfig(command string) (Config, error) {
 			return Config{}, invalidConfig("ACCOUNTSVC_SMTP configuration")
 		}
 	}
-	if raw := os.Getenv("ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS"); strings.TrimSpace(raw) != "" {
+	if err = c.loadServiceClients(); err != nil {
+		return Config{}, err
+	}
+	if raw := os.Getenv("ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS"); c.ServiceClients == nil && strings.TrimSpace(raw) != "" {
 		if c.IntrospectionBasicClients, err = introspection.ParseClients(raw); err != nil {
 			return Config{}, invalidConfig("ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS")
 		}
 	}
-	if raw := os.Getenv("ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS"); strings.TrimSpace(raw) != "" {
+	if raw := os.Getenv("ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS"); c.ServiceClients == nil && strings.TrimSpace(raw) != "" {
 		if c.PurgeFeedBasicClients, err = basicclients.Parse(raw, "ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS"); err != nil {
 			return Config{}, invalidConfig("ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS")
 		}
@@ -333,31 +338,35 @@ func (c *Config) loadAdmin() error {
 	return nil
 }
 
-// ServiceConfig 是业务服务客户端凭据 Bearer 令牌的签发方、受众与逐接口 azp 允许列表。
+// ServiceConfig 是业务服务 Bearer 令牌的共享信任配置，保留旧模式逐接口 azp 名单。
 // AllowHTTP 仅在 development 模式为 true：签发方、discovery 与 jwks_uri 另接受 http://。
 type ServiceConfig struct {
 	Issuer, Audience           string
 	IntrospectionBearerClients []string
 	PurgeFeedBearerClients     []string
 	AllowHTTP                  bool
+	unifiedBearerEnabled       bool
+	bearerClientIDs            []string
 }
 
 // Enabled 报告是否有任一接口接受 Bearer 令牌。
 func (s ServiceConfig) Enabled() bool {
-	return len(s.IntrospectionBearerClients) > 0 || len(s.PurgeFeedBearerClients) > 0
+	return s.unifiedBearerEnabled || len(s.IntrospectionBearerClients) > 0 || len(s.PurgeFeedBearerClients) > 0
 }
 
-// loadService 读取服务令牌配置并校验：两列表不相交、不得半配置，issuer 与消费者
+// loadService 读取服务令牌配置并校验：旧模式两列表不相交、两模式不得半配置，issuer 与消费者
 // issuer 不同，audience 不得与消费者/管理员 audience、任一第三方应用或客户端 ID、任一 azp 相同
 // （否则那个客户端自己的 ID token 可冒充访问令牌）。错误只含变量名。
 func (c *Config) loadService() error {
 	s := &c.Service
 	var err error
-	if s.IntrospectionBearerClients, err = parseBearerClients(env("INTROSPECTION_BEARER_CLIENTS"), "ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS"); err != nil {
-		return err
-	}
-	if s.PurgeFeedBearerClients, err = parseBearerClients(env("PURGE_FEED_BEARER_CLIENTS"), "ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS"); err != nil {
-		return err
+	if c.ServiceClients == nil {
+		if s.IntrospectionBearerClients, err = parseBearerClients(env("INTROSPECTION_BEARER_CLIENTS"), "ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS"); err != nil {
+			return err
+		}
+		if s.PurgeFeedBearerClients, err = parseBearerClients(env("PURGE_FEED_BEARER_CLIENTS"), "ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS"); err != nil {
+			return err
+		}
 	}
 	// audience 不经 env() 去空白，以便拒绝首尾空白。
 	s.Issuer, s.Audience = env("SERVICE_ISSUER"), os.Getenv("ACCOUNTSVC_SERVICE_AUDIENCE")
@@ -408,6 +417,7 @@ func (c *Config) reservedAudiences() []string {
 	out = append(out, l.QQAppIDs...)
 	out = append(out, l.WeiboAppIDs...)
 	out = append(out, c.Service.IntrospectionBearerClients...)
+	out = append(out, c.Service.bearerClientIDs...)
 	return append(out, c.Service.PurgeFeedBearerClients...)
 }
 

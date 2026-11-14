@@ -39,6 +39,16 @@ IdP 统一调用入口是 `Provider.Verify(context.Context, json.RawMessage)`。
 
 公开 Go API 自 v1.0.0 起受语义化版本约束，后续破坏性变化须发布新主版本并改用 `/v2` 模块路径。数据库结构变化从 `0002` 迁移递增，见[迁移手册](migrations.md)。
 
+## accountsvc 服务客户端配置兼容
+
+统一服务客户端配置只影响内部 `/v1/introspect` 与 `/v1/purgedUsers` 的调用认证和权限分配，不变更消费者、管理员或 SDK 协议，也不涉及数据库结构、内省的数据库吊销判定或清理 feed 数据语义。
+
+`ACCOUNTSVC_SERVICE_CLIENTS` 未设置且无 `SERVICE_CLIENT_<ALIAS>_*` 字段时，仍使用四项旧逐接口配置，保持名单不相交、秘密不复用及原 HTTP 行为；非空旧配置启动时提示弃用，当前无移除期限。显式空主列表选择空统一注册表，不能作为旧模式回退。统一模式与任何非空白旧逐接口变量冲突，包括 `{}`、`[]`。
+
+统一模式允许同一身份使用 Basic、Bearer 或两者，并明确授予 `tokens.introspect`、`purged_users.read`。两个方法共用权限及该身份的 Basic 轮换秘密；不自动合并旧名单。认证成功但权限不足的 Basic 请求现在可返回 403（无挑战），Bearer 为 403 并带 insufficient_scope；无人持有能力时仍先返回原 NOT_CONFIGURED 503。选择统一模式本身是部署者的显式授权变更，应逐身份复核最小权限。
+
+配置为启动快照；权限、方法、身份或秘密变更须重启全部副本或排空旧副本。提供方禁用客户端不保证已发令牌即时失效。回退须恢复保存的独立旧身份/秘密及调用方配置，删除统一主列表和全部分项字段，再按需回退二进制；不能通过清库或清 Redis 完成。完整配置、TLS、显式 Compose override 与迁移步骤见[服务手册](accountsvc.md#服务调用认证内省与已清理用户拉取)。
+
 ## 宿主账号契约
 
 `BatchPublicProfiles(ctx, ids)` 是 Go 批量查询，结果仅含 ID/DisplayName/AvatarURL/State。输入去重，非法 ID 返回参数错误，未知账号略去，待注销及已删除账号清空显示名和头像；宿主在调用前按业务权限过滤 ID。无任意用户资料 HTTP 端点。

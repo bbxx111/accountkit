@@ -25,6 +25,8 @@ services:
     ports:
       - "127.0.0.1:${MAILPIT_HTTP_PORT:-18025}:8025"
   accountsvc:
+    # Legacy-compatible by default: do not inject an empty SERVICE_CLIENTS here.
+    # Unified clients use the explicit compose.service-clients.yaml env_file override.
     build:
       context: ../..
       dockerfile: deploy/accountsvc/Dockerfile

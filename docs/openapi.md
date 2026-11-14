@@ -2,14 +2,15 @@
 
 本契约描述 v1.0.0（已发布）的内置 HTTP handler。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
 
-## 两个独立 HTTP 面
+## 独立 HTTP 面
 
 | 文档 | 范围 | 默认挂载示例 |
 |---|---|---|
 | [enduser.json](openapi/enduser.json) | 消费者 24 个操作：登录、补全、token/revoke、资料、身份、会话及注销/恢复 | `/v1` |
 | [admin.json](openapi/admin.json) | 管理面 11 个操作：账号查询、状态操作、明文查看、会话及认证审计 | `/admin/v1` |
+| [service.json](openapi/service.json) | accountsvc 新增服务操作 resolveIdentity | `/v1` |
 
-两份文件各自独立，使用 [OpenAPI 3.1.0](https://spec.openapis.org/oas/v3.1.0.html) 与 JSON Schema 描述。所有 paths 均为相对 handler 路由，`servers[0].variables.basePath.default` 由宿主调整为实际挂载前缀或完整服务 URL。路径中的 `user` / `session` / `identity` 是原始 `u_` / `s_` / `i_` ID；响应 `name` 才是 `users/{id}` 等资源名。
+消费者与管理面文件各自独立，使用 [OpenAPI 3.1.0](https://spec.openapis.org/oas/v3.1.0.html) 与 JSON Schema 描述。所有 paths 均为相对 handler 路由，`servers[0].variables.basePath.default` 由宿主调整为实际挂载前缀或完整服务 URL。路径中的 `user` / `session` / `identity` 是原始 `u_` / `s_` / `i_` ID；响应 `name` 才是 `users/{id}` 等资源名。
 
 `info.version` 为 `v1.0.0`，与库版本一致。文件不包含 accountsvc 专属的 `/v1/introspect`、`/v1/purgedUsers`、探针或管理员登录流程，也不描述宿主自有业务接口；这些不能由库契约自动推导。
 
@@ -18,6 +19,12 @@
 消费者使用自己的 Bearer access token。`x-allowed-scopes` 表示允许的 scope 列表，`x-recent-authentication` 表示现有近期认证要求；这些扩展与说明用于接入核对，代码生成器不会自动替宿主实施授权。未标 scope 的 `GET /users/me` 接受任何有效消费者 Bearer scope。
 
 管理面使用独立宿主身份系统，`x-required-role` 对应路由要求；`operator` 与 `super-admin` 的层级由宿主 verifier 决定。文件中的 AdminBearer 表示常见的外部 Bearer 接入，宿主若使用其他认证方式须修改安全定义。外部 verifier 的 401/403 响应体与 challenge 由宿主定义，契约没有伪造统一错误体。完全未配置管理面时返回 `503 ADMIN_NOT_CONFIGURED`。
+
+## 服务身份解析
+
+[service.json](openapi/service.json) 独立描述 `POST /v1/identities:resolve`，使用服务 Basic/Bearer 与显式 `identities.resolve` 权限，版本标记为本次 `identity-resolution` 变更。仅新增此操作，不扩展内省、清理与探针端点。全部响应 no-store；200 恰好返回 user_id、state、display_name、avatar_url，空资料为字符串空值；FROZEN/PENDING_DELETION 仍返回保留资料。400/401/403/404/500/503 使用 apierror，405/413/415 无响应体；500 消息固定为 `internal server error`。其输入上限、严格 JSON、校验顺序及 challenge 见契约操作说明。
+
+覆盖登记使用明确的 service surface、`sdkApplicable=false` 和真实 Go 顶层协议测试引用；不新增服务 SDK。消费者/管理面继续强制 SDK 方法、模型与测试链接，未知 surface 即使由动态文档提供也拒绝。
 
 ## 客户端需要区分的响应
 
@@ -110,7 +117,7 @@ node scripts/check-openapi.cjs
 
 ```powershell
 npm.cmd install --prefix .test-output/contract-tools --cache .test-output/npm-cache --no-audit --no-fund @apidevtools/swagger-parser@12.1.0
-node -e "const p=require('./.test-output/contract-tools/node_modules/@apidevtools/swagger-parser'); (async()=>{for(const n of ['enduser','admin']){await p.validate('docs/openapi/'+n+'.json');console.log(n+': valid')}})().catch(e=>{console.error(e.message);process.exit(1)})"
+node -e "const p=require('./.test-output/contract-tools/node_modules/@apidevtools/swagger-parser'); (async()=>{for(const n of ['enduser','admin','service']){await p.validate('docs/openapi/'+n+'.json');console.log(n+': valid')}})().catch(e=>{console.error(e.message);process.exit(1)})"
 ```
 
 随后按改动范围运行 `GOWORK=off go test -count=1 ./httpapi/...` 与相关领域测试。标准工具通过只证明文档结构与引用合法；生成客户端、Mock、产品网关和真实业务链路仍需按宿主环境验收。

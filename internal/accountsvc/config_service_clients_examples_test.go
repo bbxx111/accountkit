@@ -73,7 +73,7 @@ func checkServiceClientExample(t *testing.T, values map[string]string, bearer, p
 	if secretCount == 0 {
 		return
 	}
-	auth, _, _, err := serviceAuthenticators(cfg, slog.Default(), nil)
+	auth, _, _, _, err := serviceAuthenticators(cfg, slog.Default(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

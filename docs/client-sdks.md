@@ -63,7 +63,7 @@ const page = await client.listUsers({filter: userFilter.eq('state', 'ACTIVE')});
 
 ## 验证与发布
 
-覆盖检查：`node scripts/check-sdk-coverage.mjs`。包内分别运行 Flutter analyze/test 和 pnpm typecheck/test。真实服务装配见 [sdks/testsupport](../sdks/testsupport/README.md)；Go 烟测只证明宿主就绪，SDK 契约必须由 SDK 实际发请求。
+覆盖检查：`node scripts/check-sdk-coverage.mjs`。消费者/管理面继续强制 SDK 方法、模型与测试链接。新增服务身份解析见 [service.json](openapi/service.json)，仅以 `service`、`sdkApplicable=false` 和真实 Go 协议测试登记，不新增 SDK 或将服务凭据放入客户端；未知 surface 不接受豁免。包内分别运行 Flutter analyze/test 和 pnpm typecheck/test。真实服务装配见 [sdks/testsupport](../sdks/testsupport/README.md)；Go 烟测只证明宿主就绪，SDK 契约必须由 SDK 实际发请求。
 
 发布前 Git 隔离入口在仓库外创建一次性应用、临时本机 Git 服务和固定快照 SHA，不改变源分支或创建 tag：
 

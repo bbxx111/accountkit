@@ -574,7 +574,7 @@ serve SHALL 在监听前解析并冻结唯一的统一服务客户端注册表�
 
 #### Scenario: 示例可核验
 - **WHEN** 使用模板的合成秘密分别配置三种认证方式组合
-- **THEN** 配置可解析，权限与示例说明一致，Basic-only 不要求 OIDC 配置，未注册的身份查询权限不出现在可运行示例中
+- **THEN** 配置可解析，权限与示例说明一致，Basic-only 不要求 OIDC 配置，身份解析示例仅授予已实现的 identities.resolve，不隐含内省或清理权限
 
 ### Requirement: 单一 Compose 配置文件
 
@@ -586,4 +586,20 @@ serve SHALL 在监听前解析并冻结唯一的统一服务客户端注册表�
 
 #### Scenario: 默认无服务客户端
 - **WHEN** 使用默认模板且未配置服务客户端或信任参数
-- **THEN** 单文件 Compose 可解析，serve 正常启动并为两个未配置能力返回各自 NOT_CONFIGURED 503
+- **THEN** 单文件 Compose 可解析，serve 正常启动并为三个未配置能力返回各自 NOT_CONFIGURED 503
+
+### Requirement: 身份解析服务装配
+
+serve SHALL 在 /v1/identities:resolve 装配独立服务认证的身份解析处理器，不挂入消费者或管理员 handler。SHALL 复用统一注册表并要求 identities.resolve，至少一个客户端持有该权限才启用该能力。无人持有时 SHALL 返回 503 IDENTITY_RESOLUTION_NOT_CONFIGURED，并按未配置能力约定记录一次警告。migrate SHALL 不解析服务权限变量或访问身份解析依赖。SHALL 不要求额外发送器、Redis 查询或 IdP 资料接口。
+
+#### Scenario: 只启用身份解析
+- **WHEN** Basic-only 客户端仅被授予 identities.resolve，其他必要服务配置有效
+- **THEN** serve 启动，身份解析可用；内省与清理接口分别返回原 NOT_CONFIGURED 503，不需要 OIDC 配置
+
+#### Scenario: 无解析授权
+- **WHEN** 无客户端拥有 identities.resolve，无论请求是否携带有效凭据
+- **THEN** 新路由返回 503 IDENTITY_RESOLUTION_NOT_CONFIGURED，不查询账号；原有获授权能力继续可用
+
+#### Scenario: 权限与二进制回退
+- **WHEN** 部署者启用新版身份解析或回退至不识别 identities.resolve 的旧版本
+- **THEN** 文档要求新版显式授权并重启生效，旧版回退前移除该权限；不静默忽略未知权限

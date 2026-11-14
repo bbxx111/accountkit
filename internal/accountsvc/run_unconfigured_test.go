@@ -17,17 +17,17 @@ func TestWarnUnconfiguredInterfaces(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&buf, nil))
 	warnUnconfigured(Config{}, logger)
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
-	if len(lines) != 5 {
+	if len(lines) != 6 {
 		t.Fatalf("want one warning per unconfigured interface, got:\n%s", buf.String())
 	}
-	for i, want := range []string{"introspection_not_configured", "PURGE_FEED_NOT_CONFIGURED", "ADMIN_NOT_CONFIGURED", "PROFILE_ATTRIBUTES_NOT_CONFIGURED", "ACCOUNTSVC_SMTP_TEMPLATES_FILE"} {
+	for i, want := range []string{"IDENTITY_RESOLUTION_NOT_CONFIGURED", "introspection_not_configured", "PURGE_FEED_NOT_CONFIGURED", "ADMIN_NOT_CONFIGURED", "PROFILE_ATTRIBUTES_NOT_CONFIGURED", "ACCOUNTSVC_SMTP_TEMPLATES_FILE"} {
 		if !strings.Contains(lines[i], "level=WARN") || !strings.Contains(lines[i], want) {
 			t.Fatalf("line %d = %q, want WARN mentioning %s", i, lines[i], want)
 		}
 	}
 
 	for name, method := range map[string]string{"basic": "basic", "bearer": "bearer"} {
-		registry, err := serviceauth.NewRegistry([]serviceauth.ClientConfig{{ID: "business", AuthMethods: []string{method}, Permissions: []string{"tokens.introspect", "purged_users.read"}, BasicSecrets: map[string][]string{"basic": {basicSecretForWarnings()}}[method]}})
+		registry, err := serviceauth.NewRegistry([]serviceauth.ClientConfig{{ID: "business", AuthMethods: []string{method}, Permissions: []string{"tokens.introspect", "purged_users.read", "identities.resolve"}, BasicSecrets: map[string][]string{"basic": {basicSecretForWarnings()}}[method]}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -60,7 +60,7 @@ func TestServiceCapabilityWarnings(t *testing.T) {
 			var buf bytes.Buffer
 			warnUnconfigured(cfg, slog.New(slog.NewTextHandler(&buf, nil)))
 			out := buf.String()
-			for _, capability := range []struct{ permission, marker string }{{"tokens.introspect", "introspection is not configured"}, {"purged_users.read", "purged user feed is not configured"}} {
+			for _, capability := range []struct{ permission, marker string }{{"tokens.introspect", "introspection is not configured"}, {"purged_users.read", "purged user feed is not configured"}, {"identities.resolve", "identity resolution is not configured"}} {
 				want := 1
 				if registry.HasPermission(capability.permission) {
 					want = 0

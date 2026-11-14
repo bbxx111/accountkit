@@ -115,6 +115,23 @@ accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect
 
 `auth.Users()` 返回 `*user.Service`，是所有业务规则的唯一所在；HTTP handler、维护任务与管理面都只调用它。
 
+宿主也可以解析当前手机号/邮箱关联，须先自行认证和授权调用服务，并传入稳定的 SERVICE 审计主体。例如在已有 `auth`、`ctx` 的宿主代码中（导入 `audit`、`enum`、`user`）：
+
+```go
+resolved, err := auth.Users().ResolveIdentity(ctx, user.ResolveIdentityInput{
+    Kind: enum.IdentityEmail,
+    Subject: "person@example.com",
+    Actor: audit.Actor{Type: audit.ActorService, Namespace: "my-service/callers", ID: "orders"},
+    Meta: user.Meta{RequestID: "request-123"},
+})
+if err != nil {
+    return err
+}
+_ = resolved.UserID
+```
+
+结果仅含 `UserID`、`State`、`DisplayName`、`AvatarURL`；未设置资料为空字符串。ACTIVE、FROZEN、PENDING_DELETION 均返回真实状态和保留资料，公开批量资料的注销隐藏规则保持不变。未注册、已解绑或匿名化后无新关联返回 `user.ErrNotFound`，数据库不可用/最长三秒查询期限返回 `user.ErrUnavailable`。查询支持全部配置的摘要版本，不受登录启用策略影响，不访问 Redis 或发送器。结果是单条 SQL 的一致快照，宿主负责资料展示权限与后续业务资格判断；解析本身不创建账号或会话，也不提供后续授权保证。合法查询通过通用审计投递 `IDENTITY_RESOLVE`，不会复制联系方式、摘要、资料或 Actor.Name；审计失败不改变解析结果。
+
 | 能力 | 方法 | 备注 |
 |---|---|---|
 | 发登录码 | `SendSignInCode(ctx, channel, target, meta)` | 返回 `(user.CodeChallenge, error)`；先占额再发送，发送失败不退额；被限流返回 `*code.RateLimitedError` |

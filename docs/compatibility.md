@@ -39,6 +39,16 @@ IdP 统一调用入口是 `Provider.Verify(context.Context, json.RawMessage)`。
 
 公开 Go API 自 v1.0.0 起受语义化版本约束，后续破坏性变化须发布新主版本并改用 `/v2` 模块路径。数据库结构变化从 `0002` 迁移递增，见[迁移手册](migrations.md)。
 
+## accountsvc 服务客户端配置兼容
+
+统一服务客户端配置只影响内部 `/v1/introspect` 与 `/v1/purgedUsers` 的调用认证和权限分配，不变更消费者、管理员或 SDK 协议，也不涉及数据库结构、内省的数据库吊销判定或清理 feed 数据语义。
+
+本次按用户要求移除旧逐接口配置模式，属于配置破坏性变化。`ACCOUNTSVC_SERVICE_CLIENTS` 未设置、空或全空白均产生非 nil 空注册表，serve 正常启动，两项内部能力分别返回原 NOT_CONFIGURED 503；任何未声明客户端字段仍拒绝。四项旧 `INTROSPECTION_BASIC_CLIENTS`、`PURGE_FEED_BASIC_CLIENTS`、`INTROSPECTION_BEARER_CLIENTS`、`PURGE_FEED_BEARER_CLIENTS`（均带 `ACCOUNTSVC_` 前缀）只要非空白就会在监听前被拒绝，包括 `{}`、`[]`，无论是否设置新列表；空白占位忽略。migrate 不解析新旧服务运行变量。
+
+统一注册表允许同一身份使用 Basic、Bearer 或两者，并明确授予 `tokens.introspect`、`purged_users.read`。两个方法共用权限及该身份的 Basic 轮换秘密；不自动合并旧名单。认证成功但权限不足的 Basic 请求现在可返回 403（无挑战），Bearer 为 403 并带 insufficient_scope；无人持有能力时仍先返回原 NOT_CONFIGURED 503。升级前须显式转换旧客户端、认证方法与权限，逐身份复核最小权限。
+
+配置为启动快照；权限、方法、身份或秘密变更须重启全部副本或排空旧副本。提供方禁用客户端不保证已发令牌即时失效。如需恢复旧配置模式，必须同时恢复支持该模式的旧二进制、已保存的匹配配置及调用方凭据；当前二进制没有旧模式回退入口，不能通过清库或清 Redis 完成。完整配置、TLS、单文件 Compose 与迁移步骤见[服务手册](accountsvc.md#服务调用认证内省与已清理用户拉取)。
+
 ## 宿主账号契约
 
 `BatchPublicProfiles(ctx, ids)` 是 Go 批量查询，结果仅含 ID/DisplayName/AvatarURL/State。输入去重，非法 ID 返回参数错误，未知账号略去，待注销及已删除账号清空显示名和头像；宿主在调用前按业务权限过滤 ID。无任意用户资料 HTTP 端点。

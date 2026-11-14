@@ -271,27 +271,25 @@ const serviceTokenPreloadTimeout = 10 * time.Second
 // verifier（延迟加载）；preload 为 nil 表示未启用 Bearer。client 仅供测试注入。
 func serviceAuthenticators(cfg Config, logger *slog.Logger, client *http.Client) (intro, purge *serviceauth.Authenticator, preload func(context.Context) error, err error) {
 	var tokens *oidcjwt.Verifier
-	if cfg.Service.Enabled() {
+	registry := cfg.ServiceClients
+	if registry == nil {
+		registry, _ = serviceauth.NewRegistry(nil)
+	}
+	bearerEnabled := registry.BearerEnabled()
+	if bearerEnabled {
 		tokens, err = oidcjwt.New(cfg.Service.Issuer, cfg.Service.Audience, oidcjwt.Options{HTTPClient: client, RefreshInterval: serviceTokenRefreshInterval, RefreshTimeout: serviceTokenRefreshTimeout, Logger: logger, AllowHTTP: cfg.Service.AllowHTTP})
 		if err != nil {
 			return nil, nil, nil, errors.New("accountsvc: service token configuration failed")
 		}
 		preload = tokens.Load
 	}
-	build := func(realm, endpoint string, basic map[string][]string, clients []string) (*serviceauth.Authenticator, error) {
-		c := serviceauth.Config{Realm: realm, Endpoint: endpoint, Logger: logger}
-		if len(basic) > 0 {
-			c.Basic = basic
-		}
-		if len(clients) > 0 {
-			c.BearerClients, c.BearerVerifier = clients, tokens
-		}
-		return serviceauth.New(c)
+	build := func(realm, endpoint, permission string) (*serviceauth.Authenticator, error) {
+		return serviceauth.New(serviceauth.Config{Realm: realm, Endpoint: endpoint, Logger: logger, Registry: registry, RequiredPermission: permission, BearerVerifier: tokens})
 	}
-	if intro, err = build(introspection.Realm, "introspect", cfg.IntrospectionBasicClients, cfg.Service.IntrospectionBearerClients); err != nil {
+	if intro, err = build(introspection.Realm, "introspect", "tokens.introspect"); err != nil {
 		return nil, nil, nil, errors.New("accountsvc: introspection configuration failed")
 	}
-	if purge, err = build(purgefeed.Realm, "purged_users", cfg.PurgeFeedBasicClients, cfg.Service.PurgeFeedBearerClients); err != nil {
+	if purge, err = build(purgefeed.Realm, "purged_users", "purged_users.read"); err != nil {
 		return nil, nil, nil, errors.New("accountsvc: purged user feed configuration failed")
 	}
 	return intro, purge, preload, nil
@@ -300,13 +298,17 @@ func serviceAuthenticators(cfg Config, logger *slog.Logger, client *http.Client)
 // warnUnconfigured 为未配置、只会返回 503 *_NOT_CONFIGURED 的可选接口各记一条 WARN，
 // 使漏配在启动日志中可见，而不是等到调用失败才发现。只写变量名，不写值。
 func warnUnconfigured(cfg Config, logger *slog.Logger) {
-	if len(cfg.IntrospectionBasicClients) == 0 && len(cfg.Service.IntrospectionBearerClients) == 0 {
+	introEnabled := cfg.ServiceClients.HasPermission("tokens.introspect")
+	purgeEnabled := cfg.ServiceClients.HasPermission("purged_users.read")
+	introSettings := "ACCOUNTSVC_SERVICE_CLIENTS, ACCOUNTSVC_SERVICE_CLIENT_<ALIAS>_PERMISSIONS"
+	purgeSettings := introSettings
+	if !introEnabled {
 		logger.Warn("accountsvc: introspection is not configured; POST /v1/introspect answers 503 introspection_not_configured",
-			"settings", "ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS, ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS")
+			"settings", introSettings)
 	}
-	if len(cfg.PurgeFeedBasicClients) == 0 && len(cfg.Service.PurgeFeedBearerClients) == 0 {
+	if !purgeEnabled {
 		logger.Warn("accountsvc: purged user feed is not configured; GET /v1/purgedUsers answers 503 PURGE_FEED_NOT_CONFIGURED",
-			"settings", "ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS, ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS")
+			"settings", purgeSettings)
 	}
 	if !cfg.AdminEnabled {
 		logger.Warn("accountsvc: administrator API is not configured; /admin/v1 answers 503 ADMIN_NOT_CONFIGURED",

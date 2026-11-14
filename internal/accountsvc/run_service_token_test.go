@@ -10,6 +10,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -47,10 +49,7 @@ func TestServiceAuthenticatorsWithUnavailableIssuer(t *testing.T) {
 	if res := request(intro, "Bearer "+p.Token(p.Claims(time.Now(), "intro-client"), "initial")); res.Outcome != serviceauth.Unavailable {
 		t.Fatalf("bearer outcome with unavailable issuer = %v", res.Outcome)
 	}
-	var basic string
-	for id, secrets := range cfg.IntrospectionBasicClients {
-		basic = "Basic " + base64.StdEncoding.EncodeToString([]byte(id+":"+secrets[0]))
-	}
+	basic := "Basic " + base64.StdEncoding.EncodeToString([]byte("test-client:"+os.Getenv("ACCOUNTSVC_SERVICE_CLIENT_TEST_CLIENT_BASIC_SECRETS")))
 	if res := request(intro, basic); res.Outcome != serviceauth.OK {
 		t.Fatalf("basic outcome with unavailable issuer = %v", res.Outcome)
 	}
@@ -68,6 +67,112 @@ func TestServiceAuthenticatorsWithoutTokens(t *testing.T) {
 	intro, purge, preload, err := serviceAuthenticators(cfg, slog.New(slog.DiscardHandler), nil)
 	if err != nil || preload != nil || !intro.Enabled() || purge.Enabled() {
 		t.Fatalf("basic-only wiring: err=%v preload=%v intro=%v purge=%v", err, preload != nil, intro.Enabled(), purge.Enabled())
+	}
+}
+
+func TestUnifiedServiceAuthenticators(t *testing.T) {
+	p := oidcjwttest.New(t)
+	unifiedBearerEnvironment(t)
+	t.Setenv("ACCOUNTSVC_SERVICE_ISSUER", p.URL())
+	t.Setenv("ACCOUNTSVC_SERVICE_AUDIENCE", oidcjwttest.Audience)
+	cfg, err := LoadConfig("serve")
+	if err != nil {
+		t.Fatal(err)
+	}
+	intro, purge, preload, err := serviceAuthenticators(cfg, slog.New(slog.DiscardHandler), p.Client())
+	if err != nil || preload == nil {
+		t.Fatalf("unified authenticators: err=%v preload=%v", err, preload != nil)
+	}
+	// Both interfaces must share a verifier, including concurrent lazy key loading.
+	bearer := "Bearer " + p.Token(p.Claims(time.Now(), "ai-food-server"), "initial")
+	var wg sync.WaitGroup
+	for _, a := range []*serviceauth.Authenticator{intro, purge} {
+		wg.Go(func() {
+			r := httptest.NewRequest(http.MethodPost, "/", nil)
+			r.Header.Set("Authorization", bearer)
+			if res := a.Authenticate(r); res.Outcome != serviceauth.OK {
+				t.Errorf("shared bearer outcome = %v", res.Outcome)
+			}
+		})
+	}
+	wg.Wait()
+	if got := p.JWKSRequests(); got != 1 {
+		t.Fatalf("two interfaces fetched JWKS %d times, want one shared refresh", got)
+	}
+	secret := os.Getenv("ACCOUNTSVC_SERVICE_CLIENT_AI_FOOD_BASIC_SECRETS")
+	for _, a := range []*serviceauth.Authenticator{intro, purge} {
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r.SetBasicAuth("ai-food-server", secret)
+		if res := a.Authenticate(r); res.Outcome != serviceauth.OK {
+			t.Fatalf("shared basic outcome = %v", res.Outcome)
+		}
+	}
+	// Environment changes cannot alter either already-built authenticator.
+	t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_AI_FOOD_PERMISSIONS", "tokens.introspect")
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.Header.Set("Authorization", bearer)
+	if res := purge.Authenticate(r); res.Outcome != serviceauth.OK {
+		t.Fatalf("running snapshot changed: %v", res.Outcome)
+	}
+	// A fresh process/config applies permission revocation. Keep the capability
+	// configured through another identity, so this is 403 rather than NOT_CONFIGURED.
+	t.Setenv("ACCOUNTSVC_SERVICE_CLIENTS", "AI_FOOD,CLEANUP")
+	t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_CLEANUP_ID", "cleanup")
+	t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_CLEANUP_AUTH_METHODS", "bearer")
+	t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_CLEANUP_PERMISSIONS", "purged_users.read")
+	cfg, err = LoadConfig("serve")
+	if err != nil {
+		t.Fatal(err)
+	}
+	intro, purge, _, err = serviceAuthenticators(cfg, slog.New(slog.DiscardHandler), p.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res := intro.Authenticate(r); res.Outcome != serviceauth.OK {
+		t.Fatalf("retained permission outcome = %v", res.Outcome)
+	}
+	if res := purge.Authenticate(r); res.Outcome != serviceauth.Forbidden {
+		t.Fatalf("revoked permission outcome = %v", res.Outcome)
+	}
+}
+
+type serviceRoundTripper func(*http.Request) (*http.Response, error)
+
+func (f serviceRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestUnifiedBasicOnlyHasNoOIDCIO(t *testing.T) {
+	unifiedClientEnvironment(t)
+	cfg, err := LoadConfig("serve")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int64
+	client := &http.Client{Transport: serviceRoundTripper(func(*http.Request) (*http.Response, error) {
+		calls.Add(1)
+		return nil, errors.New("unexpected OIDC I/O")
+	})}
+	intro, purge, preload, err := serviceAuthenticators(cfg, slog.New(slog.DiscardHandler), client)
+	if err != nil || preload != nil {
+		t.Fatalf("basic-only construction: %v preload=%v", err, preload != nil)
+	}
+	for _, endpoint := range []struct {
+		auth  *serviceauth.Authenticator
+		realm string
+	}{{intro, "accountsvc-introspection"}, {purge, "accountsvc-purge-feed"}} {
+		a := endpoint.auth
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r.SetBasicAuth("ai-food-server", os.Getenv("ACCOUNTSVC_SERVICE_CLIENT_AI_FOOD_BASIC_SECRETS"))
+		if res := a.Authenticate(r); res.Outcome != serviceauth.OK {
+			t.Fatalf("basic-only outcome = %v", res.Outcome)
+		}
+		r.Header.Set("Authorization", "Bearer synthetic-token")
+		res := a.Authenticate(r)
+		if res.Outcome != serviceauth.Unauthenticated || !reflect.DeepEqual(a.Challenges(res), []string{`Basic realm="` + endpoint.realm + `"`}) {
+			t.Fatalf("disabled bearer outcome = %+v challenges=%v", res, a.Challenges(res))
+		}
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("basic-only made %d OIDC calls", calls.Load())
 	}
 }
 

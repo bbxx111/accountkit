@@ -5,8 +5,10 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bbxx111/accountkit/internal/accountsvc/emailtemplates"
+	"github.com/bbxx111/accountkit/internal/accountsvc/serviceauth"
 	"github.com/bbxx111/accountkit/user"
 )
 
@@ -24,17 +26,12 @@ func TestWarnUnconfiguredInterfaces(t *testing.T) {
 		}
 	}
 
-	for name, cfg := range map[string]Config{
-		"basic": {
-			IntrospectionBasicClients: map[string][]string{"business": {"secret"}},
-			PurgeFeedBasicClients:     map[string][]string{"ai-food": {"secret"}},
-			AdminEnabled:              true,
-		},
-		"bearer": {
-			Service:      ServiceConfig{IntrospectionBearerClients: []string{"intro"}, PurgeFeedBearerClients: []string{"purge"}},
-			AdminEnabled: true,
-		},
-	} {
+	for name, method := range map[string]string{"basic": "basic", "bearer": "bearer"} {
+		registry, err := serviceauth.NewRegistry([]serviceauth.ClientConfig{{ID: "business", AuthMethods: []string{method}, Permissions: []string{"tokens.introspect", "purged_users.read"}, BasicSecrets: map[string][]string{"basic": {basicSecretForWarnings()}}[method]}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg := Config{ServiceClients: registry, AdminEnabled: true}
 		t.Run(name, func(t *testing.T) {
 			buf.Reset()
 			cfg.Library.ProfileAttributes = &user.ProfileAttributesConfig{}
@@ -46,3 +43,44 @@ func TestWarnUnconfiguredInterfaces(t *testing.T) {
 		})
 	}
 }
+
+func TestServiceCapabilityWarnings(t *testing.T) {
+	for _, permissions := range [][]string{nil, {"tokens.introspect"}, {"purged_users.read"}, {"tokens.introspect", "purged_users.read"}} {
+		t.Run(strings.Join(permissions, ","), func(t *testing.T) {
+			var clients []serviceauth.ClientConfig
+			if len(permissions) > 0 {
+				clients = []serviceauth.ClientConfig{{ID: "private-client-id", AuthMethods: []string{"bearer"}, Permissions: permissions}}
+			}
+			registry, err := serviceauth.NewRegistry(clients)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg := Config{ServiceClients: registry, AdminEnabled: true, EmailTemplates: emailtemplates.Default()}
+			cfg.Library.ProfileAttributes = &user.ProfileAttributesConfig{}
+			var buf bytes.Buffer
+			warnUnconfigured(cfg, slog.New(slog.NewTextHandler(&buf, nil)))
+			out := buf.String()
+			for _, capability := range []struct{ permission, marker string }{{"tokens.introspect", "introspection is not configured"}, {"purged_users.read", "purged user feed is not configured"}} {
+				want := 1
+				if registry.HasPermission(capability.permission) {
+					want = 0
+				}
+				if got := strings.Count(out, capability.marker); got != want {
+					t.Fatalf("warning count %d want %d: %s", got, want, out)
+				}
+			}
+			if out != "" && (!strings.Contains(out, "ACCOUNTSVC_SERVICE_CLIENTS") || !strings.Contains(out, "PERMISSIONS")) {
+				t.Fatalf("missing unified settings category: %s", out)
+			}
+			if strings.Contains(out, "private-client-id") || strings.Contains(out, "BASIC_CLIENTS") {
+				t.Fatalf("unified warning contains values or legacy settings: %s", out)
+			}
+		})
+	}
+	out := runServe(t, 3*time.Second, func(*Config, *application) {}, nil)
+	if strings.Contains(out, "deprecated") || strings.Contains(out, "BASIC_CLIENTS") || strings.Contains(out, "BEARER_CLIENTS") {
+		t.Fatalf("startup retained removed configuration warning: %s", out)
+	}
+}
+
+func basicSecretForWarnings() string { return "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" }

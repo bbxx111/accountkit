@@ -101,6 +101,8 @@ accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可�
 
 accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect` 和探针；公网暴露、直连限制、TLS 终止与入口流量控制由部署方配置，统一规则见 [网关接入手册](docs/gateway-integration.md)。直接嵌入库的宿主也可沿用该契约。
 
+内部服务调用使用统一客户端显式配置 Basic/Bearer 方法及 `tokens.introspect`、`purged_users.read` 权限；未配置客户端时两项内部能力返回各自 NOT_CONFIGURED 503。旧逐接口配置已移除，升级前须显式转换客户端与权限。单文件 Compose、动态变量透传及迁移回退见[服务调用认证](docs/accountsvc.md#服务调用认证内省与已清理用户拉取)，Basic 接入见[远程鉴权示例](examples/remoteauth/README.md)。消费者与管理员 SDK 协议保持独立。
+
 默认 schema 为 `account`，可用 `Config.Schema` 或带宿主前缀的 `AUTH_SCHEMA` 设置合法 schema，库与 accountsvc 共用此默认值。
 
 ## 生命周期

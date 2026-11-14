@@ -19,10 +19,15 @@ func bearerFeed(t *testing.T, p *oidcjwttest.Provider, basic bool, feed *fakeFee
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := serviceauth.Config{Realm: purgefeed.Realm, Endpoint: "purged_users", BearerVerifier: tokens, BearerClients: []string{"purge-client"}}
+	clients := []serviceauth.ClientConfig{{ID: "purge-client", AuthMethods: []string{"bearer"}, Permissions: []string{"purged_users.read"}}, {ID: "intro-client", AuthMethods: []string{"bearer"}, Permissions: []string{"tokens.introspect"}}}
 	if basic {
-		cfg.Basic = map[string][]string{"ai-food": {secret(1)}}
+		clients = append(clients, serviceauth.ClientConfig{ID: "ai-food", AuthMethods: []string{"basic"}, Permissions: []string{"purged_users.read"}, BasicSecrets: []string{secret(1)}})
 	}
+	registry, err := serviceauth.NewRegistry(clients)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := serviceauth.Config{Realm: purgefeed.Realm, Endpoint: "purged_users", Registry: registry, RequiredPermission: "purged_users.read", BearerVerifier: tokens}
 	auth, err := serviceauth.New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -101,7 +106,7 @@ func TestPurgeFeedBearerProviderUnavailable(t *testing.T) {
 }
 
 func TestPurgeFeedNotConfiguredWithoutAnyMethod(t *testing.T) {
-	auth, err := serviceauth.New(serviceauth.Config{Realm: purgefeed.Realm})
+	auth, err := serviceauth.New(serviceauth.Config{Realm: purgefeed.Realm, RequiredPermission: "purged_users.read"})
 	if err != nil {
 		t.Fatal(err)
 	}

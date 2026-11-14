@@ -47,10 +47,10 @@ func TestUnifiedIntrospectionAuthorization(t *testing.T) {
 	p := oidcjwttest.New(t)
 	calls := 0
 	h := unifiedIntrospection(t, p, []serviceauth.ClientConfig{
-		{ID: "both", AuthMethods: []string{"basic", "bearer"}, Permissions: []string{"tokens.introspect", "purged_users.read"}, BasicSecrets: []string{secret(1)}},
-		{ID: "limited", AuthMethods: []string{"basic", "bearer"}, Permissions: []string{"purged_users.read"}, BasicSecrets: []string{secret(2)}},
+		{ID: "both", AuthMethods: []string{"basic", "bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"tokens.introspect", "purged_users.read"}, BasicSecrets: []string{secret(1)}},
+		{ID: "limited", AuthMethods: []string{"basic", "bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"purged_users.read"}, BasicSecrets: []string{secret(2)}},
 		{ID: "basic-only", AuthMethods: []string{"basic"}, Permissions: []string{"tokens.introspect"}, BasicSecrets: []string{secret(3)}},
-		{ID: "bearer-only", AuthMethods: []string{"bearer"}, Permissions: []string{"tokens.introspect"}},
+		{ID: "bearer-only", AuthMethods: []string{"bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"tokens.introspect"}},
 	}, &calls)
 	basic := func(id string, b byte) string {
 		return "Basic " + base64.StdEncoding.EncodeToString([]byte(id+":"+secret(b)))
@@ -110,7 +110,7 @@ func TestUnifiedIntrospectionAuthorization(t *testing.T) {
 
 func TestUnifiedIntrospectionCapabilityAndProviderFailure(t *testing.T) {
 	p := oidcjwttest.New(t)
-	clients := []serviceauth.ClientConfig{{ID: "cleanup", AuthMethods: []string{"basic", "bearer"}, Permissions: []string{"purged_users.read"}, BasicSecrets: []string{secret(1)}}}
+	clients := []serviceauth.ClientConfig{{ID: "cleanup", AuthMethods: []string{"basic", "bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"purged_users.read"}, BasicSecrets: []string{secret(1)}}}
 	calls := 0
 	h := unifiedIntrospection(t, p, clients, &calls)
 	for _, header := range []string{"", "Bearer invalid", "Basic invalid"} {

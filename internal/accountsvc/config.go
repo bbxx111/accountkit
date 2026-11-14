@@ -289,6 +289,9 @@ func (c *Config) loadAdmin() error {
 		}
 	}
 	if !c.AdminEnabled {
+		if os.Getenv("ACCOUNTSVC_ADMIN_TOKEN_PROFILE") != "" {
+			return invalidConfig("ACCOUNTSVC_ADMIN_TOKEN_PROFILE (ADMIN_ENABLED is false)")
+		}
 		for _, name := range []string{"ADMIN_ISSUER", "ADMIN_AUDIENCE", "ADMIN_ROLES_CLAIM", "ADMIN_USERNAME_CLAIM"} {
 			if env(name) != "" {
 				return invalidConfig("ACCOUNTSVC_" + name + " (ADMIN_ENABLED is false)")
@@ -297,7 +300,10 @@ func (c *Config) loadAdmin() error {
 		return nil
 	}
 	// 开发模式允许本地明文 IdP；production 保持只接受 HTTPS，错误信息不变。
-	c.Admin = adminauth.Config{Issuer: env("ADMIN_ISSUER"), Audience: env("ADMIN_AUDIENCE"), RolesClaim: defaultEnv("ADMIN_ROLES_CLAIM", "/roles"), UsernameClaim: defaultEnv("ADMIN_USERNAME_CLAIM", "/preferred_username"), AllowHTTP: c.Mode == "development"}
+	if !oidcjwt.ValidProfile(os.Getenv("ACCOUNTSVC_ADMIN_TOKEN_PROFILE")) {
+		return invalidConfig("ACCOUNTSVC_ADMIN_TOKEN_PROFILE")
+	}
+	c.Admin = adminauth.Config{TokenProfile: defaultEnv("ADMIN_TOKEN_PROFILE", "default"), Issuer: env("ADMIN_ISSUER"), Audience: env("ADMIN_AUDIENCE"), RolesClaim: defaultEnv("ADMIN_ROLES_CLAIM", "/roles"), UsernameClaim: defaultEnv("ADMIN_USERNAME_CLAIM", "/preferred_username"), AllowHTTP: c.Mode == "development"}
 	if err = c.Admin.Validate(); err != nil {
 		return invalidConfig("ACCOUNTSVC_ADMIN_ISSUER / ADMIN_AUDIENCE / ADMIN_ROLES_CLAIM / ADMIN_USERNAME_CLAIM")
 	}
@@ -320,6 +326,7 @@ func (c *Config) loadAdmin() error {
 // ServiceConfig 是业务服务 Bearer 令牌的共享信任配置。
 // AllowHTTP 仅在 development 模式为 true。
 type ServiceConfig struct {
+	TokenProfile     string
 	Issuer, Audience string
 	AllowHTTP        bool
 	bearerClientIDs  []string
@@ -333,12 +340,22 @@ func (c *Config) loadService() error {
 	s := &c.Service
 	// audience 不经 env() 去空白，以便拒绝首尾空白。
 	s.Issuer, s.Audience = env("SERVICE_ISSUER"), os.Getenv("ACCOUNTSVC_SERVICE_AUDIENCE")
+	s.TokenProfile = os.Getenv("ACCOUNTSVC_SERVICE_TOKEN_PROFILE")
 	s.AllowHTTP = c.Mode == "development"
 	if !s.Enabled() {
+		if s.TokenProfile != "" {
+			return invalidConfig("ACCOUNTSVC_SERVICE_TOKEN_PROFILE (no bearer clients configured)")
+		}
 		if s.Issuer != "" || s.Audience != "" {
 			return invalidConfig("ACCOUNTSVC_SERVICE_ISSUER / ACCOUNTSVC_SERVICE_AUDIENCE (no bearer clients configured)")
 		}
 		return nil
+	}
+	if !oidcjwt.ValidProfile(s.TokenProfile) {
+		return invalidConfig("ACCOUNTSVC_SERVICE_TOKEN_PROFILE")
+	}
+	if s.TokenProfile == "" {
+		s.TokenProfile = "default"
 	}
 	validIssuer := oidcjwt.ValidIssuer
 	if s.AllowHTTP {

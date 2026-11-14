@@ -27,7 +27,7 @@ func TestWarnUnconfiguredInterfaces(t *testing.T) {
 	}
 
 	for name, method := range map[string]string{"basic": "basic", "bearer": "bearer"} {
-		registry, err := serviceauth.NewRegistry([]serviceauth.ClientConfig{{ID: "business", AuthMethods: []string{method}, Permissions: []string{"tokens.introspect", "purged_users.read", "identities.resolve"}, BasicSecrets: map[string][]string{"basic": {basicSecretForWarnings()}}[method]}})
+		registry, err := serviceauth.NewRegistry([]serviceauth.ClientConfig{{ID: "business", AuthMethods: []string{method}, BearerSubjects: map[string][]string{"bearer": {"machine"}}[method], Permissions: []string{"tokens.introspect", "purged_users.read", "identities.resolve"}, BasicSecrets: map[string][]string{"basic": {basicSecretForWarnings()}}[method]}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -49,7 +49,7 @@ func TestServiceCapabilityWarnings(t *testing.T) {
 		t.Run(strings.Join(permissions, ","), func(t *testing.T) {
 			var clients []serviceauth.ClientConfig
 			if len(permissions) > 0 {
-				clients = []serviceauth.ClientConfig{{ID: "private-client-id", AuthMethods: []string{"bearer"}, Permissions: permissions}}
+				clients = []serviceauth.ClientConfig{{ID: "private-client-id", AuthMethods: []string{"bearer"}, BearerSubjects: []string{"machine"}, Permissions: permissions}}
 			}
 			registry, err := serviceauth.NewRegistry(clients)
 			if err != nil {

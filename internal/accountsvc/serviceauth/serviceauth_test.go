@@ -49,7 +49,7 @@ func newEnv(t *testing.T, basic, bearer bool) *env {
 		clients = append(clients, serviceauth.ClientConfig{ID: "basic-client", AuthMethods: []string{"basic"}, Permissions: []string{"tokens.introspect"}, BasicSecrets: []string{basicSecret}})
 	}
 	if bearer {
-		clients = append(clients, serviceauth.ClientConfig{ID: "intro-client", AuthMethods: []string{"bearer"}, Permissions: []string{"tokens.introspect"}}, serviceauth.ClientConfig{ID: "purge-client", AuthMethods: []string{"bearer"}, Permissions: []string{"purged_users.read"}})
+		clients = append(clients, serviceauth.ClientConfig{ID: "intro-client", AuthMethods: []string{"bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"tokens.introspect"}}, serviceauth.ClientConfig{ID: "purge-client", AuthMethods: []string{"bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"purged_users.read"}})
 	}
 	cfg.Registry = mustRegistry(t, clients)
 	if bearer {
@@ -293,7 +293,7 @@ func TestIssuerMismatchIsUnavailable(t *testing.T) {
 
 func TestProviderTimeoutIsUnavailable(t *testing.T) {
 	e := newEnv(t, false, true)
-	e.auth = mustNew(t, serviceauth.Config{Realm: realm, Endpoint: "introspect", BearerVerifier: tokensFor(t, e), Registry: mustRegistry(t, []serviceauth.ClientConfig{{ID: "intro-client", AuthMethods: []string{"bearer"}, Permissions: []string{"tokens.introspect"}}}), RequiredPermission: "tokens.introspect", Timeout: 100 * time.Millisecond})
+	e.auth = mustNew(t, serviceauth.Config{Realm: realm, Endpoint: "introspect", BearerVerifier: tokensFor(t, e), Registry: mustRegistry(t, []serviceauth.ClientConfig{{ID: "intro-client", AuthMethods: []string{"bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"tokens.introspect"}}}), RequiredPermission: "tokens.introspect", Timeout: 100 * time.Millisecond})
 	e.p.Block()
 	defer e.p.Unblock()
 	res, ch := e.do(e.bearer(e.p.Claims(e.now, "intro-client"), "initial"))
@@ -360,7 +360,7 @@ func TestHeaderHandling(t *testing.T) {
 func TestNewValidation(t *testing.T) {
 	e := newEnv(t, false, true)
 	tokens := tokensFor(t, e)
-	registry := mustRegistry(t, []serviceauth.ClientConfig{{ID: "a", AuthMethods: []string{"bearer"}, Permissions: []string{"tokens.introspect"}}})
+	registry := mustRegistry(t, []serviceauth.ClientConfig{{ID: "a", AuthMethods: []string{"bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"tokens.introspect"}}})
 	for name, cfg := range map[string]serviceauth.Config{
 		"clients without verifier": {Realm: realm, Registry: registry, RequiredPermission: "tokens.introspect"},
 		"verifier without clients": {Realm: realm, RequiredPermission: "tokens.introspect", BearerVerifier: tokens},

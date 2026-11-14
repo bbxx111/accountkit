@@ -15,6 +15,7 @@ func serviceTokenEnvironment(t *testing.T) {
 		prefix := "ACCOUNTSVC_SERVICE_CLIENT_" + c.alias + "_"
 		t.Setenv(prefix+"ID", c.id)
 		t.Setenv(prefix+"AUTH_METHODS", "bearer")
+		t.Setenv(prefix+"BEARER_SUBJECTS", `["machine"]`)
 		t.Setenv(prefix+"PERMISSIONS", c.permission)
 	}
 }
@@ -49,6 +50,7 @@ func TestConfigIntrospectionWithOnlyTokens(t *testing.T) {
 		prefix := "ACCOUNTSVC_SERVICE_CLIENT_" + c.alias + "_"
 		t.Setenv(prefix+"ID", c.id)
 		t.Setenv(prefix+"AUTH_METHODS", "bearer")
+		t.Setenv(prefix+"BEARER_SUBJECTS", `["machine"]`)
 		t.Setenv(prefix+"PERMISSIONS", c.permission)
 	}
 	c, err := LoadConfig("serve")

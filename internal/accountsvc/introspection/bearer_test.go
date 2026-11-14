@@ -26,7 +26,7 @@ func bearerHandler(t *testing.T, p *oidcjwttest.Provider, basic bool, calls *int
 	if err != nil {
 		t.Fatal(err)
 	}
-	clients := []serviceauth.ClientConfig{{ID: "intro-client", AuthMethods: []string{"bearer"}, Permissions: []string{"tokens.introspect"}}, {ID: "purge-client", AuthMethods: []string{"bearer"}, Permissions: []string{"purged_users.read"}}}
+	clients := []serviceauth.ClientConfig{{ID: "intro-client", AuthMethods: []string{"bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"tokens.introspect"}}, {ID: "purge-client", AuthMethods: []string{"bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"purged_users.read"}}}
 	if basic {
 		clients = append(clients, serviceauth.ClientConfig{ID: "business", AuthMethods: []string{"basic"}, Permissions: []string{"tokens.introspect"}, BasicSecrets: []string{secret(1)}})
 	}
@@ -151,5 +151,32 @@ func TestIntrospectionNotConfiguredWithoutAnyMethod(t *testing.T) {
 	}
 	if _, err := introspection.NewWithAuthenticator(nil, func(context.Context, string) (user.Principal, error) { return user.Principal{}, nil }); err == nil {
 		t.Fatal("nil authenticator accepted")
+	}
+}
+
+func TestIntrospectionBearerScopeAndSubject(t *testing.T) {
+	p := oidcjwttest.New(t)
+	calls := 0
+	h := bearerHandler(t, p, true, &calls)
+	for _, tc := range []struct {
+		name string
+		want int
+		code string
+	}{{"missing scope", 403, "insufficient_scope"}, {"wrong subject", 401, "invalid_token"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := p.Claims(time.Now(), "intro-client")
+			if tc.name == "missing scope" {
+				delete(c, "scope")
+			} else {
+				c["sub"] = "human-admin"
+			}
+			w := post(h, "POST", "Bearer "+p.Token(c, "initial"))
+			if w.Code != tc.want || oauthCode(t, w) != tc.code || calls != 0 || w.Header().Get("Cache-Control") != "no-store" {
+				t.Fatalf("status=%d calls=%d body=%s", w.Code, calls, w.Body)
+			}
+			if !strings.Contains(strings.Join(w.Header().Values("WWW-Authenticate"), " "), `error="`+tc.code+`"`) {
+				t.Fatal(w.Header())
+			}
+		})
 	}
 }

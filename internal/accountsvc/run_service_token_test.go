@@ -119,6 +119,7 @@ func TestUnifiedServiceAuthenticators(t *testing.T) {
 	t.Setenv("ACCOUNTSVC_SERVICE_CLIENTS", "AI_FOOD,CLEANUP")
 	t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_CLEANUP_ID", "cleanup")
 	t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_CLEANUP_AUTH_METHODS", "bearer")
+	t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_CLEANUP_BEARER_SUBJECTS", `["machine"]`)
 	t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_CLEANUP_PERMISSIONS", "purged_users.read")
 	cfg, err = LoadConfig("serve")
 	if err != nil {
@@ -309,5 +310,64 @@ func TestPreloadIssuerMismatchLogsError(t *testing.T) {
 	stop()
 	if out := logs.String(); !strings.Contains(out, "level=ERROR") || !strings.Contains(out, "https://idp.example.test") {
 		t.Fatalf("issuer mismatch at startup must log ERROR: %s", out)
+	}
+}
+
+func TestRuntimeStartsWhenAdminIssuerHangs(t *testing.T) {
+	var cancelled atomic.Bool
+	runServe(t, 300*time.Millisecond, func(cfg *Config, app *application) {
+		cfg.AdminEnabled = true
+		cfg.Admin.Issuer = "https://admin.example.test"
+		app.preloadAdminTokens = func(ctx context.Context) error { <-ctx.Done(); cancelled.Store(true); return ctx.Err() }
+	}, nil)
+	if !cancelled.Load() {
+		t.Fatal("admin preload not canceled before shutdown")
+	}
+}
+
+func TestRuntimeClosesTokensWhenRequestDrainTimesOut(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	entered, release := make(chan struct{}), make(chan struct{})
+	defer close(release)
+	bound := make(chan net.Listener, 1)
+	var tokensClosed, libraryClosed atomic.Bool
+	app := &application{
+		migrate: func(context.Context) error { return nil }, start: func(context.Context) {},
+		close: func() { libraryClosed.Store(true) }, closeTokens: func() { tokensClosed.Store(true) },
+		endUser: http.HandlerFunc(func(http.ResponseWriter, *http.Request) { close(entered); <-release }),
+		admin:   http.NotFoundHandler(), introspect: http.NotFoundHandler(),
+	}
+	factory := runtimeFactory{
+		open:   func(context.Context, Config, *slog.Logger) (*dependencies, error) { return &dependencies{}, nil },
+		newApp: func(Config, *dependencies, *slog.Logger) (*application, error) { return app, nil },
+		listen: func(ctx context.Context, addr string) (net.Listener, error) {
+			ln, err := net.Listen("tcp", addr)
+			if err == nil {
+				bound <- ln
+			}
+			return ln, err
+		},
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- runConfig(ctx, Config{command: "serve", HTTPAddr: "127.0.0.1:0", StartupTimeout: time.Second, ShutdownTimeout: 50 * time.Millisecond}, slog.New(slog.DiscardHandler), factory)
+	}()
+	ln := <-bound
+	go func() {
+		resp, err := http.Get("http://" + ln.Addr().String() + "/v1/test")
+		if err == nil {
+			resp.Body.Close()
+		}
+	}()
+	<-entered
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil || !tokensClosed.Load() || libraryClosed.Load() {
+			t.Fatalf("drain failure cleanup: err=%v tokens=%v library=%v", err, tokensClosed.Load(), libraryClosed.Load())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("shutdown did not finish")
 	}
 }

@@ -841,6 +841,10 @@
       {
         "file": "internal/accountsvc/identityresolve/handler_test.go",
         "name": "TestIdentityResolveProtocol"
+      },
+      {
+        "file": "internal/accountsvc/identityresolve/auth_test.go",
+        "name": "TestIdentityResolveBearerScopeAndSubject"
       }
     ],
     "baseline": "identity-resolution",

@@ -9,10 +9,10 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/bbxx111/accountkit/httpapi/apierror"
+	"github.com/bbxx111/accountkit/internal/httpcredentials"
 	"github.com/bbxx111/accountkit/user"
 )
 
@@ -66,16 +66,8 @@ func WriteUnauthenticated(w http.ResponseWriter, reason, message string) {
 
 // bearerToken 从 Authorization 头取 token；scheme 大小写不敏感；形状不对返回 ""。
 func bearerToken(r *http.Request) string {
-	h := r.Header.Get("Authorization")
-	if h == "" {
-		return ""
-	}
-	scheme, rest, ok := strings.Cut(h, " ")
-	if !ok || !strings.EqualFold(scheme, "Bearer") {
-		return ""
-	}
-	rest = strings.TrimSpace(rest)
-	if rest == "" || strings.ContainsAny(rest, " \t") {
+	scheme, rest, ok := httpcredentials.Parse(r)
+	if !ok || scheme != "bearer" {
 		return ""
 	}
 	return rest

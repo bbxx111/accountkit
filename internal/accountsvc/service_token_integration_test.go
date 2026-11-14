@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bbxx111/accountkit/internal/accountsvc/serviceauth"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -32,6 +33,9 @@ func (f *integrationFixture) unifiedServiceClients() {
 		{"BEARER_ONLY", "bearer-only", "bearer", "tokens.introspect,purged_users.read", ""},
 	} {
 		prefix := "ACCOUNTSVC_SERVICE_CLIENT_" + c.alias + "_"
+		if strings.Contains(c.methods, "bearer") {
+			f.env[prefix+"BEARER_SUBJECTS"] = `["machine"]`
+		}
 		f.env[prefix+"ID"], f.env[prefix+"AUTH_METHODS"], f.env[prefix+"PERMISSIONS"] = c.id, c.methods, c.permissions
 		if c.secret != "" {
 			f.env[prefix+"BASIC_SECRETS"] = c.secret
@@ -46,6 +50,28 @@ func (f *integrationFixture) clearServiceClients() {
 		if name == "ACCOUNTSVC_SERVICE_CLIENTS" || strings.HasPrefix(name, "ACCOUNTSVC_SERVICE_CLIENT_") {
 			delete(f.env, name)
 		}
+	}
+}
+
+func TestUnifiedServiceClientFixtureConfiguration(t *testing.T) {
+	f := &integrationFixture{t: t, env: map[string]string{}, secrets: []string{"", base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{20}, 32))}}
+	f.unifiedServiceClients()
+	var clients []serviceauth.ClientConfig
+	for _, alias := range strings.Split(f.env["ACCOUNTSVC_SERVICE_CLIENTS"], ",") {
+		prefix := "ACCOUNTSVC_SERVICE_CLIENT_" + alias + "_"
+		client := serviceauth.ClientConfig{ID: f.env[prefix+"ID"], AuthMethods: strings.Split(f.env[prefix+"AUTH_METHODS"], ","), Permissions: strings.Split(f.env[prefix+"PERMISSIONS"], ",")}
+		if raw := f.env[prefix+"BEARER_SUBJECTS"]; raw != "" {
+			if err := json.Unmarshal([]byte(raw), &client.BearerSubjects); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if raw := f.env[prefix+"BASIC_SECRETS"]; raw != "" {
+			client.BasicSecrets = strings.Split(raw, ",")
+		}
+		clients = append(clients, client)
+	}
+	if _, err := serviceauth.NewRegistry(clients); err != nil {
+		t.Fatalf("real service fixture must satisfy the production registry configuration: %v", err)
 	}
 }
 
@@ -132,6 +158,7 @@ func TestServiceIntegrationUnifiedServiceClients(t *testing.T) {
 	}
 	// Disable one method while another client's Bearer keeps the shared verifier active.
 	f.env["ACCOUNTSVC_SERVICE_CLIENT_BUSINESS_AUTH_METHODS"] = "basic"
+	delete(f.env, "ACCOUNTSVC_SERVICE_CLIENT_BUSINESS_BEARER_SUBJECTS")
 	p.stop()
 	p = f.start(nil)
 	f.serviceRequest(p, "/v1/introspect", bearer, access, 401)
@@ -286,11 +313,12 @@ func (f *integrationFixture) serviceTokenIssuer(down *atomic.Bool) (sign func(az
 	f.env["ACCOUNTSVC_SERVICE_CLIENTS"] += ",INTRO_SVC,PURGE_SVC"
 	for _, c := range []struct{ alias, id, permission string }{{"INTRO_SVC", "intro-svc", "tokens.introspect"}, {"PURGE_SVC", "purge-svc", "purged_users.read"}} {
 		prefix := "ACCOUNTSVC_SERVICE_CLIENT_" + c.alias + "_"
+		f.env[prefix+"BEARER_SUBJECTS"] = `["machine"]`
 		f.env[prefix+"ID"], f.env[prefix+"AUTH_METHODS"], f.env[prefix+"PERMISSIONS"] = c.id, "bearer", c.permission
 	}
 	return func(azp string) string {
 		now := time.Now()
-		token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{"iss": s.URL, "aud": "integration-service", "azp": azp, "exp": now.Add(5 * time.Minute).Unix(), "iat": now.Unix()})
+		token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{"iss": s.URL, "aud": "integration-service", "azp": azp, "sub": "machine", "scope": "tokens.introspect purged_users.read identities.resolve", "exp": now.Add(5 * time.Minute).Unix(), "iat": now.Unix()})
 		token.Header["kid"] = "svc"
 		raw, err := token.SignedString(key)
 		if err != nil {

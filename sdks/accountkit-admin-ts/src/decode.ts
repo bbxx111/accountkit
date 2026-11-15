@@ -1,3 +1,4 @@
+import { resource, resourcePattern, tsidPattern as id } from "./resources";
 import { AccountAdminProtocolError } from "./errors";
 import { isTimestamp } from "./timestamp";
 type Decoder = (value: unknown) => unknown;
@@ -34,10 +35,9 @@ const obj =
       if (Object.hasOwn(source, key)) out[key] = d(source[key]);
     return out;
   };
-const id = "[0-9a-hjkmnp-tv-z]{13}";
-const userName = pattern(new RegExp(`^users/u_${id}$`));
-const identityName = pattern(new RegExp(`^users/u_${id}/identities/i_${id}$`));
-const sessionName = pattern(new RegExp(`^users/u_${id}/sessions/s_${id}$`));
+const userName = pattern(resourcePattern.user);
+const identityName = pattern(resourcePattern.identity);
+const sessionName = pattern(resourcePattern.session);
 const enumString = pattern(/^[A-Z][A-Z0-9_]*$/);
 const userFields = {
   name: userName,
@@ -89,11 +89,7 @@ const session = obj(
 );
 const audit = obj(
   {
-    name: pattern(
-      new RegExp(
-        `^users/u_${id}/auditEvents/[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`,
-      ),
-    ),
+    name: pattern(resourcePattern.audit),
     event_type: enumString,
     actor_kind: enumString,
     result: nullable(enumString),
@@ -122,5 +118,8 @@ export const decode = {
   sessions: obj({ sessions: array(session) }),
   reveal: obj({ name: identityName, kind: enumString, subject: str }),
   revokeAll: obj({ revoked_count: integer }),
-  audit: obj({ audit_events: array(audit), next_page_token: str }),
+  audit: obj({
+    [resource.auditEventsField]: array(audit),
+    next_page_token: str,
+  }),
 };

@@ -1,8 +1,9 @@
+import operationMethods from './openapi-methods.cjs';
 import { readFile } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const methods = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace']);
+const methods = new Set(operationMethods);
 const surfaces = new Set(['enduser', 'admin', 'service']);
 const nonempty = value => typeof value === 'string' && value.trim().length > 0;
 

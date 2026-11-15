@@ -2404,9 +2404,13 @@
       ],
       "notes": "",
       "primaryTask": "7.1",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "TS??resources.ts??????????????????auditEvents/audit_events??????",
+      "verification": [
+        "task3-typecheck/formatcheck/ts.log: TS56??",
+        "task3-node.log: Windows31???POSIX1??Linux",
+        "task-3-review.md: spec/quality??"
+      ]
     },
     {
       "id": "L065",
@@ -2434,9 +2438,13 @@
       ],
       "notes": "",
       "primaryTask": "7.1",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "TS??http.ts??Header/MIME/Bearer???????????????????",
+      "verification": [
+        "task3-typecheck/formatcheck/ts.log: TS56??",
+        "task3-node.log: Windows31???POSIX1??Linux",
+        "task-3-review.md: spec/quality??"
+      ]
     },
     {
       "id": "L066",
@@ -2472,9 +2480,13 @@
       ],
       "notes": "",
       "primaryTask": "7.1",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "filter tuple?????union????Set?create_time????query tuple?????????",
+      "verification": [
+        "task3-typecheck/formatcheck/ts.log: TS56??",
+        "task3-node.log: Windows31???POSIX1??Linux",
+        "task-3-review.md: spec/quality??"
+      ]
     },
     {
       "id": "L067",
@@ -2604,9 +2616,13 @@
       ],
       "notes": "",
       "primaryTask": "9.1",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "??sdk-metadata descriptor????/??/tag/????CLI/???????consumer?????",
+      "verification": [
+        "task3-typecheck/formatcheck/ts.log: TS56??",
+        "task3-node.log: Windows31???POSIX1??Linux",
+        "task-3-review.md: spec/quality??"
+      ]
     },
     {
       "id": "L071",
@@ -2632,9 +2648,13 @@
       ],
       "notes": "",
       "primaryTask": "9.1",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "??/????????????????????????????????",
+      "verification": [
+        "task3-typecheck/formatcheck/ts.log: TS56??",
+        "task3-node.log: Windows31???POSIX1??Linux",
+        "task-3-review.md: spec/quality??"
+      ]
     },
     {
       "id": "L072",
@@ -2663,9 +2683,13 @@
       ],
       "notes": "",
       "primaryTask": "9.1",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "CJS/ESM????HTTP????????????????",
+      "verification": [
+        "task3-typecheck/formatcheck/ts.log: TS56??",
+        "task3-node.log: Windows31???POSIX1??Linux",
+        "task-3-review.md: spec/quality??"
+      ]
     },
     {
       "id": "L073",

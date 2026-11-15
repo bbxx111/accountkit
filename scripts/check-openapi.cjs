@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
-const methods = new Set(['get', 'post', 'patch', 'delete', 'put', 'options', 'head', 'trace']);
+const methods = new Set(require('./openapi-methods.cjs'));
 
 function resolve(doc, pointer) {
   assert.ok(pointer.startsWith('#/'), `只接受文档内引用：${pointer}`);

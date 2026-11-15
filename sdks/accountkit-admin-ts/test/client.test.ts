@@ -692,3 +692,24 @@ it.each(["2026-11-01T00:00:00", "2026-11-01T00:00:00.1"])(
     );
   },
 );
+
+it("filter public field union keeps exactly the protocol field set", () => {
+  type Expected =
+    | "state"
+    | "identity.phone"
+    | "identity.phone_prefix"
+    | "identity.phone_suffix"
+    | "identity.email"
+    | "identity.email_prefix"
+    | "identity.email_domain";
+  type Same = [sdk.UserFilterField] extends [Expected]
+    ? [Expected] extends [sdk.UserFilterField]
+      ? true
+      : false
+    : false;
+  const unchanged: Same = true;
+  expect(unchanged).toBe(true);
+  expect(() =>
+    sdk.userFilter.eq("unknown" as sdk.UserFilterField, "ACTIVE"),
+  ).toThrow(sdk.AccountAdminArgumentError);
+});

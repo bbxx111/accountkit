@@ -35,3 +35,10 @@ apply后需按任务记录每阶段实际命令、独立审查、提交和清单
 - Go1.26.5 windows/amd64、GOWORK=off，`go test -count=1 ./...`基线通过，日志`.test-output/string-contracts/baseline-go.log`；未配置数据库，skip不作为真实集成证据。
 - 固定临时Git快照`2c0a898b9981ade4c6d43bd47fe53c892e8b5680`，本地代理版本`v1.1.1-0.20261115185502-2c0a898b9981`；旧角色宿主和新权限宿主两个独立module在GOWORK=off、无replace下tidy/build/run通过，原始记录`baseline-consumers/verification.json`。只用于兼容基线，不创建源分支tag或发布。
 - 当前Flutter3.47.9/Dart3.13.7不等于要求3.47.4/3.13.3，精确工具另行准备；本机无macOS/Xcode，不把其他平台或近似版本当作原生门禁通过。现有产品容器均不操作，真实验证只创建本任务资源。
+
+## 阶段：TS管理SDK与JS工具定义
+
+- 完成L064–L066/L070–L072：SDK内部资源名/HTTP与安全消息同源，filter tuple派生原类型和Set；工具拥有SDK descriptor、冻结HTTP方法集合及创建/清理同源前缀。未扩大SDK入口或加入父目录运行依赖，未知SDK与覆盖拒绝规则保持。
+- L066的create_time及已单份query tuple保留局部表达；L078的shell阶段/env目前保持原显式调用，Go恢复驱动与跨语言闭环交后续阶段，不提前记该组完成。
+- 精确Node24.21.0/pnpm11.24.0：TS typecheck/format/test通过（56项）；node工具测试31通过、1项POSIX专属在Windows跳过；OpenAPI 24/11及SDK覆盖36操作通过。原始日志task3-*.log与实施报告位于.test-output/string-contracts。
+- 独立审查task-3-review.md：spec/quality均通过，无实质finding。真实服务/Git完整消费、Linux取消补验和全仓门禁尚未执行；7.1已完成，7.2及9.1/9.3等综合要求保持未勾选。

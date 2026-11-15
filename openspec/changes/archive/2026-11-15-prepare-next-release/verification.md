@@ -1,6 +1,6 @@
 # 发布准备核验记录
 
-状态：v1.1.0 tag 与 GitHub Release 已发布，本地及最终候选 CI、两个独立远端 Go 消费验证通过。发布补记已合入 develop/main，本变更已归档；归档记录的集成单独留证。本轮未部署产品。准备阶段与后续发布进展分别记录如下。
+状态：v1.1.0 tag 与 GitHub Release 已发布，本地及最终候选 CI、两个独立远端 Go 消费验证通过。发布补记和归档均已合入并推送 develop/main，活动变更为空。本轮未部署产品。准备阶段与后续发布进展分别记录如下。
 
 ## 已确认基线
 
@@ -101,3 +101,11 @@
 - 同步修复 SDK 兼容矩阵、客户端指南、发布检查表、正式发布说明及计划中的五处引用文件；未改写历史 tag。原始归档输入哈希清单保存在 `.test-output/next-release/archive-inputs.json`。
 - 归档后 `openspec validate --all --strict` 为 45/45 主规格通过，`openspec list --json` 返回空活动列表；8 份变动 Markdown 的 43 个本地/tag 文件链接检查通过，旧活动引用残留为零。OpenAPI 契约除既有 info 描述外保持，24/11 操作、SDK 36 操作覆盖、两包完整发布元数据及 `git diff --check` 均通过。只移动工件和维护文档引用，未重复运行库/数据库/race 套件。
 - 独立归档审查 PASS，无剩余问题；报告留在 `.test-output/next-release/archive-review.md`。归档提交为 `01f67a8a4ba6197bea0ed5ab3ece506c232138a2`，develop 集成跟踪 [PR #30](https://github.com/bbxx111/accountkit/pull/30)，main 沿用独立 merge commit 同步。正式 Release 正文的证据链接与仓库发布说明一同改为本归档路径，tag 对象和固定提交保持不变。
+
+## Archive Integration
+
+PR #30 于 `2026-11-15T08:46:10Z` 合并，develop merge commit 为 `3606106b12470b4ea9078732e57b9e3577787226`，main 的独立同步 merge commit 为 `6c3d7ca210f7d438b6105200d6671e69e494265c`，均已推送，远端与本地一致且文件树相同。首次 PR merge 返回 base branch modified；重新读取 base/head 后确认基线未变、CLEAN/MERGEABLE，正常重试成功，未使用管理员绕过或强推。
+
+同步后逐字比较 GitHub Release 正文与仓库说明（仅规范化换行），结果一致；Release 仍非 draft/prerelease、target 为固定 `6eef5e3`，远端 tag 对象仍为 `14b53f3`、解析提交未变。`GOWORK=off go run ./internal/migrationcheck` 在包含 v1.1.0 tag 的完整历史上通过；工作区干净，OpenSpec 活动变更为空。
+
+本段记录归档集成后的实际核验；随后只提交/同步这份证据补记。发布门禁为正式 tag 对应的已通过 CI。文档补记与归档触发的后续 CI 当时仍在运行，未以其未完成状态冒称当前分支完整 CI 已通过，也不修改已发布版本。

@@ -10,7 +10,7 @@
 ## 2. Go HTTP与JOSE协议
 
 - [x] 2.1 处理L001/L005–L007/L010：复用scheme、方法与身份定义，按语义归属命名60种HTTP reason、OAuth错误、token type/grant/下一动作及固定安全消息；保留旧公开reason别名和各面的状态/消息/错误优先级，补独立字面值断言与相关注释，运行httpapi和三个服务HTTP面范围测试/vet并审查。
-- [ ] 2.2 处理L008/L009/L035：在内部HTTP帮助层收敛challenge、SetNoStore/SetOAuthNoStore和资源名构造；先覆盖单/多认证头、realm/error缺失、403/503、Pragma差异、reveal所有响应及父资源路径，保持各面DTO/授权独立，更新内部说明，运行HTTP/服务认证协议测试验证精确输出。
+- [x] 2.2 处理L008/L009/L035：在内部HTTP帮助层收敛challenge、SetNoStore/SetOAuthNoStore和资源名构造；先覆盖单/多认证头、realm/error缺失、403/503、Pragma差异、reveal所有响应及父资源路径，保持各面DTO/授权独立，更新内部说明，运行HTTP/服务认证协议测试验证精确输出。
 - [x] 2.3 处理L011/L012及L026共享部分：集中无业务依赖的JOSE header/claim/JWK文字，优先复用当前jwt算法定义，tokens公开const保持；补有效/未知/畸形声明、default/rfc9068不回退和消费者/管理员/服务/IdP隔离测试，更新归属注释，运行tokens、oidcjwt、adminauth、serviceauth及IdP回归/vet。
 - [x] 2.4 处理L036–L038及L046的RequestID部分：共用Header/MIME和同义RequestID验证，保持自定义宿主回调、生成/回退时机、设备头及Client Hints大小写语义；补解析边界与生成/回退行为测试、同步协议注释，运行clientinfo、reqid、accountsvc metadata及根门面测试，确认未给普通一次性标准头制造新公共API。
 
@@ -26,7 +26,7 @@
 
 - [x] 4.1 处理L003/L018/L029–L032：复用envPrefix/emailTemplatesSetting，集中模式、命令、客户端字段/后缀及变量构造，提供SMTP TLS模式具名定义；补孤立空字段、别名下划线、不同CSV去重、配置报错脱敏、production/development和TLS组合回归，更新配置说明，运行accountsvc config及SMTP测试，环境名/默认值/校验顺序不变。
 - [x] 4.2 处理L026–L028/L046–L053：按提供方整理默认endpoint、claim/请求/响应复用字段、鉴别值、错误码、算法/MIME/PEM与相同用途的校验规则，根默认与idp构造使用单一内部定义；补原始签名输入/验签、成功与拒绝分类、URL/应用ID边界及配置规范化回归，更新提供方协议注释，运行所有IdP/短信/邮件与根Config测试，保留上游拼写及原时间格式。
-- [ ] 4.3 处理L039/L041：命名健康响应、服务Endpoint标签、预览文件名与管理审计本地拒绝分类；验证ready/health无依赖泄露、无权限不解析业务、预览覆盖允许表与输出文件一致、审计失败分类和no-store保持，更新运维/工具说明，运行routes/http/preview/admin audit范围测试。
+- [x] 4.3 处理L039/L041：命名健康响应、服务Endpoint标签、预览文件名与管理审计本地拒绝分类；验证ready/health无依赖泄露、无权限不解析业务、预览覆盖允许表与输出文件一致、审计失败分类和no-store保持，更新运维/工具说明，运行routes/http/preview/admin audit范围测试。
 
 ## 5. 既有解析器的数据收敛
 
@@ -58,7 +58,7 @@
 
 ## 10. 全仓闭环与综合验收
 
-- [ ] 10.1 在GOWORK=off下完成Go build/vet/test、生成一致性和完整迁移历史检查，使用任务专用PostgreSQL17/Redis执行verify.sh的race/必需测试/真实恢复及verify-accountsvc.sh的实际进程门禁；root/平台/Docker条件skip逐项补验或列未完成，新增必需顶层测试同步两份相应登记，不修改已发布SQL和哈希。
+- [x] 10.1 在GOWORK=off下完成Go build/vet/test、生成一致性和完整迁移历史检查，使用任务专用PostgreSQL17/Redis执行verify.sh的race/必需测试/真实恢复及verify-accountsvc.sh的实际进程门禁；root/平台/Docker条件skip逐项补验或列未完成，新增必需顶层测试同步两份相应登记，不修改已发布SQL和哈希。
 - [ ] 10.2 综合运行两个SDK及fixture/工具的协议、固定Git消费、平台和跨语言装配门禁，核对它们独立于Go门禁的结果；确认源码包不依赖父目录/生成器/本地replace或安装构建，不改版本、锁文件和tag；缺依赖的必需检查保持未完成，文档不得报告为通过。
 - [ ] 10.3 对78组逐项检查实际符号、拥有者、原值与保留理由，确认无遗留planned和未验证的应完成项；完成独立全分支规格/质量审查及修复，执行OpenSpec严格校验、链接/格式/LF/diff检查，verification记录实际命令、审查结论、阶段提交和未验证项，确认全仓兼容后再勾选完成。
 

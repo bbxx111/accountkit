@@ -90,9 +90,14 @@ apply后需按任务记录每阶段实际命令、独立审查、提交和清单
 - 全仓race运行1300个顶层测试，1297通过、3个skip：TestRecoveryFixture普通套件预期skip，恢复脚本随后强制完成seed/verify/source-unchanged；Compose用例因镜像缺Docker CLI跳过，已在Windows具备Docker CLI的宿主补验全部16子例通过（compose-windows.log）；不可读文件用例因容器root能读而跳过，后续以非root补验。没有把这些skip统计为通过；无测试的包级skip不代表缺失集成依赖。
 - `bash scripts/verify-accountsvc.sh`通过真实进程、TLS、信号和数据库/race门禁，277个顶层测试中275通过，另外两项为同一Compose与root不可读文件条件skip。带integration标签的Go fixture11个顶层测试全部通过，无skip（sdk-fixture-linux.jsonl）。12个新增必需顶层测试已纳入主登记，其中服务新增测试也纳入对应服务登记，未删旧条目。
 - 全分支独立审查覆盖78组，唯一P2为L009的metrics与外层reveal缓存两处遗漏。Final fix round 1/5（Task5累计修复轮2）：已复用SetNoStore，保留原条件、时机且不增加Pragma；范围测试/vet通过，定点复核ADDRESSED，当前spec/quality通过、无开放源码finding。原始报告final-review.md及task5-fix2-*.log。
-- 上述全仓源码指纹与当前工作树只差最后这两处等价接线（metrics.go/run.go），其余633个Go文件一致；正在对最终两文件补全仓build/vet和完整accountsvc真实进程/race门禁。恢复与其他领域源码无变化，无需重建已使用的恢复源/目标库或重复清空数据。
+- 全仓验证后的源码只差最后两处等价接线（metrics.go/run.go），其余633个Go文件一致；已覆盖最终两文件，重新通过全仓build/vet及完整accountsvc真实进程/race门禁，日志final-linux-evidence/accountsvc-final-linux.log和accountsvc-tests.jsonl。最终服务顶层275通过、Compose和root权限两项条件skip；前者宿主补验如上，后者通过UID65534执行TestProfileAttributesUnreadableFile补验（profile-unreadable-nonroot.log），无剩余Go条件skip缺口。恢复与其他领域源码无变化，不重建已使用的恢复源/目标库或重复清空数据。
+- final-source-match.log确认最终验证容器与提交源码的635个Go文件SHA256全部一致。测试结束前核对完整容器ID、名称、任务标签与网络成员，仅移除本任务三个容器/匿名卷及专用网络（cleanup-result.json）；原始测试、恢复材料及精确工具保留在忽略目录用于复查。
 - sqlc1.31.1的check-generated.sh通过（generated-check.log），冻结生产SQL及哈希未变；OpenSpec严格校验47/47通过。清单78项均有实际符号/文件/保留说明，原始78组值及367处基线引用未改；JSON、任务映射、文档链接、gofmt/LF/diff检查通过，综合验收仍保留明确环境缺口。
 
 ## 本地阶段提交
 
-已提交`5000620`详细计划、`932ed5c`管理SDK与工具、`93bea6c`HTTP/JOSE、`a26a363`Flutter、`abfcfdd`领域/审计/存储。配置与测试装配阶段经上述修复/复核后另作本地提交；全仓结果和清单最终闭环单独提交。所有提交均在任务分支，不推送、合并、归档或发布。
+已提交`5000620`详细计划、`932ed5c`管理SDK与工具、`93bea6c`HTTP/JOSE、`a26a363`Flutter、`abfcfdd`领域/审计/存储、`919a23d`配置/提供方/测试装配与跨模块接线。全仓结果和清单最终闭环另作验收记录提交。所有提交均在任务分支，不推送、合并、归档或发布。
+
+## 当前交付状态
+
+78组均已实施并核对原值/拥有者及保留理由；逐模块和全分支独立审查无开放源码finding，收尾文档审查发现的清单进度旧值已同步为最新证据。Go及可执行的SDK/Android/工具门禁已通过，任务27/30；6.3、10.2和10.3仅因必需iOS原生构建缺macOS/Xcode环境而保持未完成。代码实施完成不等于全平台验收或变更归档，后续提供该环境后再完成iOS和三个剩余勾选。未修改版本、锁文件、冻结迁移或原管理权限变更。

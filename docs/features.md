@@ -1,8 +1,8 @@
 # 功能清单与候选功能
 
-更新日期：2026-11-15。Go 集成与 HTTP 文档面向 v1.1.0 候选（尚未发布）；当前正式版本仍为 v1.0.0。候选新增能力与 accountsvc 破坏性迁移见[候选发布说明](releases/v1.1.0.md)；开发期版本见[1.0 前历史](releases/pre-1.0-history.md)。标准化指标实现与验证状态见[库指标验收](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)，accountsvc 采集端点见[服务指标验收](../openspec/changes/archive/2026-10-19-add-accountsvc-prometheus/verification.md)。
+更新日期：2026-11-15。Go 集成与 HTTP 文档面向 v1.1.0（已发布）。本版新增能力与 accountsvc 破坏性迁移见[发布说明](releases/v1.1.0.md)；开发期版本见[1.0 前历史](releases/pre-1.0-history.md)。标准化指标实现与验证状态见[库指标验收](../openspec/changes/archive/2026-10-19-add-standardized-metrics/verification.md)，accountsvc 采集端点见[服务指标验收](../openspec/changes/archive/2026-10-19-add-accountsvc-prometheus/verification.md)。
 
-本文统一记录 v1.1.0 候选已实现能力、已实现但待真实环境验证的项目，以及尚未立项的候选功能。版本发布不表示产品环境已验收。目前接入方仅在本地环境联调（见下表的真实环境验证记录），尚无正式产品部署，部署暂不安排。
+本文统一记录 v1.1.0 已发布能力、已实现但待真实环境验证的项目，以及尚未立项的候选功能。版本发布不表示产品环境已验收。目前接入方仅在本地环境联调（见下表的真实环境验证记录），尚无正式产品部署，部署暂不安排。
 
 协议和配置细节以 [README](../README.md)、[主规格](../openspec/specs)及公开 Go 类型为准；调用者须知见[兼容指南](compatibility.md)，独立服务边界见[accountsvc 手册](accountsvc.md)。
 

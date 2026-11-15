@@ -1,6 +1,6 @@
 # 发布准备核验记录
 
-状态：v1.1.0 tag 与 GitHub Release 已发布，本地及最终候选 CI、两个独立远端 Go 消费验证通过。发布状态补记和归档正在收尾；本轮未部署产品。准备阶段与后续发布进展分别记录如下。
+状态：v1.1.0 tag 与 GitHub Release 已发布，本地及最终候选 CI、两个独立远端 Go 消费验证通过。发布补记已合入 develop/main，本变更已归档；归档记录的集成单独留证。本轮未部署产品。准备阶段与后续发布进展分别记录如下。
 
 ## 已确认基线
 
@@ -89,3 +89,15 @@
 - 首次创建命令被自动审批拒绝，原因是准备说明仍含“候选、尚未发布”。该命令未执行；修正为正式 Go 版本说明、补齐实际 CI/tag/消费证据并独立审查 PASS 后成功创建。发布说明源仍为 `docs/releases/v1.1.0.md`，没有另维护 Release 内容；tag 内的历史候选文档不修改。
 - 发布补记更新 README、功能/兼容/Go/OpenAPI/服务/SDK 指南与三份 OpenAPI info 描述。SDK 清单仍为 1.0.0，兼容矩阵保留 v1.0.0 verified 行，并依据最终候选完整 SDK CI 将 v1.1.0 行改为 verified；没有发布新 SDK tag。
 - 本轮只修改文档和元数据。OpenAPI 24/11 操作、SDK 36 操作覆盖以及两包完整 `check-sdk-release` 检查通过；运行代码、SQL、依赖、SDK 清单和 HTTP 定义未变，未重复完整运行套件。后续记录补记集成和归档校验。
+
+## Publication Integration
+
+发布补记 `a8bd53b9f9a7ce24cdd693e4b78f34066f854377`（含此前证据提交 `3900728`）经 [PR #29](https://github.com/bbxx111/accountkit/pull/29) 的独立 merge commit 合入 develop `0fbc977e343d7ad31db3a7a93b69625c0ce636bf`；再以独立 merge commit 合入 main `e2eb83fdb23bb50c16dcc1e04de9cc8fa3b22712`，均已推送，文件树一致。发布补记只修改文档/元数据，独立审查通过；OpenSpec 46/46、OpenAPI/SDK 元数据与 222 个本地/tag 文件链接核对通过。正式版本 CI 指固定 tag 对应的 `6eef5e3`；补记分支随后触发的 CI 不是本版本发布门禁的替代证据。
+
+## Archive Verification
+
+- 2026-11-15 在 `docs/archive-v1-1-0-release` 分支使用已安装的 OpenSpec CLI 归档。CLI root 为本仓库；proposal/design/tasks 均 done，specs 声明 skipped、existingOutputPaths 为空，任务 4/4 完成，无目标目录冲突。归档 advisory 仅包含中文工件要求，没有额外操作指引。
+- 执行 `openspec archive prepare-next-release --yes --skip-specs --json`，保留默认校验；目标为 `openspec/changes/archive/2026-11-15-prepare-next-release`，未修改主规格。移动后立即对照原始清单确认五份文件（含 `.openspec.yaml`）逐字节一致，再补记本节及任务完成状态。
+- 同步修复 SDK 兼容矩阵、客户端指南、发布检查表、正式发布说明及计划中的五处引用文件；未改写历史 tag。原始归档输入哈希清单保存在 `.test-output/next-release/archive-inputs.json`。
+- 归档后 `openspec validate --all --strict` 为 45/45 主规格通过，`openspec list --json` 返回空活动列表；8 份变动 Markdown 的 43 个本地/tag 文件链接检查通过，旧活动引用残留为零。OpenAPI 契约除既有 info 描述外保持，24/11 操作、SDK 36 操作覆盖、两包完整发布元数据及 `git diff --check` 均通过。只移动工件和维护文档引用，未重复运行库/数据库/race 套件。
+- 独立归档审查 PASS，无剩余问题；报告留在 `.test-output/next-release/archive-review.md`。归档提交为 `01f67a8a4ba6197bea0ed5ab3ece506c232138a2`，develop 集成跟踪 [PR #30](https://github.com/bbxx111/accountkit/pull/30)，main 沿用独立 merge commit 同步。正式 Release 正文的证据链接与仓库发布说明一同改为本归档路径，tag 对象和固定提交保持不变。

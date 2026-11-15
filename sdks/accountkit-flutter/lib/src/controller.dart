@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import 'api.dart';
+import 'auth_protocol.dart';
 import 'client.dart';
 import 'errors.dart';
 import 'models.dart';
@@ -141,9 +142,9 @@ final class AccountController extends ChangeNotifier {
         waitUntil = clock.now().add(
           Duration(seconds: error.retryAfterSeconds!),
         );
-      if (error.reason == 'CODE_EXPIRED') _round = null;
-      if (error.reason == 'SIGN_IN_COMPLETION_INVALID' ||
-          error.reason == 'SIGN_IN_ALREADY_COMPLETED')
+      if (error.reason == AuthReason.codeExpired) _round = null;
+      if (error.reason == AuthReason.completionInvalid ||
+          error.reason == AuthReason.alreadyCompleted)
         _invalidate();
     }
     _notify();
@@ -250,7 +251,7 @@ final class AccountController extends ChangeNotifier {
     _retryCredential = null;
     final token = CancelToken();
     _requests.add(token);
-    final normalized = channel == 'EMAIL'
+    final normalized = channel == IdentityKind.email
         ? target.trim().toLowerCase()
         : target.trim();
     try {

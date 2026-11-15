@@ -4,8 +4,13 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
+import 'auth_protocol.dart';
 import 'errors.dart';
+import 'http_protocol.dart';
 import 'platform.dart';
+import 'routes.dart';
+import 'validation_patterns.dart';
+import 'wire_fields.dart';
 
 final class AccountRequestOptions {
   const AccountRequestOptions({
@@ -55,8 +60,8 @@ final class AccountEndpoint {
   String url(String path) => '$base$prefix$path';
   static void _safePath(String value) {
     if (value.contains('\\') ||
-        RegExp(r'[\x00-\x20\x7f]').hasMatch(value) ||
-        RegExp(r'%(?:2e|2f|5c|25)', caseSensitive: false).hasMatch(value) ||
+        requestWhitespacePattern.hasMatch(value) ||
+        unsafePathEncodingPattern.hasMatch(value) ||
         Uri.tryParse(value)?.path
                 .split('/')
                 .any((s) => s == '.' || s == '..') ==
@@ -85,6 +90,11 @@ String resourceId(
   return parts[3];
 }
 
+String identityPath(String value, String? userId) =>
+    '${AccountRoute.identities}/${resourceId(value, 'identities', 'i', userId)}';
+String sessionPath(String value, String? userId) =>
+    '${AccountRoute.sessions}/${resourceId(value, 'sessions', 's', userId)}';
+
 final class AccountTransport {
   AccountTransport({
     required this.endpoint,
@@ -110,7 +120,7 @@ final class AccountTransport {
     final requestId = options?.requestId ?? generateAccountNonce(bytes: 16);
     if (requestId.isEmpty ||
         requestId.length > 128 ||
-        RegExp(r'[\x00-\x20\x7f]').hasMatch(requestId))
+        requestWhitespacePattern.hasMatch(requestId))
       throw const AccountConfigurationError();
     final cancel = CancelToken();
     void cancelRequest(Object? reason) {
@@ -129,10 +139,11 @@ final class AccountTransport {
             options: Options(
               method: method,
               headers: {
-                'Accept': 'application/json',
-                'X-Request-Id': requestId,
-                if (data != null) 'Content-Type': 'application/json',
-                if (access != null) 'Authorization': 'Bearer $access',
+                HttpHeader.accept: HttpProtocol.json,
+                HttpHeader.requestId: requestId,
+                if (data != null) HttpHeader.contentType: HttpProtocol.json,
+                if (access != null)
+                  HttpHeader.authorization: '${AuthProtocol.bearer} $access',
                 ...?device?.toHeaders(),
               },
               followRedirects: false,
@@ -168,20 +179,24 @@ final class AccountTransport {
         final body = decoded is Map<String, Object?>
             ? decoded
             : <String, Object?>{};
-        final detail = body['error'];
+        final detail = body[ErrorField.error];
         final oauth = detail is String ? detail : null;
         final api = detail is Map<String, Object?> ? detail : body;
-        final wait = api['retry_after_seconds'];
+        final wait = api[ErrorField.retryAfterSeconds];
         final headerWait = int.tryParse(
-          response.headers.value('retry-after') ?? '',
+          response.headers.value(HttpHeader.retryAfter) ?? '',
         );
         throw AccountApiError(
           httpStatus: status,
-          reason: api['reason'] is String ? api['reason']! as String : null,
-          status: api['status'] is String ? api['status']! as String : null,
+          reason: api[ErrorField.reason] is String
+              ? api[ErrorField.reason]! as String
+              : null,
+          status: api[ErrorField.status] is String
+              ? api[ErrorField.status]! as String
+              : null,
           oauthError: oauth,
           retryAfterSeconds: wait is int ? wait : headerWait,
-          requestId: response.headers.value('x-request-id') ?? requestId,
+          requestId: response.headers.value(HttpHeader.requestId) ?? requestId,
         );
       }
       if (empty) return null;

@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'auth_protocol.dart';
 import 'errors.dart';
 import 'models.dart';
+import 'wire_fields.dart';
 
 abstract interface class AccountClock {
   DateTime now();
@@ -41,22 +43,26 @@ final class TokenRecord {
     refreshExpireTime: now.add(Duration(seconds: p.refreshExpiresIn)),
   );
   factory TokenRecord.fromJson(JsonObject j) => TokenRecord(
-    accessToken: text(j, 'access_token'),
-    refreshToken: text(j, 'refresh_token'),
-    scope: text(j, 'scope'),
-    userId: text(j, 'user_id'),
-    accessExpireTime: time(j, 'access_expire_time'),
-    refreshExpireTime: time(j, 'refresh_expire_time'),
+    accessToken: text(j, TokenField.accessToken),
+    refreshToken: text(j, TokenField.refreshToken),
+    scope: text(j, TokenField.scope),
+    userId: text(j, TokenField.userId),
+    accessExpireTime: time(j, StoredTokenField.accessExpireTime),
+    refreshExpireTime: time(j, StoredTokenField.refreshExpireTime),
   );
   final String accessToken, refreshToken, scope, userId;
   final DateTime accessExpireTime, refreshExpireTime;
   JsonObject toJson() => {
-    'access_token': accessToken,
-    'refresh_token': refreshToken,
-    'scope': scope,
-    'user_id': userId,
-    'access_expire_time': accessExpireTime.toUtc().toIso8601String(),
-    'refresh_expire_time': refreshExpireTime.toUtc().toIso8601String(),
+    TokenField.accessToken: accessToken,
+    TokenField.refreshToken: refreshToken,
+    TokenField.scope: scope,
+    TokenField.userId: userId,
+    StoredTokenField.accessExpireTime: accessExpireTime
+        .toUtc()
+        .toIso8601String(),
+    StoredTokenField.refreshExpireTime: refreshExpireTime
+        .toUtc()
+        .toIso8601String(),
   };
   @override
   String toString() => 'TokenRecord(redacted)';
@@ -283,7 +289,7 @@ final class SessionRuntime {
         );
         return _record!;
       } on AccountApiError catch (error) {
-        if (error.oauthError == 'invalid_grant' && e == epoch)
+        if (error.oauthError == OAuthError.invalidGrant && e == epoch)
           await end(expectedEpoch: e);
         rethrow;
       } finally {

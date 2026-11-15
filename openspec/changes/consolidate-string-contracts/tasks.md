@@ -35,8 +35,8 @@
 
 ## 6. Flutter SDK
 
-- [ ] 6.1 处理L057–L059：在lib/src内整理scope/kind/下一动作/控制流程错误/Dio extra键，让匿名端点发送与凭据排除集合同源；先覆盖未知kind扩展、pending/绑定/恢复、匿名请求不带Bearer、取消/重放和epoch/revision隔离，更新内部说明并运行对应状态机、controller、协议和Dio测试，不扩大公开入口。
-- [ ] 6.2 处理L060–L063：集中重复资源路径构造、wire keys、HTTP/设备字段和同义校验器，保持token持久化及请求编码原值；补旧存储往返、父资源/编码逃逸、nonce/设备快照、未知字段/枚举和错误分类测试，更新存储/平台适配注释，运行models/session/platform/transport范围测试，保留独立协议字面值预期。
+- [x] 6.1 处理L057–L059：在lib/src内整理scope/kind/下一动作/控制流程错误/Dio extra键，让匿名端点发送与凭据排除集合同源；先覆盖未知kind扩展、pending/绑定/恢复、匿名请求不带Bearer、取消/重放和epoch/revision隔离，更新内部说明并运行对应状态机、controller、协议和Dio测试，不扩大公开入口。
+- [x] 6.2 处理L060–L063：集中重复资源路径构造、wire keys、HTTP/设备字段和同义校验器，保持token持久化及请求编码原值；补旧存储往返、父资源/编码逃逸、nonce/设备快照、未知字段/枚举和错误分类测试，更新存储/平台适配注释，运行models/session/platform/transport范围测试，保留独立协议字面值预期。
 - [ ] 6.3 按tool-versions精确版本完成Flutter冻结安装、format/analyze/全部单元、真实accountsvc与嵌入策略协议、固定Git子目录独立消费及Android/iOS原生构建；按证据分别报告各层结果并更新SDK文档中的实际说明，缺macOS/Xcode/精确Flutter工具链时此任务保持未完成，不能用其他语言或近似版本替代。
 
 ## 7. TypeScript管理SDK

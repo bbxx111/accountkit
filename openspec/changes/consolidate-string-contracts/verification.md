@@ -49,3 +49,10 @@ apply后需按任务记录每阶段实际命令、独立审查、提交和清单
 - 消费者/管理/三个服务HTTP面的reason按拥有者定义；status/reason/审计reason分别维护。filter/browser只共用字段名、kind映射和品牌/rank描述数据，输入解析和预算不改。
 - 新helper测试先因缺少符号失败，再实现并通过；分区go test -count=1及最终重点回归通过。独立审查规格/质量通过、无实质finding；审查指出缺少vet空日志，root已重跑完整分区vet并明确保存task-1-vet.log，exit0。
 - 根accountkit/config、accountsvc顶层和user/idp引用留后续阶段接入；L009/L011/L012/L036/L038/L046仅记录阶段进展，不提前关闭整个组，2.2–2.4仍待跨模块闭环。2.1与5.1已完成。
+
+## 阶段：Flutter内部协议
+
+- L057–L063完成：按认证/HTTP/wire/路由/Dio metadata及校验规则建立内部定义，实际匿名请求与排除集合共用7条路由；未知kind仍可扩展，token存储字节和epoch/revision/刷新重放逻辑保持。资源helper先以缺失方法测试失败，再实现并回归。
+- 独立审查确认代码规格保持，唯一README中文被写成问号的问题已通过apply_patch修复并复核关闭；spec/quality均通过。77项单元包含独立匿名路由、application extra隔离、父资源和历史TokenRecord字节断言。
+- 补充工具Flutter3.47.9/Dart3.13.7的77项测试和analyze通过；随后在任务目录准备精确Flutter3.47.4 revision9584c6713b / Dart3.13.3，冻结pub安装、format、analyze及77项单元均通过，日志flutter-3.47.4-*.log。首次任务SDK克隆因Windows长路径失败，仅在该临时克隆启用core.longpaths并完成检出，未修改全局或现有D:/flutter。
+- 未改SDK入口、版本、依赖或锁；6.1/6.2完成，6.3的真实服务、Git和原生平台门禁继续待验证，不以单元测试替代。

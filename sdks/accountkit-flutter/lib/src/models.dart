@@ -1,6 +1,9 @@
 import 'dart:convert';
 
+import 'auth_protocol.dart';
 import 'errors.dart';
+import 'validation_patterns.dart';
+import 'wire_fields.dart';
 
 typedef JsonObject = Map<String, Object?>;
 JsonObject object(Object? value) {
@@ -79,9 +82,9 @@ final class SignedIn extends AuthenticationState {
 
 AuthenticationState authenticationStateForScope(String scope) =>
     switch (scope) {
-      'user' => const SignedIn(),
-      'user:bind' => const NeedsBinding(),
-      'user:undelete' => const PendingDeletion(),
+      AuthScope.user => const SignedIn(),
+      AuthScope.bind => const NeedsBinding(),
+      AuthScope.undelete => const PendingDeletion(),
       _ => throw const AccountProtocolError(),
     };
 
@@ -93,14 +96,22 @@ final class IdentityCredential {
   }
   factory IdentityCredential.custom(String kind, JsonObject credential) {
     List<String>? keys = switch (kind) {
-      'PHONE' || 'EMAIL' => ['target', 'code_id', 'code'],
-      'APPLE' || 'GOOGLE' || 'OIDC' => ['id_token', 'nonce'],
-      'WECHAT' || 'ALIPAY' => ['app_id', 'code'],
-      'QQ' || 'WEIBO' => ['app_id', 'access_token'],
-      'FACEBOOK' =>
-        credential.containsKey('access_token')
-            ? ['access_token']
-            : ['id_token', 'nonce'],
+      IdentityKind.phone || IdentityKind.email => [
+        CredentialField.target,
+        CredentialField.codeId,
+        CredentialField.code,
+      ],
+      IdentityKind.apple ||
+      IdentityKind.google ||
+      IdentityKind.oidc => [CredentialField.idToken, CredentialField.nonce],
+      IdentityKind.wechat ||
+      IdentityKind.alipay => [CredentialField.appId, CredentialField.code],
+      IdentityKind.qq ||
+      IdentityKind.weibo => [CredentialField.appId, TokenField.accessToken],
+      IdentityKind.facebook =>
+        credential.containsKey(TokenField.accessToken)
+            ? [TokenField.accessToken]
+            : [CredentialField.idToken, CredentialField.nonce],
       _ => null,
     };
     if (keys != null &&
@@ -111,8 +122,8 @@ final class IdentityCredential {
                   (credential[key]! as String).isEmpty,
             )))
       throw const AccountConfigurationError();
-    if ((kind == 'PHONE' || kind == 'EMAIL') &&
-        !RegExp(r'^[0-9a-f]{32}$').hasMatch(credential['code_id']! as String))
+    if ((kind == IdentityKind.phone || kind == IdentityKind.email) &&
+        !codeIdPattern.hasMatch(credential[CredentialField.codeId]! as String))
       throw const AccountConfigurationError();
     try {
       return IdentityCredential._(kind, credential);
@@ -127,7 +138,7 @@ final class IdentityCredential {
     required String codeId,
     required String code,
   }) => IdentityCredential.code(
-    'EMAIL',
+    IdentityKind.email,
     target: target,
     codeId: codeId,
     code: code,
@@ -137,7 +148,7 @@ final class IdentityCredential {
     required String codeId,
     required String code,
   }) => IdentityCredential.code(
-    'PHONE',
+    IdentityKind.phone,
     target: target,
     codeId: codeId,
     code: code,
@@ -148,15 +159,15 @@ final class IdentityCredential {
     required String codeId,
     required String code,
   }) {
-    if (!['PHONE', 'EMAIL'].contains(channel) ||
+    if (![IdentityKind.phone, IdentityKind.email].contains(channel) ||
         target.isEmpty ||
         code.isEmpty ||
-        !RegExp(r'^[0-9a-f]{32}$').hasMatch(codeId))
+        !codeIdPattern.hasMatch(codeId))
       throw const AccountConfigurationError();
     return IdentityCredential._(channel, {
-      'target': target,
-      'code_id': codeId,
-      'code': code,
+      CredentialField.target: target,
+      CredentialField.codeId: codeId,
+      CredentialField.code: code,
     });
   }
   static IdentityCredential _fields(String kind, JsonObject value) {
@@ -168,42 +179,69 @@ final class IdentityCredential {
   factory IdentityCredential.apple({
     required String idToken,
     required String nonce,
-  }) => _fields('APPLE', {'id_token': idToken, 'nonce': nonce});
+  }) => _fields(IdentityKind.apple, {
+    CredentialField.idToken: idToken,
+    CredentialField.nonce: nonce,
+  });
   factory IdentityCredential.google({
     required String idToken,
     required String nonce,
-  }) => _fields('GOOGLE', {'id_token': idToken, 'nonce': nonce});
+  }) => _fields(IdentityKind.google, {
+    CredentialField.idToken: idToken,
+    CredentialField.nonce: nonce,
+  });
   factory IdentityCredential.oidc({
-    String kind = 'OIDC',
+    String kind = IdentityKind.oidc,
     required String idToken,
     required String nonce,
-  }) => _fields(kind, {'id_token': idToken, 'nonce': nonce});
+  }) => _fields(kind, {
+    CredentialField.idToken: idToken,
+    CredentialField.nonce: nonce,
+  });
   factory IdentityCredential.wechat({
     required String appId,
     required String code,
-  }) => _fields('WECHAT', {'app_id': appId, 'code': code});
+  }) => _fields(IdentityKind.wechat, {
+    CredentialField.appId: appId,
+    CredentialField.code: code,
+  });
   factory IdentityCredential.alipay({
     required String appId,
     required String code,
-  }) => _fields('ALIPAY', {'app_id': appId, 'code': code});
+  }) => _fields(IdentityKind.alipay, {
+    CredentialField.appId: appId,
+    CredentialField.code: code,
+  });
   factory IdentityCredential.qq({
     required String appId,
     required String accessToken,
-  }) => _fields('QQ', {'app_id': appId, 'access_token': accessToken});
+  }) => _fields(IdentityKind.qq, {
+    CredentialField.appId: appId,
+    TokenField.accessToken: accessToken,
+  });
   factory IdentityCredential.weibo({
     required String appId,
     required String accessToken,
-  }) => _fields('WEIBO', {'app_id': appId, 'access_token': accessToken});
+  }) => _fields(IdentityKind.weibo, {
+    CredentialField.appId: appId,
+    TokenField.accessToken: accessToken,
+  });
   factory IdentityCredential.facebookIdToken({
     required String idToken,
     required String nonce,
-  }) => _fields('FACEBOOK', {'id_token': idToken, 'nonce': nonce});
+  }) => _fields(IdentityKind.facebook, {
+    CredentialField.idToken: idToken,
+    CredentialField.nonce: nonce,
+  });
   factory IdentityCredential.facebookAccessToken(String accessToken) =>
-      _fields('FACEBOOK', {'access_token': accessToken});
+      _fields(IdentityKind.facebook, {TokenField.accessToken: accessToken});
   final String kind;
   final JsonObject _value;
-  bool get isCode => kind == 'PHONE' || kind == 'EMAIL';
-  JsonObject toJson() => {'kind': kind, 'credential': copyJson(_value)};
+  bool get isCode => kind == IdentityKind.phone || kind == IdentityKind.email;
+  JsonObject toJson() => {
+    CredentialField.kind: kind,
+    CredentialField.credential: copyJson(_value),
+  };
   @override
   String toString() => 'IdentityCredential(redacted)';
 }
@@ -211,9 +249,10 @@ final class IdentityCredential {
 sealed class SignInResult {
   const SignInResult();
   factory SignInResult.fromJson(JsonObject j) {
-    if (j.containsKey('access_token') && j.containsKey('next_action'))
+    if (j.containsKey(TokenField.accessToken) &&
+        j.containsKey(CompletionField.nextAction))
       throw const AccountProtocolError();
-    return j.containsKey('access_token')
+    return j.containsKey(TokenField.accessToken)
         ? TokenPair.fromJson(j)
         : PendingSignIn.fromJson(j);
   }
@@ -239,16 +278,19 @@ final class TokenPair extends SignInResult {
       throw const AccountProtocolError();
   }
   factory TokenPair.fromJson(JsonObject j) {
-    if (text(j, 'token_type') != 'Bearer') throw const AccountProtocolError();
+    if (text(j, TokenField.tokenType) != AuthProtocol.bearer)
+      throw const AccountProtocolError();
     return TokenPair(
-      accessToken: text(j, 'access_token'),
-      refreshToken: text(j, 'refresh_token'),
-      expiresIn: integer(j, 'expires_in'),
-      refreshExpiresIn: integer(j, 'refresh_expires_in'),
-      scope: text(j, 'scope'),
-      userId: text(j, 'user_id'),
-      isNewUser: boolean(j, 'is_new_user'),
-      hintEmail: j['hint_email'] == null ? null : text(j, 'hint_email'),
+      accessToken: text(j, TokenField.accessToken),
+      refreshToken: text(j, TokenField.refreshToken),
+      expiresIn: integer(j, TokenField.expiresIn),
+      refreshExpiresIn: integer(j, TokenField.refreshExpiresIn),
+      scope: text(j, TokenField.scope),
+      userId: text(j, TokenField.userId),
+      isNewUser: boolean(j, TokenField.isNewUser),
+      hintEmail: j[CompletionField.hintEmail] == null
+          ? null
+          : text(j, CompletionField.hintEmail),
     );
   }
   final String accessToken, refreshToken, scope, userId;
@@ -263,12 +305,12 @@ final class TokenPair extends SignInResult {
 
 final class AccessTokenResult {
   AccessTokenResult.fromJson(JsonObject j)
-    : accessToken = text(j, 'access_token'),
-      expiresIn = integer(j, 'expires_in'),
-      scope = text(j, 'scope'),
-      userId = text(j, 'user_id') {
-    if (text(j, 'token_type') != 'Bearer' ||
-        j.containsKey('refresh_token') ||
+    : accessToken = text(j, TokenField.accessToken),
+      expiresIn = integer(j, TokenField.expiresIn),
+      scope = text(j, TokenField.scope),
+      userId = text(j, TokenField.userId) {
+    if (text(j, TokenField.tokenType) != AuthProtocol.bearer ||
+        j.containsKey(TokenField.refreshToken) ||
         expiresIn <= 0)
       throw const AccountProtocolError();
     authenticationStateForScope(scope);
@@ -281,16 +323,20 @@ final class AccessTokenResult {
 
 final class PendingSignIn extends SignInResult {
   PendingSignIn.fromJson(JsonObject j)
-    : completionToken = text(j, 'sign_in_completion_token'),
-      expireTime = time(j, 'expire_time'),
-      enabledIdentityKinds = strings(j, 'enabled_identity_kinds'),
-      requiredIdentityKinds = strings(j, 'required_identity_kinds'),
-      hintEmail = j['hint_email'] == null ? null : text(j, 'hint_email') {
-    if (text(j, 'next_action') != 'COMPLETE_IDENTITY' ||
-        !enabledIdentityKinds.any((k) => k == 'EMAIL' || k == 'PHONE') ||
-        j.containsKey('refresh_token') ||
-        j.containsKey('user_id') ||
-        j.containsKey('scope'))
+    : completionToken = text(j, CompletionField.token),
+      expireTime = time(j, ResourceField.expireTime),
+      enabledIdentityKinds = strings(j, CompletionField.enabledKinds),
+      requiredIdentityKinds = strings(j, CompletionField.requiredKinds),
+      hintEmail = j[CompletionField.hintEmail] == null
+          ? null
+          : text(j, CompletionField.hintEmail) {
+    if (text(j, CompletionField.nextAction) != AuthProtocol.completeIdentity ||
+        !enabledIdentityKinds.any(
+          (k) => k == IdentityKind.email || k == IdentityKind.phone,
+        ) ||
+        j.containsKey(TokenField.refreshToken) ||
+        j.containsKey(TokenField.userId) ||
+        j.containsKey(TokenField.scope))
       throw const AccountProtocolError();
   }
   final String completionToken;
@@ -303,8 +349,8 @@ final class PendingSignIn extends SignInResult {
 
 final class CodeChallenge {
   CodeChallenge.fromJson(JsonObject j)
-    : codeId = text(j, 'code_id'),
-      expireTime = time(j, 'expire_time');
+    : codeId = text(j, CredentialField.codeId),
+      expireTime = time(j, ResourceField.expireTime);
   final String codeId;
   final DateTime expireTime;
   @override
@@ -315,18 +361,18 @@ final class BasicProfilePatch {
   const BasicProfilePatch({this.displayName, this.avatarUrl});
   final String? displayName, avatarUrl;
   JsonObject toJson() => {
-    if (displayName != null) 'display_name': displayName,
-    if (avatarUrl != null) 'avatar_url': avatarUrl,
+    if (displayName != null) ResourceField.displayName: displayName,
+    if (avatarUrl != null) ResourceField.avatarUrl: avatarUrl,
   };
 }
 
 final class AccountUser {
   AccountUser.fromJson(JsonObject j)
-    : name = text(j, 'name'),
+    : name = text(j, ResourceField.name),
       state = text(j, 'state'),
-      displayName = text(j, 'display_name', empty: true),
-      avatarUrl = text(j, 'avatar_url', empty: true),
-      createTime = time(j, 'create_time'),
+      displayName = text(j, ResourceField.displayName, empty: true),
+      avatarUrl = text(j, ResourceField.avatarUrl, empty: true),
+      createTime = time(j, ResourceField.createTime),
       deleteTime = optionalTime(j, 'delete_time'),
       purgeTime = optionalTime(j, 'purge_time');
   final String name, state, displayName, avatarUrl;
@@ -336,32 +382,32 @@ final class AccountUser {
 
 final class AccountIdentity {
   AccountIdentity.fromJson(JsonObject j)
-    : name = text(j, 'name'),
-      kind = text(j, 'kind'),
+    : name = text(j, ResourceField.name),
+      kind = text(j, CredentialField.kind),
       maskedSubject = text(j, 'masked_subject', empty: true),
-      createTime = time(j, 'create_time');
+      createTime = time(j, ResourceField.createTime);
   final String name, kind, maskedSubject;
   final DateTime createTime;
 }
 
 final class AuthenticationIdentity {
   AuthenticationIdentity.fromJson(JsonObject j)
-    : name = text(j, 'name'),
-      kind = text(j, 'kind');
+    : name = text(j, ResourceField.name),
+      kind = text(j, CredentialField.kind);
   final String name, kind;
 }
 
 class AccountSession {
   AccountSession.fromJson(JsonObject j)
-    : name = text(j, 'name'),
+    : name = text(j, ResourceField.name),
       deviceId = text(j, 'device_id', empty: true),
       deviceName = text(j, 'device_name', empty: true),
-      createTime = time(j, 'create_time'),
+      createTime = time(j, ResourceField.createTime),
       lastUsedTime = time(j, 'last_used_time'),
       isCurrent = boolean(j, 'is_current'),
-      clientInfo = j['client_info'] == null
+      clientInfo = j[ResourceField.clientInfo] == null
           ? null
-          : Map.unmodifiable(copyJson(object(j['client_info']))),
+          : Map.unmodifiable(copyJson(object(j[ResourceField.clientInfo]))),
       clientInfoUpdateTime = optionalTime(j, 'client_info_update_time');
   final String name, deviceId, deviceName;
   final DateTime createTime, lastUsedTime;
@@ -388,8 +434,8 @@ final class CurrentSession extends AccountSession {
 
 final class AccountProfile {
   AccountProfile.fromJson(JsonObject j)
-    : name = text(j, 'name'),
-      _attributes = copyJson(object(j['profile_attributes']));
+    : name = text(j, ResourceField.name),
+      _attributes = copyJson(object(j[ResourceField.profileAttributes]));
   final String name;
   final JsonObject _attributes;
   JsonObject get profileAttributes => copyJson(_attributes);

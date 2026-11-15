@@ -7,6 +7,88 @@ import 'protocol_test.dart' show WireAdapter, token;
 import 'failures_test.dart' show ScriptAdapter;
 
 void main() {
+  test('all anonymous routes reject credentials before dispatch', () async {
+    final c = AccountClient(
+      baseUrl: 'https://account.test',
+      tokenStore: MemoryTokenStore(),
+    );
+    final business = c.createAuthenticatedDio(
+      trustedScopes: [
+        TrustedRequestScope(origin: 'https://account.test', pathPrefix: '/v1'),
+      ],
+    );
+    final server = WireAdapter({'ok': true});
+    business.httpClientAdapter = server;
+    for (final path in [
+      '/users:sendSignInCode',
+      '/users:signInWithCode',
+      '/users:signInWithIdp',
+      '/users:sendSignInCompletionCode',
+      '/users:completeSignIn',
+      '/token',
+      '/revoke',
+    ]) {
+      await expectLater(
+        business.post<Object?>('https://account.test/v1$path'),
+        throwsA(
+          isA<DioException>().having(
+            (e) => e.error,
+            'configuration rejection',
+            isA<AccountConfigurationError>(),
+          ),
+        ),
+      );
+    }
+    expect(server.requests, isEmpty);
+    await c.dispose();
+  });
+  test(
+    'replay metadata preserves application extras and body factory',
+    () async {
+      final c = AccountClient(
+        baseUrl: 'https://account.test',
+        dio: Dio()..httpClientAdapter = WireAdapter(token),
+        tokenStore: MemoryTokenStore(),
+        deviceProvider: FixedDeviceProvider(const DeviceSnapshot(id: 'd')),
+      );
+      await c.signInWithIdp(IdentityCredential.custom('ACME', {'p': 'x'}));
+      final business = c.createAuthenticatedDio(
+        trustedScopes: [
+          TrustedRequestScope(
+            origin: 'https://business.test',
+            pathPrefix: '/v1',
+          ),
+        ],
+      );
+      var count = 0, rebuilds = 0;
+      final server = ScriptAdapter((r) {
+        expect(r.extra['application.epoch'], 17);
+        expect(r.extra['application.retried'], 'owned');
+        expect(r.extra[AuthenticatedReplay.key], isA<AuthenticatedReplay>());
+        return ++count == 1 ? (401, <String, Object?>{}) : (200, {'ok': true});
+      });
+      business.httpClientAdapter = server;
+      await business.post<Object?>(
+        'https://business.test/v1/x',
+        data: {'x': 1},
+        options: Options(
+          extra: {
+            'application.epoch': 17,
+            'application.retried': 'owned',
+            AuthenticatedReplay.key: AuthenticatedReplay(
+              rebuildBody: () {
+                rebuilds++;
+                return {'x': 2};
+              },
+            ),
+          },
+        ),
+      );
+      expect(count, 2);
+      expect(rebuilds, 1);
+      await c.dispose();
+    },
+  );
   test('one shot stream is never automatically replayed', () async {
     final wire = ScriptAdapter((_) => (200, token));
     final c = AccountClient(

@@ -1,3 +1,5 @@
+import 'auth_protocol.dart';
+
 /// Errors deliberately exclude server bodies and credentials from diagnostics.
 sealed class AccountError implements Exception {
   const AccountError();
@@ -43,5 +45,6 @@ final class AccountApiError extends AccountError {
   final int httpStatus;
   final String? reason, status, oauthError, requestId;
   final int? retryAfterSeconds;
-  bool get requiresReauthentication => reason == 'REAUTHENTICATION_REQUIRED';
+  bool get requiresReauthentication =>
+      reason == AuthReason.reauthenticationRequired;
 }

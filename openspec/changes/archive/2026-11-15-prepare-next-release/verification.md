@@ -100,3 +100,4 @@
 - 执行 `openspec archive prepare-next-release --yes --skip-specs --json`，保留默认校验；目标为 `openspec/changes/archive/2026-11-15-prepare-next-release`，未修改主规格。移动后立即对照原始清单确认五份文件（含 `.openspec.yaml`）逐字节一致，再补记本节及任务完成状态。
 - 同步修复 SDK 兼容矩阵、客户端指南、发布检查表、正式发布说明及计划中的五处引用文件；未改写历史 tag。原始归档输入哈希清单保存在 `.test-output/next-release/archive-inputs.json`。
 - 归档后 `openspec validate --all --strict` 为 45/45 主规格通过，`openspec list --json` 返回空活动列表；8 份变动 Markdown 的 43 个本地/tag 文件链接检查通过，旧活动引用残留为零。OpenAPI 契约除既有 info 描述外保持，24/11 操作、SDK 36 操作覆盖、两包完整发布元数据及 `git diff --check` 均通过。只移动工件和维护文档引用，未重复运行库/数据库/race 套件。
+- 独立归档审查 PASS，无剩余问题；报告留在 `.test-output/next-release/archive-review.md`。归档提交为 `01f67a8a4ba6197bea0ed5ab3ece506c232138a2`，develop 集成跟踪 [PR #30](https://github.com/bbxx111/accountkit/pull/30)，main 沿用独立 merge commit 同步。正式 Release 正文的证据链接与仓库发布说明一同改为本归档路径，tag 对象和固定提交保持不变。

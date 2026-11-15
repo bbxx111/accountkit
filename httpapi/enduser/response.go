@@ -11,6 +11,8 @@ import (
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/httpapi/authn"
+	"github.com/bbxx111/accountkit/httpapi/internal/resourcename"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/user"
 	"github.com/bbxx111/accountkit/user/code"
 	"github.com/bbxx111/accountkit/user/idp"
@@ -42,7 +44,7 @@ type tokenResponse struct {
 
 func newTokenResponse(t user.TokenResult) tokenResponse {
 	return tokenResponse{
-		AccessToken: t.AccessToken, TokenType: "Bearer", ExpiresIn: t.ExpiresIn,
+		AccessToken: t.AccessToken, TokenType: httpcontract.TokenTypeBearer, ExpiresIn: t.ExpiresIn,
 		RefreshToken: t.RefreshToken, RefreshExpiresIn: t.RefreshExpiresIn,
 		Scope: t.Scope, UserID: t.UserID, IsNewUser: t.IsNewUser,
 		HintEmail: t.HintEmail,
@@ -62,7 +64,7 @@ type meResource struct {
 
 func newMeResource(m user.Me) meResource {
 	return meResource{
-		Name: "users/" + m.ID, State: m.State.String(), DisplayName: m.DisplayName, AvatarURL: m.AvatarURL,
+		Name: resourcename.User(m.ID), State: m.State.String(), DisplayName: m.DisplayName, AvatarURL: m.AvatarURL,
 		CreateTime: fmtTime(m.CreateTime), DeleteTime: fmtTimePtr(m.DeleteTime), PurgeTime: fmtTimePtr(m.PurgeTime),
 	}
 }
@@ -81,7 +83,7 @@ type sessionResource struct {
 func newSessionResource(userID string, s user.SessionInfo) sessionResource {
 	return sessionResource{
 		ClientInfo: newClientInfoResource(s.ClientInfo), ClientInfoUpdateTime: fmtTimePtr(s.ClientInfoUpdateTime),
-		Name: "users/" + userID + "/sessions/" + s.ID, DeviceID: s.DeviceID, DeviceName: s.DeviceName,
+		Name: resourcename.Session(userID, s.ID), DeviceID: s.DeviceID, DeviceName: s.DeviceName,
 		CreateTime: fmtTime(s.CreateTime), LastUsedTime: fmtTime(s.LastUsedTime), IsCurrent: s.IsCurrent,
 	}
 }
@@ -95,7 +97,7 @@ type identityResource struct {
 }
 
 func newIdentityResource(userID string, i user.IdentityInfo) identityResource {
-	return identityResource{Name: "users/" + userID + "/identities/" + i.ID, Kind: i.Kind.String(), MaskedSubject: i.MaskedSubject, CreateTime: fmtTime(i.CreateTime)}
+	return identityResource{Name: resourcename.Identity(userID, i.ID), Kind: i.Kind.String(), MaskedSubject: i.MaskedSubject, CreateTime: fmtTime(i.CreateTime)}
 }
 
 type identityList struct {
@@ -112,8 +114,7 @@ func retryAfterSeconds(d time.Duration) int {
 
 // writeToken 写 token 响应；凭证响应必须 no-store（RFC 6749 §5.1）。
 func writeToken(w http.ResponseWriter, res user.TokenResult) {
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Pragma", "no-cache")
+	httpcontract.SetOAuthNoStore(w)
 	apierror.WriteJSON(w, http.StatusOK, newTokenResponse(res))
 }
 
@@ -144,10 +145,9 @@ func (h *Handler) writeSignIn(w http.ResponseWriter, r *http.Request, res user.S
 		return
 	}
 	p := res.Pending
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Pragma", "no-cache")
+	httpcontract.SetOAuthNoStore(w)
 	apierror.WriteJSON(w, http.StatusOK, pendingSignInResponse{
-		NextAction:            "COMPLETE_IDENTITY",
+		NextAction:            nextActionCompleteIdentity,
 		SignInCompletionToken: p.SignInCompletionToken,
 		ExpireTime:            fmtTime(p.ExpireTime),
 		EnabledIdentityKinds:  identityKindNames(p.EnabledIdentityKinds),
@@ -161,67 +161,67 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, r *http.Request, err 
 	var rl *code.RateLimitedError
 	switch {
 	case errors.Is(err, user.ErrInvalidClientInfo):
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_CLIENT_INFO", "invalid client information"))
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, reasonInvalidClientInfo, "invalid client information"))
 	case errors.Is(err, user.ErrSignInCompletionInvalid):
-		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "SIGN_IN_COMPLETION_INVALID", "sign-in completion token is missing, invalid, or expired"))
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, reasonSignInCompletionInvalid, "sign-in completion token is missing, invalid, or expired"))
 	case errors.Is(err, user.ErrSignInAlreadyCompleted):
-		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "SIGN_IN_ALREADY_COMPLETED", "sign-in is already completed; start again"))
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, reasonSignInAlreadyCompleted, "sign-in is already completed; start again"))
 	case errors.Is(err, user.ErrIdentityKindNotEnabled):
-		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "IDENTITY_KIND_NOT_ENABLED", "this identity kind is not enabled"))
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, reasonIdentityKindNotEnabled, "this identity kind is not enabled"))
 	case errors.As(err, &rl):
 		apierror.Write(w, &apierror.Error{Status: apierror.StatusResourceExhausted, Reason: rl.Dimension, Message: "too many requests, retry later", RetryAfterSeconds: retryAfterSeconds(rl.RetryAfter)})
 	case errors.Is(err, idp.ErrMalformedCredential):
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_INCOMPLETE", "credential is malformed or incomplete"))
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, reasonCredentialIncomplete, "credential is malformed or incomplete"))
 	case errors.Is(err, idp.ErrNonceReplayed):
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "IDP_NONCE_REPLAYED", "this sign-in attempt was already used; start again"))
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, reasonIDPNonceReplayed, "this sign-in attempt was already used; start again"))
 	case errors.Is(err, idp.ErrAppNotAllowed):
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "IDP_APP_NOT_ALLOWED", "this application is not allowed to sign in"))
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, reasonIDPAppNotAllowed, "this application is not allowed to sign in"))
 	case errors.Is(err, idp.ErrInvalidCredential):
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "IDP_CREDENTIAL_INVALID", "identity provider credential is invalid or expired"))
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, reasonIDPCredentialInvalid, "identity provider credential is invalid or expired"))
 	case errors.Is(err, idp.ErrUnavailable):
-		apierror.Write(w, &apierror.Error{Status: apierror.StatusUnavailable, Reason: "IDP_UNAVAILABLE", Message: "identity provider temporarily unavailable, retry later", RetryAfterSeconds: 1})
+		apierror.Write(w, &apierror.Error{Status: apierror.StatusUnavailable, Reason: reasonIDPUnavailable, Message: "identity provider temporarily unavailable, retry later", RetryAfterSeconds: 1})
 	case errors.Is(err, idp.ErrMisconfigured):
 		apierror.WriteInternal(w, h.d.Logger, requestIDFrom(r.Context()), err)
 	case errors.Is(err, code.ErrInvalid):
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "CODE_INVALID", "verification code is incorrect"))
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, reasonCodeInvalid, "verification code is incorrect"))
 	case errors.Is(err, code.ErrExpired):
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "CODE_EXPIRED", "verification code has expired or was never issued for this purpose"))
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, reasonCodeExpired, "verification code has expired or was never issued for this purpose"))
 	case errors.Is(err, user.ErrInvalidTarget):
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_TARGET", "target is not a valid phone number or email address"))
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, reasonInvalidTarget, "target is not a valid phone number or email address"))
 	case errors.Is(err, user.ErrInvalidArgument):
 		msg := strings.TrimPrefix(strings.TrimPrefix(err.Error(), user.ErrInvalidArgument.Error()), ": ")
 		if msg == "" {
 			msg = "invalid argument"
 		}
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_ARGUMENT", msg))
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, httpcontract.ReasonInvalidArgument, msg))
 	case errors.Is(err, user.ErrInsufficientScope):
-		apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, "INSUFFICIENT_SCOPE", "token scope does not permit this operation"))
+		apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, httpcontract.ReasonInsufficientScope, "token scope does not permit this operation"))
 	case errors.Is(err, user.ErrReauthenticationRequired):
-		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "REAUTHENTICATION_REQUIRED", "recent authentication required for this operation"))
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, httpcontract.ReasonReauthenticationRequired, "recent authentication required for this operation"))
 	case errors.Is(err, user.ErrNotAnchor):
-		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "TARGET_NOT_ANCHOR", "target must be a phone or email already bound to this account"))
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, reasonTargetNotAnchor, "target must be a phone or email already bound to this account"))
 	case errors.Is(err, sender.ErrDisabled):
-		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "CHANNEL_NOT_ENABLED", "verification channel is not enabled"))
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, reasonChannelNotEnabled, "verification channel is not enabled"))
 	case errors.Is(err, sender.ErrTargetNotSupported):
-		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "TARGET_NOT_SUPPORTED", "verification target is not supported by this deployment"))
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, reasonTargetNotSupported, "verification target is not supported by this deployment"))
 	case errors.Is(err, user.ErrUserFrozen):
-		apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, "USER_FROZEN", "this account is frozen"))
+		apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, httpcontract.ReasonUserFrozen, "this account is frozen"))
 	case errors.Is(err, user.ErrUserPendingDeletion):
-		apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, "USER_PENDING_DELETION", "this account is pending deletion; sign in with its phone or email to restore it"))
+		apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, reasonUserPendingDeletion, "this account is pending deletion; sign in with its phone or email to restore it"))
 	case errors.Is(err, user.ErrDeletionBlocked):
-		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "DELETION_BLOCKED", "account deletion is blocked"))
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, httpcontract.ReasonDeletionBlocked, "account deletion is blocked"))
 	case errors.Is(err, user.ErrInvalidState):
-		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "INVALID_ACCOUNT_STATE", "operation not allowed in the account's current state"))
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, httpcontract.ReasonInvalidAccountState, "operation not allowed in the account's current state"))
 	case errors.Is(err, user.ErrIdentityConflict):
-		apierror.Write(w, apierror.New(apierror.StatusAlreadyExists, "IDENTITY_ALREADY_BOUND", "this identity is already bound to another account; sign in with that account instead"))
+		apierror.Write(w, apierror.New(apierror.StatusAlreadyExists, reasonIdentityAlreadyBound, "this identity is already bound to another account; sign in with that account instead"))
 	case errors.Is(err, user.ErrIdentityKindLimit):
-		apierror.Write(w, apierror.New(apierror.StatusAlreadyExists, "IDENTITY_KIND_LIMIT", "the maximum number of identities of this kind is already bound"))
+		apierror.Write(w, apierror.New(apierror.StatusAlreadyExists, reasonIdentityKindLimit, "the maximum number of identities of this kind is already bound"))
 	case errors.Is(err, user.ErrLastAnchor):
-		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "LAST_ANCHOR_IDENTITY", "the account must retain at least one usable identity and satisfy its identity policy"))
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, reasonLastAnchorIdentity, "the account must retain at least one usable identity and satisfy its identity policy"))
 	case errors.Is(err, user.ErrNotFound):
-		apierror.Write(w, apierror.New(apierror.StatusNotFound, "NOT_FOUND", "resource not found"))
+		apierror.Write(w, apierror.New(apierror.StatusNotFound, httpcontract.ReasonNotFound, "resource not found"))
 	case errors.Is(err, user.ErrUnavailable):
-		apierror.Write(w, &apierror.Error{Status: apierror.StatusUnavailable, Reason: "DEPENDENCY_UNAVAILABLE", Message: "service temporarily unavailable, retry later", RetryAfterSeconds: 1})
+		apierror.Write(w, &apierror.Error{Status: apierror.StatusUnavailable, Reason: httpcontract.ReasonDependencyUnavailable, Message: "service temporarily unavailable, retry later", RetryAfterSeconds: 1})
 	case errors.Is(err, user.ErrInvalidToken):
 		authn.WriteUnauthenticated(w, authn.ReasonTokenInvalid, "session is no longer valid")
 	default:
@@ -233,19 +233,19 @@ func (h *Handler) writeServiceError(w http.ResponseWriter, r *http.Request, err 
 func (h *Handler) writeOAuthError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, user.ErrInvalidClientInfo):
-		apierror.WriteOAuth(w, http.StatusBadRequest, "invalid_request", "invalid client information", nil)
+		apierror.WriteOAuth(w, http.StatusBadRequest, httpcontract.OAuthErrorInvalidRequest, "invalid client information", nil)
 	case errors.Is(err, errMalformedBody):
-		apierror.WriteOAuth(w, http.StatusBadRequest, "invalid_request", "request body must be application/json (a single object with known fields) or application/x-www-form-urlencoded (no repeated parameters)", nil)
+		apierror.WriteOAuth(w, http.StatusBadRequest, httpcontract.OAuthErrorInvalidRequest, "request body must be application/json (a single object with known fields) or application/x-www-form-urlencoded (no repeated parameters)", nil)
 	case errors.Is(err, user.ErrUserFrozen):
-		apierror.WriteOAuth(w, http.StatusForbidden, "invalid_grant", "user is frozen", map[string]any{"reason": "USER_FROZEN"})
+		apierror.WriteOAuth(w, http.StatusForbidden, httpcontract.OAuthErrorInvalidGrant, "user is frozen", map[string]any{"reason": httpcontract.ReasonUserFrozen})
 	case errors.Is(err, user.ErrInvalidGrant):
-		apierror.WriteOAuth(w, http.StatusBadRequest, "invalid_grant", "refresh token is invalid, expired, or revoked", nil)
+		apierror.WriteOAuth(w, http.StatusBadRequest, httpcontract.OAuthErrorInvalidGrant, "refresh token is invalid, expired, or revoked", nil)
 	case errors.Is(err, user.ErrUnavailable):
 		w.Header().Set("Retry-After", "1")
-		apierror.WriteOAuth(w, http.StatusServiceUnavailable, "temporarily_unavailable", "service temporarily unavailable, retry later", nil)
+		apierror.WriteOAuth(w, http.StatusServiceUnavailable, httpcontract.OAuthErrorTemporarilyUnavailable, "service temporarily unavailable, retry later", nil)
 	default:
 		h.d.Logger.Error("internal error", "request_id", requestIDFrom(r.Context()), "err", err)
-		apierror.WriteOAuth(w, http.StatusInternalServerError, "server_error", "internal error", nil)
+		apierror.WriteOAuth(w, http.StatusInternalServerError, httpcontract.OAuthErrorServerError, httpcontract.MessageInternal, nil)
 	}
 }
 
@@ -256,7 +256,7 @@ type challengeResponse struct {
 }
 
 func writeChallenge(w http.ResponseWriter, c user.CodeChallenge) {
-	w.Header().Set("Cache-Control", "no-store")
+	httpcontract.SetNoStore(w)
 	apierror.WriteJSON(w, http.StatusOK, challengeResponse{CodeID: c.CodeID, ExpireTime: c.ExpireTime})
 }
 

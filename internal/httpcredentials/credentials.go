@@ -4,6 +4,8 @@ package httpcredentials
 import (
 	"net/http"
 	"strings"
+
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 )
 
 // MaxBearerLength is the maximum accepted Bearer token length in bytes.
@@ -19,7 +21,7 @@ const (
 // It returns the lowercase scheme even for malformed credentials, so callers can
 // preserve their protocol-specific challenges. Duplicate headers return no scheme.
 func Parse(r *http.Request) (scheme, credential string, ok bool) {
-	headers := r.Header.Values("Authorization")
+	headers := r.Header.Values(httpcontract.HeaderAuthorization)
 	if len(headers) != 1 {
 		return "", "", false
 	}

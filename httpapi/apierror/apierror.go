@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 )
 
 // google.rpc.Code 名称（AIP-193）。
@@ -93,7 +95,7 @@ func WriteInternal(w http.ResponseWriter, logger *slog.Logger, requestID string,
 	if logger != nil {
 		logger.Error("internal error", "request_id", requestID, "err", err)
 	}
-	Write(w, &Error{Status: StatusInternal, Message: "internal error"})
+	Write(w, &Error{Status: StatusInternal, Message: httpcontract.MessageInternal})
 }
 
 // WriteOAuth 写出 RFC 6749 §5.2 形状的错误体（/token、/revoke 专用），extra 中的键并列写入。
@@ -105,21 +107,20 @@ func WriteOAuth(w http.ResponseWriter, httpStatus int, code, description string,
 	for k, v := range extra {
 		m[k] = v
 	}
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Pragma", "no-cache")
+	httpcontract.SetOAuthNoStore(w)
 	WriteJSON(w, httpStatus, m)
 }
 
 // WriteJSON 以 application/json 写出 v。
 func WriteJSON(w http.ResponseWriter, httpStatus int, v any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set(httpcontract.HeaderContentType, httpcontract.ContentTypeJSON)
 	w.WriteHeader(httpStatus)
 	_ = json.NewEncoder(w).Encode(v)
 }
 
 // WriteRouteNotFound 写路由不存在的 404（与 WriteJSON 同形的 AIP-193 体）。
 func WriteRouteNotFound(w http.ResponseWriter) {
-	Write(w, New(StatusNotFound, "ROUTE_NOT_FOUND", "no such route"))
+	Write(w, New(StatusNotFound, reasonRouteNotFound, "no such route"))
 }
 
 // WriteMethodNotAllowed 写 405：AIP-193 没有对应的 google.rpc.Code，body 沿用其形状（status INVALID_ARGUMENT，
@@ -130,7 +131,7 @@ func WriteMethodNotAllowed(w http.ResponseWriter) {
 			"code":    http.StatusMethodNotAllowed,
 			"message": "method not allowed for this route",
 			"status":  StatusInvalidArgument,
-			"reason":  "METHOD_NOT_ALLOWED",
+			"reason":  reasonMethodNotAllowed,
 		},
 	})
 }

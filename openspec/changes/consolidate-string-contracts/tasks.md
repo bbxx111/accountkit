@@ -9,7 +9,7 @@
 
 ## 2. Go HTTP与JOSE协议
 
-- [ ] 2.1 处理L001/L005–L007/L010：复用scheme、方法与身份定义，按语义归属命名60种HTTP reason、OAuth错误、token type/grant/下一动作及固定安全消息；保留旧公开reason别名和各面的状态/消息/错误优先级，补独立字面值断言与相关注释，运行httpapi和三个服务HTTP面范围测试/vet并审查。
+- [x] 2.1 处理L001/L005–L007/L010：复用scheme、方法与身份定义，按语义归属命名60种HTTP reason、OAuth错误、token type/grant/下一动作及固定安全消息；保留旧公开reason别名和各面的状态/消息/错误优先级，补独立字面值断言与相关注释，运行httpapi和三个服务HTTP面范围测试/vet并审查。
 - [ ] 2.2 处理L008/L009/L035：在内部HTTP帮助层收敛challenge、SetNoStore/SetOAuthNoStore和资源名构造；先覆盖单/多认证头、realm/error缺失、403/503、Pragma差异、reveal所有响应及父资源路径，保持各面DTO/授权独立，更新内部说明，运行HTTP/服务认证协议测试验证精确输出。
 - [ ] 2.3 处理L011/L012及L026共享部分：集中无业务依赖的JOSE header/claim/JWK文字，优先复用当前jwt算法定义，tokens公开const保持；补有效/未知/畸形声明、default/rfc9068不回退和消费者/管理员/服务/IdP隔离测试，更新归属注释，运行tokens、oidcjwt、adminauth、serviceauth及IdP回归/vet。
 - [ ] 2.4 处理L036–L038及L046的RequestID部分：共用Header/MIME和同义RequestID验证，保持自定义宿主回调、生成/回退时机、设备头及Client Hints大小写语义；补解析边界与生成/回退行为测试、同步协议注释，运行clientinfo、reqid、accountsvc metadata及根门面测试，确认未给普通一次性标准头制造新公共API。
@@ -30,7 +30,7 @@
 
 ## 5. 既有解析器的数据收敛
 
-- [ ] 5.1 处理L042/L043：只集中filter字段元数据与浏览器规范名/别名/rank，保留既有语法和识别算法；以合法/非法filter、转义、未知品牌、别名优先级及原输出独立断言验证，更新局部字段说明，运行admin filter/clientinfo用例，复杂解析器重写不纳入本步。
+- [x] 5.1 处理L042/L043：只集中filter字段元数据与浏览器规范名/别名/rank，保留既有语法和识别算法；以合法/非法filter、转义、未知品牌、别名优先级及原输出独立断言验证，更新局部字段说明，运行admin filter/clientinfo用例，复杂解析器重写不纳入本步。
 - [ ] 5.2 处理L045/L055/L056：共用Schema Draft URI/关键字、审计JSON和客户端描述反复索引/白名单数据，保留单一敏感词策略集合，避免逐词公共常量；覆盖重复键、未知字段、嵌套/循环ref/容量预算、精确数字和隐私脱敏的既有边界并同步注释，运行profileattributes/audit/client info单元、fuzz种子及数据库往返回归，不改递归算法或接受集合。
 
 ## 6. Flutter SDK

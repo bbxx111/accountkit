@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"unicode"
+
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 )
 
 // Valid reports whether every client ID is a usable Basic username and every secret is
@@ -61,7 +63,7 @@ func (m *Matcher) Authorized(r *http.Request) bool {
 // configured secret of that client ID, and returns the client ID. It compares fixed-size
 // hashes and inspects every rotation entry rather than returning on the first match.
 func (m *Matcher) Match(r *http.Request) (string, bool) {
-	if len(r.Header.Values("Authorization")) != 1 {
+	if len(r.Header.Values(httpcontract.HeaderAuthorization)) != 1 {
 		return "", false
 	}
 	id, password, ok := r.BasicAuth()

@@ -4,17 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/bbxx111/accountkit/audit"
-	"github.com/bbxx111/accountkit/enum"
-	"github.com/bbxx111/accountkit/httpapi/apierror"
-	"github.com/bbxx111/accountkit/internal/accountsvc/serviceauth"
-	"github.com/bbxx111/accountkit/internal/boundedjson"
-	"github.com/bbxx111/accountkit/user"
 	"io"
 	"mime"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/bbxx111/accountkit/audit"
+	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/httpapi/apierror"
+	"github.com/bbxx111/accountkit/internal/accountsvc/serviceauth"
+	"github.com/bbxx111/accountkit/internal/boundedjson"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
+	"github.com/bbxx111/accountkit/user"
 )
 
 const Realm = "accountsvc-identity-resolution"
@@ -34,38 +36,38 @@ func NewWithAuthenticator(auth *serviceauth.Authenticator, resolve Resolver, nam
 	return &handler{auth, resolve, namespace, requestID}, nil
 }
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
+	httpcontract.SetNoStore(w)
 	fail := func(status string, reason, message string) { apierror.Write(w, apierror.New(status, reason, message)) }
 	if !h.auth.Enabled() {
-		fail(apierror.StatusUnavailable, "IDENTITY_RESOLUTION_NOT_CONFIGURED", "identity resolution is not configured")
+		fail(apierror.StatusUnavailable, reasonIdentityResolutionNotConfigured, "identity resolution is not configured")
 		return
 	}
 	res := h.auth.Authenticate(r)
 	switch res.Outcome {
 	case serviceauth.Unauthenticated:
 		serviceauth.WriteChallenges(w, h.auth.Challenges(res))
-		fail(apierror.StatusUnauthenticated, "INVALID_CLIENT", "valid service credentials are required")
+		fail(apierror.StatusUnauthenticated, httpcontract.ReasonInvalidClient, "valid service credentials are required")
 		return
 	case serviceauth.Forbidden:
 		serviceauth.WriteChallenges(w, h.auth.Challenges(res))
-		fail(apierror.StatusPermissionDenied, "CLIENT_NOT_AUTHORIZED", "service client is not authorized")
+		fail(apierror.StatusPermissionDenied, httpcontract.ReasonClientNotAuthorized, "service client is not authorized")
 		return
 	case serviceauth.Unavailable:
-		fail(apierror.StatusUnavailable, "DEPENDENCY_UNAVAILABLE", "service token verification temporarily unavailable")
+		fail(apierror.StatusUnavailable, httpcontract.ReasonDependencyUnavailable, "service token verification temporarily unavailable")
 		return
 	}
-	if r.Method != "POST" {
-		w.Header().Set("Allow", "POST")
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
 		w.WriteHeader(405)
 		return
 	}
-	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || media != "application/json" {
+	media, _, err := mime.ParseMediaType(r.Header.Get(httpcontract.HeaderContentType))
+	if err != nil || media != httpcontract.MediaTypeJSON {
 		w.WriteHeader(415)
 		return
 	}
 	invalid := func() {
-		fail(apierror.StatusInvalidArgument, "INVALID_ARGUMENT", "invalid identity resolution request")
+		fail(apierror.StatusInvalidArgument, httpcontract.ReasonInvalidArgument, "invalid identity resolution request")
 	}
 	if r.URL.RawQuery != "" || r.URL.ForceQuery {
 		invalid()
@@ -91,7 +93,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	kind, ok := obj["kind"].(string)
-	if !ok || (kind != "PHONE" && kind != "EMAIL") {
+	if !ok || !enum.IdentityKind(kind).IsAnchor() {
 		invalid()
 		return
 	}
@@ -108,16 +110,16 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		invalid()
 		return
 	case errors.Is(err, user.ErrNotFound):
-		fail(apierror.StatusNotFound, "NOT_FOUND", "identity not found")
+		fail(apierror.StatusNotFound, httpcontract.ReasonNotFound, "identity not found")
 		return
 	case errors.Is(err, user.ErrUnavailable), errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
-		fail(apierror.StatusUnavailable, "DEPENDENCY_UNAVAILABLE", "identity resolution temporarily unavailable")
+		fail(apierror.StatusUnavailable, httpcontract.ReasonDependencyUnavailable, "identity resolution temporarily unavailable")
 		return
 	case err != nil:
-		fail(apierror.StatusInternal, "INTERNAL", "internal server error")
+		fail(apierror.StatusInternal, reasonInternal, "internal server error")
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(httpcontract.HeaderContentType, httpcontract.MediaTypeJSON)
 	_ = json.NewEncoder(w).Encode(struct {
 		UserID      string `json:"user_id"`
 		State       string `json:"state"`

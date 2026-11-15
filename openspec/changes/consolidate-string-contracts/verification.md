@@ -42,3 +42,10 @@ apply后需按任务记录每阶段实际命令、独立审查、提交和清单
 - L066的create_time及已单份query tuple保留局部表达；L078的shell阶段/env目前保持原显式调用，Go恢复驱动与跨语言闭环交后续阶段，不提前记该组完成。
 - 精确Node24.21.0/pnpm11.24.0：TS typecheck/format/test通过（56项）；node工具测试31通过、1项POSIX专属在Windows跳过；OpenAPI 24/11及SDK覆盖36操作通过。原始日志task3-*.log与实施报告位于.test-output/string-contracts。
 - 独立审查task-3-review.md：spec/quality均通过，无实质finding。真实服务/Git完整消费、Linux取消补验和全仓门禁尚未执行；7.1已完成，7.2及9.1/9.3等综合要求保持未勾选。
+
+## 阶段：Go HTTP/JOSE内部契约
+
+- 新增internal/httpcontract、internal/jose及httpapi/internal/resourcename；Header/MIME、OAuth与同义reason、challenge、缓存策略、资源名和RequestID校验集中。保留authn.Reason*与tokens公开常量兼容，JWK/JWT算法复用现有定义，默认/rfc9068和三类身份验证不合并。
+- 消费者/管理/三个服务HTTP面的reason按拥有者定义；status/reason/审计reason分别维护。filter/browser只共用字段名、kind映射和品牌/rank描述数据，输入解析和预算不改。
+- 新helper测试先因缺少符号失败，再实现并通过；分区go test -count=1及最终重点回归通过。独立审查规格/质量通过、无实质finding；审查指出缺少vet空日志，root已重跑完整分区vet并明确保存task-1-vet.log，exit0。
+- 根accountkit/config、accountsvc顶层和user/idp引用留后续阶段接入；L009/L011/L012/L036/L038/L046仅记录阶段进展，不提前关闭整个组，2.2–2.4仍待跨模块闭环。2.1与5.1已完成。

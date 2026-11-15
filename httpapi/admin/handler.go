@@ -11,14 +11,14 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/httpapi/internal/jsonbody"
 	"github.com/bbxx111/accountkit/httpapi/internal/reqid"
 	"github.com/bbxx111/accountkit/ids"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/user"
+	"github.com/go-chi/chi/v5"
 )
 
 // 公开角色名仅供旧嵌入宿主兼容；角色层级由其 verifier 决定，accountsvc 无内置角色授权。
@@ -105,7 +105,7 @@ func New(d Deps) (*Handler, error) {
 // 时使用它，保证 AdminHandler() 永不为 nil。
 func Unconfigured(requestID func(*http.Request) string) http.Handler {
 	return noStore(reqid.Middleware(requestID)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		apierror.Write(w, apierror.New(apierror.StatusUnavailable, "ADMIN_NOT_CONFIGURED", "admin surface is not configured on this host (Deps.AdminVerifier / Deps.AdminPrincipal missing)"))
+		apierror.Write(w, apierror.New(apierror.StatusUnavailable, reasonAdminNotConfigured, "admin surface is not configured on this host (Deps.AdminVerifier / Deps.AdminPrincipal missing)"))
 	})))
 }
 
@@ -113,8 +113,8 @@ func Unconfigured(requestID func(*http.Request) string) http.Handler {
 func (h *Handler) principal(w http.ResponseWriter, r *http.Request) (user.Admin, bool) {
 	p, ok := h.d.Principal(r.Context())
 	if !ok {
-		w.Header().Set("WWW-Authenticate", `Bearer realm="admin"`)
-		apierror.Write(w, apierror.New(apierror.StatusUnauthenticated, "TOKEN_MISSING", "admin principal missing; the OIDC verifier middleware must run before this handler"))
+		w.Header().Set(httpcontract.HeaderWWWAuthenticate, httpcontract.BearerChallenge("admin", ""))
+		apierror.Write(w, apierror.New(apierror.StatusUnauthenticated, httpcontract.ReasonTokenMissing, "admin principal missing; the OIDC verifier middleware must run before this handler"))
 		return user.Admin{}, false
 	}
 	return user.Admin{Issuer: p.Issuer, Subject: p.Subject, Username: p.Username}, true
@@ -159,7 +159,7 @@ func (h *Handler) Router() http.Handler {
 func userID(w http.ResponseWriter, r *http.Request) (string, bool) {
 	id := chi.URLParam(r, "user")
 	if !ids.Valid(ids.User, id) {
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_ID", "user id is malformed"))
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, httpcontract.ReasonInvalidID, "user id is malformed"))
 		return "", false
 	}
 	return id, true

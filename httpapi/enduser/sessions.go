@@ -3,10 +3,10 @@ package enduser
 import (
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/ids"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
+	"github.com/go-chi/chi/v5"
 )
 
 type sessionList struct {
@@ -39,7 +39,7 @@ func (h *Handler) deleteSession(w http.ResponseWriter, r *http.Request) {
 	}
 	sid := chi.URLParam(r, "session")
 	if !ids.Valid(ids.Session, sid) {
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_ID", "session id is malformed"))
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, httpcontract.ReasonInvalidID, "session id is malformed"))
 		return
 	}
 	if err := h.d.Users.RevokeSession(r.Context(), p.UserID, sid, h.meta(r)); err != nil {

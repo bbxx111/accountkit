@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/httpapi/apierror"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/user"
 )
 
@@ -17,7 +18,7 @@ func parsePageSize(raw string) (int, *apierror.Error) {
 	}
 	n, err := strconv.Atoi(raw)
 	if err != nil || n < 0 {
-		return 0, apierror.New(apierror.StatusInvalidArgument, "INVALID_PAGE_SIZE", "page_size must be a non-negative integer")
+		return 0, apierror.New(apierror.StatusInvalidArgument, reasonInvalidPageSize, "page_size must be a non-negative integer")
 	}
 	if n == 0 {
 		return user.AdminPageSizeDefault, nil
@@ -44,7 +45,7 @@ func decodeCursor(raw string) (time.Time, string, bool, *apierror.Error) {
 	if raw == "" {
 		return time.Time{}, "", false, nil
 	}
-	bad := apierror.New(apierror.StatusInvalidArgument, "INVALID_PAGE_TOKEN", "page_token is invalid or expired; restart from the first page")
+	bad := apierror.New(apierror.StatusInvalidArgument, httpcontract.ReasonInvalidPageToken, "page_token is invalid or expired; restart from the first page")
 	b, err := base64.RawURLEncoding.DecodeString(raw)
 	if err != nil {
 		return time.Time{}, "", false, bad

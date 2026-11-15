@@ -6,6 +6,8 @@ import (
 	"sort"
 
 	"github.com/bbxx111/accountkit/httpapi/apierror"
+	"github.com/bbxx111/accountkit/httpapi/internal/resourcename"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/user"
 )
 
@@ -18,7 +20,7 @@ type CurrentSessionService interface {
 
 func currentSessionNoStore(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-store")
+		httpcontract.SetNoStore(w)
 		next.ServeHTTP(w, r)
 	})
 }
@@ -40,7 +42,7 @@ func (h *Handler) currentSession(w http.ResponseWriter, r *http.Request) {
 	}
 	svc, ok := h.d.Users.(CurrentSessionService)
 	if !ok {
-		apierror.Write(w, apierror.New(apierror.StatusUnavailable, "SESSION_QUERY_NOT_CONFIGURED", "session query is not configured"))
+		apierror.Write(w, apierror.New(apierror.StatusUnavailable, reasonSessionQueryNotConfigured, "session query is not configured"))
 		return
 	}
 	result, err := svc.GetCurrentSession(r.Context(), p)
@@ -51,7 +53,7 @@ func (h *Handler) currentSession(w http.ResponseWriter, r *http.Request) {
 	out := currentSessionResource{sessionResource: newSessionResource(p.UserID, result.SessionInfo), AuthTime: fmtTime(result.AuthTime), AuthenticationIdentities: make([]authenticationIdentityResource, 0)}
 	out.IsCurrent = true
 	for _, i := range result.AuthenticationIdentities {
-		out.AuthenticationIdentities = append(out.AuthenticationIdentities, authenticationIdentityResource{Name: "users/" + p.UserID + "/identities/" + i.ID, Kind: i.Kind.String()})
+		out.AuthenticationIdentities = append(out.AuthenticationIdentities, authenticationIdentityResource{Name: resourcename.Identity(p.UserID, i.ID), Kind: i.Kind.String()})
 	}
 	sort.Slice(out.AuthenticationIdentities, func(i, j int) bool {
 		return out.AuthenticationIdentities[i].Name < out.AuthenticationIdentities[j].Name

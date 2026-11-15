@@ -30,7 +30,7 @@ type completeSignInRequest struct {
 }
 
 func completionNotConfigured(w http.ResponseWriter) {
-	apierror.Write(w, apierror.New(apierror.StatusUnavailable, "SIGN_IN_COMPLETION_NOT_CONFIGURED", "sign-in completion is not configured"))
+	apierror.Write(w, apierror.New(apierror.StatusUnavailable, reasonSignInCompletionNotConfigured, "sign-in completion is not configured"))
 }
 
 func (h *Handler) sendSignInCompletionCode(w http.ResponseWriter, r *http.Request) {

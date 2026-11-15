@@ -4,6 +4,8 @@ package reqid
 import (
 	"context"
 	"net/http"
+
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 )
 
 type ctxKey struct{}
@@ -13,7 +15,7 @@ func Middleware(resolve func(*http.Request) string) func(http.Handler) http.Hand
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			id := resolve(r)
-			w.Header().Set("X-Request-Id", id)
+			w.Header().Set(httpcontract.HeaderRequestID, id)
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, id)))
 		})
 	}

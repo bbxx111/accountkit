@@ -12,6 +12,7 @@ import (
 	"github.com/bbxx111/accountkit/httpapi/admin"
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/internal/accountsvc/oidcjwt"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/internal/httpcredentials"
 )
 
@@ -89,7 +90,7 @@ func (v *Verifier) Middleware(next http.Handler) http.Handler {
 		claims, err := v.tokens.Parse(ctx, credential)
 		if err != nil {
 			if errors.Is(err, oidcjwt.ErrUnavailable) {
-				apierror.Write(w, apierror.New(apierror.StatusUnavailable, "ADMIN_AUTH_UNAVAILABLE", "administrator authentication is unavailable"))
+				apierror.Write(w, apierror.New(apierror.StatusUnavailable, reasonAdminAuthUnavailable, "administrator authentication is unavailable"))
 			} else {
 				writeUnauthorized(w)
 			}
@@ -121,7 +122,7 @@ func (v *Verifier) requireAuthorization(allowed func(authenticated) bool, messag
 				if v.onForbidden != nil {
 					v.onForbidden(r, a.principal)
 				}
-				apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, "ADMIN_FORBIDDEN", message))
+				apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, reasonAdminForbidden, message))
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -130,6 +131,6 @@ func (v *Verifier) requireAuthorization(allowed func(authenticated) bool, messag
 }
 
 func writeUnauthorized(w http.ResponseWriter) {
-	w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
-	apierror.Write(w, apierror.New(apierror.StatusUnauthenticated, "ADMIN_UNAUTHENTICATED", "valid administrator access token is required"))
+	w.Header().Set(httpcontract.HeaderWWWAuthenticate, httpcontract.BearerChallenge("", httpcontract.OAuthErrorInvalidToken))
+	apierror.Write(w, apierror.New(apierror.StatusUnauthenticated, reasonAdminUnauthenticated, "valid administrator access token is required"))
 }

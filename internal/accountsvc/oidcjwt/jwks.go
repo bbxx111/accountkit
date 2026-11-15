@@ -10,6 +10,10 @@ import (
 	"math/big"
 	"net/http"
 	"strings"
+
+	"github.com/bbxx111/accountkit/internal/httpcontract"
+	"github.com/bbxx111/accountkit/internal/jose"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const (
@@ -25,7 +29,7 @@ func (v *Verifier) fetchJSON(ctx context.Context, address string, dest any) erro
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", httpcontract.MediaTypeJSON)
 	resp, err := v.client.Do(req)
 	if err != nil {
 		return err
@@ -90,13 +94,13 @@ func (v *Verifier) loadKeys(ctx context.Context, jwksURL string) (map[string]*rs
 			return nil, errors.New("oidcjwt: duplicate JWKS kid")
 		}
 		seen[jwk.Kid] = true
-		if jwk.Kty != "RSA" || (jwk.Use != "" && jwk.Use != "sig") || (jwk.Alg != "" && jwk.Alg != "RS256") {
+		if jwk.Kty != jose.JWKTypeRSA || (jwk.Use != "" && jwk.Use != jose.JWKUseSignature) || (jwk.Alg != "" && jwk.Alg != jwt.SigningMethodRS256.Alg()) {
 			continue
 		}
 		if jwk.KeyOps != nil {
 			verify := false
 			for _, op := range jwk.KeyOps {
-				if op == "verify" {
+				if op == jose.JWKOperationVerify {
 					verify = true
 				}
 			}

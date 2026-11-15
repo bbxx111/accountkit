@@ -134,7 +134,7 @@ func (h *Handler) listAuditEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.d.Audit == nil {
-		apierror.Write(w, apierror.New(apierror.StatusUnavailable, "AUDIT_QUERY_NOT_CONFIGURED", "audit queries are not configured"))
+		apierror.Write(w, apierror.New(apierror.StatusUnavailable, reasonAuditQueryNotConfigured, "audit queries are not configured"))
 		return
 	}
 	// Reader code belongs to the host; preserve trusted bounds for validation
@@ -148,7 +148,7 @@ func (h *Handler) listAuditEvents(w http.ResponseWriter, r *http.Request) {
 	page, err := h.d.Audit.ListByResource(r.Context(), readerQuery)
 	unavailable := func(reason string) {
 		h.d.Logger.WarnContext(r.Context(), "audit query unavailable", "reason", reason, "record_count", len(page.Records), "request_id", reqid.From(r.Context()))
-		apierror.Write(w, apierror.New(apierror.StatusUnavailable, "AUDIT_QUERY_UNAVAILABLE", "audit query unavailable"))
+		apierror.Write(w, apierror.New(apierror.StatusUnavailable, reasonAuditQueryUnavailable, "audit query unavailable"))
 	}
 	if err != nil {
 		unavailable("reader_error")

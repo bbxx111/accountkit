@@ -5,11 +5,11 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/ids"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/user"
+	"github.com/go-chi/chi/v5"
 )
 
 // IdentityReplacer 是可选的同类手机/邮箱换绑能力；*user.Service 满足它。
@@ -26,12 +26,12 @@ func (h *Handler) replaceIdentity(w http.ResponseWriter, r *http.Request) {
 	}
 	replacer, ok := h.d.Users.(IdentityReplacer)
 	if !ok {
-		apierror.Write(w, apierror.New(apierror.StatusUnavailable, "IDENTITY_REPLACEMENT_NOT_CONFIGURED", "identity replacement is not configured"))
+		apierror.Write(w, apierror.New(apierror.StatusUnavailable, reasonIdentityReplacementNotConfigured, "identity replacement is not configured"))
 		return
 	}
 	id := chi.URLParam(r, "identity")
 	if !ids.Valid(ids.Identity, id) {
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_ID", "identity id is malformed"))
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, httpcontract.ReasonInvalidID, "identity id is malformed"))
 		return
 	}
 	var cred credential
@@ -56,13 +56,13 @@ func (h *Handler) replaceIdentity(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) writeReplacementError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, user.ErrIdentityUnchanged):
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "IDENTITY_UNCHANGED", "new target must differ from the current identity"))
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, reasonIdentityUnchanged, "new target must differ from the current identity"))
 	case errors.Is(err, user.ErrInsufficientScope):
-		apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, "INSUFFICIENT_SCOPE", "token scope does not permit this operation"))
+		apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, httpcontract.ReasonInsufficientScope, "token scope does not permit this operation"))
 	case errors.Is(err, user.ErrReauthenticationRequired):
-		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "REAUTHENTICATION_REQUIRED", "recent authentication required for this operation"))
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, httpcontract.ReasonReauthenticationRequired, "recent authentication required for this operation"))
 	case errors.Is(err, user.ErrIdentityConflict):
-		apierror.Write(w, apierror.New(apierror.StatusAlreadyExists, "IDENTITY_ALREADY_BOUND", "this identity is already bound"))
+		apierror.Write(w, apierror.New(apierror.StatusAlreadyExists, reasonIdentityAlreadyBound, "this identity is already bound"))
 	default:
 		h.writeServiceError(w, r, err)
 	}

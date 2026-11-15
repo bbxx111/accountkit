@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bbxx111/accountkit/internal/jose"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -196,26 +197,26 @@ func (v *Verifier) Parse(ctx context.Context, raw string) (jwt.MapClaims, error)
 	claims := jwt.MapClaims{}
 	_, err := jwt.ParseWithClaims(raw, claims, func(token *jwt.Token) (any, error) {
 		if v.profile == ProfileRFC9068 {
-			typ, ok := token.Header["typ"].(string)
-			if !ok || (typ != "at+jwt" && typ != "application/at+jwt") {
+			typ, ok := token.Header[jose.HeaderType].(string)
+			if !ok || (typ != jose.AccessTokenType && typ != jose.AccessTokenMediaType) {
 				return nil, ErrInvalid
 			}
 		}
 		if token.Method != jwt.SigningMethodRS256 {
 			return nil, ErrInvalid
 		}
-		if _, ok := token.Header["jku"]; ok {
+		if _, ok := token.Header[jose.HeaderJWKURL]; ok {
 			return nil, ErrInvalid
 		}
-		if _, ok := token.Header["x5u"]; ok {
+		if _, ok := token.Header[jose.HeaderX509URL]; ok {
 			return nil, ErrInvalid
 		}
-		kid, ok := token.Header["kid"].(string)
+		kid, ok := token.Header[jose.HeaderKeyID].(string)
 		if !ok || kid == "" || len(kid) > 256 {
 			return nil, ErrInvalid
 		}
 		return v.key(ctx, kid)
-	}, jwt.WithValidMethods([]string{"RS256"}), jwt.WithIssuer(v.issuer), jwt.WithAudience(v.audience), jwt.WithExpirationRequired(), jwt.WithIssuedAt(), jwt.WithLeeway(Leeway), jwt.WithTimeFunc(v.now))
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Alg()}), jwt.WithIssuer(v.issuer), jwt.WithAudience(v.audience), jwt.WithExpirationRequired(), jwt.WithIssuedAt(), jwt.WithLeeway(Leeway), jwt.WithTimeFunc(v.now))
 	if err != nil {
 		if errors.Is(err, ErrUnavailable) {
 			return nil, ErrUnavailable
@@ -223,13 +224,13 @@ func (v *Verifier) Parse(ctx context.Context, raw string) (jwt.MapClaims, error)
 		return nil, ErrInvalid
 	}
 	if v.profile == ProfileRFC9068 {
-		for _, name := range []string{"sub", "client_id", "jti"} {
+		for _, name := range []string{jose.ClaimSubject, jose.ClaimClientID, jose.ClaimJWTID} {
 			value, ok := claims[name].(string)
 			if !ok || value == "" {
 				return nil, ErrInvalid
 			}
 		}
-		for _, name := range []string{"exp", "iat"} {
+		for _, name := range []string{jose.ClaimExpiration, jose.ClaimIssuedAt} {
 			if _, ok := claims[name].(float64); !ok {
 				return nil, ErrInvalid
 			}
@@ -300,7 +301,7 @@ func ValidProfile(profile string) bool {
 // ClientIDClaim names the sole client identifier accepted by the configured profile.
 func (v *Verifier) ClientIDClaim() string {
 	if v.profile == ProfileRFC9068 {
-		return "client_id"
+		return jose.ClaimClientID
 	}
-	return "azp"
+	return jose.ClaimAuthorizedParty
 }

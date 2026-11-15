@@ -14,6 +14,7 @@ import (
 
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/internal/accountsvc/serviceauth"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/user"
 )
 
@@ -77,9 +78,9 @@ type page struct {
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
+	httpcontract.SetNoStore(w)
 	if !h.auth.Enabled() {
-		apierror.Write(w, apierror.New(apierror.StatusUnavailable, "PURGE_FEED_NOT_CONFIGURED", "purged user feed is not configured on this service"))
+		apierror.Write(w, apierror.New(apierror.StatusUnavailable, reasonPurgeFeedNotConfigured, "purged user feed is not configured on this service"))
 		return
 	}
 	res := h.auth.Authenticate(r)
@@ -87,17 +88,17 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case serviceauth.Unauthenticated:
 		serviceauth.WriteChallenges(w, h.auth.Challenges(res))
 		if res.BearerAttempted {
-			apierror.Write(w, apierror.New(apierror.StatusUnauthenticated, "TOKEN_INVALID", "service access token is invalid; obtain a new token and retry once"))
+			apierror.Write(w, apierror.New(apierror.StatusUnauthenticated, httpcontract.ReasonTokenInvalid, "service access token is invalid; obtain a new token and retry once"))
 		} else {
-			apierror.Write(w, apierror.New(apierror.StatusUnauthenticated, "INVALID_CLIENT", "valid service client credentials are required"))
+			apierror.Write(w, apierror.New(apierror.StatusUnauthenticated, httpcontract.ReasonInvalidClient, "valid service client credentials are required"))
 		}
 		return
 	case serviceauth.Forbidden:
 		serviceauth.WriteChallenges(w, h.auth.Challenges(res))
-		apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, "CLIENT_NOT_AUTHORIZED", "this service client is not authorized for the purged user feed"))
+		apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, httpcontract.ReasonClientNotAuthorized, "this service client is not authorized for the purged user feed"))
 		return
 	case serviceauth.Unavailable:
-		e := apierror.New(apierror.StatusUnavailable, "DEPENDENCY_UNAVAILABLE", "service token verification temporarily unavailable")
+		e := apierror.New(apierror.StatusUnavailable, httpcontract.ReasonDependencyUnavailable, "service token verification temporarily unavailable")
 		e.RetryAfterSeconds = 1
 		apierror.Write(w, e)
 		return
@@ -110,7 +111,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	for _, name := range []string{"page_size", "page_token"} {
 		if len(query[name]) > 1 {
-			apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_ARGUMENT", name+" must appear at most once"))
+			apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, httpcontract.ReasonInvalidArgument, name+" must appear at most once"))
 			return
 		}
 	}
@@ -118,14 +119,14 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if raw := query.Get("page_size"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 1 || n > user.MaxPurgedUserPage {
-			apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_ARGUMENT", "page_size must be an integer within 1..1000"))
+			apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, httpcontract.ReasonInvalidArgument, "page_size must be an integer within 1..1000"))
 			return
 		}
 		size = n
 	}
 	after, ok := decodeToken(query.Get("page_token"))
 	if !ok {
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_PAGE_TOKEN", "page_token is invalid; restart from the beginning or resume from a saved token"))
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, httpcontract.ReasonInvalidPageToken, "page_token is invalid; restart from the beginning or resume from a saved token"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), lookupTimeout)
@@ -134,20 +135,20 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case errors.Is(err, user.ErrPurgedUserCursorAhead):
 		// 数据库恢复或重新部署后序号回退：要求从头重拉，而不是静默跳过新记录。
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_PAGE_TOKEN", "page_token is ahead of the feed (the service database was restored or re-provisioned); restart from the beginning"))
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, httpcontract.ReasonInvalidPageToken, "page_token is ahead of the feed (the service database was restored or re-provisioned); restart from the beginning"))
 		return
 	case errors.Is(err, user.ErrInvalidArgument):
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_ARGUMENT", "invalid page request"))
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, httpcontract.ReasonInvalidArgument, "invalid page request"))
 		return
 	case err != nil:
-		apierror.Write(w, apierror.New(apierror.StatusUnavailable, "DEPENDENCY_UNAVAILABLE", "purged user feed temporarily unavailable"))
+		apierror.Write(w, apierror.New(apierror.StatusUnavailable, httpcontract.ReasonDependencyUnavailable, "purged user feed temporarily unavailable"))
 		return
 	}
 	out := page{PurgedUsers: make([]purgedUser, 0, len(records)), NextPageToken: encodeToken(next)}
 	for _, rec := range records {
 		out.PurgedUsers = append(out.PurgedUsers, purgedUser{UserID: rec.UserID, PurgeTime: rec.PurgeTime.UTC().Format(time.RFC3339Nano)})
 	}
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(httpcontract.HeaderContentType, httpcontract.MediaTypeJSON)
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(out)
 }

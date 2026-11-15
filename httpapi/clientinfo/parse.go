@@ -39,9 +39,9 @@ func parseExplicit(h http.Header) (*user.ClientInfo, error) {
 		key    string
 		target *string
 	}{
-		{"X-Client-OS-Name", &out.OSName}, {"X-Client-OS-Version", &out.OSVersion},
-		{"X-Client-Browser-Name", &out.BrowserName}, {"X-Client-Browser-Version", &out.BrowserVersion},
-		{"X-Client-App-Name", &out.AppName}, {"X-Client-App-Version", &out.AppVersion}, {"X-Device-Model", &out.DeviceModel},
+		{headerClientOSName, &out.OSName}, {headerClientOSVersion, &out.OSVersion},
+		{headerClientBrowserName, &out.BrowserName}, {headerClientBrowserVersion, &out.BrowserVersion},
+		{headerClientAppName, &out.AppName}, {headerClientAppVersion, &out.AppVersion}, {headerDeviceModel, &out.DeviceModel},
 	} {
 		values := h.Values(field.key)
 		if len(values) > 1 {
@@ -51,7 +51,7 @@ func parseExplicit(h http.Header) (*user.ClientInfo, error) {
 			*field.target = values[0]
 		}
 	}
-	for _, key := range []string{"X-Client-Type", "X-Device-Type"} {
+	for _, key := range []string{headerClientType, headerDeviceType} {
 		values := h.Values(key)
 		if len(values) > 1 {
 			return nil, user.ErrInvalidClientInfo
@@ -61,9 +61,9 @@ func parseExplicit(h http.Header) (*user.ClientInfo, error) {
 		}
 		var err error
 		switch key {
-		case "X-Client-Type":
+		case headerClientType:
 			out.ClientType, err = enum.ParseClientType(values[0])
-		case "X-Device-Type":
+		case headerDeviceType:
 			out.DeviceType, err = enum.ParseDeviceType(values[0])
 		}
 		if err != nil {
@@ -90,7 +90,7 @@ func parseUA(h http.Header) *user.ClientInfo {
 	}
 	out := &user.ClientInfo{ClientType: enum.ClientWeb, OSName: automaticText(ua.OS, 64), OSVersion: automaticText(ua.OSVersion, 32), BrowserName: ua.Name, BrowserVersion: automaticText(ua.Version, 32), DeviceModel: automaticText(ua.Device, 64)}
 	// Safari/ 后是引擎构建版本，只有 Version/ 才是可展示浏览器版本。
-	if ua.Name == "Safari" && !strings.Contains(values[0], "Version/") {
+	if ua.Name == browserSafari && !strings.Contains(values[0], "Version/") {
 		out.BrowserVersion = ""
 	}
 	switch {
@@ -105,12 +105,12 @@ func parseUA(h http.Header) *user.ClientInfo {
 }
 
 func browserName(name string) bool {
-	switch name {
-	case "Chrome", "Chromium", "Safari", "Firefox", "Edge", "Opera", "Opera Mini", "Opera Touch", "Internet Explorer", "Samsung Browser", "Vivaldi", "Huawei Browser":
-		return true
-	default:
-		return false
+	for _, browser := range browsers {
+		if browser.name == name {
+			return true
+		}
 	}
+	return false
 }
 
 func balancedComments(s string) bool {
@@ -142,7 +142,7 @@ func parseHints(h http.Header) *user.ClientInfo {
 	// 包含所有 Sec-CH-UA* 输入的总量，包括未使用的高熵字段和重复值。
 	total := 0
 	for key, values := range h {
-		if !strings.HasPrefix(strings.ToLower(key), "sec-ch-ua") {
+		if !strings.HasPrefix(strings.ToLower(key), hintHeaderPrefix) {
 			continue
 		}
 		for _, v := range values {
@@ -153,8 +153,8 @@ func parseHints(h http.Header) *user.ClientInfo {
 		}
 	}
 	out := &user.ClientInfo{}
-	name, version := hintBrowser(h, "Sec-CH-UA")
-	fullName, fullVersion := hintBrowser(h, "Sec-CH-UA-Full-Version-List")
+	name, version := hintBrowser(h, headerCHUA)
+	fullName, fullVersion := hintBrowser(h, headerCHUAFullVersionList)
 	if fullName != "" && (name == "" || fullName == name) {
 		name, version = fullName, fullVersion
 	}
@@ -163,10 +163,10 @@ func parseHints(h http.Header) *user.ClientInfo {
 		out.BrowserName = name
 		out.BrowserVersion = version
 	}
-	out.OSName = hintString(h, "Sec-CH-UA-Platform", 64)
-	out.OSVersion = hintString(h, "Sec-CH-UA-Platform-Version", 32)
-	out.DeviceModel = hintString(h, "Sec-CH-UA-Model", 64)
-	if value, ok := hintItem(h, "Sec-CH-UA-Mobile"); ok {
+	out.OSName = hintString(h, headerCHUAPlatform, 64)
+	out.OSVersion = hintString(h, headerCHUAPlatformVersion, 32)
+	out.DeviceModel = hintString(h, headerCHUAModel, 64)
+	if value, ok := hintItem(h, headerCHUAMobile); ok {
 		if mobile, ok := value.(bool); ok {
 			if mobile {
 				out.DeviceType = enum.DevicePhone
@@ -230,7 +230,7 @@ func hintBrowser(h http.Header, key string) (string, string) {
 		if !ok {
 			return "", ""
 		}
-		value, ok := item.Params.Get("v")
+		value, ok := item.Params.Get(hintVersionParameter)
 		if !ok {
 			return "", ""
 		}
@@ -244,15 +244,11 @@ func hintBrowser(h http.Header, key string) (string, string) {
 		seen[brand] = true
 		current := candidate{version: strings.TrimSpace(version)}
 		// 已知产品优先于其兼容品牌；未知品牌（包括 GREASE）不被选为浏览器。
-		switch brand {
-		case "Microsoft Edge":
-			current.name, current.rank = "Edge", 4
-		case "Opera":
-			current.name, current.rank = "Opera", 3
-		case "Google Chrome":
-			current.name, current.rank = "Chrome", 2
-		case "Chromium":
-			current.name, current.rank = "Chromium", 1
+		for _, browser := range browsers {
+			if browser.brand != "" && browser.brand == brand {
+				current.name, current.rank = browser.name, browser.rank
+				break
+			}
 		}
 		if current.rank > best.rank {
 			best = current

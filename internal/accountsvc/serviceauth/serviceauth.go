@@ -14,7 +14,9 @@ import (
 
 	"github.com/bbxx111/accountkit/internal/accountsvc/basicclients"
 	"github.com/bbxx111/accountkit/internal/accountsvc/oidcjwt"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/internal/httpcredentials"
+	"github.com/bbxx111/accountkit/internal/jose"
 )
 
 // Outcome classifies an authentication attempt.
@@ -131,7 +133,7 @@ func (a *Authenticator) Authenticate(r *http.Request) Result {
 		// Normalize only the parsed header on a private request copy. Match retains
 		// responsibility for decoding Basic credentials and checking secrets.
 		normalized := r.Clone(r.Context())
-		normalized.Header.Set("Authorization", "Basic "+credentials)
+		normalized.Header.Set(httpcontract.HeaderAuthorization, "Basic "+credentials)
 		if id, ok := a.basic.Match(normalized); ok {
 			return a.authorize(id, MethodBasic)
 		}
@@ -168,7 +170,7 @@ func (a *Authenticator) bearer(parent context.Context, raw string) Result {
 	if !ok || !ValidClientID(clientID) {
 		return invalid
 	}
-	sub, ok := claims["sub"].(string)
+	sub, ok := claims[jose.ClaimSubject].(string)
 	if !ok || sub == "" {
 		return invalid
 	}
@@ -182,7 +184,7 @@ func (a *Authenticator) bearer(parent context.Context, raw string) Result {
 	if !client.subjects[sub] {
 		return invalid
 	}
-	scope, present := claims["scope"]
+	scope, present := claims[jose.ClaimScope]
 	scopes, valid := tokenScopes(scope, present)
 	if !valid {
 		return invalid
@@ -244,21 +246,21 @@ func (a *Authenticator) Challenges(res Result) []string {
 	case Unauthenticated:
 		var out []string
 		if a.basic != nil {
-			out = append(out, `Basic realm="`+a.realm+`"`)
+			out = append(out, httpcontract.BasicChallenge(a.realm))
 		}
 		if a.tokens != nil {
-			bearer := `Bearer realm="` + a.realm + `"`
+			errorCode := ""
 			if res.BearerAttempted {
-				bearer += `, error="invalid_token"`
+				errorCode = httpcontract.OAuthErrorInvalidToken
 			}
-			out = append(out, bearer)
+			out = append(out, httpcontract.BearerChallenge(a.realm, errorCode))
 		}
 		return out
 	case Forbidden:
 		if res.Method == MethodBasic {
 			return nil
 		}
-		return []string{`Bearer realm="` + a.realm + `", error="insufficient_scope"`}
+		return []string{httpcontract.BearerChallenge(a.realm, httpcontract.OAuthErrorInsufficientScope)}
 	}
 	return nil
 }
@@ -266,6 +268,6 @@ func (a *Authenticator) Challenges(res Result) []string {
 // WriteChallenges adds each challenge as its own WWW-Authenticate header line.
 func WriteChallenges(w http.ResponseWriter, challenges []string) {
 	for _, c := range challenges {
-		w.Header().Add("WWW-Authenticate", c)
+		w.Header().Add(httpcontract.HeaderWWWAuthenticate, c)
 	}
 }

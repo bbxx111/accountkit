@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/bbxx111/accountkit/audit/authentication"
+	"github.com/jackc/pgerrcode"
 	"io"
 	"net"
 	"strings"
@@ -58,7 +60,7 @@ func (s *Service) ResolveIdentity(ctx context.Context, in ResolveIdentityInput) 
 		var network net.Error
 		var pg *pgconn.PgError
 		var connect *pgconn.ConnectError
-		if errors.Is(e, io.EOF) || errors.Is(e, io.ErrUnexpectedEOF) || readCtx.Err() != nil || errors.As(e, &network) || errors.As(e, &connect) || errors.Is(e, puddle.ErrClosedPool) || (errors.As(e, &pg) && (strings.HasPrefix(pg.Code, "08") || strings.HasPrefix(pg.Code, "53") || pg.Code == "55P03" || pg.Code == "25P04" || pg.Code == "57014" || pg.Code == "57P01" || pg.Code == "57P02" || pg.Code == "57P03")) {
+		if errors.Is(e, io.EOF) || errors.Is(e, io.ErrUnexpectedEOF) || readCtx.Err() != nil || errors.As(e, &network) || errors.As(e, &connect) || errors.Is(e, puddle.ErrClosedPool) || (errors.As(e, &pg) && (strings.HasPrefix(pg.Code, connectionExceptionClass) || strings.HasPrefix(pg.Code, insufficientResourcesClass) || pg.Code == pgerrcode.LockNotAvailable || pg.Code == transactionTimeoutSQLState || pg.Code == pgerrcode.QueryCanceled || pg.Code == pgerrcode.AdminShutdown || pg.Code == pgerrcode.CrashShutdown || pg.Code == pgerrcode.CannotConnectNow)) {
 			return out, ErrUnavailable
 		}
 		return out, errors.New("user: identity resolution query failed")
@@ -85,17 +87,17 @@ func (s *Service) ResolveIdentity(ctx context.Context, in ResolveIdentityInput) 
 }
 
 func (s *Service) recordIdentityResolve(ctx context.Context, in ResolveIdentityInput, out ResolvedIdentity, err error) {
-	outcome := "resolved"
+	outcome := identityResolveResolved
 	result := enum.ResultSuccess
 	if err != nil {
 		result = enum.ResultFailure
 		switch {
 		case errors.Is(err, ErrNotFound):
-			outcome = "not_found"
+			outcome = identityResolveNotFound
 		case errors.Is(err, ErrUnavailable):
-			outcome = "unavailable"
+			outcome = identityResolveUnavailable
 		default:
-			outcome = "internal"
+			outcome = identityResolveInternal
 			s.d.Logger.ErrorContext(ctx, "identity resolution invariant or query failure")
 		}
 	}
@@ -110,9 +112,9 @@ func (s *Service) recordIdentityResolve(ctx context.Context, in ResolveIdentityI
 	}{in.Kind.String(), outcome})
 	actor := in.Actor
 	actor.Name = ""
-	ev := audit.Event{ID: id, Source: s.d.AuditSource, Action: "IDENTITY_RESOLVE", Result: &result, Actor: actor, OccurTime: s.now(), Data: data, Context: audit.EventContext{RequestID: in.Meta.RequestID}}
+	ev := audit.Event{ID: id, Source: s.d.AuditSource, Action: identityResolveAction, Result: &result, Actor: actor, OccurTime: s.now(), Data: data, Context: audit.EventContext{RequestID: in.Meta.RequestID}}
 	if err == nil {
-		ev.Targets = []audit.Resource{{Type: "USER", Namespace: s.d.AuditNamespace, ID: out.UserID}}
+		ev.Targets = []audit.Resource{{Type: authentication.ResourceUser, Namespace: s.d.AuditNamespace, ID: out.UserID}}
 	}
 	frozen, e := event.Freeze(ev)
 	if e != nil {

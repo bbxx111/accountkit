@@ -33,19 +33,19 @@ type Descriptor struct {
 }
 
 var catalog = [...]Descriptor{
-	{AuthOperations, "accountkit.auth.operations", "accountkit_auth_operations_total", "{operation}", "Normally returned public authentication calls.", []string{"operation", "method", "result", "grant", "mode", "reason"}, false},
-	{AuthDuration, "accountkit.auth.operation.duration", "accountkit_auth_operation_duration_seconds", "s", "Elapsed duration of public authentication calls.", []string{"operation", "method", "result"}, true},
-	{CodeOperations, "accountkit.code.operations", "accountkit_code_operations_total", "{operation}", "Public code sends and actual logical code verifications.", []string{"operation", "channel", "purpose", "result", "reason"}, false},
-	{CodeDuration, "accountkit.code.operation.duration", "accountkit_code_operation_duration_seconds", "s", "Elapsed duration of code operations.", []string{"operation", "channel", "purpose", "result"}, true},
-	{DependencyOperations, "accountkit.dependency.operations", "accountkit_dependency_operations_total", "{operation}", "Logical dependency calls, not wire requests.", []string{"component", "operation", "result"}, false},
-	{DependencyDuration, "accountkit.dependency.operation.duration", "accountkit_dependency_operation_duration_seconds", "s", "Elapsed duration of logical dependency calls.", []string{"component", "operation", "result"}, true},
-	{Degradations, "accountkit.degradations", "accountkit_degradations_total", "{event}", "Actual occurrences of degraded behavior.", []string{"scenario"}, false},
-	{AuditEvents, "accountkit.audit.events", "accountkit_audit_events_total", "{event}", "Audit events classified at library-owned processing stages.", []string{"stage", "result"}, false},
-	{AuditOmittedFields, "accountkit.audit.omitted.fields", "accountkit_audit_omitted_fields_total", "{field}", "Optional audit fields omitted during authentication mapping.", []string{"field"}, false},
-	{MaintenanceRounds, "accountkit.maintenance.rounds", "accountkit_maintenance_rounds_total", "{round}", "Maintenance lock-round results.", []string{"result"}, false},
-	{MaintenanceRuns, "accountkit.maintenance.runs", "accountkit_maintenance_runs_total", "{run}", "Actual maintenance task completions.", []string{"task", "result"}, false},
-	{MaintenanceDuration, "accountkit.maintenance.run.duration", "accountkit_maintenance_run_duration_seconds", "s", "Elapsed duration of maintenance task runs.", []string{"task", "result"}, true},
-	{MaintenanceItems, "accountkit.maintenance.items", "accountkit_maintenance_items_total", "{item}", "Items actually processed, including completed portions of failed tasks.", []string{"task"}, false},
+	{AuthOperations, "accountkit.auth.operations", "accountkit_auth_operations_total", UnitOperation, "Normally returned public authentication calls.", []string{LabelOperation, LabelMethod, LabelResult, LabelGrant, LabelMode, LabelReason}, false},
+	{AuthDuration, "accountkit.auth.operation.duration", "accountkit_auth_operation_duration_seconds", UnitSeconds, "Elapsed duration of public authentication calls.", []string{LabelOperation, LabelMethod, LabelResult}, true},
+	{CodeOperations, "accountkit.code.operations", "accountkit_code_operations_total", UnitOperation, "Public code sends and actual logical code verifications.", []string{LabelOperation, LabelChannel, LabelPurpose, LabelResult, LabelReason}, false},
+	{CodeDuration, "accountkit.code.operation.duration", "accountkit_code_operation_duration_seconds", UnitSeconds, "Elapsed duration of code operations.", []string{LabelOperation, LabelChannel, LabelPurpose, LabelResult}, true},
+	{DependencyOperations, "accountkit.dependency.operations", "accountkit_dependency_operations_total", UnitOperation, "Logical dependency calls, not wire requests.", []string{LabelComponent, LabelOperation, LabelResult}, false},
+	{DependencyDuration, "accountkit.dependency.operation.duration", "accountkit_dependency_operation_duration_seconds", UnitSeconds, "Elapsed duration of logical dependency calls.", []string{LabelComponent, LabelOperation, LabelResult}, true},
+	{Degradations, "accountkit.degradations", "accountkit_degradations_total", UnitEvent, "Actual occurrences of degraded behavior.", []string{LabelScenario}, false},
+	{AuditEvents, "accountkit.audit.events", "accountkit_audit_events_total", UnitEvent, "Audit events classified at library-owned processing stages.", []string{LabelStage, LabelResult}, false},
+	{AuditOmittedFields, "accountkit.audit.omitted.fields", "accountkit_audit_omitted_fields_total", "{field}", "Optional audit fields omitted during authentication mapping.", []string{LabelField}, false},
+	{MaintenanceRounds, "accountkit.maintenance.rounds", "accountkit_maintenance_rounds_total", "{round}", "Maintenance lock-round results.", []string{LabelResult}, false},
+	{MaintenanceRuns, "accountkit.maintenance.runs", "accountkit_maintenance_runs_total", "{run}", "Actual maintenance task completions.", []string{LabelTask, LabelResult}, false},
+	{MaintenanceDuration, "accountkit.maintenance.run.duration", "accountkit_maintenance_run_duration_seconds", UnitSeconds, "Elapsed duration of maintenance task runs.", []string{LabelTask, LabelResult}, true},
+	{MaintenanceItems, "accountkit.maintenance.items", "accountkit_maintenance_items_total", "{item}", "Items actually processed, including completed portions of failed tasks.", []string{LabelTask}, false},
 }
 
 // Descriptors returns a deep copy, including independent label-name slices.

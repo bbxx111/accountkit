@@ -47,13 +47,13 @@ func (s *Service) sendCodeUntil(ctx context.Context, channel enum.IdentityKind, 
 		delivery = s.d.Email
 	}
 	if capability, ok := delivery.(interface{ Enabled() bool }); ok && !capability.Enabled() {
-		base.Type, base.Result, base.Reason = enum.EventCodeSendRejected, enum.ResultFailure, "CHANNEL_NOT_ENABLED"
+		base.Type, base.Result, base.Reason = enum.EventCodeSendRejected, enum.ResultFailure, auditReasonChannelNotEnabled
 		s.record(ctx, base)
 		return CodeChallenge{}, sender.ErrDisabled
 	}
 	// 可选号码支持能力：发送器可声明只支持部分号码（如仅中国大陆），在占用额度之前拒绝。
 	if capability, ok := delivery.(interface{ SupportsTarget(string) bool }); ok && channel == enum.IdentityPhone && !capability.SupportsTarget(norm) {
-		base.Type, base.Result, base.Reason = enum.EventCodeSendRejected, enum.ResultFailure, "TARGET_NOT_SUPPORTED"
+		base.Type, base.Result, base.Reason = enum.EventCodeSendRejected, enum.ResultFailure, auditReasonTargetNotSupported
 		s.record(ctx, base)
 		return CodeChallenge{}, sender.ErrTargetNotSupported
 	}
@@ -85,7 +85,7 @@ func (s *Service) sendCodeUntil(ctx context.Context, channel enum.IdentityKind, 
 	if err != nil {
 		s.observationReason(ctx, ob.ReasonSendFailed)
 		_ = s.discardChallenge(ctx, channel, purpose, norm, issued.CodeID)
-		base.Type, base.Result, base.Reason = enum.EventCodeSendFailed, enum.ResultFailure, "SEND_FAILED"
+		base.Type, base.Result, base.Reason = enum.EventCodeSendFailed, enum.ResultFailure, auditReasonSendFailed
 		s.record(ctx, base)
 		if errors.Is(err, sender.ErrUnavailable) {
 			return CodeChallenge{}, ErrUnavailable // 不传播投递依赖的响应或收件地址；额度不退还。
@@ -100,7 +100,7 @@ func (s *Service) sendCodeUntil(ctx context.Context, channel enum.IdentityKind, 
 // verifyCode 校验验证码并把 code 包的错误映射为审计原因。
 func (s *Service) verifyCode(ctx context.Context, channel enum.IdentityKind, purpose enum.CodePurpose, norm string, cred CodeCredential, binding code.Binding) (reason string, err error) {
 	if err := s.requireIdentityEnabled(channel); err != nil {
-		return "IDENTITY_KIND_NOT_ENABLED", err
+		return auditReasonIdentityKindNotEnabled, err
 	}
 	err = s.verifyChallenge(ctx, code.Credential{Channel: channel, Purpose: purpose, Target: norm, CodeID: cred.CodeID, Code: cred.Code, Binding: binding})
 	return codeFailure(err)
@@ -114,13 +114,13 @@ func codeFailure(err error) (string, error) {
 	case err == nil:
 		return "", nil
 	case errors.Is(err, code.ErrInvalid):
-		return "CODE_INVALID", err
+		return auditReasonCodeInvalid, err
 	case errors.Is(err, code.ErrExpired):
-		return "CODE_EXPIRED", err
+		return auditReasonCodeExpired, err
 	case errors.Is(err, code.ErrUnavailable):
-		return "UNAVAILABLE", fmt.Errorf("%w: %v", ErrUnavailable, err)
+		return auditReasonUnavailable, fmt.Errorf("%w: %v", ErrUnavailable, err)
 	default:
-		return "INTERNAL", err
+		return auditReasonInternal, err
 	}
 }
 
@@ -164,13 +164,13 @@ func (s *Service) signInWithCode(ctx context.Context, cred CodeCredential, dev D
 func signInRejectReason(err error) string {
 	switch {
 	case errors.Is(err, code.ErrInvalid):
-		return "CODE_INVALID"
+		return auditReasonCodeInvalid
 	case errors.Is(err, idp.ErrInvalidCredential):
-		return "IDP_CREDENTIAL_INVALID"
+		return auditReasonIdpCredentialInvalid
 	case errors.Is(err, ErrUserFrozen):
-		return "USER_FROZEN"
+		return auditReasonUserFrozen
 	case errors.Is(err, ErrUserPendingDeletion):
-		return "USER_PENDING_DELETION"
+		return auditReasonUserPendingDeletion
 	default:
 		return ""
 	}

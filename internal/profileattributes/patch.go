@@ -144,17 +144,17 @@ func checkPaths(value any, d *declaration, path string, patch bool) error {
 		if patch {
 			return nil
 		}
-		return invalid(path, "type")
+		return invalid(path, schemaType)
 	}
 	switch x := value.(type) {
 	case map[string]any:
-		if d.kind != "object" {
-			return invalid(path, "type")
+		if d.kind != schemaObject {
+			return invalid(path, schemaType)
 		}
 		for _, key := range sortedKeys(x) {
 			child, ok := d.properties[key]
 			if !ok {
-				return invalid(path, "additionalProperties")
+				return invalid(path, schemaAdditionalProperties)
 			}
 			if err := checkPaths(x[key], child, pointer(path, key), patch); err != nil {
 				return err
@@ -162,7 +162,7 @@ func checkPaths(value any, d *declaration, path string, patch bool) error {
 		}
 	case []any:
 		if d.items == nil {
-			return invalid(path, "type")
+			return invalid(path, schemaType)
 		}
 		for i, item := range x {
 			if err := checkPaths(item, d.items, pointer(path, strconv.Itoa(i)), false); err != nil {
@@ -198,13 +198,13 @@ func (p *Policy) safeError(err error) error {
 		path := ""
 		d := p.root
 		for _, part := range e.InstanceLocation {
-			if d.kind == "object" {
+			if d.kind == schemaObject {
 				child, ok := d.properties[part]
 				if !ok {
 					break
 				}
 				d = child
-			} else if d.kind == "array" {
+			} else if d.kind == schemaArray {
 				index, err := strconv.Atoi(part)
 				if err != nil || index < 0 {
 					break

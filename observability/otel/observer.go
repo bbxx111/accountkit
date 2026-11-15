@@ -44,7 +44,7 @@ func New(provider metric.MeterProvider, instance string) (*Observer, error) {
 	}
 	descriptors := metricdata.Descriptors()
 	o := &Observer{
-		instance:   attribute.String("accountkit_instance", instance),
+		instance:   attribute.String(metricdata.LabelAccountkitInstance, instance),
 		counters:   make([]metric.Int64Counter, len(descriptors)),
 		histograms: make([]metric.Float64Histogram, len(descriptors)),
 	}

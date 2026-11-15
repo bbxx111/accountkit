@@ -56,3 +56,11 @@ apply后需按任务记录每阶段实际命令、独立审查、提交和清单
 - 独立审查确认代码规格保持，唯一README中文被写成问号的问题已通过apply_patch修复并复核关闭；spec/quality均通过。77项单元包含独立匿名路由、application extra隔离、父资源和历史TokenRecord字节断言。
 - 补充工具Flutter3.47.9/Dart3.13.7的77项测试和analyze通过；随后在任务目录准备精确Flutter3.47.4 revision9584c6713b / Dart3.13.3，冻结pub安装、format、analyze及77项单元均通过，日志flutter-3.47.4-*.log。首次任务SDK克隆因Windows长路径失败，仅在该临时克隆启用core.longpaths并完成检出，未修改全局或现有D:/flutter。
 - 未改SDK入口、版本、依赖或锁；6.1/6.2完成，6.3的真实服务、Git和原生平台门禁继续待验证，不以单元测试替代。
+
+## 阶段：Go领域、审计、存储与指标
+
+- L002/L013–L017/L019/L020/L022/L024/L025/L034/L040/L044/L045/L054–L056已完成实现收敛；审计原因、资源、Actor与业务action按原语义分开。新增跨包最小公开无类型常量为4个认证资源类型及4个验证码Dimension，既有字段/方法集保持。ForSchema、迁移TableName和metricdata标签单位位于内部边界。
+- SQLSTATE保留08/53整个前缀，包括未知码；身份解析专有55P03/25P04/57014不扩到flow/session。动态USER原因对已知、0及未知正负状态保持旧输出；存储AAD/指纹/subject/Redis域仅命名，不改算法或原值。Lua/SQL/tag/模板raw string逐文件对照93bea6c无变动。
+- 新ForSchema和USER原因helper均有缺符号先红、实现后绿记录；范围go test -count=1及vet通过。审查P2指出Schema五个重复关键字漏收敛，已补私有定义并通过profileattributes回归，定点复核关闭，当前spec/quality通过。
+- 复用已锁定pgerrcode后，仅将相同版本从indirect移入直接require块；go.sum、其他版本及prometheus/client_model基线标记未改。只读tidy -diff另显示既有格式/元数据差异，未盲目应用；go build ./...通过。
+- L021的google/facebook/oidc nonce/label/fingerprint、L023根任务名、L033根审计装配仍待后续接入。实际数据库、race、恢复及JSON存储往返待综合验证，3.2–3.5/5.2等依其完整要求保持未勾选；3.1已完成。

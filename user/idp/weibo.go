@@ -103,7 +103,7 @@ func (p *Weibo) Verify(ctx context.Context, credential json.RawMessage) (Identit
 	if uidErr != nil || uid == "" || uid == "0" || strings.HasPrefix(uid, "-") {
 		return Identity{}, weiboFailure(ErrMisconfigured, "identity fields")
 	}
-	id := Identity{Kind: enum.IdentityWeibo, Subject: "uid:" + uid}
+	id := Identity{Kind: enum.IdentityWeibo, Subject: weiboSubjectUIDPrefix + uid}
 	// 剩余期限为 0 或超出 int64 / time.Duration 可表示范围时按未知处理：
 	// 前者会让 pending 补全立即失效，后者会溢出成过去的截止时间。
 	if expireIn, err := strconv.ParseInt(expireText, 10, 64); err == nil && expireIn > 0 && expireIn <= int64(math.MaxInt64/time.Second) {

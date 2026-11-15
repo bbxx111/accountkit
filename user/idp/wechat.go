@@ -184,13 +184,13 @@ func (w *WeChat) VerifyWeChat(ctx context.Context, appID, code string) (Identity
 		w.logger.Error("wechat app did not return unionid; bind the app to an open platform account", "app_id", appID)
 		return Identity{}, fmt.Errorf("%w: wechat app %s returned no unionid", ErrMisconfigured, appID)
 	}
-	subject := "unionid:" + tr.UnionID
+	subject := wechatSubjectUnionIDPrefix + tr.UnionID
 	if w.mode == WeChatSubjectModeOpenID {
 		if tr.OpenID == "" {
 			w.logger.Error("wechat app did not return openid", "app_id", appID)
 			return Identity{}, fmt.Errorf("%w: wechat response missing openid", ErrMisconfigured)
 		}
-		subject = "openid:" + appID + ":" + tr.OpenID
+		subject = wechatSubjectOpenIDPrefix + appID + ":" + tr.OpenID
 	}
 	id := Identity{Kind: enum.IdentityWeChat, Subject: subject, UnionID: tr.UnionID}
 	if tr.OpenID != "" {

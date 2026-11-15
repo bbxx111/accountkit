@@ -38,8 +38,8 @@ func validatedAuditRecord(record audit.RecordView) (audit.Event, bool) {
 // be related resources; neither sessions nor flows need to exist currently.
 func auditProjectionInNamespace(e audit.Event, projection authentication.Input, namespace string) bool {
 	for _, ref := range []audit.Resource{
-		{Type: "SESSION", Namespace: namespace, ID: projection.SessionID},
-		{Type: "IDENTITY_FLOW", Namespace: namespace, ID: projection.FlowID},
+		{Type: authentication.ResourceSession, Namespace: namespace, ID: projection.SessionID},
+		{Type: authentication.ResourceIdentityFlow, Namespace: namespace, ID: projection.FlowID},
 	} {
 		if ref.ID != "" && !directAuditResource(e, ref) {
 			return false
@@ -53,7 +53,7 @@ func auditAfter(e audit.Event, after audit.EventCursor) bool {
 }
 
 func directAuditResource(e audit.Event, r audit.Resource) bool {
-	if r.Type == "USER" && e.Actor.Type == audit.ActorUser && e.Actor.Namespace == r.Namespace && e.Actor.ID == r.ID {
+	if r.Type == authentication.ResourceUser && e.Actor.Type == audit.ActorUser && e.Actor.Namespace == r.Namespace && e.Actor.ID == r.ID {
 		return true
 	}
 	for _, v := range append(append([]audit.Resource{}, e.Targets...), e.Context.RelatedResources...) {
@@ -76,12 +76,12 @@ func (h *Handler) auditInScope(ctx context.Context, e audit.Event, q audit.Query
 	}
 	refs := append(append([]audit.Resource{}, e.Targets...), e.Context.RelatedResources...)
 	for _, r := range refs {
-		if r.Type == "USER" && r.Namespace == q.Resource.Namespace {
+		if r.Type == authentication.ResourceUser && r.Namespace == q.Resource.Namespace {
 			return false
 		}
 	}
 	for _, r := range refs {
-		if r.Type != "IDENTITY_FLOW" || r.Namespace != q.Resource.Namespace {
+		if r.Type != authentication.ResourceIdentityFlow || r.Namespace != q.Resource.Namespace {
 			continue
 		}
 		for _, link := range links {
@@ -102,7 +102,7 @@ func (h *Handler) auditInScope(ctx context.Context, e audit.Event, q audit.Query
 			if !valid || ev.Source != q.Source || ev.Result == nil || *ev.Result != enum.ResultSuccess {
 				continue
 			}
-			if ev.Action != "SIGN_IN_COMPLETION_PROOF_VERIFIED" && ev.Action != "SIGN_IN_COMPLETION_COMPLETED" {
+			if ev.Action != enum.EventSignInCompletionProofVerified.String() && ev.Action != enum.EventSignInCompletionCompleted.String() {
 				continue
 			}
 			if projection, err := authentication.Projection(ev); err == nil && auditProjectionInNamespace(ev, projection, q.Resource.Namespace) && directAuditResource(ev, q.Resource) && directAuditResource(ev, r) {
@@ -122,7 +122,7 @@ func (h *Handler) listAuditEvents(w http.ResponseWriter, r *http.Request) {
 		apierror.Write(w, e)
 		return
 	}
-	query := audit.Query{Source: h.d.AuditSource, Resource: audit.Resource{Type: "USER", Namespace: h.d.AuditNamespace, ID: uid}, Actions: authentication.Actions(), Limit: size + 1}
+	query := audit.Query{Source: h.d.AuditSource, Resource: audit.Resource{Type: authentication.ResourceUser, Namespace: h.d.AuditNamespace, ID: uid}, Actions: authentication.Actions(), Limit: size + 1}
 	after, e := decodeAuditCursor(r.URL.Query().Get("page_token"), query)
 	if e != nil {
 		apierror.Write(w, e)

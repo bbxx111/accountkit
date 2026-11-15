@@ -9,9 +9,16 @@ import (
 
 var propertyPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(_[a-z0-9]+)*$`)
 var reserved = wordSet("id name state display_name avatar_url create_time update_time delete_time purge_time profile_attributes")
-var keywords = wordSet("$schema $id $ref $defs type properties items additionalProperties enum const required minLength maxLength pattern format minimum maximum exclusiveMinimum exclusiveMaximum multipleOf minItems maxItems uniqueItems minProperties maxProperties dependentRequired allOf anyOf oneOf not if then else title description default examples readOnly writeOnly deprecated $comment")
+var keywords = wordSet(
+	schemaSchema + " " + schemaID + " " + schemaRef + " " + schemaDefs + " " +
+		schemaType + " " + schemaProperties + " " + schemaItems + " " + schemaAdditionalProperties + " " +
+		"enum const " + schemaRequired + " minLength maxLength " + schemaPattern + " " + schemaFormat + " " +
+		"minimum maximum exclusiveMinimum exclusiveMaximum multipleOf minItems maxItems uniqueItems minProperties maxProperties " +
+		schemaDependentRequired + " " + schemaAllOf + " " + schemaAnyOf + " " + schemaOneOf + " " +
+		schemaNot + " " + schemaIf + " " + schemaThen + " " + schemaElse + " " +
+		"title description default examples readOnly writeOnly deprecated $comment")
 var formats = wordSet("date date-time email uri uuid")
-var types = wordSet("object array string boolean integer number")
+var types = wordSet(schemaObject + " " + schemaArray + " string boolean integer number")
 
 func wordSet(s string) map[string]bool {
 	m := map[string]bool{}
@@ -49,7 +56,7 @@ func (c *schemaChecker) syntax(value any, root bool) error {
 	}
 	for _, value := range c.locations {
 		if s, ok := value.(map[string]any); ok {
-			if ref, ok := s["$ref"].(string); ok {
+			if ref, ok := s[schemaRef].(string); ok {
 				path, err := referencePath(ref)
 				if err != nil {
 					return err
@@ -79,15 +86,15 @@ func (c *schemaChecker) scan(value any, root bool, path string) error {
 			return errSchema
 		}
 		switch key {
-		case "$id":
+		case schemaID:
 			if !root {
 				return errSchema
 			}
-		case "$schema":
-			if v != "https://json-schema.org/draft/2020-12/schema" {
+		case schemaSchema:
+			if v != schemaDraftURI {
 				return errSchema
 			}
-		case "$ref":
+		case schemaRef:
 			ref, ok := v.(string)
 			if !ok {
 				return errSchema
@@ -95,22 +102,22 @@ func (c *schemaChecker) scan(value any, root bool, path string) error {
 			if _, err := referencePath(ref); err != nil {
 				return err
 			}
-			for _, k := range []string{"type", "properties", "items", "additionalProperties"} {
+			for _, k := range []string{schemaType, schemaProperties, schemaItems, schemaAdditionalProperties} {
 				if _, ok := s[k]; ok {
 					return errSchema
 				}
 			}
-		case "type":
+		case schemaType:
 			typ, ok := v.(string)
 			if !ok || !types[typ] {
 				return errSchema
 			}
-		case "format":
+		case schemaFormat:
 			f, ok := v.(string)
 			if !ok || !formats[f] {
 				return errSchema
 			}
-		case "pattern":
+		case schemaPattern:
 			pattern, ok := v.(string)
 			if !ok {
 				return errSchema
@@ -118,35 +125,35 @@ func (c *schemaChecker) scan(value any, root bool, path string) error {
 			if _, err := regexp.Compile(pattern); err != nil {
 				return errSchema
 			}
-		case "additionalProperties":
+		case schemaAdditionalProperties:
 			// This subset only permits closed objects. Enforce the value even
 			// in unused definitions, before a schema could hide unchecked
 			// keywords, formats or references in this schema-bearing position.
 			if v != false {
 				return errSchema
 			}
-		case "properties", "$defs":
+		case schemaProperties, schemaDefs:
 			m, ok := v.(map[string]any)
 			if !ok {
 				return errSchema
 			}
 			for name, item := range m {
-				if key == "properties" && (len(name) > 64 || !propertyPattern.MatchString(name)) {
+				if key == schemaProperties && (len(name) > 64 || !propertyPattern.MatchString(name)) {
 					return errSchema
 				}
 				childPath := pointer(pointer(path, key), name)
-				if key == "$defs" {
+				if key == schemaDefs {
 					c.definitionsList = append(c.definitionsList, definition{path: childPath})
 				}
 				if err := c.scan(item, false, childPath); err != nil {
 					return err
 				}
 			}
-		case "items", "not", "if", "then", "else":
+		case schemaItems, schemaNot, schemaIf, schemaThen, schemaElse:
 			if err := c.scan(v, false, pointer(path, key)); err != nil {
 				return err
 			}
-		case "allOf", "anyOf", "oneOf":
+		case schemaAllOf, schemaAnyOf, schemaOneOf:
 			arr, ok := v.([]any)
 			if !ok {
 				return errSchema
@@ -191,7 +198,7 @@ func (c *schemaChecker) structure(value any, stack map[string]bool, top bool) (*
 	if !ok {
 		return nil, errSchema
 	}
-	if ref, ok := s["$ref"].(string); ok {
+	if ref, ok := s[schemaRef].(string); ok {
 		if stack[ref] {
 			return nil, errSchema
 		}
@@ -207,15 +214,15 @@ func (c *schemaChecker) structure(value any, stack map[string]bool, top bool) (*
 		delete(stack, ref)
 		return d, err
 	}
-	typ, ok := s["type"].(string)
+	typ, ok := s[schemaType].(string)
 	if !ok {
 		return nil, errSchema
 	}
 	d := &declaration{kind: typ}
 	switch typ {
-	case "object":
-		props, ok := s["properties"].(map[string]any)
-		if !ok || s["additionalProperties"] != false {
+	case schemaObject:
+		props, ok := s[schemaProperties].(map[string]any)
+		if !ok || s[schemaAdditionalProperties] != false {
 			return nil, errSchema
 		}
 		d.properties = make(map[string]*declaration, len(props))
@@ -230,11 +237,11 @@ func (c *schemaChecker) structure(value any, stack map[string]bool, top bool) (*
 			}
 			d.properties[name] = child
 		}
-		if _, ok := s["items"]; ok {
+		if _, ok := s[schemaItems]; ok {
 			return nil, errSchema
 		}
-	case "array":
-		item, ok := s["items"]
+	case schemaArray:
+		item, ok := s[schemaItems]
 		if !ok {
 			return nil, errSchema
 		}
@@ -243,13 +250,13 @@ func (c *schemaChecker) structure(value any, stack map[string]bool, top bool) (*
 		if err != nil {
 			return nil, err
 		}
-		for _, key := range []string{"properties", "additionalProperties"} {
+		for _, key := range []string{schemaProperties, schemaAdditionalProperties} {
 			if _, ok := s[key]; ok {
 				return nil, errSchema
 			}
 		}
 	default:
-		for _, key := range []string{"properties", "items", "additionalProperties"} {
+		for _, key := range []string{schemaProperties, schemaItems, schemaAdditionalProperties} {
 			if _, ok := s[key]; ok {
 				return nil, errSchema
 			}
@@ -274,7 +281,7 @@ func (c *schemaChecker) constraints(value any, d *declaration, stack map[string]
 	}
 	s := value.(map[string]any)
 	if fragment {
-		if ref, ok := s["$ref"].(string); ok {
+		if ref, ok := s[schemaRef].(string); ok {
 			if stack[ref] {
 				return errSchema
 			}
@@ -289,11 +296,11 @@ func (c *schemaChecker) constraints(value any, d *declaration, stack map[string]
 				return err
 			}
 		}
-		if typ, ok := s["type"]; ok && typ != d.kind {
+		if typ, ok := s[schemaType]; ok && typ != d.kind {
 			return errSchema
 		}
-		if props, ok := s["properties"].(map[string]any); ok {
-			if d.kind != "object" {
+		if props, ok := s[schemaProperties].(map[string]any); ok {
+			if d.kind != schemaObject {
 				return errSchema
 			}
 			for name, item := range props {
@@ -306,7 +313,7 @@ func (c *schemaChecker) constraints(value any, d *declaration, stack map[string]
 				}
 			}
 		}
-		if item, ok := s["items"]; ok {
+		if item, ok := s[schemaItems]; ok {
 			if d.items == nil {
 				return errSchema
 			}
@@ -314,12 +321,12 @@ func (c *schemaChecker) constraints(value any, d *declaration, stack map[string]
 				return err
 			}
 		}
-		if ap, ok := s["additionalProperties"]; ok && (d.kind != "object" || ap != false) {
+		if ap, ok := s[schemaAdditionalProperties]; ok && (d.kind != schemaObject || ap != false) {
 			return errSchema
 		}
 	}
-	if required, ok := s["required"].([]any); ok {
-		if d.kind != "object" {
+	if required, ok := s[schemaRequired].([]any); ok {
+		if d.kind != schemaObject {
 			return errSchema
 		}
 		for _, name := range required {
@@ -329,8 +336,8 @@ func (c *schemaChecker) constraints(value any, d *declaration, stack map[string]
 			}
 		}
 	}
-	if deps, ok := s["dependentRequired"].(map[string]any); ok {
-		if d.kind != "object" {
+	if deps, ok := s[schemaDependentRequired].(map[string]any); ok {
+		if d.kind != schemaObject {
 			return errSchema
 		}
 		for name, v := range deps {
@@ -349,7 +356,7 @@ func (c *schemaChecker) constraints(value any, d *declaration, stack map[string]
 			}
 		}
 	}
-	for _, key := range []string{"allOf", "anyOf", "oneOf"} {
+	for _, key := range []string{schemaAllOf, schemaAnyOf, schemaOneOf} {
 		if arr, ok := s[key].([]any); ok {
 			for _, item := range arr {
 				if err := c.constraints(item, d, stack, true); err != nil {
@@ -358,7 +365,7 @@ func (c *schemaChecker) constraints(value any, d *declaration, stack map[string]
 			}
 		}
 	}
-	for _, key := range []string{"not", "if", "then", "else"} {
+	for _, key := range []string{schemaNot, schemaIf, schemaThen, schemaElse} {
 		if item, ok := s[key]; ok {
 			if err := c.constraints(item, d, stack, true); err != nil {
 				return err
@@ -396,7 +403,7 @@ func (c *schemaChecker) safety(path string, state map[string]uint8) error {
 		state[path] = 2
 		return nil
 	}
-	if ref, ok := s["$ref"].(string); ok {
+	if ref, ok := s[schemaRef].(string); ok {
 		targetPath, err := referencePath(ref)
 		if err != nil {
 			return err
@@ -407,17 +414,17 @@ func (c *schemaChecker) safety(path string, state map[string]uint8) error {
 	}
 	for key, v := range s {
 		switch key {
-		case "properties":
+		case schemaProperties:
 			for name := range v.(map[string]any) {
 				if err := c.safety(pointer(pointer(path, key), name), state); err != nil {
 					return err
 				}
 			}
-		case "items", "not", "if", "then", "else":
+		case schemaItems, schemaNot, schemaIf, schemaThen, schemaElse:
 			if err := c.safety(pointer(path, key), state); err != nil {
 				return err
 			}
-		case "allOf", "anyOf", "oneOf":
+		case schemaAllOf, schemaAnyOf, schemaOneOf:
 			for i := range v.([]any) {
 				if err := c.safety(pointer(pointer(path, key), strconv.Itoa(i)), state); err != nil {
 					return err

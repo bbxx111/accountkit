@@ -89,12 +89,12 @@ func (a *Alipay) Verify(ctx context.Context, credential json.RawMessage) (Identi
 	if unionErr != nil || openErr != nil || union != "" && !validAlipayIdentifier(union) || open != "" && !validAlipayIdentifier(open) {
 		return Identity{}, alipayFailure(ErrMisconfigured, "identity fields")
 	}
-	subject := "unionid:" + union
+	subject := alipaySubjectUnionIDPrefix + union
 	if a.config.subjectMode == AlipaySubjectModeOpenID {
 		if open == "" {
 			return Identity{}, alipayFailure(ErrMisconfigured, "missing openid")
 		}
-		subject = "openid:" + appID + ":" + open
+		subject = alipaySubjectOpenIDPrefix + appID + ":" + open
 	} else if union == "" {
 		return Identity{}, alipayFailure(ErrMisconfigured, "missing unionid")
 	}

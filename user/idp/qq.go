@@ -100,12 +100,12 @@ func (q *QQ) Verify(ctx context.Context, credential json.RawMessage) (Identity, 
 	if openErr != nil || unionErr != nil || !validAlipayIdentifier(open) || union != "" && !validAlipayIdentifier(union) {
 		return Identity{}, qqFailure(ErrMisconfigured, "identity fields")
 	}
-	subject := "openid:" + c.AppID + ":" + open
+	subject := qqSubjectOpenIDPrefix + c.AppID + ":" + open
 	if q.config.subjectMode == QQSubjectModeUnionID {
 		if union == "" {
 			return Identity{}, qqFailure(ErrMisconfigured, "missing unionid")
 		}
-		subject = "unionid:" + union
+		subject = qqSubjectUnionIDPrefix + union
 	}
 	id := Identity{Kind: enum.IdentityQQ, Subject: subject, UnionID: union, OpenIDs: map[string]string{c.AppID: open}}
 	name, picture, profileErr := q.profile(ctx, c.AppID, c.AccessToken, open)

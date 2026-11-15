@@ -32,9 +32,9 @@ func (s *Store) privacyReferences(e Event) privacyRefs {
 			return
 		}
 		switch resource.Type {
-		case "USER":
+		case authentication.ResourceUser:
 			r.users = append(r.users, resource.ID)
-		case "IDENTITY_FLOW":
+		case authentication.ResourceIdentityFlow:
 			r.flows = append(r.flows, resource.ID)
 		}
 	}

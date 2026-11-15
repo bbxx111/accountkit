@@ -25,7 +25,7 @@ func NewSet(rdb redis.UniversalClient, keyPrefix string) *Set {
 	return &Set{rdb: rdb, prefix: keyPrefix}
 }
 
-func (s *Set) key(sid string) string { return s.prefix + "revoked:" + sid }
+func (s *Set) key(sid string) string { return s.prefix + keyDomain + sid }
 
 // Revoke 标记 sid 已吊销，ttl 之后自动消失（届时 access 也已过期）。
 // ttl 必须为正：go-redis 把 <=0 的过期时间当作"永不过期"处理，调用方传入非正

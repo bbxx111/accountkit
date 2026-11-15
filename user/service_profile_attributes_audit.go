@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"github.com/bbxx111/accountkit/audit/authentication"
 
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/audit/event"
@@ -16,7 +17,7 @@ func (s *Service) recordProfileAttributesUpdated(ctx context.Context, id string,
 		return
 	}
 	result := enum.ResultSuccess
-	e, err := event.Freeze(audit.Event{ID: identity, Source: s.d.AuditSource, Action: "USER_PROFILE_ATTRIBUTES_UPDATED", Result: &result, Actor: audit.Actor{Type: audit.ActorService, Namespace: s.d.AuditNamespace, ID: "accountkit-host"}, Targets: []audit.Resource{{Type: "USER", Namespace: s.d.AuditNamespace, ID: id}}, Context: audit.EventContext{RequestID: requestID}, OccurTime: s.now()})
+	e, err := event.Freeze(audit.Event{ID: identity, Source: s.d.AuditSource, Action: profileAttributesUpdatedAction, Result: &result, Actor: audit.Actor{Type: audit.ActorService, Namespace: s.d.AuditNamespace, ID: profileAttributesActorID}, Targets: []audit.Resource{{Type: authentication.ResourceUser, Namespace: s.d.AuditNamespace, ID: id}}, Context: audit.EventContext{RequestID: requestID}, OccurTime: s.now()})
 	if err != nil {
 		s.d.Logger.Warn("user: profile_attributes audit event rejected")
 		return

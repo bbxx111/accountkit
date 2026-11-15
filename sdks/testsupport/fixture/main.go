@@ -257,7 +257,7 @@ func start(parent context.Context, o options) (h *host, err error) {
 		}
 	}()
 	var auth *accountkit.Auth
-	verifier, err := adminauth.New(parent, adminauth.Config{Issuer: origin, Audience: "sdk-admin", AllowHTTP: true}, adminauth.Options{OnForbidden: func(r *http.Request, p accountkit.AdminPrincipal) {
+	verifier, err := adminauth.New(parent, adminauth.Config{Issuer: origin, Audience: "sdk-admin", AllowHTTP: true, RoleBindings: []adminauth.RoleBinding{{Name: "operator", Permissions: []string{"users.read", "users.freeze", "users.unfreeze", "sessions.*", "audit_events.read"}}, {Name: "super-admin", Permissions: []string{"users.*", "sessions.*", "identities.*", "audit_events.*"}}}}, adminauth.Options{OnForbidden: func(r *http.Request, p accountkit.AdminPrincipal) {
 		if auth != nil {
 			auth.RecordAdminForbidden(r, p)
 		}

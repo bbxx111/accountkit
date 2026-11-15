@@ -113,6 +113,11 @@ func serviceEnv(key *ecdsa.PrivateKey, o options, controlOrigin, serviceAddr str
 			return e
 		}
 	}
+	for name, value := range map[string]string{"ADMIN_ROLE_BINDINGS": "OPERATOR,SUPER_ADMIN", "ADMIN_ROLE_OPERATOR_NAME": "operator", "ADMIN_ROLE_OPERATOR_PERMISSIONS": "users.read,users.freeze,users.unfreeze,sessions.*,audit_events.read", "ADMIN_ROLE_SUPER_ADMIN_NAME": "super-admin", "ADMIN_ROLE_SUPER_ADMIN_PERMISSIONS": "users.*,sessions.*,identities.*,audit_events.*"} {
+		if e = os.Setenv("ACCOUNTSVC_"+name, value); e != nil {
+			return e
+		}
+	}
 	return nil
 }
 func runService(ctx context.Context, key *ecdsa.PrivateKey, o options, controlOrigin string, s *capture) (string, context.CancelFunc, error) {

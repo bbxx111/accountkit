@@ -93,7 +93,7 @@ func (c *Config) loadServiceClients() error {
 			return err
 		}
 		for _, permission := range permissions {
-			if permission != "tokens.introspect" && permission != "purged_users.read" && permission != "identities.resolve" {
+			if !serviceauth.ValidPermission(permission) {
 				return invalidConfig(prefix + "PERMISSIONS")
 			}
 		}

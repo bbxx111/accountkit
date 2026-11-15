@@ -31,9 +31,6 @@ func (v *Verifier) extractClaims(claims jwt.MapClaims) (accountkit.AdminPrincipa
 			roles[role] = true
 		}
 	}
-	if roles["super-admin"] {
-		roles["operator"] = true
-	}
 	return principal, roles, nil
 }
 

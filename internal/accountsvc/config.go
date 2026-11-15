@@ -289,6 +289,9 @@ func (c *Config) loadAdmin() error {
 		}
 	}
 	if !c.AdminEnabled {
+		if err := c.loadAdminRoles(); err != nil {
+			return err
+		}
 		if os.Getenv("ACCOUNTSVC_ADMIN_TOKEN_PROFILE") != "" {
 			return invalidConfig("ACCOUNTSVC_ADMIN_TOKEN_PROFILE (ADMIN_ENABLED is false)")
 		}
@@ -303,12 +306,15 @@ func (c *Config) loadAdmin() error {
 	if !oidcjwt.ValidProfile(os.Getenv("ACCOUNTSVC_ADMIN_TOKEN_PROFILE")) {
 		return invalidConfig("ACCOUNTSVC_ADMIN_TOKEN_PROFILE")
 	}
-	c.Admin = adminauth.Config{TokenProfile: defaultEnv("ADMIN_TOKEN_PROFILE", "default"), Issuer: env("ADMIN_ISSUER"), Audience: env("ADMIN_AUDIENCE"), RolesClaim: defaultEnv("ADMIN_ROLES_CLAIM", "/roles"), UsernameClaim: defaultEnv("ADMIN_USERNAME_CLAIM", "/preferred_username"), AllowHTTP: c.Mode == "development"}
+	c.Admin = adminauth.Config{TokenProfile: defaultEnv("ADMIN_TOKEN_PROFILE", oidcjwt.ProfileDefault), Issuer: env("ADMIN_ISSUER"), Audience: env("ADMIN_AUDIENCE"), RolesClaim: defaultEnv("ADMIN_ROLES_CLAIM", adminauth.DefaultRolesClaim), UsernameClaim: defaultEnv("ADMIN_USERNAME_CLAIM", adminauth.DefaultUsernameClaim), AllowHTTP: c.Mode == "development"}
 	if err = c.Admin.Validate(); err != nil {
 		return invalidConfig("ACCOUNTSVC_ADMIN_ISSUER / ADMIN_AUDIENCE / ADMIN_ROLES_CLAIM / ADMIN_USERNAME_CLAIM")
 	}
 	if c.Admin.Audience == c.Library.JWTAudience {
 		return invalidConfig("ACCOUNTSVC_ADMIN_AUDIENCE")
+	}
+	if err = c.loadAdminRoles(); err != nil {
+		return err
 	}
 	for _, app := range append(append([]accountkit.WeChatApp(nil), c.Library.WeChatApps...), c.Library.WeChatMiniProgramApps...) {
 		if c.Admin.Audience == app.AppID {
@@ -355,7 +361,7 @@ func (c *Config) loadService() error {
 		return invalidConfig("ACCOUNTSVC_SERVICE_TOKEN_PROFILE")
 	}
 	if s.TokenProfile == "" {
-		s.TokenProfile = "default"
+		s.TokenProfile = oidcjwt.ProfileDefault
 	}
 	validIssuer := oidcjwt.ValidIssuer
 	if s.AllowHTTP {

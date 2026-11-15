@@ -38,13 +38,13 @@ type handler struct {
 func New(clients map[string][]string, authenticate func(context.Context, string) (user.Principal, error)) (http.Handler, error) {
 	registered := make([]serviceauth.ClientConfig, 0, len(clients))
 	for id, secrets := range clients {
-		registered = append(registered, serviceauth.ClientConfig{ID: id, AuthMethods: []string{serviceauth.MethodBasic}, Permissions: []string{"tokens.introspect"}, BasicSecrets: secrets})
+		registered = append(registered, serviceauth.ClientConfig{ID: id, AuthMethods: []string{serviceauth.MethodBasic}, Permissions: []string{serviceauth.PermissionTokensIntrospect}, BasicSecrets: secrets})
 	}
 	registry, err := serviceauth.NewRegistry(registered)
 	if err != nil {
 		return nil, err
 	}
-	cfg := serviceauth.Config{Realm: Realm, Endpoint: "introspect", Registry: registry, RequiredPermission: "tokens.introspect"}
+	cfg := serviceauth.Config{Realm: Realm, Endpoint: "introspect", Registry: registry, RequiredPermission: serviceauth.PermissionTokensIntrospect}
 	auth, err := serviceauth.New(cfg)
 	if err != nil {
 		return nil, err

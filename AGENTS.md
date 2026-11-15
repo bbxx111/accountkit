@@ -53,7 +53,7 @@
 - SQL 放在领域查询文件，经 sqlc 生成。禁止手改 `internal/userdb/`、`internal/auditdb/`；修改查询、schema 或类型映射后运行 `sqlc generate` 并检查生成差异。
 - 配置通过 `Config` 或 `ConfigFromEnv(prefix)` 注入；环境变量前缀由宿主选择，示例使用 `ACCOUNTKIT_`。不要硬编码 `SERVER_`、产品域名、业务 schema 或产品密钥。
 - `EndUserHandler()` 与 `AdminHandler()` 返回相对路由，由宿主分别挂载，示例为 `/v1` 和 `/admin/v1`。直接适配器使用 `httpapi/enduser`。包内不重复写死前缀，也不引入 `/api`。
-- `AdminVerifier` 与 `AdminPrincipal` 必须成对提供；均未配置时管理面返回 `503 ADMIN_NOT_CONFIGURED`，普通消费者认证仍可用。管理员认证由宿主前置完成，包内继续执行每条管理路由的角色检查。
+- `AdminVerifier` 与 `AdminPrincipal` 必须成对提供；均未配置时管理面返回 `503 ADMIN_NOT_CONFIGURED`，普通消费者认证仍可用。管理员认证由宿主前置完成，包内继续执行每条管理路由的授权检查：验证器实现可选 AdminPermissionVerifier 时使用具体管理权限，否则为旧嵌入宿主保留 RequireRole；新权限拒绝不回退。accountsvc 仅使用显式角色权限映射，无内置角色授权。
 - 宿主通过 `Deps.ClientIP` 提供经过可信代理处理的地址，通过 `Deps.RequestID` 关联日志与审计。不能在库内无条件信任客户端的转发头。
 - 匿名化回调使用传入的同一个 `pgx.Tx`；不得自行提交/回滚或另开连接写同批数据。认证表和业务表必须同库，任一回调失败使整个匿名化事务回滚；跨库事务不在契约内。宿主负责其 user_id 关联表的覆盖性检查。
 

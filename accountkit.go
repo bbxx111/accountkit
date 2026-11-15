@@ -46,6 +46,12 @@ var ErrSearchPath = errors.New("accountkit: pool search_path does not include th
 // *oidcverifier.Verifier 直接满足它。
 type AdminVerifier = admin.Verifier
 
+// AdminPermission identifies a concrete administrator operation.
+type AdminPermission = admin.Permission
+
+// AdminPermissionVerifier is the optional permission authorization contract.
+type AdminPermissionVerifier = admin.PermissionVerifier
+
 // AdminPrincipal 是管理端主体；宿主从 oidcverifier.PrincipalFrom 映射后经 Deps.AdminPrincipal 提供。
 type AdminPrincipal = admin.Principal
 
@@ -84,7 +90,8 @@ type Deps struct {
 	// BeforeDelete 在注销事务中、账号锁和 ACTIVE 校验之后执行宿主检查；可空。
 	BeforeDelete user.BeforeDelete
 	// AdminVerifier / AdminPrincipal 启用管理面（§4.2/§6.3）：宿主在 /admin/v1 先挂 verifier 的 Middleware，
-	// 再 Mount AdminHandler()；库内每条路由用 AdminVerifier.RequireRole 放行，并用 AdminPrincipal 取当前管理员。
+	// 再 Mount AdminHandler()；验证器实现 AdminPermissionVerifier 时按具体权限检查，否则沿用 RequireRole。
+	// 新权限拒绝不回退；AdminPrincipal 提供可信管理员主体。
 	// 二者须同时提供；都为空时 AdminHandler() 的所有路由返回 503 ADMIN_NOT_CONFIGURED。
 	AdminVerifier  AdminVerifier
 	AdminPrincipal func(ctx context.Context) (AdminPrincipal, bool)

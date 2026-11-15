@@ -40,13 +40,13 @@ type handler struct {
 func New(clients map[string][]string, list Lister) (http.Handler, error) {
 	registered := make([]serviceauth.ClientConfig, 0, len(clients))
 	for id, secrets := range clients {
-		registered = append(registered, serviceauth.ClientConfig{ID: id, AuthMethods: []string{serviceauth.MethodBasic}, Permissions: []string{"purged_users.read"}, BasicSecrets: secrets})
+		registered = append(registered, serviceauth.ClientConfig{ID: id, AuthMethods: []string{serviceauth.MethodBasic}, Permissions: []string{serviceauth.PermissionPurgedUsersRead}, BasicSecrets: secrets})
 	}
 	registry, err := serviceauth.NewRegistry(registered)
 	if err != nil {
 		return nil, err
 	}
-	cfg := serviceauth.Config{Realm: Realm, Endpoint: "purged_users", Registry: registry, RequiredPermission: "purged_users.read"}
+	cfg := serviceauth.Config{Realm: Realm, Endpoint: "purged_users", Registry: registry, RequiredPermission: serviceauth.PermissionPurgedUsersRead}
 	auth, err := serviceauth.New(cfg)
 	if err != nil {
 		return nil, err

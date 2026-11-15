@@ -18,7 +18,7 @@
 
 消费者使用自己的 Bearer access token。`x-allowed-scopes` 表示允许的 scope 列表，`x-recent-authentication` 表示现有近期认证要求；这些扩展与说明用于接入核对，代码生成器不会自动替宿主实施授权。未标 scope 的 `GET /users/me` 接受任何有效消费者 Bearer scope。
 
-管理面使用独立宿主身份系统，`x-required-role` 对应路由要求；`operator` 与 `super-admin` 的层级由宿主 verifier 决定。文件中的 AdminBearer 表示常见的外部 Bearer 接入，宿主若使用其他认证方式须修改安全定义。外部 verifier 的 401/403 响应体与 challenge 由宿主定义，契约没有伪造统一错误体。完全未配置管理面时返回 `503 ADMIN_NOT_CONFIGURED`。
+管理面使用独立宿主身份系统，`x-required-permission` 对应新权限路由要求，accountsvc 只用显式角色映射授权；`x-legacy-required-role` 仅表示未实现可选权限接口的旧嵌入宿主兼容要求，其角色层级由宿主 verifier 决定。文件中的 AdminBearer 表示常见的外部 Bearer 接入，宿主若使用其他认证方式须修改安全定义。外部 verifier 的 401/403 响应体与 challenge 由宿主定义，契约没有伪造统一错误体。完全未配置管理面时返回 `503 ADMIN_NOT_CONFIGURED`。
 
 ## 服务身份解析
 

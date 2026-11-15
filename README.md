@@ -109,7 +109,7 @@ accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect
 
 完整可编译宿主示例见 [examples/embedded/main.go](examples/embedded/main.go)，开发与验证步骤见 [docs/development.md](docs/development.md)。导入使用 `"github.com/bbxx111/accountkit"`，通过 `accountkit.Config`、`accountkit.Deps` 和 `accountkit.New` 装配。
 
-按 `Config/Deps → New → Migrate → Start → Close` 装配；库不绑定端口，宿主挂载 EndUserHandler 到 /v1，AdminHandler 到 /admin/v1。管理员验证器及主体解析器可选；未配置时管理接口返回 503 ADMIN_NOT_CONFIGURED。生产宿主须在管理路由前完成身份验证，并提供 AdminVerifier/AdminPrincipal，服务商发送器也由宿主注入。直接构造终端用户适配器时使用 `httpapi/enduser` 包，见下文 [HTTP 面](#http-面)。
+按 `Config/Deps → New → Migrate → Start → Close` 装配；库不绑定端口，宿主挂载 EndUserHandler 到 /v1，AdminHandler 到 /admin/v1。管理员验证器及主体解析器可选；未配置时管理接口返回 503 ADMIN_NOT_CONFIGURED。生产宿主须在管理路由前完成身份验证，并提供 AdminVerifier/AdminPrincipal，服务商发送器也由宿主注入。验证器可额外实现 `AdminPermissionVerifier.RequirePermission(AdminPermission)` 以按操作权限授权；仅实现旧 RequireRole 的宿主保留原行为，新权限拒绝不回退。accountsvc 的显式角色绑定与升级步骤见 [管理员认证](docs/accountsvc.md#管理员认证)。直接构造终端用户适配器时使用 `httpapi/enduser` 包，见下文 [HTTP 面](#http-面)。
 
 ## 领域层
 
@@ -428,27 +428,27 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 
 ## 管理面
 
-宿主挂到 `/admin/v1`，前置 OIDC verifier 的 `Middleware()`；库内每条路由只检查一个角色名（`super-admin` 是包含 `operator` 的 composite role）。handler 内不判角色；C 端 token 打管理面在 verifier 处 401。
+宿主挂到 `/admin/v1`，前置 OIDC verifier 的 `Middleware()`；验证器实现可选权限接口时，每条管理路由检查具体权限；仅旧嵌入宿主沿用原角色要求。accountsvc 根据显式部署绑定授权，operator/super-admin 没有内置权限或继承；C 端 token 在管理员 verifier 处返回 401。
 
-| 端点 | 角色 | 成功 | 失败 |
+| 端点 | 权限（旧宿主角色） | 成功 | 失败 |
 |---|---|---|---|
-| `GET /users?filter=&show_deleted=&page_size=&page_token=` | operator | 200 `{users:[…], next_page_token}` | 400 `INVALID_FILTER` / `INVALID_PAGE_SIZE` / `INVALID_PAGE_TOKEN` / `INVALID_SHOW_DELETED` |
-| `GET /users/{user}` | operator | 200 用户资源 + `identities`（掩码）+ `active_session_count` | 400 `INVALID_ID`；404 |
-| `POST /users/{user}:freeze` `{reason}` | operator | 200 用户资源（`state=FROZEN`，`freeze` 快照） | 400 `INVALID_ARGUMENT`（reason 空/超 200 字/含控制符）/ `INVALID_ACCOUNT_STATE` / `USER_FROZEN`（已冻结）；404 |
-| `POST /users/{user}:unfreeze` `{reason?}`（须为 JSON 对象，无 reason 时发送 `{}`） | operator | 200 用户资源（`state=ACTIVE`，`freeze=null`） | 400 `INVALID_ACCOUNT_STATE`；404 |
-| `DELETE /users/{user}` | super-admin | 200 用户资源（`state=PENDING_DELETION`） | 400 `INVALID_ACCOUNT_STATE` / `USER_FROZEN`（需先解冻）；404 |
-| `POST /users/{user}:undelete` | super-admin | 200 用户资源（`state=ACTIVE`） | 400 `INVALID_ACCOUNT_STATE`（含已 purge）/ `USER_FROZEN`；404 |
-| `GET /users/{user}/identities/{identity}:reveal` | super-admin | 200 `{name, kind, subject}`（明文） | 400 `INVALID_ID`；404（非该用户或已解绑） |
-| `GET /users/{user}/sessions` | operator | 200 `{sessions:[{name, device_id, device_name, create_time, last_used_time}]}` | 404 |
-| `DELETE /users/{user}/sessions/{session}` | operator | 204 | 400 `INVALID_ID`；404 |
-| `POST /users/{user}/sessions:revokeAll` | operator | 200 `{revoked_count}` | 404 |
-| `GET /users/{user}/auditEvents?page_size=&page_token=` | operator | 200 `{audit_events:[…], next_page_token}` | 400 `INVALID_PAGE_*`；404；503 `AUDIT_QUERY_NOT_CONFIGURED` / `AUDIT_QUERY_UNAVAILABLE` |
+| `GET /users?filter=&show_deleted=&page_size=&page_token=` | `users.read`（operator） | 200 `{users:[…], next_page_token}` | 400 `INVALID_FILTER` / `INVALID_PAGE_SIZE` / `INVALID_PAGE_TOKEN` / `INVALID_SHOW_DELETED` |
+| `GET /users/{user}` | `users.read`（operator） | 200 用户资源 + `identities`（掩码）+ `active_session_count` | 400 `INVALID_ID`；404 |
+| `POST /users/{user}:freeze` `{reason}` | `users.freeze`（operator） | 200 用户资源（`state=FROZEN`，`freeze` 快照） | 400 `INVALID_ARGUMENT`（reason 空/超 200 字/含控制符）/ `INVALID_ACCOUNT_STATE` / `USER_FROZEN`（已冻结）；404 |
+| `POST /users/{user}:unfreeze` `{reason?}`（须为 JSON 对象，无 reason 时发送 `{}`） | `users.unfreeze`（operator） | 200 用户资源（`state=ACTIVE`，`freeze=null`） | 400 `INVALID_ACCOUNT_STATE`；404 |
+| `DELETE /users/{user}` | `users.delete`（super-admin） | 200 用户资源（`state=PENDING_DELETION`） | 400 `INVALID_ACCOUNT_STATE` / `USER_FROZEN`（需先解冻）；404 |
+| `POST /users/{user}:undelete` | `users.undelete`（super-admin） | 200 用户资源（`state=ACTIVE`） | 400 `INVALID_ACCOUNT_STATE`（含已 purge）/ `USER_FROZEN`；404 |
+| `GET /users/{user}/identities/{identity}:reveal` | `identities.reveal`（super-admin） | 200 `{name, kind, subject}`（明文） | 400 `INVALID_ID`；404（非该用户或已解绑） |
+| `GET /users/{user}/sessions` | `sessions.read`（operator） | 200 `{sessions:[{name, device_id, device_name, create_time, last_used_time}]}` | 404 |
+| `DELETE /users/{user}/sessions/{session}` | `sessions.revoke`（operator） | 204 | 400 `INVALID_ID`；404 |
+| `POST /users/{user}/sessions:revokeAll` | `sessions.revoke_all`（operator） | 200 `{revoked_count}` | 404 |
+| `GET /users/{user}/auditEvents?page_size=&page_token=` | `audit_events.read`（operator） | 200 `{audit_events:[…], next_page_token}` | 400 `INVALID_PAGE_*`；404；503 `AUDIT_QUERY_NOT_CONFIGURED` / `AUDIT_QUERY_UNAVAILABLE` |
 
 - **`filter`（AIP-160 子集）**：`term (AND term)*`，`term := field op value`，值为 `"…"` 或无空白裸词；时间戳值必须加双引号（含 `:`）。字段：`state = ACTIVE|FROZEN|PENDING_DELETION|DELETED`；`create_time >= <RFC3339>`、`create_time < <RFC3339>`；`identity.phone = <手机号>`、`identity.email = <邮箱>`（服务端归一化后按摘要等值查找）；`identity.phone_prefix`（如 `"+86138"`）、`identity.phone_suffix`（后 4 位）、`identity.email_prefix`、`identity.email_domain`。身份条件须同属一种 kind 且落在同一条活跃身份上；不支持 `OR` / `NOT` / 括号。`show_deleted=true` 才包含 `PENDING_DELETION` / `DELETED`（AIP-164）。
 - **分页**：`page_size` 默认 20、上限 100；`page_token` 不透明 keyset 游标（用户按 `create_time, id`，审计按 `occur_time, id`）；`next_page_token` 为空表示最后一页。
 - **DTO**：与 C 端分开定义；时间戳 RFC 3339（UTC）；身份默认掩码，明文只在 `:reveal` 响应中出现；审计事件的可空字段输出 `null`，result 未知/不适用为 `null`，已知结果仍为 `SUCCESS` / `FAILURE`。审计资源 name 使用 `users/{user}/auditEvents/{标准小写 UUID}`；不匹配的审计游标返回 400，客户端清除 page_token 后重新翻页，用户列表游标独立。
 - **审计**：每个写操作一条 `actor_kind=ADMIN` 事件（`admin_issuer/subject/username`、`request_id`、`ip`）：`USER_FROZEN` / `USER_UNFROZEN`（reason 为管理员填写值）、`SESSION_REVOKED`（reason `ADMIN`，冻结时为 `USER_FROZEN`）、`USER_DELETED` / `USER_UNDELETED`、`IDENTITY_REVEALED`（只记 kind + hint）。读取端点不产生事件。`ADMIN_FORBIDDEN` 由宿主经 `auth.RecordAdminForbidden` 在 verifier 的 `OnForbidden` 钩子里写入。
-- **状态码语义**：管理面上 403 只表示管理员角色不足（来自 verifier）；目标账号的状态问题一律 400 `FAILED_PRECONDITION`（`INVALID_ACCOUNT_STATE` / `USER_FROZEN`）；用户/身份/会话不存在或不属于该用户 → 404。
+- **状态码语义**：管理面上 403 表示管理员操作权限不足（旧宿主为角色不足，来自 verifier）；目标账号的状态问题一律 400 `FAILED_PRECONDITION`（`INVALID_ACCOUNT_STATE` / `USER_FROZEN`）；用户/身份/会话不存在或不属于该用户 → 404。
 
 ## 数据库与 Redis 隔离
 

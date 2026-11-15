@@ -96,18 +96,18 @@ serve SHALL 支持 ACCOUNTSVC_TLS_ENABLED。未设置或为空时，production S
 
 ### Requirement: 生产发送与内省凭据要求
 
-production SHALL 在 EMAIL 启用时要求真实 SMTP 与 SMTP TLS，在 PHONE 启用时要求真实短信服务商。内省调用认证（Basic 客户端凭据或服务令牌客户端列表）在任何模式下 SHALL 为可选：两种都未配置时 serve 照常启动，内省路由返回 503 `introspection_not_configured`；production SHALL 不强制要求内省调用认证配置。production SHALL 不使用日志验证码、固定默认秘密或明文邮件降级；HTTP TLS 开关不得使生产 SMTP 降级。短信 endpoint、管理员 issuer 与服务令牌签发方在 production SHALL 只接受 HTTPS；development SHALL 允许管理员 issuer 与服务令牌签发方使用 `http://`，并在监听前为每个 HTTP issuer 各记一条只写变量名的 WARN。
+production SHALL 在 EMAIL 启用时要求真实 SMTP 与 SMTP TLS，在 PHONE 启用时要求真实短信服务商。统一注册表中的内省调用认证在任何模式下 SHALL 为可选：无人持有 tokens.introspect 时，serve SHALL 照常启动，内省路由返回 503 `introspection_not_configured`；production SHALL 不强制要求内省调用认证配置。production SHALL 不使用日志验证码、固定默认秘密或明文邮件降级；HTTP TLS 开关不得使生产 SMTP 降级。短信 endpoint、管理员 issuer 与服务令牌签发方在 production SHALL 只接受 HTTPS；development SHALL 允许管理员 issuer 与服务令牌签发方使用 `http://`，并在监听前为每个 HTTP issuer 各记一条只写变量名的 WARN。
 
 #### Scenario: 生产发送和内省依赖不可降级
 - **WHEN** production 缺少必需的真实 SMTP/TLS 或短信服务商
 - **THEN** 拒绝启动，不用日志验证码、默认秘密或明文 SMTP 替代；显式关闭 HTTP TLS 不豁免 SMTP TLS
 
 #### Scenario: 内省调用认证未配置
-- **WHEN** production 既未设置 `ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS` 也未设置 `ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS`
+- **WHEN** production 的统一注册表无人拥有 tokens.introspect
 - **THEN** serve 照常启动并就绪，启动日志记录一条指出相关变量名的 WARN，`POST /v1/introspect` 返回 503 `introspection_not_configured`，其他路由不受影响
 
 #### Scenario: 仅以服务令牌认证内省
-- **WHEN** production 未设置 `ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS`，但服务令牌签发方、audience 与 `ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS` 有效
+- **WHEN** production 采用有效 issuer/audience，所有服务客户端仅允许 bearer 且有客户端持有 tokens.introspect
 - **THEN** serve 可以启动，内省只接受 Bearer 调用
 
 #### Scenario: 开发模式的 HTTP issuer 警告
@@ -120,11 +120,15 @@ production SHALL 在 EMAIL 启用时要求真实 SMTP 与 SMTP TLS，在 PHONE �
 
 ### Requirement: migrate 静态校验与依赖边界
 
-migrate SHALL 只执行静态身份策略语法/集合校验及迁移必要检查，不监听、不构造认证处理器，不要求发送器或第三方运行时依赖。migrate SHALL 不要求或解析服务监听地址、HTTP TLS 开关、证书、SMTP、短信服务商、邮件品牌或内省客户端配置；迁移锁与密钥版本检查仍执行。
+migrate SHALL 只执行静态身份策略语法/集合校验及迁移必要检查，不监听、不构造认证处理器，不要求发送器或第三方运行时依赖。migrate SHALL 不要求或解析服务监听地址、HTTP TLS 开关、证书、SMTP、短信服务商、邮件品牌、旧逐接口调用配置或统一服务客户端/issuer/audience 配置；迁移锁与密钥版本检查仍执行。
 
 #### Scenario: 迁移独立于服务运行配置
 - **WHEN** migrate 的身份集合合法且迁移必要依赖有效，未提供服务运行配置
 - **THEN** 迁移可执行，不读取无关监听/TLS/发送/短信/内省设置，仍核对迁移锁和存储引用密钥
+
+#### Scenario: 服务认证配置错误不阻止迁移
+- **WHEN** migrate 的迁移必要配置有效，但存在非空白旧逐接口变量、孤立客户端字段、非法新列表/权限或不可达服务 issuer
+- **THEN** 不读取这些服务认证配置、不访问 issuer，仍按原迁移契约执行
 
 ### Requirement: 有界迁移与资源回收
 
@@ -140,10 +144,10 @@ migrate SHALL 只执行静态身份策略语法/集合校验及迁移必要检�
 
 ### Requirement: HTTP 边界与可信请求元信息
 
-serve SHALL 仅使用 ACCOUNTSVC_HTTP_ADDR 创建一个监听器，默认绑定 127.0.0.1:8080，挂载消费者 /v1、管理员 /admin/v1、内省 /v1/introspect、已清理用户拉取 /v1/purgedUsers、公钥 /.well-known/jwks.json 与 /healthz、/readyz。不同身份体系和处理器 SHALL 独立。网关与网络策略 SHALL 控制公网暴露范围，不把路径名称视为网络隔离；单监听器不自动区分公网和内网来源。
+serve SHALL 仅使用 ACCOUNTSVC_HTTP_ADDR 创建一个监听器，默认绑定 127.0.0.1:8080，挂载消费者 /v1、管理员 /admin/v1、内省 /v1/introspect、已清理用户拉取 /v1/purgedUsers、身份解析 /v1/identities:resolve、公钥 /.well-known/jwks.json 与 /healthz、/readyz。不同身份体系和处理器 SHALL 独立。网关与网络策略 SHALL 控制公网暴露范围，不把路径名称视为网络隔离；单监听器不自动区分公网和内网来源。
 
 #### Scenario: 公网请求内部路径
-- **WHEN** 公网调用者通过按接入契约配置的网关请求 `/v1/introspect`、`/v1/purgedUsers`、`/healthz` 或 `/readyz`
+- **WHEN** 公网调用者通过按接入契约配置的网关请求 `/v1/introspect`、`/v1/purgedUsers`、`/v1/identities:resolve`、`/healthz` 或 `/readyz`
 - **THEN** 网关拒绝且请求不进入 accountsvc；单监听器本身不承诺识别公网/内网来源并自动隔离这些路由
 
 #### Scenario: 伪造代理头
@@ -152,7 +156,7 @@ serve SHALL 仅使用 ACCOUNTSVC_HTTP_ADDR 创建一个监听器，默认绑定 
 
 #### Scenario: 单地址提供不同身份面
 - **WHEN** serve 使用有效配置启动
-- **THEN** 只绑定一次，所有路由使用该地址；内省与已清理用户拉取各自要求独立的服务调用认证（Basic 凭据或获准的服务令牌），消费者和管理员仍分别验证各自凭据及权限，JWKS 无需认证
+- **THEN** 只绑定一次，所有路由使用该地址；内省与已清理用户拉取要求服务调用认证，共用注册表并分别要求 tokens.introspect 与 purged_users.read，消费者和管理员仍分别验证各自凭据及权限，JWKS 无需认证
 
 #### Scenario: 旧部署配置被显式拒绝
 - **WHEN** serve 仍提供非空 INTERNAL_ADDR
@@ -421,52 +425,27 @@ endpoint 可选覆盖，仅供测试或代理部署使用。任一必填项缺�
 
 ### Requirement: 已清理用户拉取凭据
 
-serve SHALL 读取可选的 `ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS`，格式与 `ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS` 相同（JSON：客户端 ID → base64 秘密数组，每个秘密至少 32 个随机字节），以及可选的 `ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS`（允许的 `azp` 字符串数组）。格式非法时 SHALL 启动失败并指出变量名，不回显值。拉取的 Basic 列表与内省 Basic 列表 SHALL 相互独立，同一秘密不得同时出现在两个列表中；拉取与内省的 `azp` 列表 SHALL 不相交。migrate SHALL 不解析这些变量。production SHALL 不强制要求拉取认证配置。
+serve SHALL 只使用服务认证规格的统一客户端注册表配置拉取凭据，并要求 purged_users.read。客户端 SHALL 可以同时持有 tokens.introspect，两个接口共用该身份启用的认证方式与凭据。跨客户端 Basic 秘密复用 SHALL 仍被拒绝，同一客户端多权限不视为秘密复用；SHALL 不保留旧逐接口 Basic 映射或 Bearer 名单。非空白旧逐接口变量 SHALL 按服务认证规格在监听前拒绝，错误只指出变量名与移除原因，不回显值。migrate SHALL 不解析新旧服务调用变量。production SHALL 不强制要求拉取认证配置。
 
 #### Scenario: 凭据复用被拒绝
-- **WHEN** 同一秘密同时出现在内省客户端与拉取客户端列表中
-- **THEN** serve 启动失败并指出 `ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS`，不输出秘密
+- **WHEN** 统一注册表中两个不同客户端 ID 使用相同 Basic 秘密
+- **THEN** serve 启动失败并指出相关 BASIC_SECRETS 变量名，不输出秘密
+
+#### Scenario: 旧拉取变量被拒绝
+- **WHEN** 旧 PURGE_FEED_BASIC_CLIENTS 或 PURGE_FEED_BEARER_CLIENTS 非空白，即使值为 {} 或 []
+- **THEN** serve 监听前拒绝并指出已移除变量，不恢复旧逐接口认证
 
 #### Scenario: 令牌客户端复用被拒绝
-- **WHEN** 同一 `azp` 同时出现在内省与拉取的令牌客户端列表中
-- **THEN** serve 启动失败并指出 `ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS`
+- **WHEN** 两个不同配置别名使用相同的 Bearer 客户端 ID
+- **THEN** serve 启动失败并指出相关 ID 变量名；同一注册客户端显式持有两项权限不属于重复声明
+
+#### Scenario: 统一客户端复用身份
+- **WHEN** 同一客户端被显式授予 tokens.introspect 与 purged_users.read
+- **THEN** 两个接口共用该客户端的已启用认证方式和凭据，不执行旧逐接口名单不相交约束
 
 ### Requirement: 服务邮件模板清单
 
 serve SHALL 支持可选的 `ACCOUNTSVC_SMTP_TEMPLATES_FILE`，指向一份邮件模板清单 JSON。仅当 EMAIL 启用时，serve SHALL 在监听及创建运行依赖之前有界读取一次该本地普通文件并完成校验。不支持 URL，也不热加载。
-
-**未设置或为空**：serve SHALL 使用嵌入的无品牌默认清单（简体默认，另含繁体与英文），并在启动时记录 WARN 提示设置该变量；默认清单 SHALL 经过与部署清单相同的校验。
-
-**清单结构**：
-- 清单 SHALL 为 UTF-8 JSON 对象，`version` 为 1，`default_language` 为 `languages` 中的一个键。
-- `languages` SHALL 包含 1–8 种语言。语言标签 SHALL 为规范形式的 BCP 47 标签，不得为 `und`，且两两不同。
-- 每种语言 SHALL 只含 `brand`（可选）、`logo_url`（可选）、`common`（必填）与 `templates`（必填）。
-- `common` SHALL 只含 `code_label`、`expiry`、`safety`（必填）与 `footer`（可选）。
-- `templates` SHALL 恰好包含 `SIGN_IN`、`BIND`、`REAUTH`、`SIGN_IN_COMPLETE`；每个用途 SHALL 恰好包含非空字符串 `subject`、`heading`、`intro`。
-- 以下情况 SHALL 拒绝：未知字段、重复键、尾随内容、`null`、缺少或多出用途。任何语言或用途 SHALL 不得回落到其他语言或内置文案。
-
-**版式**：
-- 邮件 SHALL 由服务内置的布局渲染，同时包含 HTML 部分与纯文本部分，段落依次为标题、引导语、验证码、有效期、安全提示、页脚（`footer` 省略时无此段）。
-- 提供 `logo_url` 时，HTML 部分 SHALL 显示该图片并以品牌作为替代文字，因此该语言 SHALL 有品牌；`logo_url` SHALL 为 HTTPS 地址，不含用户信息、空白或控制字符，不超过 2048 字节。
-- 有品牌的语言 SHALL 在页脚显示 `© 品牌`；无品牌的语言 SHALL 省略该行。
-- 服务 SHALL 不内嵌图片或附件，也不接受自定义布局。
-
-**占位符与转义**：
-- 清单文字 SHALL 只接受 `{{brand}}` 与 `{{ttl_minutes}}`，名称两侧不得有空白；`{{code}}` 与其他名称 SHALL 视为配置错误。单个 `{` 或 `}` SHALL 按字面处理；`{{` 后不是合法占位符时 SHALL 视为配置错误。
-- `{{brand}}` SHALL 取所在语言的 `brand`，不继承其他语言；没有品牌的语言引用 `{{brand}}` SHALL 视为配置错误。`brand` SHALL 为 1–32 个码位，不含控制字符、Unicode 格式字符或行/段分隔符，无首尾空白。
-- `{{ttl_minutes}}` SHALL 为有效期分钟数，向上取整。
-- 清单文字插入 HTML 时 SHALL 整体做 HTML 转义，文字中的标签 SHALL 按字面显示；插入纯文本时不转义。替换后的值 SHALL 不再展开。渲染 SHALL 不执行任何模板函数、条件或循环。
-
-**长度与字符**：
-- `subject` SHALL 为 1–64 个码位，不得有首尾空白，不得含控制字符（含换行和制表符）、Unicode 格式字符、行分隔符或段分隔符。
-- `heading`、`code_label` SHALL 为 1–64 个码位；`intro`、`expiry`、`safety`、`footer` SHALL 为 1–1024 个码位；这些文字去掉空白后非空，控制字符只允许 LF 和 TAB，不得含 CR、Unicode 格式字符、行分隔符或段分隔符。
-- 每段文字 SHALL 最多包含 8 个占位符。清单 SHALL 非空，且不超过 64 KiB。
-
-**失败与日志**：
-- 读取失败、非普通文件、空文件、超限或内容非法时，serve SHALL 在监听前非零退出。错误 SHALL 只含变量名、固定的字段位置和安全分类，不含路径、文件内容或解码器原文。
-- EMAIL 启用且配置了清单时，serve SHALL 记录一条 INFO 日志，附带格式版本、清单内容 SHA-256 的前 12 位十六进制与语言标签列表；未配置时 SHALL 记录 WARN。这些日志及其他日志 SHALL 不包含路径、品牌、文字、Logo 地址、渲染结果或验证码。
-- EMAIL 禁用时，或执行 migrate 时，SHALL 不读取或校验该设置。
-- 库 New/ConfigFromEnv SHALL 保持不做文件 I/O，也不新增公开 Go API。
 
 #### Scenario: 合法清单生效
 
@@ -503,13 +482,91 @@ serve SHALL 支持可选的 `ACCOUNTSVC_SMTP_TEMPLATES_FILE`，指向一份邮�
 - **WHEN** 运行期间清单被修改
 - **THEN** 当前实例的文案不变，重启后才加载新内容
 
+### Requirement: 服务邮件默认清单
+
+`ACCOUNTSVC_SMTP_TEMPLATES_FILE` 未设置或为空且 EMAIL 启用时，serve SHALL 使用嵌入的无品牌默认清单（简体默认，另含繁体与英文），并在启动时记录 WARN 提示设置该变量；默认清单 SHALL 经过与部署清单相同的校验。
+
+#### Scenario: 服务邮件默认清单核验
+
+- **WHEN** EMAIL 启用且变量为空或未设置
+- **THEN** 使用经过相同校验的嵌入无品牌清单，简体默认并含繁体和英文，启动记录提示变量名的 WARN
+
+### Requirement: 服务邮件清单语言结构
+
+- 清单 SHALL 为 UTF-8 JSON 对象，`version` 为 1，`default_language` 为 `languages` 中的一个键。
+- `languages` SHALL 包含 1–8 种语言。语言标签 SHALL 为规范形式的 BCP 47 标签，不得为 `und`，且两两不同。
+- 每种语言 SHALL 只含 `brand`（可选）、`logo_url`（可选）、`common`（必填）与 `templates`（必填）。
+- `common` SHALL 只含 `code_label`、`expiry`、`safety`（必填）与 `footer`（可选）。
+
+#### Scenario: 服务邮件清单语言结构核验
+
+- **WHEN** 校验合法单语言清单及含第九种语言、und 标签、重复键或缺少用途的清单
+- **THEN** 合法清单通过；违反语言、结构或完整性约束的清单被拒绝，不回落到其他语言或内置文案
+
+### Requirement: 服务邮件用途完整性与禁止回落
+
+- `templates` SHALL 恰好包含 `SIGN_IN`、`BIND`、`REAUTH`、`SIGN_IN_COMPLETE`；每个用途 SHALL 恰好包含非空字符串 `subject`、`heading`、`intro`。
+- 以下情况 SHALL 拒绝：未知字段、重复键、尾随内容、`null`、缺少或多出用途。任何语言或用途 SHALL 不得回落到其他语言或内置文案。
+
+#### Scenario: 服务邮件用途完整性与禁止回落核验
+
+- **WHEN** 校验合法单语言清单及含第九种语言、und 标签、重复键或缺少用途的清单
+- **THEN** 合法清单通过；违反语言、结构或完整性约束的清单被拒绝，不回落到其他语言或内置文案
+
+### Requirement: 服务邮件内置版式
+
+- 邮件 SHALL 由服务内置的布局渲染，同时包含 HTML 部分与纯文本部分，段落依次为标题、引导语、验证码、有效期、安全提示、页脚（`footer` 省略时无此段）。
+- 提供 `logo_url` 时，HTML 部分 SHALL 显示该图片并以品牌作为替代文字，因此该语言 SHALL 有品牌；`logo_url` SHALL 为 HTTPS 地址，不含用户信息、空白或控制字符，不超过 2048 字节。
+- 有品牌的语言 SHALL 在页脚显示 `© 品牌`；无品牌的语言 SHALL 省略该行。
+- 服务 SHALL 不内嵌图片或附件，也不接受自定义布局。
+
+#### Scenario: 服务邮件内置版式核验
+
+- **WHEN** 分别渲染带品牌及合法 Logo、无品牌语言的邮件，并校验非法 Logo
+- **THEN** 合法邮件按规定顺序同时包含 HTML 和纯文本，品牌页脚及替代文字按规则显示；非法 Logo 被拒绝，不允许自定义布局、内嵌图片或附件
+
+### Requirement: 服务邮件占位符校验与转义
+
+- 清单文字 SHALL 只接受 `{{brand}}` 与 `{{ttl_minutes}}`，名称两侧不得有空白；`{{code}}` 与其他名称 SHALL 视为配置错误。单个 `{` 或 `}` SHALL 按字面处理；`{{` 后不是合法占位符时 SHALL 视为配置错误。
+- `{{brand}}` SHALL 取所在语言的 `brand`，不继承其他语言；没有品牌的语言引用 `{{brand}}` SHALL 视为配置错误。`brand` SHALL 为 1–32 个码位，不含控制字符、Unicode 格式字符或行/段分隔符，无首尾空白。
+- `{{ttl_minutes}}` SHALL 为有效期分钟数，向上取整。
+- 清单文字插入 HTML 时 SHALL 整体做 HTML 转义，文字中的标签 SHALL 按字面显示；插入纯文本时不转义。替换后的值 SHALL 不再展开。渲染 SHALL 不执行任何模板函数、条件或循环。
+
+#### Scenario: 服务邮件占位符校验与转义核验
+
+- **WHEN** 文字包含合法占位符、HTML 标签、单花括号或非法占位符
+- **THEN** 合法替换使用本语言品牌及向上取整分钟数，HTML 转义且纯文本保留字面，结果不二次展开；非法占位符或无品牌引用被拒绝
+
+### Requirement: 服务邮件文字与清单上限
+
+- `subject` SHALL 为 1–64 个码位，不得有首尾空白，不得含控制字符（含换行和制表符）、Unicode 格式字符、行分隔符或段分隔符。
+- `heading`、`code_label` SHALL 为 1–64 个码位；`intro`、`expiry`、`safety`、`footer` SHALL 为 1–1024 个码位；这些文字去掉空白后非空，控制字符只允许 LF 和 TAB，不得含 CR、Unicode 格式字符、行分隔符或段分隔符。
+- 每段文字 SHALL 最多包含 8 个占位符。清单 SHALL 非空，且不超过 64 KiB。
+
+#### Scenario: 服务邮件文字与清单上限核验
+
+- **WHEN** 校验合法边界及超限文字、占位符数量或清单大小，并输入禁止字符
+- **THEN** 合法边界内容通过；违反码位、字符、每段 8 个占位符或 64 KiB 上限的内容被拒绝
+
+### Requirement: 服务邮件清单失败与日志隐私
+
+- 读取失败、非普通文件、空文件、超限或内容非法时，serve SHALL 在监听前非零退出。错误 SHALL 只含变量名、固定的字段位置和安全分类，不含路径、文件内容或解码器原文。
+- EMAIL 启用且配置了清单时，serve SHALL 记录一条 INFO 日志，附带格式版本、清单内容 SHA-256 的前 12 位十六进制与语言标签列表；未配置时 SHALL 记录 WARN。这些日志及其他日志 SHALL 不包含路径、品牌、文字、Logo 地址、渲染结果或验证码。
+- EMAIL 禁用时，或执行 migrate 时，SHALL 不读取或校验该设置。
+- 库 New/ConfigFromEnv SHALL 保持不做文件 I/O，也不新增公开 Go API。
+
+#### Scenario: 服务邮件清单失败与日志隐私核验
+
+- **WHEN** 清单读取失败或启用 EMAIL 的 serve 加载合法清单，或 EMAIL 禁用及 migrate 使用非法路径
+- **THEN** 失败在监听前非零退出且错误只含安全定位；成功日志只含版本、12 位摘要及语言列表；禁用或 migrate 不读文件，库构造及环境解析不做文件 I/O
+
 ### Requirement: 邮件语言选择
 
-当清单包含多种语言时，serve SHALL 读取每个请求的 `Accept-Language`，并在发送邮件验证码时从已配置的语言中选出一种渲染。
+当 EMAIL 启用且实际生效的清单（自定义清单或嵌入的默认清单）包含多种语言时，serve SHALL 读取消费者请求的 `Accept-Language`，并在发送邮件验证码时从该清单的语言中选出一种渲染。
 
 - 匹配 SHALL 遵循 BCP 47 语言匹配，并识别地区隐含的文字：zh-TW、zh-HK、zh-MO 匹配 `zh-Hant`；zh-CN、zh-SG、zh 匹配 `zh-Hans`；en-US、en-GB 匹配 `en`。
 - 近似匹配（如只配置简体时的繁体请求）SHALL 采用匹配到的语言。以下情况 SHALL 使用 `default_language`，且不得因此使请求失败：请求头缺失、超过 512 字节、格式非法，或完全没有匹配。
-- 未配置清单，或清单只有一种语言时，serve SHALL 不读取 `Accept-Language`。
+- EMAIL 未启用，或实际生效的清单只有一种语言时，serve SHALL 不读取 `Accept-Language` 用于邮件语言选择。
 - 语言选择 SHALL 只影响邮件标题、内容和品牌，不改变验证码用途、额度、审计、HTTP 响应或短信内容。日志 SHALL 不记录逐次选中的语言。
 
 #### Scenario: 按界面语言发送繁体邮件
@@ -521,6 +578,16 @@ serve SHALL 支持可选的 `ACCOUNTSVC_SMTP_TEMPLATES_FILE`，指向一份邮�
 
 - **WHEN** 同一部署收到 `Accept-Language: ja`、没有该请求头，或请求头格式非法、超长
 - **THEN** 邮件使用默认语言，发码请求照常成功
+
+#### Scenario: 默认清单参与语言选择
+
+- **WHEN** EMAIL 启用，未设置或清空模板清单路径，客户端以 `Accept-Language: en` 请求邮箱验证码
+- **THEN** 使用嵌入默认清单的英文文案；请求头缺失、非法、超长或完全不匹配时使用该清单的默认语言
+
+#### Scenario: 单语言清单无需语言协商
+
+- **WHEN** EMAIL 启用且实际生效的清单只有一种语言，请求携带其他语言偏好
+- **THEN** 不读取该请求头用于邮件语言选择，始终使用清单的唯一语言
 
 ### Requirement: 邮件模板检查命令
 
@@ -539,3 +606,62 @@ accountsvc SHALL 提供子命令 `email-templates check <清单路径>`，使用
 
 - **WHEN** 对缺少用途或含未知占位符的清单执行该命令
 - **THEN** 命令以非零码退出，指出字段位置，不写出任何预览文件
+
+### Requirement: 统一服务配置的启动快照
+
+serve SHALL 在监听前解析并冻结唯一的统一服务客户端注册表，遵守服务认证规格的严格校验；SERVICE_CLIENTS 缺省、空或全空白均产生非 nil 空注册表，不选择旧路径。改变文件或环境 SHALL 不热更新；重启后新权限、方法和秘密生效。日志及错误 SHALL 不输出配置值或凭据。部署者 SHALL 在全部副本完成重启或排空旧副本后才宣称策略已生效；令牌仍有效也不能绕过新进程中撤销的权限。
+
+#### Scenario: 撤销权限后重启
+- **WHEN** 从某客户端移除清理权限并重启实例，其他客户端仍持有该权限
+- **THEN** 该客户端原有效令牌在此实例请求清理接口返回 403，保留的其他权限继续可用
+
+#### Scenario: 配置非法
+- **WHEN** 配置中存在不合法别名、秘密、权限、孤立字段或任一非空白旧逐接口变量
+- **THEN** serve 在监听前非零退出，仅报告相关变量名及固定错误类别
+
+### Requirement: 未配置能力的观测与部署示例
+
+某接口无人获授权时 SHALL 返回原 NOT_CONFIGURED 503，并在 serve 启动时为该能力记录一次指出 SERVICE_CLIENTS 和 PERMISSIONS 配置类别的 WARN，不记录值。模板及接入文档 SHALL 提供分项变量的 Basic-only、Bearer-only、双方式、最小权限与重叠秘密轮换示例，区分 Basic 密码和 IdP client secret，说明 TLS、客户端凭据换令牌及旧配置的显式迁移。SHALL 不在部署示例中授予尚未实现的权限，不提供当前二进制恢复旧模式的步骤。
+
+#### Scenario: 只启用清理能力
+- **WHEN** 统一客户端仅被授予 purged_users.read
+- **THEN** 服务正常启动，清理接口可用，内省返回 503 并有一次配置警告，不强制给客户端增加内省权限
+
+#### Scenario: 示例可核验
+- **WHEN** 使用模板的合成秘密分别配置三种认证方式组合
+- **THEN** 配置可解析，权限与示例说明一致，Basic-only 不要求 OIDC 配置，身份解析示例仅授予已实现的 identities.resolve，不隐含内省或清理权限
+
+### Requirement: 单一 Compose 配置文件
+
+部署 SHALL 只使用 deploy/accountsvc/compose.yaml；accountsvc 服务 SHALL 直接通过 env_file: ./.env 注入 SERVICE_CLIENTS 及任意已声明别名字段，删除 compose.service-clients.yaml。基础 environment SHALL 不保留四项旧逐接口变量的默认注入。文档标准 Compose 命令 SHALL 使用 --env-file deploy/accountsvc/.env，与服务 env_file 指向同一文件，并区分 CLI 插值与容器注入职责。模板 SHALL 默认空注册表，不含可运行旧格式；迁移说明 SHALL 要求显式转换客户端与权限，如需旧模式回退须同时恢复支持该模式的旧二进制及匹配配置。
+
+#### Scenario: 单文件注入动态别名
+- **WHEN** 部署者在 deploy/accountsvc/.env 声明含下划线的客户端别名及其全部必需字段，并使用文档的单文件 Compose 命令
+- **THEN** Compose config 与容器环境包含该别名字段，无需额外 override，服务按显式权限认证
+
+#### Scenario: 默认无服务客户端
+- **WHEN** 使用默认模板且未配置服务客户端或信任参数
+- **THEN** 单文件 Compose 可解析，serve 正常启动并为三个未配置能力返回各自 NOT_CONFIGURED 503
+
+### Requirement: 身份解析服务装配
+
+serve SHALL 在 /v1/identities:resolve 装配独立服务认证的身份解析处理器，不挂入消费者或管理员 handler。SHALL 复用统一注册表并要求 identities.resolve，至少一个客户端持有该权限才启用该能力。无人持有时 SHALL 返回 503 IDENTITY_RESOLUTION_NOT_CONFIGURED，并按未配置能力约定记录一次警告。migrate SHALL 不解析服务权限变量或访问身份解析依赖。SHALL 不要求额外发送器、Redis 查询或 IdP 资料接口。
+
+#### Scenario: 只启用身份解析
+- **WHEN** Basic-only 客户端仅被授予 identities.resolve，其他必要服务配置有效
+- **THEN** serve 启动，身份解析可用；内省与清理接口分别返回原 NOT_CONFIGURED 503，不需要 OIDC 配置
+
+#### Scenario: 无解析授权
+- **WHEN** 无客户端拥有 identities.resolve，无论请求是否携带有效凭据
+- **THEN** 新路由返回 503 IDENTITY_RESOLUTION_NOT_CONFIGURED，不查询账号；原有获授权能力继续可用
+
+#### Scenario: 权限与二进制回退
+- **WHEN** 部署者启用新版身份解析或回退至不识别 identities.resolve 的旧版本
+- **THEN** 文档要求新版显式授权并重启生效，旧版回退前移除该权限；不静默忽略未知权限
+
+### Requirement: 路由访问类别清单
+服务 SHALL 保持消费者、管理员、服务调用、公共元数据和运维五类路由的可核对清单；三个服务端点分别标明 tokens.introspect、purged_users.read、identities.resolve。清单 SHALL 与实际挂载一致，不改变URL、方法或既有错误顺序，不把类别标记当作认证或网络隔离。
+
+#### Scenario: 清单与实际路由一致
+- **WHEN** 检查服务路由挂载和接入文档
+- **THEN** 三个服务端点及其权限一致，消费者与管理员分别验证，JWKS与运维边界保持

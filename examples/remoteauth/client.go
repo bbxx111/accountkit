@@ -29,9 +29,9 @@ var ErrUnavailable = errors.New("remote authentication unavailable")
 // HTTPS endpoints still require certificate verification.
 //
 // The example authenticates to accountsvc with HTTP Basic. accountsvc also accepts a
-// client-credentials Bearer access token whose azp is listed in
-// ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS; such callers set that Authorization header
-// instead and refresh the token once after a 401 invalid_token.
+// client-credentials Bearer access token whose verified azp identifies a unified
+// service client enabling bearer with tokens.introspect permission. Such callers
+// set that Authorization header instead and refresh the token once after a 401 invalid_token.
 type Config struct {
 	Endpoint, ClientID, ClientSecret string
 	HTTPClient                       *http.Client

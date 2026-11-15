@@ -830,5 +830,24 @@
     ],
     "sdkSourceFile": "sdks/accountkit-admin-ts/src/client.ts",
     "modelSourceFile": "sdks/accountkit-admin-ts/src/models.ts"
+  },
+  {
+    "surface": "service",
+    "operationId": "resolveIdentity",
+    "method": "POST",
+    "path": "/identities:resolve",
+    "sdkApplicable": false,
+    "tests": [
+      {
+        "file": "internal/accountsvc/identityresolve/handler_test.go",
+        "name": "TestIdentityResolveProtocol"
+      },
+      {
+        "file": "internal/accountsvc/identityresolve/auth_test.go",
+        "name": "TestIdentityResolveBearerScopeAndSubject"
+      }
+    ],
+    "baseline": "identity-resolution",
+    "optionalCapability": null
   }
 ]

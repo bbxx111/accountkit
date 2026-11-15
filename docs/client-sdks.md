@@ -7,7 +7,9 @@ Go 库可直接嵌入宿主，accountsvc 是可选独立服务；两个客户端
 | `accountkit_flutter` | `lib/accountkit_flutter.dart` | `/v1` | `v1.0.0` |
 | `@accountkit/admin-client` | `src/index.ts` | `/admin/v1` | `v1.0.0` |
 
-两包首版均为 `1.0.0`（已发布），发布版本独立递增。发布范围见[发布说明](releases/client-sdks-v1.0.0.md)，候选 CI 和远端消费结果见[发布验收记录](../openspec/changes/prepare-client-sdks-v1-release/verification.md)。实际 SDK 单元、真实服务、Git 消费和平台实现结果另见[功能验收记录](../openspec/changes/archive/2026-11-01-add-account-client-sdks/verification.md)。
+服务当前准备 v1.1.0 候选；两包继续使用已发布的 `1.0.0`，本次没有新 SDK 发布。[兼容矩阵](../sdks/compatibility.json)保留 v1.0.0 已验证行，新增 v1.1.0 pending 行；[候选验收记录](../openspec/changes/prepare-next-release/verification.md)不代表最终 main/tag 消费验证通过。
+
+两包首版均为 `1.0.0`（已发布），发布版本独立递增。发布范围见[发布说明](releases/client-sdks-v1.0.0.md)，候选 CI 和远端消费结果见[发布验收记录](../openspec/changes/archive/2026-11-04-prepare-client-sdks-v1-release/verification.md)。实际 SDK 单元、真实服务、Git 消费和平台实现结果另见[功能验收记录](../openspec/changes/archive/2026-11-01-add-account-client-sdks/verification.md)。
 
 ## 固定 Git 安装
 
@@ -63,7 +65,7 @@ const page = await client.listUsers({filter: userFilter.eq('state', 'ACTIVE')});
 
 ## 验证与发布
 
-覆盖检查：`node scripts/check-sdk-coverage.mjs`。包内分别运行 Flutter analyze/test 和 pnpm typecheck/test。真实服务装配见 [sdks/testsupport](../sdks/testsupport/README.md)；Go 烟测只证明宿主就绪，SDK 契约必须由 SDK 实际发请求。
+覆盖检查：`node scripts/check-sdk-coverage.mjs`。消费者/管理面继续强制 SDK 方法、模型与测试链接。新增服务身份解析见 [service.json](openapi/service.json)，仅以 `service`、`sdkApplicable=false` 和真实 Go 协议测试登记，不新增 SDK 或将服务凭据放入客户端；未知 surface 不接受豁免。包内分别运行 Flutter analyze/test 和 pnpm typecheck/test。真实服务装配见 [sdks/testsupport](../sdks/testsupport/README.md)；Go 烟测只证明宿主就绪，SDK 契约必须由 SDK 实际发请求。
 
 发布前 Git 隔离入口在仓库外创建一次性应用、临时本机 Git 服务和固定快照 SHA，不改变源分支或创建 tag：
 

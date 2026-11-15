@@ -1,5 +1,7 @@
 # accountsvc 服务
 
+本文对应 v1.1.0（候选），尚未发布；模块、导入路径和 HTTP 路由保持 v1。accountsvc 与库同源交付，不设独立版本轴。本次服务配置与授权有破坏性迁移，升级前阅读[候选说明](releases/v1.1.0.md)及[迁移与回退](#从旧配置迁移与回退)；v1.0.0 历史见[已发布说明](releases/v1.0.0.md)。
+
 accountsvc 是 accountkit 的可选官方宿主。同一个 Go module 同时支持直接嵌入库和运行服务；使用库的项目不需要部署或调用 accountsvc。
 
 ## 会话上下文部署
@@ -46,6 +48,10 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.yaml down
 ```
 
+部署只需这一份 Compose 文件。默认模板不配置服务客户端，三项内部能力返回各自 NOT_CONFIGURED 503，其他服务功能正常。按需从 `.env.example` 选择一组[服务客户端](#服务调用认证内省与已清理用户拉取)示例，取消注释并替换秘密；升级旧部署前须显式转换客户端与权限并移除非空白旧逐接口变量。
+
+CLI `--env-file` 供 Compose 插值，accountsvc 自身的 `env_file: ./.env` 将任意 `SERVICE_CLIENT_<ALIAS>_*` 分项注入容器；两者必须指向**同一文件**。相对 `env_file` 路径以 Compose 文件所在目录为基准。改用自定义文件时，同时修改服务的 `env_file` 路径与 CLI `--env-file` 参数。该配置会导入整份文件，使用专用开发配置；不要混入其他产品的环境变量。直接使用命令启动服务时仍由宿主显式注入所有变量。
+
 默认统一服务地址为 `http://127.0.0.1:18080`，邮件捕获界面为 `http://127.0.0.1:18025`。`ACCOUNTSVC_PUBLIC_PORT` 保留为统一端口映射变量；数据库和 Redis 不映射宿主端口。Compose 明确使用 development、`TLS_ENABLED=false`、隔离邮件捕获及回环端口，只用于本地开发。这个示例显式选择 HTTP，服务未设置开关时的默认行为见下表；模板不提供证书挂载，使用 true 时需另行装配证书。`down` 保留开发数据库 volume，清理数据需由使用者明确选择。
 
 同一地址检查探针：`curl -f http://127.0.0.1:18080/healthz` 和 `curl -f http://127.0.0.1:18080/readyz`。启用服务 TLS 时，两者改用同址 HTTPS 并校验证书。探针访问范围见[网关接入手册](gateway-integration.md)。
@@ -66,7 +72,7 @@ Facebook 登录使用 `ACCOUNTSVC_FACEBOOK_APP_ID`、`ACCOUNTSVC_FACEBOOK_APP_SE
 
 支付宝 App 极简登录使用 `ACCOUNTSVC_ALIPAY_APP_IDS`（逗号分隔的唯一 16 位数字 AppID），每个应用分别提供 `ACCOUNTSVC_ALIPAY_<APPID>_PRIVATE_KEY` 应用私钥和 `ACCOUNTSVC_ALIPAY_<APPID>_PUBLIC_KEY` 支付宝公钥的真实多行 PEM。至少 2048 位 RSA，只支持普通公钥，不能传文件路径或字面 `\n`。`ACCOUNTSVC_ALIPAY_SUBJECT_MODE` 未设置时 UNIONID，显式仅接受 UNIONID/OPENID；`ACCOUNTSVC_ALIPAY_GATEWAY_URL` 默认生产网关。serve 缺应用或密钥会在监听前指出具体变量名，不输出内容。migrate 无需配置支付宝、不访问上游，但已配置的非法材料仍拒绝。
 
-纯支付宝部署设 `ACCOUNTSVC_ENABLED_IDENTITY_KINDS=ALIPAY`、`ACCOUNTSVC_REQUIRED_IDENTITY_KINDS=[]`，无需 SMTP；默认 Required 仍需手机/邮箱补全。客户端完成极简 SDK 的 auth_user 与一次性 state 核对后提交 `POST /v1/users:signInWithIdp` 的 `{"kind":"ALIPAY","credential":{"app_id":"2026000000000001","code":"synthetic-code"}}`，本服务无 authInfo 或回调端点。默认 UNIONID 的实际跨 App 共享由宿主核对真实应用分组；OPENID 按 AppID 隔离，不自动迁移。配置指纹改变会拒绝旧 pending，所有副本须一致。资料降级及后续成功登录空字段补填、Flutter 桥接与宿主上线前真机清单见[支付宝接入指南](alipay-sign-in.md)。本地 Compose 默认 EMAIL，须用 override 或实际部署环境显式传入上述变量并覆盖 E/R，单改 `.env` 不会自动传递任意变量。
+纯支付宝部署设 `ACCOUNTSVC_ENABLED_IDENTITY_KINDS=ALIPAY`、`ACCOUNTSVC_REQUIRED_IDENTITY_KINDS=[]`，无需 SMTP；默认 Required 仍需手机/邮箱补全。客户端完成极简 SDK 的 auth_user 与一次性 state 核对后提交 `POST /v1/users:signInWithIdp` 的 `{"kind":"ALIPAY","credential":{"app_id":"2026000000000001","code":"synthetic-code"}}`，本服务无 authInfo 或回调端点。默认 UNIONID 的实际跨 App 共享由宿主核对真实应用分组；OPENID 按 AppID 隔离，不自动迁移。配置指纹改变会拒绝旧 pending，所有副本须一致。资料降级及后续成功登录空字段补填、Flutter 桥接与宿主上线前真机清单见[支付宝接入指南](alipay-sign-in.md)。本地 Compose 通过 `env_file` 载入 `.env` 的上述配置，默认 EMAIL；纯支付宝须在同一文件中显式覆盖 E/R。
 
 QQ App SDK 登录使用 `ACCOUNTSVC_QQ_APP_IDS`（逗号分隔的唯一 1–20 位数字 AppID）、`ACCOUNTSVC_QQ_SUBJECT_MODE`（默认 `UNIONID`）和测试用 `ACCOUNTSVC_QQ_API_BASE_URL`；不需要 AppKey。显式 Enabled 含 QQ 却未配置应用时启动失败并指出 `ACCOUNTSVC_QQ_APP_IDS`，非法值只报告变量名。
 
@@ -98,13 +104,20 @@ QQ App SDK 登录使用 `ACCOUNTSVC_QQ_APP_IDS`（逗号分隔的唯一 1–20 �
 | `SMTP_TIMEOUT` | 10s，包含连接、TLS、认证和提交 |
 | `SMTP_TEMPLATES_FILE` | 可选本地 JSON 清单：多语言的邮件文字、品牌与 Logo 地址，由内置布局渲染 HTML 加纯文本邮件并按 `Accept-Language` 选语言；最大 64 KiB，仅 serve 在 EMAIL 启用时于启动阶段读取一次；空设置使用内置的无品牌默认清单并记录 WARN；格式见[邮件模板清单](#邮件模板清单) |
 | `SMS_PROVIDER` | 空表示未配置短信；首版只接受 `aliyun`，见[短信服务商](#短信服务商) |
-| `INTROSPECTION_BASIC_CLIENTS` | 可选；Basic 内省客户端，JSON：客户端 ID → base64 秘密数组。与 `INTROSPECTION_BEARER_CLIENTS` 都未设置时服务照常启动，`/v1/introspect` 返回 503 `introspection_not_configured` |
-| `PURGE_FEED_BASIC_CLIENTS` | 可选；格式同 `INTROSPECTION_BASIC_CLIENTS`，供业务服务拉取已清理用户（见[已清理用户拉取](#已清理用户拉取)）；秘密不得与内省凭据重复；与 `PURGE_FEED_BEARER_CLIENTS` 都未设置时该路由返回 503 |
-| `SERVICE_ISSUER` / `SERVICE_AUDIENCE` | 配置任一 Bearer 客户端列表时必填；签发业务服务访问令牌的 issuer 与服务专用 audience。issuer 为不含凭据、查询和片段的绝对 URL：production 只接受 HTTPS，`MODE=development` 另接受 `http://` 并在启动时记一条 WARN（见[本地开发的明文 HTTP 签发方](#本地开发的明文-http-签发方)），见[服务调用认证](#服务调用认证内省与已清理用户拉取) |
-| `INTROSPECTION_BEARER_CLIENTS` / `PURGE_FEED_BEARER_CLIENTS` | 可选；JSON 字符串数组，允许以 Bearer 调用对应接口的 `azp`（客户端 ID）；两个列表不得相交 |
+| `SERVICE_CLIENTS` | 逗号分隔配置别名；未设置、空或全空白均为空注册表。存在未声明别名字段仍拒绝 |
+| `SERVICE_CLIENT_<ALIAS>_ID` | 必填；Basic 用户名与 Bearer 所选 profile 的客户端声明。别名匹配 `[A-Z][A-Z0-9_]{0,31}`；ID 为 1–256 字节，不含冒号、空白或控制字符；别名及 ID 分别唯一 |
+| `SERVICE_CLIENT_<ALIAS>_AUTH_METHODS` | 必填；逗号分隔、小写 `basic`、`bearer`，可以同时启用 |
+| `SERVICE_CLIENT_<ALIAS>_PERMISSIONS` | 必填；仅接受 `tokens.introspect`、`purged_users.read`、`identities.resolve`，按需授予；Basic 使用注册权限，Bearer 强制与 token scope 取交集 |
+| `SERVICE_CLIENT_<ALIAS>_BASIC_SECRETS` | 启用 Basic 必填；逗号分隔规范标准 Base64，每项解码至少 32 字节，Base64 原文本作密码；支持同一身份新旧秘密重叠；禁止重复及跨身份复用 |
+| `SERVICE_CLIENT_<ALIAS>_BEARER_SUBJECTS` | 启用 Bearer 必填的 JSON 字符串数组；每项非空且非全空白、至多256字节、无控制字符且不重复。逐字匹配 `sub`，不裁剪，允许逗号和空格。Basic-only 拒绝非空配置 |
+| `SERVICE_TOKEN_PROFILE` | `default`（默认）或 `rfc9068`；无 Bearer 客户端时不得配置。两种格式均执行机器主体和 scope 约束，无自动回退 |
+| `SERVICE_ISSUER` / `SERVICE_AUDIENCE` | 有 Bearer 客户端时必填，无 Bearer 时非空为半配置错误。issuer 不含凭据、查询或片段，production 只接受 HTTPS，development 允许 HTTP 并记 WARN；隔离规则见[服务调用认证](#服务调用认证内省与已清理用户拉取) |
 | `ADMIN_ENABLED` | false |
 | `ADMIN_ISSUER` / `ADMIN_AUDIENCE` | 启用时必填；issuer 是不含凭据、查询和片段的绝对 URL，production 只接受 HTTPS，`MODE=development` 另接受 `http://` 并在启动时记一条 WARN（见[本地开发的明文 HTTP 签发方](#本地开发的明文-http-签发方)）；audience 为管理员 API 专用标识 |
 | `ADMIN_ROLES_CLAIM` / `ADMIN_USERNAME_CLAIM` | /roles / /preferred_username，JSON Pointer |
+| `ADMIN_TOKEN_PROFILE` | `default`（默认）或 `rfc9068`；管理员禁用时不得配置。身份仍为 issuer+sub，权限仍由管理员角色决定 |
+
+`ADMIN_TOKEN_PROFILE` / `SERVICE_TOKEN_PROFILE` 为 v1.1.0 候选新增配置，省略或空值选择 `default`。开发过程中 `azp` 模式值改名为 `default`，从未作为正式版本发布，不是 v1.0.0 部署的迁移项；不保留该开发值别名。服务令牌的客户端声明仍为 `azp`，管理员默认模式不要求该声明。
 
 可选接口未配置时服务照常启动，对应路由返回 503 `*_NOT_CONFIGURED`。为使漏配在启动时可见，serve 在监听就绪后为每个未配置的接口记一条 WARN（只写相关变量名，不写值）：内省（`introspection_not_configured`）、已清理用户拉取（`PURGE_FEED_NOT_CONFIGURED`）、管理员 API（`ADMIN_NOT_CONFIGURED`）、用户资料属性（`PROFILE_ATTRIBUTES_NOT_CONFIGURED`）。有意不启用某项时可忽略对应警告；部署检查应确认依赖的接口没有出现在警告中。
 
@@ -165,7 +178,7 @@ HS256 随机字节密钥不是合法的 ES256 私钥，会在启动时被拒绝�
 | HTTP_ADDR | /v1 | 消费者登录、身份、会话与生命周期接口 |
 | HTTP_ADDR | /admin/v1 | 独立外部管理员 JWT，关闭时503 |
 | HTTP_ADDR | POST /v1/introspect | 独立服务调用：Basic 凭据或服务 Bearer 令牌 |
-| HTTP_ADDR | GET /v1/purgedUsers | 已清理用户拉取：独立 Basic 凭据（`PURGE_FEED_BASIC_CLIENTS`）或服务 Bearer 令牌；内部入口 |
+| HTTP_ADDR | GET /v1/purgedUsers | 已清理用户拉取：服务调用认证，要求 `purged_users.read`；内部入口 |
 | HTTP_ADDR | GET /.well-known/jwks.json | 无认证；只含消费者 access 验签公钥，可公共缓存 5 分钟 |
 | HTTP_ADDR | GET /healthz、GET /readyz | 无认证探针；访问范围由部署策略限制 |
 | HTTP_ADDR | GET /metrics | 指标开关启用时提供，无内建鉴权；仅允许监控来源 |
@@ -245,29 +258,56 @@ healthz 只表示进程存活。readyz 要求启动完成、未停机且 Postgre
 
 ### 服务调用认证（内省与已清理用户拉取）
 
-业务服务调用内省和已清理用户拉取时，可以使用 HTTP Basic 客户端凭据，也可以使用外部 OIDC 提供方按 RFC 6749 §4.4 客户端凭据模式签发的 Bearer 访问令牌。两种方式按接口分别配置、可同时启用，便于逐步切换与回退；请求必须恰好携带一个 `Authorization` 头。
+业务服务调用内省和已清理用户拉取时，可以使用 HTTP Basic 客户端凭据，也可以使用外部 OIDC 提供方按 RFC 6749 §4.4 客户端凭据模式签发的 Bearer 访问令牌。请求必须恰好携带一个 `Authorization` 头。生产调用链必须具有经过证书校验的 TLS 保护，可由受控网关或网格提供；服务自身关闭 TLS 不改变该要求。内部路径仍须由网关和网络策略限制，路径名称本身不提供隔离。
 
-Bearer 令牌须满足：RS256 签名且头部带 `kid`、不带 `jku`/`x5u`；`iss` 等于 `SERVICE_ISSUER`；`aud` 包含 `SERVICE_AUDIENCE`；带 `exp` 与 `iat`，`exp − iat` 不超过 1 小时（时钟偏差 30 秒）；`azp` 在当前接口的 Bearer 客户端列表中。服务只按 `azp` 授权，不读取角色或 scope，也没有管理员的角色继承规则。一个 `azp` 只能出现在一个接口的列表中。
+消费者、管理员和服务调用入口共享 HTTP 凭据解析规则：`Bearer` / `Basic` scheme 大小写不敏感，以一个或多个 ASCII 空格与单份非空凭据分隔。重复头（即使内容相同）、逗号拼接、多份凭据、制表符、控制字符及凭据尾部空白均返回各入口原有的 401，不进入凭据验证或业务处理；Bearer 令牌最多 16 KiB（16384 字节，含边界）。这只统一解析规则，各入口仍只接受自身启用的认证方式，不自动回退其他方式。消费者普通认证保留宿主已注入的可信 Principal 复用；严格认证仍重新解析并验证当前请求凭据。
+
+**客户端注册表**：`ACCOUNTSVC_SERVICE_CLIENTS` 列出配置别名，`BUSINESS` 这样的别名仅用于配置，`SERVICE_CLIENT_BUSINESS_ID` 才是 Basic 用户名或已验签 Bearer 所选 profile 的客户端标识。每个客户端明确选择方法与权限；内省要求 `tokens.introspect`，清理拉取要求 `purged_users.read`，身份解析要求 `identities.resolve`。Basic 使用注册权限 P，Bearer 无条件使用 P∩S（S 为 token scope）。scope 只收窄权限，角色和请求中的 client_id 不授予权限。JWKS、探针、消费者与管理员路由不属于该权限目录。
+
+主列表未设置、空或全空白均表示空注册表，serve 正常启动，三项内部能力各返回原 NOT_CONFIGURED 503；不存在配置模式切换。主列表缺失或为空时，任何 `SERVICE_CLIENT_<ALIAS>_*` 字段即使为空也属于未声明字段，会拒绝启动。旧逐接口配置已移除，非空白旧变量无论是否设置主列表都会阻止启动；升级步骤见[迁移与回退](#从旧配置迁移与回退)。CSV 列表会裁剪元素两端空白，空元素、重复元素、未知方法/权限、未知字段及未声明别名均拒绝；`BEARER_SUBJECTS` 使用 JSON，不裁剪主体。无 Bearer 时应移除 issuer/audience/profile，Bearer-only 不提供 Basic 秘密。
+
+可直接修改的三组完整配置见 [.env.example](../deploy/accountsvc/.env.example)：Basic-only 和 Bearer-only 仅授内省权限，双方式示例仅授内省与清理权限，并展示新旧秘密重叠；身份解析须另行显式授予 `identities.resolve`。只拉取清理记录的服务应改为仅授 `purged_users.read`。新增客户端使用独立别名、ID 和秘密，不复制另一个身份的秘密。Basic 秘密须独立随机生成（如 `openssl rand -base64 32`），将 Base64 原文本用作密码。**Basic 密码与 IdP client secret 是不同材料**；后者仅由调用方与 IdP 持有，用于换取服务令牌，不注入 accountsvc 的 `BASIC_SECRETS`。
+
+Bearer 令牌须满足：RS256 签名且头部带 `kid`、不带 `jku`/`x5u`，令牌不超过 16 KiB；`iss` 精确等于 `SERVICE_ISSUER`；`aud` 包含 `SERVICE_AUDIENCE`；带 `exp` 与 `iat`，`exp − iat` 不超过 1 小时（时钟偏差 30 秒）。`default` profile 只从 `azp` 识别客户端；`rfc9068` 只从 `client_id` 识别，且要求 JOSE `typ` 为 `at+jwt` 或 `application/at+jwt`，具备合法类型的 `iss/aud/exp/sub/client_id/iat/jti`。字符串声明必须非空，时间声明必须为数值；两种 profile 不自动回退。管理员独立选择同名 profile，但不要求机器主体或服务 scope，其人类主体和角色授权保持原契约。
+
+服务校验顺序为：已签名 token 的公共/profile 校验（含非空字符串 `sub`）、客户端登记、bearer 方法开关、机器主体绑定、scope 语法、P∩S 权限。未知客户端返回403，即使 scope 非法；已登记客户端未启用 bearer 返回401且不附 invalid_token；机器 `sub` 不匹配返回401 invalid_token，即使 scope 缺失或没有注册端点权限。提供方必须保证配置的主体由服务账号独占，并关闭该客户端的人类登录流程；不能从 `sub=client_id`、用户名或自报 grant_type 推断机器身份。消费者与管理员令牌不可代替服务调用凭据，多 audience 不豁免主体绑定。
+
+scope 缺失或空字符串表示空集合，缺所需权限返回403；null、数组及其他非字符串或非法语法返回401。非空 scope 使用大小写敏感的 ASCII 单空格分隔，项字符范围为 `%x21 / %x23-5B / %x5D-7E`；首尾或连续空格、tab、引号、反斜杠和非ASCII均非法。重复项去重，合法未知项忽略，通配符不授予权限。能力是否配置仍仅由注册权限决定，不因某次 token scope 为空而变为503。
 
 | 情形 | 内省（OAuth 顶层 `error`） | 已清理用户拉取（`reason`） | 调用方处理 |
 |---|---|---|---|
 | 无凭据、多个 `Authorization` 头、方式未启用、Basic 错误 | 401 `invalid_client` | 401 `INVALID_CLIENT` | 检查凭据配置 |
-| Bearer 令牌无效（签名、`iss`、`aud`、过期、寿命超过 1 小时、缺 `azp`） | 401 `invalid_token` | 401 `TOKEN_INVALID` | 向提供方重新换令牌后重试一次 |
-| 令牌有效但 `azp` 未获准调用该接口 | 403 `insufficient_scope` | 403 `CLIENT_NOT_AUTHORIZED` | 不重试，修改配置 |
-| 取不到提供方签名密钥 | 503 `temporarily_unavailable` | 503 `DEPENDENCY_UNAVAILABLE`，`Retry-After: 1` | 退避重试；有 Basic 时可回退 |
-| 该接口两种方式都未配置（先于认证判断） | 503 `introspection_not_configured` | 503 `PURGE_FEED_NOT_CONFIGURED` | 不重试，补充服务配置 |
+| Bearer 令牌无效（签名、`iss`、`aud`、过期、寿命、profile 声明、机器主体或 scope 语法） | 401 `invalid_token` | 401 `TOKEN_INVALID` | 向提供方重新换令牌后重试一次 |
+| 有效 Bearer 的客户端未登记，或缺少端点注册权限/同名 token scope | 403 `insufficient_scope` | 403 `CLIENT_NOT_AUTHORIZED` | 不重试，检查最小权限配置 |
+| 取不到提供方签名密钥 | 503 `temporarily_unavailable` | 503 `DEPENDENCY_UNAVAILABLE`，`Retry-After: 1` | 退避重试；服务不自动回退 Basic |
+| 注册表无人持有该权限（先于认证判断） | 503 `introspection_not_configured` | 503 `PURGE_FEED_NOT_CONFIGURED` | 不重试，按需补充配置 |
 
-401 对每个已启用的方式各给一行 `WWW-Authenticate`（`Basic realm="…"`、`Bearer realm="…"`，realm 分别为 `accountsvc-introspection`、`accountsvc-purge-feed`）；只有请求确实带了一个 Bearer 令牌时，Bearer 行才附 `error="invalid_token"`。403 只返回 `Bearer realm="…", error="insufficient_scope"`，503 不带认证提示。
+401 按**整个注册表启用方式的并集**给出 `WWW-Authenticate`；内省、清理拉取与身份解析的 realm 分别为 `accountsvc-introspection`、`accountsvc-purge-feed`、`accountsvc-identity-resolution`。身份解析的错误体见[服务身份解析](#服务身份解析)。Basic 行为 `Basic realm="…"`，Bearer 行为 `Bearer realm="…"`；启用 Bearer 且解析可识别单个 Bearer scheme 时，凭据语法/长度拒绝或令牌验证无效的401均附 `error="invalid_token"`，即使解析阶段已拒绝而未调用 verifier；重复头等无法确定单个 scheme 的情况及客户端方法未启用不附该属性。有效 Basic 缺权限的 403 不带挑战；Bearer 的 403 带 `Bearer realm="…", error="insufficient_scope"`。503 均不带挑战，所有结果 `Cache-Control: no-store`。无权限的请求不会解析业务请求体或查询清理记录。Basic-only 不依赖 OIDC，也不访问提供方。
 
-**提供方故障**：服务就绪后在后台尝试加载提供方密钥（最多 10 秒），失败只记录警告（discovery 返回的 issuer 不一致记 ERROR），既不阻止启动也不推迟就绪（即使只启用了 Bearer），`/readyz` 不反映提供方状态；此时 Bearer 调用返回 503，消费者路由与 Basic 调用照常。签名密钥缓存 1 小时；单次刷新最多等待 5 秒；任何一次刷新尝试（成功或失败）后 10 秒内不再请求提供方：窗口内遇到未知 `kid`，上次刷新成功判 401，失败判 503，因此随机 `kid` 无法放大对提供方的请求。管理面若使用同一提供方且已启用，其启动仍要求提供方可达（管理员认证的既有行为）。
+**提供方故障**：服务就绪后在后台尝试加载提供方密钥（最多 10 秒），失败只记录警告（discovery 返回的 issuer 不一致记 ERROR），既不阻止启动也不推迟就绪（即使只启用了 Bearer），`/readyz` 不反映提供方状态；此时 Bearer 调用返回 503，消费者路由与 Basic 调用照常。签名密钥缓存 1 小时；单次刷新最多等待 5 秒；任何一次刷新尝试（成功或失败）后 10 秒内不再请求提供方：窗口内遇到未知 `kid`，上次刷新成功判 401，失败判 503，因此随机 `kid` 无法放大对提供方的请求。管理员认证同样在就绪后后台预加载，远端故障不阻止启动；其请求等待最多3秒，刷新冷却为60秒。
 
-**撤销**：在提供方停用客户端后，已签发令牌在剩余寿命内仍有效（不超过 1 小时）；需要立即生效时，从对应 Bearer 客户端列表移除该 `azp` 并滚动重启。
+**策略撤销与重启**：配置只在启动时读取，不热更新。删除客户端、禁用方法或撤去权限后，须重启全部副本或排空旧副本，才能宣称新策略已生效；即使令牌仍有效，也不能绕过新进程的权限检查。若撤销后无人持有某项权限，该接口先返回 NOT_CONFIGURED 503。在 IdP 停用客户端不会即时撤销已签发令牌；原令牌可能被接受至其有效期加 30 秒偏差边界（签发寿命最多 1 小时）。
+
+**Basic 重叠轮换**：同一客户端先配置 `旧秘密,新秘密` 并重启全部副本；调用方切换新秘密后，删除旧秘密并再次重启/排空全部旧副本。重叠期两份秘密拥有相同权限。该身份的全部权限同时使用这组秘密，权限越多，泄露影响越广，应按职责拆分客户端。切换认证方式须由调用方明确选择，服务不在 Bearer 失败后自动尝试 Basic。
+
+Basic 可以取得完整 P，不受某份 Bearer scope 的收窄限制。需要强制调用方始终遵守令牌权限收窄时，只启用 bearer，并保护其提供方凭据。
 
 **提供方签名密钥轮换**：新 `kid` 的首个令牌若落在上次成功刷新后的 10 秒内会短暂返回 401，调用方换令牌重试可能仍在同一窗口内失败。应先把新密钥发布进 JWKS（Keycloak：以 passive 状态加入），确认服务已拉取后再切为 active。
 
-**隔离规则**（serve 启动时校验，违反时只指出变量名）：`SERVICE_ISSUER` 不得等于消费者 `JWT_ISSUER`，可以与 `ADMIN_ISSUER` 相同；`SERVICE_AUDIENCE` 不得等于消费者 audience、管理员 audience、任一第三方登录的应用或客户端 ID，也不得等于任一允许的 `azp`（否则该客户端自己的 ID token 可冒充访问令牌）。配置了 issuer/audience 却没有任何 Bearer 客户端列表，或反之，都会启动失败。
+**隔离规则**（serve 启动时校验，违反时只指出变量名）：`SERVICE_ISSUER` 不得等于消费者 `JWT_ISSUER`，可以与 `ADMIN_ISSUER` 相同；`SERVICE_AUDIENCE` 不得等于消费者 audience、已启用的管理员 audience、任一第三方登录的应用或客户端 ID，也不得等于任一启用 Bearer 的服务客户端 ID（否则该客户端自己的 ID token 可冒充访问令牌）。配置了 issuer/audience 却没有任何 Bearer 客户端，或反之，都会启动失败。
 
-日志只记录客户端 ID（Basic 用户名或 `azp`）与认证方式，不记录令牌、秘密或 `Authorization` 头；`azp` 未获准时记 INFO，提供方不可用记 WARN，discovery 返回的 issuer 与配置不一致记 ERROR 并返回 503。
+#### 从旧配置迁移与回退
+
+本次移除旧配置模式是配置破坏性变化，升级前必须完成显式转换。以下四项均带 `ACCOUNTSVC_` 前缀：`INTROSPECTION_BASIC_CLIENTS`、`PURGE_FEED_BASIC_CLIENTS`、`INTROSPECTION_BEARER_CLIENTS`、`PURGE_FEED_BEARER_CLIENTS`。任一旧变量非空白（含 `{}`、`[]`）都会在监听前被拒绝，错误只指出变量名与移除原因；空值或全空白占位忽略，不记录弃用警告。`migrate` 不解析这些新旧服务运行变量。
+
+升级到强制主体和 scope 交集的版本前，须为每个 bearer 客户端准备专用机器主体，配置 `BEARER_SUBJECTS` 并签发包含所需同名 scope 的令牌；选择 rfc9068 时准备完整声明和 typ。旧的无 scope 令牌将返回403，旧的人类或未绑定主体令牌将返回401，没有宽松模式开关。应用、配置及提供方一起切换；回退旧二进制会恢复更宽的授权语义，不能视为安全等价回退。
+
+1. 升级前保存旧二进制、逐接口身份、秘密与调用方配置，盘点每个调用方实际需要的能力。
+2. 明确分配新别名、ID、方法和权限。原来两个接口的同名 Basic 用户可能使用不同秘密，必须显式决定合并授权或保留不同 ID，不自动合并名单。删除四项旧变量的非空配置，Basic 与 IdP 秘密分别注入；仅有 Basic 时移除 issuer/audience。无服务客户端时省略或留空主列表，不残留分项字段或信任参数。
+3. 在隔离环境验证新配置的允许/拒绝、提供方故障、秘密重叠轮换和空能力，并确认仅旧或混合旧配置均被拒绝。使用上述单文件 Compose 命令，全部副本完成重启/排空后再确认切换完成，内部入口继续由网络策略保护。
+4. 如需恢复旧配置模式，必须同时恢复支持该模式的旧二进制、已保存的匹配配置与调用方凭据。当前二进制不能通过取消 `SERVICE_CLIENTS` 恢复旧模式。新身份曾共享两个能力时，回退前须重新准备原独立秘密及不相交 Bearer 名单。回退不涉及数据库迁移、清库或 Redis 清空。
+
+日志只记录客户端 ID（Basic 用户名或所选 profile 的客户端声明）与认证方式，不记录令牌、秘密或 `Authorization` 头；客户端未获准时记 INFO，提供方不可用记 WARN，discovery 返回的 issuer 与配置不一致记 ERROR 并返回 503。
 
 #### 本地开发的明文 HTTP 签发方
 
@@ -275,9 +315,9 @@ Bearer 令牌须满足：RS256 签名且头部带 `kid`、不带 `jku`/`x5u`；`
 
 **Keycloak 配置示例**（接入方负责，accountsvc 不依赖 Keycloak）：
 
-1. 为每个调用接口各建一个机密客户端，只开启 Service accounts（客户端凭据），关闭标准流程与直接授权；客户端 ID 即令牌的 `azp`，分别写入对应的 Bearer 客户端列表。
+1. 按业务服务职责建立专用机密客户端，只开启 Service accounts（客户端凭据），关闭标准流程与直接授权；默认 default profile 的客户端 ID 即令牌的 `azp`。填写客户端 ID、启用 bearer、以 JSON 数组登记该服务账号独占的稳定 `sub`，并只授所需权限。不要登记消费者或管理员登录客户端。
 2. 添加 Audience mapper，值为 `SERVICE_AUDIENCE`，**只勾选 "Add to access token"，不勾选 "Add to ID token"**。
-3. 访问令牌寿命建议不超过 5 分钟（服务拒绝超过 1 小时的令牌）。
+3. 配置令牌 `scope` 包含调用所需的同名权限，检查没有对该主体开放人类登录；访问令牌寿命建议不超过 5 分钟（服务拒绝超过 1 小时的令牌）。选择 rfc9068 时还须确认 provider 实际发出完整 RFC9068 格式，不以 azp 代替 client_id。
 4. 调用方用 `client_credentials` 换取令牌，带 `Authorization: Bearer <access_token>` 调用；收到 401 `invalid_token`/`TOKEN_INVALID` 时换新令牌重试一次。
 
 ### 签名密钥轮换
@@ -298,7 +338,7 @@ Bearer 令牌须满足：RS256 签名且头部带 `kid`、不带 `jku`/`x5u`；`
 {"active":true,"sub":"u_...","scope":"user","sid":"s_...","auth_time":1791000000}
 ```
 
-无效、过期、已吊销、会话不存在、其他实例或 refresh token 返回200 `{"active":false}`。无效调用凭据是401，未获准的服务令牌是403；服务未配置任何内省调用方时是503 `introspection_not_configured`；请求格式错误是400；请求体超限是413；错误内容类型是415。内省响应禁止缓存；接入示例见 [examples/remoteauth](../examples/remoteauth)。
+无效、过期、已吊销、会话不存在、其他实例或 refresh token 返回200 `{"active":false}`。无效调用凭据是401，未获准的服务令牌或已认证但缺权限的客户端是403；无人获授内省能力时是503 `introspection_not_configured`；请求格式错误是400；请求体超限是413；错误内容类型是415。内省响应禁止缓存；接入示例见 [examples/remoteauth](../examples/remoteauth)。
 
 内省在签名、claims 与 ID 格式校验后按 `sid` 查询数据库会话：会话存在、属于 `sub` 且未吊销才返回 `active:true`。它不读取 Redis 吊销集，因此吊销集写入或读取失败都不影响结果；刷新期限已到但未吊销的会话仍为 active。**数据库不可用时返回503 `temporarily_unavailable`（fail-closed）**，不会放行。内省不实时重算账号状态或 scope；冻结、注销、换绑等生命周期操作在同一事务内吊销会话，提交后立即反映。
 
@@ -312,7 +352,7 @@ Bearer 令牌须满足：RS256 签名且头部带 `kid`、不带 `jku`/`x5u`；`
 
 角色默认读取 `/roles` 字符串数组；例如嵌套角色可配置 `/realm_access/roles`。super-admin 在服务适配层包含 operator，无需依赖提供方的复合角色配置。缺角色返回403并记录拒绝审计；无效凭据返回401；没有可用验证 key 且提供方故障返回503。
 
-JWKS 最多缓存1小时；未知 kid 刷新合并并按60秒节流，无法取得新 key 时不会无限信任旧缓存。启用管理面但首次 discovery/JWKS 失败会阻止启动。首版不支持 opaque token、其他签名算法或管理员浏览器登录流程。
+JWKS 最多缓存1小时；未知 kid 刷新合并并按60秒节流，无法取得新 key 时不会无限信任旧缓存。静态配置错误仍阻止启动；首次 discovery/JWKS 在监听就绪后后台预加载，远端故障不阻止启动或改变整体 readiness，缺少可用 key 时管理员请求返回503。每次管理员认证等待最多3秒；预加载与请求共享刷新合并和冷却，单请求取消不影响其他等待者，停机取消并等待验证器的在途刷新。提供方恢复且冷却结束后无需重启。首版不支持 opaque token、其他签名算法或管理员浏览器登录流程。
 
 ## 邮件、匿名化与停机
 
@@ -374,8 +414,8 @@ SIGINT/SIGTERM 触发撤销就绪、统一监听器 HTTP 排空、维护停止/�
 
 ```http
 GET /v1/purgedUsers?page_token=<上次保存的 next_page_token>&page_size=100
-Authorization: Basic <PURGE_FEED_BASIC_CLIENTS 中的客户端 ID 与秘密>
-# 或 Authorization: Bearer <azp 在 PURGE_FEED_BEARER_CLIENTS 中的访问令牌>
+Authorization: Basic <已授权服务客户端 ID 与秘密>
+# 或 Authorization: Bearer <已授权服务客户端的访问令牌>
 ```
 
 ```json
@@ -387,7 +427,7 @@ Authorization: Basic <PURGE_FEED_BASIC_CLIENTS 中的客户端 ID 与秘密>
 - 记录在表锁下按提交顺序分配游标序号：并发清理时也不会出现“较早的记录较晚可见而被游标跳过”，按游标持续拉取不会漏读。
 - 收到 `INVALID_PAGE_TOKEN` 时（典型原因是 accountsvc 数据库从较早备份恢复或重新部署，序号回退到已保存游标之下），业务方须清空游标、从头重拉；因为清理按 user_id 幂等，重放是安全的。
 - 默认长期保留记录。`ACCOUNTSVC_PURGED_USER_RETENTION` 可设置保留期（不得短于 720h），超期记录由维护任务删除；业务服务须在保留期内完成拉取，否则可能遗漏清理。建议每 5 分钟拉取一次，并对落后超过 24 小时告警。
-- 鉴权使用独立的 `ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS`（HTTP Basic，格式同内省客户端，支持新旧秘密重叠轮换）或 `azp` 在 `ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS` 中的服务令牌（见[服务调用认证](#服务调用认证内省与已清理用户拉取)）。内省凭据、消费者或管理员令牌返回 401，内省客户端的服务令牌返回 403 `CLIENT_NOT_AUTHORIZED`；两种方式都未配置时返回 503 `PURGE_FEED_NOT_CONFIGURED`，数据库不可用时返回 503 `DEPENDENCY_UNAVAILABLE`（单次读取限时 3 秒）。响应 `Cache-Control: no-store`。
+- 按服务客户端的方法和 `purged_users.read` 权限鉴权；同一身份可同时拥有内省权限，有效 Basic/Bearer 缺清理权限均为 403 `CLIENT_NOT_AUTHORIZED`。消费者或管理员令牌不能代替服务凭据。注册表无人持有清理权限时，先返回 503 `PURGE_FEED_NOT_CONFIGURED`；数据库不可用为 503 `DEPENDENCY_UNAVAILABLE`（单次读取限时 3 秒）。完整错误与挑战见[服务调用认证](#服务调用认证内省与已清理用户拉取)，响应 `Cache-Control: no-store`。
 - 该路由与内省一样是内部入口，网关不得对公网开放，见[网关接入手册](gateway-integration.md)。
 
 ## 本人资料属性
@@ -412,3 +452,27 @@ services:
 ## 验证边界
 
 现有库完整门禁仍使用 `scripts/verify.sh`；服务门禁使用 `scripts/verify-accountsvc.sh`，要求一次性 PostgreSQL 和 Redis，内部启动隔离 SMTP/HTTPS OIDC fixtures，缺依赖时失败。服务交付证据见[初始验收记录](../openspec/changes/archive/2026-10-03-add-accountsvc/verification.md)，单监听器、TLS 模式及本地代理结果见[传输验收记录](../openspec/changes/archive/2026-10-06-simplify-accountsvc-transport/verification.md)。外部 SMTP 实际送达、实际 OIDC 提供方、真实网关/网格和产品环境均属于待执行的部署验收，本地 fixture 通过不代替这些联调。
+
+## 服务身份解析
+
+`POST /v1/identities:resolve` 仅供可信业务服务调用，使用统一服务客户端认证并显式要求 `identities.resolve`。该权限不会自动授予内省或清理能力；消费者和管理员令牌不能替代服务凭据。默认未授权任何客户端时返回 `503 IDENTITY_RESOLUTION_NOT_CONFIGURED`，启动记录一次配置警告。
+
+请求使用 `application/json`，仅含字符串 `kind`（`PHONE` 或 `EMAIL`）及 `subject`。请求上限 4 KiB，不接受 query、批量、未知或重复字段。示例：
+
+```json
+{"kind":"EMAIL","subject":"person@example.test"}
+```
+
+成功响应固定为 `user_id`、`state`、`display_name`、`avatar_url`，未设置的资料返回空字符串。ACTIVE、FROZEN、PENDING_DELETION 均返回当前关联及保留资料；调用方自行判断业务资格和展示权限。未注册、解绑或匿名化后无当前关联返回 404 NOT_FOUND；数据库不可用或读取超时返回 503 DEPENDENCY_UNAVAILABLE；内部不变量错误返回固定 500 INTERNAL。错误方法为 405（Allow: POST），媒体类型为 415，超限为 413，其余输入错误为 400 INVALID_ARGUMENT。所有响应均为 `Cache-Control: no-store`，解析不缓存、不登录、不修改账号，也不构成后续业务授权保证。
+
+配置示例仅授予解析能力，Basic-only 无需 OIDC 配置：
+
+```dotenv
+ACCOUNTSVC_SERVICE_CLIENTS=RESOLVER
+ACCOUNTSVC_SERVICE_CLIENT_RESOLVER_ID=business-resolver
+ACCOUNTSVC_SERVICE_CLIENT_RESOLVER_AUTH_METHODS=basic
+ACCOUNTSVC_SERVICE_CLIENT_RESOLVER_PERMISSIONS=identities.resolve
+ACCOUNTSVC_SERVICE_CLIENT_RESOLVER_BASIC_SECRETS=<独立生成的32字节随机秘密的标准Base64>
+```
+
+可沿用上文 Bearer-only 或双方式配置，将注册权限明确设为 `identities.resolve`，同时配置机器 `BEARER_SUBJECTS` 并取得含 `identities.resolve` scope 的 token。Basic 与 Bearer 同一客户端产生相同 SERVICE 审计主体。使用 TLS，并限制网关访问和调用频率；不要把服务秘密或敏感标识传给终端用户。权限变更须重启全部实例生效；回退不识别此权限的旧二进制前，须先移除该权限并恢复匹配配置，旧版本会拒绝未知权限。

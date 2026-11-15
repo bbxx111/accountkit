@@ -1,7 +1,6 @@
 package accountsvc
 
 import (
-	"reflect"
 	"strings"
 	"testing"
 )
@@ -11,8 +10,14 @@ func serviceTokenEnvironment(t *testing.T) {
 	serveEnvironment(t)
 	t.Setenv("ACCOUNTSVC_SERVICE_ISSUER", "https://idp.example.test/realms/svc")
 	t.Setenv("ACCOUNTSVC_SERVICE_AUDIENCE", "accountsvc-service")
-	t.Setenv("ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS", `["intro-client"]`)
-	t.Setenv("ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS", `["purge-client"]`)
+	t.Setenv("ACCOUNTSVC_SERVICE_CLIENTS", "TEST_CLIENT,INTRO,PURGE")
+	for _, c := range []struct{ alias, id, permission string }{{"INTRO", "intro-client", "tokens.introspect"}, {"PURGE", "purge-client", "purged_users.read"}} {
+		prefix := "ACCOUNTSVC_SERVICE_CLIENT_" + c.alias + "_"
+		t.Setenv(prefix+"ID", c.id)
+		t.Setenv(prefix+"AUTH_METHODS", "bearer")
+		t.Setenv(prefix+"BEARER_SUBJECTS", `["machine"]`)
+		t.Setenv(prefix+"PERMISSIONS", c.permission)
+	}
 }
 
 func TestConfigServiceTokens(t *testing.T) {
@@ -21,8 +26,7 @@ func TestConfigServiceTokens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := ServiceConfig{Issuer: "https://idp.example.test/realms/svc", Audience: "accountsvc-service", IntrospectionBearerClients: []string{"intro-client"}, PurgeFeedBearerClients: []string{"purge-client"}}
-	if !reflect.DeepEqual(c.Service, want) || !c.Service.Enabled() {
+	if c.Service.Issuer != "https://idp.example.test/realms/svc" || c.Service.Audience != "accountsvc-service" || !c.Service.Enabled() || !c.ServiceClients.HasPermission("purged_users.read") {
 		t.Fatalf("Service = %+v", c.Service)
 	}
 }
@@ -36,21 +40,24 @@ func TestConfigServiceTokensOptional(t *testing.T) {
 	if c.Service.Enabled() {
 		t.Fatal("service tokens enabled without configuration")
 	}
-	t.Setenv("ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS", "[]")
-	t.Setenv("ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS", "[]")
-	if c, err = LoadConfig("serve"); err != nil || c.Service.Enabled() {
-		t.Fatalf("empty arrays must mean unconfigured: %v %+v", err, c.Service)
-	}
 }
 
 func TestConfigIntrospectionWithOnlyTokens(t *testing.T) {
 	serviceTokenEnvironment(t)
-	t.Setenv("ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS", "")
+	clearServiceClientEnvironment(t)
+	t.Setenv("ACCOUNTSVC_SERVICE_CLIENTS", "INTRO,PURGE")
+	for _, c := range []struct{ alias, id, permission string }{{"INTRO", "intro-client", "tokens.introspect"}, {"PURGE", "purge-client", "purged_users.read"}} {
+		prefix := "ACCOUNTSVC_SERVICE_CLIENT_" + c.alias + "_"
+		t.Setenv(prefix+"ID", c.id)
+		t.Setenv(prefix+"AUTH_METHODS", "bearer")
+		t.Setenv(prefix+"BEARER_SUBJECTS", `["machine"]`)
+		t.Setenv(prefix+"PERMISSIONS", c.permission)
+	}
 	c, err := LoadConfig("serve")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.IntrospectionBasicClients != nil || len(c.Service.IntrospectionBearerClients) != 1 {
+	if !c.ServiceClients.BearerEnabled() || !c.ServiceClients.HasPermission("tokens.introspect") {
 		t.Fatalf("config = %+v", c)
 	}
 }
@@ -60,14 +67,11 @@ func TestConfigIntrospectionOptional(t *testing.T) {
 	for _, mode := range []string{"production", "development"} {
 		t.Run(mode, func(t *testing.T) {
 			serveEnvironment(t)
+			clearServiceClientEnvironment(t)
 			t.Setenv("ACCOUNTSVC_MODE", mode)
-			t.Setenv("ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS", "")
 			c, err := LoadConfig("serve")
-			if err != nil {
+			if err != nil || c.ServiceClients == nil || c.ServiceClients.HasPermission("tokens.introspect") {
 				t.Fatalf("serve without introspection callers: %v", err)
-			}
-			if len(c.IntrospectionBasicClients) != 0 || len(c.Service.IntrospectionBearerClients) != 0 {
-				t.Fatalf("config = %+v", c)
 			}
 		})
 	}
@@ -80,14 +84,6 @@ func TestConfigServiceTokenRejections(t *testing.T) {
 		set      map[string]string
 		variable string
 	}{
-		{"lists intersect", map[string]string{"ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS": `["purge-client","intro-client"]`}, "ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS"},
-		{"duplicate element", map[string]string{"ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS": `["intro-client","intro-client"]`}, "ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS"},
-		{"empty element", map[string]string{"ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS": `[""]`}, "ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS"},
-		{"whitespace element", map[string]string{"ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS": `["intro client"]`}, "ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS"},
-		{"not an array", map[string]string{"ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS": `{"` + secretish + `":1}`}, "ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS"},
-		{"null", map[string]string{"ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS": `null`}, "ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS"},
-		{"non-string element", map[string]string{"ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS": `[1]`}, "ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS"},
-		{"trailing data", map[string]string{"ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS": `["purge-client"] []`}, "ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS"},
 		{"issuer not HTTPS", map[string]string{"ACCOUNTSVC_SERVICE_ISSUER": "http://" + secretish}, "ACCOUNTSVC_SERVICE_ISSUER"},
 		{"issuer equals consumer issuer", map[string]string{"ACCOUNTSVC_SERVICE_ISSUER": "https://consumer.example.test", "ACCOUNTSVC_JWT_ISSUER": "https://consumer.example.test"}, "ACCOUNTSVC_SERVICE_ISSUER"},
 		{"issuer equals consumer issuer up to a trailing slash", map[string]string{"ACCOUNTSVC_SERVICE_ISSUER": "https://consumer.example.test/", "ACCOUNTSVC_JWT_ISSUER": "https://consumer.example.test"}, "ACCOUNTSVC_SERVICE_ISSUER"},
@@ -99,7 +95,6 @@ func TestConfigServiceTokenRejections(t *testing.T) {
 		{"audience with whitespace", map[string]string{"ACCOUNTSVC_SERVICE_AUDIENCE": " padded"}, "ACCOUNTSVC_SERVICE_AUDIENCE"},
 		{"clients without issuer", map[string]string{"ACCOUNTSVC_SERVICE_ISSUER": ""}, "ACCOUNTSVC_SERVICE_ISSUER"},
 		{"clients without audience", map[string]string{"ACCOUNTSVC_SERVICE_AUDIENCE": ""}, "ACCOUNTSVC_SERVICE_AUDIENCE"},
-		{"issuer and audience without clients", map[string]string{"ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS": "", "ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS": ""}, "ACCOUNTSVC_SERVICE_ISSUER"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			serviceTokenEnvironment(t)

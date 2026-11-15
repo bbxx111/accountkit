@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/httpapi/apierror"
-	"github.com/bbxx111/accountkit/internal/accountsvc/basicclients"
 	"github.com/bbxx111/accountkit/internal/accountsvc/serviceauth"
 	"github.com/bbxx111/accountkit/user"
 )
@@ -39,13 +38,15 @@ type handler struct {
 // New accepts only HTTP Basic callers. With no clients the route answers 503
 // PURGE_FEED_NOT_CONFIGURED, so callers can tell an unconfigured feed from a wrong path.
 func New(clients map[string][]string, list Lister) (http.Handler, error) {
-	if len(clients) > 0 && !basicclients.Valid(clients) {
-		return nil, errors.New("accountsvc: invalid ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS")
+	registered := make([]serviceauth.ClientConfig, 0, len(clients))
+	for id, secrets := range clients {
+		registered = append(registered, serviceauth.ClientConfig{ID: id, AuthMethods: []string{serviceauth.MethodBasic}, Permissions: []string{"purged_users.read"}, BasicSecrets: secrets})
 	}
-	cfg := serviceauth.Config{Realm: Realm, Endpoint: "purged_users"}
-	if len(clients) > 0 {
-		cfg.Basic = clients
+	registry, err := serviceauth.NewRegistry(registered)
+	if err != nil {
+		return nil, err
 	}
+	cfg := serviceauth.Config{Realm: Realm, Endpoint: "purged_users", Registry: registry, RequiredPermission: "purged_users.read"}
 	auth, err := serviceauth.New(cfg)
 	if err != nil {
 		return nil, err

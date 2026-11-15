@@ -27,19 +27,22 @@
 |---|---|---|
 | 消费者 | `/v1` 下的登录、身份、会话和生命周期路由 | 按实际消费者路由明确放行，保留各端点认证 |
 | 管理员 | `/admin/v1` | 独立网络/入口策略，保留外部管理员 JWT 和逐路由角色检查 |
-| 内省 | `POST /v1/introspect` | 仅授权内部调用方可达，仍要求独立 Basic 凭据或服务 Bearer 令牌 |
-| 已清理用户拉取 | `GET /v1/purgedUsers` | 与内省相同：仅授权内部业务服务可达，要求独立 Basic 凭据或服务 Bearer 令牌；公网请求在网关拒绝，不随消费者 `/v1` 路由开放 |
+| 服务调用：内省 | `POST /v1/introspect` | 仅授权内部调用方可达，要求独立 Basic 凭据或服务 Bearer 令牌及 `tokens.introspect` 权限 |
+| 已清理用户拉取 | `GET /v1/purgedUsers` | 与内省相同：仅授权内部业务服务可达，要求独立 Basic 凭据或服务 Bearer 令牌及 `purged_users.read` 权限；公网请求在网关拒绝，不随消费者 `/v1` 路由开放 |
+| 服务调用：身份解析 | `POST /v1/identities:resolve` | 仅授权内部业务服务可达，要求独立 Basic 凭据或服务 Bearer 令牌及 `identities.resolve` 权限；公网请求在网关拒绝且不进入后端，不随消费者 `/v1` 路由开放 |
 | 公钥 | `GET /.well-known/jwks.json` | 只含验签公钥、无需认证；按业务服务所在网络选择对公网开放或仅内网可达，只放行 GET/HEAD |
 | 探针 | `GET /healthz`、`GET /readyz` | 仅编排系统和运维来源可达；探针无消费者/管理员认证 |
 | 指标 | `GET /metrics`（显式启用时） | 仅授权监控来源可达；无内建鉴权，禁止公网访问 |
 
-JWKS 是公开信息，开放它不得连带开放内省、管理、探针或 `/v1/*` 通配路由；网关若缓存 JWKS，缓存时长不得超过服务端的 `Cache-Control: public, max-age=300`，否则密钥轮换的等待顺序会失效。业务服务全部在内网时可以不对公网开放 JWKS。禁止因内省位于 `/v1` 下就无条件公开 `/v1/*`。公网访问内省、探针和指标应在网关被拒绝，且不进入后端；是否允许管理员入口由单独策略决定。网络策略、防火墙或工作负载策略还须把后端端口限制为网关与受信任内部调用方，验证未授权来源不能直连绕过。路径名称、回环开发示例和 Basic 认证都不能自动建立生产网络隔离。
+JWKS 是公开信息，开放它不得连带开放内省、管理、探针或 `/v1/*` 通配路由；网关若缓存 JWKS，缓存时长不得超过服务端的 `Cache-Control: public, max-age=300`，否则密钥轮换的等待顺序会失效。业务服务全部在内网时可以不对公网开放 JWKS。禁止因内省位于 `/v1` 下就无条件公开 `/v1/*`。公网访问内省、已清理用户拉取、身份解析、探针和指标应在网关被拒绝，且不进入后端；是否允许管理员入口由单独策略决定。网络策略、防火墙或工作负载策略还须把后端端口限制为网关与受信任内部调用方，验证未授权来源不能直连绕过。路径名称、回环开发示例和 Basic 认证都不能自动建立生产网络隔离。
 
 账号资源沿用 `/v1/users` 及其子资源和自定义动作；管理账号资源沿用 `/admin/v1/users`，响应 name 使用 users 前缀。公网清单须明确包含 `POST /v1/users:sendSignInCompletionCode` 与 `POST /v1/users:completeSignIn`，并分别配置匿名请求频率、突发与在途并发。客户端须处理登录的 token/pending 联合结果，见 [README](../README.md#身份策略与登录补全)。
 
 公网清单还须明确包含 GET /v1/users/me/sessions/current（嵌入宿主替换实际前缀），保留消费者Bearer与user/user:bind scope检查；该GET不扩大内部内省/管理/探针开放范围。
 
-网关认证不替代服务认证，也不把消费者 token 转换成管理员或内省身份。内部入口必须原样透传业务服务的 `Authorization: Bearer`，不得剥离、替换，也不得用网关自身的令牌代替业务服务调用内省或已清理用户拉取；`azp` 授权以原调用方令牌为准，见[服务调用认证](accountsvc.md#服务调用认证内省与已清理用户拉取)。直接嵌入库的宿主依原契约注入管理员验证和可信请求元信息，不应仅因请求经过代理就注入未经验证的 Principal。
+内部路由清单集中在 `internal/accountsvc/routes.go`，覆盖消费者、管理员、服务调用、公共元数据和运维五类；服务路由挂载与认证权限装配共同消费该声明。类别只描述边界，不代替服务认证或网络隔离。三个服务处理器仍先认证，再检查方法和业务请求；消费者与管理员保持各自独立挂载和验证链。
+
+网关认证不替代服务认证，也不把消费者 token 转换成管理员或服务调用身份。内部入口必须原样透传业务服务的 `Authorization: Bearer`，不得剥离、替换，也不得用网关自身的令牌代替业务服务调用内省、已清理用户拉取或身份解析；服务按 profile 的客户端声明、机器主体与 scope 交集授权，见[服务调用认证](accountsvc.md#服务调用认证内省与已清理用户拉取)。直接嵌入库的宿主依原契约注入管理员验证和可信请求元信息，不应仅因请求经过代理就注入未经验证的 Principal。
 
 ## 指标访问
 
@@ -92,3 +95,7 @@ HTTPS 调用方必须校验证书；内省客户端默认拒绝 HTTP，只有调
 探针同址同协议。healthz 不访问外部依赖；readyz 在启动完成、未停机且 PostgreSQL/Redis 两秒总预算内可用时为200，否则503。SMTP 和运行期 OIDC 故障不单独改变整体 readiness。编排系统同步更新探针端口/协议、网关摘流和连接排空；终止宽限必须大于 `SHUTDOWN_TIMEOUT`，给库收尾留出预算。
 
 部署方按[发布清单](release-checklist.md#accountsvc-产品上线)提供真实网关/网格、网络隔离、证书、可信 IP、限流、并发、透传、不重试、日志和停机证据。本地 TLS 代理仅核验服务与代理夹具行为，不能代替真实产品策略验收；本次本地结果保存在[传输验收记录](../openspec/changes/archive/2026-10-06-simplify-accountsvc-transport/verification.md)，实际部署项继续待验收。直接嵌入库无需部署 accountsvc，但仍由宿主完成同样的入口保护职责。
+
+服务权限目录包含 `tokens.introspect`、`purged_users.read`、`identities.resolve`，三项互不隐含。Basic 仅使用注册权限 P；Bearer 无条件使用 P∩S（S 为 token scope），缺失/空 scope 不授权，没有旧兼容模式。`ACCOUNTSVC_SERVICE_TOKEN_PROFILE` 选择 `default`（默认，以 `azp` 识别客户端）或 `rfc9068`（以 `client_id` 识别客户端，要求 `at+jwt`/`application/at+jwt` 及 `iss/aud/exp/sub/client_id/iat/jti`），不猜测或回退。二者都须将已验证 `sub` 精确绑定客户端 `BEARER_SUBJECTS` JSON 字符串数组，不裁剪字符串。提供方须保证主体专用于机器并关闭客户端人类登录；profile、客户端 ID 或自报 `grant_type` 均不证明机器身份，不假设 `sub=client_id`。需要所有请求均受令牌权限收窄时只启用 bearer：同一客户端持有 Basic 秘密仍可获得 P。
+
+认证与授权先于方法、内容类型、请求体和查询参数处理。缺失/无效凭据、profile/机器主体不匹配、scope 类型或语法错误、已登记客户端未启用请求方式返回 401；有效 Bearer 客户端未登记，或已认证客户端缺少注册权限/所需 scope 返回 403；能力未配置、签发方或业务依赖不可用返回 503。全部服务响应 `Cache-Control: no-store`。401 按注册表启用方式分别给出 challenge，仅单一无效 Bearer 附 `invalid_token`；Bearer 403 只有 Bearer `insufficient_scope`，Basic 403 与所有 503 无 challenge。

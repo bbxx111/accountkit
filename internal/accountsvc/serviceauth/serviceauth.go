@@ -14,6 +14,7 @@ import (
 
 	"github.com/bbxx111/accountkit/internal/accountsvc/basicclients"
 	"github.com/bbxx111/accountkit/internal/accountsvc/oidcjwt"
+	"github.com/bbxx111/accountkit/internal/httpcredentials"
 )
 
 // Outcome classifies an authentication attempt.
@@ -24,7 +25,7 @@ const (
 	OK Outcome = iota
 	// Unauthenticated means credentials are missing, malformed or rejected (401).
 	Unauthenticated
-	// Forbidden means a valid token's client is not allowed on this interface (403).
+	// Forbidden means an authenticated client is not allowed on this interface (403).
 	Forbidden
 	// Unavailable means the token issuer could not be reached (503).
 	Unavailable
@@ -46,7 +47,7 @@ const (
 // Result is the decision for one request.
 type Result struct {
 	Outcome Outcome
-	// ClientID is the Basic user name or the token's azp; set only for OK and Forbidden.
+	// ClientID is the Basic user name or the token's configured client claim; set only for OK and Forbidden.
 	ClientID string
 	Method   string
 	// BearerAttempted is true when the request carried exactly one Bearer token and Bearer is enabled.
@@ -59,11 +60,11 @@ type Config struct {
 	Realm string
 	// Endpoint labels log records, e.g. "introspect".
 	Endpoint string
-	// Basic maps client IDs to base64 secrets; nil disables Basic.
-	Basic map[string][]string
-	// BearerClients lists the azp values allowed on this interface; empty disables Bearer.
-	BearerClients []string
-	// BearerVerifier verifies Bearer tokens; required exactly when BearerClients is non-empty.
+	// Registry holds the shared policy; nil means an empty registry.
+	Registry *Registry
+	// RequiredPermission names the capability protected by this authenticator.
+	RequiredPermission string
+	// BearerVerifier is required exactly when the registry enables Bearer.
 	BearerVerifier *oidcjwt.Verifier
 	// Timeout bounds waiting for signing keys; zero means three seconds.
 	Timeout time.Duration
@@ -74,13 +75,14 @@ type Config struct {
 type Authenticator struct {
 	realm, endpoint string
 	basic           *basicclients.Matcher
-	clients         map[string]bool
 	tokens          *oidcjwt.Verifier
 	timeout         time.Duration
 	logger          *slog.Logger
+	registry        *Registry
+	permission      string
 }
 
-// ValidClientID reports whether id is usable as an allowed azp value.
+// ValidClientID reports whether id is usable as an allowed client identifier.
 func ValidClientID(id string) bool {
 	return id != "" && len(id) <= maxClientID && strings.IndexFunc(id, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) < 0
 }
@@ -90,55 +92,55 @@ func New(cfg Config) (*Authenticator, error) {
 	if cfg.Realm == "" || strings.ContainsAny(cfg.Realm, `"\`) {
 		return nil, errors.New("serviceauth: realm is required")
 	}
-	if (len(cfg.BearerClients) > 0) != (cfg.BearerVerifier != nil) {
-		return nil, errors.New("serviceauth: bearer clients and a token verifier must be configured together")
+	if cfg.Registry == nil {
+		cfg.Registry, _ = NewRegistry(nil)
 	}
-	a := &Authenticator{realm: cfg.Realm, endpoint: cfg.Endpoint, tokens: cfg.BearerVerifier, timeout: cfg.Timeout, logger: cfg.Logger}
+	if !validPermission(cfg.RequiredPermission) {
+		return nil, errors.New("serviceauth: a registered required permission is required")
+	}
+	if cfg.Registry.BearerEnabled() != (cfg.BearerVerifier != nil) {
+		return nil, errors.New("serviceauth: bearer registry and a token verifier must be configured together")
+	}
+	a := &Authenticator{realm: cfg.Realm, endpoint: cfg.Endpoint, tokens: cfg.BearerVerifier, timeout: cfg.Timeout, logger: cfg.Logger, registry: cfg.Registry, permission: cfg.RequiredPermission}
+	a.basic = cfg.Registry.basic
 	if a.timeout <= 0 {
 		a.timeout = defaultTimeout
 	}
 	if a.logger == nil {
 		a.logger = slog.New(slog.DiscardHandler)
 	}
-	if cfg.Basic != nil {
-		m, err := basicclients.NewMatcher(cfg.Basic)
-		if err != nil {
-			return nil, err
-		}
-		a.basic = m
-	}
-	if len(cfg.BearerClients) > 0 {
-		a.clients = make(map[string]bool, len(cfg.BearerClients))
-		for _, id := range cfg.BearerClients {
-			if !ValidClientID(id) {
-				return nil, errors.New("serviceauth: invalid bearer client ID")
-			}
-			a.clients[id] = true
-		}
-	}
 	return a, nil
 }
 
-// Enabled reports whether any method is configured.
-func (a *Authenticator) Enabled() bool { return a.basic != nil || a.tokens != nil }
+// Enabled reports whether this capability has an authorized client.
+func (a *Authenticator) Enabled() bool { return a.registry.HasPermission(a.permission) }
 
 // Authenticate decides one request. It reads credentials only when exactly one
 // Authorization header is present and never logs them.
 func (a *Authenticator) Authenticate(r *http.Request) Result {
 	unauthenticated := Result{Outcome: Unauthenticated, Method: MethodNone}
-	headers := r.Header.Values("Authorization")
-	if len(headers) != 1 {
+	if !a.Enabled() {
 		return unauthenticated
 	}
-	scheme, credentials, _ := strings.Cut(headers[0], " ")
+	scheme, credentials, ok := httpcredentials.Parse(r)
 	switch {
-	case strings.EqualFold(scheme, "Basic") && a.basic != nil:
-		if id, ok := a.basic.Match(r); ok {
-			return Result{Outcome: OK, ClientID: id, Method: MethodBasic}
+	case scheme == "basic" && a.basic != nil:
+		if !ok {
+			return Result{Outcome: Unauthenticated, Method: MethodBasic}
+		}
+		// Normalize only the parsed header on a private request copy. Match retains
+		// responsibility for decoding Basic credentials and checking secrets.
+		normalized := r.Clone(r.Context())
+		normalized.Header.Set("Authorization", "Basic "+credentials)
+		if id, ok := a.basic.Match(normalized); ok {
+			return a.authorize(id, MethodBasic)
 		}
 		return Result{Outcome: Unauthenticated, Method: MethodBasic}
-	case strings.EqualFold(scheme, "Bearer") && a.tokens != nil:
-		return a.bearer(r.Context(), strings.TrimSpace(credentials))
+	case scheme == "bearer" && a.tokens != nil:
+		if !ok {
+			return Result{Outcome: Unauthenticated, Method: MethodBearer, BearerAttempted: true}
+		}
+		return a.bearer(r.Context(), credentials)
 	}
 	return unauthenticated
 }
@@ -162,20 +164,81 @@ func (a *Authenticator) bearer(parent context.Context, raw string) Result {
 	if expErr != nil || iatErr != nil || exp == nil || iat == nil || exp.Sub(iat.Time) > maxTokenLifetime {
 		return invalid
 	}
-	azp, ok := claims["azp"].(string)
-	if !ok || !ValidClientID(azp) {
+	clientID, ok := claims[a.tokens.ClientIDClaim()].(string)
+	if !ok || !ValidClientID(clientID) {
 		return invalid
 	}
-	if !a.clients[azp] {
-		a.logger.Info("accountsvc: service client not authorized for interface", "client_id", azp, "endpoint", a.endpoint, "auth_method", MethodBearer)
-		return Result{Outcome: Forbidden, ClientID: azp, Method: MethodBearer}
+	sub, ok := claims["sub"].(string)
+	if !ok || sub == "" {
+		return invalid
 	}
-	return Result{Outcome: OK, ClientID: azp, Method: MethodBearer}
+	client, exists := a.registry.clients[clientID]
+	if !exists {
+		return a.authorize(clientID, MethodBearer)
+	}
+	if !client.methods[MethodBearer] {
+		return Result{Outcome: Unauthenticated, Method: MethodBearer}
+	}
+	if !client.subjects[sub] {
+		return invalid
+	}
+	scope, present := claims["scope"]
+	scopes, valid := tokenScopes(scope, present)
+	if !valid {
+		return invalid
+	}
+	if !scopes[a.permission] {
+		return a.forbidden(clientID, MethodBearer)
+	}
+	return a.authorize(clientID, MethodBearer)
+}
+
+func tokenScopes(value any, present bool) (map[string]bool, bool) {
+	scopes := map[string]bool{}
+	if !present {
+		return scopes, true
+	}
+	scope, ok := value.(string)
+	if !ok {
+		return nil, false
+	}
+	if scope == "" {
+		return scopes, true
+	}
+	for _, item := range strings.Split(scope, " ") {
+		if item == "" {
+			return nil, false
+		}
+		for i := 0; i < len(item); i++ {
+			c := item[i]
+			if c < 0x21 || c > 0x7e || c == '"' || c == '\\' {
+				return nil, false
+			}
+		}
+		scopes[item] = true
+	}
+	return scopes, true
+}
+
+func (a *Authenticator) authorize(id, method string) Result {
+	client, exists := a.registry.clients[id]
+	if exists && !client.methods[method] {
+		return Result{Outcome: Unauthenticated, Method: method}
+	}
+	if !exists || !client.permissions[a.permission] {
+		return a.forbidden(id, method)
+	}
+	return Result{Outcome: OK, ClientID: id, Method: method}
+}
+
+func (a *Authenticator) forbidden(id, method string) Result {
+	a.logger.Info("accountsvc: service client not authorized for interface", "client_id", id, "endpoint", a.endpoint, "auth_method", method)
+	return Result{Outcome: Forbidden, ClientID: id, Method: method}
 }
 
 // Challenges returns the WWW-Authenticate values for res: one per enabled method on 401,
-// with error="invalid_token" only after a Bearer attempt; insufficient_scope on 403; none
-// otherwise.
+// with error="invalid_token" only after an invalid Bearer attempt. Forbidden Bearer
+// requests receive insufficient_scope; unified Basic permission refusals receive none.
 func (a *Authenticator) Challenges(res Result) []string {
 	switch res.Outcome {
 	case Unauthenticated:
@@ -192,6 +255,9 @@ func (a *Authenticator) Challenges(res Result) []string {
 		}
 		return out
 	case Forbidden:
+		if res.Method == MethodBasic {
+			return nil
+		}
 		return []string{`Bearer realm="` + a.realm + `", error="insufficient_scope"`}
 	}
 	return nil

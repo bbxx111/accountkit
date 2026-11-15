@@ -10,8 +10,6 @@
 
 项目 SHALL 提供可选的 SMTP 邮件发送能力，支持登录、绑定、重新认证和登录补全四种用途。消息 SHALL 包含对应的验证码和有效期。补全投递 SHALL 通过独立的 /users:sendSignInCompletionCode 触发，普通的 /users:sendSignInCode 不接收补全票据，也不切换用途。accountsvc SHALL 在 EMAIL 启用时使用 SMTP 邮件，EMAIL 未启用时不需要邮件依赖；现有未配置身份策略的默认部署继续使用 SMTP 并禁用短信，不使用日志发送器作为运行时回退。
 
-smtp.New(Config) 函数签名及 Config 结构 SHALL 保持，继续采用独立的 ChineseRenderer 提供既有的四用途中文纯文本文案。新宿主 SHALL 能通过 NewWithRenderer 显式选择自己的渲染器。accountsvc SHALL 使用内置布局与清单提供的多语言文字渲染 HTML 和纯文本两部分，未配置清单时使用嵌入的无品牌默认清单，不得按用途或语言部分回落；accountsvc SHALL 不再使用 ChineseRenderer，EMAIL 禁用行为保持；语言 SHALL 按请求的 `Accept-Language` 在已配置的语言间选择，不按 IP、手机号或保存的用户偏好推断。accountsvc SHALL 不内嵌图片或附件。
-
 #### Scenario: 邮件登录闭环
 
 - **WHEN** 用户请求邮箱登录验证码且 SMTP 接受邮件
@@ -41,6 +39,24 @@ smtp.New(Config) 函数签名及 Config 结构 SHALL 保持，继续采用独立
 
 - **WHEN** accountsvc 启用 EMAIL 并配置了含 zh-Hans、zh-Hant、en 的合法模板清单，两个请求分别携带 `Accept-Language: zh-HK` 与 `Accept-Language: en-GB`
 - **THEN** 前者收到繁体文字及繁体品牌的邮件，后者收到英文文字及英文品牌的邮件，两封邮件都同时含 HTML 与纯文本部分；验证码用途隔离、有效期与额度规则不变
+
+### Requirement: SMTP 构造与中文渲染兼容
+
+smtp.New(Config) 函数签名及 Config 结构 SHALL 保持，继续采用独立的 ChineseRenderer 提供既有的四用途中文纯文本文案。新宿主 SHALL 能通过 NewWithRenderer 显式选择自己的渲染器。
+
+#### Scenario: SMTP 构造与中文渲染兼容核验
+
+- **WHEN** 旧宿主调用 smtp.New(cfg)，新宿主显式调用 NewWithRenderer
+- **THEN** 旧入口继续使用 ChineseRenderer 四用途中文纯文本且 Config 与函数签名保持；新入口可选择宿主渲染器
+
+### Requirement: 独立服务多语言邮件装配
+
+accountsvc SHALL 使用内置布局与清单提供的多语言文字渲染 HTML 和纯文本两部分，未配置清单时使用嵌入的无品牌默认清单，不得按用途或语言部分回落；accountsvc SHALL 不再使用 ChineseRenderer，EMAIL 禁用行为保持；语言 SHALL 按请求的 `Accept-Language` 在已配置的语言间选择，不按 IP、手机号或保存的用户偏好推断。accountsvc SHALL 不内嵌图片或附件。
+
+#### Scenario: 独立服务多语言邮件装配核验
+
+- **WHEN** accountsvc 启用 EMAIL，分别使用合法清单及未配置清单
+- **THEN** 使用内置布局渲染 HTML 和纯文本，未配置时使用嵌入无品牌默认清单，不使用 ChineseRenderer、不部分回落或内嵌图片附件；仅按请求 Accept-Language 从已配置语言选择
 
 ### Requirement: 显式禁用渠道
 

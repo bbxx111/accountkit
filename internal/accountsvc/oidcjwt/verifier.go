@@ -37,6 +37,8 @@ var (
 
 // Options customize networking, time, the refresh cooldown and failure logging.
 type Options struct {
+	// Profile explicitly selects default or rfc9068 token validation.
+	Profile    string
 	HTTPClient *http.Client
 	Now        func() time.Time
 	// RefreshInterval is the cooldown after any provider attempt; zero means one minute.
@@ -62,6 +64,7 @@ type keyCache struct {
 
 // Verifier checks signatures against one issuer and audience.
 type Verifier struct {
+	profile          string
 	issuer, audience string
 	client           *http.Client
 	now              func() time.Time
@@ -72,11 +75,21 @@ type Verifier struct {
 	mu               sync.Mutex
 	jwksURL          string
 	cache            keyCache
+	lifecycle        context.Context
+	cancel           context.CancelFunc
+	closed           bool
+	workers          sync.WaitGroup
 }
 
 // New validates the issuer and audience without any I/O. Keys are fetched by Load or on
 // the first token that needs them.
 func New(issuer, audience string, opts Options) (*Verifier, error) {
+	if !ValidProfile(opts.Profile) {
+		return nil, errors.New("oidcjwt: invalid token profile")
+	}
+	if opts.Profile == "" {
+		opts.Profile = "default"
+	}
 	if !validIssuer(issuer, opts.AllowHTTP) {
 		return nil, errors.New("oidcjwt: issuer must be an absolute HTTPS URL without credentials, query or fragment")
 	}
@@ -102,22 +115,53 @@ func New(issuer, audience string, opts Options) (*Verifier, error) {
 	// Discovery/JWKS endpoints must be the explicit configured or discovered URLs, including
 	// when the caller supplies a client with a permissive redirect policy.
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return errors.New("oidcjwt: redirects are not allowed") }
-	return &Verifier{issuer: issuer, audience: audience, client: &client, now: opts.Now, interval: opts.RefreshInterval, refreshTimeout: opts.RefreshTimeout, logger: opts.Logger, allowHTTP: opts.AllowHTTP}, nil
+	lifecycle, cancel := context.WithCancel(context.Background())
+	return &Verifier{profile: opts.Profile, lifecycle: lifecycle, cancel: cancel, issuer: issuer, audience: audience, client: &client, now: opts.Now, interval: opts.RefreshInterval, refreshTimeout: opts.RefreshTimeout, logger: opts.Logger, allowHTTP: opts.AllowHTTP}, nil
 }
 
-// Load discovers the provider and loads its keys now. It does not count as a refresh
-// attempt, so the first unknown kid afterwards still refreshes immediately.
-func (v *Verifier) Load(ctx context.Context) error {
-	jwksURL, keys, err := v.fetch(ctx)
-	if err != nil {
-		return err
+// Load shares the same bounded refresh and cooldown as token requests.
+func (v *Verifier) Load(ctx context.Context) error { return v.load(ctx) }
+
+// Close cancels and waits for verifier-owned downloads. It is idempotent.
+func (v *Verifier) Close() {
+	v.mu.Lock()
+	v.closed = true
+	v.cancel()
+	v.mu.Unlock()
+	v.workers.Wait()
+}
+
+func (v *Verifier) load(ctx context.Context) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
 	v.mu.Lock()
-	defer v.mu.Unlock()
-	v.jwksURL = jwksURL
-	v.cache.keys = keys
-	v.cache.loadedAt = v.now()
-	return nil
+	if v.closed {
+		v.mu.Unlock()
+		return ErrUnavailable
+	}
+	active := v.cache.refreshing
+	if active == nil {
+		if !v.cache.lastAttempt.IsZero() && v.now().Sub(v.cache.lastAttempt) < v.interval {
+			err := v.cache.lastError
+			v.mu.Unlock()
+			return err
+		}
+		active = make(chan struct{})
+		v.cache.refreshing = active
+		v.cache.lastAttempt = v.now()
+		v.workers.Add(1)
+		go v.refresh(active)
+	}
+	v.mu.Unlock()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-active:
+		v.mu.Lock()
+		defer v.mu.Unlock()
+		return v.cache.lastError
+	}
 }
 
 // fetch runs discovery when the JWKS URI is still unknown, then loads the keys.
@@ -135,15 +179,22 @@ func (v *Verifier) fetch(ctx context.Context) (string, map[string]*rsa.PublicKey
 	return jwksURL, keys, err
 }
 
-// Parse verifies a compact JWT and returns its claims. It requires exp and validates iat
-// when present; callers needing iat (service tokens) enforce it themselves. Errors are
-// ErrInvalid or ErrUnavailable.
+// Parse verifies a compact JWT and returns its claims. The default profile requires exp and
+// validates iat when present; service callers additionally require iat. The rfc9068
+// profile requires the access-token typ and all mandatory claims. Errors are ErrInvalid
+// or ErrUnavailable.
 func (v *Verifier) Parse(ctx context.Context, raw string) (jwt.MapClaims, error) {
 	if raw == "" || len(raw) > maxTokenSize {
 		return nil, ErrInvalid
 	}
 	claims := jwt.MapClaims{}
 	_, err := jwt.ParseWithClaims(raw, claims, func(token *jwt.Token) (any, error) {
+		if v.profile == "rfc9068" {
+			typ, ok := token.Header["typ"].(string)
+			if !ok || (typ != "at+jwt" && typ != "application/at+jwt") {
+				return nil, ErrInvalid
+			}
+		}
 		if token.Method != jwt.SigningMethodRS256 {
 			return nil, ErrInvalid
 		}
@@ -165,54 +216,52 @@ func (v *Verifier) Parse(ctx context.Context, raw string) (jwt.MapClaims, error)
 		}
 		return nil, ErrInvalid
 	}
+	if v.profile == "rfc9068" {
+		for _, name := range []string{"sub", "client_id", "jti"} {
+			value, ok := claims[name].(string)
+			if !ok || value == "" {
+				return nil, ErrInvalid
+			}
+		}
+		for _, name := range []string{"exp", "iat"} {
+			if _, ok := claims[name].(float64); !ok {
+				return nil, ErrInvalid
+			}
+		}
+	}
 	return claims, nil
 }
 
 func (v *Verifier) key(ctx context.Context, kid string) (*rsa.PublicKey, error) {
-	for {
-		if ctx.Err() != nil {
-			return nil, ErrUnavailable
-		}
-		v.mu.Lock()
-		now := v.now()
-		if key := v.cache.keys[kid]; key != nil && now.Before(v.cache.loadedAt.Add(keyLifetime)) {
-			v.mu.Unlock()
-			return key, nil
-		}
-		if active := v.cache.refreshing; active != nil {
-			v.mu.Unlock()
-			select {
-			case <-active:
-				continue
-			case <-ctx.Done():
-				return nil, ErrUnavailable
-			}
-		}
-		// Any attempt, successful or not, opens a cooldown window: inside it an unknown kid
-		// is invalid after a success and unavailable after a failure, so random kids cannot
-		// turn each request into a provider fetch.
-		if !v.cache.lastAttempt.IsZero() && now.Sub(v.cache.lastAttempt) < v.interval {
-			err := ErrInvalid
-			if v.cache.lastError != nil {
-				err = ErrUnavailable
-			}
-			v.mu.Unlock()
-			return nil, err
-		}
-		active := make(chan struct{})
-		v.cache.refreshing = active
-		v.cache.lastAttempt = now
-		v.mu.Unlock()
-		// The download belongs to the verifier, not its first caller. Every
-		// request, including the trigger, waits through its own cancellable ctx.
-		go v.refresh(active)
+	if ctx.Err() != nil {
+		return nil, ErrUnavailable
 	}
+	v.mu.Lock()
+	key := v.cache.keys[kid]
+	fresh := !v.closed && v.now().Before(v.cache.loadedAt.Add(keyLifetime))
+	v.mu.Unlock()
+	if key != nil && fresh {
+		return key, nil
+	}
+	if err := v.load(ctx); err != nil {
+		return nil, ErrUnavailable
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.closed {
+		return nil, ErrUnavailable
+	}
+	if key := v.cache.keys[kid]; key != nil && v.now().Before(v.cache.loadedAt.Add(keyLifetime)) {
+		return key, nil
+	}
+	return nil, ErrInvalid
 }
 
 func (v *Verifier) refresh(active chan struct{}) {
 	// One bounded download may outlive a disconnected caller. Caller cancellation
 	// must never become a provider failure or cancel other callers' shared work.
-	ctx, cancel := context.WithTimeout(context.Background(), v.refreshTimeout)
+	defer v.workers.Done()
+	ctx, cancel := context.WithTimeout(v.lifecycle, v.refreshTimeout)
 	defer cancel()
 	jwksURL, keys, err := v.fetch(ctx)
 	// Log before waking waiters so a caller that observed the failure also observes the log.
@@ -235,4 +284,17 @@ func (v *Verifier) refresh(active chan struct{}) {
 	}
 	v.cache.refreshing = nil
 	close(active)
+}
+
+// ValidProfile reports supported explicit external token profiles.
+func ValidProfile(profile string) bool {
+	return profile == "" || profile == "default" || profile == "rfc9068"
+}
+
+// ClientIDClaim names the sole client identifier accepted by the configured profile.
+func (v *Verifier) ClientIDClaim() string {
+	if v.profile == "rfc9068" {
+		return "client_id"
+	}
+	return "azp"
 }

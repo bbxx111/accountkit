@@ -1,0 +1,358 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "accountsvc 服务身份解析 API",
+    "version": "v1.1.0",
+    "description": "v1.1.0 candidate (unreleased): 独立服务调用面；仅登记本次新增操作，不代表其他 accountsvc 端点覆盖。"
+  },
+  "servers": [
+    {
+      "url": "{basePath}",
+      "variables": {
+        "basePath": {
+          "default": "/v1"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "ServiceBasic": []
+    },
+    {
+      "ServiceBearer": []
+    }
+  ],
+  "paths": {
+    "/identities:resolve": {
+      "post": {
+        "operationId": "resolveIdentity",
+        "summary": "解析当前手机号或邮箱关联账号",
+        "x-required-permission": "identities.resolve",
+        "x-sdk-applicable": false,
+        "description": "服务权限目录包含 `tokens.introspect`、`purged_users.read`、`identities.resolve`，三项互不隐含。Basic 仅使用注册权限 P；Bearer 无条件使用 P∩S（S 为 token scope），缺失/空 scope 不授权，没有旧兼容模式。`ACCOUNTSVC_SERVICE_TOKEN_PROFILE` 选择 `default`（默认，以 `azp` 识别客户端）或 `rfc9068`（以 `client_id` 识别客户端，要求 `at+jwt`/`application/at+jwt` 及 `iss/aud/exp/sub/client_id/iat/jti`），不猜测或回退。二者都须将已验证 `sub` 精确绑定客户端 `BEARER_SUBJECTS` JSON 字符串数组，不裁剪字符串。提供方须保证主体专用于机器并关闭客户端人类登录；profile、客户端 ID 或自报 `grant_type` 均不证明机器身份，不假设 `sub=client_id`。需要所有请求均受令牌权限收窄时只启用 bearer：同一客户端持有 Basic 秘密仍可获得 P。 仅供服务调用，须显式 identities.resolve 权限；消费者/管理员身份不授予能力。依次检查能力配置、唯一 Authorization 及认证、权限、方法、Content-Type、查询参数/JSON、领域查询。application/json 可带合法媒体类型参数。请求最多 4096 字节；拒绝所有查询参数（含空 ?）、未知/重复键、非法 UTF-8、尾随 JSON、批量、空白 subject 与非 PHONE/EMAIL。手机号默认地区及邮箱规范化沿用领域规则。查询最多 3 秒；结果为单语句数据库快照，不授权后续业务。不缓存。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveIdentityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "当前关联账号快照；冻结及注销冷静期保留资料。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "全部响应禁止缓存。"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvedIdentity"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "非法输入、JSON、编码或查询参数。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "全部响应禁止缓存。"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "x-error-reasons": [
+              "INVALID_ARGUMENT"
+            ]
+          },
+          "401": {
+            "description": "服务凭据缺失/无效、profile 或机器主体不匹配、scope 类型/语法错误；已登记客户端未启用请求方式。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "全部响应禁止缓存。"
+              },
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "realm=\"accountsvc-identity-resolution\"；401 每个启用方式单独一行，无效 Bearer 带 invalid_token；403 仅 Bearer 带 insufficient_scope，Basic 不带 challenge。"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "x-error-reasons": [
+              "INVALID_CLIENT"
+            ]
+          },
+          "403": {
+            "description": "有效 Bearer 客户端 ID 未登记，或注册权限/令牌 scope 缺少 identities.resolve。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "全部响应禁止缓存。"
+              },
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "realm=\"accountsvc-identity-resolution\"；401 每个启用方式单独一行，无效 Bearer 带 invalid_token；403 仅 Bearer 带 insufficient_scope，Basic 不带 challenge。"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "x-error-reasons": [
+              "CLIENT_NOT_AUTHORIZED"
+            ]
+          },
+          "404": {
+            "description": "无当前关联身份。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "全部响应禁止缓存。"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "x-error-reasons": [
+              "NOT_FOUND"
+            ]
+          },
+          "405": {
+            "description": "授权后拒绝非 POST；无响应体。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "全部响应禁止缓存。"
+              },
+              "Allow": {
+                "schema": {
+                  "type": "string",
+                  "const": "POST"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "请求体超过 4096 字节；无响应体。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "全部响应禁止缓存。"
+              }
+            }
+          },
+          "415": {
+            "description": "非 application/json 媒体类型；无响应体。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "全部响应禁止缓存。"
+              }
+            }
+          },
+          "500": {
+            "description": "固定消息 internal server error。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "全部响应禁止缓存。"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "x-error-reasons": [
+              "INTERNAL"
+            ]
+          },
+          "503": {
+            "description": "能力未配置、服务令牌验证/数据库依赖不可用或读取超时。 不带 WWW-Authenticate challenge。",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                },
+                "description": "全部响应禁止缓存。"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            },
+            "x-error-reasons": [
+              "IDENTITY_RESOLUTION_NOT_CONFIGURED",
+              "DEPENDENCY_UNAVAILABLE"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ServiceBasic": {
+        "type": "http",
+        "scheme": "basic",
+        "description": "注册 permissions 包含 identities.resolve 的服务客户端；Basic 只使用注册权限 P。"
+      },
+      "ServiceBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "独立 RS256 服务访问令牌；服务权限目录包含 `tokens.introspect`、`purged_users.read`、`identities.resolve`，三项互不隐含。Basic 仅使用注册权限 P；Bearer 无条件使用 P∩S（S 为 token scope），缺失/空 scope 不授权，没有旧兼容模式。`ACCOUNTSVC_SERVICE_TOKEN_PROFILE` 选择 `default`（默认，以 `azp` 识别客户端）或 `rfc9068`（以 `client_id` 识别客户端，要求 `at+jwt`/`application/at+jwt` 及 `iss/aud/exp/sub/client_id/iat/jti`），不猜测或回退。二者都须将已验证 `sub` 精确绑定客户端 `BEARER_SUBJECTS` JSON 字符串数组，不裁剪字符串。提供方须保证主体专用于机器并关闭客户端人类登录；profile、客户端 ID 或自报 `grant_type` 均不证明机器身份，不假设 `sub=client_id`。需要所有请求均受令牌权限收窄时只启用 bearer：同一客户端持有 Basic 秘密仍可获得 P。"
+      }
+    },
+    "schemas": {
+      "ResolveIdentityRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "subject"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "PHONE",
+              "EMAIL"
+            ]
+          },
+          "subject": {
+            "type": "string",
+            "minLength": 1,
+            "description": "非空且不能仅含空白；合法性及规范化遵循既有领域规则。"
+          }
+        }
+      },
+      "ResolvedIdentity": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "user_id",
+          "state",
+          "display_name",
+          "avatar_url"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "pattern": "^u_[0-9a-hjkmnp-tv-z]{13}$"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "FROZEN",
+              "PENDING_DELETION"
+            ]
+          },
+          "display_name": {
+            "type": "string",
+            "description": "未设置为空字符串。"
+          },
+          "avatar_url": {
+            "type": "string",
+            "description": "未设置为空字符串；不下载头像。"
+          }
+        }
+      },
+      "APIError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "message",
+              "status",
+              "reason"
+            ],
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "message": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

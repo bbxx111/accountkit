@@ -20,21 +20,6 @@ import (
 
 func secret(b byte) string { return base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{b}, 32)) }
 
-func TestParseClients(t *testing.T) {
-	good := fmt.Sprintf(`{"business":[%q,%q]}`, secret(1), secret(2))
-	got, err := introspection.ParseClients(good)
-	if err != nil || len(got["business"]) != 2 || got["business"][1] != secret(2) {
-		t.Fatalf("rotation config: %v, %v", got, err)
-	}
-	for _, raw := range []string{"", `null`, `{}`, `[]`, `{"": ["secret"]}`, `{"  ":["secret"]}`, `{"business":[]}`, `{"business":null}`, `{"business":"secret"}`, `{"business":["not-base64"]}`, fmt.Sprintf(`{"business":[%q]}`, base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 31))), good + `{}`, fmt.Sprintf(`{"business":[%q],"business":[%q]}`, secret(1), secret(2)), fmt.Sprintf(`{"business":[%q],"\u0062usiness":[%q]}`, secret(1), secret(2))} {
-		if _, err := introspection.ParseClients(raw); err == nil {
-			t.Errorf("accepted invalid config %q", raw)
-		} else if strings.Contains(err.Error(), secret(1)) || strings.Contains(err.Error(), "not-base64") {
-			t.Fatal("configuration error leaked secret")
-		}
-	}
-}
-
 func TestClientAuthenticationAndRotation(t *testing.T) {
 	calls := 0
 	authenticate := func(context.Context, string) (user.Principal, error) {

@@ -102,10 +102,28 @@ func (f *oidcFixture) count() int     { f.mu.Lock(); defer f.mu.Unlock(); return
 func (f *oidcFixture) verifier(opts Options) *Verifier {
 	f.t.Helper()
 	opts.HTTPClient = f.server.Client()
+	clock := opts.Now
+	if clock == nil {
+		clock = time.Now
+	}
+	preloading := true
+	opts.Now = func() time.Time {
+		now := clock()
+		if preloading {
+			return now.Add(-time.Minute)
+		}
+		return now
+	}
 	v, err := New(context.Background(), f.config(), opts)
 	if err != nil {
 		f.t.Fatal(err)
 	}
+	f.t.Cleanup(v.Close)
+	if err := v.Load(context.Background()); err != nil {
+		f.t.Fatal(err)
+	}
+	preloading = false
+
 	return v
 }
 func (f *oidcFixture) claims(now time.Time) jwt.MapClaims {
@@ -373,8 +391,87 @@ func TestConfigAndStartupRejectUnsafeMetadata(t *testing.T) {
 			case "upstream-failure":
 				f.fail = true
 			}
-			if _, err := New(context.Background(), f.config(), Options{HTTPClient: f.server.Client()}); err == nil {
+			if err := loadFixture(context.Background(), f.config(), Options{HTTPClient: f.server.Client()}); err == nil {
 				t.Fatal("unsafe discovery/JWKS accepted")
+			}
+		})
+	}
+}
+
+func loadFixture(ctx context.Context, cfg Config, opts Options) error {
+	v, err := New(ctx, cfg, opts)
+	if err != nil {
+		return err
+	}
+	defer v.Close()
+	return v.Load(ctx)
+}
+
+func TestAdminTokenProfilesPreserveHumanRoles(t *testing.T) {
+	f := newFixture(t)
+	cfg := f.config()
+	cfg.TokenProfile = "rfc9068"
+	v, err := New(context.Background(), cfg, Options{HTTPClient: f.server.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer v.Close()
+	for _, tc := range []struct {
+		name, typ string
+		want      int
+		mutate    func(jwt.MapClaims)
+	}{
+		{"human administrator needs no scope", "at+jwt", 204, nil},
+		{"invalid service scope is irrelevant", "application/at+jwt", 204, func(c jwt.MapClaims) { c["scope"] = []string{"bad"} }},
+		{"roles still enforced", "at+jwt", 403, func(c jwt.MapClaims) { delete(c, "roles") }},
+		{"JWT cannot fallback", "JWT", 401, nil},
+		{"missing client cannot fallback", "at+jwt", 401, func(c jwt.MapClaims) { delete(c, "client_id"); c["azp"] = "admin-console" }},
+		{"missing jti rejected", "at+jwt", 401, func(c jwt.MapClaims) { delete(c, "jti") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := f.claims(time.Now())
+			c["client_id"] = "admin-console"
+			c["jti"] = "unique"
+			if tc.mutate != nil {
+				tc.mutate(c)
+			}
+			token := jwt.NewWithClaims(jwt.SigningMethodRS256, c)
+			token.Header["kid"] = "initial"
+			token.Header["typ"] = tc.typ
+			raw, err := token.SignedString(f.key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			w := request(v, raw, "operator")
+			if w.Code != tc.want {
+				t.Fatalf("status=%d want=%d body=%s", w.Code, tc.want, w.Body)
+			}
+		})
+	}
+}
+
+func TestAdminDefaultProfileDoesNotRequireClientClaims(t *testing.T) {
+	for _, profile := range []string{"", "default"} {
+		t.Run(profile, func(t *testing.T) {
+			f := newFixture(t)
+			cfg := f.config()
+			cfg.TokenProfile = profile
+			v, err := New(context.Background(), cfg, Options{HTTPClient: f.server.Client()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer v.Close()
+			c := f.claims(time.Now())
+			delete(c, "azp")
+			delete(c, "client_id")
+			token := jwt.NewWithClaims(jwt.SigningMethodRS256, c)
+			token.Header["kid"] = "initial"
+			raw, err := token.SignedString(f.key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if w := request(v, raw, "operator"); w.Code != 204 {
+				t.Fatalf("status=%d body=%s", w.Code, w.Body)
 			}
 		})
 	}

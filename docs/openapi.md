@@ -1,23 +1,36 @@
 # HTTP OpenAPI 契约
 
-本契约描述 v1.0.0（已发布）的内置 HTTP handler。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
+本契约描述 v1.1.0 候选（尚未发布）的内置 HTTP handler。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
 
-## 两个独立 HTTP 面
+## 独立 HTTP 面
 
 | 文档 | 范围 | 默认挂载示例 |
 |---|---|---|
 | [enduser.json](openapi/enduser.json) | 消费者 24 个操作：登录、补全、token/revoke、资料、身份、会话及注销/恢复 | `/v1` |
 | [admin.json](openapi/admin.json) | 管理面 11 个操作：账号查询、状态操作、明文查看、会话及认证审计 | `/admin/v1` |
+| [service.json](openapi/service.json) | accountsvc 新增服务操作 resolveIdentity | `/v1` |
 
-两份文件各自独立，使用 [OpenAPI 3.1.0](https://spec.openapis.org/oas/v3.1.0.html) 与 JSON Schema 描述。所有 paths 均为相对 handler 路由，`servers[0].variables.basePath.default` 由宿主调整为实际挂载前缀或完整服务 URL。路径中的 `user` / `session` / `identity` 是原始 `u_` / `s_` / `i_` ID；响应 `name` 才是 `users/{id}` 等资源名。
+消费者与管理面文件各自独立，使用 [OpenAPI 3.1.0](https://spec.openapis.org/oas/v3.1.0.html) 与 JSON Schema 描述。所有 paths 均为相对 handler 路由，`servers[0].variables.basePath.default` 由宿主调整为实际挂载前缀或完整服务 URL。路径中的 `user` / `session` / `identity` 是原始 `u_` / `s_` / `i_` ID；响应 `name` 才是 `users/{id}` 等资源名。
 
-`info.version` 为 `v1.0.0`，与库版本一致。文件不包含 accountsvc 专属的 `/v1/introspect`、`/v1/purgedUsers`、探针或管理员登录流程，也不描述宿主自有业务接口；这些不能由库契约自动推导。
+`info.version` 为 `v1.1.0`，表示尚未发布的候选契约；HTTP `/v1` 和 `/admin/v1` 不变。accountsvc 破坏性接入迁移见[候选发布说明](releases/v1.1.0.md)。文件不包含 accountsvc 专属的 `/v1/introspect`、`/v1/purgedUsers`、探针或管理员登录流程，也不描述宿主自有业务接口；这些不能由库契约自动推导。
 
 `POST /token` 与 `POST /revoke` 的 `requestBody` 同时声明 `application/json` 与 `application/x-www-form-urlencoded`：`Content-Type` 媒体类型为表单时按 RFC 6749 §3.2 / RFC 7009 §2.1 解析（忽略 `charset`，只读请求体，同名参数重复（无论是否识别）为 `invalid_request`，未识别参数忽略），其他情况（含缺失 `Content-Type`）沿用严格 JSON 规则并拒绝未知字段；两种编码共用大小上限、校验、错误映射与响应。请求中的 `scope` 按 RFC 6749 §3.3 忽略（`RefreshRequest.scope` 为可选字段，仅为兼容回传 scope 的客户端），签发 scope 以响应 `scope` 为准。其余操作只接受严格 JSON。
 
 消费者使用自己的 Bearer access token。`x-allowed-scopes` 表示允许的 scope 列表，`x-recent-authentication` 表示现有近期认证要求；这些扩展与说明用于接入核对，代码生成器不会自动替宿主实施授权。未标 scope 的 `GET /users/me` 接受任何有效消费者 Bearer scope。
 
 管理面使用独立宿主身份系统，`x-required-role` 对应路由要求；`operator` 与 `super-admin` 的层级由宿主 verifier 决定。文件中的 AdminBearer 表示常见的外部 Bearer 接入，宿主若使用其他认证方式须修改安全定义。外部 verifier 的 401/403 响应体与 challenge 由宿主定义，契约没有伪造统一错误体。完全未配置管理面时返回 `503 ADMIN_NOT_CONFIGURED`。
+
+## 服务身份解析
+
+[service.json](openapi/service.json) 独立描述 `POST /v1/identities:resolve`，使用服务 Basic/Bearer 与显式 `identities.resolve` 权限，版本标记为 v1.1.0 候选（尚未发布）。仅新增此操作，不扩展内省、清理与探针端点。全部响应 no-store；200 恰好返回 user_id、state、display_name、avatar_url，空资料为字符串空值；FROZEN/PENDING_DELETION 仍返回保留资料。400/401/403/404/500/503 使用 apierror，405/413/415 无响应体；500 消息固定为 `internal server error`。其输入上限、严格 JSON、校验顺序及 challenge 见契约操作说明。
+
+服务权限目录包含 `tokens.introspect`、`purged_users.read`、`identities.resolve`，三项互不隐含。Basic 仅使用注册权限 P；Bearer 无条件使用 P∩S（S 为 token scope），缺失/空 scope 不授权，没有旧兼容模式。`ACCOUNTSVC_SERVICE_TOKEN_PROFILE` 选择 `default`（默认，以 `azp` 识别客户端）或 `rfc9068`（以 `client_id` 识别客户端，要求 `at+jwt`/`application/at+jwt` 及 `iss/aud/exp/sub/client_id/iat/jti`），不猜测或回退。二者都须将已验证 `sub` 精确绑定客户端 `BEARER_SUBJECTS` JSON 字符串数组，不裁剪字符串。提供方须保证主体专用于机器并关闭客户端人类登录；profile、客户端 ID 或自报 `grant_type` 均不证明机器身份，不假设 `sub=client_id`。需要所有请求均受令牌权限收窄时只启用 bearer：同一客户端持有 Basic 秘密仍可获得 P。
+
+认证与授权先于方法、内容类型、请求体和查询参数处理。缺失/无效凭据、profile/机器主体不匹配、scope 类型或语法错误、已登记客户端未启用请求方式返回 401；有效 Bearer 客户端未登记，或已认证客户端缺少注册权限/所需 scope 返回 403；能力未配置、签发方或业务依赖不可用返回 503。全部服务响应 `Cache-Control: no-store`。401 按注册表启用方式分别给出 challenge，仅单一无效 Bearer 附 `invalid_token`；Bearer 403 只有 Bearer `insufficient_scope`，Basic 403 与所有 503 无 challenge。
+
+scope 大小写敏感，ASCII 单空格分隔，非空项字符为 RFC 6749 `%x21 / %x23-5B / %x5D-7E`；首尾/连续空格、tab、引号、反斜杠、非 ASCII 均非法。重复项去重，合法未知项忽略，无通配符。校验顺序为公共凭据/profile、客户端登记、方法开关、机器主体、scope 语法及权限：未知客户端即使 scope 非法仍为 403，已登记客户端主体错误且缺 scope 仍为 401。
+
+覆盖登记使用明确的 service surface、`sdkApplicable=false` 和真实 Go 顶层协议测试引用；不新增服务 SDK。消费者/管理面继续强制 SDK 方法、模型与测试链接，未知 surface 即使由动态文档提供也拒绝。
 
 ## 客户端需要区分的响应
 
@@ -110,7 +123,7 @@ node scripts/check-openapi.cjs
 
 ```powershell
 npm.cmd install --prefix .test-output/contract-tools --cache .test-output/npm-cache --no-audit --no-fund @apidevtools/swagger-parser@12.1.0
-node -e "const p=require('./.test-output/contract-tools/node_modules/@apidevtools/swagger-parser'); (async()=>{for(const n of ['enduser','admin']){await p.validate('docs/openapi/'+n+'.json');console.log(n+': valid')}})().catch(e=>{console.error(e.message);process.exit(1)})"
+node -e "const p=require('./.test-output/contract-tools/node_modules/@apidevtools/swagger-parser'); (async()=>{for(const n of ['enduser','admin','service']){await p.validate('docs/openapi/'+n+'.json');console.log(n+': valid')}})().catch(e=>{console.error(e.message);process.exit(1)})"
 ```
 
 随后按改动范围运行 `GOWORK=off go test -count=1 ./httpapi/...` 与相关领域测试。标准工具通过只证明文档结构与引用合法；生成客户端、Mock、产品网关和真实业务链路仍需按宿主环境验收。

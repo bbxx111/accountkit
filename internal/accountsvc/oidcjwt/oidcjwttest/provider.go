@@ -118,7 +118,7 @@ func (p *Provider) JWKSRequests() int { p.mu.Lock(); defer p.mu.Unlock(); return
 
 // Claims returns valid client-credentials claims for azp, issued at now and valid five minutes.
 func (p *Provider) Claims(now time.Time, azp string) jwt.MapClaims {
-	return jwt.MapClaims{"iss": p.Server.URL, "aud": Audience, "azp": azp, "exp": now.Add(5 * time.Minute).Unix(), "iat": now.Unix()}
+	return jwt.MapClaims{"iss": p.Server.URL, "aud": Audience, "azp": azp, "sub": "machine", "scope": "tokens.introspect purged_users.read identities.resolve", "exp": now.Add(5 * time.Minute).Unix(), "iat": now.Unix()}
 }
 
 // Token signs claims with RS256 under kid.

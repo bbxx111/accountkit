@@ -1,6 +1,6 @@
 # 功能与兼容对照
 
-本文列出 v1.0.0（已发布）的能力对照与长期契约边界：调用者须知、宿主账号契约、离线导入、通用审计接口和资料属性补丁语义。v1.0.0 之前各开发期版本之间的升级说明已退役，开发期版本只在[开发期版本记录](releases/pre-1.0-history.md)中留存摘要。HTTP 字段、状态码与配置以 [README](../README.md)、[OpenAPI 契约](openapi.md)和公开 Go 类型为准。
+本文记录 v1.0.0（已发布）基线、长期契约边界及 v1.1.0（候选）差异；下方 accountsvc 服务客户端配置章节明确描述尚未发布的候选变化，不归入 v1.0.0 的历史能力。v1.0.0 之前各开发期版本之间的升级说明已退役，开发期版本只在[开发期版本记录](releases/pre-1.0-history.md)中留存摘要。HTTP 字段、状态码与配置以 [README](../README.md)、[OpenAPI 契约](openapi.md)和公开 Go 类型为准。
 
 ## v1.0.0 调用者须知
 
@@ -38,6 +38,24 @@
 IdP 统一调用入口是 `Provider.Verify(context.Context, json.RawMessage)`。具体 `VerifyApple`、`VerifyGoogle`、`VerifyIDToken` 等方法继续表达各协议的强类型凭证；构造器的错误返回与配置复杂度有关，不机械统一。Apple/Google/Facebook/OIDC 不返回 error 的构造器不承诺完整启动前校验，缺少 nonce registry 等依赖仍可能在验证时返回 `ErrMisconfigured`；根 `Config.Validate` 的部署校验职责保持。
 
 公开 Go API 自 v1.0.0 起受语义化版本约束，后续破坏性变化须发布新主版本并改用 `/v2` 模块路径。数据库结构变化从 `0002` 迁移递增，见[迁移手册](migrations.md)。
+
+候选保留 `github.com/bbxx111/accountkit` 模块与导入路径、消费者 `/v1` 和管理员 `/admin/v1` 路由。accountsvc 与库同源交付，本次不设独立服务版本轴，但服务配置与授权存在破坏性迁移；Go 源码可编译不代表旧部署可直接运行。见 [v1.1.0 候选说明](releases/v1.1.0.md)。本次保留 v1 的决定不授权未来任意破坏 v1 契约。
+
+## accountsvc 服务客户端配置兼容
+
+状态：v1.1.0 候选；用户已确认保留 v1 模块与导入路径。本节以正式 v1.0.0 为升级基线。统一注册表管理 `/v1/introspect`、`/v1/purgedUsers` 和新增 `/v1/identities:resolve` 的服务调用认证与授权；不涉及数据库结构、内省的数据库吊销判定或清理 feed 数据语义。消费者和管理员的凭据解析及管理员启动行为另有下述收紧与调整，不能将整批变化描述为完全兼容。
+
+候选移除 v1.0.0 已提供的旧逐接口配置模式，属于配置破坏性变化。`ACCOUNTSVC_SERVICE_CLIENTS` 未设置、空或全空白均产生非 nil 空注册表，serve 正常启动，三项内部能力分别返回各自 NOT_CONFIGURED 503；任何未声明客户端字段仍拒绝。四项旧 `INTROSPECTION_BASIC_CLIENTS`、`PURGE_FEED_BASIC_CLIENTS`、`INTROSPECTION_BEARER_CLIENTS`、`PURGE_FEED_BEARER_CLIENTS`（均带 `ACCOUNTSVC_` 前缀）只要非空白就会在监听前被拒绝，包括 `{}`、`[]`，无论是否设置新列表；空白占位忽略。migrate 不解析新旧服务运行变量。
+
+统一注册表允许同一身份使用 Basic、Bearer 或两者，并分别授予 `tokens.introspect`、`purged_users.read`、`identities.resolve`。Basic 使用注册权限 P，Bearer 强制使用 P 与 token scope 的交集；两种方式不自动回退，不自动合并旧名单。Bearer 客户端必须配置 `BEARER_SUBJECTS` JSON 字符串数组，精确绑定专用机器主体。主体等认证校验通过后，令牌缺少所需 scope 返回403；错误主体或非法 scope 返回401；没有宽松兼容开关。有效 Basic 缺权限返回403且无挑战，Bearer 缺权限为403并带 insufficient_scope；无人持有能力时仍先返回对应 NOT_CONFIGURED 503。
+
+`ADMIN_TOKEN_PROFILE` / `SERVICE_TOKEN_PROFILE` 是新增配置，可选择 `default` 或 `rfc9068`。服务default模式仍读取JWT的azp，RFC9068模式读取client_id且要求完整标准声明；管理员不据此获得服务权限。开发过程中的azp模式值改名default没有作为正式版本发布，不是从v1.0.0升级必须替换的旧配置值。
+
+三类HTTP入口统一拒绝重复Authorization、逗号拼接的凭据、制表符及尾随空白，并按当前解析边界检查凭据格式；Bearer统一限制为16KiB，其中消费者入口为新增边界，接入方需核对代理透传和自定义Authenticator。管理员提供方首次不可达不再阻止整个服务启动：无可用密钥的管理请求返回503，整体readyz不表达OIDC可用性，应独立监测认证依赖。角色、消费者scope与资源归属检查继续保留。
+
+新增身份解析只接受可信服务以独立 `identities.resolve` 权限调用，或由嵌入宿主使用新增的 `user.ResolveIdentityInput`、`user.ResolvedIdentity` 与 `(*user.Service).ResolveIdentity`。它返回当前关联的最小快照，不登录、不签发凭据、不构成后续业务授权证明；不得随消费者 `/v1/*` 通配公开。
+
+配置为启动快照；权限、方法、身份或秘密变更须重启全部副本或排空旧副本。提供方禁用客户端不保证已发令牌即时失效。如需恢复旧配置模式，必须同时恢复支持该模式的旧二进制、已保存的匹配配置及调用方凭据；当前二进制没有旧模式回退入口，不能通过清库或清 Redis 完成。完整配置、TLS、单文件 Compose 与迁移步骤见[服务手册](accountsvc.md#服务调用认证内省与已清理用户拉取)。
 
 ## 宿主账号契约
 
@@ -137,6 +155,7 @@ Schema 原始输入限 64 KiB、32 层；展开后的主树属性声明限 128�
 | 支付宝 App 极简登录与空字段补填 | user/idp/alipay*.go、user/service_idp.go、user/service_signin_completion.go、config.go | user/idp/alipay*_test.go、user/service_alipay_test.go、config_alipay_test.go、accountkit_alipay_test.go、accountkit_alipay_http_test.go、internal/accountsvc/config_test.go；真实 App/应用分组属于宿主接入清单 |
 | Facebook 数据删除入口 | accountkit.go `HandleFacebookDataDeletion`、user/service_provider_deletion.go、user/idp/facebook_signed_request.go | accountkit_facebook_test.go、user/service_provider_deletion_test.go、user/idp/facebook_signed_request_test.go、audit/authentication/authentication_test.go |
 | 身份绑定解绑 | user/service_identity.go | user/service_identity_test.go、httpapi/enduser/identities_test.go、TestIdentityBindingEndToEndAgainstRealDB |
+| 服务身份解析（下一版本候选） | user/service_identity_resolve.go、internal/accountsvc/identityresolve | user/service_identity_resolve_test.go、internal/accountsvc/identityresolve/*_test.go、internal/accountsvc/identity_resolution_integration_test.go；仅独立 identities.resolve 权限，不作为后续授权证明 |
 | 同类身份换绑 | user/service_identity_replacement.go、httpapi/enduser/replacement.go | 领域回滚/竞态、嵌入式及服务 E2E，见[换绑验收记录](../openspec/changes/archive/2026-10-03-add-identity-replacement/verification.md) |
 | JWT、刷新、会话、重新认证 | tokens、session、user/service_session.go | tokens/tokens_test.go、session/*/*_test.go、user/service_test.go、TestConsumerEndToEndAgainstRealDB |
 | 资料、注销恢复、冻结 | user/service_me.go、user/service_lifecycle.go、user/service_admin.go | user/service_lifecycle_test.go、user/service_admin_test.go、TestAccountLifecycleEndToEndAgainstRealDB |

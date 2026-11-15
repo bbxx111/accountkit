@@ -22,7 +22,7 @@ func TestWarnPlainHTTPIssuers(t *testing.T) {
 	cfg := Config{
 		AdminEnabled: true,
 		Admin:        adminauth.Config{Issuer: "http://synthetic-secret.example.test/realms/admin", Audience: "admin-api", AllowHTTP: true},
-		Service:      ServiceConfig{Issuer: "http://synthetic-secret.example.test/realms/svc", Audience: "svc", IntrospectionBearerClients: []string{"intro"}, AllowHTTP: true},
+		Service:      ServiceConfig{Issuer: "http://synthetic-secret.example.test/realms/svc", Audience: "svc", bearerClientIDs: []string{"intro"}, AllowHTTP: true},
 	}
 	warnPlainHTTPIssuers(cfg, logger)
 	out := logs.String()
@@ -46,7 +46,7 @@ func TestWarnPlainHTTPIssuers(t *testing.T) {
 		t.Fatalf("HTTPS issuers must not warn even in development: %s", logs.String())
 	}
 	cfg.Admin.Issuer, cfg.Service.Issuer = "http://idp.example.test/realms/admin", "http://idp.example.test/realms/svc"
-	cfg.AdminEnabled, cfg.Service.IntrospectionBearerClients = false, nil
+	cfg.AdminEnabled, cfg.Service.bearerClientIDs = false, nil
 	warnPlainHTTPIssuers(cfg, logger)
 	if logs.Len() != 0 {
 		t.Fatalf("disabled features must not warn: %s", logs.String())
@@ -62,8 +62,8 @@ func TestRuntimeWarnsPlainHTTPIssuersBeforeAdminDiscovery(t *testing.T) {
 		cfg.Mode = "development"
 		cfg.AdminEnabled = true
 		cfg.Admin = adminauth.Config{Issuer: "http://synthetic-secret.example.test/realms/admin", Audience: "admin-api", AllowHTTP: true}
-		cfg.Service = ServiceConfig{Issuer: "http://synthetic-secret.example.test/realms/svc", Audience: "svc", PurgeFeedBearerClients: []string{"purge"}, AllowHTTP: true}
-		app.initAdmin = func(context.Context) error {
+		cfg.Service = ServiceConfig{Issuer: "http://synthetic-secret.example.test/realms/svc", Audience: "svc", bearerClientIDs: []string{"purge"}, AllowHTTP: true}
+		app.preloadAdminTokens = func(context.Context) error {
 			seenAtDiscovery = logs.String()
 			return nil
 		}

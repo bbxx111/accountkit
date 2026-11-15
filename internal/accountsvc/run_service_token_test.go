@@ -10,6 +10,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -32,7 +34,7 @@ func TestServiceAuthenticatorsWithUnavailableIssuer(t *testing.T) {
 		t.Fatal(err)
 	}
 	var logs bytes.Buffer
-	intro, purge, preload, err := serviceAuthenticators(cfg, slog.New(slog.NewTextHandler(&logs, nil)), p.Client())
+	intro, purge, _, preload, err := serviceAuthenticators(cfg, slog.New(slog.NewTextHandler(&logs, nil)), p.Client())
 	if err != nil || preload == nil {
 		t.Fatalf("authenticators: %v", err)
 	}
@@ -47,10 +49,7 @@ func TestServiceAuthenticatorsWithUnavailableIssuer(t *testing.T) {
 	if res := request(intro, "Bearer "+p.Token(p.Claims(time.Now(), "intro-client"), "initial")); res.Outcome != serviceauth.Unavailable {
 		t.Fatalf("bearer outcome with unavailable issuer = %v", res.Outcome)
 	}
-	var basic string
-	for id, secrets := range cfg.IntrospectionBasicClients {
-		basic = "Basic " + base64.StdEncoding.EncodeToString([]byte(id+":"+secrets[0]))
-	}
+	basic := "Basic " + base64.StdEncoding.EncodeToString([]byte("test-client:"+os.Getenv("ACCOUNTSVC_SERVICE_CLIENT_TEST_CLIENT_BASIC_SECRETS")))
 	if res := request(intro, basic); res.Outcome != serviceauth.OK {
 		t.Fatalf("basic outcome with unavailable issuer = %v", res.Outcome)
 	}
@@ -65,9 +64,116 @@ func TestServiceAuthenticatorsWithoutTokens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	intro, purge, preload, err := serviceAuthenticators(cfg, slog.New(slog.DiscardHandler), nil)
+	intro, purge, _, preload, err := serviceAuthenticators(cfg, slog.New(slog.DiscardHandler), nil)
 	if err != nil || preload != nil || !intro.Enabled() || purge.Enabled() {
 		t.Fatalf("basic-only wiring: err=%v preload=%v intro=%v purge=%v", err, preload != nil, intro.Enabled(), purge.Enabled())
+	}
+}
+
+func TestUnifiedServiceAuthenticators(t *testing.T) {
+	p := oidcjwttest.New(t)
+	unifiedBearerEnvironment(t)
+	t.Setenv("ACCOUNTSVC_SERVICE_ISSUER", p.URL())
+	t.Setenv("ACCOUNTSVC_SERVICE_AUDIENCE", oidcjwttest.Audience)
+	cfg, err := LoadConfig("serve")
+	if err != nil {
+		t.Fatal(err)
+	}
+	intro, purge, _, preload, err := serviceAuthenticators(cfg, slog.New(slog.DiscardHandler), p.Client())
+	if err != nil || preload == nil {
+		t.Fatalf("unified authenticators: err=%v preload=%v", err, preload != nil)
+	}
+	// Both interfaces must share a verifier, including concurrent lazy key loading.
+	bearer := "Bearer " + p.Token(p.Claims(time.Now(), "ai-food-server"), "initial")
+	var wg sync.WaitGroup
+	for _, a := range []*serviceauth.Authenticator{intro, purge} {
+		wg.Go(func() {
+			r := httptest.NewRequest(http.MethodPost, "/", nil)
+			r.Header.Set("Authorization", bearer)
+			if res := a.Authenticate(r); res.Outcome != serviceauth.OK {
+				t.Errorf("shared bearer outcome = %v", res.Outcome)
+			}
+		})
+	}
+	wg.Wait()
+	if got := p.JWKSRequests(); got != 1 {
+		t.Fatalf("two interfaces fetched JWKS %d times, want one shared refresh", got)
+	}
+	secret := os.Getenv("ACCOUNTSVC_SERVICE_CLIENT_AI_FOOD_BASIC_SECRETS")
+	for _, a := range []*serviceauth.Authenticator{intro, purge} {
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r.SetBasicAuth("ai-food-server", secret)
+		if res := a.Authenticate(r); res.Outcome != serviceauth.OK {
+			t.Fatalf("shared basic outcome = %v", res.Outcome)
+		}
+	}
+	// Environment changes cannot alter either already-built authenticator.
+	t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_AI_FOOD_PERMISSIONS", "tokens.introspect")
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.Header.Set("Authorization", bearer)
+	if res := purge.Authenticate(r); res.Outcome != serviceauth.OK {
+		t.Fatalf("running snapshot changed: %v", res.Outcome)
+	}
+	// A fresh process/config applies permission revocation. Keep the capability
+	// configured through another identity, so this is 403 rather than NOT_CONFIGURED.
+	t.Setenv("ACCOUNTSVC_SERVICE_CLIENTS", "AI_FOOD,CLEANUP")
+	t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_CLEANUP_ID", "cleanup")
+	t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_CLEANUP_AUTH_METHODS", "bearer")
+	t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_CLEANUP_BEARER_SUBJECTS", `["machine"]`)
+	t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_CLEANUP_PERMISSIONS", "purged_users.read")
+	cfg, err = LoadConfig("serve")
+	if err != nil {
+		t.Fatal(err)
+	}
+	intro, purge, _, _, err = serviceAuthenticators(cfg, slog.New(slog.DiscardHandler), p.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res := intro.Authenticate(r); res.Outcome != serviceauth.OK {
+		t.Fatalf("retained permission outcome = %v", res.Outcome)
+	}
+	if res := purge.Authenticate(r); res.Outcome != serviceauth.Forbidden {
+		t.Fatalf("revoked permission outcome = %v", res.Outcome)
+	}
+}
+
+type serviceRoundTripper func(*http.Request) (*http.Response, error)
+
+func (f serviceRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestUnifiedBasicOnlyHasNoOIDCIO(t *testing.T) {
+	unifiedClientEnvironment(t)
+	cfg, err := LoadConfig("serve")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int64
+	client := &http.Client{Transport: serviceRoundTripper(func(*http.Request) (*http.Response, error) {
+		calls.Add(1)
+		return nil, errors.New("unexpected OIDC I/O")
+	})}
+	intro, purge, _, preload, err := serviceAuthenticators(cfg, slog.New(slog.DiscardHandler), client)
+	if err != nil || preload != nil {
+		t.Fatalf("basic-only construction: %v preload=%v", err, preload != nil)
+	}
+	for _, endpoint := range []struct {
+		auth  *serviceauth.Authenticator
+		realm string
+	}{{intro, "accountsvc-introspection"}, {purge, "accountsvc-purge-feed"}} {
+		a := endpoint.auth
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r.SetBasicAuth("ai-food-server", os.Getenv("ACCOUNTSVC_SERVICE_CLIENT_AI_FOOD_BASIC_SECRETS"))
+		if res := a.Authenticate(r); res.Outcome != serviceauth.OK {
+			t.Fatalf("basic-only outcome = %v", res.Outcome)
+		}
+		r.Header.Set("Authorization", "Bearer synthetic-token")
+		res := a.Authenticate(r)
+		if res.Outcome != serviceauth.Unauthenticated || !reflect.DeepEqual(a.Challenges(res), []string{`Basic realm="` + endpoint.realm + `"`}) {
+			t.Fatalf("disabled bearer outcome = %+v challenges=%v", res, a.Challenges(res))
+		}
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("basic-only made %d OIDC calls", calls.Load())
 	}
 }
 
@@ -204,5 +310,64 @@ func TestPreloadIssuerMismatchLogsError(t *testing.T) {
 	stop()
 	if out := logs.String(); !strings.Contains(out, "level=ERROR") || !strings.Contains(out, "https://idp.example.test") {
 		t.Fatalf("issuer mismatch at startup must log ERROR: %s", out)
+	}
+}
+
+func TestRuntimeStartsWhenAdminIssuerHangs(t *testing.T) {
+	var cancelled atomic.Bool
+	runServe(t, 300*time.Millisecond, func(cfg *Config, app *application) {
+		cfg.AdminEnabled = true
+		cfg.Admin.Issuer = "https://admin.example.test"
+		app.preloadAdminTokens = func(ctx context.Context) error { <-ctx.Done(); cancelled.Store(true); return ctx.Err() }
+	}, nil)
+	if !cancelled.Load() {
+		t.Fatal("admin preload not canceled before shutdown")
+	}
+}
+
+func TestRuntimeClosesTokensWhenRequestDrainTimesOut(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	entered, release := make(chan struct{}), make(chan struct{})
+	defer close(release)
+	bound := make(chan net.Listener, 1)
+	var tokensClosed, libraryClosed atomic.Bool
+	app := &application{
+		migrate: func(context.Context) error { return nil }, start: func(context.Context) {},
+		close: func() { libraryClosed.Store(true) }, closeTokens: func() { tokensClosed.Store(true) },
+		endUser: http.HandlerFunc(func(http.ResponseWriter, *http.Request) { close(entered); <-release }),
+		admin:   http.NotFoundHandler(), introspect: http.NotFoundHandler(),
+	}
+	factory := runtimeFactory{
+		open:   func(context.Context, Config, *slog.Logger) (*dependencies, error) { return &dependencies{}, nil },
+		newApp: func(Config, *dependencies, *slog.Logger) (*application, error) { return app, nil },
+		listen: func(ctx context.Context, addr string) (net.Listener, error) {
+			ln, err := net.Listen("tcp", addr)
+			if err == nil {
+				bound <- ln
+			}
+			return ln, err
+		},
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- runConfig(ctx, Config{command: "serve", HTTPAddr: "127.0.0.1:0", StartupTimeout: time.Second, ShutdownTimeout: 50 * time.Millisecond}, slog.New(slog.DiscardHandler), factory)
+	}()
+	ln := <-bound
+	go func() {
+		resp, err := http.Get("http://" + ln.Addr().String() + "/v1/test")
+		if err == nil {
+			resp.Body.Close()
+		}
+	}()
+	<-entered
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil || !tokensClosed.Load() || libraryClosed.Load() {
+			t.Fatalf("drain failure cleanup: err=%v tokens=%v library=%v", err, tokensClosed.Load(), libraryClosed.Load())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("shutdown did not finish")
 	}
 }

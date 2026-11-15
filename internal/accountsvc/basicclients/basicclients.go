@@ -1,59 +1,15 @@
-// Package basicclients parses service client credential lists and checks HTTP Basic
-// credentials against them. Introspection and the purged-user feed use separate lists.
+// Package basicclients validates and matches HTTP Basic service credentials.
 package basicclients
 
 import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"strings"
 	"unicode"
 )
-
-// Parse validates a JSON object mapping client IDs to base64 secrets (each at least 32 bytes)
-// without silently overwriting duplicate IDs. Secrets remain base64 strings: callers use that
-// exact string as the Basic password. The error names only the variable.
-func Parse(raw, variable string) (map[string][]string, error) {
-	invalid := errors.New("accountsvc: " + variable + " must contain unique nonempty client IDs and lists of base64 secrets of at least 32 bytes")
-	d := json.NewDecoder(strings.NewReader(raw))
-	token, err := d.Token()
-	if err != nil || token != json.Delim('{') {
-		return nil, invalid
-	}
-	clients := make(map[string][]string)
-	for d.More() {
-		token, err = d.Token()
-		if err != nil {
-			return nil, invalid
-		}
-		id, ok := token.(string)
-		if !ok {
-			return nil, invalid
-		}
-		if _, exists := clients[id]; exists {
-			return nil, invalid
-		}
-		var secrets []string
-		if err = d.Decode(&secrets); err != nil {
-			return nil, invalid
-		}
-		clients[id] = secrets
-	}
-	if token, err = d.Token(); err != nil || token != json.Delim('}') {
-		return nil, invalid
-	}
-	if _, err = d.Token(); err != io.EOF {
-		return nil, invalid
-	}
-	if !Valid(clients) {
-		return nil, invalid
-	}
-	return clients, nil
-}
 
 // Valid reports whether every client ID is a usable Basic username and every secret is
 // canonical base64 of at least 32 bytes.
@@ -121,23 +77,4 @@ func (m *Matcher) Match(r *http.Request) (string, bool) {
 		return "", false
 	}
 	return id, true
-}
-
-// SharedSecret reports whether any secret appears in both lists, so one credential cannot
-// grant access to two separately authorized interfaces.
-func SharedSecret(a, b map[string][]string) bool {
-	seen := map[string]bool{}
-	for _, secrets := range a {
-		for _, s := range secrets {
-			seen[s] = true
-		}
-	}
-	for _, secrets := range b {
-		for _, s := range secrets {
-			if seen[s] {
-				return true
-			}
-		}
-	}
-	return false
 }

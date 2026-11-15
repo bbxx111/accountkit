@@ -14,8 +14,8 @@ import (
 
 	"github.com/bbxx111/accountkit"
 	"github.com/bbxx111/accountkit/enum"
-	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/internal/accountsvc/adminauth"
+	"github.com/bbxx111/accountkit/internal/accountsvc/identityresolve"
 	"github.com/bbxx111/accountkit/internal/accountsvc/introspection"
 	"github.com/bbxx111/accountkit/internal/accountsvc/oidcjwt"
 	"github.com/bbxx111/accountkit/internal/accountsvc/purgefeed"
@@ -39,14 +39,16 @@ type dependencies struct {
 	closePool    func()
 }
 type application struct {
-	migrate   func(context.Context) error
-	initAdmin func(context.Context) error
-	// preloadServiceTokens 在监听前尝试加载服务令牌签发方的密钥；失败只记录警告。
+	migrate            func(context.Context) error
+	preloadAdminTokens func(context.Context) error
+	closeTokens        func()
+	// 两类密钥均在监听就绪后后台预加载，失败只记录固定分类日志。
 	preloadServiceTokens       func(context.Context) error
 	start                      func(context.Context)
 	close                      func()
 	endUser, admin, introspect http.Handler
 	purgeFeed                  http.Handler
+	identityResolve            http.Handler
 	jwks                       http.Handler
 	metrics                    http.Handler
 }
@@ -116,22 +118,7 @@ func openDependencies(ctx context.Context, cfg Config, _ *slog.Logger) (*depende
 	return d, nil
 }
 
-// Admin 路由在 New 时装配角色契约；远程 discovery 在 Migrate 之后完成。
-// 只有初始化成功后才监听，因此 verifier 的赋值先于所有 HTTP 访问。
-type adminBridge struct{ verifier *adminauth.Verifier }
-
-func (b *adminBridge) RequireRole(role string) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if b.verifier == nil {
-				apierror.Write(w, apierror.New(apierror.StatusUnavailable, "ADMIN_NOT_CONFIGURED", "administrator authentication is not configured"))
-				return
-			}
-			b.verifier.RequireRole(role)(next).ServeHTTP(w, r)
-		})
-	}
-}
-
+// 管理认证在构造时静态装配，远程 discovery 在监听就绪后执行。
 func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*application, error) {
 	if cfg.command == "migrate" {
 		return newMigrationApplication(cfg, d)
@@ -155,49 +142,75 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 	// 服务使用默认本地审计读写；Auth 拥有审计 worker，服务拥有 Pool/Redis。
 	// 外部审计装配属于嵌入宿主扩展，见 examples/audit，不在此创建远端适配器。
 	deps := accountkit.Deps{Pool: d.pool, Redis: d.redis, SMSSender: sms, EmailSender: email, Logger: logger, ClientIP: clientIP, RequestID: requestID, Observer: observer}
-	bridge := &adminBridge{}
+	var recordForbidden func(*http.Request, accountkit.AdminPrincipal)
+	var adminVerifier *adminauth.Verifier
+
 	if cfg.command == "serve" && cfg.AdminEnabled {
-		deps.AdminVerifier = bridge
+		var err error
+		adminVerifier, err = adminauth.New(context.Background(), cfg.Admin, adminauth.Options{Logger: logger, OnForbidden: func(r *http.Request, p accountkit.AdminPrincipal) {
+			if recordForbidden != nil {
+				recordForbidden(r, p)
+			}
+		}})
+		if err != nil {
+			return nil, err
+		}
+		deps.AdminVerifier = adminVerifier
 		deps.AdminPrincipal = adminauth.PrincipalFrom
 	}
 	auth, err := accountkit.New(cfg.Library, deps)
 	if err != nil {
+		if adminVerifier != nil {
+			adminVerifier.Close()
+		}
 		return nil, errors.New("accountsvc: accountkit construction failed")
 	}
-	app := &application{migrate: auth.Migrate, start: auth.Start, close: auth.Close, endUser: auth.EndUserHandler(), admin: auth.AdminHandler(), jwks: auth.JWKSHandler(), metrics: metrics}
+	recordForbidden = auth.RecordAdminForbidden
+	var closeServiceTokens func()
+	closeTokens := func() {
+		if adminVerifier != nil {
+			adminVerifier.Close()
+		}
+		if closeServiceTokens != nil {
+			closeServiceTokens()
+		}
+	}
+	closeAuth := func() { closeTokens(); auth.Close() }
+	app := &application{migrate: auth.Migrate, start: auth.Start, close: closeAuth, closeTokens: closeTokens, endUser: auth.EndUserHandler(), admin: auth.AdminHandler(), jwks: auth.JWKSHandler(), metrics: metrics}
 	if cfg.identityEnabled(enum.IdentityEmail) && emailRenderer(cfg).Multilingual() {
 		// 只有多语言清单才需要读取请求语言；发码只经由消费者路由。
 		app.endUser = acceptLanguage(app.endUser)
 	}
 	if cfg.command == "serve" {
-		intro, purge, preload, err := serviceAuthenticators(cfg, logger, nil)
+		intro, purge, resolve, preload, err := serviceAuthenticators(cfg, logger, nil, &closeServiceTokens)
 		if err != nil {
-			auth.Close()
+			closeAuth()
 			return nil, err
 		}
 		app.preloadServiceTokens = preload
+		namespace := cfg.Library.AuditNamespace
+		if namespace == "" {
+			namespace = "accountkit/" + cfg.Library.Schema + "/resources"
+		}
+		app.identityResolve, err = identityresolve.NewWithAuthenticator(resolve, auth.Users().ResolveIdentity, namespace, requestID)
+		if err != nil {
+			closeAuth()
+			return nil, err
+		}
 		app.introspect, err = introspection.NewWithAuthenticator(intro, auth.Users().AuthenticateStrict)
 		if err != nil {
-			auth.Close()
+			closeAuth()
 			return nil, errors.New("accountsvc: introspection configuration failed")
 		}
 		app.purgeFeed, err = purgefeed.NewWithAuthenticator(purge, auth.Users().ListPurgedUsers)
 		if err != nil {
-			auth.Close()
+			closeAuth()
 			return nil, errors.New("accountsvc: purged user feed configuration failed")
 		}
 	}
-	app.initAdmin = func(ctx context.Context) error {
-		if !cfg.AdminEnabled {
-			return nil
-		}
-		verifier, err := adminauth.New(ctx, cfg.Admin, adminauth.Options{OnForbidden: auth.RecordAdminForbidden})
-		if err != nil {
-			return errors.New("accountsvc: administrator discovery failed")
-		}
-		bridge.verifier = verifier
-		app.admin = verifier.Middleware(auth.AdminHandler())
-		return nil
+	if adminVerifier != nil {
+		app.admin = adminVerifier.Middleware(auth.AdminHandler())
+		app.preloadAdminTokens = adminVerifier.Load
 	}
 	return app, nil
 }
@@ -267,46 +280,58 @@ const serviceTokenRefreshTimeout = 5 * time.Second
 // serviceTokenPreloadTimeout 限制后台预加载签发方密钥的等待。
 const serviceTokenPreloadTimeout = 10 * time.Second
 
-// serviceAuthenticators 为内省与已清理用户拉取构造调用认证。两个接口共享一个服务令牌
+// serviceAuthenticators 为三个内部服务接口构造调用认证。接口共享一个服务令牌
 // verifier（延迟加载）；preload 为 nil 表示未启用 Bearer。client 仅供测试注入。
-func serviceAuthenticators(cfg Config, logger *slog.Logger, client *http.Client) (intro, purge *serviceauth.Authenticator, preload func(context.Context) error, err error) {
+func serviceAuthenticators(cfg Config, logger *slog.Logger, client *http.Client, closers ...*func()) (intro, purge, resolve *serviceauth.Authenticator, preload func(context.Context) error, err error) {
 	var tokens *oidcjwt.Verifier
-	if cfg.Service.Enabled() {
-		tokens, err = oidcjwt.New(cfg.Service.Issuer, cfg.Service.Audience, oidcjwt.Options{HTTPClient: client, RefreshInterval: serviceTokenRefreshInterval, RefreshTimeout: serviceTokenRefreshTimeout, Logger: logger, AllowHTTP: cfg.Service.AllowHTTP})
+	registry := cfg.ServiceClients
+	if registry == nil {
+		registry, _ = serviceauth.NewRegistry(nil)
+	}
+	bearerEnabled := registry.BearerEnabled()
+	if bearerEnabled {
+		tokens, err = oidcjwt.New(cfg.Service.Issuer, cfg.Service.Audience, oidcjwt.Options{Profile: cfg.Service.TokenProfile, HTTPClient: client, RefreshInterval: serviceTokenRefreshInterval, RefreshTimeout: serviceTokenRefreshTimeout, Logger: logger, AllowHTTP: cfg.Service.AllowHTTP})
 		if err != nil {
-			return nil, nil, nil, errors.New("accountsvc: service token configuration failed")
+			return nil, nil, nil, nil, errors.New("accountsvc: service token configuration failed")
 		}
 		preload = tokens.Load
-	}
-	build := func(realm, endpoint string, basic map[string][]string, clients []string) (*serviceauth.Authenticator, error) {
-		c := serviceauth.Config{Realm: realm, Endpoint: endpoint, Logger: logger}
-		if len(basic) > 0 {
-			c.Basic = basic
+		if len(closers) > 0 {
+			*closers[0] = tokens.Close
 		}
-		if len(clients) > 0 {
-			c.BearerClients, c.BearerVerifier = clients, tokens
-		}
-		return serviceauth.New(c)
 	}
-	if intro, err = build(introspection.Realm, "introspect", cfg.IntrospectionBasicClients, cfg.Service.IntrospectionBearerClients); err != nil {
-		return nil, nil, nil, errors.New("accountsvc: introspection configuration failed")
+	build := func(id routeID) (*serviceauth.Authenticator, error) {
+		route := serviceRoute(id)
+		return serviceauth.New(serviceauth.Config{Realm: route.realm, Endpoint: route.endpoint, Logger: logger, Registry: registry, RequiredPermission: route.permission, BearerVerifier: tokens})
 	}
-	if purge, err = build(purgefeed.Realm, "purged_users", cfg.PurgeFeedBasicClients, cfg.Service.PurgeFeedBearerClients); err != nil {
-		return nil, nil, nil, errors.New("accountsvc: purged user feed configuration failed")
+	if intro, err = build(routeIntrospect); err != nil {
+		return nil, nil, nil, nil, errors.New("accountsvc: introspection configuration failed")
 	}
-	return intro, purge, preload, nil
+	if purge, err = build(routePurgeFeed); err != nil {
+		return nil, nil, nil, nil, errors.New("accountsvc: purged user feed configuration failed")
+	}
+	if resolve, err = build(routeIdentityResolve); err != nil {
+		return nil, nil, nil, nil, err
+	}
+	return intro, purge, resolve, preload, nil
 }
 
 // warnUnconfigured 为未配置、只会返回 503 *_NOT_CONFIGURED 的可选接口各记一条 WARN，
 // 使漏配在启动日志中可见，而不是等到调用失败才发现。只写变量名，不写值。
 func warnUnconfigured(cfg Config, logger *slog.Logger) {
-	if len(cfg.IntrospectionBasicClients) == 0 && len(cfg.Service.IntrospectionBearerClients) == 0 {
-		logger.Warn("accountsvc: introspection is not configured; POST /v1/introspect answers 503 introspection_not_configured",
-			"settings", "ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS, ACCOUNTSVC_INTROSPECTION_BEARER_CLIENTS")
+	if !cfg.ServiceClients.HasPermission("identities.resolve") {
+		logger.Warn("accountsvc: identity resolution is not configured; POST /v1/identities:resolve answers 503 IDENTITY_RESOLUTION_NOT_CONFIGURED", "settings", "ACCOUNTSVC_SERVICE_CLIENTS, ACCOUNTSVC_SERVICE_CLIENT_<ALIAS>_PERMISSIONS")
 	}
-	if len(cfg.PurgeFeedBasicClients) == 0 && len(cfg.Service.PurgeFeedBearerClients) == 0 {
+	introEnabled := cfg.ServiceClients.HasPermission("tokens.introspect")
+	purgeEnabled := cfg.ServiceClients.HasPermission("purged_users.read")
+	introSettings := "ACCOUNTSVC_SERVICE_CLIENTS, ACCOUNTSVC_SERVICE_CLIENT_<ALIAS>_PERMISSIONS"
+	purgeSettings := introSettings
+	if !introEnabled {
+		logger.Warn("accountsvc: introspection is not configured; POST /v1/introspect answers 503 introspection_not_configured",
+			"settings", introSettings)
+	}
+	if !purgeEnabled {
 		logger.Warn("accountsvc: purged user feed is not configured; GET /v1/purgedUsers answers 503 PURGE_FEED_NOT_CONFIGURED",
-			"settings", "ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS, ACCOUNTSVC_PURGE_FEED_BEARER_CLIENTS")
+			"settings", purgeSettings)
 	}
 	if !cfg.AdminEnabled {
 		logger.Warn("accountsvc: administrator API is not configured; /admin/v1 answers 503 ADMIN_NOT_CONFIGURED",
@@ -343,7 +368,11 @@ func plainHTTP(issuer string) bool {
 // preloadServiceTokens 在就绪后于后台尝试加载服务令牌签发方的密钥，返回的函数取消并等待它。
 // 签发方故障（含挂起）既不消耗启动预算也不推迟就绪：Bearer 调用在恢复前返回 503，消费者路由与
 // Basic 调用照常可用。
-func preloadServiceTokens(preload func(context.Context) error, issuer string, logger *slog.Logger) (stop func()) {
+func preloadServiceTokens(preload func(context.Context) error, issuer string, logger *slog.Logger) func() {
+	return preloadIssuerTokens(preload, issuer, "service token", logger)
+}
+
+func preloadIssuerTokens(preload func(context.Context) error, issuer, category string, logger *slog.Logger) (stop func()) {
 	if preload == nil {
 		return func() {}
 	}
@@ -353,10 +382,10 @@ func preloadServiceTokens(preload func(context.Context) error, issuer string, lo
 		defer close(done)
 		if err := preload(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			if errors.Is(err, oidcjwt.ErrIssuerMismatch) {
-				logger.Error("accountsvc: service token issuer discovery does not match ACCOUNTSVC_SERVICE_ISSUER", "issuer", issuer)
+				logger.Error("accountsvc: "+category+" issuer discovery does not match configuration", "issuer", issuer)
 				return
 			}
-			logger.Warn("accountsvc: service token issuer unavailable at startup; bearer calls answer 503 until it recovers", "issuer", issuer)
+			logger.Warn("accountsvc: "+category+" issuer unavailable at startup; bearer calls answer 503 until it recovers", "issuer", issuer)
 		}
 	}()
 	return func() { cancel(); <-done }
@@ -375,6 +404,11 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 		_ = startupCleanup(cfg, d, nil, nil)
 		return errors.New("accountsvc: accountkit construction failed")
 	}
+	// Refreshes own no database work, so always reclaim them even when HTTP drain
+	// times out and shutdownRuntime must leave the library and its pools open.
+	if app.closeTokens != nil {
+		defer app.closeTokens()
+	}
 	if err = app.migrate(startup); err != nil {
 		_ = startupCleanup(cfg, d, app, nil)
 		return errors.New("accountsvc: migration failed")
@@ -383,12 +417,6 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 		return startupCleanup(cfg, d, app, nil)
 	}
 	warnPlainHTTPIssuers(cfg, logger)
-	if cfg.AdminEnabled {
-		if err = app.initAdmin(startup); err != nil {
-			_ = startupCleanup(cfg, d, app, nil)
-			return errors.New("accountsvc: administrator initialization failed")
-		}
-	}
 	ln, err := factory.listen(startup, cfg.HTTPAddr)
 	if err != nil {
 		_ = startupCleanup(cfg, d, app, nil)
@@ -401,7 +429,7 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 	defer cancelRequests()
 	tracker := newRequestTracker()
 	state := &healthState{database: d.databasePing, redis: d.redisPing}
-	handler := serviceHandler(cfg, app.endUser, app.admin, app.introspect, app.purgeFeed, app.jwks, state, app.metrics)
+	handler := serviceHandler(cfg, app.endUser, app.admin, app.introspect, app.purgeFeed, app.jwks, app.identityResolve, state, app.metrics)
 	server := newHTTPServer(cfg.HTTPAddr, requestMetadata(cfg.TrustedProxyCIDRs, tracker.wrap(handler)), requestCtx)
 	if cfg.TLSEnabled {
 		server.TLSConfig = cfg.tlsConfig.Clone()
@@ -424,6 +452,7 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 	state.ready.Store(true)
 	cancelStartup()
 	stopPreload := preloadServiceTokens(app.preloadServiceTokens, cfg.Service.Issuer, logger)
+	stopAdminPreload := preloadIssuerTokens(app.preloadAdminTokens, cfg.Admin.Issuer, "administrator", logger)
 	var serveError error
 	select {
 	case <-ctx.Done():
@@ -431,6 +460,7 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 		serveError = errors.New("accountsvc: HTTP listener stopped unexpectedly")
 	}
 	stopPreload()
+	stopAdminPreload()
 	shutdown, cancelShutdown := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancelShutdown()
 	closeLibrary := func() {

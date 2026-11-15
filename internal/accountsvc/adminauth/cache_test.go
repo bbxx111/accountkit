@@ -241,7 +241,7 @@ func TestRedirectDowngradeAndRequestLimits(t *testing.T) {
 	defer insecure.Close()
 	secure := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, insecure.URL, http.StatusFound) }))
 	defer secure.Close()
-	if _, err := New(context.Background(), Config{Issuer: secure.URL, Audience: "admin"}, Options{HTTPClient: secure.Client()}); err == nil {
+	if err := loadFixture(context.Background(), Config{Issuer: secure.URL, Audience: "admin"}, Options{HTTPClient: secure.Client()}); err == nil {
 		t.Fatal("redirect downgrade accepted")
 	}
 	if insecureRequests.Load() != 0 {
@@ -250,7 +250,7 @@ func TestRedirectDowngradeAndRequestLimits(t *testing.T) {
 	t.Run("discovery-limit", func(t *testing.T) {
 		s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(strings.Repeat(" ", 256*1024+1))) }))
 		defer s.Close()
-		if _, err := New(context.Background(), Config{Issuer: s.URL, Audience: "admin"}, Options{HTTPClient: s.Client()}); err == nil {
+		if err := loadFixture(context.Background(), Config{Issuer: s.URL, Audience: "admin"}, Options{HTTPClient: s.Client()}); err == nil {
 			t.Fatal("oversized discovery accepted")
 		}
 	})
@@ -260,7 +260,7 @@ func TestRedirectDowngradeAndRequestLimits(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 		defer cancel()
 		start := time.Now()
-		if _, err := New(ctx, Config{Issuer: s.URL, Audience: "admin"}, Options{HTTPClient: s.Client()}); err == nil {
+		if err := loadFixture(ctx, Config{Issuer: s.URL, Audience: "admin"}, Options{HTTPClient: s.Client()}); err == nil {
 			t.Fatal("timeout accepted")
 		}
 		if time.Since(start) > time.Second {
@@ -269,7 +269,7 @@ func TestRedirectDowngradeAndRequestLimits(t *testing.T) {
 	})
 	t.Run("untrusted-tls", func(t *testing.T) {
 		f := newFixture(t)
-		if _, err := New(context.Background(), f.config(), Options{}); err == nil {
+		if err := loadFixture(context.Background(), f.config(), Options{}); err == nil {
 			t.Fatal("untrusted issuer accepted")
 		}
 	})
@@ -278,14 +278,14 @@ func TestRedirectDowngradeAndRequestLimits(t *testing.T) {
 		for i := range 129 {
 			f.keys = append(f.keys, jwk(strings.Repeat("x", i+1), &f.key.PublicKey))
 		}
-		if _, err := New(context.Background(), f.config(), Options{HTTPClient: f.server.Client()}); err == nil {
+		if err := loadFixture(context.Background(), f.config(), Options{HTTPClient: f.server.Client()}); err == nil {
 			t.Fatal("unbounded key set accepted")
 		}
 	})
 	t.Run("non-signing-key", func(t *testing.T) {
 		f := newFixture(t)
 		f.keys[0]["use"] = "enc"
-		if _, err := New(context.Background(), f.config(), Options{HTTPClient: f.server.Client()}); err == nil {
+		if err := loadFixture(context.Background(), f.config(), Options{HTTPClient: f.server.Client()}); err == nil {
 			t.Fatal("encryption key trusted for signatures")
 		}
 	})
@@ -294,7 +294,7 @@ func TestRedirectDowngradeAndRequestLimits(t *testing.T) {
 		f.keys[0]["e"] = "AAAAAA"
 		body, _ := json.Marshal(map[string]any{"keys": f.keys})
 		f.body = string(body)
-		if _, err := New(context.Background(), f.config(), Options{HTTPClient: f.server.Client()}); err == nil {
+		if err := loadFixture(context.Background(), f.config(), Options{HTTPClient: f.server.Client()}); err == nil {
 			t.Fatal("invalid exponent accepted")
 		}
 	})

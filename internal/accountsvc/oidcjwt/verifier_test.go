@@ -156,7 +156,7 @@ func TestNewIsLazyAndFirstParseDiscovers(t *testing.T) {
 	}
 }
 
-func TestLoadDoesNotConsumeCooldown(t *testing.T) {
+func TestLoadSharesCooldown(t *testing.T) {
 	p := newProvider(t)
 	now := time.Now().Truncate(time.Second)
 	v := p.verifier(t, newClock(now), nil)
@@ -166,8 +166,8 @@ func TestLoadDoesNotConsumeCooldown(t *testing.T) {
 	if _, err := v.Parse(context.Background(), p.token(p.claims(now), "rotated")); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("unknown kid after load: %v", err)
 	}
-	if _, j := p.counts(); j != 2 {
-		t.Fatalf("first unknown kid after Load must refresh immediately: %d", j)
+	if _, j := p.counts(); j != 1 {
+		t.Fatalf("unknown kid after Load must share cooldown: %d", j)
 	}
 }
 
@@ -292,10 +292,12 @@ func TestConcurrentUnknownKidsCoalesce(t *testing.T) {
 		t.Run(map[bool]string{false: "success", true: "failure"}[fail], func(t *testing.T) {
 			p := newProvider(t)
 			now := time.Now().Truncate(time.Second)
-			v := p.verifier(t, newClock(now), nil)
+			clock := newClock(now)
+			v := p.verifier(t, clock, nil)
 			if err := v.Load(context.Background()); err != nil {
 				t.Fatal(err)
 			}
+			clock.set(now.Add(time.Minute))
 			entered, release := make(chan struct{}, 1), make(chan struct{})
 			p.set(func() { p.fail, p.entered, p.release = fail, entered, release })
 			var wg sync.WaitGroup
@@ -417,4 +419,70 @@ func TestHangingProviderFailsFastInsideCooldown(t *testing.T) {
 	if _, err := v.Parse(ctx, token); !errors.Is(err, ErrUnavailable) || time.Since(start) > 100*time.Millisecond {
 		t.Fatalf("request inside the failed window must be unavailable at once: %v after %v", err, time.Since(start))
 	}
+}
+
+func TestPreloadSharesRefreshAndCooldown(t *testing.T) {
+	p := newProvider(t)
+	now := time.Now().Truncate(time.Second)
+	clock := newClock(now)
+	v := p.verifier(t, clock, nil)
+	defer v.Close()
+	entered, release := make(chan struct{}, 1), make(chan struct{})
+	p.set(func() { p.entered, p.release = entered, release })
+	first := make(chan error, 1)
+	go func() { first <- v.Load(context.Background()) }()
+	<-entered
+	second := make(chan error, 1)
+	waiting := &observedWaitContext{Context: context.Background(), entered: make(chan struct{})}
+	token := p.token(p.claims(now), "initial")
+	go func() { _, err := v.Parse(waiting, token); second <- err }()
+	<-waiting.entered
+	close(release)
+	if err := <-first; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-second; err != nil {
+		t.Fatal(err)
+	}
+	if err := v.Load(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if d, j := p.counts(); d != 1 || j != 1 {
+		t.Fatalf("preload/request duplicated fetch: %d %d", d, j)
+	}
+}
+
+// Done is evaluated only once Parse reaches the shared-refresh select.
+type observedWaitContext struct {
+	context.Context
+	once    sync.Once
+	entered chan struct{}
+}
+
+func (c *observedWaitContext) Done() <-chan struct{} {
+	c.once.Do(func() { close(c.entered) })
+	return c.Context.Done()
+}
+
+func TestCloseCancelsSharedRefresh(t *testing.T) {
+	entered := make(chan struct{})
+	canceled := make(chan struct{})
+	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { close(entered); <-r.Context().Done(); close(canceled) }))
+	defer s.Close()
+	v, err := New(s.URL, "api", Options{HTTPClient: s.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- v.Load(context.Background()) }()
+	<-entered
+	v.Close()
+	<-canceled
+	if err := <-done; err == nil {
+		t.Fatal("closed refresh succeeded")
+	}
+	if err := v.Load(context.Background()); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("closed verifier accepted load: %v", err)
+	}
+	v.Close()
 }

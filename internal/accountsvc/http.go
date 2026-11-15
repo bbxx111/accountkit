@@ -57,7 +57,7 @@ func (s *healthState) serveReady(w http.ResponseWriter, r *http.Request) {
 }
 
 // serviceHandler 组装单监听器路由；purgeFeed / jwks 为 nil 时不挂载对应路由（仅供不涉及它们的测试）。
-func serviceHandler(cfg Config, endUser, admin, introspect, purgeFeed, jwks http.Handler, state *healthState, metrics ...http.Handler) http.Handler {
+func serviceHandler(cfg Config, endUser, admin, introspect, purgeFeed, jwks, identityResolve http.Handler, state *healthState, metrics ...http.Handler) http.Handler {
 	router := chi.NewRouter()
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -65,21 +65,42 @@ func serviceHandler(cfg Config, endUser, admin, introspect, purgeFeed, jwks http
 			next.ServeHTTP(w, r)
 		})
 	})
-	router.Handle("/v1/introspect", introspect)
-	if purgeFeed != nil {
-		// 内部入口：独立 Basic 凭据；网关不得对公网开放。
-		router.Handle("/v1/purgedUsers", purgeFeed)
-	}
-	if jwks != nil {
-		// 只含公钥、无需认证；方法限制由 handler 自身处理（GET/HEAD）。
-		router.Handle("/.well-known/jwks.json", jwks)
-	}
-	router.Mount("/v1", endUser)
-	router.Mount("/admin/v1", admin)
-	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) { healthResponse(w, 200, "ok") })
-	router.Get("/readyz", state.serveReady)
-	if cfg.MetricsEnabled && len(metrics) > 0 && metrics[0] != nil {
-		router.Get("/metrics", metrics[0].ServeHTTP)
+	for _, route := range routeDeclarations() {
+		var handler http.Handler
+		switch route.id {
+		case routeIntrospect:
+			handler = introspect
+		case routePurgeFeed:
+			handler = purgeFeed
+		case routeIdentityResolve:
+			handler = identityResolve
+		case routeJWKS:
+			handler = jwks
+		case routeEndUser:
+			handler = endUser
+		case routeAdministrator:
+			handler = admin
+		case routeHealth:
+			handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { healthResponse(w, 200, "ok") })
+		case routeReady:
+			handler = http.HandlerFunc(state.serveReady)
+		case routeMetrics:
+			if cfg.MetricsEnabled && len(metrics) > 0 {
+				handler = metrics[0]
+			}
+		}
+		if handler == nil {
+			continue
+		}
+		switch route.category {
+		case routeConsumer, routeAdmin:
+			router.Mount(route.path, handler)
+		case routeOperations:
+			router.Method(route.methods, route.path, handler)
+		default:
+			// 服务先认证再判方法；JWKS 自行限制 GET/HEAD。
+			router.Handle(route.path, handler)
+		}
 	}
 	return requestMetadata(cfg.TrustedProxyCIDRs, router)
 }

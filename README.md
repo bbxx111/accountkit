@@ -1,6 +1,6 @@
 # accountkit
 
-客户端接入另提供 [Flutter 消费者 SDK](sdks/accountkit-flutter/README.md) 与 [TypeScript 管理 SDK](sdks/accountkit-admin-ts/README.md)，分别从 Git 固定 ref 的独立子目录安装。版本、职责边界和验证方法见 [客户端 SDK 指南](docs/client-sdks.md)。两包 `1.0.0` 已发布并通过真实远端消费验证，见[发布说明](docs/releases/client-sdks-v1.0.0.md)与[发布验收记录](openspec/changes/prepare-client-sdks-v1-release/verification.md)。Go 使用方无需安装 Flutter 或 Node。
+客户端接入另提供 [Flutter 消费者 SDK](sdks/accountkit-flutter/README.md) 与 [TypeScript 管理 SDK](sdks/accountkit-admin-ts/README.md)，分别从 Git 固定 ref 的独立子目录安装。版本、职责边界和验证方法见 [客户端 SDK 指南](docs/client-sdks.md)。两包 `1.0.0` 已发布并通过真实远端消费验证，见[发布说明](docs/releases/client-sdks-v1.0.0.md)与[发布验收记录](openspec/changes/archive/2026-11-04-prepare-client-sdks-v1-release/verification.md)。Go 使用方无需安装 Flutter 或 Node。
 
 ### 用户头像
 
@@ -95,11 +95,13 @@ GET 与 PATCH 成功均返回 200 和 `{"name":"users/u_0000000000001/profile","
 
 挂载内置 HTTP handler 的宿主可使用[消费者与管理面 OpenAPI 契约](docs/openapi.md)，按实际地址调整挂载前缀。
 
-本文描述 v1.0.0（已发布）的公开契约；账号资源沿用 `/users`。v1.0.0 移除的 Go 符号及调用者须知见[兼容指南](docs/compatibility.md#v100-调用者须知)，开发期版本见[1.0 前历史](docs/releases/pre-1.0-history.md)。
+本文描述 v1.1.0 候选的公开契约；账号资源沿用 `/users`。v1.0.0 移除的 Go 符号及调用者须知见[兼容指南](docs/compatibility.md#v100-调用者须知)，开发期版本见[1.0 前历史](docs/releases/pre-1.0-history.md)。
 
 accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可选服务实现，使用同一套库能力；选择库集成不需要部署或调用 accountsvc。服务入口是 `cmd/accountsvc`，包含 SMTP 邮件投递、消费者远程鉴权和默认关闭的外部管理员 JWT 验证，运行与配置见 [accountsvc 服务手册](docs/accountsvc.md)。`examples/embedded` 保留为库集成开发示例。
 
 accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect` 和探针；公网暴露、直连限制、TLS 终止与入口流量控制由部署方配置，统一规则见 [网关接入手册](docs/gateway-integration.md)。直接嵌入库的宿主也可沿用该契约。
+
+内部服务调用使用统一客户端显式配置 Basic/Bearer 方法及 `tokens.introspect`、`purged_users.read`、`identities.resolve` 三项权限；未配置相应权限时三项内部能力返回各自 NOT_CONFIGURED 503。Bearer 强制按注册权限 P 与 token scope S 的交集 P∩S 授权，并按显式 profile 的 `azp`/`client_id` 识别客户端及绑定机器 `sub`；Basic 只使用 P，无旧的无 scope 兼容模式。旧逐接口配置已移除，升级前须显式转换客户端与权限。单文件 Compose、动态变量透传及迁移回退见[服务调用认证](docs/accountsvc.md#服务调用认证内省与已清理用户拉取)，Basic 接入见[远程鉴权示例](examples/remoteauth/README.md)。消费者与管理员 SDK 协议保持独立。
 
 默认 schema 为 `account`，可用 `Config.Schema` 或带宿主前缀的 `AUTH_SCHEMA` 设置合法 schema，库与 accountsvc 共用此默认值。
 
@@ -112,6 +114,23 @@ accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect
 ## 领域层
 
 `auth.Users()` 返回 `*user.Service`，是所有业务规则的唯一所在；HTTP handler、维护任务与管理面都只调用它。
+
+宿主也可以解析当前手机号/邮箱关联，须先自行认证和授权调用服务，并传入稳定的 SERVICE 审计主体。例如在已有 `auth`、`ctx` 的宿主代码中（导入 `audit`、`enum`、`user`）：
+
+```go
+resolved, err := auth.Users().ResolveIdentity(ctx, user.ResolveIdentityInput{
+    Kind: enum.IdentityEmail,
+    Subject: "person@example.com",
+    Actor: audit.Actor{Type: audit.ActorService, Namespace: "my-service/callers", ID: "orders"},
+    Meta: user.Meta{RequestID: "request-123"},
+})
+if err != nil {
+    return err
+}
+_ = resolved.UserID
+```
+
+结果仅含 `UserID`、`State`、`DisplayName`、`AvatarURL`；未设置资料为空字符串。ACTIVE、FROZEN、PENDING_DELETION 均返回真实状态和保留资料，公开批量资料的注销隐藏规则保持不变。未注册、已解绑或匿名化后无新关联返回 `user.ErrNotFound`，数据库不可用/最长三秒查询期限返回 `user.ErrUnavailable`。查询支持全部配置的摘要版本，不受登录启用策略影响，不访问 Redis 或发送器。结果是单条 SQL 的一致快照，宿主负责资料展示权限与后续业务资格判断；解析本身不创建账号或会话，也不提供后续授权保证。合法查询通过通用审计投递 `IDENTITY_RESOLVE`，不会复制联系方式、摘要、资料或 Actor.Name；审计失败不改变解析结果。
 
 | 能力 | 方法 | 备注 |
 |---|---|---|
@@ -522,7 +541,7 @@ HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额
 
 ## 仓库与发布状态
 
-当前版本为 v1.0.0（已发布），见[发布说明](docs/releases/v1.0.0.md)。可用 `go get github.com/bbxx111/accountkit@v1.0.0` 接入；公开 Go API 自 v1.0.0 起受语义化版本约束，破坏性变化发布新主版本。开发期（v1.0.0 之前）版本见[1.0 前历史](docs/releases/pre-1.0-history.md)。
+当前准备 v1.1.0 候选（尚未发布），见[候选发布说明](docs/releases/v1.1.0.md)。module/import 保持 `github.com/bbxx111/accountkit`，HTTP `/v1` 和 `/admin/v1` 不变；accountsvc 配置与授权有破坏性接入变化，须按候选说明迁移，不能把 Go 源码兼容视为所有部署兼容。当前已发布版本仍为 v1.0.0，见[发布说明](docs/releases/v1.0.0.md)，可用 `go get github.com/bbxx111/accountkit@v1.0.0` 接入。公开 Go API 自 v1.0.0 起受语义化版本约束，破坏性变化发布新主版本；本次版本决定不表示以后可任意破坏 v1 契约。开发期（v1.0.0 之前）版本见[1.0 前历史](docs/releases/pre-1.0-history.md)。
 
 Go module：github.com/bbxx111/accountkit；远程仓库：https://github.com/bbxx111/accountkit.git。发布及产品上线要求见[检查表](docs/release-checklist.md)。
 

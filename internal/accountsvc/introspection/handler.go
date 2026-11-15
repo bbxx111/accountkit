@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bbxx111/accountkit/internal/accountsvc/basicclients"
 	"github.com/bbxx111/accountkit/internal/accountsvc/serviceauth"
 	"github.com/bbxx111/accountkit/user"
 )
@@ -37,13 +36,15 @@ type handler struct {
 // never parses JWT claims itself and does not query account state. Without clients the
 // route answers 503 introspection_not_configured.
 func New(clients map[string][]string, authenticate func(context.Context, string) (user.Principal, error)) (http.Handler, error) {
-	if len(clients) > 0 && !basicclients.Valid(clients) {
-		return nil, errors.New("accountsvc: ACCOUNTSVC_INTROSPECTION_BASIC_CLIENTS must contain unique nonempty client IDs and lists of base64 secrets of at least 32 bytes")
+	registered := make([]serviceauth.ClientConfig, 0, len(clients))
+	for id, secrets := range clients {
+		registered = append(registered, serviceauth.ClientConfig{ID: id, AuthMethods: []string{serviceauth.MethodBasic}, Permissions: []string{"tokens.introspect"}, BasicSecrets: secrets})
 	}
-	cfg := serviceauth.Config{Realm: Realm, Endpoint: "introspect"}
-	if len(clients) > 0 {
-		cfg.Basic = clients
+	registry, err := serviceauth.NewRegistry(registered)
+	if err != nil {
+		return nil, err
 	}
+	cfg := serviceauth.Config{Realm: Realm, Endpoint: "introspect", Registry: registry, RequiredPermission: "tokens.introspect"}
 	auth, err := serviceauth.New(cfg)
 	if err != nil {
 		return nil, err

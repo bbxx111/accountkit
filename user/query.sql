@@ -129,6 +129,13 @@ SELECT * FROM identity
 WHERE kind = @kind AND subject_digest = ANY(@digests::text[]) AND delete_time IS NULL
 LIMIT 1;
 
+-- name: ResolveActiveIdentity :many
+-- 单条语句保留悬空身份并检测跨密钥版本重复；不隐藏冷静期账号。
+SELECT u.id, COALESCE(u.state, 0)::smallint AS state, u.display_name, u.avatar_url
+FROM identity i LEFT JOIN user_account u ON u.id = i.user_id
+WHERE i.kind = @kind AND i.subject_digest = ANY(@digests::text[]) AND i.delete_time IS NULL
+LIMIT 2;
+
 -- name: LockAnchorSubjects :exec
 -- 锚点 subject 的事务级互斥：唯一索引只约束单个摘要值，密钥轮换的混合 active 期间
 -- 不同进程会为同一 subject 写入不同版本的摘要。调用方按 (kind, digest) 平行数组传入

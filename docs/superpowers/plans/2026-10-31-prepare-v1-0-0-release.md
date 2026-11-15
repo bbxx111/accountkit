@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、sqlc 1.31.1、PostgreSQL 17、Redis 7、Docker、GitHub Actions、gh CLI。
 
-**Spec:** [发布设计](../../../openspec/changes/prepare-v1-0-0-release/design.md)与 [发布检查表](../../release-checklist.md)。任务进度以 OpenSpec tasks 为准。
+**Spec:** [发布设计](../../../openspec/changes/archive/2026-11-04-prepare-v1-0-0-release/design.md)与 [发布检查表](../../release-checklist.md)。任务进度以 OpenSpec tasks 为准。
 
 ## Global Constraints
 

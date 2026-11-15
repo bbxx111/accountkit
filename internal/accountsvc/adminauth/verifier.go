@@ -4,17 +4,19 @@ package adminauth
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/bbxx111/accountkit"
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/internal/accountsvc/oidcjwt"
+	"github.com/bbxx111/accountkit/internal/httpcredentials"
 )
 
 // Options customize networking, time and the existing forbidden-audit hook.
 type Options struct {
+	Logger      *slog.Logger
 	HTTPClient  *http.Client
 	Now         func() time.Time
 	OnForbidden func(*http.Request, accountkit.AdminPrincipal)
@@ -29,7 +31,7 @@ type Verifier struct {
 	onForbidden func(*http.Request, accountkit.AdminPrincipal)
 }
 
-// New discovers the configured issuer and loads its signing keys before startup.
+// New validates and assembles authentication without network I/O.
 func New(ctx context.Context, cfg Config, opts Options) (*Verifier, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -40,15 +42,18 @@ func New(ctx context.Context, cfg Config, opts Options) (*Verifier, error) {
 	if cfg.UsernameClaim == "" {
 		cfg.UsernameClaim = "/preferred_username"
 	}
-	tokens, err := oidcjwt.New(cfg.Issuer, cfg.Audience, oidcjwt.Options{HTTPClient: opts.HTTPClient, Now: opts.Now, RefreshInterval: time.Minute, AllowHTTP: cfg.AllowHTTP})
+	tokens, err := oidcjwt.New(cfg.Issuer, cfg.Audience, oidcjwt.Options{Profile: cfg.TokenProfile, HTTPClient: opts.HTTPClient, Now: opts.Now, RefreshInterval: time.Minute, AllowHTTP: cfg.AllowHTTP, Logger: opts.Logger})
 	if err != nil {
-		return nil, err
-	}
-	if err := tokens.Load(ctx); err != nil {
 		return nil, err
 	}
 	return &Verifier{cfg: cfg, tokens: tokens, onForbidden: opts.OnForbidden}, nil
 }
+
+// Load preloads keys through the request refresh mechanism.
+func (v *Verifier) Load(ctx context.Context) error { return v.tokens.Load(ctx) }
+
+// Close cancels and waits for outstanding key refreshes.
+func (v *Verifier) Close() { v.tokens.Close() }
 
 type principalKey struct{}
 type authenticated struct {
@@ -66,17 +71,14 @@ func PrincipalFrom(ctx context.Context) (accountkit.AdminPrincipal, bool) {
 // Middleware verifies a single Bearer access token and establishes the admin principal.
 func (v *Verifier) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		headers := r.Header.Values("Authorization")
-		if len(headers) != 1 {
+		scheme, credential, ok := httpcredentials.Parse(r)
+		if !ok || scheme != "bearer" {
 			writeUnauthorized(w)
 			return
 		}
-		parts := strings.Fields(headers[0])
-		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || len(parts[1]) > 16*1024 {
-			writeUnauthorized(w)
-			return
-		}
-		claims, err := v.tokens.Parse(r.Context(), parts[1])
+		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		defer cancel()
+		claims, err := v.tokens.Parse(ctx, credential)
 		if err != nil {
 			if errors.Is(err, oidcjwt.ErrUnavailable) {
 				apierror.Write(w, apierror.New(apierror.StatusUnavailable, "ADMIN_AUTH_UNAVAILABLE", "administrator authentication is unavailable"))

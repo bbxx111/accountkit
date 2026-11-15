@@ -22,11 +22,11 @@
 
 ### Requirement: 当前初始定义
 
-包 SHALL 以单一 0001 定义完整认证结构：`user_account`（含 `profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb` 与 `avatar_url TEXT NULL`）、`identity`（`kind` 为 `VARCHAR(32) COLLATE "C" NOT NULL` 加格式 CHECK）、`session`、`session_authentication_identity`、`session_client_info`、`audit_event`（十列 UUIDv7）、`sign_in_completion_flow`、`purged_user` 及 `schema_migrations`。新空 schema 安装 SHALL 得到 version=1/dirty=false。JSON Schema 与属性业务校验 SHALL 在 Go 执行，不设外键、JSON 业务 CHECK、触发器或逐行 Schema 元数据；0001 down 删除全部上述表。当前定义 SHALL 以固定哈希保护；后续结构变更从 0002 递增，不提供从 v1.0.0 之前开发期结构升级的工具或承诺。
+包 SHALL 以单一 0001 定义八张认证数据表：`user_account`（含 `profile_attributes JSONB NOT NULL DEFAULT '{}'::jsonb` 与 `avatar_url TEXT NULL`）、`identity`（`kind` 为 `VARCHAR(32) COLLATE "C" NOT NULL` 加格式 CHECK）、`session`、`session_authentication_identity`、`session_client_info`、`audit_event`（十列 UUIDv7）、`sign_in_completion_flow`、`purged_user`。迁移引擎 SHALL 另行维护 `schema_migrations` 版本表。新空 schema 安装 SHALL 得到 version=1/dirty=false。
 
 #### Scenario: 空数据库安装
 - **WHEN** 对合法新空 schema 执行 Up
-- **THEN** 只执行当前 0001，得到完整八表，version=1/dirty=false，不影响其他 schema
+- **THEN** 只执行当前 0001，得到上述八张认证数据表及迁移引擎维护的 schema_migrations 版本表，version=1/dirty=false，不影响其他 schema
 
 #### Scenario: 非法 schema
 - **WHEN** schema 不符合 `^[a-z][a-z0-9_]{0,62}$`
@@ -35,6 +35,22 @@
 #### Scenario: 当前定义固定
 - **WHEN** 校验当前工作树 0001 up/down
 - **THEN** 与记录的固定哈希一致；不一致时发布检查失败，不能通过改写 0001 采用新结构
+
+### Requirement: 初始结构校验与回退定义
+
+JSON Schema 与属性业务校验 SHALL 在 Go 执行，不设外键、JSON 业务 CHECK、触发器或逐行 Schema 元数据；0001 down 定义上述八张认证数据表的删除，不删除迁移引擎维护的版本表。
+
+#### Scenario: 核对初始结构业务校验位置
+- **WHEN** 检查 0001 及属性校验实现边界
+- **THEN** JSON Schema 与属性业务校验在 Go 执行，无外键、JSON 业务 CHECK、触发器或逐行 Schema 元数据，0001 down 定义八张认证数据表的删除，不删除迁移引擎维护的版本表
+
+### Requirement: 初始迁移冻结与后续升级
+
+当前定义 SHALL 以固定哈希保护；后续结构变更从 0002 递增，不提供从 v1.0.0 之前开发期结构升级的工具或承诺。
+
+#### Scenario: 正式版本后新增结构变更
+- **WHEN** 当前初始定义之后需要修改结构
+- **THEN** 保留固定哈希保护，从 0002 递增，不提供开发期结构升级工具或承诺
 
 ### Requirement: 基线预检边界
 

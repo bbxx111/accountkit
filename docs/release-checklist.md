@@ -4,15 +4,21 @@
 
 ## 当前状态
 
-当前正式版本为 v1.0.0（已发布），见[发布说明](releases/v1.0.0.md)和[发布准备](../openspec/changes/prepare-v1-0-0-release/proposal.md)。开发期版本的说明与证据索引见 [开发期历史](releases/pre-1.0-history.md)。
+当前正式版本为 v1.0.0（已发布），见[发布说明](releases/v1.0.0.md)和[发布准备](../openspec/changes/archive/2026-11-04-prepare-v1-0-0-release/proposal.md)。开发期版本的说明与证据索引见 [开发期历史](releases/pre-1.0-history.md)。
 
-客户端 SDK 独立版本化：Flutter 与管理 TypeScript 的 1.0.0 已发布，见[SDK 发布说明](releases/client-sdks-v1.0.0.md)与[发布验收记录](../openspec/changes/prepare-client-sdks-v1-release/verification.md)。SDK 发布使用各自 tag，不变更 Go v1.0.0；候选同时运行 Go/SDK CI，发布后分别验证真实 Git 子目录消费，不套用下方 Go module 的 go get 消费命令。
+客户端 SDK 独立版本化：Flutter 与管理 TypeScript 的 1.0.0 已发布，见[SDK 发布说明](releases/client-sdks-v1.0.0.md)与[发布验收记录](../openspec/changes/archive/2026-11-04-prepare-client-sdks-v1-release/verification.md)。SDK 发布使用各自 tag，不变更 Go v1.0.0；候选同时运行 Go/SDK CI，发布后分别验证真实 Git 子目录消费，不套用下方 Go module 的 go get 消费命令。
+
+### v1.1.0 候选准备
+
+当前新增发布候选为 [v1.1.0](releases/v1.1.0.md)，尚未发布；保留 module/import 与 `/v1`、`/admin/v1` 路由，不设独立 accountsvc 版本轴。服务配置及授权有破坏性迁移，按[兼容指南](compatibility.md#accountsvc-服务客户端配置兼容)盘点四项旧变量、注册权限、机器主体、scope、认证头与管理员故障行为，保存成套回退材料。
+
+准备变更的实际检查与未验证项统一记录在[本次验收记录](../openspec/changes/prepare-next-release/verification.md)。起点 CI、当前本地准备快照、后续最终 main SHA 的在线 CI、正式 tag 及远端消费证据分别留存；本地准备通过不表示后三项已完成。SDK 保持独立 1.0.0，v1.1.0 候选兼容状态按 [SDK 指南](client-sdks.md)单独核验。本轮准备不执行 main 集成、推送、tag、Release 或产品部署，后续按明确授权执行。
 
 ### v1.0.0 专属门禁
 
-本次发布、远端消费及旧版本清理已完成；精确对象和门禁证据见[验收记录](../openspec/changes/prepare-v1-0-0-release/verification.md)。下方通用清单保留为未来发布模板，不代表 v1.0.0 仍未完成。
+本次发布、远端消费及旧版本清理已完成；精确对象和门禁证据见[验收记录](../openspec/changes/archive/2026-11-04-prepare-v1-0-0-release/verification.md)。下方通用清单保留为未来发布模板，不代表 v1.0.0 仍未完成。
 
-用户于 2026-10-31 明确指定先发布 v1.0.0，发布及远端消费完成后再删除九个 v0 tag 和现存对应 Release。本次仅调整下方“发布前远端不存在 v0 tag”的执行顺序；同名正式 tag 不存在、最终候选 CI、完整验证及不移动 tag 的要求保持。完成状态与精确 SHA/CI/消费证据统一维护在[本次验收记录](../openspec/changes/prepare-v1-0-0-release/verification.md)，任务进度见[任务清单](../openspec/changes/prepare-v1-0-0-release/tasks.md)。
+用户于 2026-10-31 明确指定先发布 v1.0.0，发布及远端消费完成后再删除九个 v0 tag 和现存对应 Release。本次仅调整下方“发布前远端不存在 v0 tag”的执行顺序；同名正式 tag 不存在、最终候选 CI、完整验证及不移动 tag 的要求保持。完成状态与精确 SHA/CI/消费证据统一维护在[本次验收记录](../openspec/changes/archive/2026-11-04-prepare-v1-0-0-release/verification.md)，任务进度见[任务清单](../openspec/changes/archive/2026-11-04-prepare-v1-0-0-release/tasks.md)。
 
 - 初始 0001 up/down 哈希保持，首次正式版本不提供开发期数据库原地升级；Go 调用切换使用[兼容指南](compatibility.md#v100-调用者须知)。
 - 公开 API、HTTP/配置、指标/审计及依赖沿用已归档整合结果，本发布只维护文档和外部版本对象；不新增功能或生产迁移。
@@ -75,17 +81,19 @@
 
 accountsvc 与库使用同一版本源码；运行配置见[服务手册](accountsvc.md)，网关统一契约见[网关接入手册](gateway-integration.md)，成套回退要求见[服务手册](accountsvc.md#邮件匿名化与停机)。运行该服务的产品在目标环境确认：
 
-- [ ] 删除旧 INTERNAL_ADDR/内部端口，更新统一内省和探针地址；保存旧二进制、配置、证书、调用方及网关策略的成套回退材料。
-- [ ] 配置明确公网路由范围和独立管理策略，公网内省/探针被拒绝且不进入后端；授权内部调用可访问，未授权直连不能绕过。
+- [ ] 核对统一内省和探针地址，保存旧二进制、配置、证书、调用方及网关策略的成套回退材料；删除 INTERNAL_ADDR/内部端口属于既有历史迁移，不是 v1.0.0 → v1.1.0 的新增要求。
+- [ ] 配置明确公网路由范围和独立管理策略，公网内省、清理拉取、身份解析及探针被拒绝且不进入后端；授权内部调用可访问，未授权直连不能绕过，不因消费者 `/v1/*` 通配而暴露内部入口。
 - [ ] 如启用 Prometheus，先落实 `/metrics` 网关监控来源允许清单与后端端口直连限制，证明公网请求被拒绝且不进入后端、授权监控可抓取；核对同址 TLS/证书与 no-store。
 - [ ] 指标默认关闭；启用时设置固定非秘密且符合格式的 `ACCOUNTSVC_METRICS_INSTANCE`，不同逻辑实例不同、多副本保留独立抓取目标标签；验证关闭404、其他方法405、采集错误/超出5并发503、业务依赖故障仍可采集。部署方接受无观测时可空、重启计数重置与停机尾部增量不保证被抓取，回退关闭开关并移除抓取目标。
 - [ ] 选择服务HTTPS、网关HTTPS回源或受控外部TLS方式，验证全部链路证书/信任边界；显式false时移除HTTP证书项，并核对调用方AllowHTTP与探针协议。
-- [ ] 配置独立内省客户端秘密及重叠轮换，保留服务Basic、消费者/管理员验证及角色/scope/资源归属检查。
+- [ ] 按内省、清理拉取、身份解析三项能力为每个服务客户端显式授予最小权限；Basic秘密独立生成并验证重叠轮换，Bearer配置专用机器主体和提供方scope。核对Basic=P、Bearer=P∩scope及无认证方式回退，保留消费者/管理员验证及角色/scope/资源归属检查。
+- [ ] 使用实际服务令牌提供方核对issuer/audience、default或rfc9068声明、机器主体独占性和scope签发；验证旧配置移除、缺scope/错主体拒绝及全部副本重启/排空后的权限生效。
 - [ ] 核对可信代理CIDR与实际链路，验证伪造转发头不能改变额度和审计IP，请求ID关联正确。
 - [ ] 按登录/发码、token/revoke、管理和内省记录频率、突发及在途并发策略、负责人、身份可信前提、每副本/集群计数范围及故障策略；分别压力验收，超限429/Retry-After可识别。
 - [ ] 验证认证/设备/内容类型/请求ID和challenge/Retry-After/no-store透传，认证与写操作不自动重试；日志、追踪、错误采集和审计不包含完整凭据/隐私。
 - [ ] 使用实际 SMTP 提供方验证认证、证书、投递及收件；测试邮件捕获不代表最终送达。
 - [ ] 若启用管理面，使用实际 OIDC 提供方验证 RS256 access token、管理员 API audience、角色映射与换钥。
+- [ ] 独立监测管理员及服务Bearer认证依赖，验证无可用签名密钥时的503、恢复与缓存过期；整体readyz成功不代表OIDC提供方或管理认证可用。
 - [ ] 明确业务数据匿名化责任；不与依赖业务回调的宿主混跑同一实例的维护任务。
 - [ ] 在目标环境验证启动迁移、同址探针协议、摘流/连接排空、SIGTERM、终止宽限和备份恢复。
 

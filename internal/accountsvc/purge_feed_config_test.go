@@ -3,50 +3,49 @@ package accountsvc
 import (
 	"bytes"
 	"encoding/base64"
-	"fmt"
 	"strings"
 	"testing"
 )
 
 func TestConfigPurgeFeedClients(t *testing.T) {
-	feedSecret := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{9}, 32))
 	t.Run("unset", func(t *testing.T) {
 		serveEnvironment(t)
 		cfg, err := LoadConfig("serve")
-		if err != nil || cfg.PurgeFeedBasicClients != nil {
-			t.Fatalf("unset feed clients: %v %v", cfg.PurgeFeedBasicClients, err)
+		if err != nil || cfg.ServiceClients.HasPermission("purged_users.read") {
+			t.Fatalf("unset feed: %v", err)
 		}
 	})
 	t.Run("valid", func(t *testing.T) {
-		serveEnvironment(t)
-		t.Setenv("ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS", fmt.Sprintf(`{"ai-food":["%s"]}`, feedSecret))
+		unifiedClientEnvironment(t)
 		cfg, err := LoadConfig("serve")
-		if err != nil || len(cfg.PurgeFeedBasicClients["ai-food"]) != 1 {
-			t.Fatalf("valid: %v %v", cfg.PurgeFeedBasicClients, err)
+		if err != nil || !cfg.ServiceClients.HasPermission("purged_users.read") {
+			t.Fatalf("valid feed: %v", err)
 		}
 	})
-	t.Run("invalid", func(t *testing.T) {
-		serveEnvironment(t)
-		t.Setenv("ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS", `{"ai-food":["too-short-secret"]}`)
+	t.Run("invalid secret", func(t *testing.T) {
+		unifiedClientEnvironment(t)
+		t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_AI_FOOD_BASIC_SECRETS", "too-short-secret")
 		_, err := LoadConfig("serve")
-		if err == nil || !strings.Contains(err.Error(), "ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS") || strings.Contains(err.Error(), "too-short-secret") {
-			t.Fatalf("invalid: %v", err)
+		if err == nil || !strings.Contains(err.Error(), "ACCOUNTSVC_SERVICE_CLIENT_AI_FOOD_BASIC_SECRETS") || strings.Contains(err.Error(), "too-short-secret") {
+			t.Fatalf("safe error: %v", err)
 		}
 	})
-	t.Run("secret shared with introspection", func(t *testing.T) {
-		serveEnvironment(t)
-		introspectionSecret := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{8}, 32))
-		t.Setenv("ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS", fmt.Sprintf(`{"ai-food":["%s"]}`, introspectionSecret))
-		_, err := LoadConfig("serve")
-		if err == nil || !strings.Contains(err.Error(), "ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS") || strings.Contains(err.Error(), introspectionSecret) {
-			t.Fatalf("shared secret: %v", err)
+	t.Run("shared secret", func(t *testing.T) {
+		unifiedClientEnvironment(t)
+		t.Setenv("ACCOUNTSVC_SERVICE_CLIENTS", "AI_FOOD,SECOND")
+		t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_SECOND_ID", "second")
+		t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_SECOND_AUTH_METHODS", "basic")
+		t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_SECOND_PERMISSIONS", "purged_users.read")
+		t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_SECOND_BASIC_SECRETS", base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{11}, 32)))
+		if _, err := LoadConfig("serve"); err == nil {
+			t.Fatal("shared credential accepted")
 		}
 	})
-	t.Run("migrate ignores feed clients", func(t *testing.T) {
+	t.Run("migrate ignores", func(t *testing.T) {
 		configEnvironment(t)
-		t.Setenv("ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS", "not json")
+		t.Setenv("ACCOUNTSVC_PURGE_FEED_BASIC_CLIENTS", "not-json")
 		if _, err := LoadConfig("migrate"); err != nil {
-			t.Fatalf("migrate must not parse feed clients: %v", err)
+			t.Fatal(err)
 		}
 	})
 }

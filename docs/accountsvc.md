@@ -46,7 +46,7 @@ docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.ya
 docker compose --env-file deploy/accountsvc/.env -f deploy/accountsvc/compose.yaml down
 ```
 
-部署只需这一份 Compose 文件。默认模板不配置服务客户端，两项内部能力返回各自 NOT_CONFIGURED 503，其他服务功能正常。按需从 `.env.example` 选择一组[服务客户端](#服务调用认证内省与已清理用户拉取)示例，取消注释并替换秘密；升级旧部署前须显式转换客户端与权限并移除非空白旧逐接口变量。
+部署只需这一份 Compose 文件。默认模板不配置服务客户端，三项内部能力返回各自 NOT_CONFIGURED 503，其他服务功能正常。按需从 `.env.example` 选择一组[服务客户端](#服务调用认证内省与已清理用户拉取)示例，取消注释并替换秘密；升级旧部署前须显式转换客户端与权限并移除非空白旧逐接口变量。
 
 CLI `--env-file` 供 Compose 插值，accountsvc 自身的 `env_file: ./.env` 将任意 `SERVICE_CLIENT_<ALIAS>_*` 分项注入容器；两者必须指向**同一文件**。相对 `env_file` 路径以 Compose 文件所在目录为基准。改用自定义文件时，同时修改服务的 `env_file` 路径与 CLI `--env-file` 参数。该配置会导入整份文件，使用专用开发配置；不要混入其他产品的环境变量。直接使用命令启动服务时仍由宿主显式注入所有变量。
 
@@ -264,7 +264,7 @@ healthz 只表示进程存活。readyz 要求启动完成、未停机且 Postgre
 
 主列表未设置、空或全空白均表示空注册表，serve 正常启动，三项内部能力各返回原 NOT_CONFIGURED 503；不存在配置模式切换。主列表缺失或为空时，任何 `SERVICE_CLIENT_<ALIAS>_*` 字段即使为空也属于未声明字段，会拒绝启动。旧逐接口配置已移除，非空白旧变量无论是否设置主列表都会阻止启动；升级步骤见[迁移与回退](#从旧配置迁移与回退)。CSV 列表会裁剪元素两端空白，空元素、重复元素、未知方法/权限、未知字段及未声明别名均拒绝；`BEARER_SUBJECTS` 使用 JSON，不裁剪主体。无 Bearer 时应移除 issuer/audience/profile，Bearer-only 不提供 Basic 秘密。
 
-可直接修改的三组完整配置见 [.env.example](../deploy/accountsvc/.env.example)：Basic-only 和 Bearer-only 仅授内省权限，双方式示例仅适用于确实需要两种能力的服务，并展示新旧秘密重叠。只拉取清理记录的服务应改为仅授 `purged_users.read`。新增客户端使用独立别名、ID 和秘密，不复制另一个身份的秘密。Basic 秘密须独立随机生成（如 `openssl rand -base64 32`），将 Base64 原文本用作密码。**Basic 密码与 IdP client secret 是不同材料**；后者仅由调用方与 IdP 持有，用于换取服务令牌，不注入 accountsvc 的 `BASIC_SECRETS`。
+可直接修改的三组完整配置见 [.env.example](../deploy/accountsvc/.env.example)：Basic-only 和 Bearer-only 仅授内省权限，双方式示例仅授内省与清理权限，并展示新旧秘密重叠；身份解析须另行显式授予 `identities.resolve`。只拉取清理记录的服务应改为仅授 `purged_users.read`。新增客户端使用独立别名、ID 和秘密，不复制另一个身份的秘密。Basic 秘密须独立随机生成（如 `openssl rand -base64 32`），将 Base64 原文本用作密码。**Basic 密码与 IdP client secret 是不同材料**；后者仅由调用方与 IdP 持有，用于换取服务令牌，不注入 accountsvc 的 `BASIC_SECRETS`。
 
 Bearer 令牌须满足：RS256 签名且头部带 `kid`、不带 `jku`/`x5u`，令牌不超过 16 KiB；`iss` 精确等于 `SERVICE_ISSUER`；`aud` 包含 `SERVICE_AUDIENCE`；带 `exp` 与 `iat`，`exp − iat` 不超过 1 小时（时钟偏差 30 秒）。`default` profile 只从 `azp` 识别客户端；`rfc9068` 只从 `client_id` 识别，且要求 JOSE `typ` 为 `at+jwt` 或 `application/at+jwt`，具备合法类型的 `iss/aud/exp/sub/client_id/iat/jti`。字符串声明必须非空，时间声明必须为数值；两种 profile 不自动回退。管理员独立选择同名 profile，但不要求机器主体或服务 scope，其人类主体和角色授权保持原契约。
 
@@ -280,7 +280,7 @@ scope 缺失或空字符串表示空集合，缺所需权限返回403；null、�
 | 取不到提供方签名密钥 | 503 `temporarily_unavailable` | 503 `DEPENDENCY_UNAVAILABLE`，`Retry-After: 1` | 退避重试；服务不自动回退 Basic |
 | 注册表无人持有该权限（先于认证判断） | 503 `introspection_not_configured` | 503 `PURGE_FEED_NOT_CONFIGURED` | 不重试，按需补充配置 |
 
-401 按**整个注册表启用方式的并集**给出 `WWW-Authenticate`；realm 分别为 `accountsvc-introspection`、`accountsvc-purge-feed`。Basic 行为 `Basic realm="…"`，Bearer 行为 `Bearer realm="…"`；只有恰好一个 Bearer 令牌被尝试验证且无效时才附 `error="invalid_token"`，客户端方法未启用不附该属性。有效 Basic 缺权限的 403 不带挑战；Bearer 的 403 带 `Bearer realm="…", error="insufficient_scope"`。503 均不带挑战，所有结果 `Cache-Control: no-store`。无权限的请求不会解析业务请求体或查询清理记录。Basic-only 不依赖 OIDC，也不访问提供方。
+401 按**整个注册表启用方式的并集**给出 `WWW-Authenticate`；内省、清理拉取与身份解析的 realm 分别为 `accountsvc-introspection`、`accountsvc-purge-feed`、`accountsvc-identity-resolution`。身份解析的错误体见[服务身份解析](#服务身份解析)。Basic 行为 `Basic realm="…"`，Bearer 行为 `Bearer realm="…"`；只有恰好一个 Bearer 令牌被尝试验证且无效时才附 `error="invalid_token"`，客户端方法未启用不附该属性。有效 Basic 缺权限的 403 不带挑战；Bearer 的 403 带 `Bearer realm="…", error="insufficient_scope"`。503 均不带挑战，所有结果 `Cache-Control: no-store`。无权限的请求不会解析业务请求体或查询清理记录。Basic-only 不依赖 OIDC，也不访问提供方。
 
 **提供方故障**：服务就绪后在后台尝试加载提供方密钥（最多 10 秒），失败只记录警告（discovery 返回的 issuer 不一致记 ERROR），既不阻止启动也不推迟就绪（即使只启用了 Bearer），`/readyz` 不反映提供方状态；此时 Bearer 调用返回 503，消费者路由与 Basic 调用照常。签名密钥缓存 1 小时；单次刷新最多等待 5 秒；任何一次刷新尝试（成功或失败）后 10 秒内不再请求提供方：窗口内遇到未知 `kid`，上次刷新成功判 401，失败判 503，因此随机 `kid` 无法放大对提供方的请求。管理员认证同样在就绪后后台预加载，远端故障不阻止启动；其请求等待最多3秒，刷新冷却为60秒。
 

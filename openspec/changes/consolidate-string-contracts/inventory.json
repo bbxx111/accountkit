@@ -1,0 +1,2885 @@
+{
+  "title": "accountkit字符串字面量常量化盘点",
+  "change": "consolidate-string-contracts",
+  "codeBaseline": "a11ea46136aae6abc059e7f56e01fa92e8c72cec",
+  "inventoryBaseline": "7f43faa0a89a971c6bd86de3d165af18b99a477d",
+  "note": "??????????????????????????????????????????????????????",
+  "counts": {
+    "trackedGo": 562,
+    "nonTestGoExcludingSQLC": 197,
+    "groups": 78,
+    "p1": 21,
+    "p2": 57,
+    "httpReasonValues": 60,
+    "auditReasonValues": 34
+  },
+  "legend": {
+    "P1": "优先整理的稳定契约或控制分支，不表示已发现漏洞",
+    "P2": "维护性收敛；部分适合函数或描述表",
+    "reuse": "复用现有定义",
+    "extract": "新增有语义归属的常量",
+    "reason": "独立reason目录",
+    "helper": "应封装函数而非只抽字符串",
+    "catalog": "优先类型/描述表/解析器",
+    "defaults": "单一默认值来源",
+    "parse": "复用已有枚举并补解析器",
+    "testmeta": "仅测试/工具元数据，不引入SDK运行依赖"
+  },
+  "exclusions": [
+    "sqlc生成代码、冻结迁移SQL/哈希、锁文件和导入路径不修改。",
+    "JSON struct tags、TS接口属性/typeof/union名称的原始定义、枚举名称数组本身不机械再包常量。",
+    "单次路由声明、SQL/Lua/JSON Schema/邮件模板正文、一次性日志/诊断、合成数据和示例品牌不逐项提取。",
+    "独立协议测试的预期保留必要字面量；工具实现可复用元数据，但不能让测试与实现同错同过。",
+    "USER主体类型/资源类型/Facebook token类型，INVALID_ARGUMENT状态/reason，user scope/路由参数，均不能仅因同字面值合并。",
+    "pii/ids/email/phone/anonymize以及cmd/accountsvc未发现额外高价值缺口；已有ID字母表/前缀和掩码封装保留。",
+    "这是静态候选全集，不代表每个同名出现都应替换；lexicalOccurrences仅供检索，references及语义说明是判断依据。",
+    "优先包内/private定义；跨包仅在共享契约确定后集中，不新建全仓库constants包，不改变值/协议/持久化字节或扩大公共API。"
+  ],
+  "closureRules": {
+    "implemented": "????????????????",
+    "retained": "????????????????????????????????",
+    "outOfScopeParserRedesign": "????????????????????????????????????????"
+  },
+  "items": [
+    {
+      "id": "L001",
+      "priority": "P1",
+      "kind": "reuse",
+      "title": "已有认证/方法/身份常量漏用",
+      "values": [
+        "bearer",
+        "POST",
+        "PHONE",
+        "EMAIL",
+        "TOKEN_MISSING",
+        "TOKEN_INVALID"
+      ],
+      "scopes": [
+        "httpapi/authn/authn.go",
+        "httpapi/admin/handler.go",
+        "internal/accountsvc/identityresolve/handler.go",
+        "internal/accountsvc/purgefeed/handler.go"
+      ],
+      "owner": "httpcredentials / net/http / enum / 公共认证reason叶子目录",
+      "action": "复用SchemeBearer、http.MethodPost、IdentityPhone/IdentityEmail或IsAnchor。两个reason先选共同拥有者，避免让管理/服务依赖消费者认证实现。",
+      "references": [
+        "httpapi/authn/authn.go:70",
+        "httpapi/admin/handler.go:117",
+        "internal/accountsvc/identityresolve/handler.go:57",
+        "internal/accountsvc/identityresolve/handler.go:94",
+        "internal/accountsvc/purgefeed/handler.go:90"
+      ],
+      "notes": "",
+      "primaryTask": "2.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L002",
+      "priority": "P1",
+      "kind": "reuse",
+      "title": "已有审计事件枚举漏用",
+      "values": [
+        "SIGN_IN_COMPLETION_PROOF_VERIFIED",
+        "SIGN_IN_COMPLETION_COMPLETED"
+      ],
+      "scopes": [
+        "httpapi/admin/audit.go"
+      ],
+      "owner": "enum.EventType",
+      "action": "复用对应Event枚举的String()，不再手写事件名称。",
+      "references": [
+        "httpapi/admin/audit.go:105",
+        "enum/enum.go:201"
+      ],
+      "notes": "",
+      "primaryTask": "3.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L003",
+      "priority": "P1",
+      "kind": "reuse",
+      "title": "已有环境变量名常量漏用",
+      "values": [
+        "ACCOUNTSVC_",
+        "ACCOUNTSVC_SMTP_TEMPLATES_FILE"
+      ],
+      "scopes": [
+        "internal/accountsvc/config.go",
+        "internal/accountsvc/run.go"
+      ],
+      "owner": "internal/accountsvc",
+      "action": "复用envPrefix与emailTemplatesSetting。",
+      "references": [
+        "internal/accountsvc/config.go:62",
+        "internal/accountsvc/config.go:78",
+        "internal/accountsvc/config.go:300",
+        "internal/accountsvc/config.go:420",
+        "internal/accountsvc/config.go:435",
+        "internal/accountsvc/config.go:562",
+        "internal/accountsvc/run.go:358",
+        "internal/accountsvc/email_templates.go:22"
+      ],
+      "notes": "",
+      "primaryTask": "4.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L004",
+      "priority": "P1",
+      "kind": "reuse",
+      "title": "远程鉴权示例漏用token协议定义",
+      "values": [
+        "ES256",
+        "at+jwt"
+      ],
+      "scopes": [
+        "examples/remoteauth/local.go"
+      ],
+      "owner": "tokens.Algorithm / tokens.TokenType",
+      "action": "示例直接复用已有公共定义，协议测试保留独立预期。",
+      "references": [
+        "examples/remoteauth/local.go:108",
+        "examples/remoteauth/local.go:115",
+        "examples/remoteauth/local.go:225",
+        "tokens/tokens.go:27"
+      ],
+      "notes": "",
+      "primaryTask": "8.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L005",
+      "priority": "P1",
+      "kind": "reason",
+      "title": "HTTP业务reason全集",
+      "values": [
+        "ROUTE_NOT_FOUND",
+        "METHOD_NOT_ALLOWED",
+        "MALFORMED_BODY",
+        "DEPENDENCY_UNAVAILABLE",
+        "INSUFFICIENT_SCOPE",
+        "REAUTHENTICATION_REQUIRED",
+        "INVALID_CLIENT_INFO",
+        "SIGN_IN_COMPLETION_INVALID",
+        "SIGN_IN_ALREADY_COMPLETED",
+        "IDENTITY_KIND_NOT_ENABLED",
+        "CREDENTIAL_INCOMPLETE",
+        "IDP_NONCE_REPLAYED",
+        "IDP_APP_NOT_ALLOWED",
+        "IDP_CREDENTIAL_INVALID",
+        "IDP_UNAVAILABLE",
+        "CODE_INVALID",
+        "CODE_EXPIRED",
+        "INVALID_TARGET",
+        "INVALID_ARGUMENT",
+        "TARGET_NOT_ANCHOR",
+        "CHANNEL_NOT_ENABLED",
+        "TARGET_NOT_SUPPORTED",
+        "USER_FROZEN",
+        "USER_PENDING_DELETION",
+        "DELETION_BLOCKED",
+        "INVALID_ACCOUNT_STATE",
+        "IDENTITY_ALREADY_BOUND",
+        "IDENTITY_KIND_LIMIT",
+        "LAST_ANCHOR_IDENTITY",
+        "NOT_FOUND",
+        "DEVICE_ID_INVALID",
+        "DEVICE_NAME_INVALID",
+        "CREDENTIAL_KIND_NOT_ALLOWED",
+        "CHANNEL_INVALID",
+        "IDENTITY_REPLACEMENT_NOT_CONFIGURED",
+        "INVALID_ID",
+        "IDENTITY_UNCHANGED",
+        "PROFILE_ATTRIBUTES_NOT_CONFIGURED",
+        "INVALID_PROFILE_ATTRIBUTES",
+        "NO_FIELDS",
+        "PROFILE_UPDATE_NOT_CONFIGURED",
+        "SESSION_QUERY_NOT_CONFIGURED",
+        "SIGN_IN_COMPLETION_NOT_CONFIGURED",
+        "INVALID_FILTER",
+        "ADMIN_NOT_CONFIGURED",
+        "TOKEN_MISSING",
+        "INVALID_SHOW_DELETED",
+        "INVALID_PAGE_SIZE",
+        "INVALID_PAGE_TOKEN",
+        "AUDIT_QUERY_NOT_CONFIGURED",
+        "AUDIT_QUERY_UNAVAILABLE",
+        "ADMIN_AUTH_UNAVAILABLE",
+        "ADMIN_FORBIDDEN",
+        "ADMIN_UNAUTHENTICATED",
+        "IDENTITY_RESOLUTION_NOT_CONFIGURED",
+        "INVALID_CLIENT",
+        "CLIENT_NOT_AUTHORIZED",
+        "INTERNAL",
+        "PURGE_FEED_NOT_CONFIGURED",
+        "TOKEN_INVALID"
+      ],
+      "scopes": [
+        "httpapi/",
+        "internal/accountsvc/adminauth/",
+        "internal/accountsvc/purgefeed/",
+        "internal/accountsvc/identityresolve/"
+      ],
+      "owner": "通用序列化、消费者、管理、服务HTTP层各自拥有；真同义者放共享叶子目录",
+      "action": "60种reason中TOKEN_MISSING/TOKEN_INVALID已有定义，其余58种尚未命名。按拥有者建立Reason*，保留各面的状态、消息和challenge差异。",
+      "references": [
+        "httpapi/apierror/apierror.go:122",
+        "httpapi/internal/jsonbody/jsonbody.go:51",
+        "httpapi/authn/authn.go:99",
+        "httpapi/enduser/response.go:164",
+        "httpapi/enduser/request.go:51",
+        "httpapi/enduser/replacement.go:29",
+        "httpapi/enduser/profile_attributes.go:125",
+        "httpapi/enduser/me.go:66",
+        "httpapi/enduser/current_session.go:43",
+        "httpapi/enduser/signin_completion.go:33",
+        "httpapi/admin/response.go:162",
+        "httpapi/admin/handler.go:108",
+        "httpapi/admin/filter.go:189",
+        "httpapi/admin/page.go:20",
+        "httpapi/admin/audit_cursor.go:35",
+        "httpapi/admin/audit.go:137",
+        "internal/accountsvc/adminauth/verifier.go:92",
+        "internal/accountsvc/purgefeed/handler.go:82",
+        "internal/accountsvc/identityresolve/handler.go:40"
+      ],
+      "notes": "禁止以apierror.StatusInvalidArgument/StatusNotFound等status常量代替同名reason。",
+      "primaryTask": "2.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L006",
+      "priority": "P1",
+      "kind": "extract",
+      "title": "OAuth错误码",
+      "values": [
+        "invalid_request",
+        "unsupported_grant_type",
+        "invalid_grant",
+        "temporarily_unavailable",
+        "server_error",
+        "invalid_client",
+        "invalid_token",
+        "insufficient_scope",
+        "introspection_not_configured"
+      ],
+      "scopes": [
+        "httpapi/enduser/",
+        "internal/accountsvc/introspection/"
+      ],
+      "owner": "HTTP OAuth/Bearer协议目录；introspection_not_configured归内省端点",
+      "action": "命名标准错误码，内省自定义错误保留端点归属；不与大写AIP reason混合。",
+      "references": [
+        "httpapi/enduser/oauth.go:66",
+        "httpapi/enduser/response.go:236",
+        "internal/accountsvc/introspection/handler.go:71"
+      ],
+      "notes": "",
+      "primaryTask": "2.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L007",
+      "priority": "P1",
+      "kind": "extract",
+      "title": "令牌响应类型、grant值与下一动作",
+      "values": [
+        "Bearer",
+        "refresh_token",
+        "COMPLETE_IDENTITY"
+      ],
+      "scopes": [
+        "httpapi/enduser/"
+      ],
+      "owner": "HTTP令牌及登录协议目录",
+      "action": "分别定义TokenTypeBearer、GrantTypeRefreshToken、NextActionCompleteIdentity；refresh_token字段名与grant值不同语义。",
+      "references": [
+        "httpapi/enduser/response.go:45",
+        "httpapi/enduser/response.go:150",
+        "httpapi/enduser/oauth.go:69"
+      ],
+      "notes": "响应Bearer不能改用小写SchemeBearer。",
+      "primaryTask": "2.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L008",
+      "priority": "P1",
+      "kind": "helper",
+      "title": "认证挑战生成",
+      "values": [
+        "Bearer realm=\"user\"",
+        "Bearer realm=\"admin\"",
+        "Bearer error=\"invalid_token\"",
+        "Basic realm=\"",
+        "Bearer realm=\"",
+        ", error=\"invalid_token\"",
+        "\", error=\"insufficient_scope\""
+      ],
+      "scopes": [
+        "httpapi/authn/",
+        "httpapi/admin/",
+        "internal/accountsvc/adminauth/",
+        "internal/accountsvc/serviceauth/"
+      ],
+      "owner": "独立HTTP凭据协议帮助函数",
+      "action": "优先BasicChallenge/BearerChallenge生成函数，保留realm可缺失、error可缺失、多个WWW-Authenticate头的原行为，勿逐个拆引号。",
+      "references": [
+        "httpapi/authn/authn.go:59",
+        "httpapi/admin/handler.go:116",
+        "internal/accountsvc/adminauth/verifier.go:133",
+        "internal/accountsvc/serviceauth/serviceauth.go:247"
+      ],
+      "notes": "",
+      "primaryTask": "2.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L009",
+      "priority": "P1",
+      "kind": "helper",
+      "title": "敏感响应与OAuth缓存策略",
+      "values": [
+        "Cache-Control",
+        "no-store",
+        "Pragma",
+        "no-cache"
+      ],
+      "scopes": [
+        "httpapi/",
+        "internal/accountsvc/"
+      ],
+      "owner": "各调用方均可导入的HTTP响应策略层",
+      "action": "SetNoStore与SetOAuthNoStore分开封装；前者只写现有Cache-Control，后者按原OAuth行为附Pragma。",
+      "references": [
+        "httpapi/apierror/apierror.go:108",
+        "httpapi/enduser/response.go:115",
+        "httpapi/enduser/response.go:147",
+        "httpapi/enduser/response.go:259",
+        "httpapi/enduser/oauth.go:109",
+        "httpapi/enduser/current_session.go:21",
+        "httpapi/admin/identities.go:39",
+        "internal/accountsvc/http.go:22",
+        "internal/accountsvc/run.go:224",
+        "internal/accountsvc/metrics.go:28",
+        "internal/accountsvc/introspection/handler.go:68",
+        "internal/accountsvc/purgefeed/handler.go:80",
+        "internal/accountsvc/identityresolve/handler.go:37"
+      ],
+      "notes": "",
+      "primaryTask": "2.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L010",
+      "priority": "P1",
+      "kind": "extract",
+      "title": "对外固定内部错误消息",
+      "values": [
+        "internal error"
+      ],
+      "scopes": [
+        "httpapi/apierror/",
+        "httpapi/enduser/"
+      ],
+      "owner": "apierror或HTTP错误写出函数",
+      "action": "复用固定安全消息或统一写出helper；不把内部日志文案与对外消息绑定。",
+      "references": [
+        "httpapi/apierror/apierror.go:94",
+        "httpapi/apierror/apierror.go:96",
+        "httpapi/enduser/response.go:247"
+      ],
+      "notes": "",
+      "primaryTask": "2.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L011",
+      "priority": "P1",
+      "kind": "extract",
+      "title": "JOSE Header、JWT Claim及访问令牌类型",
+      "values": [
+        "typ",
+        "kid",
+        "jku",
+        "x5u",
+        "iss",
+        "aud",
+        "azp",
+        "sub",
+        "client_id",
+        "jti",
+        "exp",
+        "iat",
+        "scope",
+        "nonce",
+        "at+jwt",
+        "application/at+jwt"
+      ],
+      "scopes": [
+        "tokens/",
+        "internal/accountsvc/oidcjwt/",
+        "internal/accountsvc/adminauth/",
+        "internal/accountsvc/serviceauth/",
+        "user/idp/"
+      ],
+      "owner": "无消费者/管理员业务依赖的JOSE叶子协议目录，或各包内部常量",
+      "action": "稳定协议键集中；避免让管理员/服务/IdP验证器仅为复用字符串依赖消费者tokens签发实现。",
+      "references": [
+        "tokens/tokens.go:196",
+        "internal/accountsvc/oidcjwt/verifier.go:199",
+        "internal/accountsvc/oidcjwt/verifier.go:226",
+        "internal/accountsvc/serviceauth/serviceauth.go:171",
+        "internal/accountsvc/adminauth/claims.go:12",
+        "user/idp/oidc.go:60",
+        "user/idp/apple.go:109"
+      ],
+      "notes": "",
+      "primaryTask": "2.3",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L012",
+      "priority": "P2",
+      "kind": "reuse",
+      "title": "JWK参数与签名算法",
+      "values": [
+        "RSA",
+        "EC",
+        "P-256",
+        "sig",
+        "verify",
+        "RS256"
+      ],
+      "scopes": [
+        "tokens/",
+        "internal/accountsvc/oidcjwt/",
+        "user/idp/jwk.go"
+      ],
+      "owner": "JOSE/JWK协议目录与既有jwt库",
+      "action": "RS256优先用jwt.SigningMethodRS256.Alg()；其余为具名JWK值。",
+      "references": [
+        "tokens/tokens.go:150",
+        "internal/accountsvc/oidcjwt/jwks.go:93",
+        "internal/accountsvc/oidcjwt/verifier.go:218",
+        "user/idp/jwk.go:33"
+      ],
+      "notes": "",
+      "primaryTask": "2.3",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L013",
+      "priority": "P1",
+      "kind": "extract",
+      "title": "验证码Lua状态和限流Dimension",
+      "values": [
+        "OK",
+        "MISSING",
+        "MISMATCH",
+        "COOLDOWN",
+        "TARGET_LIMIT",
+        "IP_LIMIT",
+        "TARGET_VERIFY_LIMIT"
+      ],
+      "scopes": [
+        "user/code/",
+        "user/observability.go"
+      ],
+      "owner": "user/code",
+      "action": "Go侧私有脚本状态常量及公开限流维度名称；保留Dimension现有string字段，原Lua不拆为拼接，用协议测试确认一致。",
+      "references": [
+        "user/code/challenge.go:111",
+        "user/code/challenge.go:203",
+        "user/code/store.go:30",
+        "user/observability.go:165"
+      ],
+      "notes": "",
+      "primaryTask": "3.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L014",
+      "priority": "P1",
+      "kind": "reason",
+      "title": "认证审计原因全集",
+      "values": [
+        "CHANNEL_NOT_ENABLED",
+        "TARGET_NOT_SUPPORTED",
+        "SEND_FAILED",
+        "IDENTITY_KIND_NOT_ENABLED",
+        "CODE_INVALID",
+        "CODE_EXPIRED",
+        "UNAVAILABLE",
+        "INTERNAL",
+        "IDP_CREDENTIAL_INVALID",
+        "IDP_NONCE_REPLAYED",
+        "IDP_APP_NOT_ALLOWED",
+        "USER_FROZEN",
+        "USER_PENDING_DELETION",
+        "UNKNOWN_TOKEN",
+        "TOKEN_REUSE",
+        "GRACE_UNAVAILABLE",
+        "GRACE_REPLAY",
+        "SESSION_REVOKED",
+        "SESSION_EXPIRED",
+        "NOT_ANCHOR",
+        "IDENTITY_ALREADY_BOUND",
+        "IDENTITY_KIND_LIMIT",
+        "ALREADY_BOUND",
+        "LAST_ANCHOR",
+        "INSUFFICIENT_SCOPE",
+        "REAUTHENTICATION_REQUIRED",
+        "IDENTITY_UNCHANGED",
+        "INVALID_ARGUMENT",
+        "NOT_FOUND",
+        "TOKEN_INVALID",
+        "NEW_USER",
+        "SIGN_IN_COMPLETION_INVALID",
+        "SIGN_IN_ALREADY_COMPLETED",
+        "RATE_LIMITED"
+      ],
+      "scopes": [
+        "user/"
+      ],
+      "owner": "认证审计原因目录，独立于HTTP reason、指标Reason及生命周期枚举",
+      "action": "建立审计原因具名值；USER_+State.String()改明确映射函数。ALREADY_BOUND与IDENTITY_ALREADY_BOUND等既有值不得合并。",
+      "references": [
+        "user/service_signin.go:50",
+        "user/service_signin.go:117",
+        "user/service_session.go:56",
+        "user/service_session.go:163",
+        "user/service_idp.go:102",
+        "user/service_me.go:315",
+        "user/service_identity.go:156",
+        "user/service_identity_replacement.go:234",
+        "user/service_signin_completion_audit.go:20",
+        "user/service.go:464"
+      ],
+      "notes": "",
+      "primaryTask": "3.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L015",
+      "priority": "P1",
+      "kind": "extract",
+      "title": "认证审计资源类型",
+      "values": [
+        "USER",
+        "SESSION",
+        "IDENTITY",
+        "IDENTITY_FLOW"
+      ],
+      "scopes": [
+        "audit/",
+        "user/service_identity_resolve.go",
+        "user/service_profile_attributes_audit.go",
+        "httpapi/admin/audit.go"
+      ],
+      "owner": "认证审计资源类型目录",
+      "action": "集中写入、查询、投影和隐私识别使用的资源类型。",
+      "references": [
+        "audit/authentication/authentication.go:179",
+        "audit/store.go:244",
+        "audit/store_privacy.go:35",
+        "httpapi/admin/audit.go:41",
+        "user/service_identity_resolve.go:115",
+        "user/service_profile_attributes_audit.go:19"
+      ],
+      "notes": "与ActorType.USER、ActorKind.USER同字面但不同语义，禁止互借常量。",
+      "primaryTask": "3.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L016",
+      "priority": "P1",
+      "kind": "extract",
+      "title": "非认证业务审计Action",
+      "values": [
+        "IDENTITY_RESOLVE",
+        "USER_PROFILE_ATTRIBUTES_UPDATED"
+      ],
+      "scopes": [
+        "user/service_identity_resolve.go",
+        "user/service_profile_attributes_audit.go"
+      ],
+      "owner": "各能力业务审计目录",
+      "action": "定义业务action常量，不能顺手加入enum.EventType或认证Actions注册表。",
+      "references": [
+        "user/service_identity_resolve.go:113",
+        "user/service_profile_attributes_audit.go:19"
+      ],
+      "notes": "",
+      "primaryTask": "3.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L017",
+      "priority": "P1",
+      "kind": "extract",
+      "title": "持久化AAD和策略指纹格式",
+      "values": [
+        "accountkit-sign-in-completion-v1",
+        "identity-policy-v1:%v:%v",
+        "challenge:"
+      ],
+      "scopes": [
+        "user/service_signin_completion_store.go",
+        "user/identity_policy.go",
+        "user/code/challenge.go"
+      ],
+      "owner": "各加密/指纹所属包私有常量",
+      "action": "具名标记格式版本和密码学域；提取时保持逐字节一致。challenge HMAC域与同名Redis前缀分别命名。",
+      "references": [
+        "user/service_signin_completion_store.go:91",
+        "user/identity_policy.go:92",
+        "user/code/challenge.go:61"
+      ],
+      "notes": "",
+      "primaryTask": "3.3",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L018",
+      "priority": "P1",
+      "kind": "extract",
+      "title": "SMTP TLS模式",
+      "values": [
+        "implicit",
+        "starttls",
+        "none"
+      ],
+      "scopes": [
+        "user/sender/smtp/",
+        "internal/accountsvc/config.go"
+      ],
+      "owner": "user/sender/smtp",
+      "action": "定义模式常量供校验、连接和accountsvc配置使用；保持公开TLSMode string兼容。",
+      "references": [
+        "user/sender/smtp/smtp.go:85",
+        "user/sender/smtp/smtp.go:157",
+        "user/sender/smtp/smtp.go:169",
+        "internal/accountsvc/config.go:245",
+        "internal/accountsvc/config.go:256"
+      ],
+      "notes": "",
+      "primaryTask": "4.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L019",
+      "priority": "P2",
+      "kind": "helper",
+      "title": "持久化第三方subject编码",
+      "values": [
+        "unionid:",
+        "openid:",
+        "uid:"
+      ],
+      "scopes": [
+        "user/idp/"
+      ],
+      "owner": "提供方各自的subject构造函数/格式常量",
+      "action": "消除各提供方内部编码重复，同时保留提供方身份空间隔离，不按相同前缀合并身份。",
+      "references": [
+        "user/idp/wechat.go:187",
+        "user/idp/wechat.go:193",
+        "user/idp/alipay.go:92",
+        "user/idp/alipay.go:97",
+        "user/idp/qq.go:103",
+        "user/idp/qq.go:108",
+        "user/idp/weibo.go:106"
+      ],
+      "notes": "",
+      "primaryTask": "3.3",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L020",
+      "priority": "P2",
+      "kind": "helper",
+      "title": "验证码Redis键及额度日期格式",
+      "values": [
+        "20060102",
+        "code:",
+        "cooldown:",
+        "quota:",
+        ":target:",
+        ":ip:",
+        "challenge:",
+        "verify_failure:"
+      ],
+      "scopes": [
+        "user/code/"
+      ],
+      "owner": "user/code私有键构造",
+      "action": "集中键构造/命名域，日期格式具名；不要为每个冒号造常量，实例前缀保持。",
+      "references": [
+        "user/code/store.go:101",
+        "user/code/challenge.go:55",
+        "user/code/challenge.go:100"
+      ],
+      "notes": "",
+      "primaryTask": "3.3",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L021",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "nonce隔离域与提供方策略指纹",
+      "values": [
+        "apple",
+        "google",
+        "facebook",
+        "nonce:",
+        "oidc:",
+        "oauth:",
+        "mini-program:",
+        "wechat:",
+        "alipay:",
+        "qq:",
+        "weibo"
+      ],
+      "scopes": [
+        "user/idp/"
+      ],
+      "owner": "user/idp私有nonce/策略指纹目录",
+      "action": "nonce域、日志展示标签分别命名，指纹组成使用具名格式/构造函数，保持原字节。",
+      "references": [
+        "user/idp/nonce.go:29",
+        "user/idp/nonce.go:43",
+        "user/idp/oidc.go:209",
+        "user/idp/policy.go:25",
+        "user/idp/policy.go:64"
+      ],
+      "notes": "",
+      "primaryTask": "3.3",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L022",
+      "priority": "P2",
+      "kind": "reuse",
+      "title": "SQLSTATE与依赖失败分类",
+      "values": [
+        "23505",
+        "08",
+        "53",
+        "57P01",
+        "57P02",
+        "57P03",
+        "55P03",
+        "25P04",
+        "57014"
+      ],
+      "scopes": [
+        "user/"
+      ],
+      "owner": "局部SQLSTATE分类函数与现有pgerrcode依赖",
+      "action": "已有码用UniqueViolation/AdminShutdown/CrashShutdown/CannotConnectNow/LockNotAvailable/QueryCanceled；25P04在本地命名；08/53类前缀判断保留，不用枚举已知码的函数缩窄兼容。",
+      "references": [
+        "user/repo.go:79",
+        "user/service_signin_completion_store.go:37",
+        "user/service_session_context.go:122",
+        "user/service_identity_resolve.go:61"
+      ],
+      "notes": "",
+      "primaryTask": "3.4",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L023",
+      "priority": "P2",
+      "kind": "reuse",
+      "title": "维护任务名称漏用已有常量",
+      "values": [
+        "cleanup_sign_in_completion_flows",
+        "purge_users",
+        "cleanup_sessions",
+        "audit_retention",
+        "rekey_digests",
+        "reencrypt_subjects"
+      ],
+      "scopes": [
+        "accountkit.go",
+        "user/service_rekey.go"
+      ],
+      "owner": "既有observability.Task*；名称契约再核对维护层归属",
+      "action": "优先传现有具名Task或转string，避免再造同值常量；保留稳定任务名。cleanup_purged_users另有语义，不能硬套近似值。",
+      "references": [
+        "accountkit.go:281",
+        "accountkit.go:285",
+        "accountkit.go:299",
+        "accountkit.go:306",
+        "accountkit.go:317",
+        "accountkit.go:324",
+        "user/service_rekey.go:84",
+        "user/service_rekey.go:117",
+        "observability/classification.go:242"
+      ],
+      "notes": "",
+      "primaryTask": "3.5",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L024",
+      "priority": "P2",
+      "kind": "reuse",
+      "title": "审计省略字段的字符串往返",
+      "values": [
+        "request_id",
+        "device_id",
+        "subject_hint",
+        "actor_name",
+        "client_ip"
+      ],
+      "scopes": [
+        "audit/authentication/authentication.go"
+      ],
+      "owner": "observability.AuditField",
+      "action": "直接传FieldRequestID等具名值，去掉字符串往返映射；不把其他JSON字段同名场景全部绑定到指标字段。",
+      "references": [
+        "audit/authentication/authentication.go:133",
+        "audit/authentication/authentication.go:447",
+        "observability/classification.go:221"
+      ],
+      "notes": "",
+      "primaryTask": "3.5",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L025",
+      "priority": "P2",
+      "kind": "parse",
+      "title": "已有结果/主体枚举的重复解析",
+      "values": [
+        "SUCCESS",
+        "FAILURE",
+        "USER",
+        "ADMIN",
+        "SYSTEM"
+      ],
+      "scopes": [
+        "audit/event/json.go",
+        "audit/authentication/authentication.go"
+      ],
+      "owner": "enum.Result / enum.ActorKind解析器",
+      "action": "新增或复用ParseResult/ParseActorKind，而不是新增第二套字符串名称。",
+      "references": [
+        "audit/event/json.go:87",
+        "audit/authentication/authentication.go:293",
+        "enum/enum.go:147"
+      ],
+      "notes": "",
+      "primaryTask": "3.4",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L026",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "IdP安全Claims与资料默认Claims",
+      "values": [
+        "email",
+        "email_verified",
+        "name",
+        "picture"
+      ],
+      "scopes": [
+        "user/idp/"
+      ],
+      "owner": "IdP协议目录",
+      "action": "安全claim及资料默认映射各自具名，默认值与解析共享；自定义claim仍由配置指定。",
+      "references": [
+        "user/idp/oidc.go:107",
+        "user/idp/oidc.go:199",
+        "user/idp/oidc.go:202",
+        "user/idp/apple.go:150",
+        "user/idp/google.go:64",
+        "user/idp/facebook.go:93"
+      ],
+      "notes": "",
+      "primaryTask": "4.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L027",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "Facebook signed_request算法",
+      "values": [
+        "HMAC-SHA256"
+      ],
+      "scopes": [
+        "user/idp/facebook_signed_request.go"
+      ],
+      "owner": "Facebook局部协议常量",
+      "action": "具名算法标识，保留上游拼写。",
+      "references": [
+        "user/idp/facebook_signed_request.go:51"
+      ],
+      "notes": "",
+      "primaryTask": "4.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L028",
+      "priority": "P2",
+      "kind": "defaults",
+      "title": "六个IdP默认endpoint重复定义",
+      "values": [
+        "https://openapi.alipay.com/gateway.do",
+        "https://graph.qq.com",
+        "https://api.weibo.com",
+        "https://graph.facebook.com",
+        "https://www.facebook.com/.well-known/oauth/openid/jwks/",
+        "https://www.googleapis.com/oauth2/v3/certs"
+      ],
+      "scopes": [
+        "config.go",
+        "user/idp/"
+      ],
+      "owner": "共享internal默认目录或规范化函数",
+      "action": "复用已有私有默认值；避免只为消重新增公共API，不能删根默认后破坏Validate的URL校验。",
+      "references": [
+        "config.go:284",
+        "config.go:291",
+        "config.go:295",
+        "config.go:304",
+        "config.go:307",
+        "config.go:324",
+        "user/idp/alipay_config.go:38",
+        "user/idp/qq_config.go:28",
+        "user/idp/weibo_config.go:18",
+        "user/idp/facebook.go:23",
+        "user/idp/google.go:17"
+      ],
+      "notes": "WeChat API和Apple JWKS当前仅根配置各定义一次，非重复缺口；appleIssuer不是JWKS地址。",
+      "primaryTask": "4.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L029",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "服务运行模式及子命令",
+      "values": [
+        "production",
+        "development",
+        "serve",
+        "migrate"
+      ],
+      "scopes": [
+        "internal/accountsvc/config.go",
+        "internal/accountsvc/run.go"
+      ],
+      "owner": "internal/accountsvc",
+      "action": "定义运行模式/命令常量，可保持现有string字段；不新增公开枚举或部署值。",
+      "references": [
+        "internal/accountsvc/config.go:102",
+        "internal/accountsvc/config.go:153",
+        "internal/accountsvc/config.go:182",
+        "internal/accountsvc/config.go:309",
+        "internal/accountsvc/run.go:63",
+        "internal/accountsvc/run.go:123"
+      ],
+      "notes": "",
+      "primaryTask": "4.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L030",
+      "priority": "P2",
+      "kind": "catalog",
+      "title": "服务客户端分项配置字段",
+      "values": [
+        "ID",
+        "AUTH_METHODS",
+        "PERMISSIONS",
+        "BASIC_SECRETS",
+        "BEARER_SUBJECTS"
+      ],
+      "scopes": [
+        "internal/accountsvc/config_service_clients.go"
+      ],
+      "owner": "internal/accountsvc服务客户端配置目录",
+      "action": "统一字段常量与完整变量名构造；预期字段集合、读取与错误定位共用定义，保持不同CSV去重规则。",
+      "references": [
+        "internal/accountsvc/config_service_clients.go:62",
+        "internal/accountsvc/config_service_clients.go:76",
+        "internal/accountsvc/config_service_clients.go:82",
+        "internal/accountsvc/config_service_clients.go:91",
+        "internal/accountsvc/config_service_clients.go:101",
+        "internal/accountsvc/config_service_clients.go:119"
+      ],
+      "notes": "",
+      "primaryTask": "4.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L031",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "重复服务配置完整名与前缀",
+      "values": [
+        "ACCOUNTSVC_SERVICE_CLIENTS",
+        "ACCOUNTSVC_SERVICE_CLIENT_",
+        "ACCOUNTSVC_SMS_ALIYUN_",
+        "ACCOUNTSVC_ADMIN_AUDIENCE",
+        "ACCOUNTSVC_ADMIN_TOKEN_PROFILE",
+        "ACCOUNTSVC_SERVICE_AUDIENCE",
+        "ACCOUNTSVC_SERVICE_TOKEN_PROFILE",
+        "ACCOUNTSVC_DATABASE_URL",
+        "ACCOUNTSVC_REDIS_URL",
+        "ACCOUNTSVC_SMTP_PASSWORD",
+        "ACCOUNTSVC_TLS_CERT_FILE",
+        "ACCOUNTSVC_TLS_KEY_FILE",
+        "ACCOUNTSVC_ALIPAY_APP_IDS",
+        "ACCOUNTSVC_QQ_APP_IDS",
+        "ACCOUNTSVC_WEIBO_APP_IDS"
+      ],
+      "scopes": [
+        "internal/accountsvc/config.go",
+        "internal/accountsvc/config_service_clients.go"
+      ],
+      "owner": "internal/accountsvc按配置域局部常量",
+      "action": "在读取、验证、错误输出共享稳定名称，不把每个只用一次的配置键都抽公共常量。",
+      "references": [
+        "internal/accountsvc/config.go:117",
+        "internal/accountsvc/config.go:125",
+        "internal/accountsvc/config.go:214",
+        "internal/accountsvc/config.go:245",
+        "internal/accountsvc/config.go:306",
+        "internal/accountsvc/config.go:348",
+        "internal/accountsvc/config.go:420",
+        "internal/accountsvc/config_service_clients.go:43"
+      ],
+      "notes": "",
+      "primaryTask": "4.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L032",
+      "priority": "P2",
+      "kind": "catalog",
+      "title": "库配置及动态提供方字段重复登记",
+      "values": [
+        "ADMIN_ISSUER",
+        "ADMIN_AUDIENCE",
+        "ADMIN_ROLES_CLAIM",
+        "ADMIN_USERNAME_CLAIM",
+        "OIDC_PROVIDERS",
+        "OIDC_",
+        "ALIPAY_APP_IDS",
+        "ALIPAY_SUBJECT_MODE",
+        "QQ_APP_IDS",
+        "QQ_SUBJECT_MODE",
+        "WEIBO_APP_IDS",
+        "WECHAT_SUBJECT_MODE",
+        "ISSUER",
+        "JWKS_URL",
+        "CLIENT_IDS",
+        "NONCE_TTL",
+        "NAME_CLAIMS",
+        "PICTURE_CLAIMS",
+        "PRIVATE_KEY",
+        "PUBLIC_KEY",
+        "ACCESS_KEY_ID",
+        "ACCESS_KEY_SECRET",
+        "SIGN_NAME"
+      ],
+      "scopes": [
+        "config.go",
+        "internal/accountsvc/config.go"
+      ],
+      "owner": "配置字段/后缀描述目录",
+      "action": "字段→环境后缀、读取及错误映射尽量同源；优先描述表与构造函数，不制造巨大平铺公共常量包。",
+      "references": [
+        "config.go:666",
+        "config.go:707",
+        "config.go:724",
+        "config.go:759",
+        "config.go:780",
+        "config.go:815",
+        "config.go:842",
+        "internal/accountsvc/config.go:298",
+        "internal/accountsvc/config.go:429",
+        "internal/accountsvc/config.go:550"
+      ],
+      "notes": "",
+      "primaryTask": "4.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L033",
+      "priority": "P2",
+      "kind": "helper",
+      "title": "审计默认source/namespace构造",
+      "values": [
+        "account",
+        "accountkit/",
+        "/resources"
+      ],
+      "scopes": [
+        "config.go",
+        "internal/auditconfig/defaults.go",
+        "internal/accountsvc/run.go"
+      ],
+      "owner": "内部审计配置默认构造函数",
+      "action": "按schema共用默认构造规则，避免根配置、pool推导与accountsvc拼接三处维护。",
+      "references": [
+        "config.go:244",
+        "config.go:250",
+        "config.go:253",
+        "internal/auditconfig/defaults.go:11",
+        "internal/auditconfig/defaults.go:17",
+        "internal/accountsvc/run.go:193"
+      ],
+      "notes": "",
+      "primaryTask": "3.5",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L034",
+      "priority": "P1",
+      "kind": "extract",
+      "title": "迁移记录表的引擎/锁共识",
+      "values": [
+        "schema_migrations"
+      ],
+      "scopes": [
+        "migrations/migrations.go",
+        "internal/migrationlock/lock.go"
+      ],
+      "owner": "迁移元数据单一内部定义",
+      "action": "driver配置与旧引擎锁ID共同引用，不修改已冻结SQL、不机械拼接所有查询文本。",
+      "references": [
+        "migrations/migrations.go:93",
+        "internal/migrationlock/lock.go:71"
+      ],
+      "notes": "",
+      "primaryTask": "3.3",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L035",
+      "priority": "P2",
+      "kind": "helper",
+      "title": "资源名构造片段",
+      "values": [
+        "users/",
+        "/identities/",
+        "/sessions/",
+        "/profile",
+        "/auditEvents/"
+      ],
+      "scopes": [
+        "httpapi/"
+      ],
+      "owner": "共享资源名构造函数",
+      "action": "优先UserName/IdentityName/SessionName/ProfileName/AuditEventName；不合并消费者与管理DTO，也不改变ID和路径。",
+      "references": [
+        "httpapi/enduser/response.go:65",
+        "httpapi/enduser/response.go:84",
+        "httpapi/enduser/response.go:98",
+        "httpapi/enduser/current_session.go:54",
+        "httpapi/enduser/profile_attributes.go:43",
+        "httpapi/admin/response.go:51",
+        "httpapi/admin/response.go:78",
+        "httpapi/admin/response.go:133",
+        "httpapi/admin/identities.go:33",
+        "httpapi/admin/sessions.go:25"
+      ],
+      "notes": "",
+      "primaryTask": "2.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L036",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "自定义请求/设备/客户端Header",
+      "values": [
+        "X-Request-Id",
+        "X-Device-Id",
+        "X-Device-Name",
+        "X-Client-Type",
+        "X-Client-OS-Name",
+        "X-Client-OS-Version",
+        "X-Client-Browser-Name",
+        "X-Client-Browser-Version",
+        "X-Client-App-Name",
+        "X-Client-App-Version",
+        "X-Device-Model",
+        "X-Device-Type"
+      ],
+      "scopes": [
+        "accountkit.go",
+        "httpapi/",
+        "internal/accountsvc/metadata.go"
+      ],
+      "owner": "共同可导入的内部HTTP协议层；设备/客户端头可由clientinfo拥有",
+      "action": "共用稳定头名；request ID跨root/httpapi内部与accountsvc，不能让后两者越过Go internal导入边界。",
+      "references": [
+        "accountkit.go:487",
+        "httpapi/internal/reqid/reqid.go:16",
+        "internal/accountsvc/metadata.go:31",
+        "httpapi/enduser/request.go:49",
+        "httpapi/clientinfo/parse.go:42"
+      ],
+      "notes": "",
+      "primaryTask": "2.4",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L037",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "Client Hints头及版本参数",
+      "values": [
+        "Sec-CH-UA",
+        "Sec-CH-UA-Full-Version-List",
+        "Sec-CH-UA-Platform",
+        "Sec-CH-UA-Platform-Version",
+        "Sec-CH-UA-Model",
+        "Sec-CH-UA-Mobile",
+        "sec-ch-ua",
+        "v"
+      ],
+      "scopes": [
+        "httpapi/clientinfo/"
+      ],
+      "owner": "httpapi/clientinfo",
+      "action": "完整Header、小写扫描前缀与参数键分别命名，不合并语义。",
+      "references": [
+        "httpapi/clientinfo/parse.go:145",
+        "httpapi/clientinfo/parse.go:156",
+        "httpapi/clientinfo/parse.go:233"
+      ],
+      "notes": "",
+      "primaryTask": "2.4",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L038",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "HTTP凭据头与内容类型",
+      "values": [
+        "Authorization",
+        "WWW-Authenticate",
+        "application/x-www-form-urlencoded",
+        "application/json",
+        "application/json; charset=utf-8"
+      ],
+      "scopes": [
+        "httpapi/",
+        "internal/httpcredentials/",
+        "internal/accountsvc/",
+        "user/idp/",
+        "user/sender/"
+      ],
+      "owner": "HTTP凭据/响应帮助层，各SDK保持独立定义",
+      "action": "随现有helper收口，媒体类型与带charset的完整Content-Type不同值；标准Header不必建大而全常量包。",
+      "references": [
+        "internal/httpcredentials/credentials.go:22",
+        "internal/accountsvc/basicclients/basicclients.go:64",
+        "internal/accountsvc/serviceauth/serviceauth.go:134",
+        "httpapi/enduser/oauth.go:29",
+        "internal/accountsvc/introspection/handler.go:98",
+        "httpapi/apierror/apierror.go:115"
+      ],
+      "notes": "",
+      "primaryTask": "2.4",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L039",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "健康状态与服务endpoint标签",
+      "values": [
+        "not_ready",
+        "ready",
+        "ok",
+        "introspect",
+        "purged_users",
+        "identities_resolve"
+      ],
+      "scopes": [
+        "internal/accountsvc/http.go",
+        "internal/accountsvc/routes.go",
+        "internal/accountsvc/introspection/handler.go",
+        "internal/accountsvc/purgefeed/handler.go"
+      ],
+      "owner": "健康状态由accountsvc拥有；Endpoint由对应handler拥有",
+      "action": "固定分类标签具名，路由表引用Endpoint；不要求每条路由路径额外常量化。",
+      "references": [
+        "internal/accountsvc/http.go:31",
+        "internal/accountsvc/http.go:44",
+        "internal/accountsvc/routes.go:50",
+        "internal/accountsvc/introspection/handler.go:47",
+        "internal/accountsvc/purgefeed/handler.go:49"
+      ],
+      "notes": "",
+      "primaryTask": "4.3",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L040",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "刷新/吊销Redis命名域",
+      "values": [
+        "grace:",
+        "revoked:"
+      ],
+      "scopes": [
+        "session/grace/cache.go",
+        "session/revocation/set.go"
+      ],
+      "owner": "各存储包私有常量",
+      "action": "各自已集中key()，只命名存储协议域即可，无需增加工厂层。",
+      "references": [
+        "session/grace/cache.go:45",
+        "session/revocation/set.go:27"
+      ],
+      "notes": "优先级低；Redis EXISTS标记1不单独常量化。",
+      "primaryTask": "3.3",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L041",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "预览文件与审计查询内部分类",
+      "values": [
+        "subjects.txt",
+        "reader_error",
+        "page_limit",
+        "invalid_record",
+        "page_order",
+        "record_scope",
+        "authentication_projection"
+      ],
+      "scopes": [
+        "internal/accountsvc/email_templates.go",
+        "httpapi/admin/audit.go"
+      ],
+      "owner": "邮件预览/管理审计各自私有定义",
+      "action": "subjects.txt的覆盖允许表和输出文件共用；内部日志分类若稳定则本地具名，不与对外reason混合。",
+      "references": [
+        "internal/accountsvc/email_templates.go:126",
+        "internal/accountsvc/email_templates.go:159",
+        "httpapi/admin/audit.go:154"
+      ],
+      "notes": "",
+      "primaryTask": "4.3",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L042",
+      "priority": "P2",
+      "kind": "catalog",
+      "title": "管理filter字段",
+      "values": [
+        "state",
+        "create_time",
+        "identity.phone",
+        "identity.phone_prefix",
+        "identity.phone_suffix",
+        "identity.email",
+        "identity.email_prefix",
+        "identity.email_domain"
+      ],
+      "scopes": [
+        "httpapi/admin/filter.go"
+      ],
+      "owner": "管理filter字段描述表",
+      "action": "把识别、kind推导和执行绑定在同一描述表；不机械给每个运算符造常量。",
+      "references": [
+        "httpapi/admin/filter.go:103",
+        "httpapi/admin/filter.go:164"
+      ],
+      "notes": "",
+      "primaryTask": "5.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L043",
+      "priority": "P2",
+      "kind": "catalog",
+      "title": "浏览器规范名/品牌/rank",
+      "values": [
+        "Chrome",
+        "Chromium",
+        "Safari",
+        "Firefox",
+        "Edge",
+        "Opera",
+        "Opera Mini",
+        "Opera Touch",
+        "Internet Explorer",
+        "Samsung Browser",
+        "Vivaldi",
+        "Huawei Browser",
+        "Microsoft Edge",
+        "Google Chrome"
+      ],
+      "scopes": [
+        "httpapi/clientinfo/parse.go"
+      ],
+      "owner": "clientinfo浏览器目录表",
+      "action": "描述规范输出、品牌别名与rank，避免白名单与输出漂移；外部品牌名与规范名不强行等同。",
+      "references": [
+        "httpapi/clientinfo/parse.go:93",
+        "httpapi/clientinfo/parse.go:109",
+        "httpapi/clientinfo/parse.go:248"
+      ],
+      "notes": "",
+      "primaryTask": "5.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L044",
+      "priority": "P2",
+      "kind": "catalog",
+      "title": "指标标签与重复单位",
+      "values": [
+        "accountkit_instance",
+        "operation",
+        "method",
+        "result",
+        "grant",
+        "mode",
+        "reason",
+        "channel",
+        "purpose",
+        "component",
+        "scenario",
+        "stage",
+        "field",
+        "task",
+        "s",
+        "{operation}",
+        "{event}"
+      ],
+      "scopes": [
+        "observability/internal/metricdata/",
+        "observability/prometheus/observer.go",
+        "observability/otel/observer.go"
+      ],
+      "owner": "observability/internal/metricdata",
+      "action": "指标描述、投影与两个适配器复用具名标签/单位；单处描述过的每个指标名称无需再包常量。",
+      "references": [
+        "observability/internal/metricdata/catalog.go:36",
+        "observability/internal/metricdata/project.go:51",
+        "observability/prometheus/observer.go:47",
+        "observability/otel/observer.go:47"
+      ],
+      "notes": "",
+      "primaryTask": "3.5",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L045",
+      "priority": "P2",
+      "kind": "catalog",
+      "title": "JSON Schema关键字与类型",
+      "values": [
+        "https://json-schema.org/draft/2020-12/schema",
+        "$schema",
+        "$id",
+        "$ref",
+        "$defs",
+        "type",
+        "properties",
+        "items",
+        "additionalProperties",
+        "enum",
+        "const",
+        "required",
+        "minLength",
+        "maxLength",
+        "pattern",
+        "format",
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "multipleOf",
+        "minItems",
+        "maxItems",
+        "uniqueItems",
+        "minProperties",
+        "maxProperties",
+        "dependentRequired",
+        "allOf",
+        "anyOf",
+        "oneOf",
+        "not",
+        "if",
+        "then",
+        "else",
+        "title",
+        "description",
+        "default",
+        "examples",
+        "readOnly",
+        "writeOnly",
+        "deprecated",
+        "$comment",
+        "object",
+        "array",
+        "string",
+        "boolean",
+        "integer",
+        "number"
+      ],
+      "scopes": [
+        "internal/profileattributes/"
+      ],
+      "owner": "profileattributes私有关键字/类型描述表",
+      "action": "重复索引、switch及允许集合可共用关键字定义/元数据；只出现一次的注解不要求额外常量。Draft URI必须单一定义。",
+      "references": [
+        "internal/profileattributes/schema.go:13",
+        "internal/profileattributes/schema.go:87",
+        "internal/profileattributes/schema.go:98",
+        "internal/profileattributes/policy.go:35",
+        "internal/profileattributes/patch.go:147"
+      ],
+      "notes": "",
+      "primaryTask": "5.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L046",
+      "priority": "P2",
+      "kind": "helper",
+      "title": "重复校验规则",
+      "values": [
+        "^[A-Za-z0-9._-]{1,64}$",
+        "^[0-9]{1,20}$",
+        "^v[0-9]+\\.[0-9]+$"
+      ],
+      "scopes": [
+        "accountkit.go",
+        "config.go",
+        "httpapi/internal/reqid/",
+        "httpapi/enduser/request.go",
+        "internal/accountsvc/metadata.go",
+        "user/idp/"
+      ],
+      "owner": "对应RequestID/提供方配置验证函数",
+      "action": "同一RequestID校验、同一提供方跨配置/构造器验证共享函数或具名规则；设备ID、QQ、微博、短信RequestID即使正则相同也保留各自语义。",
+      "references": [
+        "accountkit.go:484",
+        "internal/accountsvc/metadata.go:17",
+        "config.go:169",
+        "config.go:172",
+        "user/idp/qq_config.go:30",
+        "user/idp/weibo_config.go:20"
+      ],
+      "notes": "",
+      "primaryTask": "4.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L047",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "提供方局部协议：微信",
+      "values": [
+        "appid",
+        "secret",
+        "code",
+        "grant_type",
+        "authorization_code",
+        "js_code",
+        "/sns/oauth2/access_token",
+        "/sns/jscode2session"
+      ],
+      "scopes": [
+        "user/idp/wechat.go"
+      ],
+      "owner": "微信局部协议目录",
+      "action": "优先稳定端点、grant值及复用字段；不跨提供方合并code等通用单词。",
+      "references": [
+        "user/idp/wechat.go:145"
+      ],
+      "notes": "",
+      "primaryTask": "4.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L048",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "提供方局部协议：QQ",
+      "values": [
+        "access_token",
+        "fmt",
+        "json",
+        "unionid",
+        "error",
+        "client_id",
+        "openid",
+        "/oauth2.0/me",
+        "/user/get_user_info",
+        "oauth_consumer_key",
+        "ret",
+        "is_lost",
+        "nickname",
+        "figureurl_qq_2",
+        "figureurl_qq_1"
+      ],
+      "scopes": [
+        "user/idp/qq.go"
+      ],
+      "owner": "QQ局部协议目录",
+      "action": "优先端点、鉴别结果和重复字段；0/1请求值可由有语义选项表示，不为数字字符机械造常量。",
+      "references": [
+        "user/idp/qq.go:75",
+        "user/idp/qq.go:91",
+        "user/idp/qq.go:151"
+      ],
+      "notes": "",
+      "primaryTask": "4.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L049",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "提供方局部协议：微博",
+      "values": [
+        "/oauth2/get_token_info",
+        "access_token",
+        "error_code",
+        "appkey",
+        "expire_in",
+        "uid",
+        "/2/users/show.json",
+        "id",
+        "idstr",
+        "screen_name",
+        "avatar_hd",
+        "avatar_large",
+        "profile_image_url",
+        "21314",
+        "21315",
+        "21316",
+        "21317",
+        "21319",
+        "21327",
+        "21332",
+        "10005",
+        "10014",
+        "21321"
+      ],
+      "scopes": [
+        "user/idp/weibo.go",
+        "user/idp/weibo_api.go"
+      ],
+      "owner": "微博局部协议目录",
+      "action": "端点、错误码和重复字段具名，上游字段不为本地风格改名。",
+      "references": [
+        "user/idp/weibo.go:77",
+        "user/idp/weibo.go:137",
+        "user/idp/weibo_api.go:93"
+      ],
+      "notes": "",
+      "primaryTask": "4.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L050",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "提供方局部协议：Facebook",
+      "values": [
+        "/debug_token",
+        "input_token",
+        "access_token",
+        "appsecret_proof",
+        "USER",
+        "/me",
+        "fields",
+        "id,name,email,picture"
+      ],
+      "scopes": [
+        "user/idp/facebook.go"
+      ],
+      "owner": "Facebook局部协议目录",
+      "action": "端点、token类型、签名参数具名；USER是上游token类型，不是审计主体或资源。",
+      "references": [
+        "user/idp/facebook.go:216",
+        "user/idp/facebook.go:230",
+        "user/idp/facebook.go:234"
+      ],
+      "notes": "",
+      "primaryTask": "4.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L051",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "支付宝协议、字段与错误码",
+      "values": [
+        "app_id",
+        "method",
+        "format",
+        "charset",
+        "sign_type",
+        "timestamp",
+        "version",
+        "sign",
+        "error_response",
+        "code",
+        "sub_code",
+        "msg",
+        "sub_msg",
+        "grant_type",
+        "union_id",
+        "open_id",
+        "access_token",
+        "auth_token",
+        "nick_name",
+        "avatar",
+        "json",
+        "utf-8",
+        "RSA2",
+        "1.0",
+        "10000",
+        "20000",
+        "isv.code-invalid",
+        "isv.unmatched-app-id",
+        "isv.grant-type-invalid",
+        "isv.app-id-invalid",
+        "isv.invalid-app-id",
+        "isv.invalid-signature",
+        "isv.invalid-sign-type",
+        "isv.insufficient-isv-permissions",
+        "isv.insufficient-user-permissions",
+        "isp.unknow-error",
+        "2006-01-02 15:04:05"
+      ],
+      "scopes": [
+        "user/idp/alipay.go",
+        "user/idp/alipay_api.go"
+      ],
+      "owner": "支付宝局部协议目录 / time.DateTime",
+      "action": "已有method/node常量保留；RSA2控制签名和验签应同源；时间布局复用time.DateTime；保留上游unknow拼写。",
+      "references": [
+        "user/idp/alipay_api.go:21",
+        "user/idp/alipay_api.go:32",
+        "user/idp/alipay_api.go:113",
+        "user/idp/alipay_api.go:141",
+        "user/idp/alipay_api.go:160",
+        "user/idp/alipay.go:68"
+      ],
+      "notes": "",
+      "primaryTask": "4.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L052",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "阿里云短信协议",
+      "values": [
+        "Signature",
+        "code",
+        "AccessKeyId",
+        "Action",
+        "Format",
+        "PhoneNumbers",
+        "RegionId",
+        "SignName",
+        "SignatureMethod",
+        "SignatureNonce",
+        "SignatureVersion",
+        "TemplateCode",
+        "TemplateParam",
+        "Timestamp",
+        "Version",
+        "SendSms",
+        "JSON",
+        "cn-hangzhou",
+        "HMAC-SHA1",
+        "1.0",
+        "2017-05-25",
+        "OK",
+        "2006-01-02T15:04:05Z"
+      ],
+      "scopes": [
+        "user/sender/aliyun/"
+      ],
+      "owner": "aliyun发送器局部协议目录 / time.RFC3339",
+      "action": "签名字段、Action/版本/成功码及复用字段具名；UTC前提下复用time.RFC3339。DefaultEndpoint/mainlandPrefix已有定义。",
+      "references": [
+        "user/sender/aliyun/sign.go:22",
+        "user/sender/aliyun/aliyun.go:175",
+        "user/sender/aliyun/aliyun.go:192",
+        "user/sender/aliyun/aliyun.go:225"
+      ],
+      "notes": "",
+      "primaryTask": "4.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L053",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "SMTP MIME及PEM块类型",
+      "values": [
+        "STARTTLS",
+        "multipart/alternative",
+        "boundary",
+        "text/plain",
+        "text/html",
+        "Content-Type",
+        "Content-Transfer-Encoding",
+        "quoted-printable",
+        "RSA PRIVATE KEY",
+        "PRIVATE KEY",
+        "RSA PUBLIC KEY",
+        "PUBLIC KEY"
+      ],
+      "scopes": [
+        "user/sender/smtp/",
+        "user/idp/alipay_config.go",
+        "tokens/"
+      ],
+      "owner": "SMTP MIME局部目录 / 内部PEM协议目录",
+      "action": "只在重复/控制协议的地方具名；完整邮件头模板和RFC2047包装不拆碎。",
+      "references": [
+        "user/sender/smtp/smtp.go:170",
+        "user/sender/smtp/message.go:31",
+        "user/idp/alipay_config.go:127"
+      ],
+      "notes": "",
+      "primaryTask": "4.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L054",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "审计固定Actor、解析Outcome与私有数据键",
+      "values": [
+        "accountkit",
+        "accountkit-host",
+        "resolved",
+        "not_found",
+        "unavailable",
+        "internal",
+        "subject_hint"
+      ],
+      "scopes": [
+        "audit/authentication/authentication.go",
+        "user/service_profile_attributes_audit.go",
+        "user/service_identity_resolve.go"
+      ],
+      "owner": "审计/能力各自私有常量",
+      "action": "固定主体ID、身份解析Outcome和私有审计数据键按语义分开命名；同名accountkit在namespace/对象键/主体ID不是一项。",
+      "references": [
+        "audit/authentication/authentication.go:244",
+        "audit/authentication/authentication.go:377",
+        "user/service_profile_attributes_audit.go:19",
+        "user/service_identity_resolve.go:88"
+      ],
+      "notes": "",
+      "primaryTask": "3.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L055",
+      "priority": "P2",
+      "kind": "catalog",
+      "title": "严格审计JSON字段模式",
+      "values": [
+        "id",
+        "source",
+        "action",
+        "result",
+        "actor",
+        "targets",
+        "context",
+        "data",
+        "occur_time",
+        "create_time",
+        "type",
+        "namespace",
+        "name",
+        "request_id",
+        "trace_id",
+        "span_id",
+        "client_ip",
+        "user_agent",
+        "device_id",
+        "related_resources"
+      ],
+      "scopes": [
+        "audit/event/json.go",
+        "audit/event/normalize.go"
+      ],
+      "owner": "audit/event局部字段/解码模式",
+      "action": "白名单、反复索引和规范化同源；不把struct tag改成常量、不让测试预期与实现同错。",
+      "references": [
+        "audit/event/json.go:54",
+        "audit/event/json.go:114",
+        "audit/event/normalize.go:117"
+      ],
+      "notes": "",
+      "primaryTask": "5.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L056",
+      "priority": "P2",
+      "kind": "catalog",
+      "title": "客户端描述字段模式与敏感词集合",
+      "values": [
+        "type",
+        "os",
+        "browser",
+        "app",
+        "device",
+        "extensions",
+        "os.name",
+        "os.version",
+        "browser.name",
+        "browser.version",
+        "app.name",
+        "app.version",
+        "app.build",
+        "device.manufacturer",
+        "device.model",
+        "device.type",
+        "password",
+        "passwd",
+        "secret",
+        "token",
+        "credential",
+        "credentials",
+        "authorization",
+        "cookie",
+        "cookies",
+        "captcha",
+        "otp",
+        "ip",
+        "address",
+        "location",
+        "latitude",
+        "longitude",
+        "imei",
+        "mac",
+        "ua",
+        "user_agent",
+        "device_id",
+        "hardware_id",
+        "verification_code",
+        "sms_code",
+        "email_code",
+        "one_time_code",
+        "security_code"
+      ],
+      "scopes": [
+        "user/client_info_json.go"
+      ],
+      "owner": "客户端描述解码/隐私规则表",
+      "action": "字段模式与敏感词规则按集合集中；不为每个敏感词建公共常量，不声称规则能识别任意值隐私。",
+      "references": [
+        "user/client_info_json.go:87",
+        "user/client_info_json.go:387",
+        "user/client_info_json.go:391"
+      ],
+      "notes": "",
+      "primaryTask": "5.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L057",
+      "priority": "P1",
+      "kind": "extract",
+      "title": "Flutter scope/kind/下一动作",
+      "values": [
+        "user",
+        "user:bind",
+        "user:undelete",
+        "COMPLETE_IDENTITY",
+        "PHONE",
+        "EMAIL",
+        "APPLE",
+        "GOOGLE",
+        "OIDC",
+        "WECHAT",
+        "ALIPAY",
+        "QQ",
+        "WEIBO",
+        "FACEBOOK"
+      ],
+      "scopes": [
+        "sdks/accountkit-flutter/lib/src/models.dart",
+        "sdks/accountkit-flutter/lib/src/client.dart",
+        "sdks/accountkit-flutter/lib/src/controller.dart"
+      ],
+      "owner": "Flutter内部协议常量",
+      "action": "scope、IdentityKinds和下一动作独立目录；保留部署可扩展kind，不改成封闭枚举。",
+      "references": [
+        "sdks/accountkit-flutter/lib/src/models.dart:82",
+        "sdks/accountkit-flutter/lib/src/models.dart:96",
+        "sdks/accountkit-flutter/lib/src/models.dart:289",
+        "sdks/accountkit-flutter/lib/src/controller.dart:253"
+      ],
+      "notes": "",
+      "primaryTask": "6.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L058",
+      "priority": "P1",
+      "kind": "extract",
+      "title": "Flutter流程错误与Dio extra键",
+      "values": [
+        "REAUTHENTICATION_REQUIRED",
+        "CODE_EXPIRED",
+        "SIGN_IN_COMPLETION_INVALID",
+        "SIGN_IN_ALREADY_COMPLETED",
+        "invalid_grant",
+        "accountkit.retried",
+        "accountkit.epoch",
+        "accountkit.revision"
+      ],
+      "scopes": [
+        "sdks/accountkit-flutter/lib/src/"
+      ],
+      "owner": "Flutter错误协议与Dio内部元数据各自目录",
+      "action": "控制会话/流程的reason与OAuth错误分别定义；extra键沿用AuthenticatedReplay.key模式，避免并发状态元数据拼写漂移。",
+      "references": [
+        "sdks/accountkit-flutter/lib/src/errors.dart:46",
+        "sdks/accountkit-flutter/lib/src/controller.dart:144",
+        "sdks/accountkit-flutter/lib/src/session.dart:286",
+        "sdks/accountkit-flutter/lib/src/client.dart:667",
+        "sdks/accountkit-flutter/lib/src/authenticated_dio.dart:39"
+      ],
+      "notes": "",
+      "primaryTask": "6.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L059",
+      "priority": "P1",
+      "kind": "catalog",
+      "title": "Flutter匿名端点发送与凭据排除表",
+      "values": [
+        "/users:sendSignInCode",
+        "/users:signInWithCode",
+        "/users:signInWithIdp",
+        "/users:sendSignInCompletionCode",
+        "/users:completeSignIn",
+        "/token",
+        "/revoke"
+      ],
+      "scopes": [
+        "sdks/accountkit-flutter/lib/src/client.dart"
+      ],
+      "owner": "Flutter内部相对路由目录",
+      "action": "实际请求与匿名鉴权排除集合引用同一组相对路由，避免凭据隔离列表漂移。",
+      "references": [
+        "sdks/accountkit-flutter/lib/src/client.dart:116",
+        "sdks/accountkit-flutter/lib/src/client.dart:175",
+        "sdks/accountkit-flutter/lib/src/client.dart:212",
+        "sdks/accountkit-flutter/lib/src/client.dart:638"
+      ],
+      "notes": "",
+      "primaryTask": "6.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L060",
+      "priority": "P2",
+      "kind": "helper",
+      "title": "Flutter其他资源路径",
+      "values": [
+        "/users/me",
+        "/users/me/identities",
+        "/users/me/profile",
+        "users",
+        "sessions",
+        "identities"
+      ],
+      "scopes": [
+        "sdks/accountkit-flutter/lib/src/client.dart",
+        "sdks/accountkit-flutter/lib/src/transport.dart"
+      ],
+      "owner": "Flutter内部资源名函数",
+      "action": "重复静态路径具名；动态资源路径与父资源校验共用函数，不机械给单次动作路径造常量。",
+      "references": [
+        "sdks/accountkit-flutter/lib/src/client.dart:322",
+        "sdks/accountkit-flutter/lib/src/client.dart:516",
+        "sdks/accountkit-flutter/lib/src/client.dart:600",
+        "sdks/accountkit-flutter/lib/src/transport.dart:80"
+      ],
+      "notes": "",
+      "primaryTask": "6.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L061",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "Flutter HTTP/设备/客户端协议",
+      "values": [
+        "Bearer",
+        "refresh_token",
+        "application/json",
+        "Accept",
+        "Content-Type",
+        "Authorization",
+        "X-Request-Id",
+        "x-request-id",
+        "Retry-After",
+        "X-Device-Id",
+        "X-Device-Name",
+        "X-Client-Type",
+        "X-Client-OS-Name",
+        "X-Client-OS-Version",
+        "X-Client-Browser-Name",
+        "X-Client-Browser-Version",
+        "X-Client-App-Name",
+        "X-Client-App-Version",
+        "X-Device-Model",
+        "X-Device-Type",
+        "NATIVE"
+      ],
+      "scopes": [
+        "sdks/accountkit-flutter/lib/src/"
+      ],
+      "owner": "Flutter自有HTTP/客户端协议目录",
+      "action": "Header允许集合、发送和清理同源；Bearer响应类型与grant字段语义分开；不建立Go/TS运行依赖。",
+      "references": [
+        "sdks/accountkit-flutter/lib/src/transport.dart:132",
+        "sdks/accountkit-flutter/lib/src/client.dart:681",
+        "sdks/accountkit-flutter/lib/src/platform.dart:60",
+        "sdks/accountkit-flutter/lib/src/platform.dart:144"
+      ],
+      "notes": "",
+      "primaryTask": "6.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L062",
+      "priority": "P2",
+      "kind": "catalog",
+      "title": "Flutter凭据/token/pending与持久化字段",
+      "values": [
+        "target",
+        "code_id",
+        "code",
+        "id_token",
+        "nonce",
+        "app_id",
+        "access_token",
+        "kind",
+        "refresh_token",
+        "token_type",
+        "expires_in",
+        "scope",
+        "user_id",
+        "sign_in_completion_token",
+        "next_action",
+        "hint_email",
+        "access_expire_time",
+        "refresh_expire_time",
+        "expire_time",
+        "display_name",
+        "avatar_url",
+        "name",
+        "create_time",
+        "client_info",
+        "profile_attributes",
+        "reason",
+        "status"
+      ],
+      "scopes": [
+        "sdks/accountkit-flutter/lib/src/"
+      ],
+      "owner": "Flutter按凭据/token/pending/持久化分组",
+      "action": "白名单、工厂编码、解码和持久化往返共用有归属的wire keys，避免一个覆盖全部JSON字段的巨大类。",
+      "references": [
+        "sdks/accountkit-flutter/lib/src/models.dart:96",
+        "sdks/accountkit-flutter/lib/src/models.dart:214",
+        "sdks/accountkit-flutter/lib/src/models.dart:242",
+        "sdks/accountkit-flutter/lib/src/models.dart:266",
+        "sdks/accountkit-flutter/lib/src/session.dart:44",
+        "sdks/accountkit-flutter/lib/src/client.dart:615"
+      ],
+      "notes": "",
+      "primaryTask": "6.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L063",
+      "priority": "P2",
+      "kind": "helper",
+      "title": "Flutter重复校验正则",
+      "values": [
+        "^[0-9a-f]{32}$",
+        "^[A-Za-z0-9._-]{1,64}$",
+        "[\\x00-\\x1f\\x7f]",
+        "[\\x00-\\x20\\x7f]",
+        "%(?:2e|2f|5c|25)"
+      ],
+      "scopes": [
+        "sdks/accountkit-flutter/lib/src/"
+      ],
+      "owner": "对应凭据/路径校验器",
+      "action": "命名final RegExp或共享校验函数；不同语义正则不因文本相同强行合并。",
+      "references": [
+        "sdks/accountkit-flutter/lib/src/models.dart:115",
+        "sdks/accountkit-flutter/lib/src/models.dart:154",
+        "sdks/accountkit-flutter/lib/src/platform.dart:56",
+        "sdks/accountkit-flutter/lib/src/transport.dart:58",
+        "sdks/accountkit-flutter/lib/src/authenticated_dio.dart:31"
+      ],
+      "notes": "",
+      "primaryTask": "6.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L064",
+      "priority": "P2",
+      "kind": "helper",
+      "title": "TS SDK资源名语法",
+      "values": [
+        "[0-9a-hjkmnp-tv-z]{13}",
+        "users",
+        "sessions",
+        "identities",
+        "auditEvents",
+        "audit_events"
+      ],
+      "scopes": [
+        "sdks/accountkit-admin-ts/src/client.ts",
+        "sdks/accountkit-admin-ts/src/decode.ts"
+      ],
+      "owner": "TS内部资源名构造/校验模块",
+      "action": "同源TSID格式和父资源校验；auditEvents路径与audit_events响应字段分别保留。",
+      "references": [
+        "sdks/accountkit-admin-ts/src/client.ts:94",
+        "sdks/accountkit-admin-ts/src/decode.ts:37",
+        "sdks/accountkit-admin-ts/src/client.ts:304"
+      ],
+      "notes": "",
+      "primaryTask": "7.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L065",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "TS SDK HTTP与固定安全错误",
+      "values": [
+        "application/json",
+        "X-Request-Id",
+        "Accept",
+        "Authorization",
+        "Content-Type",
+        "Bearer",
+        "Account API request failed"
+      ],
+      "scopes": [
+        "sdks/accountkit-admin-ts/src/"
+      ],
+      "owner": "TS SDK内部HTTP/错误模块",
+      "action": "复用安全消息与实际重复HTTP定义；其他错误类一次性消息不额外包常量。",
+      "references": [
+        "sdks/accountkit-admin-ts/src/client.ts:192",
+        "sdks/accountkit-admin-ts/src/client.ts:259",
+        "sdks/accountkit-admin-ts/src/errors.ts:47"
+      ],
+      "notes": "",
+      "primaryTask": "7.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L066",
+      "priority": "P2",
+      "kind": "catalog",
+      "title": "TS filter类型/运行时集合与query键",
+      "values": [
+        "state",
+        "identity.phone",
+        "identity.phone_prefix",
+        "identity.phone_suffix",
+        "identity.email",
+        "identity.email_prefix",
+        "identity.email_domain",
+        "create_time",
+        ">=",
+        "<",
+        "page_size",
+        "page_token",
+        "show_deleted",
+        "filter"
+      ],
+      "scopes": [
+        "sdks/accountkit-admin-ts/src/filter.ts",
+        "sdks/accountkit-admin-ts/src/client.ts"
+      ],
+      "owner": "TS内部const tuple派生类型和Set",
+      "action": "用as const数组派生union和白名单，避免两份字段定义；query tuple同源。",
+      "references": [
+        "sdks/accountkit-admin-ts/src/filter.ts:3",
+        "sdks/accountkit-admin-ts/src/filter.ts:35",
+        "sdks/accountkit-admin-ts/src/client.ts:133"
+      ],
+      "notes": "",
+      "primaryTask": "7.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L067",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "remoteauth固定安全消息与HTTP标识",
+      "values": [
+        "invalid or expired access token",
+        "token scope does not permit this operation",
+        "recent authentication required for this operation",
+        "authentication temporarily unavailable",
+        "bearer token required",
+        "INSUFFICIENT_SCOPE",
+        "REAUTHENTICATION_REQUIRED",
+        "DEPENDENCY_UNAVAILABLE",
+        "Content-Type",
+        "Authorization",
+        "application/json"
+      ],
+      "scopes": [
+        "examples/remoteauth/"
+      ],
+      "owner": "remoteauth包内定义或公共HTTP安全错误helper",
+      "action": "同主库错误协议整理联动；不把同值status常量充当reason。",
+      "references": [
+        "examples/remoteauth/handler.go:38",
+        "examples/remoteauth/handler.go:55",
+        "examples/remoteauth/handler.go:65",
+        "examples/remoteauth/handler.go:70",
+        "examples/remoteauth/handler.go:78",
+        "examples/remoteauth/handler.go:101",
+        "examples/remoteauth/client.go:87"
+      ],
+      "notes": "",
+      "primaryTask": "8.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L068",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "其他示例内部模式/语言",
+      "values": [
+        "en",
+        "zh-CN",
+        "local",
+        "host",
+        "write-only"
+      ],
+      "scopes": [
+        "examples/codeemail/renderer.go",
+        "examples/audit/main.go"
+      ],
+      "owner": "各示例包内常量",
+      "action": "语言选择与示例审计模式具名；不抽模板正文和品牌，不为了示例增加公共运行依赖。",
+      "references": [
+        "examples/codeemail/renderer.go:37",
+        "examples/codeemail/renderer.go:67",
+        "examples/audit/main.go:70"
+      ],
+      "notes": "",
+      "primaryTask": "8.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L069",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "发布检查工具协议/目录",
+      "values": [
+        "fail",
+        "skip",
+        "pass",
+        "migrations",
+        ".sql"
+      ],
+      "scopes": [
+        "internal/testgate/main.go",
+        "internal/migrationcheck/main.go"
+      ],
+      "owner": "各工具内部常量",
+      "action": "test JSON action、目录与扩展名集中；冻结初始迁移名称→哈希映射保持原样。",
+      "references": [
+        "internal/testgate/main.go:33",
+        "internal/migrationcheck/main.go:62",
+        "internal/migrationcheck/main.go:175"
+      ],
+      "notes": "",
+      "primaryTask": "9.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L070",
+      "priority": "P2",
+      "kind": "testmeta",
+      "title": "SDK工具描述元数据",
+      "values": [
+        "flutter",
+        "admin-ts",
+        "sdks/accountkit-flutter",
+        "sdks/accountkit-admin-ts",
+        "pubspec.yaml",
+        "package.json",
+        "accountkit_flutter",
+        "@accountkit/admin-client",
+        "sdk/${sdk}/v${version}",
+        "pending",
+        "partial",
+        "verified"
+      ],
+      "scopes": [
+        "scripts/"
+      ],
+      "owner": "仅工具使用的SDK descriptor",
+      "action": "id/目录/manifest/包名/tag prefix同源，精确版本继续用tool-versions.json；兼容矩阵JSON保持声明数据。",
+      "references": [
+        "scripts/check-sdk-release.mjs:7",
+        "scripts/check-sdk-release.mjs:30",
+        "scripts/verify-sdk-consumers.mjs:16",
+        "scripts/verify-sdk-consumers.mjs:89"
+      ],
+      "notes": "",
+      "primaryTask": "9.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L071",
+      "priority": "P2",
+      "kind": "extract",
+      "title": "临时资源创建/清理前缀及取消消息",
+      "values": [
+        "accountkit-sdk-snapshot-",
+        "accountkit-sdk-consumers-",
+        "SDK consumer validation cancelled"
+      ],
+      "scopes": [
+        "scripts/sdk-git-snapshot.mjs",
+        "scripts/verify-sdk-consumers.mjs"
+      ],
+      "owner": "各工具模块私有常量",
+      "action": "创建前缀与清理安全校验同源，避免一处改名导致误删或无法清理。",
+      "references": [
+        "scripts/sdk-git-snapshot.mjs:34",
+        "scripts/sdk-git-snapshot.mjs:49",
+        "scripts/verify-sdk-consumers.mjs:159",
+        "scripts/verify-sdk-consumers.mjs:171"
+      ],
+      "notes": "",
+      "primaryTask": "9.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L072",
+      "priority": "P2",
+      "kind": "testmeta",
+      "title": "OpenAPI工具方法集合",
+      "values": [
+        "get",
+        "post",
+        "put",
+        "patch",
+        "delete",
+        "head",
+        "options",
+        "trace"
+      ],
+      "scopes": [
+        "scripts/check-openapi.cjs",
+        "scripts/check-sdk-coverage.mjs"
+      ],
+      "owner": "只读工具共享协议元数据",
+      "action": "共用方法集合，不依赖handler实现常量，不让协议预期自证。",
+      "references": [
+        "scripts/check-openapi.cjs:7",
+        "scripts/check-sdk-coverage.mjs:5"
+      ],
+      "notes": "",
+      "primaryTask": "9.1",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L073",
+      "priority": "P2",
+      "kind": "testmeta",
+      "title": "SDK fixture profile/路由/基线",
+      "values": [
+        "accountsvc",
+        "extended",
+        "custom",
+        "custom-extended",
+        "/v1",
+        "/admin/v1",
+        "/custom/account",
+        "/custom/admin",
+        "/__fixture/admin-token",
+        "/__fixture/code",
+        "/__fixture/credential",
+        "/__fixture/ready",
+        "v1.0.0"
+      ],
+      "scopes": [
+        "sdks/testsupport/fixture/",
+        "scripts/verify-client-sdks.sh",
+        "sdks/accountkit-flutter/test/integration/",
+        "sdks/accountkit-admin-ts/test/integration/"
+      ],
+      "owner": "独立测试控制协议与profile descriptor",
+      "action": "Go内profile具名，跨语言使用测试元数据/readiness；基线复用tool-versions.serviceBaseline，不与当前服务版本混同。",
+      "references": [
+        "sdks/testsupport/fixture/settings.go:17",
+        "sdks/testsupport/fixture/main.go:141",
+        "sdks/testsupport/fixture/main.go:299",
+        "scripts/verify-client-sdks.sh:72",
+        "sdks/tool-versions.json:11"
+      ],
+      "notes": "",
+      "primaryTask": "8.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L074",
+      "priority": "P2",
+      "kind": "testmeta",
+      "title": "SDK测试装配地址",
+      "values": [
+        "127.0.0.1:18081",
+        "127.0.0.1:18082",
+        "127.0.0.1:18084",
+        "http://127.0.0.1:18081",
+        "http://127.0.0.1:18082",
+        "http://127.0.0.1:18084"
+      ],
+      "scopes": [
+        "sdks/testsupport/fixture/",
+        "scripts/verify-client-sdks.sh"
+      ],
+      "owner": "测试入口地址/origin变量",
+      "action": "启动、探活、导出共用变量；不硬编码成SDK产品地址。",
+      "references": [
+        "sdks/testsupport/fixture/main.go:93",
+        "sdks/testsupport/fixture/accountsvc.go:130",
+        "scripts/verify-client-sdks.sh:83"
+      ],
+      "notes": "",
+      "primaryTask": "8.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L075",
+      "priority": "P2",
+      "kind": "testmeta",
+      "title": "SDK测试环境键与seed标记",
+      "values": [
+        "SDK_FIXTURE_DATABASE_URL",
+        "SDK_FIXTURE_REDIS_ADDR",
+        "SDK_FIXTURE_ADDR",
+        "SDK_FIXTURE_SERVICE_ADDR",
+        "SDK_FIXTURE_PROFILE",
+        "SDK_FIXTURE_SCHEMA",
+        "SDK_FIXTURE_REDIS_PREFIX",
+        "SDK_FIXTURE_REQUIRED_KINDS",
+        "ACCOUNTKIT_ADMIN_INTEGRATION_ORIGIN",
+        "ACCOUNTKIT_ADMIN_INTEGRATION_CONTROL_ORIGIN",
+        "ACCOUNTKIT_FLUTTER_SERVICE_ORIGIN",
+        "ACCOUNTKIT_FLUTTER_CONTROL_ORIGIN",
+        "ACCOUNTKIT_FLUTTER_EMBEDDED_ORIGIN",
+        "ACCOUNTKIT_FLUTTER_POLICY_ORIGIN",
+        "ACCOUNTKIT_FLUTTER_POLICY_CONTROL_ORIGIN",
+        "ACCOUNTKIT_FLUTTER_POLICY_SUBJECT",
+        "ACCOUNTKIT_FLUTTER_POLICY_USER_ID",
+        "SDK_POLICY_SEED_USER_ID="
+      ],
+      "scopes": [
+        "sdks/testsupport/",
+        "scripts/verify-client-sdks.sh",
+        "sdks/accountkit-flutter/test/integration/",
+        "sdks/accountkit-admin-ts/test/integration/"
+      ],
+      "owner": "integration support测试配置声明",
+      "action": "尤其seed生产者和提取器标记同源；不把shell原生环境引用改成复杂间接变量。",
+      "references": [
+        "sdks/testsupport/fixture/main.go:309",
+        "sdks/testsupport/fixture/accountsvc.go:128",
+        "scripts/verify-client-sdks.sh:95",
+        "scripts/verify-client-sdks.sh:107",
+        "sdks/accountkit-admin-ts/test/integration/accountsvc.test.ts:14"
+      ],
+      "notes": "",
+      "primaryTask": "8.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L076",
+      "priority": "P2",
+      "kind": "reuse",
+      "title": "Go fixture漏用管理权限及身份类型常量",
+      "values": [
+        "users.read",
+        "users.freeze",
+        "users.unfreeze",
+        "audit_events.read",
+        "WECHAT",
+        "APPLE",
+        "GOOGLE",
+        "FACEBOOK",
+        "ALIPAY",
+        "QQ",
+        "WEIBO"
+      ],
+      "scopes": [
+        "sdks/testsupport/fixture/"
+      ],
+      "owner": "httpapi/admin.Permission*与enum.Identity*",
+      "action": "Go工具实现可复用现有常量；operator/super-admin仍是显式外部角色配置，不能借旧角色常量重新引入内置授权。",
+      "references": [
+        "sdks/testsupport/fixture/main.go:260",
+        "sdks/testsupport/fixture/main.go:192",
+        "httpapi/admin/permissions.go:10"
+      ],
+      "notes": "",
+      "primaryTask": "8.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L077",
+      "priority": "P2",
+      "kind": "testmeta",
+      "title": "fixture专用身份分派标签",
+      "values": [
+        "WECHAT_MINI",
+        "FACEBOOK_CLASSIC",
+        "TEST_OIDC"
+      ],
+      "scopes": [
+        "sdks/testsupport/fixture/"
+      ],
+      "owner": "fixture私有常量",
+      "action": "区别测试控制标签与正式wire kind；独立SDK协议测试输入不随实现常量改写。",
+      "references": [
+        "sdks/testsupport/fixture/main.go:192"
+      ],
+      "notes": "",
+      "primaryTask": "8.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    },
+    {
+      "id": "L078",
+      "priority": "P2",
+      "kind": "testmeta",
+      "title": "恢复演练阶段和环境协议",
+      "values": [
+        "seed",
+        "verify",
+        "source-unchanged",
+        "TestRecoveryFixture",
+        "ACCOUNTKIT_RECOVERY_SOURCE_DSN",
+        "ACCOUNTKIT_RECOVERY_TARGET_DSN",
+        "ACCOUNTKIT_RECOVERY_STATE",
+        "ACCOUNTKIT_RECOVERY_MODE",
+        "ACCOUNTKIT_RECOVERY_DSN",
+        "SERVER_TEST_DB_DSN",
+        "ACCOUNTSVC_TEST_REDIS_URL",
+        "ACCOUNTSVC_TEST_RACE"
+      ],
+      "scopes": [
+        "scripts/verify-recovery.sh",
+        "recovery_test.go",
+        "scripts/verify.sh",
+        "scripts/verify-accountsvc.sh"
+      ],
+      "owner": "恢复与数据库测试support元数据",
+      "action": "阶段/名称可集中；保留独立源目标和普通套件skip契约；shell环境键不为消除文字而间接化。",
+      "references": [
+        "scripts/verify-recovery.sh:25",
+        "scripts/verify-recovery.sh:29",
+        "scripts/verify-recovery.sh:35",
+        "recovery_test.go:40"
+      ],
+      "notes": "",
+      "primaryTask": "9.2",
+      "status": "planned",
+      "resolution": null,
+      "verification": []
+    }
+  ]
+}

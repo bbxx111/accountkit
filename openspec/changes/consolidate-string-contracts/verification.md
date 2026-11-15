@@ -1,0 +1,28 @@
+# 验证记录
+
+## 2026-11-16：创建与ff准备
+
+分支：`refactor/consolidate-string-contracts`，基于本地develop的`a11ea46`。用户已确认全仓范围，并明确授权创建变更及ff。原`configure-admin-permissions`未归档，不由本次改写或归档。
+
+本轮仅准备[提案](proposal.md)、[设计](design.md)、[任务](tasks.md)及[78组候选清单](inventory.json)。`.openspec.yaml`设置`skip_specs: true`；本次保持既有行为，因此不新增或修改行为规格，CLI确认specs为skipped，不创建specs目录。
+
+候选清单保留原值、位置、语义拥有者和任务映射，省去原临时报告的词法匹配上下文。盘点源基线为`7f43faa`，与a11ea46源码相同，仅合并验收文档不同；实施不依赖.test-output中的原报告。所有候选均为planned，实施任务保持未勾选。
+
+### 已执行
+
+- OpenSpec CLI为1.14.3；已读取当前项目root、创建/状态和各工件指令，proposal/design/tasks依赖齐备，specs显式跳过。
+- `openspec validate --all --strict`：47项通过、0失败（45份主规格、原管理权限变更及本变更）。skip_specs的INFO为明确的纯重构声明，不是验证缺失豁免。
+
+### 清单与工件核验
+
+- 78个候选ID唯一，全部为planned；每项primaryTask均对应真实任务，共21个主要任务映射。30项实施任务均未勾选，apply状态为ready、0/30，不把工件齐备视为实现完成。
+- 367处源文件行号引用有效，10个本地文档链接可解析；6个工件/支撑文件均位于本变更目录，无符号链接或路径越界，未创建与skip_specs冲突的specs目录。
+- JSON解析、Markdown末尾换行/行尾空白及Git差异检查通过；盘点基线与当前起点的Git差异仅为旧变更验收记录，源码相同。
+- 独立builder-check审查结论为spec PASS、quality PASS、`nothing important left`；已核对全仓覆盖、跨包依赖、78组任务映射、SDK独立消费、存储字节及平台门禁边界，未发现需补充决定的实质问题。原始审查报告保留于`.test-output/string-contracts-ff/review.md`。
+- CLI最终状态为proposal/design/tasks完成，specs显式skipped；全量严格校验47/47通过。按AGENTS.md在本轮工件检查与审查通过后做一次本地阶段提交；未开始实施、未推送、未合并或归档。
+
+### 实施后的证据边界
+
+本轮未修改Go/Dart/TS、脚本、部署或主规格，未执行构建、运行测试、数据库/race/恢复、SDK真实服务/平台/远端消费检查。前一变更的日志和本轮规格校验不等于本次重构通过运行门禁。
+
+apply后需按任务记录每阶段实际命令、独立审查、提交和清单闭环；精确SDK工具、macOS/Xcode等必需依赖缺失时相关任务保持未完成，不把skip或近似版本当作通过。临时日志和原始材料放.test-output，长期证据只维护本记录。

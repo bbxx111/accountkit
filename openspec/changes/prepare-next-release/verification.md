@@ -1,6 +1,6 @@
 # 发布准备核验记录
 
-状态：用户已确认保留v1模块路径，v1.1.0候选文档与本地发布验证已完成；尚无最终main候选SHA。此记录不表示已获得打tag、创建Release、合并main或产品部署授权。
+状态：本地及最终 main CI 已通过，v1.1.0 annotated tag 已推送，两个远端 Go 消费宿主验证通过。GitHub Release 因登录会话不可用尚未创建，发布状态补记和归档待其完成；本轮未部署产品。准备阶段与后续发布进展分别记录如下。
 
 ## 已确认基线
 
@@ -69,3 +69,16 @@
 - 准备工件在 `chore/prepare-next-release` 本地提交；未推送、未合并 develop/main、未创建 tag/Release，OpenSpec 变更未归档。四项准备任务完成；后续最终候选 CI、发布与远端消费按 tasks 的 Workflow follow-up 执行。
 
 本轮未执行最终 main SHA 的在线 CI、正式 tag 创建/消费或 SDK 平台全套验证。SDK v1.1.0 兼容保持 pending；发布前仍须取得最终候选的 Go/SDK CI，发布后执行两个独立远端 Go 消费核验。真实提供方与产品部署仍是另行验收范围。
+
+## 2026-11-15 发布执行进展
+
+以上“未推送/未发布”等描述保留准备阶段事实。本节记录用户随后授权继续发布的实际进展。
+
+- 准备分支经独立 merge commit 合入并推送 develop `0c134d0c2b0a1492c640e7da6442c15fe695d225`，再合入并推送 main `6eef5e349ab17582a5c25b8fa5236372b988a618`。远端 SHA 与本地一致，两分支文件树相同。
+- 最终候选 `6eef5e349ab17582a5c25b8fa5236372b988a618` 的 [Go CI](https://github.com/bbxx111/accountkit/actions/runs/43682397743) 和 [SDK CI](https://github.com/bbxx111/accountkit/actions/runs/43682397757) 已全部成功。逐项核对生成检查、库/恢复、accountsvc 真实依赖/进程信号，以及 SDK 单元/真实服务/嵌入策略/Git 消费、Android 和 iOS；所有 job/step 均 success，head_sha 精确匹配。
+- 在上述门禁通过、远端同名 tag 不存在后，创建并推送 annotated `v1.1.0`。tag 对象 `14b53f3542f8b67a2b42eb5db55eaa8d8bebeaca`，解析提交 `6eef5e349ab17582a5c25b8fa5236372b988a618`；本地与远端两项均一致，未移动已有 tag。
+- Go tag 已可供远端消费；GitHub Release 尚未创建。当前 GitHub CLI 未登录，浏览器连接不可用，已请求用户在本机完成 `gh auth login`，未索取或提取凭据。Release、已发布状态补记及归档尚未完成，不把 tag 成功当作整套发布完成。
+- CI 原始证据在 `.test-output/next-release/final-candidate-ci.json` 和 `final-candidate-jobs.json`；独立远端 Go 宿主位于 `.test-output/next-release/consumers/root` 和 `consumers/direct`，各含 `verification.json`。
+- 两个独立 module 均在 Go 1.26.5 windows/amd64、`GOWORK=off`、无 replace 下执行远端 `go get github.com/bbxx111/accountkit@v1.1.0`、`go build ./...`、`go run .`，全部通过。分别编译根门面的 `EndUserHandler` 与直接 `httpapi/enduser.New` / `Router`，并对 `user.ResolveIdentityInput`、`user.ResolvedIdentity` 和 `(*user.Service).ResolveIdentity` 做公开类型/签名编译检查；未连接产品数据库。
+- 两者均报告版本 v1.1.0、无 Replace，模块 Sum 为 `h1:Iix6PXFhBNkp0y4LqI6jR9wpPKSai4xdnj1QFuUj85E=`。下载的 0001 up/down SHA256 分别为 `ef2d1f229fa15b660cc7ecb4f417615b76866c19494641c96faf25bab24188b6` / `812541721471025056edd1f655d876b2f4d938fffd8f4f7ee2cfa9a97ff490d5`，与冻结值一致。
+- 首次模块代理下载返回 HTTP/2 `INTERNAL_ERROR`，另一个进程等待共享模块缓存锁；停止该次等待后，按原代理与校验设置重试成功。未关闭校验、未添加本地 replace、未改 tag 或运行代码。此为下载阶段故障，不计作构建或业务测试失败。

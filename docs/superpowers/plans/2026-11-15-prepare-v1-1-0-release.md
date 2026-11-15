@@ -5,7 +5,7 @@
 **Goal:** 在保留v1路径的前提下完成v1.1.0候选说明、迁移边界及本地发布准备验证。
 **Architecture:** 已实现功能不变，仅发布文档和元数据；两个无共享文件的文档组并行，统一审查后冻结准备快照验证。
 **Tech Stack:** Go1.26.5、sqlc1.31.1、PostgreSQL17、Redis7、既有Go/SDK验证脚本。
-**Spec:** [发布设计](../../../openspec/changes/prepare-next-release/design.md)。
+**Spec:** [发布设计](../../../openspec/changes/archive/2026-11-15-prepare-next-release/design.md)。
 
 ## Global Constraints
 - 用户保留v1 module/import；准备v1.1.0候选，HTTP /v1与/admin/v1不变。

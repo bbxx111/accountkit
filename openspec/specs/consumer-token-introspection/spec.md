@@ -8,7 +8,7 @@
 
 ### Requirement: 独立服务调用认证
 
-单监听器上的 `POST /v1/introspect` SHALL 只使用服务认证规格的统一注册表执行独立的服务调用认证：HTTP Basic 客户端凭据，或外部提供方签发的客户端凭据 Bearer 访问令牌，并在认证后要求 `tokens.introspect`。同一客户端 SHALL 可以同时持有清理权限。无人持有内省权限时，该路由 SHALL 先于认证与请求解析返回 503 `introspection_not_configured`（OAuth 顶层 `error`，不带 `WWW-Authenticate`），服务其他功能不受影响。生产调用链 SHALL 具有经过证书校验的 TLS 传输保护，可由服务自身或受控网关/服务网格提供。显式关闭服务端 TLS SHALL 不取消调用认证或使未受保护的跨主机明文连接成为可接受的生产部署。客户端秘密 SHALL 支持重叠轮换；调用凭据 SHALL 不得与消费者 JWT 或管理员凭据互换。认证与权限检查 SHALL 先于 token 校验。错误 SHALL 使用 OAuth 顶层 `error`：凭据缺失、错误或方式未启用返回 401 `invalid_client`；携带的 Bearer 令牌无效返回 401 `invalid_token`；有效 Bearer 未登记或已认证客户端缺内省权限返回 403 `insufficient_scope`，有效 Basic 缺权限时不带挑战，Bearer 按服务认证规格返回挑战；签发方不可用返回 503 `temporarily_unavailable`。SHALL 不保留旧逐接口认证路径。
+单监听器上的 `POST /v1/introspect` SHALL 只使用服务认证规格的统一注册表执行独立的服务调用认证：HTTP Basic 客户端凭据，或外部提供方签发的客户端凭据 Bearer 访问令牌，并在认证后要求 `tokens.introspect`。同一客户端 SHALL 可以同时持有清理权限。客户端秘密 SHALL 支持重叠轮换；调用凭据 SHALL 不得与消费者 JWT 或管理员凭据互换。认证与权限检查 SHALL 先于 token 校验。SHALL 不保留旧逐接口认证路径。
 
 #### Scenario: 消费者令牌不能调用内省
 - **WHEN** 内省能力已配置，请求仅携带消费者 Bearer token 或错误客户端秘密
@@ -48,6 +48,30 @@
 #### Scenario: 消费者判定语义保持
 - **WHEN** 调用方通过统一认证及授权，而被检查会话已在数据库中吊销或数据库查询失败
 - **THEN** 分别保持 active:false 或 503 temporarily_unavailable，不因统一服务认证回退到 Redis 吊销判定
+
+### Requirement: 内省未配置的优先响应
+
+无人持有内省权限时，该路由 SHALL 先于认证与请求解析返回 503 `introspection_not_configured`（OAuth 顶层 `error`，不带 `WWW-Authenticate`），服务其他功能不受影响。
+
+#### Scenario: 未配置先于认证和解析
+- **WHEN** 无人持有 tokens.introspect，调用方携带任意凭据和任意业务请求
+- **THEN** 先返回 OAuth 顶层 error 为 introspection_not_configured 的 503，不带 WWW-Authenticate，服务其他功能不受影响
+
+### Requirement: 内省生产调用链传输保护
+
+生产调用链 SHALL 具有经过证书校验的 TLS 传输保护，可由服务自身或受控网关/服务网格提供。显式关闭服务端 TLS SHALL 不取消调用认证或使未受保护的跨主机明文连接成为可接受的生产部署。
+
+#### Scenario: 关闭服务端 TLS 的生产边界
+- **WHEN** 生产部署显式关闭服务端 TLS
+- **THEN** 仍执行调用认证，并由受控网关或服务网格等提供经过证书校验的 TLS；不接受未保护的跨主机明文连接
+
+### Requirement: 内省调用认证错误协议
+
+错误 SHALL 使用 OAuth 顶层 `error`：凭据缺失、错误或方式未启用返回 401 `invalid_client`；携带的 Bearer 令牌无效返回 401 `invalid_token`；有效 Bearer 未登记或已认证客户端缺内省权限返回 403 `insufficient_scope`，有效 Basic 缺权限时不带挑战，Bearer 按服务认证规格返回挑战；签发方不可用返回 503 `temporarily_unavailable`。
+
+#### Scenario: 调用错误保留 OAuth 分类
+- **WHEN** 内省已配置但调用凭据缺失、错误、方式未启用、Bearer 无效、调用方未授权或签发方不可用
+- **THEN** 依次适用 invalid_client 401、invalid_token 401、insufficient_scope 403 或 temporarily_unavailable 503；Basic 缺权限不带挑战，Bearer 按服务认证规格返回挑战
 
 ### Requirement: 标准内省请求及最小响应
 

@@ -1,6 +1,6 @@
 # 验证记录
 
-本次实现及独立审查完成，代码验证通过；全库 OpenSpec strict 存在下述未改动主规格问题，不宣称全仓规格全绿。分支 `feat/harden-accountsvc-authentication`；用户已授权提交本次改动，推送、归档和发布不在本次范围内。
+本次实现及独立审查完成，代码验证通过。下文保留当时全库OpenSpec strict的失败记录；相关结构问题已由后续纯文档整理解决，见[规格整理验收](../restructure-spec-requirements/verification.md)。分支 `feat/harden-accountsvc-authentication`；用户已授权提交本次改动，推送、归档和发布不在本次范围内。
 
 ## 完整改进验证（模式改名前）
 

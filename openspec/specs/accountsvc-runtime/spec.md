@@ -447,39 +447,6 @@ serve SHALL 只使用服务认证规格的统一客户端注册表配置拉取�
 
 serve SHALL 支持可选的 `ACCOUNTSVC_SMTP_TEMPLATES_FILE`，指向一份邮件模板清单 JSON。仅当 EMAIL 启用时，serve SHALL 在监听及创建运行依赖之前有界读取一次该本地普通文件并完成校验。不支持 URL，也不热加载。
 
-**未设置或为空**：serve SHALL 使用嵌入的无品牌默认清单（简体默认，另含繁体与英文），并在启动时记录 WARN 提示设置该变量；默认清单 SHALL 经过与部署清单相同的校验。
-
-**清单结构**：
-- 清单 SHALL 为 UTF-8 JSON 对象，`version` 为 1，`default_language` 为 `languages` 中的一个键。
-- `languages` SHALL 包含 1–8 种语言。语言标签 SHALL 为规范形式的 BCP 47 标签，不得为 `und`，且两两不同。
-- 每种语言 SHALL 只含 `brand`（可选）、`logo_url`（可选）、`common`（必填）与 `templates`（必填）。
-- `common` SHALL 只含 `code_label`、`expiry`、`safety`（必填）与 `footer`（可选）。
-- `templates` SHALL 恰好包含 `SIGN_IN`、`BIND`、`REAUTH`、`SIGN_IN_COMPLETE`；每个用途 SHALL 恰好包含非空字符串 `subject`、`heading`、`intro`。
-- 以下情况 SHALL 拒绝：未知字段、重复键、尾随内容、`null`、缺少或多出用途。任何语言或用途 SHALL 不得回落到其他语言或内置文案。
-
-**版式**：
-- 邮件 SHALL 由服务内置的布局渲染，同时包含 HTML 部分与纯文本部分，段落依次为标题、引导语、验证码、有效期、安全提示、页脚（`footer` 省略时无此段）。
-- 提供 `logo_url` 时，HTML 部分 SHALL 显示该图片并以品牌作为替代文字，因此该语言 SHALL 有品牌；`logo_url` SHALL 为 HTTPS 地址，不含用户信息、空白或控制字符，不超过 2048 字节。
-- 有品牌的语言 SHALL 在页脚显示 `© 品牌`；无品牌的语言 SHALL 省略该行。
-- 服务 SHALL 不内嵌图片或附件，也不接受自定义布局。
-
-**占位符与转义**：
-- 清单文字 SHALL 只接受 `{{brand}}` 与 `{{ttl_minutes}}`，名称两侧不得有空白；`{{code}}` 与其他名称 SHALL 视为配置错误。单个 `{` 或 `}` SHALL 按字面处理；`{{` 后不是合法占位符时 SHALL 视为配置错误。
-- `{{brand}}` SHALL 取所在语言的 `brand`，不继承其他语言；没有品牌的语言引用 `{{brand}}` SHALL 视为配置错误。`brand` SHALL 为 1–32 个码位，不含控制字符、Unicode 格式字符或行/段分隔符，无首尾空白。
-- `{{ttl_minutes}}` SHALL 为有效期分钟数，向上取整。
-- 清单文字插入 HTML 时 SHALL 整体做 HTML 转义，文字中的标签 SHALL 按字面显示；插入纯文本时不转义。替换后的值 SHALL 不再展开。渲染 SHALL 不执行任何模板函数、条件或循环。
-
-**长度与字符**：
-- `subject` SHALL 为 1–64 个码位，不得有首尾空白，不得含控制字符（含换行和制表符）、Unicode 格式字符、行分隔符或段分隔符。
-- `heading`、`code_label` SHALL 为 1–64 个码位；`intro`、`expiry`、`safety`、`footer` SHALL 为 1–1024 个码位；这些文字去掉空白后非空，控制字符只允许 LF 和 TAB，不得含 CR、Unicode 格式字符、行分隔符或段分隔符。
-- 每段文字 SHALL 最多包含 8 个占位符。清单 SHALL 非空，且不超过 64 KiB。
-
-**失败与日志**：
-- 读取失败、非普通文件、空文件、超限或内容非法时，serve SHALL 在监听前非零退出。错误 SHALL 只含变量名、固定的字段位置和安全分类，不含路径、文件内容或解码器原文。
-- EMAIL 启用且配置了清单时，serve SHALL 记录一条 INFO 日志，附带格式版本、清单内容 SHA-256 的前 12 位十六进制与语言标签列表；未配置时 SHALL 记录 WARN。这些日志及其他日志 SHALL 不包含路径、品牌、文字、Logo 地址、渲染结果或验证码。
-- EMAIL 禁用时，或执行 migrate 时，SHALL 不读取或校验该设置。
-- 库 New/ConfigFromEnv SHALL 保持不做文件 I/O，也不新增公开 Go API。
-
 #### Scenario: 合法清单生效
 
 - **WHEN** serve 启用 EMAIL，配置了合法的三语言清单，并以默认语言发送登录补全验证码邮件
@@ -514,6 +481,84 @@ serve SHALL 支持可选的 `ACCOUNTSVC_SMTP_TEMPLATES_FILE`，指向一份邮�
 
 - **WHEN** 运行期间清单被修改
 - **THEN** 当前实例的文案不变，重启后才加载新内容
+
+### Requirement: 服务邮件默认清单
+
+`ACCOUNTSVC_SMTP_TEMPLATES_FILE` 未设置或为空且 EMAIL 启用时，serve SHALL 使用嵌入的无品牌默认清单（简体默认，另含繁体与英文），并在启动时记录 WARN 提示设置该变量；默认清单 SHALL 经过与部署清单相同的校验。
+
+#### Scenario: 服务邮件默认清单核验
+
+- **WHEN** EMAIL 启用且变量为空或未设置
+- **THEN** 使用经过相同校验的嵌入无品牌清单，简体默认并含繁体和英文，启动记录提示变量名的 WARN
+
+### Requirement: 服务邮件清单语言结构
+
+- 清单 SHALL 为 UTF-8 JSON 对象，`version` 为 1，`default_language` 为 `languages` 中的一个键。
+- `languages` SHALL 包含 1–8 种语言。语言标签 SHALL 为规范形式的 BCP 47 标签，不得为 `und`，且两两不同。
+- 每种语言 SHALL 只含 `brand`（可选）、`logo_url`（可选）、`common`（必填）与 `templates`（必填）。
+- `common` SHALL 只含 `code_label`、`expiry`、`safety`（必填）与 `footer`（可选）。
+
+#### Scenario: 服务邮件清单语言结构核验
+
+- **WHEN** 校验合法单语言清单及含第九种语言、und 标签、重复键或缺少用途的清单
+- **THEN** 合法清单通过；违反语言、结构或完整性约束的清单被拒绝，不回落到其他语言或内置文案
+
+### Requirement: 服务邮件用途完整性与禁止回落
+
+- `templates` SHALL 恰好包含 `SIGN_IN`、`BIND`、`REAUTH`、`SIGN_IN_COMPLETE`；每个用途 SHALL 恰好包含非空字符串 `subject`、`heading`、`intro`。
+- 以下情况 SHALL 拒绝：未知字段、重复键、尾随内容、`null`、缺少或多出用途。任何语言或用途 SHALL 不得回落到其他语言或内置文案。
+
+#### Scenario: 服务邮件用途完整性与禁止回落核验
+
+- **WHEN** 校验合法单语言清单及含第九种语言、und 标签、重复键或缺少用途的清单
+- **THEN** 合法清单通过；违反语言、结构或完整性约束的清单被拒绝，不回落到其他语言或内置文案
+
+### Requirement: 服务邮件内置版式
+
+- 邮件 SHALL 由服务内置的布局渲染，同时包含 HTML 部分与纯文本部分，段落依次为标题、引导语、验证码、有效期、安全提示、页脚（`footer` 省略时无此段）。
+- 提供 `logo_url` 时，HTML 部分 SHALL 显示该图片并以品牌作为替代文字，因此该语言 SHALL 有品牌；`logo_url` SHALL 为 HTTPS 地址，不含用户信息、空白或控制字符，不超过 2048 字节。
+- 有品牌的语言 SHALL 在页脚显示 `© 品牌`；无品牌的语言 SHALL 省略该行。
+- 服务 SHALL 不内嵌图片或附件，也不接受自定义布局。
+
+#### Scenario: 服务邮件内置版式核验
+
+- **WHEN** 分别渲染带品牌及合法 Logo、无品牌语言的邮件，并校验非法 Logo
+- **THEN** 合法邮件按规定顺序同时包含 HTML 和纯文本，品牌页脚及替代文字按规则显示；非法 Logo 被拒绝，不允许自定义布局、内嵌图片或附件
+
+### Requirement: 服务邮件占位符校验与转义
+
+- 清单文字 SHALL 只接受 `{{brand}}` 与 `{{ttl_minutes}}`，名称两侧不得有空白；`{{code}}` 与其他名称 SHALL 视为配置错误。单个 `{` 或 `}` SHALL 按字面处理；`{{` 后不是合法占位符时 SHALL 视为配置错误。
+- `{{brand}}` SHALL 取所在语言的 `brand`，不继承其他语言；没有品牌的语言引用 `{{brand}}` SHALL 视为配置错误。`brand` SHALL 为 1–32 个码位，不含控制字符、Unicode 格式字符或行/段分隔符，无首尾空白。
+- `{{ttl_minutes}}` SHALL 为有效期分钟数，向上取整。
+- 清单文字插入 HTML 时 SHALL 整体做 HTML 转义，文字中的标签 SHALL 按字面显示；插入纯文本时不转义。替换后的值 SHALL 不再展开。渲染 SHALL 不执行任何模板函数、条件或循环。
+
+#### Scenario: 服务邮件占位符校验与转义核验
+
+- **WHEN** 文字包含合法占位符、HTML 标签、单花括号或非法占位符
+- **THEN** 合法替换使用本语言品牌及向上取整分钟数，HTML 转义且纯文本保留字面，结果不二次展开；非法占位符或无品牌引用被拒绝
+
+### Requirement: 服务邮件文字与清单上限
+
+- `subject` SHALL 为 1–64 个码位，不得有首尾空白，不得含控制字符（含换行和制表符）、Unicode 格式字符、行分隔符或段分隔符。
+- `heading`、`code_label` SHALL 为 1–64 个码位；`intro`、`expiry`、`safety`、`footer` SHALL 为 1–1024 个码位；这些文字去掉空白后非空，控制字符只允许 LF 和 TAB，不得含 CR、Unicode 格式字符、行分隔符或段分隔符。
+- 每段文字 SHALL 最多包含 8 个占位符。清单 SHALL 非空，且不超过 64 KiB。
+
+#### Scenario: 服务邮件文字与清单上限核验
+
+- **WHEN** 校验合法边界及超限文字、占位符数量或清单大小，并输入禁止字符
+- **THEN** 合法边界内容通过；违反码位、字符、每段 8 个占位符或 64 KiB 上限的内容被拒绝
+
+### Requirement: 服务邮件清单失败与日志隐私
+
+- 读取失败、非普通文件、空文件、超限或内容非法时，serve SHALL 在监听前非零退出。错误 SHALL 只含变量名、固定的字段位置和安全分类，不含路径、文件内容或解码器原文。
+- EMAIL 启用且配置了清单时，serve SHALL 记录一条 INFO 日志，附带格式版本、清单内容 SHA-256 的前 12 位十六进制与语言标签列表；未配置时 SHALL 记录 WARN。这些日志及其他日志 SHALL 不包含路径、品牌、文字、Logo 地址、渲染结果或验证码。
+- EMAIL 禁用时，或执行 migrate 时，SHALL 不读取或校验该设置。
+- 库 New/ConfigFromEnv SHALL 保持不做文件 I/O，也不新增公开 Go API。
+
+#### Scenario: 服务邮件清单失败与日志隐私核验
+
+- **WHEN** 清单读取失败或启用 EMAIL 的 serve 加载合法清单，或 EMAIL 禁用及 migrate 使用非法路径
+- **THEN** 失败在监听前非零退出且错误只含安全定位；成功日志只含版本、12 位摘要及语言列表；禁用或 migrate 不读文件，库构造及环境解析不做文件 I/O
 
 ### Requirement: 邮件语言选择
 

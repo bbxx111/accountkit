@@ -55,7 +55,7 @@ Bearer 令牌 SHALL 仅在签名算法为 RS256、头部含非空 `kid`、不含
 
 ### Requirement: 认证挑战
 
-401 响应 SHALL 按整个注册表启用方法的并集，为每个方式各给出一个 `WWW-Authenticate` 头：`Basic realm="<realm>"` 与 `Bearer realm="<realm>"`，内省的 realm 为 `accountsvc-introspection`，拉取为 `accountsvc-purge-feed`，身份解析为 `accountsvc-identity-resolution`；SHALL 不按未验证用户名或 azp 改变挑战。仅当请求恰好携带一个 Bearer `Authorization` 头且令牌被判定无效时，Bearer challenge SHALL 附 `error="invalid_token"`；仅客户端方式未启用 SHALL 不附该属性。有效 Basic 缺权限的 403 SHALL 不带 challenge，Bearer 的 403 SHALL 只给出带 `error="insufficient_scope"` 的 Bearer challenge。503 SHALL 不带 challenge。所有响应 SHALL 设置 `Cache-Control: no-store`。
+401 响应 SHALL 按整个注册表启用方法的并集，为每个方式各给出一个 `WWW-Authenticate` 头：`Basic realm="<realm>"` 与 `Bearer realm="<realm>"`，内省的 realm 为 `accountsvc-introspection`，拉取为 `accountsvc-purge-feed`，身份解析为 `accountsvc-identity-resolution`；SHALL 不按未验证用户名或 azp 改变挑战。
 
 #### Scenario: 无凭据
 - **WHEN** 注册表两种方式都启用，请求的能力已配置且不带 `Authorization`
@@ -64,6 +64,22 @@ Bearer 令牌 SHALL 仅在签名算法为 RS256、头部含非空 `kid`、不含
 #### Scenario: 无效 Bearer
 - **WHEN** 注册表两种方式都启用，请求的能力已配置且带一个无效的 Bearer 令牌
 - **THEN** 返回 401，Basic challenge 不变，Bearer challenge 含 `error="invalid_token"`
+
+### Requirement: 无效 Bearer 的认证挑战
+
+仅当请求恰好携带一个 Bearer `Authorization` 头且令牌被判定无效时，Bearer challenge SHALL 附 `error="invalid_token"`；仅客户端方式未启用 SHALL 不附该属性。
+
+#### Scenario: 令牌错误与方式开关区分
+- **WHEN** 已配置能力收到单一 Bearer 头，其令牌无效，或仅该客户端未启用 Bearer
+- **THEN** 仅令牌无效时 Bearer challenge 附 error="invalid_token"；仅方式未启用时不附该属性
+
+### Requirement: 服务权限与依赖错误的响应头
+
+有效 Basic 缺权限的 403 SHALL 不带 challenge，Bearer 的 403 SHALL 只给出带 `error="insufficient_scope"` 的 Bearer challenge。503 SHALL 不带 challenge。所有响应 SHALL 设置 `Cache-Control: no-store`。
+
+#### Scenario: 权限拒绝和依赖失败的响应头
+- **WHEN** 有效 Basic 或 Bearer 缺少端点权限，或认证依赖不可用
+- **THEN** 403 的 Basic 响应不带 challenge，Bearer 只带 insufficient_scope 的 Bearer challenge；503 不带 challenge，所有响应均设置 Cache-Control: no-store
 
 ### Requirement: 签发方故障分类
 
@@ -91,7 +107,7 @@ serve SHALL 在监听前完成服务令牌配置的静态校验，但 SHALL 不�
 
 ### Requirement: 服务令牌配置校验
 
-serve SHALL 读取统一客户端注册表和 `ACCOUNTSVC_SERVICE_ISSUER`、`ACCOUNTSVC_SERVICE_AUDIENCE`。至少一个注册客户端启用 bearer 时 SHALL 要求签发方和 audience；没有 bearer 客户端但签发方或 audience 非空 SHALL 视为配置错误。签发方 SHALL 为不含凭据、查询和片段的绝对 URL：`ACCOUNTSVC_MODE=production` 时 SHALL 只接受 HTTPS；`ACCOUNTSVC_MODE=development` 时 SHALL 另接受 `http://`，此时 discovery 地址与 `jwks_uri` 同样允许 HTTP，serve SHALL 在监听前记录一条指出 `ACCOUNTSVC_SERVICE_ISSUER` 的 WARN。签发方 SHALL 不等于消费者 JWT issuer，可以等于管理员 issuer。audience SHALL 非空且无首尾空白，SHALL 不等于消费者 JWT audience、已启用的管理员 audience、任一已配置的第三方登录应用或客户端 ID，以及任一启用 bearer 的客户端 ID。违反任一规则 SHALL 在监听前非零退出并指出变量名，不回显值。migrate SHALL 不解析新旧服务客户端或 issuer/audience 变量。
+serve SHALL 读取统一客户端注册表和 `ACCOUNTSVC_SERVICE_ISSUER`、`ACCOUNTSVC_SERVICE_AUDIENCE`。至少一个注册客户端启用 bearer 时 SHALL 要求签发方和 audience；没有 bearer 客户端但签发方或 audience 非空 SHALL 视为配置错误。违反任一规则 SHALL 在监听前非零退出并指出变量名，不回显值。migrate SHALL 不解析新旧服务客户端或 issuer/audience 变量。
 
 #### Scenario: 列表相交
 - **WHEN** 同一客户端启用 bearer 并显式持有 tokens.introspect 和 purged_users.read
@@ -112,6 +128,22 @@ serve SHALL 读取统一客户端注册表和 `ACCOUNTSVC_SERVICE_ISSUER`、`ACC
 #### Scenario: 开发模式接受 HTTP 签发方
 - **WHEN** 存在有效 bearer 客户端，`ACCOUNTSVC_MODE=development` 且 `ACCOUNTSVC_SERVICE_ISSUER` 为不含凭据、查询和片段的 `http://` 地址
 - **THEN** serve 通过配置校验并记录一条指出 `ACCOUNTSVC_SERVICE_ISSUER` 的 WARN；Bearer 令牌按该 HTTP issuer 完成 discovery、JWKS 加载与 `iss` 精确匹配
+
+### Requirement: 服务签发方地址与环境隔离
+
+签发方 SHALL 为不含凭据、查询和片段的绝对 URL：`ACCOUNTSVC_MODE=production` 时 SHALL 只接受 HTTPS；`ACCOUNTSVC_MODE=development` 时 SHALL 另接受 `http://`，此时 discovery 地址与 `jwks_uri` 同样允许 HTTP，serve SHALL 在监听前记录一条指出 `ACCOUNTSVC_SERVICE_ISSUER` 的 WARN。签发方 SHALL 不等于消费者 JWT issuer，可以等于管理员 issuer。违反任一规则 SHALL 在监听前非零退出并指出变量名，不回显值。
+
+#### Scenario: 环境决定签发方传输规则
+- **WHEN** production 或 development 配置签发方 URL
+- **THEN** 均要求无凭据、查询和片段的绝对 URL；production 只接受 HTTPS，development 另接受 HTTP 并在监听前记录指定变量名的 WARN，HTTP discovery 与 jwks_uri 同样允许；签发方不同于消费者 issuer，可与管理员相同
+
+### Requirement: 服务 audience 配置隔离
+
+audience SHALL 非空且无首尾空白，SHALL 不等于消费者 JWT audience、已启用的管理员 audience、任一已配置的第三方登录应用或客户端 ID，以及任一启用 bearer 的客户端 ID。违反任一规则 SHALL 在监听前非零退出并指出变量名，不回显值。
+
+#### Scenario: 空白和受众复用被拒绝
+- **WHEN** audience 为空、有首尾空白，或与任一被隔离的消费者、启用管理员、第三方登录应用/客户端或启用 bearer 客户端标识相等
+- **THEN** 配置校验失败，并依服务令牌配置校验在监听前非零退出，只指出变量名且不回显值
 
 ### Requirement: 调用认证的可观测性
 

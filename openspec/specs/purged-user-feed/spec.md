@@ -28,7 +28,7 @@
 - `page_token`：不透明游标，省略表示从最早的记录开始；
 - `page_size`：默认 100，最大 1000，超出范围返回 400。
 
-响应体为 `{"purged_users":[{"user_id","purge_time"}],"next_page_token"}`。`next_page_token` SHALL 始终返回当前读取位置，空列表表示已追平；业务方保存它并在下次拉取时传回。格式非法或超过当前已分配最大序号的 `page_token` SHALL 返回 400 `INVALID_PAGE_TOKEN`；后者表示数据库被恢复或重新部署导致序号回退，业务方 SHALL 清空游标从头重拉。游标对调用方不透明，不保证格式稳定，也不提供防伪造保护。响应 SHALL 设置 `Cache-Control: no-store`。接口没有确认语义，重复拉取同一位置返回相同记录（已被保留期清理的除外）。
+响应体为 `{"purged_users":[{"user_id","purge_time"}],"next_page_token"}`。`next_page_token` SHALL 始终返回当前读取位置，空列表表示已追平；业务方保存它并在下次拉取时传回。
 
 #### Scenario: 从头拉取与续拉
 - **WHEN** 业务方首次不带 page_token 拉取，随后用返回的 next_page_token 继续拉取
@@ -41,6 +41,22 @@
 #### Scenario: 数据库恢复后游标超前
 - **WHEN** accountsvc 数据库从较早备份恢复，业务方保存的游标大于当前已分配的最大序号
 - **THEN** 返回 400 `INVALID_PAGE_TOKEN`；业务方清空游标从头重拉，不会静默跳过之后写入的记录
+
+### Requirement: 清理游标校验与恢复
+
+格式非法或超过当前已分配最大序号的 `page_token` SHALL 返回 400 `INVALID_PAGE_TOKEN`；后者表示数据库被恢复或重新部署导致序号回退，业务方 SHALL 清空游标从头重拉。游标对调用方不透明，不保证格式稳定，也不提供防伪造保护。
+
+#### Scenario: 恢复后重建调用方游标
+- **WHEN** page_token 非法或大于当前已分配最大序号
+- **THEN** 返回 400 INVALID_PAGE_TOKEN；超前表示数据库恢复或重新部署造成序号回退，业务方清空游标从头重拉；游标格式不保证稳定且不提供防伪造保护
+
+### Requirement: 清理拉取的缓存与重复读取
+
+响应 SHALL 设置 `Cache-Control: no-store`。接口没有确认语义，重复拉取同一位置返回相同记录（已被保留期清理的除外）。
+
+#### Scenario: 重复读取不确认消费
+- **WHEN** 调用方重复拉取同一位置
+- **THEN** 在记录未被保留期清理时返回相同记录，接口不确认消费，每次响应均设置 Cache-Control: no-store
 
 ### Requirement: 保留期与清理
 
@@ -56,7 +72,7 @@
 
 ### Requirement: 服务鉴权与暴露边界
 
-`/v1/purgedUsers` SHALL 只使用服务认证规格的统一注册表执行独立的服务调用认证：HTTP Basic 客户端凭据，或外部提供方签发的客户端凭据 Bearer 访问令牌，并在认证后要求 `purged_users.read`。同一客户端 SHALL 可以同时拥有内省权限；只持有内省权限的已认证客户端 SHALL 不得拉取，消费者或管理员令牌 SHALL 不作为服务凭据接受。错误 SHALL 使用 AIP-193 格式：凭据缺失、错误或方式未启用返回 401 `INVALID_CLIENT`；携带的 Bearer 令牌无效返回 401 `TOKEN_INVALID`；有效 Bearer 未登记或已认证客户端缺拉取权限返回 403 `CLIENT_NOT_AUTHORIZED`；签发方不可用返回 503 `DEPENDENCY_UNAVAILABLE` 并带 `Retry-After: 1`。无人持有清理权限时，该路由 SHALL 先于认证和参数解析返回 503 `PURGE_FEED_NOT_CONFIGURED`。有效 Basic 缺权限的 403 SHALL 不带挑战，Bearer SHALL 按服务认证规格给出 insufficient_scope 挑战。Basic 凭据 SHALL 支持新旧秘密重叠轮换。该路由与内省一样属于内部入口，网关 SHALL 不对公网开放。SHALL 不保留旧逐接口认证路径，不改变分页、清理事务或传输边界。
+`/v1/purgedUsers` SHALL 只使用服务认证规格的统一注册表执行独立的服务调用认证：HTTP Basic 客户端凭据，或外部提供方签发的客户端凭据 Bearer 访问令牌，并在认证后要求 `purged_users.read`。同一客户端 SHALL 可以同时拥有内省权限；只持有内省权限的已认证客户端 SHALL 不得拉取，消费者或管理员令牌 SHALL 不作为服务凭据接受。
 
 #### Scenario: 用内省凭据访问
 - **WHEN** 清理能力已配置，调用方使用只持有 tokens.introspect 的注册客户端的有效 Basic 凭据或有效 Bearer 令牌请求 `/v1/purgedUsers`
@@ -88,3 +104,27 @@
 #### Scenario: 协议和故障不变
 - **WHEN** 已获授权的调用方提交非法 page_token，或 Bearer 必需公钥不可用
 - **THEN** 分别返回原 400 INVALID_PAGE_TOKEN 或 503 DEPENDENCY_UNAVAILABLE 与 Retry-After: 1，均 no-store
+
+### Requirement: 清理拉取认证错误协议
+
+错误 SHALL 使用 AIP-193 格式：凭据缺失、错误或方式未启用返回 401 `INVALID_CLIENT`；携带的 Bearer 令牌无效返回 401 `TOKEN_INVALID`；有效 Bearer 未登记或已认证客户端缺拉取权限返回 403 `CLIENT_NOT_AUTHORIZED`；签发方不可用返回 503 `DEPENDENCY_UNAVAILABLE` 并带 `Retry-After: 1`。有效 Basic 缺权限的 403 SHALL 不带挑战，Bearer SHALL 按服务认证规格给出 insufficient_scope 挑战。
+
+#### Scenario: 服务认证失败保留协议与挑战
+- **WHEN** 清理拉取已配置，但调用凭据、权限或签发方发生相应错误
+- **THEN** 使用 AIP-193 的 401 INVALID_CLIENT、401 TOKEN_INVALID、403 CLIENT_NOT_AUTHORIZED 或带 Retry-After: 1 的 503 DEPENDENCY_UNAVAILABLE；有效 Basic 缺权限不带挑战，Bearer 给出 insufficient_scope 挑战
+
+### Requirement: 清理拉取未配置的优先响应
+
+无人持有清理权限时，该路由 SHALL 先于认证和参数解析返回 503 `PURGE_FEED_NOT_CONFIGURED`。
+
+#### Scenario: 未配置先于凭据和参数
+- **WHEN** 统一注册表无人持有 purged_users.read，收到任意凭据和参数的拉取请求
+- **THEN** 先返回 503 PURGE_FEED_NOT_CONFIGURED，不执行认证或参数解析
+
+### Requirement: 清理拉取内部暴露与凭据轮换
+
+Basic 凭据 SHALL 支持新旧秘密重叠轮换。该路由与内省一样属于内部入口，网关 SHALL 不对公网开放。SHALL 不保留旧逐接口认证路径，不改变分页、清理事务或传输边界。
+
+#### Scenario: 内部路由保持轮换与原有边界
+- **WHEN** 部署网关或轮换清理拉取 Basic 秘密
+- **THEN** 网关不向公网开放该内部入口，Basic 新旧秘密可以重叠轮换；不恢复旧逐接口认证路径，不改变分页、清理事务或传输边界

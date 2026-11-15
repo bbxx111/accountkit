@@ -173,7 +173,7 @@
 
 ### Requirement: OAuth 端点请求体编码
 
-`POST /token` 与 `POST /revoke` SHALL 按请求 `Content-Type` 的媒体类型（忽略 `charset` 等参数）分派请求体解析：`application/x-www-form-urlencoded` 按 RFC 6749 §3.2 / RFC 7009 §2.1 解析；其他情况（包括缺失或无法解析的 `Content-Type`）SHALL 沿用现有严格 JSON 规则，与新增表单支持之前完全一致，不新增对 `Content-Type` 的要求。表单路径 SHALL 使用与 JSON 相同的请求体大小上限，只读取请求体内的参数而忽略 URL 查询串，同名参数出现多次（无论是否识别）SHALL 返回 400 `invalid_request`，未识别参数 SHALL 被忽略；JSON 路径 SHALL 继续拒绝未知字段。两条路径的必填校验、`grant_type` 判定、错误映射、响应体与 `Cache-Control: no-store` SHALL 完全一致。刷新请求中的 `scope` 参数 SHALL 按 RFC 6749 §3.3 忽略：携带（任一编码、任意值）与不携带的结果 SHALL 相同，签发 scope 由账号当前状态推导并 SHALL 在响应 `scope` 字段返回；同名 `scope` 重复仍按重复参数处理。其他 C 端操作与管理面 SHALL 不因本要求接受表单请求体。
+`POST /token` 与 `POST /revoke` SHALL 按请求 `Content-Type` 的媒体类型（忽略 `charset` 等参数）分派请求体解析：`application/x-www-form-urlencoded` 按 RFC 6749 §3.2 / RFC 7009 §2.1 解析；其他情况（包括缺失或无法解析的 `Content-Type`）SHALL 沿用现有严格 JSON 规则，与新增表单支持之前完全一致，不新增对 `Content-Type` 的要求。
 
 #### Scenario: 表单刷新
 - **WHEN** 客户端以 `application/x-www-form-urlencoded; charset=UTF-8` 提交 `grant_type=refresh_token&refresh_token=<有效值>`
@@ -203,9 +203,49 @@
 - **WHEN** 以表单编码调用 `/users:signInWithCode` 等非 OAuth 端点
 - **THEN** 按既有严格 JSON 规则返回 400 `MALFORMED_BODY`
 
+### Requirement: OAuth 表单参数边界
+
+表单路径 SHALL 使用与 JSON 相同的请求体大小上限，只读取请求体内的参数而忽略 URL 查询串，同名参数出现多次（无论是否识别）SHALL 返回 400 `invalid_request`，未识别参数 SHALL 被忽略；JSON 路径 SHALL 继续拒绝未知字段。
+
+#### Scenario: 重复未知参数与请求体上限
+- **WHEN** OAuth 表单重复提供未知参数、超出请求体上限或仅在 URL 查询串提供参数
+- **THEN** 重复参数返回 400 invalid_request，大小限制与 JSON 相同，URL 查询参数不参与请求体解析
+
+### Requirement: OAuth 编码路径响应一致
+
+两条路径的必填校验、`grant_type` 判定、错误映射、响应体与 `Cache-Control: no-store` SHALL 完全一致。
+
+#### Scenario: 两种编码请求同一 OAuth 操作
+- **WHEN** 表单和 JSON 请求表达同一 token 或 revoke 操作
+- **THEN** 必填校验、grant_type 判定、错误映射、响应体及 Cache-Control: no-store 一致
+
+### Requirement: 刷新 scope 参数兼容
+
+刷新请求中的 `scope` 参数 SHALL 按 RFC 6749 §3.3 忽略：携带（任一编码、任意值）与不携带的结果 SHALL 相同，签发 scope 由账号当前状态推导并 SHALL 在响应 `scope` 字段返回；同名 `scope` 重复仍按重复参数处理。
+
+#### Scenario: 重复表单 scope
+- **WHEN** 刷新表单重复提供 scope 参数
+- **THEN** 按重复参数返回 400 invalid_request；单个任意值 scope 不改变刷新结果和响应 scope 的推导规则
+
+### Requirement: OAuth 表单支持范围
+
+其他 C 端操作与管理面 SHALL 不因本要求接受表单请求体。
+
+#### Scenario: 管理面提交表单
+- **WHEN** 管理面请求使用表单请求体
+- **THEN** 不因 OAuth 表单支持改变既有请求体规则
+
+### Requirement: 开发期公开符号迁移
+
+v1.0.0 SHALL 不再提供 v1.0.0 之前开发期入口的兼容别名或转发：`ids.IdentityFlow`、`user.Deps.IdentityFlowContext`、`CleanupIdentityFlows`、`sender.SMSSender`、`sender.EmailSender`、`sender.Message` 移除，调用者改用 `ids.SignInCompletionFlow`、`SignInCompletionFlowContext`、`CleanupSignInCompletionFlows`、`SMSCodeSender`、`EmailCodeSender`、`CodeMessage`。
+
+#### Scenario: 正式符号替换开发期入口
+- **WHEN** 宿主迁移六个开发期符号
+- **THEN** 逐一使用上述正式名称，不依赖兼容别名或转发
+
 ### Requirement: 独立消费与 v1.0.0 公开能力
 
-包 SHALL 独立构建/测试/导入，不依赖外部源码工作区；公开能力以 v1.0.0 为基线，JWT、refresh 及非审计资源格式保持。v1.0.0 SHALL 不再提供 v1.0.0 之前开发期入口的兼容别名或转发：`ids.IdentityFlow`、`user.Deps.IdentityFlowContext`、`CleanupIdentityFlows`、`sender.SMSSender`、`sender.EmailSender`、`sender.Message` 移除，调用者改用 `ids.SignInCompletionFlow`、`SignInCompletionFlowContext`、`CleanupSignInCompletionFlows`、`SMSCodeSender`、`EmailCodeSender`、`CodeMessage`。当前会话查询 SHALL 仍为可选宿主能力，不扩大必需接口方法集；会话来源非空、客户端描述为嵌套 JSON，Go 保留平坦描述字段并包含制造商/build/扩展。自 v1.0.0 起公开 Go API SHALL 受语义化版本约束。
+包 SHALL 独立构建/测试/导入，不依赖外部源码工作区；公开能力以 v1.0.0 为基线，JWT、refresh 及非审计资源格式保持。自 v1.0.0 起公开 Go API SHALL 受语义化版本约束。
 
 #### Scenario: 独立宿主构建
 - **WHEN** 独立 Go 项目依赖 accountkit 并注入依赖
@@ -222,6 +262,14 @@
 #### Scenario: 开发期兼容入口已移除
 - **WHEN** 调用者引用上述六个已移除符号
 - **THEN** 编译失败；按发布说明替换为正式名称后行为不变
+
+### Requirement: 可选当前会话查询与描述格式
+
+当前会话查询 SHALL 仍为可选宿主能力，不扩大必需接口方法集；会话来源非空、客户端描述为嵌套 JSON，Go 保留平坦描述字段并包含制造商/build/扩展。
+
+#### Scenario: 宿主实现当前会话查询
+- **WHEN** 宿主提供可选当前会话查询能力
+- **THEN** 来源非空，描述采用嵌套 JSON，Go 平坦字段仍含制造商、build 和扩展，不扩大必需接口
 
 ### Requirement: 生命周期和资料保留
 
@@ -273,9 +321,7 @@ v1.0.0 SHALL 保留 user.NewService、仅含私有字段的 user.Repo、NewRepo�
 
 ### Requirement: 公开覆盖登记与正式名称
 
-user.PurgeCoveredTables SHALL 为返回独立 map 的函数，调用方修改返回值 SHALL 不影响库登记和后续调用；该登记仅供覆盖核验，不改变实际匿名化执行。v1.0.0 SHALL 移除 authentication.MapLegacy、ids.AuditEvent、code.ErrExhausted、audit.Store.ListByUser 的公开入口，内部批量参数和唯一冲突判定不再导出。旧 WeChat 构造器 SHALL 由 NewWeChat(WeChatConfig, *http.Client, *slog.Logger) (*WeChat, error) 取代；SMTP 默认中文渲染器 SHALL 使用 ChineseRenderer，grace.Pair 时间字段 SHALL 使用 AccessExpireTime/RefreshExpireTime，同时保持 JSON ae/re 及缓存格式。
-
-其他 IdP 构造器及具体协议 Verify 方法 SHALL 保留已有签名和校验阶段，统一分派继续使用 Provider.Verify；不返回 error 的构造器不承诺完整启动前配置校验。在线审计 SHALL 不再提供开发期转换入口；既有带 legacy_event_id 的私有快照读取和隐私清理行为 SHALL 保留，不承诺旧库转换或升级。
+user.PurgeCoveredTables SHALL 为返回独立 map 的函数，调用方修改返回值 SHALL 不影响库登记和后续调用；该登记仅供覆盖核验，不改变实际匿名化执行。
 
 #### Scenario: 覆盖登记不可被调用方覆盖
 - **WHEN** 调用方删除或修改 PurgeCoveredTables() 返回的项
@@ -292,3 +338,35 @@ user.PurgeCoveredTables SHALL 为返回独立 map 的函数，调用方修改返
 #### Scenario: 显式资源审计查询
 - **WHEN** 原 ListByUser 调用改为指定 Source 与完整 USER Resource 的 ListByResource
 - **THEN** source/namespace 隔离、分页和隐私清理保持
+
+### Requirement: 正式公开入口清理
+
+v1.0.0 SHALL 移除 authentication.MapLegacy、ids.AuditEvent、code.ErrExhausted、audit.Store.ListByUser 的公开入口，内部批量参数和唯一冲突判定不再导出。
+
+#### Scenario: 引用移除的公开入口
+- **WHEN** 外部调用者引用上述四个已移除入口或内部批量参数与唯一冲突判定
+- **THEN** 不能依赖其公开导出
+
+### Requirement: 构造器渲染器与缓存正式名称
+
+旧 WeChat 构造器 SHALL 由 NewWeChat(WeChatConfig, *http.Client, *slog.Logger) (*WeChat, error) 取代；SMTP 默认中文渲染器 SHALL 使用 ChineseRenderer，grace.Pair 时间字段 SHALL 使用 AccessExpireTime/RefreshExpireTime，同时保持 JSON ae/re 及缓存格式。
+
+#### Scenario: 使用正式构造器与缓存字段
+- **WHEN** 调用 NewWeChat、选择默认中文 SMTP 渲染器或读取 grace.Pair
+- **THEN** 采用上述构造器签名、ChineseRenderer 和正式时间字段名，JSON ae/re 及缓存格式保持
+
+### Requirement: IdP 构造与校验阶段兼容
+
+其他 IdP 构造器及具体协议 Verify 方法 SHALL 保留已有签名和校验阶段，统一分派继续使用 Provider.Verify；不返回 error 的构造器不承诺完整启动前配置校验。
+
+#### Scenario: 使用其他 IdP 构造器
+- **WHEN** 宿主构造其他 IdP 并执行具体协议或统一验证
+- **THEN** 已有签名与校验阶段保持，统一入口为 Provider.Verify；无 error 返回的构造器不承诺完整启动前校验
+
+### Requirement: 私有历史审计快照边界
+
+在线审计 SHALL 不再提供开发期转换入口；既有带 legacy_event_id 的私有快照读取和隐私清理行为 SHALL 保留，不承诺旧库转换或升级。
+
+#### Scenario: 读取带旧事件标识的私有快照
+- **WHEN** 私有快照带 legacy_event_id
+- **THEN** 读取和隐私清理保留，在线审计无开发期转换入口，不承诺旧库转换或升级

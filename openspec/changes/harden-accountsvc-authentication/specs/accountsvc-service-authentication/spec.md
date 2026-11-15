@@ -50,7 +50,7 @@ Bearer 令牌 SHALL 仅在签名算法为 RS256、头部含非空 `kid`、不含
 
 ### Requirement: 认证挑战
 
-401 响应 SHALL 按整个注册表启用方法的并集，为每个方式各给出一个 `WWW-Authenticate` 头：`Basic realm="<realm>"` 与 `Bearer realm="<realm>"`，内省的 realm 为 `accountsvc-introspection`，拉取为 `accountsvc-purge-feed`，身份解析为 `accountsvc-identity-resolution`；SHALL 不按未验证用户名或 azp 改变挑战。仅当请求恰好携带一个 Bearer `Authorization` 头且令牌被判定无效时，Bearer challenge SHALL 附 `error="invalid_token"`；仅客户端方式未启用 SHALL 不附该属性。有效 Basic 缺权限的 403 SHALL 不带 challenge，Bearer 的 403 SHALL 只给出带 `error="insufficient_scope"` 的 Bearer challenge。503 SHALL 不带 challenge。所有响应 SHALL 设置 `Cache-Control: no-store`。
+401 响应 SHALL 按整个注册表启用方法的并集，为每个方式各给出一个 `WWW-Authenticate` 头：`Basic realm="<realm>"` 与 `Bearer realm="<realm>"`，内省的 realm 为 `accountsvc-introspection`，拉取为 `accountsvc-purge-feed`，身份解析为 `accountsvc-identity-resolution`；SHALL 不按未验证用户名或 azp 改变挑战。
 
 #### Scenario: 无凭据
 - **WHEN** 注册表两种方式都启用，请求的能力已配置且不带 `Authorization`
@@ -86,7 +86,7 @@ serve SHALL 在监听前完成服务令牌配置的静态校验，但 SHALL 不�
 
 ### Requirement: 服务令牌配置校验
 
-serve SHALL 读取统一客户端注册表和 `ACCOUNTSVC_SERVICE_ISSUER`、`ACCOUNTSVC_SERVICE_AUDIENCE`。至少一个注册客户端启用 bearer 时 SHALL 要求签发方和 audience；没有 bearer 客户端但签发方或 audience 非空 SHALL 视为配置错误。签发方 SHALL 为不含凭据、查询和片段的绝对 URL：`ACCOUNTSVC_MODE=production` 时 SHALL 只接受 HTTPS；`ACCOUNTSVC_MODE=development` 时 SHALL 另接受 `http://`，此时 discovery 地址与 `jwks_uri` 同样允许 HTTP，serve SHALL 在监听前记录一条指出 `ACCOUNTSVC_SERVICE_ISSUER` 的 WARN。签发方 SHALL 不等于消费者 JWT issuer，可以等于管理员 issuer。audience SHALL 非空且无首尾空白，SHALL 不等于消费者 JWT audience、已启用的管理员 audience、任一已配置的第三方登录应用或客户端 ID，以及任一启用 bearer 的客户端 ID。违反任一规则 SHALL 在监听前非零退出并指出变量名，不回显值。migrate SHALL 不解析新旧服务客户端或 issuer/audience 变量。
+serve SHALL 读取统一客户端注册表和 `ACCOUNTSVC_SERVICE_ISSUER`、`ACCOUNTSVC_SERVICE_AUDIENCE`。至少一个注册客户端启用 bearer 时 SHALL 要求签发方和 audience；没有 bearer 客户端但签发方或 audience 非空 SHALL 视为配置错误。违反任一规则 SHALL 在监听前非零退出并指出变量名，不回显值。migrate SHALL 不解析新旧服务客户端或 issuer/audience 变量。
 
 #### Scenario: 列表相交
 - **WHEN** 同一客户端启用 bearer 并显式持有 tokens.introspect 和 purged_users.read

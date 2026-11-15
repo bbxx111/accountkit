@@ -1,6 +1,6 @@
 # accountsvc 服务
 
-本文对应 v1.1.0（候选），尚未发布；模块、导入路径和 HTTP 路由保持 v1。accountsvc 与库同源交付，不设独立版本轴。本次服务配置与授权有破坏性迁移，升级前阅读[候选说明](releases/v1.1.0.md)及[迁移与回退](#从旧配置迁移与回退)；v1.0.0 历史见[已发布说明](releases/v1.0.0.md)。
+本文对应 v1.1.0（已发布）；模块、导入路径和 HTTP 路由保持 v1。accountsvc 与库同源交付，不设独立版本轴。本次服务配置与授权有破坏性迁移，升级前阅读[发布说明](releases/v1.1.0.md)及[迁移与回退](#从旧配置迁移与回退)；v1.0.0 历史见[已发布说明](releases/v1.0.0.md)。
 
 accountsvc 是 accountkit 的可选官方宿主。同一个 Go module 同时支持直接嵌入库和运行服务；使用库的项目不需要部署或调用 accountsvc。
 
@@ -117,7 +117,7 @@ QQ App SDK 登录使用 `ACCOUNTSVC_QQ_APP_IDS`（逗号分隔的唯一 1–20 �
 | `ADMIN_ROLES_CLAIM` / `ADMIN_USERNAME_CLAIM` | /roles / /preferred_username，JSON Pointer |
 | `ADMIN_TOKEN_PROFILE` | `default`（默认）或 `rfc9068`；管理员禁用时不得配置。身份仍为 issuer+sub，权限仍由管理员角色决定 |
 
-`ADMIN_TOKEN_PROFILE` / `SERVICE_TOKEN_PROFILE` 为 v1.1.0 候选新增配置，省略或空值选择 `default`。开发过程中 `azp` 模式值改名为 `default`，从未作为正式版本发布，不是 v1.0.0 部署的迁移项；不保留该开发值别名。服务令牌的客户端声明仍为 `azp`，管理员默认模式不要求该声明。
+`ADMIN_TOKEN_PROFILE` / `SERVICE_TOKEN_PROFILE` 为 v1.1.0 新增配置，省略或空值选择 `default`。开发过程中 `azp` 模式值改名为 `default`，从未作为正式版本发布，不是 v1.0.0 部署的迁移项；不保留该开发值别名。服务令牌的客户端声明仍为 `azp`，管理员默认模式不要求该声明。
 
 可选接口未配置时服务照常启动，对应路由返回 503 `*_NOT_CONFIGURED`。为使漏配在启动时可见，serve 在监听就绪后为每个未配置的接口记一条 WARN（只写相关变量名，不写值）：内省（`introspection_not_configured`）、已清理用户拉取（`PURGE_FEED_NOT_CONFIGURED`）、管理员 API（`ADMIN_NOT_CONFIGURED`）、用户资料属性（`PROFILE_ATTRIBUTES_NOT_CONFIGURED`）。有意不启用某项时可忽略对应警告；部署检查应确认依赖的接口没有出现在警告中。
 

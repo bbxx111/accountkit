@@ -8,7 +8,7 @@
 
 ### Requirement: 独立服务调用认证
 
-单监听器上的 `POST /v1/introspect` SHALL 只使用服务认证规格的统一注册表执行独立的服务调用认证：HTTP Basic 客户端凭据，或外部提供方签发的客户端凭据 Bearer 访问令牌，并在认证后要求 `tokens.introspect`。同一客户端 SHALL 可以同时持有清理权限。客户端秘密 SHALL 支持重叠轮换；调用凭据 SHALL 不得与消费者 JWT 或管理员凭据互换。认证与权限检查 SHALL 先于 token 校验。SHALL 不保留旧逐接口认证路径。
+单监听器上的 `POST /v1/introspect` SHALL 只使用服务认证规格的统一注册表执行独立的服务调用认证：HTTP Basic 客户端凭据，或外部提供方签发的客户端凭据 Bearer 访问令牌，并在认证后要求注册权限 `tokens.introspect`；Bearer 还 SHALL 通过服务主体绑定并具有同名 scope。同一客户端 SHALL 可以同时持有清理权限。客户端秘密 SHALL 支持重叠轮换；调用凭据 SHALL 不得与消费者 JWT 或管理员凭据互换。认证与权限检查 SHALL 先于 token 校验。SHALL 不保留旧逐接口认证路径。
 
 #### Scenario: 消费者令牌不能调用内省
 - **WHEN** 内省能力已配置，请求仅携带消费者 Bearer token 或错误客户端秘密
@@ -27,7 +27,7 @@
 - **THEN** 返回 503 `introspection_not_configured`，不校验被查询 token，不返回其有效性或主体信息
 
 #### Scenario: Bearer 调用内省
-- **WHEN** 调用方携带有效服务访问令牌，azp 对应注册客户端已启用 bearer 且持有 tokens.introspect
+- **WHEN** 调用方携带有效服务访问令牌，按显式 profile 识别的注册客户端已启用 bearer、机器主体匹配、注册权限与 token scope 均含 tokens.introspect
 - **THEN** 进入既有内省协议处理，响应格式与 Basic 调用相同
 
 #### Scenario: Bearer 错误分类

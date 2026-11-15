@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26.5、Chi、golang-jwt/v5，既有 PostgreSQL/Redis 与测试夹具。
 
-**Spec:** [变更设计](../../../openspec/changes/harden-accountsvc-authentication/design.md) 及同目录 specs；用户已确认仅实施通用方案，不加入 Keycloak 专用逻辑。
+**Spec:** [变更设计](../../../openspec/changes/archive/2026-11-15-harden-accountsvc-authentication/design.md) 及同目录 specs；用户已确认仅实施通用方案，不加入 Keycloak 专用逻辑。
 
 ## Global Constraints
 
@@ -54,7 +54,7 @@
 - [x] 更新文档、示例模板与HTTP覆盖登记（契约受影响部分），运行 serviceauth/oidcjwt/adminauth/accountsvc 三端点和配置测试及 vet；独立复核。
 
 ### Task 5: 综合验证
-**Files:** openspec/changes/harden-accountsvc-authentication/verification.md、tasks.md，必要的既有验证入口。
+**Files:** openspec/changes/archive/2026-11-15-harden-accountsvc-authentication/verification.md、tasks.md，必要的既有验证入口。
 - [x] 运行 GOWORK=off go build ./...、go vet ./...、go test -count=1 ./...；认证并发运行 race，真实服务门禁按 docs/development.md 准备一次性资源。
 - [x] 运行 openspec validate --all --strict；完整审查后修复实质问题。
 - [x] verification.md 记录实际命令、退出状态、skip与未验证部署项；只勾选真正完成且验证的任务。

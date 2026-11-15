@@ -5,7 +5,7 @@
 **Goal:** 修复七份主规格的11条正文长度问题，保留全部语义并避免未归档delta覆盖回旧结构。
 **Architecture:** 纯文档结构维护，按三个不共享文件的组并行；原标题/场景不变，新需求承接移出的规范句。旧认证delta只做对应结构调整。
 **Tech Stack:** Markdown、OpenSpec1.14.3。
-**Spec:** [设计](../../../openspec/changes/restructure-spec-requirements/design.md)。
+**Spec:** [设计](../../../openspec/changes/archive/2026-11-15-restructure-spec-requirements/design.md)。
 
 ## Global Constraints
 - 不改代码、SQL、测试或产品行为；不执行真实归档/推送/发布。

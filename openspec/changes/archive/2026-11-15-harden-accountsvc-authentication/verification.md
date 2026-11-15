@@ -1,6 +1,6 @@
 # 验证记录
 
-本次实现及独立审查完成，代码验证通过。下文保留当时全库OpenSpec strict的失败记录；相关结构问题已由后续纯文档整理解决，见[规格整理验收](../restructure-spec-requirements/verification.md)。分支 `feat/harden-accountsvc-authentication`；用户已授权提交本次改动，推送、归档和发布不在本次范围内。
+本次实现及独立审查完成，代码验证通过。下文保留当时全库OpenSpec strict的失败记录；相关结构问题已由后续纯文档整理解决，见[规格整理验收](../2026-11-15-restructure-spec-requirements/verification.md)。分支 `feat/harden-accountsvc-authentication`；此前实施阶段未执行推送或归档；本轮按用户明确授权完成归档并安排提交、推送，发布不在范围内。
 
 ## 完整改进验证（模式改名前）
 
@@ -46,7 +46,7 @@
 
 首轮快速全仓测试通过但未提供数据库，不计真实集成通过。首轮Linux绑定Windows源码目录的build/vet通过，真实测试复现上述fixture的四个Unified失败，accountsvc包随后在600秒超时；日志 `auth-initial-tests.jsonl` 保留。最终改为容器本地源码快照，测试超时、断言和必需清单均未放宽，完整重跑及两份门禁通过。
 
-保留消费者可信Principal和未配置503优先级；多aud按包含语义，仍须主体和权限校验；scope采用严格RFC6749语法；机器主体采用不裁剪JSON数组。内部便利装配在无Bearer时忽略孤立TokenProfile，生产LoadConfig已拒绝该半配置且此路径不能启用Bearer，审查判定不构成认证绕过，未重复增加环境配置校验。相关实施方案见 [计划](../../../docs/superpowers/plans/2026-11-15-harden-accountsvc-authentication.md) 与 [设计](design.md)。
+保留消费者可信Principal和未配置503优先级；多aud按包含语义，仍须主体和权限校验；scope采用严格RFC6749语法；机器主体采用不裁剪JSON数组。内部便利装配在无Bearer时忽略孤立TokenProfile，生产LoadConfig已拒绝该半配置且此路径不能启用Bearer，审查判定不构成认证绕过，未重复增加环境配置校验。相关实施方案见 [计划](../../../../docs/superpowers/plans/2026-11-15-harden-accountsvc-authentication.md) 与 [设计](design.md)。
 
 ## 后续模式改名验证
 
@@ -58,3 +58,9 @@
 - OpenAPI源码检查与36操作coverage检查通过；本轮独立审查通过。新增管理员默认profile回归登记到两份必需测试清单。
 - `openspec validate --all --strict` 仍为38通过、7个既有主规格长度问题；本变更通过，日志 `.test-output/auth-profile-rename-openspec.log`。
 - 本轮命名调整未重跑真实数据库/race完整门禁；前述完整门禁证据属于改名前版本，不能当作本轮完整重跑结果。
+
+## 正式归档收尾（2026-11-15）
+
+六份增量规格已同步到主规格，核对全部27条增量需求：新增8条、实际修改12条，其余原样保留。未涉及的主规格需求及场景保持，包括后续修正的默认邮件语言条件和数据表计数。变更已移至本目录，.openspec.yaml保留；计划及跨变更验收引用已修复。归档仅改变规格与文档组织，不重复宣称实现期数据库或race测试在本轮重跑。
+
+归档收尾验证：活动变更列表为空，主规格全量strict为45通过、0失败；16个归档原文件及7个本地链接核对通过（两份Markdown仅有Git换行格式差异）。独立归档复核通过；本轮未修改或重跑Go/数据库/race实现验证。原始同步计划、链接审计和校验日志保留于 .test-output/archive-auth-specs/。

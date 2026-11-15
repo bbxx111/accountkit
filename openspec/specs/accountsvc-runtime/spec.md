@@ -144,10 +144,10 @@ migrate SHALL 只执行静态身份策略语法/集合校验及迁移必要检�
 
 ### Requirement: HTTP 边界与可信请求元信息
 
-serve SHALL 仅使用 ACCOUNTSVC_HTTP_ADDR 创建一个监听器，默认绑定 127.0.0.1:8080，挂载消费者 /v1、管理员 /admin/v1、内省 /v1/introspect、已清理用户拉取 /v1/purgedUsers、公钥 /.well-known/jwks.json 与 /healthz、/readyz。不同身份体系和处理器 SHALL 独立。网关与网络策略 SHALL 控制公网暴露范围，不把路径名称视为网络隔离；单监听器不自动区分公网和内网来源。
+serve SHALL 仅使用 ACCOUNTSVC_HTTP_ADDR 创建一个监听器，默认绑定 127.0.0.1:8080，挂载消费者 /v1、管理员 /admin/v1、内省 /v1/introspect、已清理用户拉取 /v1/purgedUsers、身份解析 /v1/identities:resolve、公钥 /.well-known/jwks.json 与 /healthz、/readyz。不同身份体系和处理器 SHALL 独立。网关与网络策略 SHALL 控制公网暴露范围，不把路径名称视为网络隔离；单监听器不自动区分公网和内网来源。
 
 #### Scenario: 公网请求内部路径
-- **WHEN** 公网调用者通过按接入契约配置的网关请求 `/v1/introspect`、`/v1/purgedUsers`、`/healthz` 或 `/readyz`
+- **WHEN** 公网调用者通过按接入契约配置的网关请求 `/v1/introspect`、`/v1/purgedUsers`、`/v1/identities:resolve`、`/healthz` 或 `/readyz`
 - **THEN** 网关拒绝且请求不进入 accountsvc；单监听器本身不承诺识别公网/内网来源并自动隔离这些路由
 
 #### Scenario: 伪造代理头
@@ -658,3 +658,10 @@ serve SHALL 在 /v1/identities:resolve 装配独立服务认证的身份解析�
 #### Scenario: 权限与二进制回退
 - **WHEN** 部署者启用新版身份解析或回退至不识别 identities.resolve 的旧版本
 - **THEN** 文档要求新版显式授权并重启生效，旧版回退前移除该权限；不静默忽略未知权限
+
+### Requirement: 路由访问类别清单
+服务 SHALL 保持消费者、管理员、服务调用、公共元数据和运维五类路由的可核对清单；三个服务端点分别标明 tokens.introspect、purged_users.read、identities.resolve。清单 SHALL 与实际挂载一致，不改变URL、方法或既有错误顺序，不把类别标记当作认证或网络隔离。
+
+#### Scenario: 清单与实际路由一致
+- **WHEN** 检查服务路由挂载和接入文档
+- **THEN** 三个服务端点及其权限一致，消费者与管理员分别验证，JWKS与运维边界保持

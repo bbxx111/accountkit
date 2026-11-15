@@ -1,6 +1,6 @@
 # 规格结构整理验收
 
-本次为纯文档维护。结构整理阶段以bf51078为基线，七份主规格的11条超长正文已拆分，新增33条需求承接移出的规范性规则；该阶段原需求标题、原场景及产品行为保持。对应认证delta同步调整。用户随后要求修正两处已记录的历史表述，依据与结果见末节；真实仓库未执行归档、推送或发布。
+本次为纯文档维护。结构整理阶段以bf51078为基线，七份主规格的11条超长正文已拆分，新增33条需求承接移出的规范性规则；该阶段原需求标题、原场景及产品行为保持。对应认证delta同步调整。用户随后要求修正两处已记录的历史表述，依据与结果见末节；此前实施阶段未执行归档或推送；本轮按用户明确授权完成正式归档并安排提交、推送，未发布。
 
 ## 规则迁移对应
 
@@ -38,7 +38,7 @@
 1. versioned-auth-storage 的初始表清单与“空数据库安装”场景中的“完整八表”计数不一致。
 2. accountsvc-runtime 的“邮件语言选择”要求未配置清单时不读取Accept-Language，而“未配置清单”场景要求按Accept-Language: en选择英文；需另行核对默认嵌入清单的语言选择契约。
 
-实施范围见 [设计](design.md) 和 [计划](../../../docs/superpowers/plans/2026-11-15-restructure-spec-requirements.md)。
+实施范围见 [设计](design.md) 和 [计划](../../../../docs/superpowers/plans/2026-11-15-restructure-spec-requirements.md)。
 
 ## 后续表述修正依据与验收
 
@@ -48,3 +48,9 @@
 - 本轮实际运行：`GOWORK=off go test -count=1 ./internal/accountsvc/emailtemplates -run 'TestDefaultManifest|TestLanguageMatching|TestSingleLanguageIgnoresPreference'`及`go test -count=1 ./internal/accountsvc -run 'TestConfigEmailTemplates|TestAcceptLanguageMiddleware'`，均退出0；全库strict为46通过、0失败。
 - 本轮不重跑真实数据库、SMTP进程或race；表数结论来自冻结SQL和既有迁移测试的源码核对，不宣称新执行了数据库迁移测试。原归档记录保留；原334场景逐字比对属于前一结构整理阶段，本轮对上述表述和关联场景的修正是用户明确授权的后续工作。
 - 本轮独立复核通过：邮件条件与实际装配一致，数据表与版本表责任清晰，down定义未改变运行时禁止破坏性回退的契约。差异检查通过，只有规格和对应记录发生变化。
+
+## 正式归档收尾（2026-11-15）
+
+本变更为skip_specs的纯文档维护，无独立增量规格需同步。已与认证变更一并归档到本目录，保留所有实施与检查记录，并修复归档后的相对链接及计划引用。此前隔离副本模拟记录仍为历史证据；本节确认此次操作发生于真实仓库。未修改代码、SQL或测试。
+
+归档收尾验证：活动变更列表为空，主规格全量strict为45通过、0失败；16个归档原文件及7个本地链接核对通过（两份Markdown仅有Git换行格式差异）。独立归档复核通过；本轮未修改或重跑Go/数据库/race实现验证。原始同步计划、链接审计和校验日志保留于 .test-output/archive-auth-specs/。

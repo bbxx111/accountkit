@@ -23,10 +23,10 @@
 
 ### Requirement: Bearer 令牌校验
 
-Bearer 令牌 SHALL 仅在签名算法为 RS256、头部含非空 `kid`、不含 `jku` 与 `x5u`，且签名可由配置签发方经 OIDC discovery 公布的 JWKS 中同 `kid` 的 RSA 密钥验证时通过。声明 SHALL 满足：`iss` 精确等于配置的服务签发方；`aud` 包含配置的服务 audience；`exp` 与 `iat` 均存在，按固定 30 秒时钟偏差判定未过期且已签发；`exp - iat` 不超过 1 小时；`azp` 为非空字符串。任一条件不满足 SHALL 判定令牌无效。令牌超过 16 KiB SHALL 判定无效。服务 SHALL 不读取令牌中的角色或 scope，也不套用管理员的角色继承规则。
+Bearer 令牌 SHALL 仅在签名算法为 RS256、头部含非空 `kid`、不含 `jku` 与 `x5u`，且签名可由配置签发方经 OIDC discovery 公布的 JWKS 中同 `kid` 的 RSA 密钥验证时通过。声明 SHALL 满足：`iss` 精确等于配置的服务签发方；`aud` 包含配置的服务 audience；`exp` 与 `iat` 均存在，按固定 30 秒时钟偏差判定未过期且已签发；`exp - iat` 不超过 1 小时；default profile 的 `azp` 或 rfc9068 profile 的 `client_id` 为非空字符串；服务 `sub` SHALL 匹配对应客户端配置的机器主体。任一条件不满足 SHALL 判定令牌无效。令牌超过 16 KiB SHALL 判定无效。服务 SHALL 不读取角色或套用管理员角色继承；Bearer SHALL 强制按注册权限与令牌 scope 的交集授权。
 
 #### Scenario: 被拒绝的令牌
-- **WHEN** 令牌的 `alg` 为 `none`、`HS256` 或 `ES256`，或头含 `jku`/`x5u`，或缺 `kid`，或 `aud` 不含服务 audience，或已过期超过 30 秒，或 `exp - iat` 超过 1 小时，或缺少 `azp`
+- **WHEN** 令牌的 `alg` 为 `none`、`HS256` 或 `ES256`，或头含 `jku`/`x5u`，或缺 `kid`，或 `aud` 不含服务 audience，或已过期超过 30 秒，或 `exp - iat` 超过 1 小时，或缺少所选 profile 要求的客户端标识
 - **THEN** 判定令牌无效，返回该接口的 401 令牌无效错误
 
 #### Scenario: 消费者与管理员令牌
@@ -39,10 +39,10 @@ Bearer 令牌 SHALL 仅在签名算法为 RS256、头部含非空 `kid`、不含
 
 ### Requirement: 按客户端逐接口授权
 
-通过校验的 Bearer 令牌 SHALL 以 `azp` 作为调用方客户端 ID，Basic SHALL 以通过秘密验证的用户名识别同一注册表中的客户端。端点 SHALL 分别要求 `tokens.introspect`、`purged_users.read` 或 `identities.resolve`，同一客户端 SHALL 可以同时持有三项权限，两种认证方式共享权限集合。有效 Bearer 的 `azp` 未登记 SHALL 返回 403；已认证客户端缺少当前端点权限 SHALL 返回 403，而不是 401。JWT scope、角色与请求体 client_id SHALL 不扩大注册表权限。
+通过校验的 Bearer 令牌 SHALL 按显式 profile 以 `azp` 或 `client_id` 作为调用方客户端 ID，Basic SHALL 以通过秘密验证的用户名识别同一注册表中的客户端。端点 SHALL 分别要求 `tokens.introspect`、`purged_users.read` 或 `identities.resolve`，同一客户端 SHALL 可以同时持有三项注册权限；Basic 使用注册权限，Bearer 强制与令牌 scope 取交集。有效 Bearer 按所选 profile 提取的客户端 ID 未登记 SHALL 返回 403；已认证客户端缺少当前端点权限 SHALL 返回 403，而不是 401。JWT scope SHALL 只能收窄注册权限，角色与请求体 client_id SHALL 不扩大注册表权限。
 
 #### Scenario: 属于另一接口的客户端
-- **WHEN** 有效令牌的 `azp` 对应客户端只有 purged_users.read，且内省能力已配置，调用方请求内省
+- **WHEN** 有效令牌按 profile 提取的客户端 ID 对应客户端只有 purged_users.read，且内省能力已配置，调用方请求内省
 - **THEN** 内省返回 403，不执行任何令牌内省
 
 #### Scenario: audience 误配的管理员令牌
@@ -99,7 +99,7 @@ Bearer 令牌 SHALL 仅在签名算法为 RS256、头部含非空 `kid`、不含
 
 ### Requirement: 签发方故障不阻止启动
 
-serve SHALL 在监听前完成服务令牌配置的静态校验，但 SHALL 不因签发方 discovery 或 JWKS 不可达而启动失败，即使接口只启用了 Bearer。启动阶段预加载签名密钥失败时 SHALL 只记录警告。`/readyz` SHALL 不反映签发方状态。管理员认证的启动行为不变。
+serve SHALL 在监听前完成服务令牌配置的静态校验，但 SHALL 不因签发方 discovery 或 JWKS 不可达而启动失败，即使接口只启用了 Bearer。启动阶段预加载签名密钥失败时 SHALL 只记录警告。`/readyz` SHALL 不反映签发方状态。管理员认证亦按其规格隔离远端启动故障。
 
 #### Scenario: 启动时签发方不可达
 - **WHEN** serve 启动时服务签发方不可达
@@ -147,7 +147,7 @@ audience SHALL 非空且无首尾空白，SHALL 不等于消费者 JWT audience�
 
 ### Requirement: 调用认证的可观测性
 
-日志与错误响应 SHALL 不包含 Bearer 令牌、Basic 秘密或 `Authorization` 头内容；调用方只以客户端 ID（Basic 用户名或 `azp`）和认证方式（`basic`/`bearer`）标识。若记录认证方式或结果的指标，标签取值 SHALL 限定为固定集合：接口 `introspect`/`purged_users`/`identities_resolve`，方式 `basic`/`bearer`/`none`，结果 `ok`/`unauthenticated`/`forbidden`/`unavailable`。
+日志与错误响应 SHALL 不包含 Bearer 令牌、Basic 秘密或 `Authorization` 头内容；调用方只以客户端 ID（Basic 用户名或按 profile 提取的客户端 ID）和认证方式（`basic`/`bearer`）标识。若记录认证方式或结果的指标，标签取值 SHALL 限定为固定集合：接口 `introspect`/`purged_users`/`identities_resolve`，方式 `basic`/`bearer`/`none`，结果 `ok`/`unauthenticated`/`forbidden`/`unavailable`。
 
 #### Scenario: 拒绝日志
 - **WHEN** 有效令牌因 `azp` 未授权被拒绝，或签发方刷新失败
@@ -155,7 +155,7 @@ audience SHALL 非空且无首尾空白，SHALL 不等于消费者 JWT audience�
 
 ### Requirement: 统一客户端环境变量
 
-serve SHALL 始终构造同一个统一客户端注册表，ACCOUNTSVC_SERVICE_CLIENTS 的值为逗号分隔别名；未设置、显式空或全空白均表示空注册表，不选择另一种配置路径。每个别名 SHALL 对应 ACCOUNTSVC_SERVICE_CLIENT_<ALIAS>_ID、_AUTH_METHODS、_PERMISSIONS、_BASIC_SECRETS。别名 SHALL 匹配 [A-Z][A-Z0-9_]{0,31}，ID 为 1–256 字节且无冒号、空白或控制字符；别名和 ID 分别唯一。列表元素裁剪两端空白后 SHALL 拒绝空项、重复项；已声明客户端的 ID、方法和权限必填。SHALL 拒绝未声明别名和未知字段，包括主列表缺失或为空时的孤立字段，不回显值。
+serve SHALL 始终构造同一个统一客户端注册表，ACCOUNTSVC_SERVICE_CLIENTS 的值为逗号分隔别名；未设置、显式空或全空白均表示空注册表，不选择另一种配置路径。每个别名 SHALL 对应 ACCOUNTSVC_SERVICE_CLIENT_<ALIAS>_ID、_AUTH_METHODS、_PERMISSIONS、_BASIC_SECRETS、_BEARER_SUBJECTS。别名 SHALL 匹配 [A-Z][A-Z0-9_]{0,31}，ID 为 1–256 字节且无冒号、空白或控制字符；别名和 ID 分别唯一。逗号分隔列表元素裁剪两端空白后 SHALL 拒绝空项、重复项（BEARER_SUBJECTS 独立使用不裁剪的JSON数组）；已声明客户端的 ID、方法和权限必填。SHALL 拒绝未声明别名和未知字段，包括主列表缺失或为空时的孤立字段，不回显值。
 
 #### Scenario: 独立别名
 - **WHEN** SERVICE_CLIENTS=AI_FOOD 且对应 ID=ai-food-server，其他必需字段有效
@@ -175,7 +175,7 @@ serve SHALL 始终构造同一个统一客户端注册表，ACCOUNTSVC_SERVICE_C
 
 ### Requirement: 统一方法与权限目录
 
-AUTH_METHODS SHALL 只接受 basic、bearer；PERMISSIONS SHALL 只接受 tokens.introspect、purged_users.read、identities.resolve，均大小写敏感且无通配符。SHALL 允许同一客户端同时启用两种方式并持有上述权限的任意非空子集，两种方式共享同一权限集合。SHALL 拒绝空集合和未知值，包括单数形式 identity.resolve。未来新增权限 SHALL 随对应端点的明确契约注册，不因配置字符串自动产生能力。
+AUTH_METHODS SHALL 只接受 basic、bearer；PERMISSIONS SHALL 只接受 tokens.introspect、purged_users.read、identities.resolve，均大小写敏感且无通配符。SHALL 允许同一客户端同时启用两种方式并持有上述权限的任意非空子集，两种方式共享注册权限上限，Bearer 还须具备对应 scope。SHALL 拒绝空集合和未知值，包括单数形式 identity.resolve。未来新增权限 SHALL 随对应端点的明确契约注册，不因配置字符串自动产生能力。
 
 #### Scenario: 同一身份访问两项能力
 - **WHEN** 一个客户端启用 basic,bearer 且拥有两个权限，分别以两种有效凭据请求两个接口
@@ -187,7 +187,7 @@ AUTH_METHODS SHALL 只接受 basic、bearer；PERMISSIONS SHALL 只接受 tokens
 
 #### Scenario: 注册身份解析权限
 - **WHEN** 一个客户端只配置 identities.resolve，或同时持有全部三项权限，且认证配置有效
-- **THEN** 配置通过，仅对其显式权限放行；只读 Bearer scope 中的同名值不能授予权限
+- **THEN** 配置通过，仅对其显式权限放行；仅 Bearer scope 中的同名值不能突破注册权限，已注册权限仍须同名 scope
 
 ### Requirement: 统一 Basic 秘密与轮换
 
@@ -203,7 +203,7 @@ AUTH_METHODS SHALL 只接受 basic、bearer；PERMISSIONS SHALL 只接受 tokens
 
 ### Requirement: 统一 Bearer 信任配置
 
-SHALL 在至少一个客户端启用 bearer 时要求 SERVICE_ISSUER/AUDIENCE，否则非空信任参数 SHALL 作为半配置拒绝。SHALL 保持本规格 Bearer 签名、claims、Discovery/JWKS 缓存、故障分类及启动规则。issuer URL、production HTTPS、development HTTP 警告及消费者/管理员/第三方 audience 隔离 SHALL 遵循本规格的服务令牌配置校验；audience SHALL 不等于任一启用 bearer 客户端的 ID。SHALL 只从已验证令牌 azp 识别调用方，不从 scope、角色或客户端提交字段授予权限。
+SHALL 在至少一个客户端启用 bearer 时要求 SERVICE_ISSUER/AUDIENCE，否则非空信任参数 SHALL 作为半配置拒绝。SHALL 保持本规格 Bearer 签名、claims、Discovery/JWKS 缓存、故障分类及启动规则。issuer URL、production HTTPS、development HTTP 警告及消费者/管理员/第三方 audience 隔离 SHALL 遵循本规格的服务令牌配置校验；audience SHALL 不等于任一启用 bearer 客户端的 ID。SHALL 按显式 profile 从已验证令牌识别调用方，校验机器主体绑定；Bearer 强制 scope 与注册权限取交集，角色和客户端提交字段不授予权限。
 
 #### Scenario: Basic-only 无提供方
 - **WHEN** 全部客户端仅 basic，未配置 issuer/audience
@@ -219,7 +219,7 @@ SHALL 在至少一个客户端启用 bearer 时要求 SERVICE_ISSUER/AUDIENCE，
 
 ### Requirement: 统一认证与授权结果
 
-SHALL 先按能力是否配置判定 NOT_CONFIGURED，再校验唯一 Authorization 头和凭据、客户端方法开关、端点权限，最后才解析业务请求。Basic 未知用户名或错误秘密返回 401；有效 Bearer 的未知 azp 返回 403；已登记客户端使用未启用方式返回 401；已认证但缺权限两种方式都返回 403。接口是否配置 SHALL 以至少一个客户端持有该权限判定。SHALL 不自动回退认证方式。消费者和管理员凭据 SHALL 不作为服务凭据接受。所有构造路径 SHALL 使用 Registry 与 RequiredPermission，包括内部 Basic-only 便利构造；nil Registry SHALL 不触发旧映射或名单授权。
+SHALL 先按能力是否配置判定 NOT_CONFIGURED，再校验唯一 Authorization 头和凭据、客户端方法开关、端点权限，最后才解析业务请求。Basic 未知用户名或错误秘密返回 401；有效 Bearer 的未知客户端 ID 返回 403；已登记客户端使用未启用方式返回 401；已认证但缺权限两种方式都返回 403。接口是否配置 SHALL 以至少一个客户端持有该权限判定。SHALL 不自动回退认证方式。消费者和管理员凭据 SHALL 不作为服务凭据接受。所有构造路径 SHALL 使用 Registry 与 RequiredPermission，包括内部 Basic-only 便利构造；nil Registry SHALL 不触发旧映射或名单授权。
 
 #### Scenario: Basic 已认证但缺权限
 - **WHEN** 两项能力均已配置，客户端有效 Basic 只拥有清理权限却调用内省
@@ -264,3 +264,28 @@ serve SHALL 拒绝任一非空白旧变量 ACCOUNTSVC_INTROSPECTION_BASIC_CLIENT
 #### Scenario: Basic-only 构造遵守同一权限路径
 - **WHEN** 内部便利构造仅配置 Basic，客户端已认证但缺少已配置能力的权限
 - **THEN** 返回 403，不通过 nil Registry 或旧映射分支放行
+
+### Requirement: 强制令牌权限交集
+服务 Bearer SHALL 无条件要求端点权限同时存在于客户端注册权限与 token scope，不提供旧模式或缺省放行。scope SHALL 为大小写敏感的 ASCII 单空格分隔字符串，非空项字符范围为 %x21 / %x23-5B / %x5D-7E；首尾或连续空格、tab、引号、反斜杠和非ASCII为非法，重复项去重；缺失或空字符串按空集合，类型或语法错误返回401，缺权限返回403。合法未知 scope 不授予权限，不支持通配符。Basic SHALL 只使用注册权限；两种方式不自动回退。能力配置状态 SHALL 仅由注册表判定。校验顺序 SHALL 为公共凭据/profile、客户端登记、方法开关、机器主体、scope语法及权限；未知客户端含非法scope仍403，已登记错误主体与缺scope并存仍401。
+
+#### Scenario: scope 收窄和拒绝
+- **WHEN** 已认证客户端注册两项权限，但 token 只有其中一项 scope
+- **THEN** 只允许该项；缺失 scope 返回403，数组型 scope 返回401，额外 scope 不扩大注册权限
+
+### Requirement: 显式机器主体绑定
+启用 bearer 的客户端 SHALL 配置非空 BEARER_SUBJECTS JSON字符串数组（每项非空且非全空白、至多256字节、无控制字符、无重复，不裁剪）并匹配已验证 token 的非空 sub；已登记客户端主体不匹配返回401，未知客户端保持403。Basic-only 不要求主体且拒绝非空主体配置。提供方接入 SHALL 保证这些主体专用于服务账号，关闭客户端人类登录流程；不能依据用户名、客户端ID或自报 grant_type 推断机器身份。
+
+#### Scenario: 人类令牌不能冒充机器
+- **WHEN** 人类令牌具有已登记客户端ID和服务 audience，但 sub 不匹配该客户端机器主体
+- **THEN** 返回401，不因 scope 或角色正确而放行
+
+### Requirement: 显式服务令牌格式
+SERVICE_TOKEN_PROFILE SHALL 接受 default 和 rfc9068，默认 default，未知值启动失败；无bearer客户端时非空显式profile SHALL 作为半配置拒绝。default 格式 SHALL 用 azp 识别客户端；rfc9068 SHALL 用 client_id 并验证 at+jwt/application/at+jwt header 及必需 iss/aud/exp/sub/client_id/iat/jti；不得自动回退。两种格式 SHALL 都执行机器主体绑定和 scope 交集。migrate SHALL 不解析这些服务配置。
+
+#### Scenario: 格式隔离
+- **WHEN** 选择 rfc9068 而 token 仅含 azp 或 header 为 JWT
+- **THEN** 返回401，不猜测为其他格式；选择 default 时不能仅凭 client_id 通过
+
+#### Scenario: 默认模式名称与客户端声明分离
+- **WHEN** 已启用Bearer且 SERVICE_TOKEN_PROFILE 省略、为空或为 default，或者显式使用旧模式值 azp
+- **THEN** 前三者采用相同默认校验并继续从 azp 声明识别客户端；旧模式值在启动前拒绝，不修改JWT声明名

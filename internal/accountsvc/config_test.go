@@ -29,7 +29,7 @@ func configEnvironment(t *testing.T) {
 		name, _, _ := strings.Cut(entry, "=")
 		if strings.HasPrefix(name, "ACCOUNTKIT_") || strings.HasPrefix(name, "ACCOUNTSVC_") {
 			t.Setenv(name, "")
-			if name == "ACCOUNTSVC_SERVICE_CLIENTS" || strings.HasPrefix(name, "ACCOUNTSVC_SERVICE_CLIENT_") {
+			if name == "ACCOUNTSVC_SERVICE_CLIENTS" || strings.HasPrefix(name, "ACCOUNTSVC_SERVICE_CLIENT_") || strings.HasPrefix(name, "ACCOUNTSVC_ADMIN_ROLE_") {
 				if err := os.Unsetenv(name); err != nil {
 					t.Fatal(err)
 				}

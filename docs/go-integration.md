@@ -135,7 +135,7 @@ Go的ClientInfo为平坦字段，包括DeviceManufacturer、AppBuild及`Extensio
 |---|---|
 | 直接提供内置账号 HTTP API | 挂载 `auth.EndUserHandler()`；宿主负责监听、TLS、可信代理、入口限流和业务路由 |
 | 使用自己的 HTTP/RPC 协议或后台业务入口 | 调用 `auth.Users()`；宿主负责认证、scope、业务授权、输入/错误和 DTO 转换 |
-| 提供账号管理 API | 独立挂载 `auth.AdminHandler()`，先完成管理员认证，成对注入 `AdminVerifier` / `AdminPrincipal` |
+| 提供账号管理 API | 独立挂载 `auth.AdminHandler()`，先完成管理员认证，成对注入 `AdminVerifier` / `AdminPrincipal`；验证器可额外实现 `AdminPermissionVerifier` |
 | 创建与账号关联的业务数据 | 完成业务授权后用 `WithActiveUsers`，同事务确认账号 ACTIVE 并写入业务表 |
 
 优先通过根门面装配；`user.NewService` 是较低层入口，需要自己提供密码学、仓储、策略和审计等依赖，不适合作为首次接入的起点。`user.NewRepo(pool)` 提供不透明的仓储依赖；原始查询和事务方法不对外开放。sqlc 生成模型位于 `internal/userdb` / `internal/auditdb`，宿主不能直接导入；业务联合事务通过领域接口和回调使用传入的同一 `pgx.Tx`。独立迁移工具仍可调用 `user.CheckKeyVersions`，无需装配完整领域服务。
@@ -244,7 +244,7 @@ pending 与 `user:bind` 是不同状态。补全先调用 `SendSignInCompletionC
 
 ## 管理面、审计与验证
 
-管理员与消费者是独立身份体系。挂载管理面时，宿主中间件验证管理员身份，注入角色检查与可信主体；角色拒绝钩子接入 `RecordAdminForbidden`。直接调用管理领域方法同样是可信宿主边界，不能将客户端自报的管理员身份当作授权。未配置管理认证不影响消费者能力。
+管理员与消费者是独立身份体系。挂载管理面时，宿主中间件验证管理员身份，注入操作权限检查（旧宿主为角色检查）与可信主体；授权拒绝钩子接入 `RecordAdminForbidden`。直接调用管理领域方法同样是可信宿主边界，不能将客户端自报的管理员身份当作授权。未配置管理认证不影响消费者能力。
 
 默认本地审计由库启动和关闭；注入外部 `Audit` 时显式设置稳定的 `AuditSource` / `AuditNamespace`，需要管理查询则同时提供 `AuditReader`。仅写侧模式的查询返回 503，不读本地旧副本；宿主仍负责旧副本及外部副本治理。三种装配见[审计示例](../examples/audit/main.go)。
 
@@ -258,3 +258,11 @@ go vet ./examples/...
 ```
 
 这些检查验证示例类型与合成输出，不等于数据库事务、真实发送器或产品环境联调。实际宿主还应验证启动失败、token/pending 分支、刷新协调、业务授权、回调回滚与匿名化覆盖；库完整门禁见[开发与验证](development.md)。
+
+## 管理权限验证扩展
+
+宿主验证器继续实现 `RequireRole(string) func(http.Handler) http.Handler`，并可额外实现 `RequirePermission(accountkit.AdminPermission) func(http.Handler) http.Handler`。根类型 `AdminPermissionVerifier` 对应 `httpapi/admin.PermissionVerifier`，具体权限常量和独立副本目录由 `httpapi/admin` 提供，例如 `admin.PermissionUsersRead`、`admin.Permissions()`。
+
+路由构造时优先选择权限接口，11条管理路由传入具体权限；新接口拒绝或策略为空均不回退旧角色检查。只有未实现扩展的旧宿主继续使用 operator/super-admin 路由要求，公开角色常量保留，层级仍由宿主实现。权限接口须在已验证主体后执行，保留 `RecordAdminForbidden` 拒绝审计，每次拒绝记录一次；权限通过不绕过领域状态或事务规则。
+
+accountsvc 固定装配新权限能力，配置见[服务手册](accountsvc.md#管理员认证)。库本身不读取服务环境变量，也不内置管理员账号、角色分配或授权平台。

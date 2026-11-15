@@ -34,8 +34,8 @@ const (
 // Authentication methods reported in Result.Method.
 const (
 	MethodNone   = "none"
-	MethodBasic  = "basic"
-	MethodBearer = "bearer"
+	MethodBasic  = httpcredentials.SchemeBasic
+	MethodBearer = httpcredentials.SchemeBearer
 )
 
 const (
@@ -95,7 +95,7 @@ func New(cfg Config) (*Authenticator, error) {
 	if cfg.Registry == nil {
 		cfg.Registry, _ = NewRegistry(nil)
 	}
-	if !validPermission(cfg.RequiredPermission) {
+	if !ValidPermission(cfg.RequiredPermission) {
 		return nil, errors.New("serviceauth: a registered required permission is required")
 	}
 	if cfg.Registry.BearerEnabled() != (cfg.BearerVerifier != nil) {
@@ -124,7 +124,7 @@ func (a *Authenticator) Authenticate(r *http.Request) Result {
 	}
 	scheme, credentials, ok := httpcredentials.Parse(r)
 	switch {
-	case scheme == "basic" && a.basic != nil:
+	case scheme == httpcredentials.SchemeBasic && a.basic != nil:
 		if !ok {
 			return Result{Outcome: Unauthenticated, Method: MethodBasic}
 		}
@@ -136,7 +136,7 @@ func (a *Authenticator) Authenticate(r *http.Request) Result {
 			return a.authorize(id, MethodBasic)
 		}
 		return Result{Outcome: Unauthenticated, Method: MethodBasic}
-	case scheme == "bearer" && a.tokens != nil:
+	case scheme == httpcredentials.SchemeBearer && a.tokens != nil:
 		if !ok {
 			return Result{Outcome: Unauthenticated, Method: MethodBearer, BearerAttempted: true}
 		}

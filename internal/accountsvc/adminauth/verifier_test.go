@@ -268,8 +268,8 @@ func TestPrincipalRolesAndForbidden(t *testing.T) {
 		t.Fatal("role rejection must audit exactly once")
 	}
 	claims["roles"] = []string{"super-admin"}
-	if w := request(v, f.token(claims, "initial"), "operator"); w.Code != 204 {
-		t.Fatalf("super-admin lacks operator: %d", w.Code)
+	if w := request(v, f.token(claims, "initial"), "operator"); w.Code != 403 {
+		t.Fatalf("super-admin implicitly gained operator: %d", w.Code)
 	}
 	h := v.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p, ok := PrincipalFrom(r.Context())
@@ -292,7 +292,7 @@ func TestPrincipalRolesAndForbidden(t *testing.T) {
 	}
 	w := httptest.NewRecorder()
 	v.RequireRole("operator")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { t.Error("unguarded role passed") })).ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
-	if w.Code != 401 || forbidden.Load() != 1 {
+	if w.Code != 401 || forbidden.Load() != 2 {
 		t.Fatal("unauthenticated request mis-audited")
 	}
 	if _, ok := PrincipalFrom(context.Background()); ok {

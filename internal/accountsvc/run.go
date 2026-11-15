@@ -212,7 +212,19 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 		app.admin = adminVerifier.Middleware(auth.AdminHandler())
 		app.preloadAdminTokens = adminVerifier.Load
 	}
+	app.admin = adminRevealNoStore(app.admin)
 	return app, nil
+}
+
+// Authentication can reject before the delegated admin router sees a reveal
+// request, so protect its error responses at the outermost admin boundary too.
+func adminRevealNoStore(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/identities/") && strings.HasSuffix(r.URL.Path, ":reveal") {
+			w.Header().Set("Cache-Control", "no-store")
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // migrate 只装配存储迁移与密钥核验，不创建认证服务、发送器、IdP 或 HTTP 处理器。
@@ -318,11 +330,11 @@ func serviceAuthenticators(cfg Config, logger *slog.Logger, client *http.Client,
 // warnUnconfigured 为未配置、只会返回 503 *_NOT_CONFIGURED 的可选接口各记一条 WARN，
 // 使漏配在启动日志中可见，而不是等到调用失败才发现。只写变量名，不写值。
 func warnUnconfigured(cfg Config, logger *slog.Logger) {
-	if !cfg.ServiceClients.HasPermission("identities.resolve") {
+	if !cfg.ServiceClients.HasPermission(serviceauth.PermissionIdentitiesResolve) {
 		logger.Warn("accountsvc: identity resolution is not configured; POST /v1/identities:resolve answers 503 IDENTITY_RESOLUTION_NOT_CONFIGURED", "settings", "ACCOUNTSVC_SERVICE_CLIENTS, ACCOUNTSVC_SERVICE_CLIENT_<ALIAS>_PERMISSIONS")
 	}
-	introEnabled := cfg.ServiceClients.HasPermission("tokens.introspect")
-	purgeEnabled := cfg.ServiceClients.HasPermission("purged_users.read")
+	introEnabled := cfg.ServiceClients.HasPermission(serviceauth.PermissionTokensIntrospect)
+	purgeEnabled := cfg.ServiceClients.HasPermission(serviceauth.PermissionPurgedUsersRead)
 	introSettings := "ACCOUNTSVC_SERVICE_CLIENTS, ACCOUNTSVC_SERVICE_CLIENT_<ALIAS>_PERMISSIONS"
 	purgeSettings := introSettings
 	if !introEnabled {

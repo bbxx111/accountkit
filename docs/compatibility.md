@@ -57,6 +57,14 @@ v1.1.0 移除 v1.0.0 已提供的旧逐接口配置模式，属于配置破坏�
 
 配置为启动快照；权限、方法、身份或秘密变更须重启全部副本或排空旧副本。提供方禁用客户端不保证已发令牌即时失效。如需恢复旧配置模式，必须同时恢复支持该模式的旧二进制、已保存的匹配配置及调用方凭据；当前二进制没有旧模式回退入口，不能通过清库或清 Redis 完成。完整配置、TLS、单文件 Compose 与迁移步骤见[服务手册](accountsvc.md#服务调用认证内省与已清理用户拉取)。
 
+## 管理权限显式配置（待发布）
+
+本轮变更尚未发布。accountsvc 移除 operator/super-admin 的内置授权和继承，需要通过 `ADMIN_ROLE_BINDINGS` 及分项 NAME/PERMISSIONS 显式分配权限，不提供 builtin/custom 开关。旧部署只保持原角色签发仍会得到403，须按[管理员认证](accountsvc.md#管理员认证)迁移配置。
+
+新增10项管理权限：users.read、users.freeze、users.unfreeze、users.delete、users.undelete、identities.reveal、sessions.read、sessions.revoke、sessions.revoke_all、audit_events.read。资源组通配符在升级后自动包含该组新增操作；有限授权应枚举具体权限。管理员scope不参与权限计算，服务权限不接受这些通配符。
+
+公开Go接口采用加法扩展：旧 AdminVerifier.RequireRole 和公开角色常量保留；可选 AdminPermissionVerifier 优先，新拒绝不回退。仅实现旧接口的嵌入宿主继续原行为。SDK请求/DTO不变。回退旧accountsvc二进制会恢复其内置角色授权，须核验旧角色、旧配置与权限范围，不能通过清库或清Redis回退。
+
 ## 宿主账号契约
 
 `BatchPublicProfiles(ctx, ids)` 是 Go 批量查询，结果仅含 ID/DisplayName/AvatarURL/State。输入去重，非法 ID 返回参数错误，未知账号略去，待注销及已删除账号清空显示名和头像；宿主在调用前按业务权限过滤 ID。无任意用户资料 HTTP 端点。

@@ -16,6 +16,12 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// Token profiles select an explicit access-token claim contract.
+const (
+	ProfileDefault = "default"
+	ProfileRFC9068 = "rfc9068"
+)
+
 const (
 	keyLifetime            = time.Hour
 	defaultRefreshInterval = time.Minute
@@ -88,7 +94,7 @@ func New(issuer, audience string, opts Options) (*Verifier, error) {
 		return nil, errors.New("oidcjwt: invalid token profile")
 	}
 	if opts.Profile == "" {
-		opts.Profile = "default"
+		opts.Profile = ProfileDefault
 	}
 	if !validIssuer(issuer, opts.AllowHTTP) {
 		return nil, errors.New("oidcjwt: issuer must be an absolute HTTPS URL without credentials, query or fragment")
@@ -189,7 +195,7 @@ func (v *Verifier) Parse(ctx context.Context, raw string) (jwt.MapClaims, error)
 	}
 	claims := jwt.MapClaims{}
 	_, err := jwt.ParseWithClaims(raw, claims, func(token *jwt.Token) (any, error) {
-		if v.profile == "rfc9068" {
+		if v.profile == ProfileRFC9068 {
 			typ, ok := token.Header["typ"].(string)
 			if !ok || (typ != "at+jwt" && typ != "application/at+jwt") {
 				return nil, ErrInvalid
@@ -216,7 +222,7 @@ func (v *Verifier) Parse(ctx context.Context, raw string) (jwt.MapClaims, error)
 		}
 		return nil, ErrInvalid
 	}
-	if v.profile == "rfc9068" {
+	if v.profile == ProfileRFC9068 {
 		for _, name := range []string{"sub", "client_id", "jti"} {
 			value, ok := claims[name].(string)
 			if !ok || value == "" {
@@ -288,12 +294,12 @@ func (v *Verifier) refresh(active chan struct{}) {
 
 // ValidProfile reports supported explicit external token profiles.
 func ValidProfile(profile string) bool {
-	return profile == "" || profile == "default" || profile == "rfc9068"
+	return profile == "" || profile == ProfileDefault || profile == ProfileRFC9068
 }
 
 // ClientIDClaim names the sole client identifier accepted by the configured profile.
 func (v *Verifier) ClientIDClaim() string {
-	if v.profile == "rfc9068" {
+	if v.profile == ProfileRFC9068 {
 		return "client_id"
 	}
 	return "azp"

@@ -4,7 +4,15 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/bbxx111/accountkit/httpapi/admin"
 	"github.com/bbxx111/accountkit/internal/accountsvc/oidcjwt"
+)
+
+// Default claim locations and role-name validation limit.
+const (
+	DefaultRolesClaim    = "/roles"
+	DefaultUsernameClaim = "/preferred_username"
+	MaxRoleNameBytes     = 256
 )
 
 // Config identifies an external provider and the separate administrator API audience.
@@ -12,6 +20,7 @@ import (
 // AllowHTTP additionally accepts a plain http:// issuer, discovery document and jwks_uri;
 // accountsvc sets it only in development mode.
 type Config struct {
+	RoleBindings                                []RoleBinding
 	TokenProfile                                string
 	Issuer, Audience, RolesClaim, UsernameClaim string
 	AllowHTTP                                   bool
@@ -19,6 +28,14 @@ type Config struct {
 
 // Validate rejects unsafe provider URLs and malformed claim pointers before any I/O.
 func (c Config) Validate() error {
+	if err := c.validateAuthentication(); err != nil {
+		return err
+	}
+	_, err := compilePermissions(c.RoleBindings, admin.Permissions())
+	return err
+}
+
+func (c Config) validateAuthentication() error {
 	if !oidcjwt.ValidProfile(c.TokenProfile) {
 		return errors.New("adminauth: invalid token profile")
 	}

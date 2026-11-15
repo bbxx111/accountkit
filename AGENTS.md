@@ -53,7 +53,7 @@
 - SQL 放在领域查询文件，经 sqlc 生成。禁止手改 `internal/userdb/`、`internal/auditdb/`；修改查询、schema 或类型映射后运行 `sqlc generate` 并检查生成差异。
 - 配置通过 `Config` 或 `ConfigFromEnv(prefix)` 注入；环境变量前缀由宿主选择，示例使用 `ACCOUNTKIT_`。不要硬编码 `SERVER_`、产品域名、业务 schema 或产品密钥。
 - `EndUserHandler()` 与 `AdminHandler()` 返回相对路由，由宿主分别挂载，示例为 `/v1` 和 `/admin/v1`。直接适配器使用 `httpapi/enduser`。包内不重复写死前缀，也不引入 `/api`。
-- `AdminVerifier` 与 `AdminPrincipal` 必须成对提供；均未配置时管理面返回 `503 ADMIN_NOT_CONFIGURED`，普通消费者认证仍可用。管理员认证由宿主前置完成，包内继续执行每条管理路由的角色检查。
+- `AdminVerifier` 与 `AdminPrincipal` 必须成对提供；均未配置时管理面返回 `503 ADMIN_NOT_CONFIGURED`，普通消费者认证仍可用。管理员认证由宿主前置完成，包内继续执行每条管理路由的授权检查：验证器实现可选 AdminPermissionVerifier 时使用具体管理权限，否则为旧嵌入宿主保留 RequireRole；新权限拒绝不回退。accountsvc 仅使用显式角色权限映射，无内置角色授权。
 - 宿主通过 `Deps.ClientIP` 提供经过可信代理处理的地址，通过 `Deps.RequestID` 关联日志与审计。不能在库内无条件信任客户端的转发头。
 - 匿名化回调使用传入的同一个 `pgx.Tx`；不得自行提交/回滚或另开连接写同批数据。认证表和业务表必须同库，任一回调失败使整个匿名化事务回滚；跨库事务不在契约内。宿主负责其 user_id 关联表的覆盖性检查。
 
@@ -176,6 +176,8 @@ bash scripts/verify.sh
 
 - 集成分支为 `develop`，稳定发布分支使用 `main`。默认从 develop 创建 `<type>/<short-kebab-description>` 短期分支，不直接在 develop/main 提交；如已有未提交改动，先带到任务分支，不能 reset 掉用户工作。
 - Conventional Commits：`type(scope): message`，scope 可按需省略；类型包括 feat、fix、docs、test、refactor、chore、ci。scope 使用能力域，如 migrations、tokens、httpapi。
+- 任务实施默认在任务分支分阶段进行本地提交：一个可独立验证的实现步骤完成、相关检查和审查通过后及时提交，避免全部工作长期堆积为未提交改动。提交包含该步骤所需的代码、测试、文档及对应 OpenSpec tasks/verification 更新；不得把未通过检查或未完成的步骤伪装成已完成提交，也不为拆分而产生无法独立理解和验证的提交。
+- 本地提交属于已授权任务的默认执行过程，无需反复征求确认；用户明确要求暂不提交时遵从。推送、合并、tag、发布和产品部署分别按授权执行，不从本地提交推导后续授权。
 - 默认通过 GitHub Pull Request 合入 develop；用户明确要求本地合并时按其要求执行。提交、推送、tag、发布和产品部署是不同动作，不把其中一个授权扩展成全部动作。
 - 合并统一保留独立 merge commit：任务分支合入 `develop`、`develop` 合入 `main` 时，本地使用 `git merge --no-ff <source-branch>`，即使可以快进也不省略合并提交；GitHub PR 使用 Create a merge commit，不使用 Squash and merge 或 Rebase and merge，除非用户明确另行指定。
 - 功能、行为、公共接口或架构变更通过 OpenSpec；纯文档维护可直接修改。先读相关 `openspec/specs/`，再读涉及的变更工件；未归档变更的 specs 仍在 `openspec/changes/<change>/specs/`，不能因主规格目录为空就忽略它们。

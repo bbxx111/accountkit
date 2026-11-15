@@ -18,13 +18,13 @@
     "sdkVersion": "1.0.0",
     "serviceVersion": "v1.1.0",
     "verification": "verified",
-    "evidence": "openspec/changes/prepare-next-release/verification.md"
+    "evidence": "openspec/changes/archive/2026-11-15-prepare-next-release/verification.md"
   },
   {
     "sdk": "admin-ts",
     "sdkVersion": "1.0.0",
     "serviceVersion": "v1.1.0",
     "verification": "verified",
-    "evidence": "openspec/changes/prepare-next-release/verification.md"
+    "evidence": "openspec/changes/archive/2026-11-15-prepare-next-release/verification.md"
   }
 ]

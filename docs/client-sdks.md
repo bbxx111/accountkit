@@ -7,7 +7,7 @@ Go 库可直接嵌入宿主，accountsvc 是可选独立服务；两个客户端
 | `accountkit_flutter` | `lib/accountkit_flutter.dart` | `/v1` | `v1.0.0` |
 | `@accountkit/admin-client` | `src/index.ts` | `/admin/v1` | `v1.0.0` |
 
-服务 v1.1.0 已发布；两包继续使用已发布的 `1.0.0`，本次没有新 SDK 发布。[兼容矩阵](../sdks/compatibility.json)保留 v1.0.0 已验证行，v1.1.0 行已通过最终候选的 SDK 单元、真实服务、嵌入策略、Git 消费及 Android/iOS 检查。最终提交、tag 与独立 Go 消费证据见[发布验收记录](../openspec/changes/prepare-next-release/verification.md)。
+服务 v1.1.0 已发布；两包继续使用已发布的 `1.0.0`，本次没有新 SDK 发布。[兼容矩阵](../sdks/compatibility.json)保留 v1.0.0 已验证行，v1.1.0 行已通过最终候选的 SDK 单元、真实服务、嵌入策略、Git 消费及 Android/iOS 检查。最终提交、tag 与独立 Go 消费证据见[发布验收记录](../openspec/changes/archive/2026-11-15-prepare-next-release/verification.md)。
 
 两包首版均为 `1.0.0`（已发布），发布版本独立递增。发布范围见[发布说明](releases/client-sdks-v1.0.0.md)，候选 CI 和远端消费结果见[发布验收记录](../openspec/changes/archive/2026-11-04-prepare-client-sdks-v1-release/verification.md)。实际 SDK 单元、真实服务、Git 消费和平台实现结果另见[功能验收记录](../openspec/changes/archive/2026-11-01-add-account-client-sdks/verification.md)。
 

@@ -17,4 +17,4 @@
 - 已按后续授权以独立 merge commit 集成 develop/main 并推送，最终候选 `6eef5e3` 的 Go/SDK CI 全部成功。
 - 已创建并推送 annotated v1.1.0 tag、核对固定对象和提交，并使用正式发布说明创建 GitHub Release。
 - 两个独立无 replace、GOWORK=off 的远端 Go 消费验证通过；新增公开符号、冻结 SQL 已核对，SDK 兼容证据已补记，tag 未移动。
-- 用户已授权随后归档；先完成发布补记集成，再归档并修复引用。产品部署与真实提供方/网关验收另行执行。
+- 发布补记已通过 PR #29 合入 develop/main，随后按用户授权归档至 `archive/2026-11-15-prepare-next-release` 并修复引用。归档记录的提交/集成另见 verification.md；产品部署与真实提供方/网关验收另行执行。

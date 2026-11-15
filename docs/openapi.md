@@ -1,6 +1,6 @@
 # HTTP OpenAPI 契约
 
-本契约描述 v1.0.0（已发布）的内置 HTTP handler。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
+本契约描述 v1.1.0 候选（尚未发布）的内置 HTTP handler。直接调用 Go 方法的宿主请先阅读 [Go 集成指南](go-integration.md)；挂载内置 handler 的宿主可以将对应契约用于客户端文档、类型生成和接口核对。
 
 ## 独立 HTTP 面
 
@@ -12,7 +12,7 @@
 
 消费者与管理面文件各自独立，使用 [OpenAPI 3.1.0](https://spec.openapis.org/oas/v3.1.0.html) 与 JSON Schema 描述。所有 paths 均为相对 handler 路由，`servers[0].variables.basePath.default` 由宿主调整为实际挂载前缀或完整服务 URL。路径中的 `user` / `session` / `identity` 是原始 `u_` / `s_` / `i_` ID；响应 `name` 才是 `users/{id}` 等资源名。
 
-`info.version` 为 `v1.0.0`，与库版本一致。文件不包含 accountsvc 专属的 `/v1/introspect`、`/v1/purgedUsers`、探针或管理员登录流程，也不描述宿主自有业务接口；这些不能由库契约自动推导。
+`info.version` 为 `v1.1.0`，表示尚未发布的候选契约；HTTP `/v1` 和 `/admin/v1` 不变。accountsvc 破坏性接入迁移见[候选发布说明](releases/v1.1.0.md)。文件不包含 accountsvc 专属的 `/v1/introspect`、`/v1/purgedUsers`、探针或管理员登录流程，也不描述宿主自有业务接口；这些不能由库契约自动推导。
 
 `POST /token` 与 `POST /revoke` 的 `requestBody` 同时声明 `application/json` 与 `application/x-www-form-urlencoded`：`Content-Type` 媒体类型为表单时按 RFC 6749 §3.2 / RFC 7009 §2.1 解析（忽略 `charset`，只读请求体，同名参数重复（无论是否识别）为 `invalid_request`，未识别参数忽略），其他情况（含缺失 `Content-Type`）沿用严格 JSON 规则并拒绝未知字段；两种编码共用大小上限、校验、错误映射与响应。请求中的 `scope` 按 RFC 6749 §3.3 忽略（`RefreshRequest.scope` 为可选字段，仅为兼容回传 scope 的客户端），签发 scope 以响应 `scope` 为准。其余操作只接受严格 JSON。
 
@@ -22,7 +22,7 @@
 
 ## 服务身份解析
 
-[service.json](openapi/service.json) 独立描述 `POST /v1/identities:resolve`，使用服务 Basic/Bearer 与显式 `identities.resolve` 权限，版本标记为本次 `identity-resolution` 变更。仅新增此操作，不扩展内省、清理与探针端点。全部响应 no-store；200 恰好返回 user_id、state、display_name、avatar_url，空资料为字符串空值；FROZEN/PENDING_DELETION 仍返回保留资料。400/401/403/404/500/503 使用 apierror，405/413/415 无响应体；500 消息固定为 `internal server error`。其输入上限、严格 JSON、校验顺序及 challenge 见契约操作说明。
+[service.json](openapi/service.json) 独立描述 `POST /v1/identities:resolve`，使用服务 Basic/Bearer 与显式 `identities.resolve` 权限，版本标记为 v1.1.0 候选（尚未发布）。仅新增此操作，不扩展内省、清理与探针端点。全部响应 no-store；200 恰好返回 user_id、state、display_name、avatar_url，空资料为字符串空值；FROZEN/PENDING_DELETION 仍返回保留资料。400/401/403/404/500/503 使用 apierror，405/413/415 无响应体；500 消息固定为 `internal server error`。其输入上限、严格 JSON、校验顺序及 challenge 见契约操作说明。
 
 服务权限目录包含 `tokens.introspect`、`purged_users.read`、`identities.resolve`，三项互不隐含。Basic 仅使用注册权限 P；Bearer 无条件使用 P∩S（S 为 token scope），缺失/空 scope 不授权，没有旧兼容模式。`ACCOUNTSVC_SERVICE_TOKEN_PROFILE` 选择 `default`（默认，以 `azp` 识别客户端）或 `rfc9068`（以 `client_id` 识别客户端，要求 `at+jwt`/`application/at+jwt` 及 `iss/aud/exp/sub/client_id/iat/jti`），不猜测或回退。二者都须将已验证 `sub` 精确绑定客户端 `BEARER_SUBJECTS` JSON 字符串数组，不裁剪字符串。提供方须保证主体专用于机器并关闭客户端人类登录；profile、客户端 ID 或自报 `grant_type` 均不证明机器身份，不假设 `sub=client_id`。需要所有请求均受令牌权限收窄时只启用 bearer：同一客户端持有 Basic 秘密仍可获得 P。
 

@@ -1,6 +1,6 @@
 # 功能与兼容对照
 
-本文记录 v1.0.0（已发布）基线、长期契约边界及后续候选差异；下方 accountsvc 服务客户端配置章节明确描述尚未发布的候选变化，不归入 v1.0.0 的历史能力。v1.0.0 之前各开发期版本之间的升级说明已退役，开发期版本只在[开发期版本记录](releases/pre-1.0-history.md)中留存摘要。HTTP 字段、状态码与配置以 [README](../README.md)、[OpenAPI 契约](openapi.md)和公开 Go 类型为准。
+本文记录 v1.0.0（已发布）基线、长期契约边界及 v1.1.0（候选）差异；下方 accountsvc 服务客户端配置章节明确描述尚未发布的候选变化，不归入 v1.0.0 的历史能力。v1.0.0 之前各开发期版本之间的升级说明已退役，开发期版本只在[开发期版本记录](releases/pre-1.0-history.md)中留存摘要。HTTP 字段、状态码与配置以 [README](../README.md)、[OpenAPI 契约](openapi.md)和公开 Go 类型为准。
 
 ## v1.0.0 调用者须知
 
@@ -39,9 +39,11 @@ IdP 统一调用入口是 `Provider.Verify(context.Context, json.RawMessage)`。
 
 公开 Go API 自 v1.0.0 起受语义化版本约束，后续破坏性变化须发布新主版本并改用 `/v2` 模块路径。数据库结构变化从 `0002` 迁移递增，见[迁移手册](migrations.md)。
 
+候选保留 `github.com/bbxx111/accountkit` 模块与导入路径、消费者 `/v1` 和管理员 `/admin/v1` 路由。accountsvc 与库同源交付，本次不设独立服务版本轴，但服务配置与授权存在破坏性迁移；Go 源码可编译不代表旧部署可直接运行。见 [v1.1.0 候选说明](releases/v1.1.0.md)。本次保留 v1 的决定不授权未来任意破坏 v1 契约。
+
 ## accountsvc 服务客户端配置兼容
 
-状态：下一版本候选，具体版本策略尚待确认。本节以正式 v1.0.0 为升级基线。统一注册表管理 `/v1/introspect`、`/v1/purgedUsers` 和新增 `/v1/identities:resolve` 的服务调用认证与授权；不涉及数据库结构、内省的数据库吊销判定或清理 feed 数据语义。消费者和管理员的凭据解析及管理员启动行为另有下述收紧与调整，不能将整批变化描述为完全兼容。
+状态：v1.1.0 候选；用户已确认保留 v1 模块与导入路径。本节以正式 v1.0.0 为升级基线。统一注册表管理 `/v1/introspect`、`/v1/purgedUsers` 和新增 `/v1/identities:resolve` 的服务调用认证与授权；不涉及数据库结构、内省的数据库吊销判定或清理 feed 数据语义。消费者和管理员的凭据解析及管理员启动行为另有下述收紧与调整，不能将整批变化描述为完全兼容。
 
 候选移除 v1.0.0 已提供的旧逐接口配置模式，属于配置破坏性变化。`ACCOUNTSVC_SERVICE_CLIENTS` 未设置、空或全空白均产生非 nil 空注册表，serve 正常启动，三项内部能力分别返回各自 NOT_CONFIGURED 503；任何未声明客户端字段仍拒绝。四项旧 `INTROSPECTION_BASIC_CLIENTS`、`PURGE_FEED_BASIC_CLIENTS`、`INTROSPECTION_BEARER_CLIENTS`、`PURGE_FEED_BEARER_CLIENTS`（均带 `ACCOUNTSVC_` 前缀）只要非空白就会在监听前被拒绝，包括 `{}`、`[]`，无论是否设置新列表；空白占位忽略。migrate 不解析新旧服务运行变量。
 

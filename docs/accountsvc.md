@@ -1,5 +1,7 @@
 # accountsvc 服务
 
+本文对应 v1.1.0（候选），尚未发布；模块、导入路径和 HTTP 路由保持 v1。accountsvc 与库同源交付，不设独立版本轴。本次服务配置与授权有破坏性迁移，升级前阅读[候选说明](releases/v1.1.0.md)及[迁移与回退](#从旧配置迁移与回退)；v1.0.0 历史见[已发布说明](releases/v1.0.0.md)。
+
 accountsvc 是 accountkit 的可选官方宿主。同一个 Go module 同时支持直接嵌入库和运行服务；使用库的项目不需要部署或调用 accountsvc。
 
 ## 会话上下文部署
@@ -115,7 +117,7 @@ QQ App SDK 登录使用 `ACCOUNTSVC_QQ_APP_IDS`（逗号分隔的唯一 1–20 �
 | `ADMIN_ROLES_CLAIM` / `ADMIN_USERNAME_CLAIM` | /roles / /preferred_username，JSON Pointer |
 | `ADMIN_TOKEN_PROFILE` | `default`（默认）或 `rfc9068`；管理员禁用时不得配置。身份仍为 issuer+sub，权限仍由管理员角色决定 |
 
-两个 `TOKEN_PROFILE` 的旧模式值 `azp` 已改名为 `default`，不保留旧值别名；省略或空配置仍选择默认模式。这里只改配置模式名称，服务令牌中的客户端声明仍为 `azp`；管理员默认模式不要求该声明。
+`ADMIN_TOKEN_PROFILE` / `SERVICE_TOKEN_PROFILE` 为 v1.1.0 候选新增配置，省略或空值选择 `default`。开发过程中 `azp` 模式值改名为 `default`，从未作为正式版本发布，不是 v1.0.0 部署的迁移项；不保留该开发值别名。服务令牌的客户端声明仍为 `azp`，管理员默认模式不要求该声明。
 
 可选接口未配置时服务照常启动，对应路由返回 503 `*_NOT_CONFIGURED`。为使漏配在启动时可见，serve 在监听就绪后为每个未配置的接口记一条 WARN（只写相关变量名，不写值）：内省（`introspection_not_configured`）、已清理用户拉取（`PURGE_FEED_NOT_CONFIGURED`）、管理员 API（`ADMIN_NOT_CONFIGURED`）、用户资料属性（`PROFILE_ATTRIBUTES_NOT_CONFIGURED`）。有意不启用某项时可忽略对应警告；部署检查应确认依赖的接口没有出现在警告中。
 
@@ -280,7 +282,7 @@ scope 缺失或空字符串表示空集合，缺所需权限返回403；null、�
 | 取不到提供方签名密钥 | 503 `temporarily_unavailable` | 503 `DEPENDENCY_UNAVAILABLE`，`Retry-After: 1` | 退避重试；服务不自动回退 Basic |
 | 注册表无人持有该权限（先于认证判断） | 503 `introspection_not_configured` | 503 `PURGE_FEED_NOT_CONFIGURED` | 不重试，按需补充配置 |
 
-401 按**整个注册表启用方式的并集**给出 `WWW-Authenticate`；内省、清理拉取与身份解析的 realm 分别为 `accountsvc-introspection`、`accountsvc-purge-feed`、`accountsvc-identity-resolution`。身份解析的错误体见[服务身份解析](#服务身份解析)。Basic 行为 `Basic realm="…"`，Bearer 行为 `Bearer realm="…"`；只有恰好一个 Bearer 令牌被尝试验证且无效时才附 `error="invalid_token"`，客户端方法未启用不附该属性。有效 Basic 缺权限的 403 不带挑战；Bearer 的 403 带 `Bearer realm="…", error="insufficient_scope"`。503 均不带挑战，所有结果 `Cache-Control: no-store`。无权限的请求不会解析业务请求体或查询清理记录。Basic-only 不依赖 OIDC，也不访问提供方。
+401 按**整个注册表启用方式的并集**给出 `WWW-Authenticate`；内省、清理拉取与身份解析的 realm 分别为 `accountsvc-introspection`、`accountsvc-purge-feed`、`accountsvc-identity-resolution`。身份解析的错误体见[服务身份解析](#服务身份解析)。Basic 行为 `Basic realm="…"`，Bearer 行为 `Bearer realm="…"`；启用 Bearer 且解析可识别单个 Bearer scheme 时，凭据语法/长度拒绝或令牌验证无效的401均附 `error="invalid_token"`，即使解析阶段已拒绝而未调用 verifier；重复头等无法确定单个 scheme 的情况及客户端方法未启用不附该属性。有效 Basic 缺权限的 403 不带挑战；Bearer 的 403 带 `Bearer realm="…", error="insufficient_scope"`。503 均不带挑战，所有结果 `Cache-Control: no-store`。无权限的请求不会解析业务请求体或查询清理记录。Basic-only 不依赖 OIDC，也不访问提供方。
 
 **提供方故障**：服务就绪后在后台尝试加载提供方密钥（最多 10 秒），失败只记录警告（discovery 返回的 issuer 不一致记 ERROR），既不阻止启动也不推迟就绪（即使只启用了 Bearer），`/readyz` 不反映提供方状态；此时 Bearer 调用返回 503，消费者路由与 Basic 调用照常。签名密钥缓存 1 小时；单次刷新最多等待 5 秒；任何一次刷新尝试（成功或失败）后 10 秒内不再请求提供方：窗口内遇到未知 `kid`，上次刷新成功判 401，失败判 503，因此随机 `kid` 无法放大对提供方的请求。管理员认证同样在就绪后后台预加载，远端故障不阻止启动；其请求等待最多3秒，刷新冷却为60秒。
 

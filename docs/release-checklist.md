@@ -8,6 +8,12 @@
 
 客户端 SDK 独立版本化：Flutter 与管理 TypeScript 的 1.0.0 已发布，见[SDK 发布说明](releases/client-sdks-v1.0.0.md)与[发布验收记录](../openspec/changes/archive/2026-11-04-prepare-client-sdks-v1-release/verification.md)。SDK 发布使用各自 tag，不变更 Go v1.0.0；候选同时运行 Go/SDK CI，发布后分别验证真实 Git 子目录消费，不套用下方 Go module 的 go get 消费命令。
 
+### v1.1.0 候选准备
+
+当前新增发布候选为 [v1.1.0](releases/v1.1.0.md)，尚未发布；保留 module/import 与 `/v1`、`/admin/v1` 路由，不设独立 accountsvc 版本轴。服务配置及授权有破坏性迁移，按[兼容指南](compatibility.md#accountsvc-服务客户端配置兼容)盘点四项旧变量、注册权限、机器主体、scope、认证头与管理员故障行为，保存成套回退材料。
+
+准备变更的实际检查与未验证项统一记录在[本次验收记录](../openspec/changes/prepare-next-release/verification.md)。起点 CI、当前本地准备快照、后续最终 main SHA 的在线 CI、正式 tag 及远端消费证据分别留存；本地准备通过不表示后三项已完成。SDK 保持独立 1.0.0，v1.1.0 候选兼容状态按 [SDK 指南](client-sdks.md)单独核验。本轮准备不执行 main 集成、推送、tag、Release 或产品部署，后续按明确授权执行。
+
 ### v1.0.0 专属门禁
 
 本次发布、远端消费及旧版本清理已完成；精确对象和门禁证据见[验收记录](../openspec/changes/archive/2026-11-04-prepare-v1-0-0-release/verification.md)。下方通用清单保留为未来发布模板，不代表 v1.0.0 仍未完成。
@@ -75,7 +81,7 @@
 
 accountsvc 与库使用同一版本源码；运行配置见[服务手册](accountsvc.md)，网关统一契约见[网关接入手册](gateway-integration.md)，成套回退要求见[服务手册](accountsvc.md#邮件匿名化与停机)。运行该服务的产品在目标环境确认：
 
-- [ ] 删除旧 INTERNAL_ADDR/内部端口，更新统一内省和探针地址；保存旧二进制、配置、证书、调用方及网关策略的成套回退材料。
+- [ ] 核对统一内省和探针地址，保存旧二进制、配置、证书、调用方及网关策略的成套回退材料；删除 INTERNAL_ADDR/内部端口属于既有历史迁移，不是 v1.0.0 → v1.1.0 的新增要求。
 - [ ] 配置明确公网路由范围和独立管理策略，公网内省、清理拉取、身份解析及探针被拒绝且不进入后端；授权内部调用可访问，未授权直连不能绕过，不因消费者 `/v1/*` 通配而暴露内部入口。
 - [ ] 如启用 Prometheus，先落实 `/metrics` 网关监控来源允许清单与后端端口直连限制，证明公网请求被拒绝且不进入后端、授权监控可抓取；核对同址 TLS/证书与 no-store。
 - [ ] 指标默认关闭；启用时设置固定非秘密且符合格式的 `ACCOUNTSVC_METRICS_INSTANCE`，不同逻辑实例不同、多副本保留独立抓取目标标签；验证关闭404、其他方法405、采集错误/超出5并发503、业务依赖故障仍可采集。部署方接受无观测时可空、重启计数重置与停机尾部增量不保证被抓取，回退关闭开关并移除抓取目标。

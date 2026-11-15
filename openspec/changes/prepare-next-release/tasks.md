@@ -14,7 +14,7 @@
 
 ## Workflow follow-up
 
-- 获明确授权后，以独立merge commit集成develop/main并推送，记录最终main候选SHA与全部线上CI；候选有变动须核对新SHA。
-- 获明确发布授权后创建并推送annotated v1.1.0 tag，核对对象/解析SHA，使用同一发布说明创建Release。
-- 发布后执行两个独立无replace、GOWORK=off的远端Go消费验证，核对新增公开符号和冻结SQL；补记已发布及SDK兼容证据，不移动tag。
-- 发布准备变更按单独明确请求归档；产品部署与真实提供方/网关验收另行执行。
+- 已按后续授权以独立 merge commit 集成 develop/main 并推送，最终候选 `6eef5e3` 的 Go/SDK CI 全部成功。
+- 已创建并推送 annotated v1.1.0 tag、核对固定对象和提交，并使用正式发布说明创建 GitHub Release。
+- 两个独立无 replace、GOWORK=off 的远端 Go 消费验证通过；新增公开符号、冻结 SQL 已核对，SDK 兼容证据已补记，tag 未移动。
+- 用户已授权随后归档；先完成发布补记集成，再归档并修复引用。产品部署与真实提供方/网关验收另行执行。

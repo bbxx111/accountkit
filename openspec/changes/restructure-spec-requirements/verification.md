@@ -1,6 +1,6 @@
 # 规格结构整理验收
 
-本次为纯文档维护，基线提交 bf51078。七份主规格的11条超长正文已拆分，新增33条需求承接移出的规范性规则；原需求标题、原场景及产品行为保持。对应认证delta同步调整，真实仓库未执行归档、推送或发布。
+本次为纯文档维护。结构整理阶段以bf51078为基线，七份主规格的11条超长正文已拆分，新增33条需求承接移出的规范性规则；该阶段原需求标题、原场景及产品行为保持。对应认证delta同步调整。用户随后要求修正两处已记录的历史表述，依据与结果见末节；真实仓库未执行归档、推送或发布。
 
 ## 规则迁移对应
 
@@ -31,11 +31,20 @@
 
 原始映射、差异、结构审计和CLI日志均保留在被忽略的 `.test-output/spec-restructure/`：`mail-report.md`、`service-report.md`、`library-report.md`、`review-report.md`、`structure-audit.json`、`validate-all.log`、`archive-simulation-final.log`、`validate-simulation-final.log`。本记录是提交范围内的汇总。
 
-## 保留的历史表述问题
+## 结构整理阶段发现的历史表述问题
 
-这些问题在拆分前已存在，本次不裁决行为或修改原场景，也未核对实际实现：
+以下问题在拆分前已存在，结构整理阶段仅记录；用户后续明确要求直接修正，现已按末节依据澄清：
 
 1. versioned-auth-storage 的初始表清单与“空数据库安装”场景中的“完整八表”计数不一致。
 2. accountsvc-runtime 的“邮件语言选择”要求未配置清单时不读取Accept-Language，而“未配置清单”场景要求按Accept-Language: en选择英文；需另行核对默认嵌入清单的语言选择契约。
 
-后续若处理上述问题，应分别核对实现、既有测试和原设计，不能仅凭结构校验通过判断语义已一致。实施范围见 [设计](design.md) 和 [计划](../../../docs/superpowers/plans/2026-11-15-restructure-spec-requirements.md)。
+实施范围见 [设计](design.md) 和 [计划](../../../docs/superpowers/plans/2026-11-15-restructure-spec-requirements.md)。
+
+## 后续表述修正依据与验收
+
+- 邮件：`internal/accountsvc/email_templates.go` 的emailRenderer在未配置文件时返回嵌入默认清单；`run.go`按EMAIL启用及实际渲染器Multilingual决定是否安装消费者语言中间件。`TestDefaultManifest`确认默认清单含zh-Hans/en/zh-Hant并按请求偏好渲染；单语言测试确认忽略偏好。原邮件模板变更的design.md D5/D6及verification.md第二轮也明确此行为。主规格现按实际生效清单判断，删除“未配置清单不读取”的错误条件，补默认和单语言场景；未改运行行为。
+- 表清单：0001 up显式创建8张数据表，down显式删除同样8张；`migrations.go`把schema_migrations交给迁移引擎。既有`TestConsolidatedInitialSchema`明确排除该版本表后断言8。修正规格为8张数据表加引擎版本表，并澄清0001 down不删除版本表；没有把表数误改为9张数据表，也没有修改SQL。
+- 冻结文件SHA256仍为：up `ef2d1f229fa15b660cc7ecb4f417615b76866c19494641c96faf25bab24188b6`；down `812541721471025056edd1f655d876b2f4d938fffd8f4f7ee2cfa9a97ff490d5`，与initialFrozen一致。
+- 本轮实际运行：`GOWORK=off go test -count=1 ./internal/accountsvc/emailtemplates -run 'TestDefaultManifest|TestLanguageMatching|TestSingleLanguageIgnoresPreference'`及`go test -count=1 ./internal/accountsvc -run 'TestConfigEmailTemplates|TestAcceptLanguageMiddleware'`，均退出0；全库strict为46通过、0失败。
+- 本轮不重跑真实数据库、SMTP进程或race；表数结论来自冻结SQL和既有迁移测试的源码核对，不宣称新执行了数据库迁移测试。原归档记录保留；原334场景逐字比对属于前一结构整理阶段，本轮对上述表述和关联场景的修正是用户明确授权的后续工作。
+- 本轮独立复核通过：邮件条件与实际装配一致，数据表与版本表责任清晰，down定义未改变运行时禁止破坏性回退的契约。差异检查通过，只有规格和对应记录发生变化。

@@ -562,11 +562,11 @@ serve SHALL 支持可选的 `ACCOUNTSVC_SMTP_TEMPLATES_FILE`，指向一份邮�
 
 ### Requirement: 邮件语言选择
 
-当清单包含多种语言时，serve SHALL 读取每个请求的 `Accept-Language`，并在发送邮件验证码时从已配置的语言中选出一种渲染。
+当 EMAIL 启用且实际生效的清单（自定义清单或嵌入的默认清单）包含多种语言时，serve SHALL 读取消费者请求的 `Accept-Language`，并在发送邮件验证码时从该清单的语言中选出一种渲染。
 
 - 匹配 SHALL 遵循 BCP 47 语言匹配，并识别地区隐含的文字：zh-TW、zh-HK、zh-MO 匹配 `zh-Hant`；zh-CN、zh-SG、zh 匹配 `zh-Hans`；en-US、en-GB 匹配 `en`。
 - 近似匹配（如只配置简体时的繁体请求）SHALL 采用匹配到的语言。以下情况 SHALL 使用 `default_language`，且不得因此使请求失败：请求头缺失、超过 512 字节、格式非法，或完全没有匹配。
-- 未配置清单，或清单只有一种语言时，serve SHALL 不读取 `Accept-Language`。
+- EMAIL 未启用，或实际生效的清单只有一种语言时，serve SHALL 不读取 `Accept-Language` 用于邮件语言选择。
 - 语言选择 SHALL 只影响邮件标题、内容和品牌，不改变验证码用途、额度、审计、HTTP 响应或短信内容。日志 SHALL 不记录逐次选中的语言。
 
 #### Scenario: 按界面语言发送繁体邮件
@@ -578,6 +578,16 @@ serve SHALL 支持可选的 `ACCOUNTSVC_SMTP_TEMPLATES_FILE`，指向一份邮�
 
 - **WHEN** 同一部署收到 `Accept-Language: ja`、没有该请求头，或请求头格式非法、超长
 - **THEN** 邮件使用默认语言，发码请求照常成功
+
+#### Scenario: 默认清单参与语言选择
+
+- **WHEN** EMAIL 启用，未设置或清空模板清单路径，客户端以 `Accept-Language: en` 请求邮箱验证码
+- **THEN** 使用嵌入默认清单的英文文案；请求头缺失、非法、超长或完全不匹配时使用该清单的默认语言
+
+#### Scenario: 单语言清单无需语言协商
+
+- **WHEN** EMAIL 启用且实际生效的清单只有一种语言，请求携带其他语言偏好
+- **THEN** 不读取该请求头用于邮件语言选择，始终使用清单的唯一语言
 
 ### Requirement: 邮件模板检查命令
 

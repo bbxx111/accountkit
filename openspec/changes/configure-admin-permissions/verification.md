@@ -91,4 +91,6 @@ SDK首次真实宿主启动因验证脚本过早设置ACCOUNTKIT_ADMIN_INTEGRATI
 
 用户要求将分阶段本地提交写入AGENTS.md，并提交本次成果。规则明确：任务步骤可独立验证、相关检查与审查通过后及时本地提交，包含配套测试、文档和OpenSpec任务/验证记录；本地提交不自动授权推送、合并或发布。同步修正设计和计划中由代理自行添加的“不提交”限制，不把已经完成的工作追写成历史阶段提交。
 
-提交前OpenSpec严格校验46/46、OpenAPI 24/11操作检查、SDK 36操作覆盖和diff空白检查通过；重新运行Go普通套件，证据保存在`.test-output/admin-permissions/precommit-go.log`，该结果不替代上文真实数据库/race/恢复证据。
+提交前OpenSpec严格校验46/46、OpenAPI 24/11操作检查、SDK 36操作覆盖和diff空白检查通过；重新运行Go普通套件通过，证据保存在`.test-output/admin-permissions/precommit-go.log`，该结果不替代上文真实数据库/race/恢复证据。
+
+实现提交为 `4721bf7`（`feat(accountsvc)!: 支持显式管理角色权限配置`），包含实现、测试、配套文档和OpenSpec工件；AGENTS.md分阶段提交规则与本段验收补记作为独立文档提交保存。没有补造历史过程提交，没有推送、合并、归档或发布。

@@ -176,6 +176,8 @@ bash scripts/verify.sh
 
 - 集成分支为 `develop`，稳定发布分支使用 `main`。默认从 develop 创建 `<type>/<short-kebab-description>` 短期分支，不直接在 develop/main 提交；如已有未提交改动，先带到任务分支，不能 reset 掉用户工作。
 - Conventional Commits：`type(scope): message`，scope 可按需省略；类型包括 feat、fix、docs、test、refactor、chore、ci。scope 使用能力域，如 migrations、tokens、httpapi。
+- 任务实施默认在任务分支分阶段进行本地提交：一个可独立验证的实现步骤完成、相关检查和审查通过后及时提交，避免全部工作长期堆积为未提交改动。提交包含该步骤所需的代码、测试、文档及对应 OpenSpec tasks/verification 更新；不得把未通过检查或未完成的步骤伪装成已完成提交，也不为拆分而产生无法独立理解和验证的提交。
+- 本地提交属于已授权任务的默认执行过程，无需反复征求确认；用户明确要求暂不提交时遵从。推送、合并、tag、发布和产品部署分别按授权执行，不从本地提交推导后续授权。
 - 默认通过 GitHub Pull Request 合入 develop；用户明确要求本地合并时按其要求执行。提交、推送、tag、发布和产品部署是不同动作，不把其中一个授权扩展成全部动作。
 - 合并统一保留独立 merge commit：任务分支合入 `develop`、`develop` 合入 `main` 时，本地使用 `git merge --no-ff <source-branch>`，即使可以快进也不省略合并提交；GitHub PR 使用 Create a merge commit，不使用 Squash and merge 或 Rebase and merge，除非用户明确另行指定。
 - 功能、行为、公共接口或架构变更通过 OpenSpec；纯文档维护可直接修改。先读相关 `openspec/specs/`，再读涉及的变更工件；未归档变更的 specs 仍在 `openspec/changes/<change>/specs/`，不能因主规格目录为空就忽略它们。

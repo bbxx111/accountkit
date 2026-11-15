@@ -42,10 +42,10 @@ func TestUnifiedPurgeFeedAuthorization(t *testing.T) {
 	p := oidcjwttest.New(t)
 	feed := &fakeFeed{records: records(2)}
 	h := unifiedFeed(t, p, []serviceauth.ClientConfig{
-		{ID: "both", AuthMethods: []string{"basic", "bearer"}, Permissions: []string{"tokens.introspect", "purged_users.read"}, BasicSecrets: []string{secret(1)}},
-		{ID: "limited", AuthMethods: []string{"basic", "bearer"}, Permissions: []string{"tokens.introspect"}, BasicSecrets: []string{secret(2)}},
+		{ID: "both", AuthMethods: []string{"basic", "bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"tokens.introspect", "purged_users.read"}, BasicSecrets: []string{secret(1)}},
+		{ID: "limited", AuthMethods: []string{"basic", "bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"tokens.introspect"}, BasicSecrets: []string{secret(2)}},
 		{ID: "basic-only", AuthMethods: []string{"basic"}, Permissions: []string{"purged_users.read"}, BasicSecrets: []string{secret(3)}},
-		{ID: "bearer-only", AuthMethods: []string{"bearer"}, Permissions: []string{"purged_users.read"}},
+		{ID: "bearer-only", AuthMethods: []string{"bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"purged_users.read"}},
 	}, feed)
 	basic := func(id string, b byte) string {
 		return "Basic " + base64.StdEncoding.EncodeToString([]byte(id+":"+secret(b)))
@@ -107,7 +107,7 @@ func TestUnifiedPurgeFeedAuthorization(t *testing.T) {
 func TestUnifiedPurgeFeedCapabilityAndProviderFailure(t *testing.T) {
 	p := oidcjwttest.New(t)
 	feed := &fakeFeed{records: records(1)}
-	clients := []serviceauth.ClientConfig{{ID: "intro", AuthMethods: []string{"basic", "bearer"}, Permissions: []string{"tokens.introspect"}, BasicSecrets: []string{secret(1)}}}
+	clients := []serviceauth.ClientConfig{{ID: "intro", AuthMethods: []string{"basic", "bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"tokens.introspect"}, BasicSecrets: []string{secret(1)}}}
 	h := unifiedFeed(t, p, clients, feed)
 	for _, header := range []string{"", "Bearer invalid", "Basic invalid"} {
 		r := httptest.NewRequest("POST", "/v1/purgedUsers?page_size=bad&page_token=bad", nil)

@@ -63,7 +63,7 @@ func TestRuntimeWarnsPlainHTTPIssuersBeforeAdminDiscovery(t *testing.T) {
 		cfg.AdminEnabled = true
 		cfg.Admin = adminauth.Config{Issuer: "http://synthetic-secret.example.test/realms/admin", Audience: "admin-api", AllowHTTP: true}
 		cfg.Service = ServiceConfig{Issuer: "http://synthetic-secret.example.test/realms/svc", Audience: "svc", bearerClientIDs: []string{"purge"}, AllowHTTP: true}
-		app.initAdmin = func(context.Context) error {
+		app.preloadAdminTokens = func(context.Context) error {
 			seenAtDiscovery = logs.String()
 			return nil
 		}

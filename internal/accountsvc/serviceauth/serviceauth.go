@@ -14,6 +14,7 @@ import (
 
 	"github.com/bbxx111/accountkit/internal/accountsvc/basicclients"
 	"github.com/bbxx111/accountkit/internal/accountsvc/oidcjwt"
+	"github.com/bbxx111/accountkit/internal/httpcredentials"
 )
 
 // Outcome classifies an authentication attempt.
@@ -46,7 +47,7 @@ const (
 // Result is the decision for one request.
 type Result struct {
 	Outcome Outcome
-	// ClientID is the Basic user name or the token's azp; set only for OK and Forbidden.
+	// ClientID is the Basic user name or the token's configured client claim; set only for OK and Forbidden.
 	ClientID string
 	Method   string
 	// BearerAttempted is true when the request carried exactly one Bearer token and Bearer is enabled.
@@ -81,7 +82,7 @@ type Authenticator struct {
 	permission      string
 }
 
-// ValidClientID reports whether id is usable as an allowed azp value.
+// ValidClientID reports whether id is usable as an allowed client identifier.
 func ValidClientID(id string) bool {
 	return id != "" && len(id) <= maxClientID && strings.IndexFunc(id, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) < 0
 }
@@ -121,19 +122,25 @@ func (a *Authenticator) Authenticate(r *http.Request) Result {
 	if !a.Enabled() {
 		return unauthenticated
 	}
-	headers := r.Header.Values("Authorization")
-	if len(headers) != 1 {
-		return unauthenticated
-	}
-	scheme, credentials, _ := strings.Cut(headers[0], " ")
+	scheme, credentials, ok := httpcredentials.Parse(r)
 	switch {
-	case strings.EqualFold(scheme, "Basic") && a.basic != nil:
-		if id, ok := a.basic.Match(r); ok {
+	case scheme == "basic" && a.basic != nil:
+		if !ok {
+			return Result{Outcome: Unauthenticated, Method: MethodBasic}
+		}
+		// Normalize only the parsed header on a private request copy. Match retains
+		// responsibility for decoding Basic credentials and checking secrets.
+		normalized := r.Clone(r.Context())
+		normalized.Header.Set("Authorization", "Basic "+credentials)
+		if id, ok := a.basic.Match(normalized); ok {
 			return a.authorize(id, MethodBasic)
 		}
 		return Result{Outcome: Unauthenticated, Method: MethodBasic}
-	case strings.EqualFold(scheme, "Bearer") && a.tokens != nil:
-		return a.bearer(r.Context(), strings.TrimSpace(credentials))
+	case scheme == "bearer" && a.tokens != nil:
+		if !ok {
+			return Result{Outcome: Unauthenticated, Method: MethodBearer, BearerAttempted: true}
+		}
+		return a.bearer(r.Context(), credentials)
 	}
 	return unauthenticated
 }
@@ -157,11 +164,60 @@ func (a *Authenticator) bearer(parent context.Context, raw string) Result {
 	if expErr != nil || iatErr != nil || exp == nil || iat == nil || exp.Sub(iat.Time) > maxTokenLifetime {
 		return invalid
 	}
-	azp, ok := claims["azp"].(string)
-	if !ok || !ValidClientID(azp) {
+	clientID, ok := claims[a.tokens.ClientIDClaim()].(string)
+	if !ok || !ValidClientID(clientID) {
 		return invalid
 	}
-	return a.authorize(azp, MethodBearer)
+	sub, ok := claims["sub"].(string)
+	if !ok || sub == "" {
+		return invalid
+	}
+	client, exists := a.registry.clients[clientID]
+	if !exists {
+		return a.authorize(clientID, MethodBearer)
+	}
+	if !client.methods[MethodBearer] {
+		return Result{Outcome: Unauthenticated, Method: MethodBearer}
+	}
+	if !client.subjects[sub] {
+		return invalid
+	}
+	scope, present := claims["scope"]
+	scopes, valid := tokenScopes(scope, present)
+	if !valid {
+		return invalid
+	}
+	if !scopes[a.permission] {
+		return a.forbidden(clientID, MethodBearer)
+	}
+	return a.authorize(clientID, MethodBearer)
+}
+
+func tokenScopes(value any, present bool) (map[string]bool, bool) {
+	scopes := map[string]bool{}
+	if !present {
+		return scopes, true
+	}
+	scope, ok := value.(string)
+	if !ok {
+		return nil, false
+	}
+	if scope == "" {
+		return scopes, true
+	}
+	for _, item := range strings.Split(scope, " ") {
+		if item == "" {
+			return nil, false
+		}
+		for i := 0; i < len(item); i++ {
+			c := item[i]
+			if c < 0x21 || c > 0x7e || c == '"' || c == '\\' {
+				return nil, false
+			}
+		}
+		scopes[item] = true
+	}
+	return scopes, true
 }
 
 func (a *Authenticator) authorize(id, method string) Result {
@@ -170,10 +226,14 @@ func (a *Authenticator) authorize(id, method string) Result {
 		return Result{Outcome: Unauthenticated, Method: method}
 	}
 	if !exists || !client.permissions[a.permission] {
-		a.logger.Info("accountsvc: service client not authorized for interface", "client_id", id, "endpoint", a.endpoint, "auth_method", method)
-		return Result{Outcome: Forbidden, ClientID: id, Method: method}
+		return a.forbidden(id, method)
 	}
 	return Result{Outcome: OK, ClientID: id, Method: method}
+}
+
+func (a *Authenticator) forbidden(id, method string) Result {
+	a.logger.Info("accountsvc: service client not authorized for interface", "client_id", id, "endpoint", a.endpoint, "auth_method", method)
+	return Result{Outcome: Forbidden, ClientID: id, Method: method}
 }
 
 // Challenges returns the WWW-Authenticate values for res: one per enabled method on 401,

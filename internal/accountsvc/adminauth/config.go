@@ -12,12 +12,16 @@ import (
 // AllowHTTP additionally accepts a plain http:// issuer, discovery document and jwks_uri;
 // accountsvc sets it only in development mode.
 type Config struct {
+	TokenProfile                                string
 	Issuer, Audience, RolesClaim, UsernameClaim string
 	AllowHTTP                                   bool
 }
 
 // Validate rejects unsafe provider URLs and malformed claim pointers before any I/O.
 func (c Config) Validate() error {
+	if !oidcjwt.ValidProfile(c.TokenProfile) {
+		return errors.New("adminauth: invalid token profile")
+	}
 	valid := oidcjwt.ValidIssuer
 	if c.AllowHTTP {
 		valid = oidcjwt.ValidPlainIssuer

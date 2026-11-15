@@ -3,6 +3,7 @@ package accountsvc
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"os"
 	"regexp"
@@ -58,7 +59,7 @@ func (c *Config) loadServiceClients() error {
 		if !serviceClientAliasPattern.MatchString(alias) {
 			return invalidConfig("ACCOUNTSVC_SERVICE_CLIENTS")
 		}
-		for _, field := range []string{"ID", "AUTH_METHODS", "PERMISSIONS", "BASIC_SECRETS"} {
+		for _, field := range []string{"ID", "AUTH_METHODS", "PERMISSIONS", "BASIC_SECRETS", "BEARER_SUBJECTS"} {
 			expected["ACCOUNTSVC_SERVICE_CLIENT_"+alias+"_"+field] = true
 		}
 	}
@@ -114,10 +115,27 @@ func (c *Config) loadServiceClients() error {
 		} else if strings.TrimSpace(secretText) != "" {
 			return invalidConfig(prefix + "BASIC_SECRETS")
 		}
+		var subjects []string
+		subjectText := os.Getenv(prefix + "BEARER_SUBJECTS")
+		if slices.Contains(methods, serviceauth.MethodBearer) {
+			// JSON preserves spaces and commas in provider subjects; values match exactly.
+			if json.Unmarshal([]byte(subjectText), &subjects) != nil || len(subjects) == 0 {
+				return invalidConfig(prefix + "BEARER_SUBJECTS")
+			}
+			seen := map[string]bool{}
+			for _, subject := range subjects {
+				if !serviceauth.ValidBearerSubject(subject) || seen[subject] {
+					return invalidConfig(prefix + "BEARER_SUBJECTS")
+				}
+				seen[subject] = true
+			}
+		} else if subjectText != "" {
+			return invalidConfig(prefix + "BEARER_SUBJECTS")
+		}
 		if slices.Contains(methods, serviceauth.MethodBearer) {
 			c.Service.bearerClientIDs = append(c.Service.bearerClientIDs, id)
 		}
-		clients = append(clients, serviceauth.ClientConfig{ID: id, AuthMethods: methods, Permissions: permissions, BasicSecrets: basicSecrets})
+		clients = append(clients, serviceauth.ClientConfig{ID: id, AuthMethods: methods, Permissions: permissions, BasicSecrets: basicSecrets, BearerSubjects: subjects})
 	}
 	c.ServiceClients, err = serviceauth.NewRegistry(clients)
 	if err != nil {

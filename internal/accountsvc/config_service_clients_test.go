@@ -101,6 +101,7 @@ func unifiedBearerEnvironment(t *testing.T) {
 	t.Helper()
 	unifiedClientEnvironment(t)
 	t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_AI_FOOD_AUTH_METHODS", "basic,bearer")
+	t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_AI_FOOD_BEARER_SUBJECTS", `["machine"]`)
 	t.Setenv("ACCOUNTSVC_SERVICE_ISSUER", "https://idp.example.test/realms/svc")
 	t.Setenv("ACCOUNTSVC_SERVICE_AUDIENCE", "accountsvc-service")
 }
@@ -129,8 +130,8 @@ func TestConfigServiceClientTrustRejections(t *testing.T) {
 		{"Facebook audience", map[string]string{"FACEBOOK_APP_ID": "synthetic-app-id", "FACEBOOK_APP_SECRET": "synthetic-secret", "SERVICE_AUDIENCE": "synthetic-app-id"}, "SERVICE_AUDIENCE"},
 		{"OIDC audience", map[string]string{"OIDC_PROVIDERS": "CORP_SSO", "OIDC_CORP_SSO_ISSUER": "https://sso.corp.example", "OIDC_CORP_SSO_JWKS_URL": "https://sso.corp.example/jwks", "OIDC_CORP_SSO_CLIENT_IDS": "synthetic-corp-client", "SERVICE_AUDIENCE": "synthetic-corp-client"}, "SERVICE_AUDIENCE"},
 		{"admin audience", map[string]string{"ADMIN_ENABLED": "true", "ADMIN_ISSUER": "https://idp.example.test/realms/svc", "ADMIN_AUDIENCE": "accountsvc-service"}, "SERVICE_AUDIENCE"},
-		{"basic only with issuer", map[string]string{"SERVICE_CLIENT_AI_FOOD_AUTH_METHODS": "basic", "SERVICE_AUDIENCE": ""}, "SERVICE_ISSUER"},
-		{"basic only with audience", map[string]string{"SERVICE_CLIENT_AI_FOOD_AUTH_METHODS": "basic", "SERVICE_ISSUER": ""}, "SERVICE_AUDIENCE"},
+		{"basic only with issuer", map[string]string{"SERVICE_CLIENT_AI_FOOD_AUTH_METHODS": "basic", "SERVICE_CLIENT_AI_FOOD_BEARER_SUBJECTS": "", "SERVICE_AUDIENCE": ""}, "SERVICE_ISSUER"},
+		{"basic only with audience", map[string]string{"SERVICE_CLIENT_AI_FOOD_AUTH_METHODS": "basic", "SERVICE_CLIENT_AI_FOOD_BEARER_SUBJECTS": "", "SERVICE_ISSUER": ""}, "SERVICE_AUDIENCE"},
 		{"bearer with secrets", map[string]string{"SERVICE_CLIENT_AI_FOOD_AUTH_METHODS": "bearer"}, "SERVICE_CLIENT_AI_FOOD_BASIC_SECRETS"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -207,6 +208,7 @@ func TestConfigServiceClientBearerModes(t *testing.T) {
 			unifiedBearerEnvironment(t)
 			t.Setenv("ACCOUNTSVC_MODE", mode)
 			t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_AI_FOOD_AUTH_METHODS", "bearer")
+			t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_AI_FOOD_BEARER_SUBJECTS", `["machine"]`)
 			t.Setenv("ACCOUNTSVC_SERVICE_CLIENT_AI_FOOD_BASIC_SECRETS", "")
 			issuer := "https://idp.example.test/realms/svc"
 			if mode == "development" {

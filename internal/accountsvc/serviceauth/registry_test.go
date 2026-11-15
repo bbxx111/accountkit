@@ -80,7 +80,7 @@ func TestRegistryEmptyAndSnapshot(t *testing.T) {
 	if empty.HasPermission("tokens.introspect") || empty.BearerEnabled() {
 		t.Fatal("empty registry enabled")
 	}
-	clients := []serviceauth.ClientConfig{{ID: "svc", AuthMethods: []string{"basic", "bearer"}, Permissions: []string{"tokens.introspect", "purged_users.read"}, BasicSecrets: []string{basicSecret}}}
+	clients := []serviceauth.ClientConfig{{ID: "svc", AuthMethods: []string{"basic", "bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"tokens.introspect", "purged_users.read"}, BasicSecrets: []string{basicSecret}}}
 	registry := mustRegistry(t, clients)
 	clients[0].ID = "changed"
 	clients[0].AuthMethods[1] = "changed"
@@ -95,4 +95,31 @@ func TestRegistryEmptyAndSnapshot(t *testing.T) {
 	expect(t, res, ch, serviceauth.OK, nil)
 	res, ch = e.do(e.bearer(e.p.Claims(e.now, "svc"), "initial"))
 	expect(t, res, ch, serviceauth.OK, nil)
+}
+
+func TestRegistryBearerSubjectValidationAndSnapshot(t *testing.T) {
+	for _, subjects := range [][]string{nil, {}, {""}, {"   "}, {"a\x00b"}, {strings.Repeat("x", 257)}, {"x", "x"}} {
+		if _, err := serviceauth.NewRegistry([]serviceauth.ClientConfig{{ID: "svc", AuthMethods: []string{"bearer"}, Permissions: []string{"tokens.introspect"}, BearerSubjects: subjects}}); err == nil {
+			t.Fatalf("invalid subjects accepted: %q", subjects)
+		}
+	}
+	if _, err := serviceauth.NewRegistry([]serviceauth.ClientConfig{{ID: "svc", AuthMethods: []string{"basic"}, Permissions: []string{"tokens.introspect"}, BasicSecrets: []string{basicSecret}, BearerSubjects: []string{"machine"}}}); err == nil {
+		t.Fatal("Basic-only subject accepted")
+	}
+	e := newEnv(t, false, true)
+	subjects := []string{" machine, one ", strings.Repeat("x", 256)}
+	registry := mustRegistry(t, []serviceauth.ClientConfig{{ID: "svc", AuthMethods: []string{"bearer"}, Permissions: []string{"tokens.introspect"}, BearerSubjects: subjects}})
+	subjects[0] = "changed"
+	e.auth = mustNew(t, serviceauth.Config{Realm: realm, Registry: registry, RequiredPermission: "tokens.introspect", BearerVerifier: tokensFor(t, e)})
+	for _, tc := range []struct {
+		sub  string
+		want serviceauth.Outcome
+	}{{" machine, one ", serviceauth.OK}, {"machine, one", serviceauth.Unauthenticated}, {"changed", serviceauth.Unauthenticated}, {strings.Repeat("x", 256), serviceauth.OK}} {
+		c := e.p.Claims(e.now, "svc")
+		c["sub"] = tc.sub
+		res, _ := e.do(e.bearer(c, "initial"))
+		if res.Outcome != tc.want {
+			t.Fatalf("exact subject outcome=%v want=%v", res.Outcome, tc.want)
+		}
+	}
 }

@@ -19,9 +19,9 @@ func TestUnifiedAuthenticationMatrix(t *testing.T) {
 	e := newEnv(t, false, true)
 	secondSecret := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{9}, 32))
 	registry := mustRegistry(t, []serviceauth.ClientConfig{
-		{ID: "both", AuthMethods: []string{"basic", "bearer"}, Permissions: []string{"tokens.introspect", "purged_users.read", "identities.resolve"}, BasicSecrets: []string{basicSecret, secondSecret}},
+		{ID: "both", AuthMethods: []string{"basic", "bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"tokens.introspect", "purged_users.read", "identities.resolve"}, BasicSecrets: []string{basicSecret, secondSecret}},
 		{ID: "basic-only", AuthMethods: []string{"basic"}, Permissions: []string{"purged_users.read"}, BasicSecrets: []string{base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{10}, 32))}},
-		{ID: "bearer-only", AuthMethods: []string{"bearer"}, Permissions: []string{"purged_users.read"}},
+		{ID: "bearer-only", AuthMethods: []string{"bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"purged_users.read"}},
 	})
 	for _, permission := range []string{"tokens.introspect", "purged_users.read", "identities.resolve"} {
 		e.auth = mustNew(t, serviceauth.Config{Realm: realm, Registry: registry, RequiredPermission: permission, BearerVerifier: tokensFor(t, e), Logger: slog.New(slog.NewTextHandler(&e.logs, nil))})
@@ -86,7 +86,7 @@ func TestUnifiedAuthenticationMatrix(t *testing.T) {
 
 func TestUnifiedCapabilityAndConstructor(t *testing.T) {
 	e := newEnv(t, false, true)
-	registry := mustRegistry(t, []serviceauth.ClientConfig{{ID: "svc", AuthMethods: []string{"bearer"}, Permissions: []string{"purged_users.read"}}})
+	registry := mustRegistry(t, []serviceauth.ClientConfig{{ID: "svc", AuthMethods: []string{"bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"purged_users.read"}}})
 	a := mustNew(t, serviceauth.Config{Realm: realm, Registry: registry, RequiredPermission: "tokens.introspect", BearerVerifier: tokensFor(t, e)})
 	if a.Enabled() {
 		t.Fatal("method enabled a capability without permission")
@@ -115,7 +115,7 @@ func TestUnifiedCapabilityAndConstructor(t *testing.T) {
 
 func TestUnifiedBasicSurvivesProviderFailure(t *testing.T) {
 	e := newEnv(t, false, true)
-	registry := mustRegistry(t, []serviceauth.ClientConfig{{ID: "svc", AuthMethods: []string{"basic", "bearer"}, Permissions: []string{"tokens.introspect"}, BasicSecrets: []string{basicSecret}}})
+	registry := mustRegistry(t, []serviceauth.ClientConfig{{ID: "svc", AuthMethods: []string{"basic", "bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"tokens.introspect"}, BasicSecrets: []string{basicSecret}}})
 	e.auth = mustNew(t, serviceauth.Config{Realm: realm, Registry: registry, RequiredPermission: "tokens.introspect", BearerVerifier: tokensFor(t, e)})
 	e.p.SetFail(true)
 	res, ch := e.do(e.bearer(e.p.Claims(e.now, "svc"), "initial"))
@@ -126,7 +126,7 @@ func TestUnifiedBasicSurvivesProviderFailure(t *testing.T) {
 
 func TestUnifiedRejectsInvalidClaimsAndAlgorithms(t *testing.T) {
 	e := newEnv(t, false, true)
-	registry := mustRegistry(t, []serviceauth.ClientConfig{{ID: "svc", AuthMethods: []string{"bearer"}, Permissions: []string{"tokens.introspect"}}})
+	registry := mustRegistry(t, []serviceauth.ClientConfig{{ID: "svc", AuthMethods: []string{"bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"tokens.introspect"}}})
 	e.auth = mustNew(t, serviceauth.Config{Realm: realm, Registry: registry, RequiredPermission: "tokens.introspect", BearerVerifier: tokensFor(t, e)})
 	for _, mutate := range []func(jwt.MapClaims){func(c jwt.MapClaims) { delete(c, "azp") }, func(c jwt.MapClaims) { delete(c, "iat") }, func(c jwt.MapClaims) { c["aud"] = "consumer" }, func(c jwt.MapClaims) { c["iss"] = "consumer" }} {
 		c := e.p.Claims(e.now, "svc")

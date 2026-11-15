@@ -24,6 +24,12 @@
 
 [service.json](openapi/service.json) 独立描述 `POST /v1/identities:resolve`，使用服务 Basic/Bearer 与显式 `identities.resolve` 权限，版本标记为本次 `identity-resolution` 变更。仅新增此操作，不扩展内省、清理与探针端点。全部响应 no-store；200 恰好返回 user_id、state、display_name、avatar_url，空资料为字符串空值；FROZEN/PENDING_DELETION 仍返回保留资料。400/401/403/404/500/503 使用 apierror，405/413/415 无响应体；500 消息固定为 `internal server error`。其输入上限、严格 JSON、校验顺序及 challenge 见契约操作说明。
 
+服务权限目录包含 `tokens.introspect`、`purged_users.read`、`identities.resolve`，三项互不隐含。Basic 仅使用注册权限 P；Bearer 无条件使用 P∩S（S 为 token scope），缺失/空 scope 不授权，没有旧兼容模式。`ACCOUNTSVC_SERVICE_TOKEN_PROFILE` 选择 `default`（默认，以 `azp` 识别客户端）或 `rfc9068`（以 `client_id` 识别客户端，要求 `at+jwt`/`application/at+jwt` 及 `iss/aud/exp/sub/client_id/iat/jti`），不猜测或回退。二者都须将已验证 `sub` 精确绑定客户端 `BEARER_SUBJECTS` JSON 字符串数组，不裁剪字符串。提供方须保证主体专用于机器并关闭客户端人类登录；profile、客户端 ID 或自报 `grant_type` 均不证明机器身份，不假设 `sub=client_id`。需要所有请求均受令牌权限收窄时只启用 bearer：同一客户端持有 Basic 秘密仍可获得 P。
+
+认证与授权先于方法、内容类型、请求体和查询参数处理。缺失/无效凭据、profile/机器主体不匹配、scope 类型或语法错误、已登记客户端未启用请求方式返回 401；有效 Bearer 客户端未登记，或已认证客户端缺少注册权限/所需 scope 返回 403；能力未配置、签发方或业务依赖不可用返回 503。全部服务响应 `Cache-Control: no-store`。401 按注册表启用方式分别给出 challenge，仅单一无效 Bearer 附 `invalid_token`；Bearer 403 只有 Bearer `insufficient_scope`，Basic 403 与所有 503 无 challenge。
+
+scope 大小写敏感，ASCII 单空格分隔，非空项字符为 RFC 6749 `%x21 / %x23-5B / %x5D-7E`；首尾/连续空格、tab、引号、反斜杠、非 ASCII 均非法。重复项去重，合法未知项忽略，无通配符。校验顺序为公共凭据/profile、客户端登记、方法开关、机器主体、scope 语法及权限：未知客户端即使 scope 非法仍为 403，已登记客户端主体错误且缺 scope 仍为 401。
+
 覆盖登记使用明确的 service surface、`sdkApplicable=false` 和真实 Go 顶层协议测试引用；不新增服务 SDK。消费者/管理面继续强制 SDK 方法、模型与测试链接，未知 surface 即使由动态文档提供也拒绝。
 
 ## 客户端需要区分的响应

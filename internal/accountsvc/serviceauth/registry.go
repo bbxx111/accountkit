@@ -4,21 +4,25 @@ import (
 	"crypto/sha256"
 	"errors"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/bbxx111/accountkit/internal/accountsvc/basicclients"
 )
 
 // ClientConfig declares one service identity and its shared authorization policy.
 type ClientConfig struct {
-	ID           string
-	AuthMethods  []string
-	Permissions  []string
-	BasicSecrets []string
+	ID             string
+	AuthMethods    []string
+	Permissions    []string
+	BasicSecrets   []string
+	BearerSubjects []string
 }
 
 type registeredClient struct {
 	methods     map[string]bool
 	permissions map[string]bool
+	subjects    map[string]bool
 }
 
 // Registry is an immutable snapshot of service identities. It retains only hashed secrets.
@@ -46,7 +50,7 @@ func NewRegistry(clients []ClientConfig) (*Registry, error) {
 		if _, exists := r.clients[cfg.ID]; exists {
 			return nil, errors.New("serviceauth: duplicate client ID")
 		}
-		c := registeredClient{methods: map[string]bool{}, permissions: map[string]bool{}}
+		c := registeredClient{methods: map[string]bool{}, permissions: map[string]bool{}, subjects: map[string]bool{}}
 		if len(cfg.AuthMethods) == 0 {
 			return nil, errors.New("serviceauth: authentication methods are required")
 		}
@@ -82,6 +86,19 @@ func NewRegistry(clients []ClientConfig) (*Registry, error) {
 		} else if len(cfg.BasicSecrets) > 0 {
 			return nil, errors.New("serviceauth: Basic secrets require the Basic method")
 		}
+		if c.methods[MethodBearer] {
+			if len(cfg.BearerSubjects) == 0 {
+				return nil, errors.New("serviceauth: Bearer subjects are required")
+			}
+			for _, subject := range cfg.BearerSubjects {
+				if !ValidBearerSubject(subject) || c.subjects[subject] {
+					return nil, errors.New("serviceauth: invalid or duplicate Bearer subject")
+				}
+				c.subjects[subject] = true
+			}
+		} else if len(cfg.BearerSubjects) > 0 {
+			return nil, errors.New("serviceauth: Bearer subjects require the Bearer method")
+		}
 		r.bearer = r.bearer || c.methods[MethodBearer]
 		r.clients[cfg.ID] = c
 	}
@@ -93,6 +110,11 @@ func NewRegistry(clients []ClientConfig) (*Registry, error) {
 		}
 	}
 	return r, nil
+}
+
+// ValidBearerSubject validates an exact provider subject without normalizing it.
+func ValidBearerSubject(subject string) bool {
+	return len(subject) <= 256 && utf8.ValidString(subject) && strings.TrimSpace(subject) != "" && strings.IndexFunc(subject, unicode.IsControl) < 0
 }
 
 // HasPermission reports whether any registered client has the capability.

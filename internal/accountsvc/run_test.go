@@ -35,7 +35,7 @@ func TestApplicationMigrateWithoutAuthenticationDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("migration construction requires runtime authentication dependencies: %v", err)
 	}
-	if app.migrate == nil || app.start != nil || app.initAdmin != nil || app.endUser != nil || app.admin != nil || app.introspect != nil {
+	if app.migrate == nil || app.start != nil || app.endUser != nil || app.admin != nil || app.introspect != nil {
 		t.Fatal("migration constructed authentication runtime")
 	}
 }
@@ -241,7 +241,7 @@ func TestCommandParsing(t *testing.T) {
 }
 
 func TestRuntimeStartupOrderAndFailureCleanup(t *testing.T) {
-	for _, failure := range []string{"", "open", "new", "migrate", "admin", "listen", "after listen", "listener stopped"} {
+	for _, failure := range []string{"", "open", "new", "migrate", "listen", "after listen", "listener stopped"} {
 		t.Run(failure, func(t *testing.T) {
 			ctx, stop := context.WithCancel(context.Background())
 			defer stop()
@@ -256,7 +256,7 @@ func TestRuntimeStartupOrderAndFailureCleanup(t *testing.T) {
 			}
 			deps := &dependencies{databasePing: func(context.Context) error { return nil }, redisPing: func(context.Context) error { return nil }, closeRedis: func() error { trace.add("redis close"); return nil }, closePool: func() { trace.add("pool close") }}
 			var first net.Listener
-			app := &application{migrate: func(context.Context) error { return fail("migrate") }, initAdmin: func(context.Context) error { return fail("admin") }, start: func(c context.Context) {
+			app := &application{migrate: func(context.Context) error { return fail("migrate") }, start: func(c context.Context) {
 				serviceCtx = c
 				trace.add("start")
 				if failure == "listener stopped" {
@@ -314,12 +314,10 @@ func TestRuntimeStartupOrderAndFailureCleanup(t *testing.T) {
 				if failure != "new" {
 					want = append(want, "migrate")
 					if failure != "migrate" {
-						want = append(want, "admin")
-						if failure != "admin" {
-							want = append(want, "listen")
-							if failure != "listen" && failure != "after listen" {
-								want = append(want, "start")
-							}
+
+						want = append(want, "listen")
+						if failure != "listen" && failure != "after listen" {
+							want = append(want, "start")
 						}
 					}
 					want = append(want, "library close")
@@ -348,7 +346,7 @@ func TestMigrateDoesNotInitializeServiceOrStartWorkers(t *testing.T) {
 		},
 		newApp: func(cfg Config, d *dependencies, l *slog.Logger) (*application, error) {
 			trace.add("new")
-			return &application{migrate: func(context.Context) error { trace.add("migrate"); return nil }, close: func() { trace.add("library") }, initAdmin: func(context.Context) error { t.Error("migrate initialized admin"); return nil }, start: func(context.Context) { t.Error("migrate started workers") }}, nil
+			return &application{migrate: func(context.Context) error { trace.add("migrate"); return nil }, close: func() { trace.add("library") }, start: func(context.Context) { t.Error("migrate started workers") }}, nil
 		},
 		listen: func(context.Context, string) (net.Listener, error) {
 			t.Error("migrate listened")

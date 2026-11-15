@@ -19,7 +19,7 @@ func bearerFeed(t *testing.T, p *oidcjwttest.Provider, basic bool, feed *fakeFee
 	if err != nil {
 		t.Fatal(err)
 	}
-	clients := []serviceauth.ClientConfig{{ID: "purge-client", AuthMethods: []string{"bearer"}, Permissions: []string{"purged_users.read"}}, {ID: "intro-client", AuthMethods: []string{"bearer"}, Permissions: []string{"tokens.introspect"}}}
+	clients := []serviceauth.ClientConfig{{ID: "purge-client", AuthMethods: []string{"bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"purged_users.read"}}, {ID: "intro-client", AuthMethods: []string{"bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"tokens.introspect"}}}
 	if basic {
 		clients = append(clients, serviceauth.ClientConfig{ID: "ai-food", AuthMethods: []string{"basic"}, Permissions: []string{"purged_users.read"}, BasicSecrets: []string{secret(1)}})
 	}
@@ -117,5 +117,36 @@ func TestPurgeFeedNotConfiguredWithoutAnyMethod(t *testing.T) {
 	}
 	if w := getWith(h); w.Code != 503 || reason(t, w) != "UNAVAILABLE/PURGE_FEED_NOT_CONFIGURED" || feed.calls != 0 {
 		t.Fatalf("not configured: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestPurgeFeedBearerScopeAndSubject(t *testing.T) {
+	p := oidcjwttest.New(t)
+	feed := &fakeFeed{records: records(1)}
+	h := bearerFeed(t, p, false, feed)
+	for _, tc := range []struct {
+		name   string
+		want   int
+		reason string
+	}{{"missing scope", 403, "PERMISSION_DENIED/CLIENT_NOT_AUTHORIZED"}, {"wrong subject", 401, "UNAUTHENTICATED/TOKEN_INVALID"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := p.Claims(time.Now(), "purge-client")
+			if tc.name == "missing scope" {
+				delete(c, "scope")
+			} else {
+				c["sub"] = "human-admin"
+			}
+			w := getWith(h, "Bearer "+p.Token(c, "initial"))
+			if w.Code != tc.want || reason(t, w) != tc.reason || feed.calls != 0 || w.Header().Get("Cache-Control") != "no-store" {
+				t.Fatalf("status=%d calls=%d body=%s", w.Code, feed.calls, w.Body)
+			}
+			want := `Bearer realm="accountsvc-purge-feed", error="insufficient_scope"`
+			if tc.want == 401 {
+				want = `Bearer realm="accountsvc-purge-feed", error="invalid_token"`
+			}
+			if w.Header().Get("WWW-Authenticate") != want {
+				t.Fatal(w.Header())
+			}
+		})
 	}
 }

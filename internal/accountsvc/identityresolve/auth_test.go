@@ -22,7 +22,7 @@ func TestIdentityResolveBearerAndBasicActor(t *testing.T) {
 		t.Fatal(err)
 	}
 	secret := "c3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3M="
-	registry, err := serviceauth.NewRegistry([]serviceauth.ClientConfig{{ID: "resolver", AuthMethods: []string{"basic", "bearer"}, Permissions: []string{"identities.resolve"}, BasicSecrets: []string{secret}}, {ID: "disabled", AuthMethods: []string{"basic"}, Permissions: []string{"identities.resolve"}, BasicSecrets: []string{"cnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnI="}}})
+	registry, err := serviceauth.NewRegistry([]serviceauth.ClientConfig{{ID: "resolver", AuthMethods: []string{"basic", "bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"identities.resolve"}, BasicSecrets: []string{secret}}, {ID: "disabled", AuthMethods: []string{"basic"}, Permissions: []string{"identities.resolve"}, BasicSecrets: []string{"cnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnI="}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,5 +79,55 @@ func TestIdentityResolveBearerAndBasicActor(t *testing.T) {
 	h2.ServeHTTP(w, r)
 	if w.Code != 503 || w.Header().Get("WWW-Authenticate") != "" {
 		t.Fatal(w.Code, w.Header())
+	}
+}
+
+func TestIdentityResolveBearerScopeAndSubject(t *testing.T) {
+	p := oidcjwttest.New(t)
+	v, err := oidcjwt.New(p.URL(), oidcjwttest.Audience, oidcjwt.Options{HTTPClient: p.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer v.Close()
+	registry, err := serviceauth.NewRegistry([]serviceauth.ClientConfig{{ID: "resolver", AuthMethods: []string{"bearer"}, BearerSubjects: []string{"machine"}, Permissions: []string{"identities.resolve"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth, err := serviceauth.New(serviceauth.Config{Realm: Realm, Registry: registry, RequiredPermission: "identities.resolve", BearerVerifier: v})
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	h, err := NewWithAuthenticator(auth, func(context.Context, user.ResolveIdentityInput) (user.ResolvedIdentity, error) {
+		calls++
+		return user.ResolvedIdentity{}, nil
+	}, "ns", func(*http.Request) string { return "trusted" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name              string
+		want              int
+		reason, challenge string
+	}{{"missing scope", 403, "CLIENT_NOT_AUTHORIZED", "insufficient_scope"}, {"wrong subject", 401, "INVALID_CLIENT", "invalid_token"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := p.Claims(time.Now(), "resolver")
+			if tc.name == "missing scope" {
+				delete(c, "scope")
+			} else {
+				c["sub"] = "human-admin"
+			}
+			r := httptest.NewRequest("POST", "/v1/identities:resolve", strings.NewReader(`{"kind":"EMAIL","subject":"a@example.test"}`))
+			r.Header.Set("Content-Type", "application/json")
+			r.Header.Set("Authorization", "Bearer "+p.Token(c, "initial"))
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			if w.Code != tc.want || calls != 0 || w.Header().Get("Cache-Control") != "no-store" || !strings.Contains(w.Body.String(), tc.reason) {
+				t.Fatalf("status=%d calls=%d body=%s", w.Code, calls, w.Body)
+			}
+			if w.Header().Get("WWW-Authenticate") != `Bearer realm="accountsvc-identity-resolution", error="`+tc.challenge+`"` {
+				t.Fatal(w.Header())
+			}
+		})
 	}
 }

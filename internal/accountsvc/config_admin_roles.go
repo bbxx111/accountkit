@@ -12,7 +12,7 @@ const (
 	adminRolePrefix           = envPrefix + "ADMIN_ROLE_"
 	adminRoleBindingsVariable = adminRolePrefix + "BINDINGS"
 	adminRoleNameField        = "NAME"
-	adminRolePermissionsField = "PERMISSIONS"
+	adminRolePermissionsField = envPermissions
 )
 
 func adminRoleVariable(alias, field string) string {

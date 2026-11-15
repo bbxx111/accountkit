@@ -72,25 +72,25 @@ func (q *QQ) Verify(ctx context.Context, credential json.RawMessage) (Identity, 
 	if ctx.Err() != nil {
 		return Identity{}, ctx.Err()
 	}
-	query := url.Values{"access_token": {c.AccessToken}, "fmt": {"json"}}
+	query := url.Values{qqAccessToken: {c.AccessToken}, qqFmt: {qqJson}}
 	if q.config.subjectMode == QQSubjectModeUnionID {
 		// 未开通 UnionID 时上游整次返回 100048，OPENID 部署不能因此失败。
-		query.Set("unionid", "1")
+		query.Set(qqUnionid, "1")
 	}
-	me, err := q.get(ctx, "/oauth2.0/me", query, 10*time.Second)
+	me, err := q.get(ctx, qqOauth20Me, query, 10*time.Second)
 	if err != nil {
 		return Identity{}, err
 	}
-	if raw, failed := me["error"]; failed {
+	if raw, failed := me[qqError]; failed {
 		code, err := strconv.ParseInt(string(raw), 10, 64)
 		if err != nil {
 			return Identity{}, qqFailure(ErrUnavailable, "error structure")
 		}
 		return Identity{}, qqMeError(code)
 	}
-	client, clientErr := alipayString(me, "client_id")
-	open, openErr := alipayString(me, "openid")
-	union, unionErr := alipayString(me, "unionid")
+	client, clientErr := alipayString(me, qqClientId)
+	open, openErr := alipayString(me, qqOpenid)
+	union, unionErr := alipayString(me, qqUnionid)
 	if clientErr != nil || client == "" {
 		return Identity{}, qqFailure(ErrMisconfigured, "identity fields")
 	}
@@ -148,20 +148,20 @@ func qqAvatarURL(raw string) string {
 
 // profile 使用本次令牌查询资料；任何失败都只返回固定阶段错误，由 Verify 记为降级。
 func (q *QQ) profile(ctx context.Context, appID, token, openID string) (string, string, error) {
-	object, err := q.get(ctx, "/user/get_user_info", url.Values{"access_token": {token}, "oauth_consumer_key": {appID}, "openid": {openID}}, 3*time.Second)
+	object, err := q.get(ctx, qqUserGetUserInfo, url.Values{qqAccessToken: {token}, qqOauthConsumerKey: {appID}, qqOpenid: {openID}}, 3*time.Second)
 	if err != nil {
 		return "", "", err
 	}
-	ret, ok := object["ret"]
+	ret, ok := object[qqRet]
 	if !ok || string(ret) != "0" {
 		return "", "", qqFailure(ErrUnavailable, "profile result")
 	}
-	if lost, ok := object["is_lost"]; ok && string(lost) != "0" {
+	if lost, ok := object[qqIsLost]; ok && string(lost) != "0" {
 		return "", "", qqFailure(ErrUnavailable, "profile data lost")
 	}
-	name, nameErr := alipayString(object, "nickname")
-	large, largeErr := alipayString(object, "figureurl_qq_2")
-	small, smallErr := alipayString(object, "figureurl_qq_1")
+	name, nameErr := alipayString(object, qqNickname)
+	large, largeErr := alipayString(object, qqFigureurlQq2)
+	small, smallErr := alipayString(object, qqFigureurlQq1)
 	if nameErr != nil || largeErr != nil || smallErr != nil {
 		return "", "", qqFailure(ErrUnavailable, "profile fields")
 	}

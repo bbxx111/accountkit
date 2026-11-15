@@ -31,6 +31,9 @@ type Lister func(ctx context.Context, after int64, limit int) ([]user.PurgedUser
 // Realm is the protection space named in this interface's challenges.
 const Realm = "accountsvc-purge-feed"
 
+// Endpoint is the stable service authentication observation label.
+const Endpoint = "purged_users"
+
 type handler struct {
 	auth *serviceauth.Authenticator // reports !Enabled() when no caller authentication is configured
 	list Lister
@@ -47,7 +50,7 @@ func New(clients map[string][]string, list Lister) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg := serviceauth.Config{Realm: Realm, Endpoint: "purged_users", Registry: registry, RequiredPermission: serviceauth.PermissionPurgedUsersRead}
+	cfg := serviceauth.Config{Realm: Realm, Endpoint: Endpoint, Registry: registry, RequiredPermission: serviceauth.PermissionPurgedUsersRead}
 	auth, err := serviceauth.New(cfg)
 	if err != nil {
 		return nil, err

@@ -142,12 +142,12 @@ func (w *WeChat) VerifyWeChat(ctx context.Context, appID, code string) (Identity
 	if code == "" {
 		return Identity{}, fmt.Errorf("%w: empty code", ErrInvalidCredential)
 	}
-	q := url.Values{"appid": {appID}, "secret": {secret}, "code": {code}, "grant_type": {"authorization_code"}}
-	path := "/sns/oauth2/access_token"
+	q := url.Values{wechatAppid: {appID}, wechatSecret: {secret}, wechatCode: {code}, wechatGrantType: {wechatAuthorizationCode}}
+	path := wechatSnsOauth2AccessToken
 	if w.miniPrograms[appID] {
-		path = "/sns/jscode2session"
-		q.Del("code")
-		q.Set("js_code", code)
+		path = wechatSnsJscode2session
+		q.Del(wechatCode)
+		q.Set(wechatJsCode, code)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, w.base+path+"?"+q.Encode(), nil)
 	if err != nil {

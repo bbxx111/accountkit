@@ -59,13 +59,13 @@ func releasedHistory(root string) ([]string, error) {
 	return refs, nil
 }
 func releaseMigrations(root, ref string) (map[string][]byte, error) {
-	paths, err := git(root, "ls-tree", "-r", "--name-only", ref, "--", "migrations")
+	paths, err := git(root, "ls-tree", "-r", "--name-only", ref, "--", migrationMigrations)
 	if err != nil {
 		return nil, err
 	}
 	out := map[string][]byte{}
 	for _, path := range strings.Fields(string(paths)) {
-		if filepath.ToSlash(filepath.Dir(path)) != "migrations" || !strings.HasSuffix(path, ".sql") {
+		if filepath.ToSlash(filepath.Dir(path)) != migrationMigrations || !strings.HasSuffix(path, migrationSql) {
 			continue
 		}
 		data, err := git(root, "show", ref+":"+path)
@@ -87,7 +87,7 @@ func checkWithInitial(root string, initialHashes map[string]string) error {
 	}
 	baseline := map[string][]byte{}
 	for name, want := range initialHashes {
-		got, err := os.ReadFile(filepath.Join(root, "migrations", name))
+		got, err := os.ReadFile(filepath.Join(root, migrationMigrations, name))
 		if err != nil {
 			return err
 		}
@@ -172,7 +172,7 @@ func checkWithInitial(root string, initialHashes map[string]string) error {
 		return err
 	}
 	for name, want := range baseline {
-		got, err := os.ReadFile(filepath.Join(root, "migrations", name))
+		got, err := os.ReadFile(filepath.Join(root, migrationMigrations, name))
 		if err != nil {
 			return fmt.Errorf("historical migration missing: %s", name)
 		}
@@ -180,14 +180,14 @@ func checkWithInitial(root string, initialHashes map[string]string) error {
 			return fmt.Errorf("historical migration changed: %s", name)
 		}
 	}
-	entries, err := os.ReadDir(filepath.Join(root, "migrations"))
+	entries, err := os.ReadDir(filepath.Join(root, migrationMigrations))
 	if err != nil {
 		return err
 	}
 	current := map[string][]byte{}
 	for _, e := range entries {
 		name := e.Name()
-		if e.IsDir() || !strings.HasSuffix(name, ".sql") {
+		if e.IsDir() || !strings.HasSuffix(name, migrationSql) {
 			continue
 		}
 		current[name] = nil

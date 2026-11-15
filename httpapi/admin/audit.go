@@ -151,11 +151,11 @@ func (h *Handler) listAuditEvents(w http.ResponseWriter, r *http.Request) {
 		apierror.Write(w, apierror.New(apierror.StatusUnavailable, reasonAuditQueryUnavailable, "audit query unavailable"))
 	}
 	if err != nil {
-		unavailable("reader_error")
+		unavailable(auditRejectReaderError)
 		return
 	}
 	if len(page.Records) > query.Limit {
-		unavailable("page_limit")
+		unavailable(auditRejectPageLimit)
 		return
 	}
 	projections := make([]authentication.Input, 0, len(page.Records))
@@ -164,22 +164,22 @@ func (h *Handler) listAuditEvents(w http.ResponseWriter, r *http.Request) {
 	for _, record := range page.Records {
 		frozen, valid := validatedAuditRecord(record)
 		if !valid {
-			unavailable("invalid_record")
+			unavailable(auditRejectInvalidRecord)
 			return
 		}
 		if seen[frozen.ID] || (previous != nil && !auditAfter(frozen, *previous)) {
-			unavailable("page_order")
+			unavailable(auditRejectPageOrder)
 			return
 		}
 		seen[frozen.ID] = true
 		previous = &audit.EventCursor{Time: frozen.OccurTime, ID: frozen.ID}
 		if !h.auditInScope(r.Context(), frozen, query, page.FlowLinks) {
-			unavailable("record_scope")
+			unavailable(auditRejectRecordScope)
 			return
 		}
 		projection, err := authentication.Projection(frozen)
 		if err != nil || !auditProjectionInNamespace(frozen, projection, query.Resource.Namespace) {
-			unavailable("authentication_projection")
+			unavailable(auditRejectAuthenticationProjection)
 			return
 		}
 		projections = append(projections, projection)

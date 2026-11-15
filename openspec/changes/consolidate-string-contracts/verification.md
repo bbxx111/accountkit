@@ -64,3 +64,35 @@ apply后需按任务记录每阶段实际命令、独立审查、提交和清单
 - 新ForSchema和USER原因helper均有缺符号先红、实现后绿记录；范围go test -count=1及vet通过。审查P2指出Schema五个重复关键字漏收敛，已补私有定义并通过profileattributes回归，定点复核关闭，当前spec/quality通过。
 - 复用已锁定pgerrcode后，仅将相同版本从indirect移入直接require块；go.sum、其他版本及prometheus/client_model基线标记未改。只读tidy -diff另显示既有格式/元数据差异，未盲目应用；go build ./...通过。
 - L021的google/facebook/oidc nonce/label/fingerprint、L023根任务名、L033根审计装配仍待后续接入。实际数据库、race、恢复及JSON存储往返待综合验证，3.2–3.5/5.2等依其完整要求保持未勾选；3.1已完成。
+
+## 阶段：配置、第三方、发送器、示例与测试装配
+
+- 根门面与accountsvc接入HTTP/JOSE、维护Task、AuditField与审计默认帮助函数；六个IdP默认endpoint由internal/idpdefaults共同拥有，保留根配置填充和验证时机。各提供方请求/响应、签名、nonce与诊断label分别拥有定义；SMTP最小增加三个无类型TLS模式常量，现有字段仍为string。配置域各自集中环境名/后缀，不扩展公开环境项。
+- accountsvc空schema审计namespace保留旧`accountkit//resources`，未借默认函数变为accountkit/account/resources。readiness新增仅测试的policy_seed_marker元数据，Dart输出和shell最后提取仍使用原标记；无新配置或生产SDK依赖，设计D6记录了该接线细化。
+- 新默认endpoint、namespace、readiness helper均有缺少符号先红和实现后绿记录。全仓Go单元、build、范围vet通过，原始task5-suite-final.log/task5-build.log/task5-vet-final.log；此时无数据库的skip仍不算集成结果。
+- Task 5：fix round 1/5。审查P2指出QQ/微博AppID虽同正则也必须各自拥有，已恢复根与idp的独立规则；删除七个根库未消费的服务配置常量。核对发现L041六类管理审计拒绝分类尚未处理，已补私有定义并更正原实施报告。`go test -count=1 . ./user/idp ./httpapi/admin`与同范围vet通过，task5-fix1-test.log/task5-fix1-vet.log；独立定点复核全部ADDRESSED，spec/quality通过，无开放finding。
+- 配置脚本曾误造成config.go重复片段，两次整文件覆盖被自动审批拒绝；已保存损伤与候选差异，仅用锚定patch修复本任务损伤，未用HEAD覆盖工作树。最终测试/构建及独立审查均在修复后执行，审查确认未残留重复或丢分支。
+
+## 综合验证：SDK、工具与独立消费
+
+- 工具链精确为Node24.21.0、pnpm11.24.0、Flutter3.47.4/Dart3.13.3；toolchain-actual.json记录实际输出。Windows原toolchain CLI的spawnSync pnpm无法解析.cmd；使用原validateToolchain函数对实际Node/pnpm.cjs/Flutter machine输出检查通过，未修改或放宽检查器，不宣称原CLI入口通过。
+- `verify-sdk-consumers --sdk all --platform none`通过：两包均通过固定本地Git子目录独立安装、分析/构建与消费测试（sdk-consumers-none.log）。Flutter额外`--sdk flutter --platform android`通过并生成APK（sdk-consumers-android-same-drive.log）；SDK自身77项单元和TS56项单元的精确工具结果见前述阶段。
+- Android首次尝试遇镜像下载截断，改用官方Flutter存储后下载完整；随后Gradle因D盘pub缓存与C盘临时项目的Kotlin增量路径冲突失败。仅为验证进程设置C盘任务专用PUB_CACHE后构建通过，未改SDK/锁文件/工具代码或伪造缓存状态。
+- live-sdk.log：真实accountsvc的TS管理SDK全部11操作测试通过；Flutter真实服务与受控IdP共3项测试、嵌入策略演进NeedsBinding与资料合并1项通过。策略seed通过新readiness元数据产生旧标记；重启前后复用专用schema，结束只停止本次启动的fixture进程。
+- Node工具最终Windows33项中32通过、1项POSIX专属skip（final-node-windows.log）；Linux33/33通过（final-node-linux-path.log），含忽略SIGTERM的取消、临时Git/路径安全、seed元数据拒绝与最终旧标记。首次Linux运行因未把已安装Node加入子进程PATH失败，补正确进程PATH后全通过，未修改测试来放行。
+- `node scripts/check-openapi.cjs`、check-sdk-coverage.mjs通过：24/11操作及36项覆盖保持；两包check-sdk-release以各自v1.0.0候选tag和--metadata-only通过，仅检查元数据，未创建tag或宣称发布就绪。此前误用不存在的check-openapi.mjs失败，已改用仓库实际.cjs入口重跑。
+- 最终Go独立消费快照`838a35a969d5ad1bcd9959d2daac26844c6bff25`，本地proxy版本`v1.1.1-0.20261115200649-838a35a969d5`：旧角色宿主与新权限宿主均GOWORK=off、无replace地tidy/build/run通过（final-consumers/verification.json）。快照包含当时未提交实现，不依赖工作树或源分支tag。
+- 当前主机为Windows，缺macOS/Xcode26.1.1；已向用户异步询问可用环境，尚无答复。iOS原生构建未执行，6.3/10.2及要求全门禁闭环的10.3保持未完成，不以Android或单元结果替代。
+
+## 综合验证：Go、数据库与恢复
+
+- 任务专用PostgreSQL17/Redis，Linux验证容器使用本地文件系统源码副本及完整Git历史；未操作现有产品容器。`GOWORK=off CGO_ENABLED=1 bash scripts/verify.sh`通过：独立build/vet、全仓race、必需测试登记、迁移历史与真实pg_dump/pg_restore三阶段均通过，客户端为PostgreSQL17.11。原始记录在`.test-output/string-contracts/linux-evidence/`，full-linux.log和recovery.BMG2XC保留原始恢复材料。
+- 全仓race运行1300个顶层测试，1297通过、3个skip：TestRecoveryFixture普通套件预期skip，恢复脚本随后强制完成seed/verify/source-unchanged；Compose用例因镜像缺Docker CLI跳过，已在Windows具备Docker CLI的宿主补验全部16子例通过（compose-windows.log）；不可读文件用例因容器root能读而跳过，后续以非root补验。没有把这些skip统计为通过；无测试的包级skip不代表缺失集成依赖。
+- `bash scripts/verify-accountsvc.sh`通过真实进程、TLS、信号和数据库/race门禁，277个顶层测试中275通过，另外两项为同一Compose与root不可读文件条件skip。带integration标签的Go fixture11个顶层测试全部通过，无skip（sdk-fixture-linux.jsonl）。12个新增必需顶层测试已纳入主登记，其中服务新增测试也纳入对应服务登记，未删旧条目。
+- 全分支独立审查覆盖78组，唯一P2为L009的metrics与外层reveal缓存两处遗漏。Final fix round 1/5（Task5累计修复轮2）：已复用SetNoStore，保留原条件、时机且不增加Pragma；范围测试/vet通过，定点复核ADDRESSED，当前spec/quality通过、无开放源码finding。原始报告final-review.md及task5-fix2-*.log。
+- 上述全仓源码指纹与当前工作树只差最后这两处等价接线（metrics.go/run.go），其余633个Go文件一致；正在对最终两文件补全仓build/vet和完整accountsvc真实进程/race门禁。恢复与其他领域源码无变化，无需重建已使用的恢复源/目标库或重复清空数据。
+- sqlc1.31.1的check-generated.sh通过（generated-check.log），冻结生产SQL及哈希未变；OpenSpec严格校验47/47通过。清单78项均有实际符号/文件/保留说明，原始78组值及367处基线引用未改；JSON、任务映射、文档链接、gofmt/LF/diff检查通过，综合验收仍保留明确环境缺口。
+
+## 本地阶段提交
+
+已提交`5000620`详细计划、`932ed5c`管理SDK与工具、`93bea6c`HTTP/JOSE、`a26a363`Flutter、`abfcfdd`领域/审计/存储。配置与测试装配阶段经上述修复/复核后另作本地提交；全仓结果和清单最终闭环单独提交。所有提交均在任务分支，不推送、合并、归档或发布。

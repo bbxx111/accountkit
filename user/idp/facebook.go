@@ -15,13 +15,14 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/idpdefaults"
 	"github.com/bbxx111/accountkit/observability"
 )
 
 const (
 	facebookIssuer       = "https://www.facebook.com"
-	facebookJWKSDefault  = "https://www.facebook.com/.well-known/oauth/openid/jwks/"
-	facebookGraphDefault = "https://graph.facebook.com"
+	facebookJWKSDefault  = idpdefaults.FacebookJWKS
+	facebookGraphDefault = idpdefaults.FacebookGraphAPI
 	// FacebookGraphAPIVersionDefault 是固定的 Graph API 版本；升级属于兼容变更，须写入发布说明。
 	FacebookGraphAPIVersionDefault = "v26.0"
 	maxFacebookBody                = 64 << 10
@@ -86,11 +87,11 @@ func NewFacebook(o FacebookOptions) *Facebook {
 		graph: strings.TrimRight(o.GraphAPIBaseURL, "/"), jwksURL: o.JWKSURL,
 		hc: &noRedirect, logger: o.Logger, now: o.Now,
 		v: &idTokenVerifier{
-			kind: enum.IdentityFacebook, label: "facebook", issuers: []string{facebookIssuer},
+			kind: enum.IdentityFacebook, label: providerLabelFacebook, issuers: []string{facebookIssuer},
 			clientIDs: clientIDSet(clientIDs),
-			jwks:      newJWKSCache("facebook", o.JWKSURL, o.HTTP, o.Logger, recorder, observability.DegradationFacebookCachedKeyFallback, o.Now),
-			nonces:    o.Nonces, nonceScope: "facebook", nonceTTL: o.NonceTTL, now: o.Now,
-			nameClaims: []string{"name"}, pictureClaims: []string{"picture"}, hintEmailUnverified: true,
+			jwks:      newJWKSCache(providerLabelFacebook, o.JWKSURL, o.HTTP, o.Logger, recorder, observability.DegradationFacebookCachedKeyFallback, o.Now),
+			nonces:    o.Nonces, nonceScope: nonceScopeFacebook, nonceTTL: o.NonceTTL, now: o.Now,
+			nameClaims: []string{profileClaimName}, pictureClaims: []string{profileClaimPicture}, hintEmailUnverified: true,
 		},
 	}
 }
@@ -213,7 +214,7 @@ func (f *Facebook) VerifyClassic(ctx context.Context, accessToken string) (Ident
 	}
 	appToken := f.appID + "|" + f.secret
 	var dt debugTokenResponse
-	if err := f.graphGet(ctx, "/debug_token", url.Values{"input_token": {accessToken}, "access_token": {appToken}, "appsecret_proof": {f.proof(appToken)}}, &dt); err != nil {
+	if err := f.graphGet(ctx, facebookDebugToken, url.Values{facebookInputToken: {accessToken}, facebookAccessToken: {appToken}, facebookAppsecretProof: {f.proof(appToken)}}, &dt); err != nil {
 		return Identity{}, err
 	}
 	if dt.Error != nil {
@@ -227,11 +228,11 @@ func (f *Facebook) VerifyClassic(ctx context.Context, accessToken string) (Ident
 	if d.AppID != "" && d.AppID != f.appID {
 		return Identity{}, fmt.Errorf("%w: facebook token issued for another app", ErrAppNotAllowed)
 	}
-	if !d.IsValid || d.Type != "USER" || d.UserID == "" || d.AppID == "" {
+	if !d.IsValid || d.Type != facebookUSER || d.UserID == "" || d.AppID == "" {
 		return Identity{}, fmt.Errorf("%w: facebook token invalid", ErrInvalidCredential)
 	}
 	var me meResponse
-	if err := f.graphGet(ctx, "/me", url.Values{"fields": {"id,name,email,picture"}, "access_token": {accessToken}, "appsecret_proof": {f.proof(accessToken)}}, &me); err != nil {
+	if err := f.graphGet(ctx, facebookMe, url.Values{facebookFields: {facebookIdNameEmailPicture}, facebookAccessToken: {accessToken}, facebookAppsecretProof: {f.proof(accessToken)}}, &me); err != nil {
 		return Identity{}, err
 	}
 	if me.Error != nil {

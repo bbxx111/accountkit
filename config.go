@@ -14,6 +14,8 @@ import (
 
 	"github.com/bbxx111/accountkit/audit/authentication"
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/auditconfig"
+	"github.com/bbxx111/accountkit/internal/idpdefaults"
 	"github.com/bbxx111/accountkit/migrations"
 	"github.com/bbxx111/accountkit/pii"
 	"github.com/bbxx111/accountkit/tokens"
@@ -247,10 +249,10 @@ func (c *Config) applyDefaults() {
 		c.KeyPrefix = "auth:"
 	}
 	if c.AuditSource == "" {
-		c.AuditSource = "accountkit/" + c.Schema
+		c.AuditSource = auditconfig.ForSchema(c.Schema).Source
 	}
 	if c.AuditNamespace == "" {
-		c.AuditNamespace = "accountkit/" + c.Schema + "/resources"
+		c.AuditNamespace = auditconfig.ForSchema(c.Schema).Namespace
 	}
 	def(&c.AccessTokenTTL, 15*time.Minute)
 	def(&c.RefreshTokenTTL, 720*time.Hour)
@@ -281,18 +283,18 @@ func (c *Config) applyDefaults() {
 		c.AlipaySubjectMode = AlipaySubjectModeUnionID
 	}
 	if c.AlipayGatewayURL == "" {
-		c.AlipayGatewayURL = "https://openapi.alipay.com/gateway.do"
+		c.AlipayGatewayURL = idpdefaults.AlipayGateway
 	}
 	c.QQAppIDs = slices.Clone(c.QQAppIDs)
 	if c.QQSubjectMode == "" {
 		c.QQSubjectMode = QQSubjectModeUnionID
 	}
 	if c.QQAPIBaseURL == "" {
-		c.QQAPIBaseURL = "https://graph.qq.com"
+		c.QQAPIBaseURL = idpdefaults.QQAPI
 	}
 	c.WeiboAppIDs = slices.Clone(c.WeiboAppIDs)
 	if c.WeiboAPIBaseURL == "" {
-		c.WeiboAPIBaseURL = "https://api.weibo.com"
+		c.WeiboAPIBaseURL = idpdefaults.WeiboAPI
 	}
 	def(&c.AppleNonceTTL, 10*time.Minute)
 	def(&c.GoogleNonceTTL, 10*time.Minute)
@@ -301,10 +303,10 @@ func (c *Config) applyDefaults() {
 		c.FacebookGraphAPIVersion = idp.FacebookGraphAPIVersionDefault
 	}
 	if c.FacebookGraphAPIBaseURL == "" {
-		c.FacebookGraphAPIBaseURL = "https://graph.facebook.com"
+		c.FacebookGraphAPIBaseURL = idpdefaults.FacebookGraphAPI
 	}
 	if c.FacebookJWKSURL == "" {
-		c.FacebookJWKSURL = "https://www.facebook.com/.well-known/oauth/openid/jwks/"
+		c.FacebookJWKSURL = idpdefaults.FacebookJWKS
 	}
 	// 复制后再填默认值，避免写回宿主持有的切片。
 	c.OIDCProviders = slices.Clone(c.OIDCProviders)
@@ -321,7 +323,7 @@ func (c *Config) applyDefaults() {
 		c.AppleJWKSURL = "https://appleid.apple.com/auth/keys"
 	}
 	if c.GoogleJWKSURL == "" {
-		c.GoogleJWKSURL = "https://www.googleapis.com/oauth2/v3/certs"
+		c.GoogleJWKSURL = idpdefaults.GoogleJWKS
 	}
 	def(&c.MaintenanceInterval, 5*time.Minute)
 }
@@ -673,10 +675,10 @@ func ConfigFromEnv(prefix string) (Config, error) {
 			}
 		}
 	}
-	if raw, ok := os.LookupEnv(prefix + "WECHAT_SUBJECT_MODE"); ok {
+	if raw, ok := os.LookupEnv(prefix + configEnvWechatSubjectMode); ok {
 		c.WeChatSubjectMode = WeChatSubjectMode(raw)
 		if c.WeChatSubjectMode != WeChatSubjectModeUnionID && c.WeChatSubjectMode != WeChatSubjectModeOpenID {
-			fail("WECHAT_SUBJECT_MODE", errors.New("must be UNIONID or OPENID"))
+			fail(configEnvWechatSubjectMode, errors.New("must be UNIONID or OPENID"))
 		}
 	}
 	if s := str("APPLE_BUNDLE_IDS"); s != "" {
@@ -704,39 +706,39 @@ func ConfigFromEnv(prefix string) (Config, error) {
 	dur("FACEBOOK_NONCE_TTL", &c.FacebookNonceTTL)
 	c.FacebookGraphAPIBaseURL = str("FACEBOOK_GRAPH_API_BASE_URL")
 	c.FacebookJWKSURL = str("FACEBOOK_JWKS_URL")
-	if raw, ok := os.LookupEnv(prefix + "ALIPAY_SUBJECT_MODE"); ok {
+	if raw, ok := os.LookupEnv(prefix + configEnvAlipaySubjectMode); ok {
 		c.AlipaySubjectMode = AlipaySubjectMode(raw)
 		if c.AlipaySubjectMode != AlipaySubjectModeUnionID && c.AlipaySubjectMode != AlipaySubjectModeOpenID {
-			fail("ALIPAY_SUBJECT_MODE", errors.New("must be UNIONID or OPENID"))
+			fail(configEnvAlipaySubjectMode, errors.New("must be UNIONID or OPENID"))
 		}
 	}
 	c.AlipayGatewayURL = str("ALIPAY_GATEWAY_URL")
-	if raw := str("ALIPAY_APP_IDS"); raw != "" {
+	if raw := str(configEnvAlipayAppIds); raw != "" {
 		seen := map[string]bool{}
 		for _, item := range strings.Split(raw, ",") {
 			appID := strings.TrimSpace(item)
 			if !alipayAppIDPattern.MatchString(appID) || seen[appID] {
-				fail("ALIPAY_APP_IDS", errors.New("entries must be unique 16-digit ASCII AppIDs"))
+				fail(configEnvAlipayAppIds, errors.New("entries must be unique 16-digit ASCII AppIDs"))
 				break
 			}
 			seen[appID] = true
 			base := "ALIPAY_" + appID + "_"
-			c.AlipayApps = append(c.AlipayApps, AlipayApp{AppID: appID, PrivateKey: os.Getenv(prefix + base + "PRIVATE_KEY"), AlipayPublicKey: os.Getenv(prefix + base + "PUBLIC_KEY")})
+			c.AlipayApps = append(c.AlipayApps, AlipayApp{AppID: appID, PrivateKey: os.Getenv(prefix + base + configEnvPrivateKey), AlipayPublicKey: os.Getenv(prefix + base + configEnvPublicKey)})
 		}
 	}
-	if raw, ok := os.LookupEnv(prefix + "QQ_SUBJECT_MODE"); ok {
+	if raw, ok := os.LookupEnv(prefix + configEnvQqSubjectMode); ok {
 		c.QQSubjectMode = QQSubjectMode(raw)
 		if c.QQSubjectMode != QQSubjectModeUnionID && c.QQSubjectMode != QQSubjectModeOpenID {
-			fail("QQ_SUBJECT_MODE", errors.New("must be UNIONID or OPENID"))
+			fail(configEnvQqSubjectMode, errors.New("must be UNIONID or OPENID"))
 		}
 	}
 	c.QQAPIBaseURL = str("QQ_API_BASE_URL")
-	if raw := str("QQ_APP_IDS"); raw != "" {
+	if raw := str(configEnvQqAppIds); raw != "" {
 		seen := map[string]bool{}
 		for _, item := range strings.Split(raw, ",") {
 			appID := strings.TrimSpace(item)
 			if !qqAppIDPattern.MatchString(appID) || seen[appID] {
-				fail("QQ_APP_IDS", errors.New("entries must be unique AppIDs of 1-20 ASCII digits"))
+				fail(configEnvQqAppIds, errors.New("entries must be unique AppIDs of 1-20 ASCII digits"))
 				break
 			}
 			seen[appID] = true
@@ -744,19 +746,19 @@ func ConfigFromEnv(prefix string) (Config, error) {
 		}
 	}
 	c.WeiboAPIBaseURL = str("WEIBO_API_BASE_URL")
-	if raw := str("WEIBO_APP_IDS"); raw != "" {
+	if raw := str(configEnvWeiboAppIds); raw != "" {
 		seen := map[string]bool{}
 		for _, item := range strings.Split(raw, ",") {
 			appID := strings.TrimSpace(item)
 			if !weiboAppIDPattern.MatchString(appID) || seen[appID] {
-				fail("WEIBO_APP_IDS", errors.New("entries must be unique AppKeys of 1-20 ASCII digits"))
+				fail(configEnvWeiboAppIds, errors.New("entries must be unique AppKeys of 1-20 ASCII digits"))
 				break
 			}
 			seen[appID] = true
 			c.WeiboAppIDs = append(c.WeiboAppIDs, appID)
 		}
 	}
-	if s := str("OIDC_PROVIDERS"); s != "" {
+	if s := str(configEnvOidcProviders); s != "" {
 		c.OIDCProviders = oidcProvidersFromEnv(s, str, dur, fail, func(name string) (string, bool) { return os.LookupEnv(prefix + name) })
 	}
 
@@ -812,7 +814,7 @@ func validateOIDCProvider(p OIDCProvider) (string, error) {
 }
 
 // oidcEnvSuffix 把 OIDCProvider 字段映射到 OIDC_<KIND>_ 之后的变量名后缀。
-var oidcEnvSuffix = map[string]string{"Issuer": "ISSUER", "JWKSURL": "JWKS_URL", "ClientIDs": "CLIENT_IDS", "NonceTTL": "NONCE_TTL", "NameClaims": "NAME_CLAIMS", "PictureClaims": "PICTURE_CLAIMS"}
+var oidcEnvSuffix = map[string]string{"Issuer": configEnvIssuer, "JWKSURL": configEnvJwksUrl, "ClientIDs": configEnvClientIds, "NonceTTL": configEnvNonceTtl, "NameClaims": configEnvNameClaims, "PictureClaims": configEnvPictureClaims}
 
 // oidcProvidersFromEnv 解析 OIDC_PROVIDERS 及每个类型的 OIDC_<KIND>_* 变量，错误指出具体变量名。
 func oidcProvidersFromEnv(list string, str func(string) string, dur func(string, *time.Duration), fail func(string, error), lookup func(string) (string, bool)) []OIDCProvider {
@@ -830,7 +832,7 @@ func oidcProvidersFromEnv(list string, str func(string) string, dur func(string,
 	for _, name := range names {
 		kind := enum.IdentityKind(name)
 		if !kind.Valid() || kind.IsBuiltin() || seen[kind] {
-			fail("OIDC_PROVIDERS", errors.New("entries must be unique, non-builtin and match ^[A-Z][A-Z0-9_]{1,31}$"))
+			fail(configEnvOidcProviders, errors.New("entries must be unique, non-builtin and match ^[A-Z][A-Z0-9_]{1,31}$"))
 			return nil
 		}
 		seen[kind] = true
@@ -838,13 +840,13 @@ func oidcProvidersFromEnv(list string, str func(string) string, dur func(string,
 	var providers []OIDCProvider
 	for _, name := range names {
 		kind := enum.IdentityKind(name)
-		base := "OIDC_" + name + "_"
-		p := OIDCProvider{Kind: kind, Issuer: str(base + "ISSUER"), JWKSURL: str(base + "JWKS_URL"), ClientIDs: split(str(base + "CLIENT_IDS"))}
-		dur(base+"NONCE_TTL", &p.NonceTTL)
-		if raw, ok := lookup(base + "NAME_CLAIMS"); ok {
+		base := configEnvOidc + name + "_"
+		p := OIDCProvider{Kind: kind, Issuer: str(base + configEnvIssuer), JWKSURL: str(base + configEnvJwksUrl), ClientIDs: split(str(base + configEnvClientIds))}
+		dur(base+configEnvNonceTtl, &p.NonceTTL)
+		if raw, ok := lookup(base + configEnvNameClaims); ok {
 			p.NameClaims = split(raw)
 		}
-		if raw, ok := lookup(base + "PICTURE_CLAIMS"); ok {
+		if raw, ok := lookup(base + configEnvPictureClaims); ok {
 			p.PictureClaims = split(raw)
 		}
 		if field, err := validateOIDCProvider(p); err != nil {

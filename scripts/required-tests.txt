@@ -1077,3 +1077,16 @@ github.com/bbxx111/accountkit/internal/accountsvc/TestApplicationAdminRevealErro
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationAdminPermissions
 
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationAdminPolicyRestart
+
+github.com/bbxx111/accountkit/internal/accountsvc/TestIdentityAuditNamespacePreservesEmptySchema
+github.com/bbxx111/accountkit/internal/idpdefaults/TestEndpointBytes
+github.com/bbxx111/accountkit/sdks/testsupport/fixture/TestFixtureBaselineMatchesToolVersions
+github.com/bbxx111/accountkit/sdks/testsupport/fixture/TestFixtureReadinessMetadata
+github.com/bbxx111/accountkit/httpapi/internal/resourcename/TestNames
+github.com/bbxx111/accountkit/internal/auditconfig/TestForSchemaContract
+github.com/bbxx111/accountkit/internal/httpcontract/TestChallenges
+github.com/bbxx111/accountkit/internal/httpcontract/TestCachePolicies
+github.com/bbxx111/accountkit/internal/httpcontract/TestRequestID
+github.com/bbxx111/accountkit/user/TestStorageSQLStateClassificationContract
+github.com/bbxx111/accountkit/user/TestFlowAADPersistedContract
+github.com/bbxx111/accountkit/user/TestAuditUserStateReasonContract

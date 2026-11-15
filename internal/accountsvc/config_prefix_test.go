@@ -1,11 +1,13 @@
 package accountsvc
 
 import (
-	"os"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -53,8 +55,6 @@ func TestConfigReadsLibrarySettingsWithServicePrefix(t *testing.T) {
 	}
 }
 
-var serviceEnvReference = regexp.MustCompile(`(?:\benv|defaultEnv|durationEnv)\("([A-Z0-9_]+)"|os\.(?:Getenv|LookupEnv)\("ACCOUNTSVC_([A-Z0-9_]+)"`)
-
 // serviceEnvNames collects the service-only variable suffixes read by accountsvc source files.
 // Library names appear in config.go only in error messages or via envPrefix concatenation,
 // never through these readers.
@@ -65,21 +65,95 @@ func serviceEnvNames(t *testing.T) []string {
 		t.Fatal(err)
 	}
 	seen := map[string]bool{}
+	var sources []*ast.File
+	definitions := map[string]ast.Expr{}
 	for _, file := range files {
 		if strings.HasSuffix(file, "_test.go") {
 			continue
 		}
-		data, err := os.ReadFile(file)
+		source, err := parser.ParseFile(token.NewFileSet(), file, nil, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, m := range serviceEnvReference.FindAllStringSubmatch(string(data), -1) {
-			name := m[1] + m[2]
-			// Prefix literals used for scanning (e.g. "ACCOUNTSVC_SMS_ALIYUN_") end with "_".
-			if name != "" && !strings.HasSuffix(name, "_") {
-				seen[name] = true
+		sources = append(sources, source)
+		ast.Inspect(source, func(node ast.Node) bool {
+			decl, ok := node.(*ast.GenDecl)
+			if !ok || decl.Tok != token.CONST {
+				return true
+			}
+			for _, spec := range decl.Specs {
+				value := spec.(*ast.ValueSpec)
+				for i, name := range value.Names {
+					if i < len(value.Values) {
+						definitions[name.Name] = value.Values[i]
+					}
+				}
+			}
+			return false
+		})
+	}
+	var stringValue func(ast.Expr, map[string]bool) (string, bool)
+	stringValue = func(expr ast.Expr, visiting map[string]bool) (string, bool) {
+		switch expr := expr.(type) {
+		case *ast.BasicLit:
+			if expr.Kind == token.STRING {
+				value, err := strconv.Unquote(expr.Value)
+				return value, err == nil
+			}
+		case *ast.Ident:
+			if !visiting[expr.Name] {
+				visiting[expr.Name] = true
+				defer delete(visiting, expr.Name)
+				return stringValue(definitions[expr.Name], visiting)
+			}
+		case *ast.BinaryExpr:
+			if expr.Op == token.ADD {
+				left, lok := stringValue(expr.X, visiting)
+				right, rok := stringValue(expr.Y, visiting)
+				return left + right, lok && rok
 			}
 		}
+		return "", false
+	}
+	for _, source := range sources {
+		ast.Inspect(source, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok || len(call.Args) == 0 {
+				return true
+			}
+			fullName := false
+			switch fun := call.Fun.(type) {
+			case *ast.Ident:
+				if fun.Name != "env" && fun.Name != "defaultEnv" && fun.Name != "durationEnv" {
+					return true
+				}
+			case *ast.SelectorExpr:
+				pkg, ok := fun.X.(*ast.Ident)
+				if !ok || pkg.Name != "os" || (fun.Sel.Name != "Getenv" && fun.Sel.Name != "LookupEnv") {
+					return true
+				}
+				fullName = true
+			default:
+				return true
+			}
+			// Library error-name lookups deliberately use the caller prefix;
+			// they are not independent service configuration readers.
+			if joined, ok := call.Args[0].(*ast.BinaryExpr); ok {
+				if prefix, ok := joined.X.(*ast.Ident); ok && prefix.Name == "envPrefix" {
+					return true
+				}
+			}
+			name, ok := stringValue(call.Args[0], map[string]bool{})
+			if fullName {
+				var found bool
+				name, found = strings.CutPrefix(name, "ACCOUNTSVC_")
+				ok = ok && found
+			}
+			if ok && name != "" && !strings.HasSuffix(name, "_") {
+				seen[name] = true
+			}
+			return true
+		})
 	}
 	for _, key := range aliyunTemplateKeys {
 		seen["SMS_ALIYUN_"+key.suffix] = true

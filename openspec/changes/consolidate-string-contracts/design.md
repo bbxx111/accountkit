@@ -89,6 +89,8 @@ TS在`src`内部收敛资源格式与安全错误；filter字段用const tuple�
 
 脚本使用工具专用SDK descriptor/方法集合；fixture有自有profile、控制路由、origin变量和标签。生产SDK不依赖这些测试元数据，协议测试继续保留独立预期。跨语言优先从既有readiness/工具元数据消费，不增加新的运行配置、生成器或启动I/O。fixture基线可用本地具名值并由测试对照`tool-versions.json.serviceBaseline`，不新增BASELINE环境变量或包外嵌入依赖。
 
+实施细化：仅测试fixture的既有readiness增加`policy_seed_marker`元数据，由Dart策略seed与shell提取器消费同一标记；stdout仍输出原`SDK_POLICY_SEED_USER_ID=`前缀，独立测试保留该原值。shell先精确校验元数据再提取ID；不新增环境变量、启动文件读取或生产SDK依赖。此增量仅影响测试控制元数据，不属于accountsvc生产HTTP契约。
+
 临时目录前缀在创建和清理验证共用；保留真实路径、归属和边界核验，不能为了减少文本取消安全判断。恢复seed/verify/source-unchanged与独立源目标约束不变；shell保留普通环境变量引用，不制造复杂间接变量。Windows/Linux取消/退出、临时Git隔离、版本和路径检查都需要原行为验证。
 
 ### D7 覆盖、验证和提交

@@ -40,7 +40,7 @@ func serviceClientCSV(raw, variable string) ([]string, error) {
 // loadServiceClients 始终构造注册表，并拒绝已移除的逐接口配置。
 // 别名可含下划线，因此生成完整预期变量名，不拆分后缀推断别名。
 func (c *Config) loadServiceClients() error {
-	raw := os.Getenv("ACCOUNTSVC_SERVICE_CLIENTS")
+	raw := os.Getenv(envAccountsvcServiceClients)
 	for _, name := range legacyServiceVariables {
 		if strings.TrimSpace(os.Getenv(name)) != "" {
 			return errors.New("accountsvc: " + name + " has been removed; use ACCOUNTSVC_SERVICE_CLIENTS")
@@ -49,7 +49,7 @@ func (c *Config) loadServiceClients() error {
 	var aliases []string
 	var err error
 	if strings.TrimSpace(raw) != "" {
-		aliases, err = serviceClientCSV(raw, "ACCOUNTSVC_SERVICE_CLIENTS")
+		aliases, err = serviceClientCSV(raw, envAccountsvcServiceClients)
 		if err != nil {
 			return err
 		}
@@ -57,15 +57,15 @@ func (c *Config) loadServiceClients() error {
 	expected := map[string]bool{}
 	for _, alias := range aliases {
 		if !serviceClientAliasPattern.MatchString(alias) {
-			return invalidConfig("ACCOUNTSVC_SERVICE_CLIENTS")
+			return invalidConfig(envAccountsvcServiceClients)
 		}
-		for _, field := range []string{"ID", "AUTH_METHODS", "PERMISSIONS", "BASIC_SECRETS", "BEARER_SUBJECTS"} {
-			expected["ACCOUNTSVC_SERVICE_CLIENT_"+alias+"_"+field] = true
+		for _, field := range []string{envId, envAuthMethods, envPermissions, envBasicSecrets, envBearerSubjects} {
+			expected[envAccountsvcServiceClient+alias+"_"+field] = true
 		}
 	}
 	for _, entry := range os.Environ() {
 		name, _, _ := strings.Cut(entry, "=")
-		if strings.HasPrefix(name, "ACCOUNTSVC_SERVICE_CLIENT_") && !expected[name] {
+		if strings.HasPrefix(name, envAccountsvcServiceClient) && !expected[name] {
 			return invalidConfig(name + " (undeclared client or unknown field)")
 		}
 	}
@@ -73,34 +73,34 @@ func (c *Config) loadServiceClients() error {
 	ids := map[string]bool{}
 	secrets := map[[sha256.Size]byte]bool{}
 	for _, alias := range aliases {
-		prefix := "ACCOUNTSVC_SERVICE_CLIENT_" + alias + "_"
-		id := os.Getenv(prefix + "ID") // ID 中的空白非法，不得先规范化。
+		prefix := envAccountsvcServiceClient + alias + "_"
+		id := os.Getenv(prefix + envId) // ID 中的空白非法，不得先规范化。
 		if !serviceauth.ValidClientID(id) || strings.ContainsRune(id, ':') || ids[id] {
-			return invalidConfig(prefix + "ID")
+			return invalidConfig(prefix + envId)
 		}
 		ids[id] = true
-		methods, err := serviceClientCSV(os.Getenv(prefix+"AUTH_METHODS"), prefix+"AUTH_METHODS")
+		methods, err := serviceClientCSV(os.Getenv(prefix+envAuthMethods), prefix+envAuthMethods)
 		if err != nil {
 			return err
 		}
 		for _, method := range methods {
 			if method != serviceauth.MethodBasic && method != serviceauth.MethodBearer {
-				return invalidConfig(prefix + "AUTH_METHODS")
+				return invalidConfig(prefix + envAuthMethods)
 			}
 		}
-		permissions, err := serviceClientCSV(os.Getenv(prefix+"PERMISSIONS"), prefix+"PERMISSIONS")
+		permissions, err := serviceClientCSV(os.Getenv(prefix+envPermissions), prefix+envPermissions)
 		if err != nil {
 			return err
 		}
 		for _, permission := range permissions {
 			if !serviceauth.ValidPermission(permission) {
-				return invalidConfig(prefix + "PERMISSIONS")
+				return invalidConfig(prefix + envPermissions)
 			}
 		}
 		var basicSecrets []string
-		secretText := os.Getenv(prefix + "BASIC_SECRETS")
+		secretText := os.Getenv(prefix + envBasicSecrets)
 		if slices.Contains(methods, serviceauth.MethodBasic) {
-			basicSecrets, err = serviceClientCSV(secretText, prefix+"BASIC_SECRETS")
+			basicSecrets, err = serviceClientCSV(secretText, prefix+envBasicSecrets)
 			if err != nil {
 				return err
 			}
@@ -108,29 +108,29 @@ func (c *Config) loadServiceClients() error {
 				decoded, err := base64.StdEncoding.Strict().DecodeString(secret)
 				digest := sha256.Sum256([]byte(secret))
 				if err != nil || len(decoded) < 32 || base64.StdEncoding.EncodeToString(decoded) != secret || secrets[digest] {
-					return invalidConfig(prefix + "BASIC_SECRETS")
+					return invalidConfig(prefix + envBasicSecrets)
 				}
 				secrets[digest] = true
 			}
 		} else if strings.TrimSpace(secretText) != "" {
-			return invalidConfig(prefix + "BASIC_SECRETS")
+			return invalidConfig(prefix + envBasicSecrets)
 		}
 		var subjects []string
-		subjectText := os.Getenv(prefix + "BEARER_SUBJECTS")
+		subjectText := os.Getenv(prefix + envBearerSubjects)
 		if slices.Contains(methods, serviceauth.MethodBearer) {
 			// JSON preserves spaces and commas in provider subjects; values match exactly.
 			if json.Unmarshal([]byte(subjectText), &subjects) != nil || len(subjects) == 0 {
-				return invalidConfig(prefix + "BEARER_SUBJECTS")
+				return invalidConfig(prefix + envBearerSubjects)
 			}
 			seen := map[string]bool{}
 			for _, subject := range subjects {
 				if !serviceauth.ValidBearerSubject(subject) || seen[subject] {
-					return invalidConfig(prefix + "BEARER_SUBJECTS")
+					return invalidConfig(prefix + envBearerSubjects)
 				}
 				seen[subject] = true
 			}
 		} else if subjectText != "" {
-			return invalidConfig(prefix + "BEARER_SUBJECTS")
+			return invalidConfig(prefix + envBearerSubjects)
 		}
 		if slices.Contains(methods, serviceauth.MethodBearer) {
 			c.Service.bearerClientIDs = append(c.Service.bearerClientIDs, id)
@@ -139,7 +139,7 @@ func (c *Config) loadServiceClients() error {
 	}
 	c.ServiceClients, err = serviceauth.NewRegistry(clients)
 	if err != nil {
-		return invalidConfig("ACCOUNTSVC_SERVICE_CLIENTS")
+		return invalidConfig(envAccountsvcServiceClients)
 	}
 	return nil
 }

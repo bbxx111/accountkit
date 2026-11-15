@@ -15,9 +15,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
-
 	"github.com/bbxx111/accountkit/ids"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
+	"github.com/bbxx111/accountkit/internal/jose"
+	"github.com/bbxx111/accountkit/tokens"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // VerifierConfig configures local access-token verification against the
@@ -105,17 +107,17 @@ type accessClaims struct {
 func (v *Verifier) Verify(ctx context.Context, raw string) (Result, error) {
 	var c accessClaims
 	_, err := jwt.NewParser(
-		jwt.WithValidMethods([]string{"ES256"}),
+		jwt.WithValidMethods([]string{tokens.Algorithm}),
 		jwt.WithIssuer(v.cfg.Issuer),
 		jwt.WithAudience(v.cfg.Audience),
 		jwt.WithLeeway(v.cfg.Leeway),
 		jwt.WithExpirationRequired(),
 		jwt.WithTimeFunc(v.cfg.Now),
 	).ParseWithClaims(raw, &c, func(t *jwt.Token) (any, error) {
-		if typ, _ := t.Header["typ"].(string); typ != "at+jwt" {
-			return nil, errors.New("typ")
+		if typ, _ := t.Header[jose.HeaderType].(string); typ != tokens.TokenType {
+			return nil, errors.New(jose.HeaderType)
 		}
-		kid, _ := t.Header["kid"].(string)
+		kid, _ := t.Header[jose.HeaderKeyID].(string)
 		return v.key(ctx, kid)
 	})
 	if errors.Is(err, errJWKSUnavailable) {
@@ -196,14 +198,14 @@ func (v *Verifier) fetch(ctx context.Context) (map[string]*ecdsa.PublicKey, erro
 	if err != nil {
 		return nil, err
 	}
-	r.Header.Set("Accept", "application/json")
+	r.Header.Set("Accept", httpcontract.MediaTypeJSON)
 	response, err := v.httpClient.Do(r)
 	if err != nil {
 		return nil, err
 	}
 	defer response.Body.Close()
-	ct, _, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
-	if response.StatusCode != http.StatusOK || err != nil || ct != "application/json" {
+	ct, _, err := mime.ParseMediaType(response.Header.Get(httpcontract.HeaderContentType))
+	if response.StatusCode != http.StatusOK || err != nil || ct != httpcontract.MediaTypeJSON {
 		return nil, errJWKSUnavailable
 	}
 	const maxJWKS = 64 * 1024
@@ -222,7 +224,7 @@ func (v *Verifier) fetch(ctx context.Context) (map[string]*ecdsa.PublicKey, erro
 	keys := make(map[string]*ecdsa.PublicKey, len(set.Keys))
 	for _, k := range set.Keys {
 		// Only P-256 signing keys are usable; anything else is ignored.
-		if k.Kty != "EC" || k.Crv != "P-256" || (k.Alg != "" && k.Alg != "ES256") || (k.Use != "" && k.Use != "sig") || k.Kid == "" {
+		if k.Kty != "EC" || k.Crv != "P-256" || (k.Alg != "" && k.Alg != tokens.Algorithm) || (k.Use != "" && k.Use != "sig") || k.Kid == "" {
 			continue
 		}
 		x, errX := base64.RawURLEncoding.DecodeString(k.X)

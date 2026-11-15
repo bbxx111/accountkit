@@ -19,7 +19,7 @@ func percentEncode(s string) string {
 func sign(method, secret string, params url.Values) string {
 	keys := make([]string, 0, len(params))
 	for k := range params {
-		if k != "Signature" {
+		if k != aliyunSignature {
 			keys = append(keys, k)
 		}
 	}

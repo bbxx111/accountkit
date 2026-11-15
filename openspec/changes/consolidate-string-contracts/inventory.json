@@ -3,7 +3,7 @@
   "change": "consolidate-string-contracts",
   "codeBaseline": "a11ea46136aae6abc059e7f56e01fa92e8c72cec",
   "inventoryBaseline": "7f43faa0a89a971c6bd86de3d165af18b99a477d",
-  "note": "??????????????????????????????????????????????????????",
+  "note": "本清单按语义拥有者记录78组候选的实际实现与有理由保留；原始盘点基线不随实现提交改写。implemented 表示该组收敛已实施，不表示数据库、race、恢复或所有平台综合门禁已经通过；正式验收与未验证项统一见 verification.md。",
   "counts": {
     "trackedGo": 562,
     "nonTestGoExcludingSQLC": 197,
@@ -36,9 +36,9 @@
     "优先包内/private定义；跨包仅在共享契约确定后集中，不新建全仓库constants包，不改变值/协议/持久化字节或扩大公共API。"
   ],
   "closureRules": {
-    "implemented": "????????????????",
-    "retained": "????????????????????????????????",
-    "outOfScopeParserRedesign": "????????????????????????????????????????"
+    "implemented": "已核对实际具名定义、调用接线及保留边界；resolution逐组记录符号/文件，verification指向正式记录与真实原始证据。",
+    "retained": "候选不适合继续抽取时须逐值说明拥有者、既有单份定义、不同语义或独立协议预期等具体理由，不能用通用文案代替核查。",
+    "outOfScopeParserRedesign": "本次只收敛已有解析器的数据、字段和规则名称，原switch、递归、预算、接受集合及错误优先级不变；需要算法重写的额外优化另行设计，不据此搁置可完成的复用。"
   },
   "items": [
     {
@@ -72,11 +72,14 @@
       "notes": "",
       "primaryTask": "2.1",
       "status": "implemented",
-      "resolution": "Go HTTP/JOSE??????????/???filter?browser?????/???????????????verification??????",
+      "resolution": "authn 使用 httpcredentials.SchemeBearer；identityresolve 使用 http.MethodPost 与 enum.IdentityKind(kind).IsAnchor()；TOKEN_MISSING/INVALID 共同由 httpcontract 拥有，authn 两个公开常量保留兼容别名。",
       "verification": [
-        "task-1-report.md: ?ID???????",
-        "task-1-review.md: spec/quality??",
-        "task-1-vet.log: exit0???????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-1-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-1-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-1-tests.log",
+        "../../../.test-output/string-contracts/task-1-final-focus.log",
+        "../../../.test-output/string-contracts/task-1-vet.log"
       ]
     },
     {
@@ -100,11 +103,14 @@
       "notes": "",
       "primaryTask": "3.2",
       "status": "implemented",
-      "resolution": "??/??/??/??/JSON????????????/??/?????????SQLSTATE??????/??/?????????/???????????",
+      "resolution": "httpapi/admin/audit.go 两处事件名改用 enum.EventSignInCompletionProofVerified.String() 与 enum.EventSignInCompletionCompleted.String()；沿用既有事件目录，不创建第二份名称映射。",
       "verification": [
-        "task-4-report.md: ?ID???????",
-        "task-4-test.log/task-4-vet.log: ???????????",
-        "task-4-profile-retest.log: Schema??????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-4-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-4-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-4-test.log",
+        "../../../.test-output/string-contracts/task-4-vet.log",
+        "../../../.test-output/string-contracts/task-4-profile-retest.log"
       ]
     },
     {
@@ -134,9 +140,17 @@
       ],
       "notes": "",
       "primaryTask": "4.1",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "accountsvc 配置拼接复用既有 envPrefix，run 的 SMTP 模板日志复用 emailTemplatesSetting；模板正文不变。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log"
+      ]
     },
     {
       "id": "L004",
@@ -160,9 +174,17 @@
       ],
       "notes": "",
       "primaryTask": "8.1",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "remoteauth/local 复用 tokens.Algorithm / TokenType，值仍 ES256 / at+jwt。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log"
+      ]
     },
     {
       "id": "L005",
@@ -263,11 +285,14 @@
       "notes": "禁止以apierror.StatusInvalidArgument/StatusNotFound等status常量代替同名reason。",
       "primaryTask": "2.1",
       "status": "implemented",
-      "resolution": "Go HTTP/JOSE??????????/???filter?browser?????/???????????????verification??????",
+      "resolution": "internal/httpcontract/contract.go 的共享 Reason* 与 httpapi/enduser/reasons.go、httpapi/admin/reasons.go 及各服务包 reasons.go 共同覆盖60个既有 HTTP reason。google.rpc 状态和审计原因保持独立，ADMIN_* 仍归管理认证/管理面，不作为角色或权限定义。",
       "verification": [
-        "task-1-report.md: ?ID???????",
-        "task-1-review.md: spec/quality??",
-        "task-1-vet.log: exit0???????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-1-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-1-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-1-tests.log",
+        "../../../.test-output/string-contracts/task-1-final-focus.log",
+        "../../../.test-output/string-contracts/task-1-vet.log"
       ]
     },
     {
@@ -300,11 +325,14 @@
       "notes": "",
       "primaryTask": "2.1",
       "status": "implemented",
-      "resolution": "Go HTTP/JOSE??????????/???filter?browser?????/???????????????verification??????",
+      "resolution": "8 个标准 OAuth/Bearer 错误由 httpcontract.OAuthError* 拥有；自定义 introspection_not_configured 归 introspection.errorNotConfigured。",
       "verification": [
-        "task-1-report.md: ?ID???????",
-        "task-1-review.md: spec/quality??",
-        "task-1-vet.log: exit0???????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-1-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-1-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-1-tests.log",
+        "../../../.test-output/string-contracts/task-1-final-focus.log",
+        "../../../.test-output/string-contracts/task-1-vet.log"
       ]
     },
     {
@@ -330,11 +358,14 @@
       "notes": "响应Bearer不能改用小写SchemeBearer。",
       "primaryTask": "2.1",
       "status": "implemented",
-      "resolution": "Go HTTP/JOSE??????????/???filter?browser?????/???????????????verification??????",
+      "resolution": "响应 TokenTypeBearer、grant 比较 GrantTypeRefreshToken 与 enduser.nextActionCompleteIdentity 分开。JSON tag、decodeOAuthBody 字段读取键 refresh_token 保留独立，避免把字段名与 grant 值合并。",
       "verification": [
-        "task-1-report.md: ?ID???????",
-        "task-1-review.md: spec/quality??",
-        "task-1-vet.log: exit0???????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-1-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-1-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-1-tests.log",
+        "../../../.test-output/string-contracts/task-1-final-focus.log",
+        "../../../.test-output/string-contracts/task-1-vet.log"
       ]
     },
     {
@@ -368,11 +399,14 @@
       "notes": "",
       "primaryTask": "2.2",
       "status": "implemented",
-      "resolution": "Go HTTP/JOSE??????????/???filter?browser?????/???????????????verification??????",
+      "resolution": "authn、admin、adminauth、serviceauth 接入 BearerChallenge/BasicChallenge；serviceauth 仍逐条 Add WWW-Authenticate，不改变顺序及 Basic 权限拒绝时没有 challenge 的分支。helper 不新增引用转义/校验，保持既有组合字节。",
       "verification": [
-        "task-1-report.md: ?ID???????",
-        "task-1-review.md: spec/quality??",
-        "task-1-vet.log: exit0???????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-1-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-1-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-1-tests.log",
+        "../../../.test-output/string-contracts/task-1-final-focus.log",
+        "../../../.test-output/string-contracts/task-1-vet.log"
       ]
     },
     {
@@ -409,13 +443,18 @@
       ],
       "notes": "",
       "primaryTask": "2.2",
-      "status": "planned",
-      "resolution": null,
+      "status": "implemented",
+      "resolution": "internal/httpcontract.SetNoStore/SetOAuthNoStore 供消费者、管理、服务和 examples/remoteauth/handler.go 使用；internal/accountsvc/http.go、metrics.go 和 run.go/adminRevealNoStore 均接入原 no-store。只在原有 Pragma 调用点使用 OAuth 版本，公开 JWKS 缓存规则不变。全分支审查发现后两处遗漏，已补接并定点复核关闭，详见 final-review.md 与 task5-fix2-test.log。",
       "verification": [
-        "task-1-report.md",
-        "task-1-review.md"
-      ],
-      "progressNotes": "HTTP/JOSE?????????????????/accountsvc??/????????????????????????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log",
+        "../../../.test-output/string-contracts/task-5-report.md：跨模块接线和修复说明。"
+      ]
     },
     {
       "id": "L010",
@@ -439,11 +478,14 @@
       "notes": "",
       "primaryTask": "2.1",
       "status": "implemented",
-      "resolution": "Go HTTP/JOSE??????????/???filter?browser?????/???????????????verification??????",
+      "resolution": "安全外部消息通过 httpcontract.MessageInternal 复用。apierror 与 enduser 内部 logger 的普通文案仍为独立 \"internal error\"，不与安全对外文案绑定。",
       "verification": [
-        "task-1-report.md: ?ID???????",
-        "task-1-review.md: spec/quality??",
-        "task-1-vet.log: exit0???????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-1-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-1-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-1-tests.log",
+        "../../../.test-output/string-contracts/task-1-final-focus.log",
+        "../../../.test-output/string-contracts/task-1-vet.log"
       ]
     },
     {
@@ -489,13 +531,17 @@
       ],
       "notes": "",
       "primaryTask": "2.3",
-      "status": "planned",
-      "resolution": null,
+      "status": "implemented",
+      "resolution": "internal/jose 的 HeaderType/HeaderKeyID/HeaderJWKURL/HeaderX509URL、Claim* 与 AccessTokenType/AccessTokenMediaType 由 tokens、oidcjwt、adminauth、serviceauth 及 user/idp 的 OIDC/Apple 读取复用。tokens.TokenType 保留公开兼容别名；JSON tag、测试 provider 的独立协议预期和服务日志 client_id 键保留自身语义。",
       "verification": [
-        "task-1-report.md",
-        "task-1-review.md"
-      ],
-      "progressNotes": "HTTP/JOSE?????????????????/accountsvc??/????????????????????????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-1-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-1-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-1-tests.log",
+        "../../../.test-output/string-contracts/task-1-final-focus.log",
+        "../../../.test-output/string-contracts/task-1-vet.log",
+        "../../../.test-output/string-contracts/task-5-report.md：跨模块接线和修复说明。"
+      ]
     },
     {
       "id": "L012",
@@ -525,13 +571,17 @@
       ],
       "notes": "",
       "primaryTask": "2.3",
-      "status": "planned",
-      "resolution": null,
+      "status": "implemented",
+      "resolution": "internal/jose 的 JWKTypeRSA/JWKTypeEC/JWKCurveP256/JWKUseSignature/JWKOperationVerify 供 JWK 编解码/校验复用；oidcjwt 与 user/idp/jwk.go 复用 jwt.SigningMethodRS256.Alg()。tokens.Algorithm 公开 ES256 常量不改，测试 provider 的 RS256/JWK 原值独立保留。",
       "verification": [
-        "task-1-report.md",
-        "task-1-review.md"
-      ],
-      "progressNotes": "HTTP/JOSE?????????????????/accountsvc??/????????????????????????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-1-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-1-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-1-tests.log",
+        "../../../.test-output/string-contracts/task-1-final-focus.log",
+        "../../../.test-output/string-contracts/task-1-vet.log",
+        "../../../.test-output/string-contracts/task-5-report.md：跨模块接线和修复说明。"
+      ]
     },
     {
       "id": "L013",
@@ -562,11 +612,14 @@
       "notes": "",
       "primaryTask": "3.1",
       "status": "implemented",
-      "resolution": "??/??/??/??/JSON????????????/??/?????????SQLSTATE??????/??/?????????/???????????",
+      "resolution": "user/code/contracts.go 的 statusOK/statusMissing/statusMismatch 与 DimensionCooldown/TargetLimit/IPLimit/TargetVerifyLimit 由 Go 脚本分支及 user 指标分类共用。Dimension 字段仍为 string；Lua 正文和独立协议预期不改。",
       "verification": [
-        "task-4-report.md: ?ID???????",
-        "task-4-test.log/task-4-vet.log: ???????????",
-        "task-4-profile-retest.log: Schema??????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-4-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-4-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-4-test.log",
+        "../../../.test-output/string-contracts/task-4-vet.log",
+        "../../../.test-output/string-contracts/task-4-profile-retest.log"
       ]
     },
     {
@@ -630,11 +683,14 @@
       "notes": "",
       "primaryTask": "3.2",
       "status": "implemented",
-      "resolution": "??/??/??/??/JSON????????????/??/?????????SQLSTATE??????/??/?????????/???????????",
+      "resolution": "user/audit_reasons.go 私有目录，所有领域审计原因复用；auditUserStateReason显式映射已知状态并保持未知/零/负值的原前缀输出；ALREADY_BOUND与IDENTITY_ALREADY_BOUND保持独立",
       "verification": [
-        "task-4-report.md: ?ID???????",
-        "task-4-test.log/task-4-vet.log: ???????????",
-        "task-4-profile-retest.log: Schema??????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-4-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-4-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-4-test.log",
+        "../../../.test-output/string-contracts/task-4-vet.log",
+        "../../../.test-output/string-contracts/task-4-profile-retest.log"
       ]
     },
     {
@@ -667,11 +723,14 @@
       "notes": "与ActorType.USER、ActorKind.USER同字面但不同语义，禁止互借常量。",
       "primaryTask": "3.2",
       "status": "implemented",
-      "resolution": "??/??/??/??/JSON????????????/??/?????????SQLSTATE??????/??/?????????/???????????",
+      "resolution": "audit/authentication.ResourceUser/Session/Identity/IdentityFlow 为资源类型独立目录，写入、投影、隐私、查询和admin接线共用；Actor枚举未借用资源常量",
       "verification": [
-        "task-4-report.md: ?ID???????",
-        "task-4-test.log/task-4-vet.log: ???????????",
-        "task-4-profile-retest.log: Schema??????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-4-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-4-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-4-test.log",
+        "../../../.test-output/string-contracts/task-4-vet.log",
+        "../../../.test-output/string-contracts/task-4-profile-retest.log"
       ]
     },
     {
@@ -696,11 +755,14 @@
       "notes": "",
       "primaryTask": "3.2",
       "status": "implemented",
-      "resolution": "??/??/??/??/JSON????????????/??/?????????SQLSTATE??????/??/?????????/???????????",
+      "resolution": "user/identity_resolve_contracts.go 的 identityResolveAction 与 user/profile_audit_contracts.go 的 profileAttributesUpdatedAction 分别拥有身份解析和资料变更业务 action；不加入认证 Actions 或 enum.EventType。",
       "verification": [
-        "task-4-report.md: ?ID???????",
-        "task-4-test.log/task-4-vet.log: ???????????",
-        "task-4-profile-retest.log: Schema??????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-4-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-4-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-4-test.log",
+        "../../../.test-output/string-contracts/task-4-vet.log",
+        "../../../.test-output/string-contracts/task-4-profile-retest.log"
       ]
     },
     {
@@ -728,11 +790,14 @@
       "notes": "",
       "primaryTask": "3.3",
       "status": "implemented",
-      "resolution": "??/??/??/??/JSON????????????/??/?????????SQLSTATE??????/??/?????????/???????????",
+      "resolution": "user/storage_contracts.go 的 signInCompletionAAD/identityPolicyFingerprintFormat 拥有原持久化格式；user/code/contracts.go 分别定义 challengeHMACDomain 与 challengeKeyPrefix。同值 challenge: 的密码学域与 Redis 键前缀不合并，原字节和拼接算法不变。",
       "verification": [
-        "task-4-report.md: ?ID???????",
-        "task-4-test.log/task-4-vet.log: ???????????",
-        "task-4-profile-retest.log: Schema??????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-4-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-4-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-4-test.log",
+        "../../../.test-output/string-contracts/task-4-vet.log",
+        "../../../.test-output/string-contracts/task-4-profile-retest.log"
       ]
     },
     {
@@ -760,9 +825,17 @@
       ],
       "notes": "",
       "primaryTask": "4.1",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "SMTP 导出最小 TLSModeImplicit / TLSModeSTARTTLS / TLSModeNone 无类型常量；SMTP 默认与接受集合、accountsvc 默认和生产拒绝 none 均复用。字段类型仍 string。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log"
+      ]
     },
     {
       "id": "L019",
@@ -791,11 +864,14 @@
       "notes": "",
       "primaryTask": "3.3",
       "status": "implemented",
-      "resolution": "??/??/??/??/JSON????????????/??/?????????SQLSTATE??????/??/?????????/???????????",
+      "resolution": "user/idp/alipay_subject.go、qq_subject.go、wechat_subject.go 各自定义对应 provider 的 SubjectUnionIDPrefix/SubjectOpenIDPrefix；weibo_subject.go 定义 weiboSubjectUIDPrefix。原 unionid:/openid:/uid: 字节及拼接算法不变，不合并各提供方身份空间。",
       "verification": [
-        "task-4-report.md: ?ID???????",
-        "task-4-test.log/task-4-vet.log: ???????????",
-        "task-4-profile-retest.log: Schema??????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-4-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-4-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-4-test.log",
+        "../../../.test-output/string-contracts/task-4-vet.log",
+        "../../../.test-output/string-contracts/task-4-profile-retest.log"
       ]
     },
     {
@@ -826,11 +902,14 @@
       "notes": "",
       "primaryTask": "3.3",
       "status": "implemented",
-      "resolution": "??/??/??/??/JSON????????????/??/?????????SQLSTATE??????/??/?????????/???????????",
+      "resolution": "user/code/contracts.go 的 codeKeyPrefix/cooldownKeyPrefix/quotaKeyPrefix/verifyFailureKeyPrefix、quotaTargetSegment/quotaIPSegment 与 quotaDayLayout 供 store.go/challenge.go 的键构造共用；实例前缀和 UTC 额度日期语义保留。",
       "verification": [
-        "task-4-report.md: ?ID???????",
-        "task-4-test.log/task-4-vet.log: ???????????",
-        "task-4-profile-retest.log: Schema??????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-4-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-4-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-4-test.log",
+        "../../../.test-output/string-contracts/task-4-vet.log",
+        "../../../.test-output/string-contracts/task-4-profile-retest.log"
       ]
     },
     {
@@ -865,10 +944,18 @@
       ],
       "notes": "",
       "primaryTask": "3.3",
-      "status": "planned",
-      "resolution": null,
-      "verification": [],
-      "progressNotes": "???????Task5???IdP nonce/label/fingerprint????/??????????????"
+      "status": "implemented",
+      "resolution": "user/idp/nonce_contracts.go 的 nonceScopeApple/Google/Facebook、nonceScopeOIDCPrefix 和 nonceKeyPrefix 拥有隔离域；policy_contracts.go 拥有 OAuth/mini-program 分组及 WeChat/Apple/Alipay/QQ/Weibo 策略片段。labels.go 的诊断 label 与 nonceScope 分开，Google/Facebook/OIDC fingerprint 继续从实际 kind 小写派生，不改排序、序列化和换行字节。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log",
+        "../../../.test-output/string-contracts/task-5-report.md：跨模块接线和修复说明。"
+      ]
     },
     {
       "id": "L022",
@@ -900,11 +987,14 @@
       "notes": "",
       "primaryTask": "3.4",
       "status": "implemented",
-      "resolution": "??/??/??/??/JSON????????????/??/?????????SQLSTATE??????/??/?????????/???????????",
+      "resolution": "user/sqlstate.go保留08/53类前缀；具体码复用锁定依赖pgerrcode；25P04本地命名。各路径码集合不变，resolve额外码仍只在resolve内",
       "verification": [
-        "task-4-report.md: ?ID???????",
-        "task-4-test.log/task-4-vet.log: ???????????",
-        "task-4-profile-retest.log: Schema??????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-4-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-4-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-4-test.log",
+        "../../../.test-output/string-contracts/task-4-vet.log",
+        "../../../.test-output/string-contracts/task-4-profile-retest.log"
       ]
     },
     {
@@ -939,10 +1029,18 @@
       ],
       "notes": "",
       "primaryTask": "3.5",
-      "status": "planned",
-      "resolution": null,
-      "verification": [],
-      "progressNotes": "???????Task5???IdP nonce/label/fingerprint????/??????????????"
+      "status": "implemented",
+      "resolution": "accountkit.go 六个已有 observability.Task* 和 user/service_rekey.go 以 string(类型常量) 接入兼容的 string 字段。cleanup_purged_users 没有同义现存 Task*，保留其原名，不能误用 purge_users 或 Other；任务调度与标签不变。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log",
+        "../../../.test-output/string-contracts/task-5-report.md：跨模块接线和修复说明。"
+      ]
     },
     {
       "id": "L024",
@@ -969,11 +1067,14 @@
       "notes": "",
       "primaryTask": "3.5",
       "status": "implemented",
-      "resolution": "??/??/??/??/JSON????????????/??/?????????SQLSTATE??????/??/?????????/???????????",
+      "resolution": "audit/authentication/authentication.go 的 mapEvent 省略字段直接传递 observability.AuditField 常量，删除仅为字符串往返的私有解析函数；日志仍呈现原 string 底型值，不改字段分类。",
       "verification": [
-        "task-4-report.md: ?ID???????",
-        "task-4-test.log/task-4-vet.log: ???????????",
-        "task-4-profile-retest.log: Schema??????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-4-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-4-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-4-test.log",
+        "../../../.test-output/string-contracts/task-4-vet.log",
+        "../../../.test-output/string-contracts/task-4-profile-retest.log"
       ]
     },
     {
@@ -1002,11 +1103,14 @@
       "notes": "",
       "primaryTask": "3.4",
       "status": "implemented",
-      "resolution": "??/??/??/??/JSON????????????/??/?????????SQLSTATE??????/??/?????????/???????????",
+      "resolution": "audit/event/json.go 的 Result 解析与 audit/authentication/authentication.go 的 ActorKind 解析 switch 复用既有 enum.ResultSuccess/Failure.String() 与 enum.ActorUser/Admin/System.String()；不新增公开 Parse API、第二份名称数组或扩大合法集合。",
       "verification": [
-        "task-4-report.md: ?ID???????",
-        "task-4-test.log/task-4-vet.log: ???????????",
-        "task-4-profile-retest.log: Schema??????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-4-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-4-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-4-test.log",
+        "../../../.test-output/string-contracts/task-4-vet.log",
+        "../../../.test-output/string-contracts/task-4-profile-retest.log"
       ]
     },
     {
@@ -1035,9 +1139,17 @@
       ],
       "notes": "",
       "primaryTask": "4.2",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "idp 的 email/email_verified/name/picture 安全及默认资料 claim 在 profile_claims.go，OIDC/Apple/Google/Facebook 使用；JSON tag 不变。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log"
+      ]
     },
     {
       "id": "L027",
@@ -1057,9 +1169,17 @@
       ],
       "notes": "",
       "primaryTask": "4.2",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "user/idp/signed_request_contracts.go 的 signedRequestHMACSHA256 只拥有 Facebook signed_request 的 HMAC-SHA256 算法值；验签和算法比较分支保持。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log"
+      ]
     },
     {
       "id": "L028",
@@ -1095,9 +1215,17 @@
       ],
       "notes": "WeChat API和Apple JWKS当前仅根配置各定义一次，非重复缺口；appleIssuer不是JWKS地址。",
       "primaryTask": "4.2",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "internal/idpdefaults 六个常量为 AlipayGateway/QQAPI/WeiboAPI/FacebookGraphAPI/FacebookJWKS/GoogleJWKS；根 applyDefaults 与各 provider 默认值同源。根填充时机、Validate URL 逻辑和各 provider 接受范围保持。Apple/WeChat 原单份或独立默认不扩大到该目录。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log"
+      ]
     },
     {
       "id": "L029",
@@ -1126,9 +1254,17 @@
       ],
       "notes": "",
       "primaryTask": "4.1",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "accountsvc 模式 modeProduction/modeDevelopment 与 commandServe/commandMigrate 分开定义；错误文案和配置先后不变。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log"
+      ]
     },
     {
       "id": "L030",
@@ -1157,9 +1293,17 @@
       ],
       "notes": "",
       "primaryTask": "4.1",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "internal/accountsvc/environment.go 的 envId/envAuthMethods/envPermissions/envBasicSecrets/envBearerSubjects 后缀供 config_service_clients.go 的 expected 白名单与读取共同使用；CSV 重复拒绝、带下划线 alias 和原始 ID 校验不变。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log"
+      ]
     },
     {
       "id": "L031",
@@ -1201,9 +1345,17 @@
       ],
       "notes": "",
       "primaryTask": "4.1",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "accountsvc 完整变量及 service-client/SMS 前缀集中 environment.go，完整名从既有 envPrefix 构造；未知/禁用配置诊断仍保留原完整文案及处理顺序。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log"
+      ]
     },
     {
       "id": "L032",
@@ -1255,9 +1407,17 @@
       ],
       "notes": "",
       "primaryTask": "4.1",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "config_environment.go 与 internal/accountsvc/library_environment.go 各自集中配置域真正消费的后缀，OIDC/Alipay 动态读取与登记共用 configEnv* 等局部定义。根未消费的 ADMIN_*/ACCESS_KEY_*/SIGN_NAME 定义已按审查移除；一次性诊断保留，不为跨包共享增加公开 API。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log"
+      ]
     },
     {
       "id": "L033",
@@ -1286,10 +1446,18 @@
       ],
       "notes": "",
       "primaryTask": "3.5",
-      "status": "planned",
-      "resolution": null,
-      "verification": [],
-      "progressNotes": "???????Task5???IdP nonce/label/fingerprint????/??????????????"
+      "status": "implemented",
+      "resolution": "internal/auditconfig.ForSchema(schema) 统一默认 Source/Namespace，Local(pool)、根 config.go 及 internal/accountsvc/audit_namespace.go 接入。根默认 schema 的填充时机不变；服务 identityAuditNamespace 明确保留空 schema 时 accountkit//resources 的历史输出，显式 namespace 优先。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log",
+        "../../../.test-output/string-contracts/task-5-report.md：跨模块接线和修复说明。"
+      ]
     },
     {
       "id": "L034",
@@ -1312,11 +1480,14 @@
       "notes": "",
       "primaryTask": "3.3",
       "status": "implemented",
-      "resolution": "??/??/??/??/JSON????????????/??/?????????SQLSTATE??????/??/?????????/???????????",
+      "resolution": "internal/migrationlock.TableName供driver MigrationsTable及旧engine锁ID共用；SQL正文未改",
       "verification": [
-        "task-4-report.md: ?ID???????",
-        "task-4-test.log/task-4-vet.log: ???????????",
-        "task-4-profile-retest.log: Schema??????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-4-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-4-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-4-test.log",
+        "../../../.test-output/string-contracts/task-4-vet.log",
+        "../../../.test-output/string-contracts/task-4-profile-retest.log"
       ]
     },
     {
@@ -1351,11 +1522,14 @@
       "notes": "",
       "primaryTask": "2.2",
       "status": "implemented",
-      "resolution": "Go HTTP/JOSE??????????/???filter?browser?????/???????????????verification??????",
+      "resolution": "httpapi/internal/resourcename/name.go 的 User/Identity/Session/Profile/AuditEvent 由两 HTTP 面构造资源名时复用；DTO、路由声明、动态 ID 和资源归属检查各自保留，不新增路径规范化。",
       "verification": [
-        "task-1-report.md: ?ID???????",
-        "task-1-review.md: spec/quality??",
-        "task-1-vet.log: exit0???????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-1-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-1-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-1-tests.log",
+        "../../../.test-output/string-contracts/task-1-final-focus.log",
+        "../../../.test-output/string-contracts/task-1-vet.log"
       ]
     },
     {
@@ -1393,13 +1567,17 @@
       ],
       "notes": "",
       "primaryTask": "2.4",
-      "status": "planned",
-      "resolution": null,
+      "status": "implemented",
+      "resolution": "internal/httpcontract.HeaderRequestID/HeaderDeviceID/HeaderDeviceName 为共享自定义头；httpapi/clientinfo/headers.go 私有 headerClient* 与 headerDevice* 拥有显式观察头。根 accountkit.go 与 internal/accountsvc/metadata.go 复用 HeaderRequestID，原宿主回调、生成与可信代理边界保留，不把设备语义合并到 RequestID。",
       "verification": [
-        "task-1-report.md",
-        "task-1-review.md"
-      ],
-      "progressNotes": "HTTP/JOSE?????????????????/accountsvc??/????????????????????????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-1-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-1-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-1-tests.log",
+        "../../../.test-output/string-contracts/task-1-final-focus.log",
+        "../../../.test-output/string-contracts/task-1-vet.log",
+        "../../../.test-output/string-contracts/task-5-report.md：跨模块接线和修复说明。"
+      ]
     },
     {
       "id": "L037",
@@ -1429,11 +1607,14 @@
       "notes": "",
       "primaryTask": "2.4",
       "status": "implemented",
-      "resolution": "Go HTTP/JOSE??????????/???filter?browser?????/???????????????verification??????",
+      "resolution": "httpapi/clientinfo/headers.go 的 headerCHUA/FullVersionList/Platform/PlatformVersion/Model/Mobile、hintHeaderPrefix 与 hintVersionParameter 拥有 Client Hints 名字；parseHints 原输入预算、重复字段、SFV 解析和回退不改。",
       "verification": [
-        "task-1-report.md: ?ID???????",
-        "task-1-review.md: spec/quality??",
-        "task-1-vet.log: exit0???????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-1-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-1-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-1-tests.log",
+        "../../../.test-output/string-contracts/task-1-final-focus.log",
+        "../../../.test-output/string-contracts/task-1-vet.log"
       ]
     },
     {
@@ -1467,13 +1648,17 @@
       ],
       "notes": "",
       "primaryTask": "2.4",
-      "status": "planned",
-      "resolution": null,
+      "status": "implemented",
+      "resolution": "internal/httpcontract.HeaderAuthorization/HeaderWWWAuthenticate/HeaderContentType、MediaTypeJSON/ContentTypeJSON/MediaTypeForm 供 HTTP 面、服务装配、IdP 传输、阿里云发送器与 remoteauth 按原值复用。application/json 与带 charset 的完整 Content-Type 分开，JOSE media type 自属 jose，不改头顺序或 body 解析。",
       "verification": [
-        "task-1-report.md",
-        "task-1-review.md"
-      ],
-      "progressNotes": "HTTP/JOSE?????????????????/accountsvc??/????????????????????????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-1-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-1-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-1-tests.log",
+        "../../../.test-output/string-contracts/task-1-final-focus.log",
+        "../../../.test-output/string-contracts/task-1-vet.log",
+        "../../../.test-output/string-contracts/task-5-report.md：跨模块接线和修复说明。"
+      ]
     },
     {
       "id": "L039",
@@ -1505,9 +1690,17 @@
       ],
       "notes": "",
       "primaryTask": "4.3",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "healthNotReady/healthReady/healthOK 是服务局部状态。introspection.Endpoint / purgefeed.Endpoint / identityresolve.Endpoint 分别拥有 introspect/purged_users/identities_resolve；routes 和旧构造器复用。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log"
+      ]
     },
     {
       "id": "L040",
@@ -1531,11 +1724,14 @@
       "notes": "优先级低；Redis EXISTS标记1不单独常量化。",
       "primaryTask": "3.3",
       "status": "implemented",
-      "resolution": "??/??/??/??/JSON????????????/??/?????????SQLSTATE??????/??/?????????/???????????",
+      "resolution": "session/grace和revocation各自私有keyDomain，key函数保持原拼接",
       "verification": [
-        "task-4-report.md: ?ID???????",
-        "task-4-test.log/task-4-vet.log: ???????????",
-        "task-4-profile-retest.log: Schema??????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-4-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-4-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-4-test.log",
+        "../../../.test-output/string-contracts/task-4-vet.log",
+        "../../../.test-output/string-contracts/task-4-profile-retest.log"
       ]
     },
     {
@@ -1565,9 +1761,19 @@
       ],
       "notes": "",
       "primaryTask": "4.3",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "internal/accountsvc/preview_contracts.go 的 previewSubjectsFile 供预览创建和说明同源；httpapi/admin/audit_classifications.go 的 auditRejectReaderError/PageLimit/InvalidRecord/PageOrder/RecordScope/AuthenticationProjection 拥有六类 reader 拒绝诊断。audit.go 调用均复用私有符号；这些分类不是 HTTP reason 或审计业务 action，不跨语义合并。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log",
+        "../../../.test-output/string-contracts/task-5-report.md：跨模块接线和修复说明。",
+        "../../../.test-output/string-contracts/task5-fix1-test.log：修复后根包、IdP、管理面测试通过；task-5-review.md定点复审已关闭原问题。"
+      ]
     },
     {
       "id": "L042",
@@ -1596,11 +1802,14 @@
       "notes": "",
       "primaryTask": "5.1",
       "status": "implemented",
-      "resolution": "Go HTTP/JOSE??????????/???filter?browser?????/???????????????verification??????",
+      "resolution": "httpapi/admin/filter_fields.go 的 filterField* 与 identityFilterKinds 供字段识别和执行 switch 共用；PHONE/EMAIL 种类映射同源，既有词法、operator 集、处理顺序及错误文案不变。",
       "verification": [
-        "task-1-report.md: ?ID???????",
-        "task-1-review.md: spec/quality??",
-        "task-1-vet.log: exit0???????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-1-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-1-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-1-tests.log",
+        "../../../.test-output/string-contracts/task-1-final-focus.log",
+        "../../../.test-output/string-contracts/task-1-vet.log"
       ]
     },
     {
@@ -1637,11 +1846,14 @@
       "notes": "",
       "primaryTask": "5.1",
       "status": "implemented",
-      "resolution": "Go HTTP/JOSE??????????/???filter?browser?????/???????????????verification??????",
+      "resolution": "httpapi/clientinfo/browsers.go 的 browsers 描述表拥有12个规范名、4个受支持品牌别名及 rank；browserSafari 供特殊版本分支复用。外部品牌与输出名分开，未知/重复品牌、优先级、输入预算和高熵处理不改。",
       "verification": [
-        "task-1-report.md: ?ID???????",
-        "task-1-review.md: spec/quality??",
-        "task-1-vet.log: exit0???????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-1-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-1-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-1-tests.log",
+        "../../../.test-output/string-contracts/task-1-final-focus.log",
+        "../../../.test-output/string-contracts/task-1-vet.log"
       ]
     },
     {
@@ -1684,11 +1896,14 @@
       "notes": "",
       "primaryTask": "3.5",
       "status": "implemented",
-      "resolution": "??/??/??/??/JSON????????????/??/?????????SQLSTATE??????/??/?????????/???????????",
+      "resolution": "metricdata/contracts.go集中共享标签/单位，catalog/project及Prometheus/OTel实例标签接线；instrument名称/标签集合不变",
       "verification": [
-        "task-4-report.md: ?ID???????",
-        "task-4-test.log/task-4-vet.log: ???????????",
-        "task-4-profile-retest.log: Schema??????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-4-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-4-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-4-test.log",
+        "../../../.test-output/string-contracts/task-4-vet.log",
+        "../../../.test-output/string-contracts/task-4-profile-retest.log"
       ]
     },
     {
@@ -1761,11 +1976,14 @@
       "notes": "",
       "primaryTask": "5.2",
       "status": "implemented",
-      "resolution": "??/??/??/??/JSON????????????/??/?????????SQLSTATE??????/??/?????????/???????????",
+      "resolution": "internal/profileattributes/contracts.go 集中 schemaDraftURI、schemaID/Format/Pattern/Required/DependentRequired 等关键字及 schemaObject 等类型，供允许集合、索引与 switch 共用。已补齐审查发现的五个重复关键字；单处注解/类型词保留，wordSet、递归/预算/编译算法不改。",
       "verification": [
-        "task-4-report.md: ?ID???????",
-        "task-4-test.log/task-4-vet.log: ???????????",
-        "task-4-profile-retest.log: Schema??????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-4-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-4-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-4-test.log",
+        "../../../.test-output/string-contracts/task-4-vet.log",
+        "../../../.test-output/string-contracts/task-4-profile-retest.log"
       ]
     },
     {
@@ -1798,13 +2016,19 @@
       ],
       "notes": "",
       "primaryTask": "4.2",
-      "status": "planned",
-      "resolution": null,
+      "status": "implemented",
+      "resolution": "internal/httpcontract.ValidRequestID 供 reqid、根 RequestID 与 accountsvc metadata 复用，宿主生成/回调/重复头行为不变。config.go 与 user/idp/qq_config.go 的 qqAppIDPattern、user/idp/weibo_config.go 的 weiboAppIDPattern 分别保留；即使正则相同也不合并提供方规则。facebookVersionPattern、设备 ID、短信 RequestID 各自保留语义，根与 IdP 的跨包私有重复不以新增公开 API 消除。",
       "verification": [
-        "task-1-report.md",
-        "task-1-review.md"
-      ],
-      "progressNotes": "HTTP/JOSE?????????????????/accountsvc??/????????????????????????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log",
+        "../../../.test-output/string-contracts/task-5-report.md：跨模块接线和修复说明。",
+        "../../../.test-output/string-contracts/task5-fix1-test.log：修复后根包、IdP、管理面测试通过；task-5-review.md定点复审已关闭原问题。"
+      ]
     },
     {
       "id": "L047",
@@ -1831,9 +2055,17 @@
       ],
       "notes": "",
       "primaryTask": "4.2",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "user/idp/wechat_protocol.go 集中微信查询字段、grant 与两个 API 路径；wechat.go 复用对应私有定义，app/mini-program 分流和错误分类保留。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log"
+      ]
     },
     {
       "id": "L048",
@@ -1869,9 +2101,17 @@
       ],
       "notes": "",
       "primaryTask": "4.2",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "user/idp/qq_protocol.go 的 qqAccessToken/qqFmt/qqJson/qqClientId/qqOpenid/qqUnionid、qqOauth20Me/qqUserGetUserInfo 等私有定义供请求和解析复用；资料字段及 provider client_id 不借用 JOSE claim。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log"
+      ]
     },
     {
       "id": "L049",
@@ -1916,9 +2156,17 @@
       ],
       "notes": "",
       "primaryTask": "4.2",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "user/idp/weibo_protocol.go 的 weiboOauth2GetTokenInfo 等路径/字段及 weibo10005/10014/21314 等已知错误码由微博局部拥有；三类错误分组、JSON decimal 和严格对象算法不变。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log"
+      ]
     },
     {
       "id": "L050",
@@ -1947,9 +2195,17 @@
       ],
       "notes": "",
       "primaryTask": "4.2",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "user/idp/facebook_protocol.go 的 facebookDebugToken/Me、facebookInputToken/AccessToken/AppsecretProof/Fields、facebookUSER 与 facebookIdNameEmailPicture 拥有 Facebook 请求及 token 类型协议；USER 不借用本地 Actor/ResourceType。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log"
+      ]
     },
     {
       "id": "L051",
@@ -2011,9 +2267,17 @@
       ],
       "notes": "",
       "primaryTask": "4.2",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "user/idp/alipay_protocol.go 集中支付宝查询、签名字段、格式/版本、成功/依赖错误码与已知 sub_code；alipay_api.go 使用 time.DateTime 精确替代原布局。签名字段、排序、auth_token 覆盖和 error_response 分类保持。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log"
+      ]
     },
     {
       "id": "L052",
@@ -2058,9 +2322,17 @@
       ],
       "notes": "",
       "primaryTask": "4.2",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "user/sender/aliyun/protocol.go 集中阿里云 RPC 字段、固定值与签名键；aliyun.go 使用 UTC().Format(time.RFC3339) 保留原秒精度和 Z 字节。官方签名向量与实际请求断言仍独立，不改编码/签名算法。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log"
+      ]
     },
     {
       "id": "L053",
@@ -2095,9 +2367,17 @@
       ],
       "notes": "",
       "primaryTask": "4.2",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "user/sender/smtp/mime_contracts.go 的 mimeSTARTTLS/MultipartAlternative/Boundary/TextPlain/TextHtml/ContentType/ContentTransferEncoding/QuotedPrintable 拥有 SMTP 协议字节；user/idp/pem_contracts.go 拥有四种 PEM 块类型。完整 MIME 模板、JSON tag 与 PEM 解析分支保留。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log"
+      ]
     },
     {
       "id": "L054",
@@ -2129,11 +2409,14 @@
       "notes": "",
       "primaryTask": "3.2",
       "status": "implemented",
-      "resolution": "??/??/??/??/JSON????????????/??/?????????SQLSTATE??????/??/?????????/???????????",
+      "resolution": "audit/authentication/contracts.go 分别定义 systemActorID、dataSubjectHintKey、dataSnapshotKey；user/identity_resolve_contracts.go 定义 identityResolveResolved/NotFound/Unavailable/Internal，profile_audit_contracts.go 拥有资料审计宿主主体。accountkit 的主体 ID 与数据快照键即使同值仍分开，结果分类不借用其他领域常量。",
       "verification": [
-        "task-4-report.md: ?ID???????",
-        "task-4-test.log/task-4-vet.log: ???????????",
-        "task-4-profile-retest.log: Schema??????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-4-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-4-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-4-test.log",
+        "../../../.test-output/string-contracts/task-4-vet.log",
+        "../../../.test-output/string-contracts/task-4-profile-retest.log"
       ]
     },
     {
@@ -2177,11 +2460,14 @@
       "notes": "",
       "primaryTask": "5.2",
       "status": "implemented",
-      "resolution": "??/??/??/??/JSON????????????/??/?????????SQLSTATE??????/??/?????????/???????????",
+      "resolution": "audit/event/json_fields.go由严格字段白名单、重复索引和normalize复用；struct tags未改",
       "verification": [
-        "task-4-report.md: ?ID???????",
-        "task-4-test.log/task-4-vet.log: ???????????",
-        "task-4-profile-retest.log: Schema??????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-4-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-4-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-4-test.log",
+        "../../../.test-output/string-contracts/task-4-vet.log",
+        "../../../.test-output/string-contracts/task-4-profile-retest.log"
       ]
     },
     {
@@ -2247,11 +2533,14 @@
       "notes": "",
       "primaryTask": "5.2",
       "status": "implemented",
-      "resolution": "??/??/??/??/JSON????????????/??/?????????SQLSTATE??????/??/?????????/???????????",
+      "resolution": "user/client_info_fields.go集中顶层与嵌套路径，解码switch复用；敏感词原本集中于单个分段switch和完整名称集合，保留其规则集，不逐词常量化；不改递归/计数/匹配算法",
       "verification": [
-        "task-4-report.md: ?ID???????",
-        "task-4-test.log/task-4-vet.log: ???????????",
-        "task-4-profile-retest.log: Schema??????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-4-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-4-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task-4-test.log",
+        "../../../.test-output/string-contracts/task-4-vet.log",
+        "../../../.test-output/string-contracts/task-4-profile-retest.log"
       ]
     },
     {
@@ -2291,11 +2580,17 @@
       "notes": "",
       "primaryTask": "6.1",
       "status": "implemented",
-      "resolution": "Flutter???auth/http/wire/routes/Dio metadata?????????????kind??????????????/????????????/?????????",
+      "resolution": "auth_protocol.dart 的 AuthScope、IdentityKind、AuthProtocol 分别拥有scope、内置kind和下一动作；models/client/controller复用。kind仍为String，格式检查和未知ACME/custom字典分支原样保留，不改封闭enum。",
       "verification": [
-        "flutter-3.47.4-{pub,format,analyze,unit}.log: ????77??",
-        "task-2-review.md: spec/quality???README P2???",
-        "task-2-report.md: ?ID???????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-2-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-2-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/flutter-3.47.4-unit.log",
+        "../../../.test-output/string-contracts/flutter-3.47.4-format.log",
+        "../../../.test-output/string-contracts/flutter-3.47.4-analyze.log",
+        "../../../.test-output/string-contracts/live-sdk.log：真实SDK服务与策略验证。",
+        "../../../.test-output/string-contracts/sdk-consumers-none.log：两个SDK本地固定Git消费。",
+        "../../../.test-output/string-contracts/sdk-consumers-android-same-drive.log：独立消费者Android构建通过；不代表iOS通过。"
       ]
     },
     {
@@ -2328,11 +2623,17 @@
       "notes": "",
       "primaryTask": "6.1",
       "status": "implemented",
-      "resolution": "Flutter???auth/http/wire/routes/Dio metadata?????????????kind??????????????/????????????/?????????",
+      "resolution": "AuthReason与OAuthError独立定义；dio_metadata.dart 拥有retried/epoch/revision/replay；既有公开 AuthenticatedReplay.key 为兼容别名。会话epoch/revision算法、刷新合并和错误分支未调整。",
       "verification": [
-        "flutter-3.47.4-{pub,format,analyze,unit}.log: ????77??",
-        "task-2-review.md: spec/quality???README P2???",
-        "task-2-report.md: ?ID???????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-2-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-2-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/flutter-3.47.4-unit.log",
+        "../../../.test-output/string-contracts/flutter-3.47.4-format.log",
+        "../../../.test-output/string-contracts/flutter-3.47.4-analyze.log",
+        "../../../.test-output/string-contracts/live-sdk.log：真实SDK服务与策略验证。",
+        "../../../.test-output/string-contracts/sdk-consumers-none.log：两个SDK本地固定Git消费。",
+        "../../../.test-output/string-contracts/sdk-consumers-android-same-drive.log：独立消费者Android构建通过；不代表iOS通过。"
       ]
     },
     {
@@ -2363,11 +2664,17 @@
       "notes": "",
       "primaryTask": "6.1",
       "status": "implemented",
-      "resolution": "Flutter???auth/http/wire/routes/Dio metadata?????????????kind??????????????/????????????/?????????",
+      "resolution": "routes.dart AccountRoute的7个匿名路径由实际发送和anonymous集合共同引用；7条独立字面量测试逐条拒绝凭据注入并断言零网络请求。",
       "verification": [
-        "flutter-3.47.4-{pub,format,analyze,unit}.log: ????77??",
-        "task-2-review.md: spec/quality???README P2???",
-        "task-2-report.md: ?ID???????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-2-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-2-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/flutter-3.47.4-unit.log",
+        "../../../.test-output/string-contracts/flutter-3.47.4-format.log",
+        "../../../.test-output/string-contracts/flutter-3.47.4-analyze.log",
+        "../../../.test-output/string-contracts/live-sdk.log：真实SDK服务与策略验证。",
+        "../../../.test-output/string-contracts/sdk-consumers-none.log：两个SDK本地固定Git消费。",
+        "../../../.test-output/string-contracts/sdk-consumers-android-same-drive.log：独立消费者Android构建通过；不代表iOS通过。"
       ]
     },
     {
@@ -2398,11 +2705,17 @@
       "notes": "",
       "primaryTask": "6.2",
       "status": "implemented",
-      "resolution": "Flutter???auth/http/wire/routes/Dio metadata?????????????kind??????????????/????????????/?????????",
+      "resolution": "AccountRoute拥有重复me/identities/sessions/profile路径。transport中identityPath/sessionPath先复用原resourceId验证，再组装路径；client解绑/替换/撤销调用同一函数。单次动作路径保留内联；users、集合和ID前缀保留对应校验器本地语义，不改校验接受范围。",
       "verification": [
-        "flutter-3.47.4-{pub,format,analyze,unit}.log: ????77??",
-        "task-2-review.md: spec/quality???README P2???",
-        "task-2-report.md: ?ID???????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-2-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-2-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/flutter-3.47.4-unit.log",
+        "../../../.test-output/string-contracts/flutter-3.47.4-format.log",
+        "../../../.test-output/string-contracts/flutter-3.47.4-analyze.log",
+        "../../../.test-output/string-contracts/live-sdk.log：真实SDK服务与策略验证。",
+        "../../../.test-output/string-contracts/sdk-consumers-none.log：两个SDK本地固定Git消费。",
+        "../../../.test-output/string-contracts/sdk-consumers-android-same-drive.log：独立消费者Android构建通过；不代表iOS通过。"
       ]
     },
     {
@@ -2447,11 +2760,17 @@
       "notes": "",
       "primaryTask": "6.2",
       "status": "implemented",
-      "resolution": "Flutter???auth/http/wire/routes/Dio metadata?????????????kind??????????????/????????????/?????????",
+      "resolution": "http_protocol.dart HttpHeader/HttpProtocol供传输、设备白名单/发送及业务Dio凭据清理复用；Bearer与refreshGrant、wire字段分别拥有定义。读取头使用HTTP大小写不敏感行为；输出头保留原大小写。Android和系统描述普通值保留。",
       "verification": [
-        "flutter-3.47.4-{pub,format,analyze,unit}.log: ????77??",
-        "task-2-review.md: spec/quality???README P2???",
-        "task-2-report.md: ?ID???????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-2-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-2-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/flutter-3.47.4-unit.log",
+        "../../../.test-output/string-contracts/flutter-3.47.4-format.log",
+        "../../../.test-output/string-contracts/flutter-3.47.4-analyze.log",
+        "../../../.test-output/string-contracts/live-sdk.log：真实SDK服务与策略验证。",
+        "../../../.test-output/string-contracts/sdk-consumers-none.log：两个SDK本地固定Git消费。",
+        "../../../.test-output/string-contracts/sdk-consumers-android-same-drive.log：独立消费者Android构建通过；不代表iOS通过。"
       ]
     },
     {
@@ -2504,11 +2823,17 @@
       "notes": "",
       "primaryTask": "6.2",
       "status": "implemented",
-      "resolution": "Flutter???auth/http/wire/routes/Dio metadata?????????????kind??????????????/????????????/?????????",
+      "resolution": "wire_fields.dart 按CredentialField/TokenField/CompletionField/StoredTokenField/ResourceField/ErrorField分区；白名单、工厂、解码和持久化复用。refresh_token字段与refreshGrant分开；JSON插入顺序、UTC格式、原token存储键未变。未把所有剩余单次字段扩张为巨大类。",
       "verification": [
-        "flutter-3.47.4-{pub,format,analyze,unit}.log: ????77??",
-        "task-2-review.md: spec/quality???README P2???",
-        "task-2-report.md: ?ID???????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-2-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-2-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/flutter-3.47.4-unit.log",
+        "../../../.test-output/string-contracts/flutter-3.47.4-format.log",
+        "../../../.test-output/string-contracts/flutter-3.47.4-analyze.log",
+        "../../../.test-output/string-contracts/live-sdk.log：真实SDK服务与策略验证。",
+        "../../../.test-output/string-contracts/sdk-consumers-none.log：两个SDK本地固定Git消费。",
+        "../../../.test-output/string-contracts/sdk-consumers-android-same-drive.log：独立消费者Android构建通过；不代表iOS通过。"
       ]
     },
     {
@@ -2538,11 +2863,17 @@
       "notes": "",
       "primaryTask": "6.2",
       "status": "implemented",
-      "resolution": "Flutter???auth/http/wire/routes/Dio metadata?????????????kind??????????????/????????????/?????????",
+      "resolution": "sdks/accountkit-flutter/lib/src/validation_patterns.dart 的 codeIdPattern/deviceIdPattern/deviceHeaderControlPattern/requestWhitespacePattern/unsafePathEncodingPattern 命名五种原规则；大小写、锚点和接受集合不改。设备控制字符与 HTTP 空白控制分别拥有定义，点段解析算法保留。",
       "verification": [
-        "flutter-3.47.4-{pub,format,analyze,unit}.log: ????77??",
-        "task-2-review.md: spec/quality???README P2???",
-        "task-2-report.md: ?ID???????"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-2-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-2-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/flutter-3.47.4-unit.log",
+        "../../../.test-output/string-contracts/flutter-3.47.4-format.log",
+        "../../../.test-output/string-contracts/flutter-3.47.4-analyze.log",
+        "../../../.test-output/string-contracts/live-sdk.log：真实SDK服务与策略验证。",
+        "../../../.test-output/string-contracts/sdk-consumers-none.log：两个SDK本地固定Git消费。",
+        "../../../.test-output/string-contracts/sdk-consumers-android-same-drive.log：独立消费者Android构建通过；不代表iOS通过。"
       ]
     },
     {
@@ -2572,11 +2903,18 @@
       "notes": "",
       "primaryTask": "7.1",
       "status": "implemented",
-      "resolution": "TS??resources.ts??????????????????auditEvents/audit_events??????",
+      "resolution": "新增 TS 内部 src/resources.ts，拥有 TSID alphabet、users/identities/sessions/auditEvents/audit_events 与完整资源 regexp。client 构造和父资源校验、decode 格式校验共同消费；auditEvents 路径与 audit_events 字段仍分开。保留 u_/s_/i_/f_ 的不同身份意义和请求归属检查，不向入口 index 导出新符号。",
       "verification": [
-        "task3-typecheck/formatcheck/ts.log: TS56??",
-        "task3-node.log: Windows31???POSIX1??Linux",
-        "task-3-review.md: spec/quality??"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-3-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-3-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task3-ts.log",
+        "../../../.test-output/string-contracts/task3-typecheck.log",
+        "../../../.test-output/string-contracts/task3-formatcheck.log",
+        "../../../.test-output/string-contracts/task3-node.log",
+        "../../../.test-output/string-contracts/node-linux.log",
+        "../../../.test-output/string-contracts/live-sdk.log：真实SDK服务与策略验证。",
+        "../../../.test-output/string-contracts/sdk-consumers-none.log：两个SDK本地固定Git消费。"
       ]
     },
     {
@@ -2606,11 +2944,18 @@
       "notes": "",
       "primaryTask": "7.1",
       "status": "implemented",
-      "resolution": "TS??http.ts??Header/MIME/Bearer???????????????????",
+      "resolution": "新增 src/http.ts 拥有 JSON MIME、实际 HTTP header、Bearer 与安全失败消息；client 与 errors 共用失败消息。其他错误类一次性消息保留；错误 name、分类、隐藏 serverMessage、inspect 行为不变。",
       "verification": [
-        "task3-typecheck/formatcheck/ts.log: TS56??",
-        "task3-node.log: Windows31???POSIX1??Linux",
-        "task-3-review.md: spec/quality??"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-3-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-3-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task3-ts.log",
+        "../../../.test-output/string-contracts/task3-typecheck.log",
+        "../../../.test-output/string-contracts/task3-formatcheck.log",
+        "../../../.test-output/string-contracts/task3-node.log",
+        "../../../.test-output/string-contracts/node-linux.log",
+        "../../../.test-output/string-contracts/live-sdk.log：真实SDK服务与策略验证。",
+        "../../../.test-output/string-contracts/sdk-consumers-none.log：两个SDK本地固定Git消费。"
       ]
     },
     {
@@ -2648,11 +2993,18 @@
       "notes": "",
       "primaryTask": "7.1",
       "status": "implemented",
-      "resolution": "filter tuple?????union????Set?create_time????query tuple?????????",
+      "resolution": "filterFields const tuple 派生原公开 UserFilterField union 与 ReadonlySet；comparisonOperators tuple 派生原参数 union 与运行时检查。query 四键已有单份 const tuple，保留；create_time 既是字段类型又是运行时固定参数检查，保持直观，不额外创建无复用目录。新增独立精确 union 类型断言与 unknown 运行时拒绝断言。",
       "verification": [
-        "task3-typecheck/formatcheck/ts.log: TS56??",
-        "task3-node.log: Windows31???POSIX1??Linux",
-        "task-3-review.md: spec/quality??"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-3-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-3-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task3-ts.log",
+        "../../../.test-output/string-contracts/task3-typecheck.log",
+        "../../../.test-output/string-contracts/task3-formatcheck.log",
+        "../../../.test-output/string-contracts/task3-node.log",
+        "../../../.test-output/string-contracts/node-linux.log",
+        "../../../.test-output/string-contracts/live-sdk.log：真实SDK服务与策略验证。",
+        "../../../.test-output/string-contracts/sdk-consumers-none.log：两个SDK本地固定Git消费。"
       ]
     },
     {
@@ -2689,9 +3041,17 @@
       ],
       "notes": "",
       "primaryTask": "8.1",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "examples/remoteauth/messages.go 的 messageInvalidToken/InsufficientScope/ReauthenticationRequired/AuthenticationUnavailable/BearerRequired 拥有固定安全消息；handler 复用 httpcontract reason/Header/MIME、Bearer 与 SetNoStore。业务资源不可用消息和认证不可用消息仍分开。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log"
+      ]
     },
     {
       "id": "L068",
@@ -2718,9 +3078,17 @@
       ],
       "notes": "",
       "primaryTask": "8.1",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "examples/codeemail/locales.go 的 localeEn/localeZhCN 与 examples/audit/modes.go 的 modeLocal/modeHost/modeWriteOnly 各自拥有示例内部选择；示例域名、品牌和宿主配置不机械提取。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log"
+      ]
     },
     {
       "id": "L069",
@@ -2747,9 +3115,17 @@
       ],
       "notes": "",
       "primaryTask": "9.2",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "internal/testgate/protocol.go 定义 testActionFail/Skip/Pass；internal/migrationcheck/paths.go 定义 migrationMigrations 与 migrationSql。required skip/fail 检查、历史可达 tag 检查、迁移 SQL 与冻结 initialFrozen 哈希均未放宽。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log"
+      ]
     },
     {
       "id": "L070",
@@ -2784,11 +3160,16 @@
       "notes": "",
       "primaryTask": "9.1",
       "status": "implemented",
-      "resolution": "??sdk-metadata descriptor????/??/tag/????CLI/???????consumer?????",
+      "resolution": "新增仅工具使用 scripts/sdk-metadata.mjs：两个 SDK descriptor 包含 directory/manifest/packageName/tagPrefix，sdkIds/compatibilityStates 同源。release checker 与 consumer 工具消费；consumer 生成的独立测试正文仍保留原始 import/协议预期。精确版本继续由 tool-versions.json 提供；JSON 兼容矩阵、CLI/env 字面协议和用户帮助文案不改。sdkTagPrefix 对 unknown SDK 保留旧字符串构造以维持 validateSDKRelease 原错误列表。",
       "verification": [
-        "task3-typecheck/formatcheck/ts.log: TS56??",
-        "task3-node.log: Windows31???POSIX1??Linux",
-        "task-3-review.md: spec/quality??"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-3-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-3-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task3-ts.log",
+        "../../../.test-output/string-contracts/task3-typecheck.log",
+        "../../../.test-output/string-contracts/task3-formatcheck.log",
+        "../../../.test-output/string-contracts/task3-node.log",
+        "../../../.test-output/string-contracts/node-linux.log"
       ]
     },
     {
@@ -2816,11 +3197,16 @@
       "notes": "",
       "primaryTask": "9.1",
       "status": "implemented",
-      "resolution": "??/????????????????????????????????",
+      "resolution": "snapshot/consumer 各自私有 temporaryPrefix 同时用于创建和清理前缀判断，consumer 私有 cancelledMessage 用于两条取消路径。保留 realpath 等同性、临时根 relative 边界与进程退出后清理顺序；原 Windows taskkill 与 POSIX escalation 不变。补 snapshot 前缀、清理后不存在、重复 dispose 和预取消不启动进程验证。",
       "verification": [
-        "task3-typecheck/formatcheck/ts.log: TS56??",
-        "task3-node.log: Windows31???POSIX1??Linux",
-        "task-3-review.md: spec/quality??"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-3-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-3-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task3-ts.log",
+        "../../../.test-output/string-contracts/task3-typecheck.log",
+        "../../../.test-output/string-contracts/task3-formatcheck.log",
+        "../../../.test-output/string-contracts/task3-node.log",
+        "../../../.test-output/string-contracts/node-linux.log"
       ]
     },
     {
@@ -2851,11 +3237,16 @@
       "notes": "",
       "primaryTask": "9.1",
       "status": "implemented",
-      "resolution": "CJS/ESM????HTTP????????????????",
+      "resolution": "新增冻结数组 scripts/openapi-methods.cjs，CommonJS check-openapi 与 ESM check-sdk-coverage 都消费。独立测试精确枚举八方法并拒绝 unknown surface；coverage source/test-link 检测、各拒绝规则未放宽。",
       "verification": [
-        "task3-typecheck/formatcheck/ts.log: TS56??",
-        "task3-node.log: Windows31???POSIX1??Linux",
-        "task-3-review.md: spec/quality??"
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-3-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-3-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task3-ts.log",
+        "../../../.test-output/string-contracts/task3-typecheck.log",
+        "../../../.test-output/string-contracts/task3-formatcheck.log",
+        "../../../.test-output/string-contracts/task3-node.log",
+        "../../../.test-output/string-contracts/node-linux.log"
       ]
     },
     {
@@ -2895,9 +3286,19 @@
       ],
       "notes": "",
       "primaryTask": "8.2",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "Go fixture profile、默认/自定义 mount、控制路由、serviceBaseline 在 profiles.go；新增测试对照 tool-versions.json.serviceBaseline，仅测试读文件，无启动 I/O 或 BASELINE env。SDK 独立协议测试原始路径保留。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log",
+        "../../../.test-output/string-contracts/live-sdk.log：真实SDK服务与策略验证。",
+        "../../../.test-output/string-contracts/sdk-consumers-none.log：两个SDK本地固定Git消费。"
+      ]
     },
     {
       "id": "L074",
@@ -2925,9 +3326,19 @@
       ],
       "notes": "",
       "primaryTask": "8.2",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "sdks/testsupport/fixture/addresses.go 的 defaultControlAddr/defaultServiceAddr 拥有两个默认监听地址，origin 继续从实际监听地址生成；scripts/verify-client-sdks.sh 的三个局部 addr/origin 用于启动、探活、导出与 readiness，不新增环境变量或向生产 SDK 引入测试地址。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log",
+        "../../../.test-output/string-contracts/live-sdk.log：真实SDK服务与策略验证。",
+        "../../../.test-output/string-contracts/sdk-consumers-none.log：两个SDK本地固定Git消费。"
+      ]
     },
     {
       "id": "L075",
@@ -2971,9 +3382,19 @@
       ],
       "notes": "",
       "primaryTask": "8.2",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "Go 使用的八个 SDK_FIXTURE_* 环境键集中 environment.go；没有为 Go 不使用的 SDK 测试环境名创建 unused 常量。policySeedMarker 定义在 Go fixture，readiness 的可忽略 policy_seed_marker 元数据供 Dart policy_seed.dart 及 shell 共用；Dart/shell 保留独立原标记断言。shell 精确验证 JSON 值后才提取，实际输出和最后匹配规则不变。这是测试元数据同源，不是生产协议能力变化。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log",
+        "../../../.test-output/string-contracts/live-sdk.log：真实SDK服务与策略验证。",
+        "../../../.test-output/string-contracts/sdk-consumers-none.log：两个SDK本地固定Git消费。"
+      ]
     },
     {
       "id": "L076",
@@ -3005,9 +3426,19 @@
       ],
       "notes": "",
       "primaryTask": "8.2",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "Go fixture 身份 kind 复用 enum.Identity*，管理权限复用 admin.Permission*；operator/super-admin 保留显式外部角色选择。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log",
+        "../../../.test-output/string-contracts/live-sdk.log：真实SDK服务与策略验证。",
+        "../../../.test-output/string-contracts/sdk-consumers-none.log：两个SDK本地固定Git消费。"
+      ]
     },
     {
       "id": "L077",
@@ -3029,9 +3460,19 @@
       ],
       "notes": "",
       "primaryTask": "8.2",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "sdks/testsupport/fixture/labels.go 的 labelWeChatMini/labelFacebookClassic/labelTestOIDC 拥有 WECHAT_MINI/FACEBOOK_CLASSIC/TEST_OIDC 控制标签；它们不是正式 wire kind，不与 enum 身份种类合并。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log",
+        "../../../.test-output/string-contracts/live-sdk.log：真实SDK服务与策略验证。",
+        "../../../.test-output/string-contracts/sdk-consumers-none.log：两个SDK本地固定Git消费。"
+      ]
     },
     {
       "id": "L078",
@@ -3068,9 +3509,22 @@
       ],
       "notes": "",
       "primaryTask": "9.2",
-      "status": "planned",
-      "resolution": null,
-      "verification": []
+      "status": "implemented",
+      "resolution": "recovery_contracts_test.go 的 recoveryModeSeed/Verify/SourceUnchanged 与 recoveryEnvState/Mode/DSN 供 recovery_test.go 使用；scripts/verify-recovery.sh 仍显式调用源库 seed、目标库 verify、源库 source-unchanged。TestRecoveryFixture 名和 shell 原生环境变量引用保留；SERVER_TEST_DB_DSN、ACCOUNTSVC_TEST_REDIS_URL、ACCOUNTSVC_TEST_RACE 属各门禁输入，不为消重制造间接变量或新增配置。普通套件 skip 不代表恢复通过。",
+      "verification": [
+        "verification.md：正式实施、审查及综合门禁记录；实现状态不等于完整验收通过。",
+        "../../../.test-output/string-contracts/task-5-report.md：本组逐项实施/保留说明。",
+        "../../../.test-output/string-contracts/task-5-review.md：独立审查；修订关闭及综合证据见正式记录。",
+        "../../../.test-output/string-contracts/task5-suite-final.log",
+        "../../../.test-output/string-contracts/task5-vet-final.log",
+        "../../../.test-output/string-contracts/task5-build.log",
+        "../../../.test-output/string-contracts/task5-shell-final.log"
+      ]
     }
+  ],
+  "progressNotes": [
+    "78组实现按各模块报告及当前代码闭环，L041补齐六类私有日志定义，L046恢复QQ与微博独立规则；审查结论及后续补验以verification.md持续更新。",
+    "精确TS工具下56项单元、typecheck/format通过；精确Flutter工具下77项单元、format/analyze通过。真实SDK验证覆盖TS全部11操作、Flutter 3项service及1项policy；固定Git快照两个SDK的none消费与Flutter Android独立消费者通过。",
+    "Linux Node工具32/32通过，包含POSIX取消；Windows平台skip未算作POSIX通过。全Go真实数据库/race/恢复综合门禁尚待执行，iOS缺少macOS/Xcode环境，远端发布tag消费不从本地固定Git消费推定通过。"
   ]
 }

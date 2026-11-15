@@ -20,6 +20,7 @@ import (
 	"github.com/bbxx111/accountkit/internal/accountsvc/oidcjwt"
 	"github.com/bbxx111/accountkit/internal/accountsvc/purgefeed"
 	"github.com/bbxx111/accountkit/internal/accountsvc/serviceauth"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/migrations"
 	"github.com/bbxx111/accountkit/pii"
 	"github.com/bbxx111/accountkit/user"
@@ -60,9 +61,9 @@ type runtimeFactory struct {
 
 func parseCommand(args []string) (string, error) {
 	if len(args) == 0 {
-		return "serve", nil
+		return commandServe, nil
 	}
-	if len(args) == 1 && (args[0] == "serve" || args[0] == "migrate") {
+	if len(args) == 1 && (args[0] == commandServe || args[0] == commandMigrate) {
 		return args[0], nil
 	}
 	return "", errors.New("accountsvc: command must be serve, migrate or email-templates check")
@@ -102,7 +103,7 @@ func openDependencies(ctx context.Context, cfg Config, _ *slog.Logger) (*depende
 	d := &dependencies{pool: pool, databasePing: pool.Ping, closePool: pool.Close}
 	opts, err := redis.ParseURL(cfg.RedisURL)
 	if err != nil {
-		return d, invalidConfig("ACCOUNTSVC_REDIS_URL")
+		return d, invalidConfig(envAccountsvcRedisUrl)
 	}
 	opts.ContextTimeoutEnabled = true
 	rdb := redis.NewClient(opts)
@@ -120,7 +121,7 @@ func openDependencies(ctx context.Context, cfg Config, _ *slog.Logger) (*depende
 
 // 管理认证在构造时静态装配，远程 discovery 在监听就绪后执行。
 func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*application, error) {
-	if cfg.command == "migrate" {
+	if cfg.command == commandMigrate {
 		return newMigrationApplication(cfg, d)
 	}
 	observer, metrics, err := newMetrics(cfg)
@@ -145,7 +146,7 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 	var recordForbidden func(*http.Request, accountkit.AdminPrincipal)
 	var adminVerifier *adminauth.Verifier
 
-	if cfg.command == "serve" && cfg.AdminEnabled {
+	if cfg.command == commandServe && cfg.AdminEnabled {
 		var err error
 		adminVerifier, err = adminauth.New(context.Background(), cfg.Admin, adminauth.Options{Logger: logger, OnForbidden: func(r *http.Request, p accountkit.AdminPrincipal) {
 			if recordForbidden != nil {
@@ -181,17 +182,14 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 		// 只有多语言清单才需要读取请求语言；发码只经由消费者路由。
 		app.endUser = acceptLanguage(app.endUser)
 	}
-	if cfg.command == "serve" {
+	if cfg.command == commandServe {
 		intro, purge, resolve, preload, err := serviceAuthenticators(cfg, logger, nil, &closeServiceTokens)
 		if err != nil {
 			closeAuth()
 			return nil, err
 		}
 		app.preloadServiceTokens = preload
-		namespace := cfg.Library.AuditNamespace
-		if namespace == "" {
-			namespace = "accountkit/" + cfg.Library.Schema + "/resources"
-		}
+		namespace := identityAuditNamespace(cfg.Library)
 		app.identityResolve, err = identityresolve.NewWithAuthenticator(resolve, auth.Users().ResolveIdentity, namespace, requestID)
 		if err != nil {
 			closeAuth()
@@ -221,7 +219,7 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 func adminRevealNoStore(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "/identities/") && strings.HasSuffix(r.URL.Path, ":reveal") {
-			w.Header().Set("Cache-Control", "no-store")
+			httpcontract.SetNoStore(w)
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -355,7 +353,7 @@ func warnUnconfigured(cfg Config, logger *slog.Logger) {
 	}
 	if cfg.identityEnabled(enum.IdentityEmail) && cfg.EmailTemplates == nil {
 		logger.Warn("accountsvc: email templates are not configured; verification emails use the built-in default wording without a brand",
-			"settings", "ACCOUNTSVC_SMTP_TEMPLATES_FILE")
+			"settings", emailTemplatesSetting)
 	}
 }
 
@@ -425,7 +423,7 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 		_ = startupCleanup(cfg, d, app, nil)
 		return errors.New("accountsvc: migration failed")
 	}
-	if cfg.command == "migrate" {
+	if cfg.command == commandMigrate {
 		return startupCleanup(cfg, d, app, nil)
 	}
 	warnPlainHTTPIssuers(cfg, logger)

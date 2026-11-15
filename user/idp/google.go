@@ -8,13 +8,14 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/idpdefaults"
 	"github.com/bbxx111/accountkit/observability"
 )
 
 const (
 	googleIssuerHTTPS = "https://accounts.google.com"
 	googleIssuerBare  = "accounts.google.com"
-	googleJWKSDefault = "https://www.googleapis.com/oauth2/v3/certs"
+	googleJWKSDefault = idpdefaults.GoogleJWKS
 )
 
 // GoogleOptions 是 Google ID token 校验器的依赖。
@@ -57,11 +58,11 @@ func NewGoogle(o GoogleOptions) *Google {
 	}
 	recorder := observability.NewRecorder(o.Observer, o.Logger)
 	return &Google{jwksURL: o.JWKSURL, v: &idTokenVerifier{
-		kind: enum.IdentityGoogle, label: "google", issuers: []string{googleIssuerHTTPS, googleIssuerBare},
+		kind: enum.IdentityGoogle, label: providerLabelGoogle, issuers: []string{googleIssuerHTTPS, googleIssuerBare},
 		clientIDs: clientIDSet(o.ClientIDs),
-		jwks:      newJWKSCache("google", o.JWKSURL, o.HTTP, o.Logger, recorder, observability.DegradationGoogleCachedKeyFallback, o.Now),
-		nonces:    o.Nonces, nonceScope: "google", nonceTTL: o.NonceTTL, now: o.Now,
-		nameClaims: []string{"name"}, pictureClaims: []string{"picture"},
+		jwks:      newJWKSCache(providerLabelGoogle, o.JWKSURL, o.HTTP, o.Logger, recorder, observability.DegradationGoogleCachedKeyFallback, o.Now),
+		nonces:    o.Nonces, nonceScope: nonceScopeGoogle, nonceTTL: o.NonceTTL, now: o.Now,
+		nameClaims: []string{profileClaimName}, pictureClaims: []string{profileClaimPicture},
 	}}
 }
 

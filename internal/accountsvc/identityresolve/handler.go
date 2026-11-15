@@ -21,6 +21,9 @@ import (
 
 const Realm = "accountsvc-identity-resolution"
 
+// Endpoint is the stable service authentication observation label.
+const Endpoint = "identities_resolve"
+
 type Resolver func(context.Context, user.ResolveIdentityInput) (user.ResolvedIdentity, error)
 type handler struct {
 	auth      *serviceauth.Authenticator

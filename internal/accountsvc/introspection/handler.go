@@ -26,6 +26,9 @@ const lookupTimeout = 3 * time.Second
 // Realm is the protection space named in this interface's challenges.
 const Realm = "accountsvc-introspection"
 
+// Endpoint is the stable service authentication observation label.
+const Endpoint = "introspect"
+
 type handler struct {
 	auth         *serviceauth.Authenticator
 	authenticate func(context.Context, string) (user.Principal, error)
@@ -45,7 +48,7 @@ func New(clients map[string][]string, authenticate func(context.Context, string)
 	if err != nil {
 		return nil, err
 	}
-	cfg := serviceauth.Config{Realm: Realm, Endpoint: "introspect", Registry: registry, RequiredPermission: serviceauth.PermissionTokensIntrospect}
+	cfg := serviceauth.Config{Realm: Realm, Endpoint: Endpoint, Registry: registry, RequiredPermission: serviceauth.PermissionTokensIntrospect}
 	auth, err := serviceauth.New(cfg)
 	if err != nil {
 		return nil, err

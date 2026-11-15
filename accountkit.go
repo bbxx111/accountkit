@@ -9,15 +9,11 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/redis/go-redis/v9"
 
 	"github.com/bbxx111/accountkit/anonymize"
 	"github.com/bbxx111/accountkit/audit"
@@ -25,6 +21,7 @@ import (
 	"github.com/bbxx111/accountkit/httpapi/admin"
 	"github.com/bbxx111/accountkit/httpapi/authn"
 	"github.com/bbxx111/accountkit/httpapi/enduser"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/maintenance"
 	"github.com/bbxx111/accountkit/migrations"
 	"github.com/bbxx111/accountkit/observability"
@@ -36,6 +33,8 @@ import (
 	"github.com/bbxx111/accountkit/user/code"
 	"github.com/bbxx111/accountkit/user/idp"
 	"github.com/bbxx111/accountkit/user/sender"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 // ErrSearchPath 表示 Deps.Pool 的连接 search_path 首位不是 Config.Schema。
@@ -278,11 +277,11 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 	}
 	// 维护任务（§5.6 #1–#5）：顺序执行、失败互不影响。
 	a.runner = maintenance.NewRunnerWithObserver(cfg.MaintenanceInterval, maintenance.NewPGLocker(deps.Pool, cfg.Schema), deps.Logger, deps.Observer,
-		maintenance.Task{Name: "cleanup_sign_in_completion_flows", Run: func(ctx context.Context) error {
+		maintenance.Task{Name: string(observability.TaskCleanupSignInCompletionFlows), Run: func(ctx context.Context) error {
 			_, err := users.CleanupSignInCompletionFlows(ctx)
 			return err
 		}},
-		maintenance.Task{Name: "purge_users", Run: func(ctx context.Context) error {
+		maintenance.Task{Name: string(observability.TaskPurgeUsers), Run: func(ctx context.Context) error {
 			n, err := users.PurgeDueUsers(ctx)
 			if n > 0 {
 				deps.Logger.Info("maintenance: purged users", "count", n)
@@ -296,14 +295,14 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 			}
 			return err
 		}},
-		maintenance.Task{Name: "cleanup_sessions", Run: func(ctx context.Context) error {
+		maintenance.Task{Name: string(observability.TaskCleanupSessions), Run: func(ctx context.Context) error {
 			n, err := users.CleanupSessions(ctx)
 			if n > 0 {
 				deps.Logger.Info("maintenance: deleted stale sessions", "count", n)
 			}
 			return err
 		}},
-		maintenance.Task{Name: "audit_retention", Run: func(ctx context.Context) error {
+		maintenance.Task{Name: string(observability.TaskAuditRetention), Run: func(ctx context.Context) error {
 			before := time.Now().Add(-time.Duration(cfg.AuditRetentionDays) * 24 * time.Hour)
 			n, err := auditStore.DeleteOlderThan(ctx, before)
 			if n > 0 {
@@ -314,14 +313,14 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 			}
 			return err
 		}},
-		maintenance.Task{Name: "rekey_digests", Run: func(ctx context.Context) error {
+		maintenance.Task{Name: string(observability.TaskRekeyDigests), Run: func(ctx context.Context) error {
 			n, err := users.RekeyDigests(ctx)
 			if n > 0 {
 				deps.Logger.Info("maintenance: rekeyed identity digests", "count", n)
 			}
 			return err
 		}},
-		maintenance.Task{Name: "reencrypt_subjects", Run: func(ctx context.Context) error {
+		maintenance.Task{Name: string(observability.TaskReencryptSubjects), Run: func(ctx context.Context) error {
 			n, err := users.ReencryptSubjects(ctx)
 			if n > 0 {
 				deps.Logger.Info("maintenance: re-encrypted identity subjects", "count", n)
@@ -481,10 +480,8 @@ func defaultClientIP(r *http.Request) string {
 	return host
 }
 
-var requestIDRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
-
 func defaultRequestID(r *http.Request) string {
-	if id := r.Header.Get("X-Request-Id"); requestIDRe.MatchString(id) {
+	if id := r.Header.Get(httpcontract.HeaderRequestID); httpcontract.ValidRequestID(id) {
 		return id
 	}
 	var b [16]byte

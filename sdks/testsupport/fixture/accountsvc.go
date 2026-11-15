@@ -7,25 +7,25 @@ import (
 	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/base64"
-
 	"errors"
 	"fmt"
-	"github.com/bbxx111/accountkit/enum"
-	"github.com/bbxx111/accountkit/internal/accountsvc"
-	"github.com/bbxx111/accountkit/user/sender"
 	"io"
 	"log/slog"
 	"mime"
 	"mime/multipart"
 	"mime/quotedprintable"
 	"net"
-
 	"net/mail"
 	"net/textproto"
 	"os"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/accountsvc"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
+	"github.com/bbxx111/accountkit/user/sender"
 )
 
 // startSMTP captures plain loopback-only development mail. Production SMTP remains untouched.
@@ -125,9 +125,9 @@ func runService(ctx context.Context, key *ecdsa.PrivateKey, o options, controlOr
 	if e != nil {
 		return "", nil, e
 	}
-	serviceAddr := os.Getenv("SDK_FIXTURE_SERVICE_ADDR")
+	serviceAddr := os.Getenv(envFixtureServiceAddr)
 	if serviceAddr == "" {
-		serviceAddr = "127.0.0.1:18082"
+		serviceAddr = defaultServiceAddr
 	}
 	host, _, e := net.SplitHostPort(serviceAddr)
 	if e != nil || host != "127.0.0.1" {
@@ -182,7 +182,7 @@ func decodeMail(raw []byte) string {
 	if e != nil {
 		return ""
 	}
-	contentType, params, _ := mime.ParseMediaType(m.Header.Get("Content-Type"))
+	contentType, params, _ := mime.ParseMediaType(m.Header.Get(httpcontract.HeaderContentType))
 	if strings.HasPrefix(contentType, "multipart/") {
 		reader := multipart.NewReader(m.Body, params["boundary"])
 		for {
@@ -190,7 +190,7 @@ func decodeMail(raw []byte) string {
 			if e != nil {
 				return ""
 			}
-			if strings.HasPrefix(part.Header.Get("Content-Type"), "text/plain") {
+			if strings.HasPrefix(part.Header.Get(httpcontract.HeaderContentType), "text/plain") {
 				b, _ := io.ReadAll(part)
 				return string(b)
 			}

@@ -6,6 +6,8 @@ import (
 	"net/netip"
 	"strings"
 	"testing"
+
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 )
 
 func TestTrustedClientIP(t *testing.T) {
@@ -47,7 +49,7 @@ func TestMetadataRequestIDReusedForEverySurface(t *testing.T) {
 		r.Header.Set("X-Request-Id", raw)
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, r)
-		if rec.Header().Get("X-Request-Id") != first || !requestIDPattern.MatchString(first) {
+		if rec.Header().Get("X-Request-Id") != first || !httpcontract.ValidRequestID(first) {
 			t.Fatal("response/request ID mismatch")
 		}
 		if raw == "valid.request-1" && first != raw {

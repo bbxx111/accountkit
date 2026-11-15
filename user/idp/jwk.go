@@ -7,6 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+
+	"github.com/bbxx111/accountkit/internal/jose"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 type jwkSet struct {
@@ -30,15 +33,15 @@ func parseRSAJWKSet(data []byte) (map[string]*rsa.PublicKey, error) {
 	}
 	out := make(map[string]*rsa.PublicKey, len(set.Keys))
 	for _, k := range set.Keys {
-		if k.Kty != "RSA" || k.Kid == "" {
+		if k.Kty != jose.JWKTypeRSA || k.Kid == "" {
 			continue
 		}
 		// use/alg 若声明了就必须是签名用的 RS256；留空视为未声明（Apple 历来不带这两个
 		// 字段），但一旦声明就不能是别的用途/算法（例如 "enc" 或 "RS384"）。
-		if k.Use != "" && k.Use != "sig" {
+		if k.Use != "" && k.Use != jose.JWKUseSignature {
 			continue
 		}
-		if k.Alg != "" && k.Alg != "RS256" {
+		if k.Alg != "" && k.Alg != jwt.SigningMethodRS256.Alg() {
 			continue
 		}
 		n, err := base64.RawURLEncoding.DecodeString(k.N)

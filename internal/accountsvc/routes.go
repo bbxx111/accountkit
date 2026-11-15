@@ -47,9 +47,9 @@ type routeDeclaration struct {
 // Categories describe access boundaries, but do not authenticate or isolate networks.
 func routeDeclarations() [9]routeDeclaration {
 	return [9]routeDeclaration{
-		{id: routeIntrospect, path: "/v1/introspect", methods: http.MethodPost, category: routeService, realm: introspection.Realm, endpoint: "introspect", permission: serviceauth.PermissionTokensIntrospect},
-		{id: routePurgeFeed, path: "/v1/purgedUsers", methods: http.MethodGet, category: routeService, realm: purgefeed.Realm, endpoint: "purged_users", permission: serviceauth.PermissionPurgedUsersRead},
-		{id: routeIdentityResolve, path: "/v1/identities:resolve", methods: http.MethodPost, category: routeService, realm: identityresolve.Realm, endpoint: "identities_resolve", permission: serviceauth.PermissionIdentitiesResolve},
+		{id: routeIntrospect, path: "/v1/introspect", methods: http.MethodPost, category: routeService, realm: introspection.Realm, endpoint: introspection.Endpoint, permission: serviceauth.PermissionTokensIntrospect},
+		{id: routePurgeFeed, path: "/v1/purgedUsers", methods: http.MethodGet, category: routeService, realm: purgefeed.Realm, endpoint: purgefeed.Endpoint, permission: serviceauth.PermissionPurgedUsersRead},
+		{id: routeIdentityResolve, path: "/v1/identities:resolve", methods: http.MethodPost, category: routeService, realm: identityresolve.Realm, endpoint: identityresolve.Endpoint, permission: serviceauth.PermissionIdentitiesResolve},
 		{id: routeJWKS, path: "/.well-known/jwks.json", methods: "GET, HEAD", category: routePublic},
 		{id: routeEndUser, path: "/v1", category: routeConsumer},
 		{id: routeAdministrator, path: "/admin/v1", category: routeAdmin},

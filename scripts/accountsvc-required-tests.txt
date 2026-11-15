@@ -1,4 +1,5 @@
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationEmailLifecycle
+github.com/bbxx111/accountkit/internal/accountsvc/TestIdentityAuditNamespacePreservesEmptySchema
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationAdminLifecycle
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationAdminPermissions
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationAdminPolicyRestart

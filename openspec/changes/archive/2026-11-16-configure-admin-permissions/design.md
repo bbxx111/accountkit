@@ -158,3 +158,7 @@ ACCOUNTSVC_ADMIN_ROLE_SUPER_ADMIN_PERMISSIONS=users.*,sessions.*,identities.*,au
 - 兼容行为：旧宿主与新宿主、仅新拒绝不回退、两种profile、身份面隔离、服务scope和未知权限规则不变、拒绝一次审计、no-store与领域拒绝保持。
 - 运行门禁：相关Go测试与vet、GOWORK=off构建、真实PostgreSQL/Redis的服务集成及race；OpenAPI/SDK覆盖检查、管理员TS单元和真实服务协议测试，SDK与Go门禁分别报告。共享改动需要的完整验证依既有verify入口执行，缺依赖明确未验证。
 - ff阶段只验证工件、相对链接、规格结构和差异；结果写入 [verification.md](verification.md)，不勾选实现任务。
+
+## Archive Notes
+
+归档同步时，“管理接口及审计兼容”新增的可选权限扩展说明使主规格正文略超500字符限制。仅精简该新增句的重复用词，保持可选扩展、仅旧角色契约宿主沿用原角色要求及无须迁移的含义；增量与主规格采用同一表述。没有拆分需求、删减约束或场景，原有说明保持，相关完整兼容契约仍由“可选管理权限验证扩展”要求明确规定。

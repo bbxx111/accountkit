@@ -8,7 +8,9 @@
 
 **Tech Stack:** Go 1.26.5、Chi、现有 JWT/JWKS 验证器、PostgreSQL 17、Redis、现有 OpenAPI/SDK 验证工具；不新增运行依赖。
 
-**Spec:** [OpenSpec设计](../../../openspec/changes/configure-admin-permissions/design.md)、同目录 proposal/tasks 与三份增量规格为唯一需求来源。
+**Spec:** [OpenSpec设计](../../../openspec/changes/archive/2026-11-16-configure-admin-permissions/design.md)、同目录 proposal/tasks 与三份增量规格为唯一需求来源。
+
+**Status:** OpenSpec 19/19任务已完成并归档。以下步骤状态据既有实现、审查和集成证据补齐，实际范围及未验证项见[验收记录](../../../openspec/changes/archive/2026-11-16-configure-admin-permissions/verification.md)。
 
 ## Global Constraints
 
@@ -33,11 +35,11 @@
 
 **Interfaces:** Permission string类型、10个Permission常量、Permissions() []Permission独立副本；PermissionVerifier.RequirePermission(Permission)中间件；根AdminPermission/AdminPermissionVerifier别名；adminauth.RoleBinding{Name string, Permissions []string}，Config.RoleBindings []RoleBinding。
 
-- [ ] 写目录/路由优先级测试并运行，确认缺少功能导致失败；对照设计10权限11路由。
-- [ ] 实现目录与可选能力检测，保留旧接口和角色常量；新路径全部精确权限，禁止结果回退。
-- [ ] 写策略验证/通配符/深拷贝/空策略/多角色/scope无效用测试，运行确认失败。
-- [ ] 实现RoleBinding验证、编译与RequirePermission；同语义常量归属现有模块，删除内部super-admin继承；用测试目录验证未来扩权。
-- [ ] GOWORK=off go test -count=1 ./httpapi/admin ./internal/accountsvc/adminauth，审查规格与质量，报告TDD命令、结果与文件。
+- [x] 写目录/路由优先级测试并运行，确认缺少功能导致失败；对照设计10权限11路由。
+- [x] 实现目录与可选能力检测，保留旧接口和角色常量；新路径全部精确权限，禁止结果回退。
+- [x] 写策略验证/通配符/深拷贝/空策略/多角色/scope无效用测试，运行确认失败。
+- [x] 实现RoleBinding验证、编译与RequirePermission；同语义常量归属现有模块，删除内部super-admin继承；用测试目录验证未来扩权。
+- [x] GOWORK=off go test -count=1 ./httpapi/admin ./internal/accountsvc/adminauth，审查规格与质量，报告TDD命令、结果与文件。
 
 ## Task 2: 环境装配、真实服务与SDK夹具（OpenSpec 3.1–3.3、部分5.2）
 
@@ -45,22 +47,22 @@
 
 **Interfaces:** 消费Task1的RoleBinding；loadAdminRoles()无网络，config.Admin.RoleBindings赋值；既有run verifier始终拥有新能力。
 
-- [ ] 先写配置矩阵并运行观察失败，覆盖全部规范字段/重复/空值/精确匹配/禁用/migrate。
-- [ ] 实现预期变量集合扫描，CSV规则明确区分别名拒绝重复与权限去重；复用envPrefix、保留服务CSV契约。
-- [ ] 夹具显式注入原角色映射；写真实11路由授权、空策略与重启撤权测试，保留领域失败与认证隔离。
-- [ ] 运行内部accountsvc和SDK fixture测试；真实依赖验证交给Task3统一执行，缺依赖不能标通过。
-- [ ] 审查配置/授权规格与质量，报告文件和TDD证据。
+- [x] 先写配置矩阵并运行观察失败，覆盖全部规范字段/重复/空值/精确匹配/禁用/migrate。
+- [x] 实现预期变量集合扫描，CSV规则明确区分别名拒绝重复与权限去重；复用envPrefix、保留服务CSV契约。
+- [x] 夹具显式注入原角色映射；写真实11路由授权、空策略与重启撤权测试，保留领域失败与认证隔离。
+- [x] 运行内部accountsvc和SDK fixture测试；真实依赖验证交给Task3统一执行，缺依赖不能标通过。
+- [x] 审查配置/授权规格与质量，报告文件和TDD证据。
 
 ## Task 3: 文档协议与全量验证（OpenSpec其余任务）
 
 **Files:** docs/accountsvc.md、go-integration.md、compatibility.md、openapi.md、openapi/admin.json、README、AGENTS、deploy/accountsvc/.env.example、scripts/check-openapi.cjs；必要共享常量；变更verification/tasks。
 
-- [ ] 补新接口宿主与角色策略文档、通配符和显式迁移示例；Compose不注入默认绑定。
-- [ ] OpenAPI增加x-required-permission、改x-legacy-required-role，同步检查器；覆盖登记按实际变化核对。
-- [ ] 审查相关重复字面量和流程并整理（不扩大范围），运行共享服务认证回归。
-- [ ] 建隔离Docker网络/PG17/Redis和Linux验证镜像，执行Go build/vet/test/race、verify-accountsvc.sh及适用verify.sh；测试日志写任务目录。
-- [ ] 固定Git快照构建无replace独立旧/新宿主；Node24.21.0/pnpm11.24.0执行TS单元、typecheck、真实服务；消费者夹具按影响验证。
-- [ ] 独立全分支审查、修复并复核，OpenSpec严格校验、链接和diff检查；仅在证据充分后勾选对应tasks并刷新apply状态。
+- [x] 补新接口宿主与角色策略文档、通配符和显式迁移示例；Compose不注入默认绑定。
+- [x] OpenAPI增加x-required-permission、改x-legacy-required-role，同步检查器；覆盖登记按实际变化核对。
+- [x] 审查相关重复字面量和流程并整理（不扩大范围），运行共享服务认证回归。
+- [x] 建隔离Docker网络/PG17/Redis和Linux验证镜像，执行Go build/vet/test/race、verify-accountsvc.sh及适用verify.sh；测试日志写任务目录。
+- [x] 固定Git快照构建无replace独立旧/新宿主；Node24.21.0/pnpm11.24.0执行TS单元、typecheck、真实服务；消费者夹具按影响验证。
+- [x] 独立全分支审查、修复并复核，OpenSpec严格校验、链接和diff检查；仅在证据充分后勾选对应tasks并刷新apply状态。
 
 ## Execution Notes
 

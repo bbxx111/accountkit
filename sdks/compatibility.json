@@ -31,14 +31,14 @@
     "sdk": "flutter",
     "sdkVersion": "1.0.0",
     "serviceVersion": "v1.2.0",
-    "verification": "pending",
+    "verification": "verified",
     "evidence": "openspec/changes/prepare-v1-2-release/verification.md"
   },
   {
     "sdk": "admin-ts",
     "sdkVersion": "1.0.0",
     "serviceVersion": "v1.2.0",
-    "verification": "pending",
+    "verification": "verified",
     "evidence": "openspec/changes/prepare-v1-2-release/verification.md"
   }
 ]

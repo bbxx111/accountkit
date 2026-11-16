@@ -14,9 +14,9 @@
 
 ## 3. 准备快照验证
 
-- [ ] 3.1 在任务专用Linux/PostgreSQL17/Redis运行生成/迁移历史、build/vet、全仓race/必需测试、真实恢复三阶段和accountsvc进程门禁；保存准备快照SHA与原始结果。
-- [ ] 3.2 对Compose与root权限等条件skip逐项补验，确认普通RecoveryFixture的约定skip由真实恢复覆盖；只按完整ID及标签清理任务资源。
-- [ ] 3.3 精确工具完成受影响SDK单元、真实服务/策略、固定Git消费及Android/iOS门禁，分别记录；完成后将v1.2.0兼容行标verified并复核元数据。
+- [x] 3.1 在任务专用Linux/PostgreSQL17/Redis运行生成/迁移历史、build/vet、全仓race/必需测试、真实恢复三阶段和accountsvc进程门禁；保存准备快照SHA与原始结果。
+- [x] 3.2 对Compose与root权限等条件skip逐项补验，确认普通RecoveryFixture的约定skip由真实恢复覆盖；只按完整ID及标签清理任务资源。
+- [x] 3.3 精确工具完成受影响SDK单元、真实服务/策略、固定Git消费及Android/iOS门禁，分别记录；完成后将v1.2.0兼容行标verified并复核元数据。
 
 ## 4. 最终发布候选
 

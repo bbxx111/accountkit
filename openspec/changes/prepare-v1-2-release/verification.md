@@ -18,3 +18,20 @@
 - 本计划SDD进度/分工记录位于`.superpowers/sdd/2026-11-17-release-v1-2-0/`；所有原始结果在本变更忽略目录，不写第二份长期验收报告。
 
 本阶段只完成候选资料与审查，准备快照的真实数据库/race/恢复、新SDK平台门禁、最终main候选、tag及正式消费均仍待执行。已创建本任务专用网络、PG17/Redis和Linux验证容器，完整ID保存在resources.json；容器Go1.26.5、pg_dump17.11，恢复源/目标为两个不同的新空库。
+
+## 准备快照实际门禁
+
+准备源提交为`41b9078857f3be2376fe8d8ea6f5564c8f554b03`。源码和完整Git历史经source.tar复制到任务容器本地文件系统，未直接在Windows挂载目录运行整套Go测试；tested-go-manifest.json记录635个Go文件，测试后与当前工作树全部匹配。
+
+- `bash scripts/verify.sh`实际通过：迁移历史、build/vet、全仓race、必需测试登记以及真实pg_dump/pg_restore恢复。顶层1300项，1297通过、3个约定/条件skip。恢复seed/verify/source-unchanged三阶段成功，备份和合成数据证据在linux-evidence/recovery.0J9Mzn。
+- `bash scripts/verify-accountsvc.sh`独立通过，275个顶层测试pass、两项条件skip；真实服务子进程使用race构建。带integration标签的Go SDK fixture11项全通过、无skip。原始JSON与日志保存在linux-evidence/，go-summary.json解析结果无fail。
+- 普通RecoveryFixture按约定skip，已由真实恢复三阶段覆盖；Compose场景因镜像没有Docker CLI skip，宿主16子例补验通过（compose-host.log）；不可读资料文件因容器root可读skip，UID65534运行同一测试二进制补验通过（unreadable-nonroot.log），未把skip当作通过。
+- 精确Node24.21.0/pnpm11.24.0：TS冻结安装、typecheck/format和56项单元通过；精确Flutter3.47.4/Dart3.13.3：冻结安装、format/analyze和77项单元通过。单独任务SDK数据库上的TS全部11管理操作、Flutter3项服务/IdP及1项策略演进通过，宿主仅停止脚本拥有进程（live-sdk.log）。两SDK固定本地Git子目录独立消费通过（sdk-local-consumers.log）。
+- Linux Node33/33工具测试通过，补齐Windows的POSIX专属skip（node-linux.log）。生成检查sqlc1.31.1通过，SDK和Go验证独立报告；临时消费项目自己的依赖解析不改变仓库锁文件。
+- 在线SDK准备运行[43914596694](https://github.com/bbxx111/accountkit/actions/runs/43914596694)的head_sha精确为41b9078，三个任务success：SDK单元/真实服务/策略/Git消费、Android、iOS。平台日志与toolchain JSON下载到sdk-preparation-android/ios；四项工具版本与要求一致，iOS明确使用Xcode26.1.1并生成无签名Runner.app，Android生成debug APK。
+- 根据上述本次实际验证，将两SDK1.0.0对服务v1.2.0行从pending改为verified。这里只验证准备源，不代替后续最终main候选或正式tag远端消费。
+- 测试结束后检查完整ID、名称、任务标签和网络成员，仅移除本任务三个容器/匿名卷与网络；恢复和测试材料保留，cleanup-result.json记录成功。产品容器未操作。
+
+候选文档阶段提交为41b9078。准备证据补记仅改变文档/SDK兼容状态，运行源码及协议与受测准备源一致；最终main SHA尚未生成，本轮尚未创建正式tag/Release或宣称远端Go消费通过。
+
+完整准备分支的独立收尾审查通过、无开放finding（SDD目录final-candidate-review.md），核对原始Go JSON、SDK平台产物及矩阵状态来源；公开Go兼容、角色迁移、最终SHA与不可变tag边界保持。两个发布后消费程序已先在当前源码上编译检查公共API用法，但尚未获取正式v1.2.0，不能算远端消费证据。

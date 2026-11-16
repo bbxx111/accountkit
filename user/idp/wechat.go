@@ -142,12 +142,12 @@ func (w *WeChat) VerifyWeChat(ctx context.Context, appID, code string) (Identity
 	if code == "" {
 		return Identity{}, fmt.Errorf("%w: empty code", ErrInvalidCredential)
 	}
-	q := url.Values{"appid": {appID}, "secret": {secret}, "code": {code}, "grant_type": {"authorization_code"}}
-	path := "/sns/oauth2/access_token"
+	q := url.Values{wechatAppid: {appID}, wechatSecret: {secret}, wechatCode: {code}, wechatGrantType: {wechatAuthorizationCode}}
+	path := wechatSnsOauth2AccessToken
 	if w.miniPrograms[appID] {
-		path = "/sns/jscode2session"
-		q.Del("code")
-		q.Set("js_code", code)
+		path = wechatSnsJscode2session
+		q.Del(wechatCode)
+		q.Set(wechatJsCode, code)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, w.base+path+"?"+q.Encode(), nil)
 	if err != nil {
@@ -184,13 +184,13 @@ func (w *WeChat) VerifyWeChat(ctx context.Context, appID, code string) (Identity
 		w.logger.Error("wechat app did not return unionid; bind the app to an open platform account", "app_id", appID)
 		return Identity{}, fmt.Errorf("%w: wechat app %s returned no unionid", ErrMisconfigured, appID)
 	}
-	subject := "unionid:" + tr.UnionID
+	subject := wechatSubjectUnionIDPrefix + tr.UnionID
 	if w.mode == WeChatSubjectModeOpenID {
 		if tr.OpenID == "" {
 			w.logger.Error("wechat app did not return openid", "app_id", appID)
 			return Identity{}, fmt.Errorf("%w: wechat response missing openid", ErrMisconfigured)
 		}
-		subject = "openid:" + appID + ":" + tr.OpenID
+		subject = wechatSubjectOpenIDPrefix + appID + ":" + tr.OpenID
 	}
 	id := Identity{Kind: enum.IdentityWeChat, Subject: subject, UnionID: tr.UnionID}
 	if tr.OpenID != "" {

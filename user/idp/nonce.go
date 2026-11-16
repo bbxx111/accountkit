@@ -26,7 +26,7 @@ func NewNonceRegistry(rdb redis.UniversalClient, keyPrefix string) *NonceRegistr
 
 // Register 登记 Apple nonce，键空间保持 nonce:apple:。
 func (n *NonceRegistry) Register(ctx context.Context, nonceClaim string, ttl time.Duration) error {
-	return n.RegisterScoped(ctx, "apple", nonceClaim, ttl)
+	return n.RegisterScoped(ctx, nonceScopeApple, nonceClaim, ttl)
 }
 
 // RegisterScoped 以 SETNX 登记 nonce。scope 只允许调用方传入的固定提供方名。
@@ -40,7 +40,7 @@ func (n *NonceRegistry) RegisterScoped(ctx context.Context, scope, nonceClaim st
 		return fmt.Errorf("%w: nonce ttl must be positive", ErrMisconfigured)
 	}
 	sum := sha256.Sum256([]byte(nonceClaim))
-	key := n.prefix + "nonce:" + scope + ":" + hex.EncodeToString(sum[:])
+	key := n.prefix + nonceKeyPrefix + scope + ":" + hex.EncodeToString(sum[:])
 	ok, err := n.rdb.SetNX(ctx, key, "1", ttl).Result()
 	if err != nil {
 		return fmt.Errorf("%w: nonce registry: %v", ErrUnavailable, err)

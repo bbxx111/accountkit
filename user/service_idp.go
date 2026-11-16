@@ -99,11 +99,11 @@ func isolateProviderError(kind enum.IdentityKind, err error) error {
 func idpFailureReason(err error) string {
 	switch {
 	case errors.Is(err, idp.ErrNonceReplayed):
-		return "IDP_NONCE_REPLAYED"
+		return auditReasonIdpNonceReplayed
 	case errors.Is(err, idp.ErrAppNotAllowed):
-		return "IDP_APP_NOT_ALLOWED"
+		return auditReasonIdpAppNotAllowed
 	case errors.Is(err, idp.ErrInvalidCredential):
-		return "IDP_CREDENTIAL_INVALID"
+		return auditReasonIdpCredentialInvalid
 	}
 	return ""
 }

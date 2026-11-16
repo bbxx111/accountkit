@@ -2,14 +2,16 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'errors.dart';
+import 'http_protocol.dart';
 import 'models.dart';
 import 'session.dart';
+import 'validation_patterns.dart';
 
 /// Generate an unguessable original nonce; the application performs provider authorization.
 String generateAccountNonce({int bytes = 32}) {
@@ -53,30 +55,34 @@ final class DeviceSnapshot {
   final String id, name;
   final Map<String, String> clientHeaders;
   Map<String, String> toHeaders() {
-    if (!RegExp(r'^[A-Za-z0-9._-]{1,64}$').hasMatch(id) ||
+    if (!deviceIdPattern.hasMatch(id) ||
         name.runes.length > 64 ||
-        RegExp(r'[\x00-\x1f\x7f]').hasMatch(name))
+        deviceHeaderControlPattern.hasMatch(name))
       throw const AccountConfigurationError();
     const allowed = {
-      'X-Client-Type',
-      'X-Client-OS-Name',
-      'X-Client-OS-Version',
-      'X-Client-Browser-Name',
-      'X-Client-Browser-Version',
-      'X-Client-App-Name',
-      'X-Client-App-Version',
-      'X-Device-Model',
-      'X-Device-Type',
+      HttpHeader.clientType,
+      HttpHeader.osName,
+      HttpHeader.osVersion,
+      HttpHeader.browserName,
+      HttpHeader.browserVersion,
+      HttpHeader.appName,
+      HttpHeader.appVersion,
+      HttpHeader.deviceModel,
+      HttpHeader.deviceType,
     };
     if (clientHeaders.entries.any(
           (e) =>
               !allowed.contains(e.key) ||
               e.value.length > 128 ||
-              RegExp(r'[\x00-\x1f\x7f]').hasMatch(e.value),
+              deviceHeaderControlPattern.hasMatch(e.value),
         ) ||
         utf8.encode(jsonEncode(clientHeaders)).length > 2048)
       throw const AccountConfigurationError();
-    return {'X-Device-Id': id, 'X-Device-Name': name, ...clientHeaders};
+    return {
+      HttpHeader.deviceId: id,
+      HttpHeader.deviceName: name,
+      ...clientHeaders,
+    };
   }
 
   @override
@@ -103,8 +109,7 @@ final class PlatformDeviceProvider implements DeviceProvider {
   Future<String>? _id;
   Future<String> _loadId() async {
     final saved = await _storage.read(key: key);
-    if (saved != null && RegExp(r'^[A-Za-z0-9._-]{1,64}$').hasMatch(saved))
-      return saved;
+    if (saved != null && deviceIdPattern.hasMatch(saved)) return saved;
     final id = generateAccountNonce();
     await _storage.write(key: key, value: id);
     return id;
@@ -141,23 +146,23 @@ final class PlatformDeviceProvider implements DeviceProvider {
     final app = await PackageInfo.fromPlatform();
     final plugin = DeviceInfoPlugin();
     final out = <String, String>{
-      'X-Client-Type': 'NATIVE',
-      'X-Client-App-Name': app.appName,
-      'X-Client-App-Version': app.version,
+      HttpHeader.clientType: HttpProtocol.nativeClient,
+      HttpHeader.appName: app.appName,
+      HttpHeader.appVersion: app.version,
     };
     if (defaultTargetPlatform == TargetPlatform.android) {
       final info = await plugin.androidInfo;
       out.addAll({
-        'X-Client-OS-Name': 'Android',
-        'X-Client-OS-Version': info.version.release,
-        'X-Device-Model': info.model,
+        HttpHeader.osName: 'Android',
+        HttpHeader.osVersion: info.version.release,
+        HttpHeader.deviceModel: info.model,
       });
     } else {
       final info = await plugin.iosInfo;
       out.addAll({
-        'X-Client-OS-Name': info.systemName,
-        'X-Client-OS-Version': info.systemVersion,
-        'X-Device-Model': info.utsname.machine,
+        HttpHeader.osName: info.systemName,
+        HttpHeader.osVersion: info.systemVersion,
+        HttpHeader.deviceModel: info.utsname.machine,
       });
     }
     return out;

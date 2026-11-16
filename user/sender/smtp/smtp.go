@@ -82,9 +82,9 @@ func NewWithRenderer(cfg Config, renderer Renderer) (*Sender, error) {
 		return nil, errors.New("smtp: Username and Password must be paired")
 	}
 	if cfg.TLSMode == "" {
-		cfg.TLSMode = "implicit"
+		cfg.TLSMode = TLSModeImplicit
 	}
-	if cfg.TLSMode != "implicit" && cfg.TLSMode != "starttls" && cfg.TLSMode != "none" {
+	if cfg.TLSMode != TLSModeImplicit && cfg.TLSMode != TLSModeSTARTTLS && cfg.TLSMode != TLSModeNone {
 		return nil, errors.New("smtp: invalid TLSMode")
 	}
 	if cfg.Timeout < 0 {
@@ -154,7 +154,7 @@ func (s *Sender) SendEmail(ctx context.Context, to string, m sender.CodeMessage)
 	rawConn := conn
 	stop := context.AfterFunc(ctx, func() { _ = rawConn.Close() })
 	defer stop()
-	if s.cfg.TLSMode == "implicit" {
+	if s.cfg.TLSMode == TLSModeImplicit {
 		secured := tls.Client(conn, s.tls)
 		if err = secured.HandshakeContext(ctx); err != nil {
 			return sender.ErrUnavailable
@@ -166,8 +166,8 @@ func (s *Sender) SendEmail(ctx context.Context, to string, m sender.CodeMessage)
 		return sender.ErrUnavailable
 	}
 	defer client.Close()
-	if s.cfg.TLSMode == "starttls" {
-		supported, _ := client.Extension("STARTTLS")
+	if s.cfg.TLSMode == TLSModeSTARTTLS {
+		supported, _ := client.Extension(mimeSTARTTLS)
 		if !supported {
 			return sender.ErrUnavailable
 		}

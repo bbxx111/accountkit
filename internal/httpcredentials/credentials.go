@@ -4,26 +4,34 @@ package httpcredentials
 import (
 	"net/http"
 	"strings"
+
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 )
 
 // MaxBearerLength is the maximum accepted Bearer token length in bytes.
 const MaxBearerLength = 16 * 1024
 
+// Supported schemes are returned in lowercase by Parse.
+const (
+	SchemeBearer = "bearer"
+	SchemeBasic  = "basic"
+)
+
 // Parse requires exactly one Authorization header and an ASCII-space separator.
 // It returns the lowercase scheme even for malformed credentials, so callers can
 // preserve their protocol-specific challenges. Duplicate headers return no scheme.
 func Parse(r *http.Request) (scheme, credential string, ok bool) {
-	headers := r.Header.Values("Authorization")
+	headers := r.Header.Values(httpcontract.HeaderAuthorization)
 	if len(headers) != 1 {
 		return "", "", false
 	}
 	name, rest, found := strings.Cut(headers[0], " ")
 	scheme = strings.ToLower(name)
-	if !found || (scheme != "bearer" && scheme != "basic") {
+	if !found || (scheme != SchemeBearer && scheme != SchemeBasic) {
 		return scheme, "", false
 	}
 	credential = strings.TrimLeft(rest, " ")
-	if credential == "" || (scheme == "bearer" && len(credential) > MaxBearerLength) {
+	if credential == "" || (scheme == SchemeBearer && len(credential) > MaxBearerLength) {
 		return scheme, "", false
 	}
 	// Both supported schemes carry token68 credentials. In particular, commas,

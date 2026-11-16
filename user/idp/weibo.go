@@ -74,36 +74,36 @@ func (p *Weibo) Verify(ctx context.Context, credential json.RawMessage) (Identit
 	if ctx.Err() != nil {
 		return Identity{}, ctx.Err()
 	}
-	status, info, err := p.do(ctx, http.MethodPost, "/oauth2/get_token_info", url.Values{"access_token": {c.AccessToken}}, 10*time.Second)
+	status, info, err := p.do(ctx, http.MethodPost, weiboOauth2GetTokenInfo, url.Values{weiboAccessToken: {c.AccessToken}}, 10*time.Second)
 	if err != nil {
 		return Identity{}, err
 	}
-	if _, failed := info["error_code"]; failed || status != http.StatusOK {
-		code, err := weiboDecimal(info, "error_code")
+	if _, failed := info[weiboErrorCode]; failed || status != http.StatusOK {
+		code, err := weiboDecimal(info, weiboErrorCode)
 		if err != nil || code == "" {
 			return Identity{}, weiboFailure(ErrUnavailable, "error structure")
 		}
 		return Identity{}, weiboTokenError(code)
 	}
-	appKey, appErr := weiboDecimal(info, "appkey")
+	appKey, appErr := weiboDecimal(info, weiboAppkey)
 	if appErr != nil || appKey == "" {
 		return Identity{}, weiboFailure(ErrMisconfigured, "identity fields")
 	}
 	if appKey != c.AppID {
 		return Identity{}, weiboFailure(ErrAppNotAllowed, "token issued for another application")
 	}
-	expireText, expireErr := weiboDecimal(info, "expire_in")
+	expireText, expireErr := weiboDecimal(info, weiboExpireIn)
 	if expireErr != nil || expireText == "" {
 		return Identity{}, weiboFailure(ErrMisconfigured, "identity fields")
 	}
 	if strings.HasPrefix(expireText, "-") {
 		return Identity{}, weiboFailure(ErrInvalidCredential, "access token expired")
 	}
-	uid, uidErr := weiboDecimal(info, "uid")
+	uid, uidErr := weiboDecimal(info, weiboUid)
 	if uidErr != nil || uid == "" || uid == "0" || strings.HasPrefix(uid, "-") {
 		return Identity{}, weiboFailure(ErrMisconfigured, "identity fields")
 	}
-	id := Identity{Kind: enum.IdentityWeibo, Subject: "uid:" + uid}
+	id := Identity{Kind: enum.IdentityWeibo, Subject: weiboSubjectUIDPrefix + uid}
 	// 剩余期限为 0 或超出 int64 / time.Duration 可表示范围时按未知处理：
 	// 前者会让 pending 补全立即失效，后者会溢出成过去的截止时间。
 	if expireIn, err := strconv.ParseInt(expireText, 10, 64); err == nil && expireIn > 0 && expireIn <= int64(math.MaxInt64/time.Second) {
@@ -134,22 +134,22 @@ func weiboAvatarURL(raw string) string {
 
 // profile 使用本次令牌与已验证 uid 查询资料；任何失败都只返回固定阶段错误，由 Verify 记为降级。
 func (p *Weibo) profile(ctx context.Context, token, uid string) (string, string, error) {
-	status, object, err := p.do(ctx, http.MethodGet, "/2/users/show.json", url.Values{"access_token": {token}, "uid": {uid}}, 3*time.Second)
+	status, object, err := p.do(ctx, http.MethodGet, weibo2UsersShowJson, url.Values{weiboAccessToken: {token}, weiboUid: {uid}}, 3*time.Second)
 	if err != nil {
 		return "", "", err
 	}
-	if _, failed := object["error_code"]; failed || status != http.StatusOK {
+	if _, failed := object[weiboErrorCode]; failed || status != http.StatusOK {
 		return "", "", weiboFailure(ErrUnavailable, "profile result")
 	}
-	id, idErr := weiboDecimal(object, "id")
-	idStr, idStrErr := weiboDecimal(object, "idstr")
+	id, idErr := weiboDecimal(object, weiboId)
+	idStr, idStrErr := weiboDecimal(object, weiboIdstr)
 	if idErr != nil || idStrErr != nil || id == "" && idStr == "" || id != "" && id != uid || idStr != "" && idStr != uid {
 		return "", "", weiboFailure(ErrUnavailable, "profile user")
 	}
-	name, nameErr := alipayString(object, "screen_name")
-	hd, hdErr := alipayString(object, "avatar_hd")
-	large, largeErr := alipayString(object, "avatar_large")
-	small, smallErr := alipayString(object, "profile_image_url")
+	name, nameErr := alipayString(object, weiboScreenName)
+	hd, hdErr := alipayString(object, weiboAvatarHd)
+	large, largeErr := alipayString(object, weiboAvatarLarge)
+	small, smallErr := alipayString(object, weiboProfileImageUrl)
 	if nameErr != nil || hdErr != nil || largeErr != nil || smallErr != nil {
 		return "", "", weiboFailure(ErrUnavailable, "profile fields")
 	}

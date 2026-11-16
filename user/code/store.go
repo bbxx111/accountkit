@@ -98,12 +98,12 @@ func scriptStatus(result []interface{}) (string, error) {
 }
 
 func (s *Store) keys(channel enum.IdentityKind, purpose enum.CodePurpose, digest, ip string, now time.Time) (codeKey, cooldownKey, quotaTargetKey, quotaIPKey string) {
-	day := now.UTC().Format("20060102")
+	day := now.UTC().Format(quotaDayLayout)
 	ch := channel.String()
-	codeKey = s.prefix + "code:" + ch + ":" + purpose.Key() + ":" + digest
-	cooldownKey = s.prefix + "cooldown:" + ch + ":" + digest
-	quotaTargetKey = s.prefix + "quota:" + ch + ":target:" + digest + ":" + day
-	quotaIPKey = s.prefix + "quota:" + ch + ":ip:" + ip + ":" + day
+	codeKey = s.prefix + codeKeyPrefix + ch + ":" + purpose.Key() + ":" + digest
+	cooldownKey = s.prefix + cooldownKeyPrefix + ch + ":" + digest
+	quotaTargetKey = s.prefix + quotaKeyPrefix + ch + quotaTargetSegment + digest + ":" + day
+	quotaIPKey = s.prefix + quotaKeyPrefix + ch + quotaIPSegment + ip + ":" + day
 	return
 }
 

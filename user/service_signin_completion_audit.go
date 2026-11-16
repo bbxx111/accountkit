@@ -17,37 +17,37 @@ func (s *Service) recordCompletionRejected(ctx context.Context, token, flowID st
 		row, _, _ := s.loadFlow(ctx, token, Device{})
 		flowID = row.ID
 	}
-	reason := "INTERNAL"
+	reason := auditReasonInternal
 	var limit *code.RateLimitedError
 	switch {
 	case errors.Is(err, ErrSignInCompletionInvalid):
-		reason = "SIGN_IN_COMPLETION_INVALID"
+		reason = auditReasonSignInCompletionInvalid
 	case errors.Is(err, ErrSignInAlreadyCompleted):
-		reason = "SIGN_IN_ALREADY_COMPLETED"
+		reason = auditReasonSignInAlreadyCompleted
 	case errors.Is(err, code.ErrInvalid):
-		reason = "CODE_INVALID"
+		reason = auditReasonCodeInvalid
 	case errors.Is(err, code.ErrExpired):
-		reason = "CODE_EXPIRED"
+		reason = auditReasonCodeExpired
 	case errors.Is(err, ErrIdentityConflict):
-		reason = "IDENTITY_ALREADY_BOUND"
+		reason = auditReasonIdentityAlreadyBound
 	case errors.Is(err, ErrIdentityKindLimit):
-		reason = "IDENTITY_KIND_LIMIT"
+		reason = auditReasonIdentityKindLimit
 	case errors.Is(err, ErrUserFrozen):
-		reason = "USER_FROZEN"
+		reason = auditReasonUserFrozen
 	case errors.Is(err, ErrUserPendingDeletion):
-		reason = "USER_PENDING_DELETION"
+		reason = auditReasonUserPendingDeletion
 	case errors.Is(err, ErrIdentityKindNotEnabled):
-		reason = "IDENTITY_KIND_NOT_ENABLED"
+		reason = auditReasonIdentityKindNotEnabled
 	case errors.Is(err, sender.ErrDisabled):
-		reason = "CHANNEL_NOT_ENABLED"
+		reason = auditReasonChannelNotEnabled
 	case errors.Is(err, sender.ErrTargetNotSupported):
-		reason = "TARGET_NOT_SUPPORTED"
+		reason = auditReasonTargetNotSupported
 	case errors.Is(err, ErrUnavailable), errors.Is(err, code.ErrUnavailable):
-		reason = "UNAVAILABLE"
+		reason = auditReasonUnavailable
 	case errors.Is(err, ErrInvalidTarget), errors.Is(err, ErrInvalidArgument):
-		reason = "INVALID_ARGUMENT"
+		reason = auditReasonInvalidArgument
 	case errors.As(err, &limit):
-		reason = "RATE_LIMITED"
+		reason = auditReasonRateLimited
 	}
 	if !kind.Valid() {
 		kind = enum.IdentityKindUnspecified

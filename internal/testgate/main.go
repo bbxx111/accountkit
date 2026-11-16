@@ -30,13 +30,13 @@ func verify(r io.Reader, required []string) error {
 			return fmt.Errorf("invalid test event: %w", err)
 		}
 		key := e.Package + "/" + e.Test
-		if e.Action == "fail" {
+		if e.Action == testActionFail {
 			return fmt.Errorf("test failure: %s", key)
 		}
-		if e.Action == "skip" && pending[key] {
+		if e.Action == testActionSkip && pending[key] {
 			return fmt.Errorf("required test skipped: %s", key)
 		}
-		if e.Action == "pass" {
+		if e.Action == testActionPass {
 			delete(pending, key)
 		}
 	}

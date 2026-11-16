@@ -29,7 +29,7 @@ func marshalEvent(e Event, createTime *time.Time) ([]byte, error) {
 	var result *string
 	if e.Result != nil {
 		if !e.Result.Valid() {
-			return nil, invalid("result")
+			return nil, invalid(fieldResult)
 		}
 		name := e.Result.String()
 		result = &name
@@ -51,19 +51,19 @@ func (e *Event) UnmarshalJSON(wire []byte) error {
 func unmarshalEvent(obj map[string]any, e *Event) error {
 	// encoding/json 的 struct 绑定会接受大小写及 Unicode case-fold 别名。
 	// 只把精确匹配的受控键交给它，避免未知可选字段覆盖已验证事实。
-	exact := selectFields(obj, "id", "source", "action", "result", "actor", "targets", "context", "data", "occur_time")
-	if actor, ok := exact["actor"].(map[string]any); ok {
-		exact["actor"] = selectFields(actor, "type", "namespace", "id", "name")
+	exact := selectFields(obj, fieldId, fieldSource, fieldAction, fieldResult, fieldActor, fieldTargets, fieldContext, fieldData, fieldOccurTime)
+	if actor, ok := exact[fieldActor].(map[string]any); ok {
+		exact[fieldActor] = selectFields(actor, fieldType, fieldNamespace, fieldId, fieldName)
 	}
-	if targets, ok := exact["targets"].([]any); ok {
-		exact["targets"] = exactResources(targets)
+	if targets, ok := exact[fieldTargets].([]any); ok {
+		exact[fieldTargets] = exactResources(targets)
 	}
-	if ctx, ok := exact["context"].(map[string]any); ok {
-		ctx = selectFields(ctx, "request_id", "trace_id", "span_id", "client_ip", "user_agent", "device_id", "related_resources")
-		if related, ok := ctx["related_resources"].([]any); ok {
-			ctx["related_resources"] = exactResources(related)
+	if ctx, ok := exact[fieldContext].(map[string]any); ok {
+		ctx = selectFields(ctx, fieldRequestId, fieldTraceId, fieldSpanId, fieldClientIp, fieldUserAgent, fieldDeviceId, fieldRelatedResources)
+		if related, ok := ctx[fieldRelatedResources].([]any); ok {
+			ctx[fieldRelatedResources] = exactResources(related)
 		}
-		exact["context"] = ctx
+		exact[fieldContext] = ctx
 	}
 	wire, err := json.Marshal(exact)
 	if err != nil {
@@ -80,16 +80,16 @@ func unmarshalEvent(obj map[string]any, e *Event) error {
 	if len(v.Result) != 0 && string(v.Result) != "null" {
 		var name string
 		if err := json.Unmarshal(v.Result, &name); err != nil {
-			return invalid("result")
+			return invalid(fieldResult)
 		}
 		var result enum.Result
 		switch name {
-		case "SUCCESS":
+		case enum.ResultSuccess.String():
 			result = enum.ResultSuccess
-		case "FAILURE":
+		case enum.ResultFailure.String():
 			result = enum.ResultFailure
 		default:
-			return invalid("result")
+			return invalid(fieldResult)
 		}
 		fields.Result = &result
 	}
@@ -111,7 +111,7 @@ func exactResources(resources []any) []any {
 	out := make([]any, len(resources))
 	for i, value := range resources {
 		if obj, ok := value.(map[string]any); ok {
-			value = selectFields(obj, "type", "namespace", "id", "name")
+			value = selectFields(obj, fieldType, fieldNamespace, fieldId, fieldName)
 		}
 		out[i] = value
 	}
@@ -133,15 +133,15 @@ func (r *RecordView) UnmarshalJSON(wire []byte) error {
 	if !ok {
 		return invalid("record")
 	}
-	stamp, ok := obj["create_time"].(string)
+	stamp, ok := obj[fieldCreateTime].(string)
 	if !ok {
-		return invalid("create_time")
+		return invalid(fieldCreateTime)
 	}
 	created, err := time.Parse(time.RFC3339Nano, stamp)
 	if err != nil || created.IsZero() {
-		return invalid("create_time")
+		return invalid(fieldCreateTime)
 	}
-	delete(obj, "create_time")
+	delete(obj, fieldCreateTime)
 	producerWire, err := json.Marshal(obj)
 	if err != nil {
 		return invalid("record")

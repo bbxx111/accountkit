@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	"github.com/bbxx111/accountkit/httpapi/apierror"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 )
 
 // ErrMalformed：body 缺失、非法 JSON、顶层不是对象、未知字段、超长或有多余内容。
@@ -48,5 +49,5 @@ func Decode(w http.ResponseWriter, r *http.Request, dst any, maxBytes int64) err
 
 // Malformed 返回统一的 400 MALFORMED_BODY。
 func Malformed() *apierror.Error {
-	return apierror.New(apierror.StatusInvalidArgument, "MALFORMED_BODY", "request body must be a single JSON object with known fields (<= 64 KiB)")
+	return apierror.New(apierror.StatusInvalidArgument, httpcontract.ReasonMalformedBody, "request body must be a single JSON object with known fields (<= 64 KiB)")
 }

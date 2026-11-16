@@ -4,11 +4,11 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/ids"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/user"
+	"github.com/go-chi/chi/v5"
 )
 
 // POST /users/me:sendBindCode
@@ -108,7 +108,7 @@ func (h *Handler) unbindIdentity(w http.ResponseWriter, r *http.Request) {
 	}
 	id := chi.URLParam(r, "identity")
 	if !ids.Valid(ids.Identity, id) {
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_ID", "identity id is malformed"))
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, httpcontract.ReasonInvalidID, "identity id is malformed"))
 		return
 	}
 	if err := h.d.Users.UnbindIdentity(r.Context(), p, id, h.meta(r)); err != nil {

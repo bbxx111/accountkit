@@ -115,7 +115,10 @@ QQ App SDK 登录使用 `ACCOUNTSVC_QQ_APP_IDS`（逗号分隔的唯一 1–20 �
 | `ADMIN_ENABLED` | false |
 | `ADMIN_ISSUER` / `ADMIN_AUDIENCE` | 启用时必填；issuer 是不含凭据、查询和片段的绝对 URL，production 只接受 HTTPS，`MODE=development` 另接受 `http://` 并在启动时记一条 WARN（见[本地开发的明文 HTTP 签发方](#本地开发的明文-http-签发方)）；audience 为管理员 API 专用标识 |
 | `ADMIN_ROLES_CLAIM` / `ADMIN_USERNAME_CLAIM` | /roles / /preferred_username，JSON Pointer |
-| `ADMIN_TOKEN_PROFILE` | `default`（默认）或 `rfc9068`；管理员禁用时不得配置。身份仍为 issuer+sub，权限仍由管理员角色决定 |
+| `ADMIN_TOKEN_PROFILE` | `default`（默认）或 `rfc9068`；管理员禁用时不得配置。身份仍为 issuer+sub，scope 不参与管理授权 |
+| `ADMIN_ROLE_BINDINGS` | 逗号分隔配置别名；未设置、空或全空白为空策略，没有默认角色映射 |
+| `ADMIN_ROLE_<ALIAS>_NAME` | 必填实际角色名；1–256字节有效UTF-8，无首尾空白/控制字符；精确匹配，不转换大小写，允许内部空格和逗号 |
+| `ADMIN_ROLE_<ALIAS>_PERMISSIONS` | 必填权限CSV，允许具体管理权限及资源组 `.*`，重复/重叠去重；未知或空项拒绝 |
 
 `ADMIN_TOKEN_PROFILE` / `SERVICE_TOKEN_PROFILE` 为 v1.1.0 新增配置，省略或空值选择 `default`。开发过程中 `azp` 模式值改名为 `default`，从未作为正式版本发布，不是 v1.0.0 部署的迁移项；不保留该开发值别名。服务令牌的客户端声明仍为 `azp`，管理员默认模式不要求该声明。
 
@@ -350,7 +353,37 @@ Basic 可以取得完整 P，不受某份 Bearer scope 的收窄限制。需要�
 
 默认关闭，整个 `/admin/v1` 返回503 `ADMIN_NOT_CONFIGURED`。启用后通过 discovery/JWKS 验证外部提供方签发的 RS256 JWT access token；production 只接受 HTTPS issuer，`MODE=development` 的 `http://` 例外见[本地开发的明文 HTTP 签发方](#本地开发的明文-http-签发方)。管理员 API audience 应独立于消费者 audience 和管理员登录客户端 ID；不接受登录 ID token 作为 API 凭据。
 
-角色默认读取 `/roles` 字符串数组；例如嵌套角色可配置 `/realm_access/roles`。super-admin 在服务适配层包含 operator，无需依赖提供方的复合角色配置。缺角色返回403并记录拒绝审计；无效凭据返回401；没有可用验证 key 且提供方故障返回503。
+角色默认读取 `/roles` 字符串数组；例如嵌套角色可配置 `/realm_access/roles`。权限只来自部署的显式角色绑定，多个匹配角色的权限取并集。operator、super-admin 没有隐式权限或继承；token scope 不授予或收窄管理权限。缺角色或缺权限返回403 `ADMIN_FORBIDDEN` 并记录一次拒绝审计；角色字段类型错误或无效凭据返回401；没有可用验证 key 且提供方故障返回503。
+
+| 管理权限 | 操作 |
+| --- | --- |
+| `users.read` | 用户列表和详情 |
+| `users.freeze` / `users.unfreeze` | 冻结 / 解冻 |
+| `users.delete` / `users.undelete` | 代办删除 / 恢复 |
+| `identities.reveal` | 身份明文查看 |
+| `sessions.read` | 会话列表 |
+| `sessions.revoke` / `sessions.revoke_all` | 单个 / 全部会话撤销 |
+| `audit_events.read` | 认证审计查询 |
+
+权限相互独立，冻结不隐含查询。仅支持具体权限或 `users.*`、`sessions.*`、`identities.*`、`audit_events.*`。资源组通配符在启动时按当前版本目录展开，并在升级后的新实例中包含未来同组操作；具体枚举则不扩大。`users.*` 不包含身份、会话或审计子资源，`identities.*` 只包含管理明文查看，不包含服务 `identities.resolve`。不支持全局 `*`、任意glob、排除式或正则。
+
+以下显式示例复现当前两种角色的操作范围，但通配符会覆盖未来同组能力；有限职责角色可以使用具体枚举：
+
+```dotenv
+ACCOUNTSVC_ADMIN_ROLE_BINDINGS=OPERATOR,SUPER_ADMIN
+ACCOUNTSVC_ADMIN_ROLE_OPERATOR_NAME=operator
+ACCOUNTSVC_ADMIN_ROLE_OPERATOR_PERMISSIONS=users.read,users.freeze,users.unfreeze,sessions.*,audit_events.read
+ACCOUNTSVC_ADMIN_ROLE_SUPER_ADMIN_NAME=super-admin
+ACCOUNTSVC_ADMIN_ROLE_SUPER_ADMIN_PERMISSIONS=users.*,sessions.*,identities.*,audit_events.*
+```
+
+只读客服可另设别名 SUPPORT、NAME=customer-support、PERMISSIONS=users.read,sessions.read；审计员可配置 users.read,audit_events.read。固定权限的operator可将 sessions.* 改为 sessions.read,sessions.revoke,sessions.revoke_all。
+
+别名匹配 `[A-Z][A-Z0-9_]{0,31}`，别名及实际角色名分别唯一。主列表裁剪元素周围空白，拒绝重复别名或空项；NAME是单个精确角色值，逗号不拆分；权限CSV裁剪空白并去重。声明后缺少NAME/PERMISSIONS、未知权限、未知字段或未声明别名的分项均监听前失败，孤立字段即使空值也拒绝。没有 `ADMIN_AUTHORIZATION_MODE`；非空值会报不支持。
+
+管理认证启用但绑定为空时服务正常启动，有效管理员访问操作返回403，不回退默认授权；无效凭据仍401。`ADMIN_ENABLED=false` 时仍503，且非空绑定列表或任何角色分项是冲突；空主列表占位允许。migrate不解析管理员运行变量。Compose通过同一 `.env` 透传动态别名，不需要额外文件。
+
+策略为启动快照，撤销权限须重启全部副本或排空旧副本。提供方撤销角色不使旧JWT立即失效，需取得新令牌或等待旧令牌到期。升级旧部署须显式补充绑定；回退旧二进制还须恢复匹配的角色签发和配置，旧内置角色可能恢复已移除权限，不是安全等价回退。
 
 JWKS 最多缓存1小时；未知 kid 刷新合并并按60秒节流，无法取得新 key 时不会无限信任旧缓存。静态配置错误仍阻止启动；首次 discovery/JWKS 在监听就绪后后台预加载，远端故障不阻止启动或改变整体 readiness，缺少可用 key 时管理员请求返回503。每次管理员认证等待最多3秒；预加载与请求共享刷新合并和冷却，单请求取消不影响其他等待者，停机取消并等待验证器的在途刷新。提供方恢复且冷却结束后无需重启。首版不支持 opaque token、其他签名算法或管理员浏览器登录流程。
 

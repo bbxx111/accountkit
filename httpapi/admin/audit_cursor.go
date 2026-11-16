@@ -8,6 +8,7 @@ import (
 
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/httpapi/apierror"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/google/uuid"
 )
 
@@ -32,7 +33,7 @@ func decodeAuditCursor(raw string, q audit.Query) (*audit.EventCursor, *apierror
 	if raw == "" {
 		return nil, nil
 	}
-	bad := apierror.New(apierror.StatusInvalidArgument, "INVALID_PAGE_TOKEN", "page_token is invalid or expired; restart from the first page")
+	bad := apierror.New(apierror.StatusInvalidArgument, httpcontract.ReasonInvalidPageToken, "page_token is invalid or expired; restart from the first page")
 	b, err := base64.RawURLEncoding.DecodeString(raw)
 	if err != nil {
 		return nil, bad

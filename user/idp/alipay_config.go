@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+
+	"github.com/bbxx111/accountkit/internal/idpdefaults"
 )
 
 // AlipayApp 配置普通公钥模式的支付宝应用；密钥仅在服务端使用。
@@ -35,7 +37,7 @@ type AlipayConfig struct {
 	GatewayURL  string            // 空值默认生产网关；仅回环测试地址允许 HTTP。
 }
 
-const alipayDefaultGatewayURL = "https://openapi.alipay.com/gateway.do"
+const alipayDefaultGatewayURL = idpdefaults.AlipayGateway
 
 var alipayAppIDPattern = regexp.MustCompile(`^[0-9]{16}$`)
 
@@ -124,9 +126,9 @@ func parseAlipayPrivateKey(raw string) (*rsa.PrivateKey, error) {
 	}
 	var key *rsa.PrivateKey
 	switch block.Type {
-	case "RSA PRIVATE KEY":
+	case pemRSAPRIVATEKEY:
 		key, err = x509.ParsePKCS1PrivateKey(block.Bytes)
-	case "PRIVATE KEY":
+	case pemPRIVATEKEY:
 		var value any
 		value, err = x509.ParsePKCS8PrivateKey(block.Bytes)
 		key, _ = value.(*rsa.PrivateKey)
@@ -144,9 +146,9 @@ func parseAlipayPublicKey(raw string) (*rsa.PublicKey, error) {
 	}
 	var key *rsa.PublicKey
 	switch block.Type {
-	case "RSA PUBLIC KEY":
+	case pemRSAPUBLICKEY:
 		key, err = x509.ParsePKCS1PublicKey(block.Bytes)
-	case "PUBLIC KEY":
+	case pemPUBLICKEY:
 		var value any
 		value, err = x509.ParsePKIXPublicKey(block.Bytes)
 		key, _ = value.(*rsa.PublicKey)

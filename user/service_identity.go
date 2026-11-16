@@ -153,11 +153,11 @@ func countKind(idents []db.Identity, kind enum.IdentityKind) int {
 func bindRejectReason(err error) string {
 	switch {
 	case errors.Is(err, ErrIdentityConflict):
-		return "IDENTITY_ALREADY_BOUND"
+		return auditReasonIdentityAlreadyBound
 	case errors.Is(err, ErrIdentityKindLimit):
-		return "IDENTITY_KIND_LIMIT"
+		return auditReasonIdentityKindLimit
 	case errors.Is(err, ErrUserFrozen):
-		return "USER_FROZEN"
+		return auditReasonUserFrozen
 	}
 	return ""
 }
@@ -227,7 +227,7 @@ func (s *Service) BindWithCode(ctx context.Context, p Principal, cred CodeCreden
 	ev.IdentityID = info.ID
 	ev.Type, ev.Result = enum.EventIdentityBound, enum.ResultSuccess
 	if !created {
-		ev.Reason = "ALREADY_BOUND"
+		ev.Reason = auditReasonAlreadyBound
 	}
 	s.record(ctx, ev)
 	return info, created, nil
@@ -331,7 +331,7 @@ func (s *Service) BindWithIdp(ctx context.Context, p Principal, cred IdpCredenti
 	ev.IdentityID = info.ID
 	ev.Type, ev.Result = enum.EventIdentityBound, enum.ResultSuccess
 	if !created {
-		ev.Reason = "ALREADY_BOUND"
+		ev.Reason = auditReasonAlreadyBound
 	}
 	s.record(ctx, ev)
 	return info, created, nil

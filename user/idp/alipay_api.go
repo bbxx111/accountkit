@@ -15,6 +15,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 )
 
 const (
@@ -29,13 +31,13 @@ var alipayTimezone = time.FixedZone("UTC+08:00", 8*60*60)
 func (a *Alipay) request(ctx context.Context, appID, method string, params url.Values, budget time.Duration) (map[string]json.RawMessage, error) {
 	child, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
-	params.Set("app_id", appID)
-	params.Set("method", method)
-	params.Set("format", "json")
-	params.Set("charset", "utf-8")
-	params.Set("sign_type", "RSA2")
-	params.Set("timestamp", a.now().In(alipayTimezone).Format("2006-01-02 15:04:05"))
-	params.Set("version", "1.0")
+	params.Set(alipayAppId, appID)
+	params.Set(alipayMethod, method)
+	params.Set(alipayFormat, alipayJson)
+	params.Set(alipayCharset, alipayUtf8)
+	params.Set(alipaySignType, alipayRSA2)
+	params.Set(alipayTimestamp, a.now().In(alipayTimezone).Format(time.DateTime))
+	params.Set(alipayVersion, alipay10)
 	keys := make([]string, 0, len(params))
 	for key := range params {
 		keys = append(keys, key)
@@ -50,14 +52,14 @@ func (a *Alipay) request(ctx context.Context, appID, method string, params url.V
 	if err != nil {
 		return nil, alipayFailure(ErrMisconfigured, "request signature")
 	}
-	params.Set("sign", base64.StdEncoding.EncodeToString(sig))
+	params.Set(alipaySign, base64.StdEncoding.EncodeToString(sig))
 	req, err := http.NewRequestWithContext(child, http.MethodPost, a.config.gatewayURL, strings.NewReader(params.Encode()))
 	if err != nil {
 		return nil, alipayFailure(ErrMisconfigured, "request construction")
 	}
 	// A consumed authorization code must never become a replayable request body.
 	req.GetBody = nil
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set(httpcontract.HeaderContentType, httpcontract.MediaTypeForm)
 	resp, err := a.http.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -94,23 +96,23 @@ func (a *Alipay) request(ctx context.Context, appID, method string, params url.V
 		return nil, alipayFailure(ErrMisconfigured, "response structure")
 	}
 	raw, success := outer[node]
-	failure, failed := outer["error_response"]
+	failure, failed := outer[alipayErrorResponse]
 	if success == failed {
 		return nil, alipayFailure(ErrMisconfigured, "response node")
 	}
 	for key := range outer {
-		if key != node && key != "error_response" && key != "sign" && key != "sign_type" {
+		if key != node && key != alipayErrorResponse && key != alipaySign && key != alipaySignType {
 			return nil, alipayFailure(ErrMisconfigured, "response field")
 		}
 	}
 	if failed {
 		raw = failure
 	}
-	sign, err := alipayString(outer, "sign")
+	sign, err := alipayString(outer, alipaySign)
 	if err != nil || sign == "" {
 		return nil, alipayFailure(ErrMisconfigured, "response signature")
 	}
-	if kind, err := alipayString(outer, "sign_type"); err != nil || kind != "" && kind != "RSA2" {
+	if kind, err := alipayString(outer, alipaySignType); err != nil || kind != "" && kind != alipayRSA2 {
 		return nil, alipayFailure(ErrMisconfigured, "response signature type")
 	}
 	signature, err := base64.StdEncoding.Strict().DecodeString(sign)
@@ -125,29 +127,29 @@ func (a *Alipay) request(ctx context.Context, appID, method string, params url.V
 	if err != nil {
 		return nil, alipayFailure(ErrMisconfigured, "response node structure")
 	}
-	code, err := alipayString(object, "code")
+	code, err := alipayString(object, alipayCode)
 	if err != nil {
 		return nil, alipayFailure(ErrMisconfigured, "response code")
 	}
-	sub, err := alipayString(object, "sub_code")
+	sub, err := alipayString(object, alipaySubCode)
 	if err != nil {
 		return nil, alipayFailure(ErrMisconfigured, "business error structure")
 	}
-	for _, field := range []string{"msg", "sub_msg"} {
+	for _, field := range []string{alipayMsg, alipaySubMsg} {
 		if _, err := alipayString(object, field); err != nil {
 			return nil, alipayFailure(ErrMisconfigured, "business error structure")
 		}
 	}
-	if failed && (code == "" || code == "10000") {
+	if failed && (code == "" || code == alipay10000) {
 		return nil, alipayFailure(ErrMisconfigured, "error response code")
 	}
-	if failed || code != "" && code != "10000" {
+	if failed || code != "" && code != alipay10000 {
 		return nil, alipayBusinessError(sub, code)
 	}
 	if sub != "" {
 		return nil, alipayFailure(ErrMisconfigured, "contradictory business result")
 	}
-	if method == alipayProfileMethod && code != "10000" {
+	if method == alipayProfileMethod && code != alipay10000 {
 		return nil, alipayFailure(ErrMisconfigured, "profile result code")
 	}
 	return object, nil
@@ -157,17 +159,17 @@ func (a *Alipay) request(ctx context.Context, appID, method string, params url.V
 // deliberately ignored: they may contain credentials or user supplied content.
 func alipayBusinessError(sub, code string) error {
 	switch sub {
-	case "isv.code-invalid":
+	case alipayIsvCodeInvalid:
 		return alipayFailure(ErrInvalidCredential, "authorization code rejected")
-	case "isv.unmatched-app-id":
+	case alipayIsvUnmatchedAppId:
 		return alipayFailure(ErrAppNotAllowed, "application mismatch")
-	case "isv.grant-type-invalid", "isv.app-id-invalid", "isv.invalid-app-id", "isv.invalid-signature", "isv.invalid-sign-type", "isv.insufficient-isv-permissions", "isv.insufficient-user-permissions":
+	case alipayIsvGrantTypeInvalid, alipayIsvAppIdInvalid, alipayIsvInvalidAppId, alipayIsvInvalidSignature, alipayIsvInvalidSignType, alipayIsvInsufficientIsvPermissions, alipayIsvInsufficientUserPermissions:
 		return alipayFailure(ErrMisconfigured, "application configuration")
-	case "isp.unknow-error":
+	case alipayIspUnknowError:
 		return alipayFailure(ErrUnavailable, "provider busy")
 	}
 	// 20000 is the documented generic service unavailable result.
-	if code == "20000" {
+	if code == alipay20000 {
 		return alipayFailure(ErrUnavailable, "provider busy")
 	}
 	return alipayFailure(ErrMisconfigured, "unrecognized business error")

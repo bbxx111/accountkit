@@ -19,6 +19,13 @@ type ClientConfig struct {
 	BearerSubjects []string
 }
 
+// Service permissions belong exclusively to the service-call surface.
+const (
+	PermissionTokensIntrospect  = "tokens.introspect"
+	PermissionPurgedUsersRead   = "purged_users.read"
+	PermissionIdentitiesResolve = "identities.resolve"
+)
+
 type registeredClient struct {
 	methods     map[string]bool
 	permissions map[string]bool
@@ -33,8 +40,9 @@ type Registry struct {
 	bearer      bool
 }
 
-func validPermission(permission string) bool {
-	return permission == "tokens.introspect" || permission == "purged_users.read" || permission == "identities.resolve"
+// ValidPermission reports exact membership; service permissions do not accept wildcards.
+func ValidPermission(permission string) bool {
+	return permission == PermissionTokensIntrospect || permission == PermissionPurgedUsersRead || permission == PermissionIdentitiesResolve
 }
 
 // NewRegistry validates and snapshots clients. An empty list disables all capabilities.
@@ -64,7 +72,7 @@ func NewRegistry(clients []ClientConfig) (*Registry, error) {
 			return nil, errors.New("serviceauth: permissions are required")
 		}
 		for _, permission := range cfg.Permissions {
-			if !validPermission(permission) || c.permissions[permission] {
+			if !ValidPermission(permission) || c.permissions[permission] {
 				return nil, errors.New("serviceauth: invalid or duplicate permission")
 			}
 			c.permissions[permission] = true

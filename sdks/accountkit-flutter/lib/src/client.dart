@@ -3,12 +3,17 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 
 import 'api.dart';
+import 'auth_protocol.dart';
 import 'authenticated_dio.dart';
+import 'dio_metadata.dart';
 import 'errors.dart';
+import 'http_protocol.dart';
 import 'models.dart';
 import 'platform.dart';
+import 'routes.dart';
 import 'session.dart';
 import 'transport.dart';
+import 'wire_fields.dart';
 
 class AccountClient implements AccountApi {
   AccountClient({
@@ -79,7 +84,8 @@ class AccountClient implements AccountApi {
   }
 
   void _channel(String channel, String target) {
-    if (!['EMAIL', 'PHONE'].contains(channel) || target.isEmpty)
+    if (![IdentityKind.email, IdentityKind.phone].contains(channel) ||
+        target.isEmpty)
       throw const AccountConfigurationError();
   }
 
@@ -93,9 +99,9 @@ class AccountClient implements AccountApi {
   }) async {
     _channel(channel, target);
     final data = <String, Object?>{
-      'channel': channel,
-      'target': target,
-      if (ticket != null) 'sign_in_completion_token': ticket,
+      CredentialField.channel: channel,
+      CredentialField.target: target,
+      if (ticket != null) CompletionField.token: ticket,
     };
     final response = authenticated
         ? await _authorized('POST', path, data: data, options: options)
@@ -113,7 +119,7 @@ class AccountClient implements AccountApi {
     String channel,
     String target, {
     AccountRequestOptions? options,
-  }) => _code('/users:sendSignInCode', channel, target, options: options);
+  }) => _code(AccountRoute.sendSignInCode, channel, target, options: options);
   @override
   Future<CodeChallenge> sendSignInCompletionCode(
     String ticket,
@@ -121,7 +127,7 @@ class AccountClient implements AccountApi {
     String target, {
     AccountRequestOptions? options,
   }) => _code(
-    '/users:sendSignInCompletionCode',
+    AccountRoute.sendCompletionCode,
     channel,
     target,
     ticket: ticket,
@@ -145,7 +151,7 @@ class AccountClient implements AccountApi {
           path,
           data: {
             ...credential.toJson(),
-            if (ticket != null) 'sign_in_completion_token': ticket,
+            if (ticket != null) CompletionField.token: ticket,
           },
           options: options,
           device: device,
@@ -172,7 +178,7 @@ class AccountClient implements AccountApi {
     AccountRequestOptions? options,
   }) {
     if (!credential.isCode) throw const AccountConfigurationError();
-    return _signIn('/users:signInWithCode', credential, options: options);
+    return _signIn(AccountRoute.signInWithCode, credential, options: options);
   }
 
   @override
@@ -181,7 +187,7 @@ class AccountClient implements AccountApi {
     AccountRequestOptions? options,
   }) {
     if (credential.isCode) throw const AccountConfigurationError();
-    return _signIn('/users:signInWithIdp', credential, options: options);
+    return _signIn(AccountRoute.signInWithIdp, credential, options: options);
   }
 
   @override
@@ -193,7 +199,7 @@ class AccountClient implements AccountApi {
     if (!credential.isCode || ticket.isEmpty)
       throw const AccountConfigurationError();
     return _signIn(
-      '/users:completeSignIn',
+      AccountRoute.completeSignIn,
       credential,
       ticket: ticket,
       options: options,
@@ -209,10 +215,10 @@ class AccountClient implements AccountApi {
       () async => TokenPair.fromJson(
         object(
           await _anonymous(
-            '/token',
+            AccountRoute.token,
             data: {
-              'grant_type': 'refresh_token',
-              'refresh_token': old.refreshToken,
+              TokenField.grantType: AuthProtocol.refreshGrant,
+              TokenField.refreshToken: old.refreshToken,
             },
           ),
         ),
@@ -236,8 +242,8 @@ class AccountClient implements AccountApi {
     final e = _runtime.epoch;
     final matches = _runtime.record?.refreshToken == token;
     await _anonymous(
-      '/revoke',
-      data: {'token': token},
+      AccountRoute.revoke,
+      data: {TokenField.token: token},
       options: options,
       empty: true,
     );
@@ -319,7 +325,12 @@ class AccountClient implements AccountApi {
   Future<AccountUser> getMe({AccountRequestOptions? options}) async =>
       AccountUser.fromJson(
         object(
-          await _authorized('GET', '/users/me', options: options, replay: true),
+          await _authorized(
+            'GET',
+            AccountRoute.me,
+            options: options,
+            replay: true,
+          ),
         ),
       );
   @override
@@ -330,7 +341,7 @@ class AccountClient implements AccountApi {
     object(
       await _authorized(
         'PATCH',
-        '/users/me',
+        AccountRoute.me,
         data: patch.toJson(),
         options: options,
       ),
@@ -340,7 +351,7 @@ class AccountClient implements AccountApi {
   Future<AccountUser> deleteMe({AccountRequestOptions? options}) async {
     final e = _runtime.epoch;
     final result = AccountUser.fromJson(
-      object(await _authorized('DELETE', '/users/me', options: options)),
+      object(await _authorized('DELETE', AccountRoute.me, options: options)),
     );
     await _runtime.end(expectedEpoch: e);
     return result;
@@ -459,7 +470,7 @@ class AccountClient implements AccountApi {
     object(
       await _authorized(
         'GET',
-        '/users/me/sessions',
+        AccountRoute.sessions,
         options: options,
         replay: true,
       ),
@@ -472,14 +483,9 @@ class AccountClient implements AccountApi {
     String session, {
     AccountRequestOptions? options,
   }) async {
-    final id = resourceId(session, 'sessions', 's', this.session.userId);
+    final path = sessionPath(session, this.session.userId);
     final e = _runtime.epoch;
-    await _authorized(
-      'DELETE',
-      '/users/me/sessions/$id',
-      options: options,
-      empty: true,
-    );
+    await _authorized('DELETE', path, options: options, empty: true);
     await _sync(null, e, refresh: false);
   }
 
@@ -513,7 +519,7 @@ class AccountClient implements AccountApi {
     object(
       await _authorized(
         'GET',
-        '/users/me/identities',
+        AccountRoute.identities,
         options: options,
         replay: true,
       ),
@@ -531,7 +537,7 @@ class AccountClient implements AccountApi {
       object(
         await _authorized(
           'POST',
-          '/users/me/identities',
+          AccountRoute.identities,
           data: credential.toJson(),
           options: options,
         ),
@@ -545,14 +551,9 @@ class AccountClient implements AccountApi {
     String identity, {
     AccountRequestOptions? options,
   }) async {
-    final id = resourceId(identity, 'identities', 'i', session.userId);
+    final path = identityPath(identity, session.userId);
     final e = _runtime.epoch;
-    await _authorized(
-      'DELETE',
-      '/users/me/identities/$id',
-      options: options,
-      empty: true,
-    );
+    await _authorized('DELETE', path, options: options, empty: true);
     return _sync(null, e, refresh: false);
   }
 
@@ -563,13 +564,13 @@ class AccountClient implements AccountApi {
     AccountRequestOptions? options,
   }) async {
     if (!credential.isCode) throw const AccountConfigurationError();
-    final id = resourceId(identity, 'identities', 'i', session.userId);
+    final path = identityPath(identity, session.userId);
     final e = _runtime.epoch;
     final value = AccountIdentity.fromJson(
       object(
         await _authorized(
           'POST',
-          '/users/me/identities/$id:replace',
+          '$path:replace',
           data: credential.toJson(),
           options: options,
         ),
@@ -597,7 +598,7 @@ class AccountClient implements AccountApi {
         object(
           await _authorized(
             'GET',
-            '/users/me/profile',
+            AccountRoute.profile,
             options: options,
             replay: true,
           ),
@@ -611,8 +612,8 @@ class AccountClient implements AccountApi {
     object(
       await _authorized(
         'PATCH',
-        '/users/me/profile',
-        data: {'profile_attributes': copyJson(patch)},
+        AccountRoute.profile,
+        data: {ResourceField.profileAttributes: copyJson(patch)},
         options: options,
       ),
     ),
@@ -634,15 +635,6 @@ class AccountClient implements AccountApi {
         sendTimeout: _transport.timeout,
       ),
     );
-    const anonymous = [
-      '/users:sendSignInCode',
-      '/users:signInWithCode',
-      '/users:signInWithIdp',
-      '/users:sendSignInCompletionCode',
-      '/users:completeSignIn',
-      '/token',
-      '/revoke',
-    ];
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (request, handler) async {
@@ -654,7 +646,7 @@ class AccountClient implements AccountApi {
             if (!safeRequestPath(request.path) ||
                 !scopes.any((s) => s.allows(request.uri)) ||
                 request.uri.userInfo.isNotEmpty ||
-                anonymous.any((p) {
+                AccountRoute.anonymous.any((p) {
                   final anonymousUri = Uri.parse(_transport.endpoint.url(p));
                   return request.uri.origin == anonymousUri.origin &&
                       request.uri.path == anonymousUri.path;
@@ -664,8 +656,8 @@ class AccountClient implements AccountApi {
             _check(options);
             final e = _runtime.epoch;
             // Replays remain owned by the original session across every await.
-            if (request.extra['accountkit.retried'] == true &&
-                request.extra['accountkit.epoch'] != e)
+            if (request.extra[DioMetadata.retried] == true &&
+                request.extra[DioMetadata.epoch] != e)
               throw const AccountCancelledError();
             var record = _runtime.record;
             if (record == null) throw const AccountApiError(httpStatus: 401);
@@ -678,17 +670,18 @@ class AccountClient implements AccountApi {
             request.headers = Map<String, Object?>.fromEntries(
               request.headers.entries.where(
                 (entry) => ![
-                  'authorization',
-                  'x-device-id',
-                  'x-device-name',
+                  HttpHeader.authorization.toLowerCase(),
+                  HttpHeader.deviceId.toLowerCase(),
+                  HttpHeader.deviceName.toLowerCase(),
                 ].contains(entry.key.toLowerCase()),
               ),
             );
-            request.headers['Authorization'] = 'Bearer ${record.accessToken}';
+            request.headers[HttpHeader.authorization] =
+                '${AuthProtocol.bearer} ${record.accessToken}';
             request.followRedirects = false;
             request.maxRedirects = 0;
-            request.extra['accountkit.epoch'] = e;
-            request.extra['accountkit.revision'] = _runtime.revision;
+            request.extra[DioMetadata.epoch] = e;
+            request.extra[DioMetadata.revision] = _runtime.revision;
             handler.next(request);
           } on AccountError catch (error) {
             handler.reject(DioException(requestOptions: request, error: error));
@@ -700,8 +693,8 @@ class AccountClient implements AccountApi {
             handler.next(error);
             return;
           }
-          final e = request.extra['accountkit.epoch'];
-          if (request.extra['accountkit.retried'] == true) {
+          final e = request.extra[DioMetadata.epoch];
+          if (request.extra[DioMetadata.retried] == true) {
             if (e == _runtime.epoch) {
               try {
                 await _runtime.end(expectedEpoch: e as int);
@@ -724,7 +717,7 @@ class AccountClient implements AccountApi {
                 request.data == null;
             if (!safe && replay is! AuthenticatedReplay)
               throw const AccountReplayRequiredError();
-            if (request.extra['accountkit.revision'] == _runtime.revision)
+            if (request.extra[DioMetadata.revision] == _runtime.revision)
               await _refresh();
             _check(AccountRequestOptions(cancelToken: request.cancelToken));
             if (e != _runtime.epoch) throw const AccountCancelledError();
@@ -740,7 +733,7 @@ class AccountClient implements AccountApi {
             final response = await dio.fetch<Object?>(
               request.copyWith(
                 data: body,
-                extra: {...request.extra, 'accountkit.retried': true},
+                extra: {...request.extra, DioMetadata.retried: true},
               ),
             );
             handler.resolve(response);

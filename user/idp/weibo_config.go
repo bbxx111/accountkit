@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+
+	"github.com/bbxx111/accountkit/internal/idpdefaults"
 )
 
 // WeiboConfig 配置微博开放平台移动应用；AppIDs 即微博 AppKey，为空表示未启用。App SDK 校验不需要 AppSecret。
@@ -15,7 +17,7 @@ type WeiboConfig struct {
 	APIBaseURL string // 空值默认 https://api.weibo.com；仅回环测试地址允许 HTTP。
 }
 
-const weiboDefaultAPIBaseURL = "https://api.weibo.com"
+const weiboDefaultAPIBaseURL = idpdefaults.WeiboAPI
 
 var weiboAppIDPattern = regexp.MustCompile(`^[0-9]{1,20}$`)
 

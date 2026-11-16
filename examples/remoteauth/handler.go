@@ -8,6 +8,7 @@ import (
 
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/httpapi/authn"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/user"
 )
 
@@ -31,11 +32,11 @@ type ProtectedHandler struct {
 }
 
 func (h ProtectedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
-	headers := r.Header.Values("Authorization")
-	scheme, token, ok := strings.Cut(r.Header.Get("Authorization"), " ")
-	if len(headers) != 1 || !ok || !strings.EqualFold(scheme, "Bearer") || token == "" || strings.ContainsAny(token, " \t\r\n") {
-		authn.WriteUnauthenticated(w, authn.ReasonTokenMissing, "bearer token required")
+	httpcontract.SetNoStore(w)
+	headers := r.Header.Values(httpcontract.HeaderAuthorization)
+	scheme, token, ok := strings.Cut(r.Header.Get(httpcontract.HeaderAuthorization), " ")
+	if len(headers) != 1 || !ok || !strings.EqualFold(scheme, httpcontract.TokenTypeBearer) || token == "" || strings.ContainsAny(token, " \t\r\n") {
+		authn.WriteUnauthenticated(w, authn.ReasonTokenMissing, messageBearerRequired)
 		return
 	}
 	introspect := h.Verifier == nil || h.Critical
@@ -52,7 +53,7 @@ func (h ProtectedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !principal.Active {
-			authn.WriteUnauthenticated(w, authn.ReasonTokenInvalid, "invalid or expired access token")
+			authn.WriteUnauthenticated(w, authn.ReasonTokenInvalid, messageInvalidToken)
 			return
 		}
 	}
@@ -62,12 +63,12 @@ func (h ProtectedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !principal.Active {
-			authn.WriteUnauthenticated(w, authn.ReasonTokenInvalid, "invalid or expired access token")
+			authn.WriteUnauthenticated(w, authn.ReasonTokenInvalid, messageInvalidToken)
 			return
 		}
 	}
 	if principal.Scope != user.ScopeUser {
-		apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, "INSUFFICIENT_SCOPE", "token scope does not permit this operation"))
+		apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, httpcontract.ReasonInsufficientScope, messageInsufficientScope))
 		return
 	}
 	now := time.Now()
@@ -75,7 +76,7 @@ func (h ProtectedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		now = h.Now()
 	}
 	if principal.AuthTime.IsZero() || principal.AuthTime.After(now) || now.Sub(principal.AuthTime) > h.MaxAuthAge {
-		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "REAUTHENTICATION_REQUIRED", "recent authentication required for this operation"))
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, httpcontract.ReasonReauthenticationRequired, messageReauthenticationRequired))
 		return
 	}
 	resourceID := r.PathValue("resource")
@@ -98,10 +99,10 @@ func (h ProtectedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // unavailable reports an authentication dependency failure exactly like the library's
 // Bearer middleware (same body and Retry-After), so clients need not tell the sources apart.
 func unavailable(w http.ResponseWriter) {
-	apierror.Write(w, &apierror.Error{Status: apierror.StatusUnavailable, Reason: "DEPENDENCY_UNAVAILABLE", Message: "authentication temporarily unavailable", RetryAfterSeconds: 1})
+	apierror.Write(w, &apierror.Error{Status: apierror.StatusUnavailable, Reason: httpcontract.ReasonDependencyUnavailable, Message: messageAuthenticationUnavailable, RetryAfterSeconds: 1})
 }
 
 // resourceUnavailable reports a business resource lookup failure (not an authentication problem).
 func resourceUnavailable(w http.ResponseWriter) {
-	apierror.Write(w, apierror.New(apierror.StatusUnavailable, "DEPENDENCY_UNAVAILABLE", "resource service temporarily unavailable"))
+	apierror.Write(w, apierror.New(apierror.StatusUnavailable, httpcontract.ReasonDependencyUnavailable, "resource service temporarily unavailable"))
 }

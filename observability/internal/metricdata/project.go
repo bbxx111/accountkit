@@ -48,8 +48,8 @@ func Project(observation o.Observation, emit func(Measurement)) {
 		if (v.Operation == o.AuthCompleteSignIn || v.Operation == o.AuthReauthenticate) && (method == o.MethodWechat || method == o.MethodApple || method == o.MethodGoogle || method == o.MethodFacebook || method == o.MethodAlipay || method == o.MethodQQ || method == o.MethodWeibo || method == o.MethodOIDC || method == o.MethodProvider) {
 			return
 		}
-		labels := []Label{{"operation", string(v.Operation)}, {"method", string(method)}, {"result", string(v.Result)}}
-		emit(Measurement{ID: AuthOperations, Count: 1, Labels: append(copyLabels(labels), Label{"grant", string(grant)}, Label{"mode", string(mode)}, Label{"reason", string(reason(v.Reason))})})
+		labels := []Label{{LabelOperation, string(v.Operation)}, {LabelMethod, string(method)}, {LabelResult, string(v.Result)}}
+		emit(Measurement{ID: AuthOperations, Count: 1, Labels: append(copyLabels(labels), Label{LabelGrant, string(grant)}, Label{LabelMode, string(mode)}, Label{LabelReason, string(reason(v.Reason))})})
 		emit(Measurement{ID: AuthDuration, Value: v.Duration.Seconds(), Labels: labels})
 	case o.CodeObservation:
 		if v.Duration < 0 || !oneOf(v.Operation, o.CodeSend, o.CodeVerify) || !businessResult(v.Result) || v.Result == o.ResultPending {
@@ -57,8 +57,8 @@ func Project(observation o.Observation, emit func(Measurement)) {
 		}
 		channel := normalize(v.Channel, o.ChannelUnknown, o.ChannelPhone, o.ChannelEmail, o.ChannelUnknown)
 		purpose := normalize(v.Purpose, o.PurposeUnknown, o.PurposeSignIn, o.PurposeBind, o.PurposeReauth, o.PurposeSignInComplete, o.PurposeUnknown)
-		labels := []Label{{"operation", string(v.Operation)}, {"channel", string(channel)}, {"purpose", string(purpose)}, {"result", string(v.Result)}}
-		emit(Measurement{ID: CodeOperations, Count: 1, Labels: append(copyLabels(labels), Label{"reason", string(reason(v.Reason))})})
+		labels := []Label{{LabelOperation, string(v.Operation)}, {LabelChannel, string(channel)}, {LabelPurpose, string(purpose)}, {LabelResult, string(v.Result)}}
+		emit(Measurement{ID: CodeOperations, Count: 1, Labels: append(copyLabels(labels), Label{LabelReason, string(reason(v.Reason))})})
 		emit(Measurement{ID: CodeDuration, Value: v.Duration.Seconds(), Labels: labels})
 	case o.DependencyObservation:
 		if v.Duration < 0 || !dependencyPair(v.Component, v.Operation) || !oneOf(v.Result, o.ResultSuccess, o.ResultMiss, o.ResultRejected, o.ResultError, o.ResultCanceled, o.ResultDeadlineExceeded) {
@@ -70,14 +70,14 @@ func Project(observation o.Observation, emit func(Measurement)) {
 		if v.Result == o.ResultRejected && !(v.Component == o.ComponentIDP || (v.Component == o.ComponentCodeStore && oneOf(v.Operation, o.DependencyIssue, o.DependencyVerify))) {
 			return
 		}
-		labels := []Label{{"component", string(v.Component)}, {"operation", string(v.Operation)}, {"result", string(v.Result)}}
+		labels := []Label{{LabelComponent, string(v.Component)}, {LabelOperation, string(v.Operation)}, {LabelResult, string(v.Result)}}
 		emit(Measurement{ID: DependencyOperations, Count: 1, Labels: copyLabels(labels)})
 		emit(Measurement{ID: DependencyDuration, Value: v.Duration.Seconds(), Labels: labels})
 	case o.DegradationObservation:
 		if v.Count <= 0 || !oneOf(v.Scenario, o.DegradationRevocationCheckFailOpen, o.DegradationRefreshGraceWriteFailed, o.DegradationAppleCachedKeyFallback, o.DegradationGoogleCachedKeyFallback, o.DegradationFacebookCachedKeyFallback, o.DegradationAlipayProfileUnavailable, o.DegradationQQProfileUnavailable, o.DegradationWeiboProfileUnavailable, o.DegradationOIDCCachedKeyFallback) {
 			return
 		}
-		emit(Measurement{ID: Degradations, Count: v.Count, Labels: []Label{{"scenario", string(v.Scenario)}}})
+		emit(Measurement{ID: Degradations, Count: v.Count, Labels: []Label{{LabelScenario, string(v.Scenario)}}})
 	case o.AuditObservation:
 		if v.Count <= 0 {
 			return
@@ -87,13 +87,13 @@ func Project(observation o.Observation, emit func(Measurement)) {
 			if v.Field != "" || !auditPair(v.Stage, v.Result) {
 				return
 			}
-			emit(Measurement{ID: AuditEvents, Count: v.Count, Labels: []Label{{"stage", string(v.Stage)}, {"result", string(v.Result)}}})
+			emit(Measurement{ID: AuditEvents, Count: v.Count, Labels: []Label{{LabelStage, string(v.Stage)}, {LabelResult, string(v.Result)}}})
 		case o.AuditOmittedFields:
 			if v.Stage != "" || v.Result != "" {
 				return
 			}
 			field := normalize(v.Field, o.FieldUnknown, o.FieldRequestID, o.FieldDeviceID, o.FieldSubjectHint, o.FieldActorName, o.FieldClientIP, o.FieldUnknown)
-			emit(Measurement{ID: AuditOmittedFields, Count: v.Count, Labels: []Label{{"field", string(field)}}})
+			emit(Measurement{ID: AuditOmittedFields, Count: v.Count, Labels: []Label{{LabelField, string(field)}}})
 		}
 	case o.MaintenanceObservation:
 		if v.Count < 0 || v.Duration < 0 {
@@ -105,19 +105,19 @@ func Project(observation o.Observation, emit func(Measurement)) {
 			if v.Task != "" || v.Count != 0 || v.Duration != 0 || !oneOf(v.Result, o.ResultAcquired, o.ResultSkipped, o.ResultError, o.ResultCanceled, o.ResultDeadlineExceeded) {
 				return
 			}
-			emit(Measurement{ID: MaintenanceRounds, Count: 1, Labels: []Label{{"result", string(v.Result)}}})
+			emit(Measurement{ID: MaintenanceRounds, Count: 1, Labels: []Label{{LabelResult, string(v.Result)}}})
 		case o.MaintenanceRun:
 			if v.Count != 0 || !oneOf(v.Result, o.ResultSuccess, o.ResultError, o.ResultCanceled, o.ResultDeadlineExceeded, o.ResultPanic) {
 				return
 			}
-			labels := []Label{{"task", string(task)}, {"result", string(v.Result)}}
+			labels := []Label{{LabelTask, string(task)}, {LabelResult, string(v.Result)}}
 			emit(Measurement{ID: MaintenanceRuns, Count: 1, Labels: copyLabels(labels)})
 			emit(Measurement{ID: MaintenanceDuration, Value: v.Duration.Seconds(), Labels: labels})
 		case o.MaintenanceItems:
 			if v.Count == 0 || v.Result != "" || v.Duration != 0 {
 				return
 			}
-			emit(Measurement{ID: MaintenanceItems, Count: v.Count, Labels: []Label{{"task", string(task)}}})
+			emit(Measurement{ID: MaintenanceItems, Count: v.Count, Labels: []Label{{LabelTask, string(task)}}})
 		}
 	}
 }

@@ -67,7 +67,7 @@ func (s *Service) ReplaceIdentity(ctx context.Context, p Principal, identityID s
 	ev.VerifiedSubject = true
 	ev.IdentityID = old.ID
 	if reason, verifyErr := s.verifyCode(ctx, channel, enum.PurposeBind, norm, cred, code.Binding{UserID: p.UserID}); verifyErr != nil {
-		if !errors.Is(verifyErr, ErrUnavailable) && reason != "INTERNAL" {
+		if !errors.Is(verifyErr, ErrUnavailable) && reason != auditReasonInternal {
 			rejectReason = reason
 		}
 		return IdentityInfo{}, verifyErr
@@ -231,27 +231,27 @@ func (s *Service) replacementIdentity(ctx context.Context, q *db.Queries, userID
 func identityReplaceRejectReason(err error) string {
 	switch {
 	case errors.Is(err, ErrIdentityKindNotEnabled):
-		return "IDENTITY_KIND_NOT_ENABLED"
+		return auditReasonIdentityKindNotEnabled
 	case errors.Is(err, ErrLastAnchor):
-		return "LAST_ANCHOR"
+		return auditReasonLastAnchor
 	case errors.Is(err, ErrInsufficientScope):
-		return "INSUFFICIENT_SCOPE"
+		return auditReasonInsufficientScope
 	case errors.Is(err, ErrReauthenticationRequired):
-		return "REAUTHENTICATION_REQUIRED"
+		return auditReasonReauthenticationRequired
 	case errors.Is(err, ErrIdentityUnchanged):
-		return "IDENTITY_UNCHANGED"
+		return auditReasonIdentityUnchanged
 	case errors.Is(err, ErrInvalidArgument), errors.Is(err, ErrInvalidTarget):
-		return "INVALID_ARGUMENT"
+		return auditReasonInvalidArgument
 	case errors.Is(err, ErrIdentityConflict):
-		return "IDENTITY_ALREADY_BOUND"
+		return auditReasonIdentityAlreadyBound
 	case errors.Is(err, ErrIdentityKindLimit):
-		return "IDENTITY_KIND_LIMIT"
+		return auditReasonIdentityKindLimit
 	case errors.Is(err, ErrNotFound):
-		return "NOT_FOUND"
+		return auditReasonNotFound
 	case errors.Is(err, ErrUserFrozen):
-		return "USER_FROZEN"
+		return auditReasonUserFrozen
 	case errors.Is(err, ErrInvalidToken):
-		return "TOKEN_INVALID"
+		return auditReasonTokenInvalid
 	default:
 		return ""
 	}

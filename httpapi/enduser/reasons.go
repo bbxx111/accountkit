@@ -1,0 +1,38 @@
+package enduser
+
+// HTTP reasons remain distinct from google.rpc statuses and audit reasons.
+const (
+	reasonSessionQueryNotConfigured        = "SESSION_QUERY_NOT_CONFIGURED"
+	reasonNoFields                         = "NO_FIELDS"
+	reasonProfileUpdateNotConfigured       = "PROFILE_UPDATE_NOT_CONFIGURED"
+	reasonProfileAttributesNotConfigured   = "PROFILE_ATTRIBUTES_NOT_CONFIGURED"
+	reasonInvalidProfileAttributes         = "INVALID_PROFILE_ATTRIBUTES"
+	reasonIdentityReplacementNotConfigured = "IDENTITY_REPLACEMENT_NOT_CONFIGURED"
+	reasonIdentityUnchanged                = "IDENTITY_UNCHANGED"
+	reasonIdentityAlreadyBound             = "IDENTITY_ALREADY_BOUND"
+	reasonDeviceIDInvalid                  = "DEVICE_ID_INVALID"
+	reasonDeviceNameInvalid                = "DEVICE_NAME_INVALID"
+	reasonCredentialIncomplete             = "CREDENTIAL_INCOMPLETE"
+	reasonCredentialKindNotAllowed         = "CREDENTIAL_KIND_NOT_ALLOWED"
+	reasonChannelInvalid                   = "CHANNEL_INVALID"
+	reasonInvalidClientInfo                = "INVALID_CLIENT_INFO"
+	reasonSignInCompletionInvalid          = "SIGN_IN_COMPLETION_INVALID"
+	reasonSignInAlreadyCompleted           = "SIGN_IN_ALREADY_COMPLETED"
+	reasonIdentityKindNotEnabled           = "IDENTITY_KIND_NOT_ENABLED"
+	reasonIDPNonceReplayed                 = "IDP_NONCE_REPLAYED"
+	reasonIDPAppNotAllowed                 = "IDP_APP_NOT_ALLOWED"
+	reasonIDPCredentialInvalid             = "IDP_CREDENTIAL_INVALID"
+	reasonIDPUnavailable                   = "IDP_UNAVAILABLE"
+	reasonCodeInvalid                      = "CODE_INVALID"
+	reasonCodeExpired                      = "CODE_EXPIRED"
+	reasonInvalidTarget                    = "INVALID_TARGET"
+	reasonTargetNotAnchor                  = "TARGET_NOT_ANCHOR"
+	reasonChannelNotEnabled                = "CHANNEL_NOT_ENABLED"
+	reasonTargetNotSupported               = "TARGET_NOT_SUPPORTED"
+	reasonUserPendingDeletion              = "USER_PENDING_DELETION"
+	reasonIdentityKindLimit                = "IDENTITY_KIND_LIMIT"
+	reasonLastAnchorIdentity               = "LAST_ANCHOR_IDENTITY"
+	reasonSignInCompletionNotConfigured    = "SIGN_IN_COMPLETION_NOT_CONFIGURED"
+)
+
+const nextActionCompleteIdentity = "COMPLETE_IDENTITY"

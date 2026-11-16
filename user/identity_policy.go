@@ -89,7 +89,7 @@ func (p *IdentityPolicy) RequiredKinds() []enum.IdentityKind { return slices.Clo
 
 // Fingerprint 对规范化集合生成稳定指纹，不包含提供方秘密。
 func (p *IdentityPolicy) Fingerprint() string {
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("identity-policy-v1:%v:%v", p.enabled, p.required))))
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf(identityPolicyFingerprintFormat, p.enabled, p.required))))
 }
 
 // IdentityCapabilities 描述装配能力，不表示依赖瞬时健康状态。Providers 为已登记的第三方类型。

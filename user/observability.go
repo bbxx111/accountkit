@@ -162,13 +162,13 @@ func classifyOperation(err error) (ob.Result, ob.Reason) {
 	var limited *code.RateLimitedError
 	if errors.As(err, &limited) {
 		switch limited.Dimension {
-		case "COOLDOWN":
+		case code.DimensionCooldown:
 			return ob.ResultRejected, ob.ReasonCooldown
-		case "TARGET_LIMIT":
+		case code.DimensionTargetLimit:
 			return ob.ResultRejected, ob.ReasonTargetLimit
-		case "IP_LIMIT":
+		case code.DimensionIPLimit:
 			return ob.ResultRejected, ob.ReasonIPLimit
-		case "TARGET_VERIFY_LIMIT":
+		case code.DimensionTargetVerifyLimit:
 			return ob.ResultRejected, ob.ReasonTargetVerifyLimit
 		default:
 			return ob.ResultRejected, ob.ReasonUnknown

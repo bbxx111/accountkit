@@ -98,7 +98,7 @@ type data struct {
 	Accountkit snapshot `json:"accountkit"`
 }
 
-func mapEvent(in Input, o Options, newID func() (uuid.UUID, error)) (event.Event, []string, error) {
+func mapEvent(in Input, o Options, newID func() (uuid.UUID, error)) (event.Event, []observability.AuditField, error) {
 	if err := o.Validate(); err != nil {
 		return event.Event{}, nil, err
 	}
@@ -122,26 +122,26 @@ func mapEvent(in Input, o Options, newID func() (uuid.UUID, error)) (event.Event
 	if in.Actor == enum.ActorAdmin && (in.AdminIssuer == "" || in.AdminSubject == "") {
 		return event.Event{}, nil, errors.New("audit/authentication: incomplete administrator")
 	}
-	var omitted []string
-	optional := func(s string, max int, field string) string {
+	var omitted []observability.AuditField
+	optional := func(s string, max int, field observability.AuditField) string {
 		if !validText(s, max) {
 			omitted = append(omitted, field)
 			return ""
 		}
 		return s
 	}
-	in.RequestID = optional(in.RequestID, 128, "request_id")
-	in.DeviceID = optional(in.DeviceID, 256, "device_id")
-	in.SubjectHint = optional(in.SubjectHint, 8, "subject_hint")
+	in.RequestID = optional(in.RequestID, 128, observability.FieldRequestID)
+	in.DeviceID = optional(in.DeviceID, 256, observability.FieldDeviceID)
+	in.SubjectHint = optional(in.SubjectHint, 8, observability.FieldSubjectHint)
 	if !validText(in.AdminUsername, 256*utf8.UTFMax) || utf8.RuneCountInString(in.AdminUsername) > 256 {
 		in.AdminUsername = ""
-		omitted = append(omitted, "actor_name")
+		omitted = append(omitted, observability.FieldActorName)
 	}
 	if in.IP != "" {
 		ip, err := netip.ParseAddr(in.IP)
 		if err != nil || ip.Zone() != "" {
 			in.IP = ""
-			omitted = append(omitted, "client_ip")
+			omitted = append(omitted, observability.FieldClientIP)
 		}
 	}
 	if in.OccurTime.IsZero() {
@@ -176,28 +176,28 @@ func mapEvent(in Input, o Options, newID func() (uuid.UUID, error)) (event.Event
 	directSession := false
 	switch in.Type {
 	case enum.EventCodeSent, enum.EventCodeSendRejected, enum.EventCodeSendFailed:
-		add("USER", in.UserID, true)
-		add("IDENTITY_FLOW", in.FlowID, true)
+		add(ResourceUser, in.UserID, true)
+		add(ResourceIdentityFlow, in.FlowID, true)
 	case enum.EventSignIn, enum.EventReauthenticated, enum.EventReauthenticationFailed, enum.EventTokenRefreshed, enum.EventRefreshRejected, enum.EventRefreshReuseDetected, enum.EventSessionRevoked:
-		add("SESSION", in.SessionID, true)
+		add(ResourceSession, in.SessionID, true)
 		directSession = true
 	case enum.EventIdentityBound, enum.EventIdentityUnbound, enum.EventIdentityRevealed, enum.EventIdentityReplaceRejected:
-		add("IDENTITY", in.IdentityID, true)
+		add(ResourceIdentity, in.IdentityID, true)
 	case enum.EventIdentityBindRejected:
-		add("USER", in.UserID, true)
-		add("IDENTITY", in.IdentityID, true)
+		add(ResourceUser, in.UserID, true)
+		add(ResourceIdentity, in.IdentityID, true)
 	case enum.EventUserDeleted, enum.EventUserUndeleted, enum.EventUserPurged, enum.EventUserFrozen, enum.EventUserUnfrozen, enum.EventProviderDataDeletionProcessed:
-		add("USER", in.UserID, true)
+		add(ResourceUser, in.UserID, true)
 	case enum.EventSignInCompletionStarted, enum.EventSignInCompletionProofVerified, enum.EventSignInCompletionCompleted, enum.EventSignInCompletionRejected:
-		add("IDENTITY_FLOW", in.FlowID, true)
+		add(ResourceIdentityFlow, in.FlowID, true)
 	}
 	// 在线 ADMIN_FORBIDDEN 不猜请求目标。
 	if in.Type != enum.EventAdminForbidden {
-		add("USER", in.UserID, false)
-		add("SESSION", in.SessionID, false)
-		add("IDENTITY_FLOW", in.FlowID, false)
+		add(ResourceUser, in.UserID, false)
+		add(ResourceSession, in.SessionID, false)
+		add(ResourceIdentityFlow, in.FlowID, false)
 		if in.Type == enum.EventSignInCompletionProofVerified && in.VerifiedSubject {
-			add("IDENTITY", in.IdentityID, false)
+			add(ResourceIdentity, in.IdentityID, false)
 		}
 	}
 	snap := snapshot{ActorKind: in.Actor.String(), FlowID: in.FlowID, SubjectHint: in.SubjectHint}
@@ -241,7 +241,7 @@ func actor(in Input, o Options) event.Actor {
 		// mapEvent 已验证管理员主体完整性。
 		return event.Actor{Type: event.ActorUser, Namespace: in.AdminIssuer, ID: in.AdminSubject, Name: in.AdminUsername}
 	case enum.ActorSystem:
-		return event.Actor{Type: event.ActorSystem, Namespace: o.Namespace, ID: "accountkit"}
+		return event.Actor{Type: event.ActorSystem, Namespace: o.Namespace, ID: systemActorID}
 	}
 	anonymous := event.Actor{Type: event.ActorAnonymous}
 	unknown := event.Actor{Type: event.ActorUnknown}
@@ -290,11 +290,11 @@ func Projection(e event.Event) (Input, error) {
 	}
 	var kind enum.ActorKind
 	switch d.Accountkit.ActorKind {
-	case "USER":
+	case enum.ActorUser.String():
 		kind = enum.ActorUser
-	case "ADMIN":
+	case enum.ActorAdmin.String():
 		kind = enum.ActorAdmin
-	case "SYSTEM":
+	case enum.ActorSystem.String():
 		kind = enum.ActorSystem
 	default:
 		return Input{}, errors.New("audit/authentication: invalid actor_kind")
@@ -318,12 +318,12 @@ func Projection(e event.Event) (Input, error) {
 	seenSession, seenFlow := false, false
 	for _, r := range append(append([]event.Resource(nil), e.Targets...), e.Context.RelatedResources...) {
 		switch r.Type {
-		case "USER":
+		case ResourceUser:
 			if in.UserID != "" && in.UserID != r.ID {
 				return Input{}, errors.New("audit/authentication: ambiguous user")
 			}
 			in.UserID = r.ID
-		case "SESSION":
+		case ResourceSession:
 			if in.SessionID != "" && in.SessionID != r.ID {
 				return Input{}, errors.New("audit/authentication: inconsistent session")
 			}
@@ -331,11 +331,11 @@ func Projection(e event.Event) (Input, error) {
 				in.SessionID = r.ID
 			}
 			seenSession = true
-		case "IDENTITY":
+		case ResourceIdentity:
 			if in.IdentityID == "" {
 				in.IdentityID = r.ID
 			}
-		case "IDENTITY_FLOW":
+		case ResourceIdentityFlow:
 			if in.FlowID != "" && in.FlowID != r.ID {
 				return Input{}, errors.New("audit/authentication: inconsistent flow")
 			}
@@ -374,11 +374,11 @@ func Scrub(e event.Event) event.Event {
 		return e
 	}
 	var auth map[string]json.RawMessage
-	if json.Unmarshal(d["accountkit"], &auth) != nil {
+	if json.Unmarshal(d[dataSnapshotKey], &auth) != nil {
 		return e
 	}
-	delete(auth, "subject_hint")
-	d["accountkit"], _ = json.Marshal(auth)
+	delete(auth, dataSubjectHintKey)
+	d[dataSnapshotKey], _ = json.Marshal(auth)
 	e.Data, _ = json.Marshal(d)
 	return e
 }
@@ -420,7 +420,7 @@ func (r *Recorder) Record(ctx context.Context, in Input) {
 	for _, field := range omitted {
 		r.omitted.Add(1)
 		if r.observer.Enabled() {
-			r.observer.Observe(ctx, observability.AuditObservation{Kind: observability.AuditOmittedFields, Field: observationField(field), Count: 1})
+			r.observer.Observe(ctx, observability.AuditObservation{Kind: observability.AuditOmittedFields, Field: field, Count: 1})
 		}
 		r.logger.WarnContext(ctx, "authentication audit optional field omitted", "field", field)
 	}
@@ -441,20 +441,3 @@ func (r *Recorder) Record(ctx context.Context, in Input) {
 
 // Stats 返回映射失败与可选字段省略的累计计数快照。
 func (r *Recorder) Stats() Stats { return Stats{Failed: r.failed.Load(), Omitted: r.omitted.Load()} }
-
-func observationField(field string) observability.AuditField {
-	switch field {
-	case "request_id":
-		return observability.FieldRequestID
-	case "device_id":
-		return observability.FieldDeviceID
-	case "subject_hint":
-		return observability.FieldSubjectHint
-	case "actor_name":
-		return observability.FieldActorName
-	case "client_ip":
-		return observability.FieldClientIP
-	default:
-		return observability.FieldUnknown
-	}
-}

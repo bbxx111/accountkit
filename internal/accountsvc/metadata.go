@@ -7,14 +7,13 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"regexp"
 	"strings"
+
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 )
 
 type metadataKey struct{}
 type metadata struct{ ip, id string }
-
-var requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
 func requestID(r *http.Request) string {
 	m, _ := r.Context().Value(metadataKey{}).(metadata)
@@ -28,13 +27,13 @@ func clientIP(r *http.Request) string {
 func requestMetadata(trusted []netip.Prefix, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if existing, ok := r.Context().Value(metadataKey{}).(metadata); ok && existing.id != "" {
-			w.Header().Set("X-Request-Id", existing.id)
+			w.Header().Set(httpcontract.HeaderRequestID, existing.id)
 			next.ServeHTTP(w, r)
 			return
 		}
 		id := ""
-		values := r.Header.Values("X-Request-Id")
-		if len(values) == 1 && requestIDPattern.MatchString(values[0]) {
+		values := r.Header.Values(httpcontract.HeaderRequestID)
+		if len(values) == 1 && httpcontract.ValidRequestID(values[0]) {
 			id = values[0]
 		}
 		if id == "" {
@@ -43,7 +42,7 @@ func requestMetadata(trusted []netip.Prefix, next http.Handler) http.Handler {
 			id = hex.EncodeToString(bytes[:])
 		}
 		m := metadata{ip: resolveClientIP(r, trusted), id: id}
-		w.Header().Set("X-Request-Id", id)
+		w.Header().Set(httpcontract.HeaderRequestID, id)
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), metadataKey{}, m)))
 	})
 }

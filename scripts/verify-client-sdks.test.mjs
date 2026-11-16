@@ -1,6 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readFile} from 'node:fs/promises';
+import {readFile,mkdtemp,writeFile,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {createServer} from 'node:net';
 import {spawn,execFileSync} from 'node:child_process';
 
@@ -28,6 +30,25 @@ function run(source, timeout = 5000) {
     child.once('exit',(code)=>{clearTimeout(timer);resolve({code,output});});
   });
 }
+test('policy seed uses validated readiness metadata and preserves the final legacy marker match', async () => {
+  const directory = await mkdtemp(join(tmpdir(),'accountkit-seed-marker-'));
+  const quote = value => `'${value.replaceAll('\\','/').replaceAll("'", "'\\''")}'`;
+  try {
+    const metadata = join(directory,'ready.json');
+    const log = join(directory,'seed.log');
+    await writeFile(metadata,JSON.stringify({policy_seed_marker:'SDK_POLICY_SEED_USER_ID='}));
+    await writeFile(log,'ignored\nSDK_POLICY_SEED_USER_ID=u_0000000000001\nprefix SDK_POLICY_SEED_USER_ID=u_0000000000002 suffix\n');
+    const setup = `set -eu\noutput=unused\n${await definitions()}\n`;
+    const result = await run(`${setup}marker=$(read_policy_seed_marker ${quote(metadata)})\nextract_policy_seed_user_id "$marker" ${quote(log)}`);
+    assert.equal(result.code,0,result.output);
+    assert.equal(result.output,'u_0000000000002\n');
+    for (const value of ['unexpected.*','SDK_POLICY_SEED_USER_ID=\n',null,42]) {
+      await writeFile(metadata,JSON.stringify({policy_seed_marker:value}));
+      const invalid = await run(`${setup}read_policy_seed_marker ${quote(metadata)}`);
+      assert.notEqual(invalid.code,0);
+    }
+  } finally { await rm(directory,{recursive:true,force:true}); }
+});
 test('silent HTTP peer cannot hang readiness and TERM cancels the in-flight probe', async () => {
   const sockets = new Set();
   const server = createServer(socket=>{sockets.add(socket);socket.on('error',()=>{});socket.on('close',()=>sockets.delete(socket));});

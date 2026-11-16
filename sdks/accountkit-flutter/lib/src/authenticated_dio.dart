@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'dio_metadata.dart';
 import 'errors.dart';
+import 'validation_patterns.dart';
 
 /// Authentication is allowed only for this origin and whole path subtree.
 final class TrustedRequestScope {
@@ -28,14 +30,14 @@ final class TrustedRequestScope {
 
 bool safeRequestPath(String raw) =>
     !raw.contains('\\') &&
-    !RegExp(r'[\x00-\x20\x7f]').hasMatch(raw) &&
-    !RegExp(r'%(?:2e|2f|5c|25)', caseSensitive: false).hasMatch(raw) &&
+    !requestWhitespacePattern.hasMatch(raw) &&
+    !unsafePathEncodingPattern.hasMatch(raw) &&
     !RegExp(r'(^|/)\.{1,2}(/|$)').hasMatch(raw);
 
 /// For writes set Options(extra: {AuthenticatedReplay.key: AuthenticatedReplay(...)}).
 /// The factory must create a fresh body. Never reuse consumed streams/FormData.
 final class AuthenticatedReplay {
   const AuthenticatedReplay({required this.rebuildBody});
-  static const key = 'accountkit.replay';
+  static const key = DioMetadata.replay;
   final FutureOr<Object?> Function() rebuildBody;
 }

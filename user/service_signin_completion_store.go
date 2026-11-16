@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/jackc/pgerrcode"
 	"maps"
 	"net"
 	"slices"
@@ -34,7 +35,7 @@ func flowStorageError(err error) error {
 	var network net.Error
 	var database *pgconn.PgError
 	if errors.As(err, &connect) || errors.As(err, &network) ||
-		(errors.As(err, &database) && (strings.HasPrefix(database.Code, "08") || strings.HasPrefix(database.Code, "53") || database.Code == "57P01" || database.Code == "57P02" || database.Code == "57P03")) {
+		(errors.As(err, &database) && (strings.HasPrefix(database.Code, connectionExceptionClass) || strings.HasPrefix(database.Code, insufficientResourcesClass) || database.Code == pgerrcode.AdminShutdown || database.Code == pgerrcode.CrashShutdown || database.Code == pgerrcode.CannotConnectNow)) {
 		return fmt.Errorf("%w: sign-in flow storage: %w", ErrUnavailable, err)
 	}
 	return err
@@ -88,7 +89,7 @@ func signInCompletionFlowConfiguration(d Deps, policy *IdentityPolicy, providers
 }
 
 func (s *Service) flowAAD(id string) []byte {
-	b, _ := json.Marshal([]string{"accountkit-sign-in-completion-v1", s.flowContext, id})
+	b, _ := json.Marshal([]string{signInCompletionAAD, s.flowContext, id})
 	return b
 }
 

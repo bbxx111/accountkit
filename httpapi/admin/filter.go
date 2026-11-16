@@ -21,7 +21,7 @@ type token struct {
 }
 
 func invalidFilter(format string, args ...any) *apierror.Error {
-	return apierror.New(apierror.StatusInvalidArgument, "INVALID_FILTER", "invalid filter: "+fmt.Sprintf(format, args...))
+	return apierror.New(apierror.StatusInvalidArgument, reasonInvalidFilter, "invalid filter: "+fmt.Sprintf(format, args...))
 }
 
 // tokenize 把 filter 切成裸词 / 引号串 / 运算符（= >= <= < >）。
@@ -100,11 +100,11 @@ func parseFilter(s string) (user.UserFilter, *apierror.Error) {
 		}
 		seen[key] = true
 		switch field.text {
-		case "state":
+		case filterFieldState:
 			if op.text != "=" {
 				return f, invalidFilter("field state supports only =")
 			}
-			if seen["state<"] || seen["state>"] || seen["state>="] || seen["state<="] {
+			if seen[filterFieldState+"<"] || seen[filterFieldState+">"] || seen[filterFieldState+">="] || seen[filterFieldState+"<="] {
 				return f, invalidFilter("field state appears more than once")
 			}
 			st, err := enum.ParseUserState(val.text)
@@ -112,7 +112,7 @@ func parseFilter(s string) (user.UserFilter, *apierror.Error) {
 				return f, invalidFilter("field state has an invalid value (use UPPER_SNAKE_CASE state names)")
 			}
 			f.State = &st
-		case "create_time":
+		case filterFieldCreateTime:
 			t, err := time.Parse(time.RFC3339Nano, val.text)
 			if err != nil {
 				return f, invalidFilter("field create_time requires an RFC 3339 timestamp")
@@ -125,32 +125,29 @@ func parseFilter(s string) (user.UserFilter, *apierror.Error) {
 			default:
 				return f, invalidFilter("field create_time supports only >= and <")
 			}
-		case "identity.phone", "identity.phone_prefix", "identity.phone_suffix", "identity.email", "identity.email_prefix", "identity.email_domain":
+		case filterFieldPhone, filterFieldPhonePrefix, filterFieldPhoneSuffix, filterFieldEmail, filterFieldEmailPrefix, filterFieldEmailDomain:
 			if op.text != "=" {
 				return f, invalidFilter("field %s supports only =", field.text)
 			}
-			kind := enum.IdentityPhone
-			if strings.HasPrefix(field.text, "identity.email") {
-				kind = enum.IdentityEmail
-			}
+			kind := identityFilterKinds[field.text]
 			if e := setKind(kind, field.text, field.pos); e != nil {
 				return f, e
 			}
 			v := val.text
 			switch field.text {
-			case "identity.phone", "identity.email":
+			case filterFieldPhone, filterFieldEmail:
 				if f.Subject != nil {
 					return f, invalidFilter("only one of identity.phone / identity.email may be given")
 				}
 				f.Subject = &v
-			case "identity.phone_prefix", "identity.email_prefix":
+			case filterFieldPhonePrefix, filterFieldEmailPrefix:
 				if kind == enum.IdentityEmail {
 					v = strings.ToLower(v)
 				}
 				f.HintPrefix = &v
-			case "identity.phone_suffix":
+			case filterFieldPhoneSuffix:
 				f.HintSuffix = &v
-			case "identity.email_domain":
+			case filterFieldEmailDomain:
 				lower := strings.ToLower(v)
 				f.HintSuffix = &lower
 			}
@@ -186,6 +183,6 @@ func parseShowDeleted(raw string) (bool, *apierror.Error) {
 	case "true":
 		return true, nil
 	default:
-		return false, apierror.New(apierror.StatusInvalidArgument, "INVALID_SHOW_DELETED", "show_deleted must be true or false")
+		return false, apierror.New(apierror.StatusInvalidArgument, reasonInvalidShowDeleted, "show_deleted must be true or false")
 	}
 }

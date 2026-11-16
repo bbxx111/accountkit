@@ -53,7 +53,7 @@ func (s *Service) refresh(ctx context.Context, refreshToken string, meta Meta) (
 	sess, err = s.d.Repo.queries().GetSessionByPreviousRefreshHash(ctx, hash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		s.observationReason(ctx, ob.ReasonUnknownToken)
-		ev.Type, ev.Result, ev.Reason = enum.EventRefreshRejected, enum.ResultFailure, "UNKNOWN_TOKEN"
+		ev.Type, ev.Result, ev.Reason = enum.EventRefreshRejected, enum.ResultFailure, auditReasonUnknownToken
 		s.record(ctx, ev)
 		return TokenResult{}, ErrInvalidGrant
 	}
@@ -73,7 +73,7 @@ func (s *Service) refresh(ctx context.Context, refreshToken string, meta Meta) (
 			s.observationReason(ctx, ob.ReasonContainmentFailed)
 			return TokenResult{}, err
 		}
-		ev.Type, ev.Result, ev.Reason = enum.EventRefreshReuseDetected, enum.ResultFailure, "TOKEN_REUSE"
+		ev.Type, ev.Result, ev.Reason = enum.EventRefreshReuseDetected, enum.ResultFailure, auditReasonTokenReuse
 		s.record(ctx, ev)
 		s.observationReason(ctx, ob.ReasonTokenReuse)
 		return TokenResult{}, ErrInvalidGrant
@@ -97,11 +97,11 @@ func (s *Service) refresh(ctx context.Context, refreshToken string, meta Meta) (
 			s.observationReason(ctx, ob.ReasonGracePairExpired)
 		}
 		// Redis 不可用或缓存已失效：退化为拒绝但不吊销（避免把网络抖动误判为凭证泄露）。
-		ev.Type, ev.Result, ev.Reason = enum.EventRefreshRejected, enum.ResultFailure, "GRACE_UNAVAILABLE"
+		ev.Type, ev.Result, ev.Reason = enum.EventRefreshRejected, enum.ResultFailure, auditReasonGraceUnavailable
 		s.record(ctx, ev)
 		return TokenResult{}, ErrInvalidGrant
 	}
-	ev.Type, ev.Result, ev.Reason = enum.EventTokenRefreshed, enum.ResultSuccess, "GRACE_REPLAY"
+	ev.Type, ev.Result, ev.Reason = enum.EventTokenRefreshed, enum.ResultSuccess, auditReasonGraceReplay
 	s.record(ctx, ev)
 	s.observationMode(ctx, ob.RefreshGrace)
 	return TokenResult{
@@ -115,13 +115,13 @@ func (s *Service) refresh(ctx context.Context, refreshToken string, meta Meta) (
 func (s *Service) ensureRefreshSessionActive(ctx context.Context, sess db.Session, now time.Time, ev audit.AuthenticationEvent) error {
 	if sess.RevokeTime != nil {
 		s.observationReason(ctx, ob.ReasonSessionRevoked)
-		ev.Type, ev.Result, ev.Reason = enum.EventRefreshRejected, enum.ResultFailure, "SESSION_REVOKED"
+		ev.Type, ev.Result, ev.Reason = enum.EventRefreshRejected, enum.ResultFailure, auditReasonSessionRevoked
 		s.record(ctx, ev)
 		return ErrInvalidGrant
 	}
 	if !sessionActiveAt(sess, now) {
 		s.observationReason(ctx, ob.ReasonSessionExpired)
-		ev.Type, ev.Result, ev.Reason = enum.EventRefreshRejected, enum.ResultFailure, "SESSION_EXPIRED"
+		ev.Type, ev.Result, ev.Reason = enum.EventRefreshRejected, enum.ResultFailure, auditReasonSessionExpired
 		s.record(ctx, ev)
 		return ErrInvalidGrant
 	}
@@ -152,7 +152,7 @@ func (s *Service) ensureSessionRefreshable(ctx context.Context, sess db.Session,
 			s.observationReason(ctx, ob.ReasonContainmentFailed)
 			return now, err
 		}
-		ev.Type, ev.Result, ev.Reason = enum.EventRefreshRejected, enum.ResultFailure, "USER_FROZEN"
+		ev.Type, ev.Result, ev.Reason = enum.EventRefreshRejected, enum.ResultFailure, auditReasonUserFrozen
 		s.record(ctx, ev)
 		return now, ErrUserFrozen
 	default: // PENDING_DELETION / DELETED：会话不得续期
@@ -160,7 +160,7 @@ func (s *Service) ensureSessionRefreshable(ctx context.Context, sess db.Session,
 			s.observationReason(ctx, ob.ReasonContainmentFailed)
 			return now, err
 		}
-		ev.Type, ev.Result, ev.Reason = enum.EventRefreshRejected, enum.ResultFailure, "USER_"+u.State.String()
+		ev.Type, ev.Result, ev.Reason = enum.EventRefreshRejected, enum.ResultFailure, auditUserStateReason(u.State)
 		s.record(ctx, ev)
 		if u.State == enum.UserPendingDeletion {
 			s.observationReason(ctx, ob.ReasonUserPendingDeletion)

@@ -241,7 +241,7 @@ func (s *Store) ListByResource(ctx context.Context, query Query) (Page, error) {
 		}
 		page.Records = append(page.Records, record)
 	}
-	if r.Type == "USER" {
+	if r.Type == authentication.ResourceUser {
 		page.FlowLinks, err = s.pageFlowLinks(ctx, query.Source, r, resource, page.Records)
 		if err != nil {
 			return Page{}, err
@@ -263,7 +263,7 @@ func (s *Store) pageFlowLinks(ctx context.Context, source string, user Resource,
 	for _, record := range records {
 		for _, refs := range [][]Resource{record.Targets, record.Context.RelatedResources} {
 			for _, ref := range refs {
-				if ref.Type == "IDENTITY_FLOW" && ref.Namespace == user.Namespace && !seen[ref.ID] {
+				if ref.Type == authentication.ResourceIdentityFlow && ref.Namespace == user.Namespace && !seen[ref.ID] {
 					seen[ref.ID] = true
 					ids = append(ids, ref.ID)
 				}
@@ -298,7 +298,7 @@ func (s *Store) pageFlowLinks(ctx context.Context, source string, user Resource,
 				return nil, err
 			}
 			if validFlowEvidence(record.Event, user.Namespace) {
-				links[row.FlowID] = FlowLink{Flow: Resource{Type: "IDENTITY_FLOW", Namespace: user.Namespace, ID: row.FlowID}, User: user, Evidence: record}
+				links[row.FlowID] = FlowLink{Flow: Resource{Type: authentication.ResourceIdentityFlow, Namespace: user.Namespace, ID: row.FlowID}, User: user, Evidence: record}
 			} else {
 				id := row.ID
 				pending = append(pending, flowCursor{ID: row.FlowID, AfterID: &id})
@@ -317,7 +317,7 @@ func (s *Store) pageFlowLinks(ctx context.Context, source string, user Resource,
 			return nil, err
 		}
 		for _, id := range live {
-			links[id] = FlowLink{Flow: Resource{Type: "IDENTITY_FLOW", Namespace: user.Namespace, ID: id}, User: user, Live: true}
+			links[id] = FlowLink{Flow: Resource{Type: authentication.ResourceIdentityFlow, Namespace: user.Namespace, ID: id}, User: user, Live: true}
 		}
 	}
 	out := make([]FlowLink, 0, len(links))
@@ -336,7 +336,7 @@ func validFlowEvidence(e Event, namespace string) bool {
 	if err != nil {
 		return false
 	}
-	for _, ref := range []Resource{{Type: "SESSION", Namespace: namespace, ID: projection.SessionID}, {Type: "IDENTITY_FLOW", Namespace: namespace, ID: projection.FlowID}} {
+	for _, ref := range []Resource{{Type: authentication.ResourceSession, Namespace: namespace, ID: projection.SessionID}, {Type: authentication.ResourceIdentityFlow, Namespace: namespace, ID: projection.FlowID}} {
 		if ref.ID == "" {
 			continue
 		}

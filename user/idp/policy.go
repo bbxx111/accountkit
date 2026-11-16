@@ -22,13 +22,13 @@ func configurationFingerprint(kind, endpoint string, applications []string) stri
 func (w *WeChat) PolicyFingerprint() string {
 	apps := make([]string, 0, len(w.secrets))
 	for app := range w.secrets {
-		group := "oauth:"
+		group := policyOAuthGroup
 		if w.miniPrograms[app] {
-			group = "mini-program:"
+			group = policyMiniProgramGroup
 		}
 		apps = append(apps, group+app)
 	}
-	return configurationFingerprint("wechat:"+string(w.mode), w.base, apps)
+	return configurationFingerprint(policyWeChatPrefix+string(w.mode), w.base, apps)
 }
 
 // PolicyFingerprint 标识 Apple 应用允许列表和验证配置。
@@ -37,7 +37,7 @@ func (a *Apple) PolicyFingerprint() string {
 	for app := range a.bundleIDs {
 		apps = append(apps, app)
 	}
-	return configurationFingerprint("apple", a.jwksURL, apps)
+	return configurationFingerprint(policyAppleKind, a.jwksURL, apps)
 }
 
 // PolicyFingerprint 标识 Google client ID 允许列表和 JWKS 地址。
@@ -56,15 +56,15 @@ func (a *Alipay) PolicyFingerprint() string {
 		digest := sha256.Sum256(der)
 		apps = append(apps, appID+":"+hex.EncodeToString(digest[:]))
 	}
-	return configurationFingerprint("alipay:"+string(a.config.subjectMode), a.config.gatewayURL, apps)
+	return configurationFingerprint(policyAlipayPrefix+string(a.config.subjectMode), a.config.gatewayURL, apps)
 }
 
 // PolicyFingerprint 包含应用集合、模式与接口地址；QQ 校验不使用秘密。
 func (q *QQ) PolicyFingerprint() string {
-	return configurationFingerprint("qq:"+string(q.config.subjectMode), q.config.baseURL, append([]string(nil), q.config.appIDs...))
+	return configurationFingerprint(policyQQPrefix+string(q.config.subjectMode), q.config.baseURL, append([]string(nil), q.config.appIDs...))
 }
 
 // PolicyFingerprint 包含应用集合与接口地址；微博校验不使用秘密，也没有标识模式。
 func (p *Weibo) PolicyFingerprint() string {
-	return configurationFingerprint("weibo", p.config.baseURL, append([]string(nil), p.config.appIDs...))
+	return configurationFingerprint(policyWeiboKind, p.config.baseURL, append([]string(nil), p.config.appIDs...))
 }

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createSDKSnapshot } from './sdk-git-snapshot.mjs';
 
@@ -19,6 +19,7 @@ test('exports uncommitted SDK content by fixed Git SHA without touching source b
     await writeFile(join(source, 'sdks/sample/node_modules/not-distributed'), 'ignored');
     const before = git('status', '--porcelain');
     snapshot = await createSDKSnapshot(source);
+    assert.match(basename(snapshot.directory), /^accountkit-sdk-snapshot-/);
     assert.match(snapshot.ref, /^[a-f0-9]{40}$/);
     assert.match(snapshot.url, /^git:\/\/127\.0\.0\.1:\d+\/snapshot\.git$/);
     assert.equal(git('branch', '--show-current'), 'source');
@@ -32,6 +33,10 @@ test('exports uncommitted SDK content by fixed Git SHA without touching source b
     await assert.rejects(readFile(join(consumer, 'sdks/sample/node_modules/not-distributed')));
   } finally {
     await snapshot?.dispose();
+    if (snapshot) {
+      await assert.rejects(readFile(join(snapshot.directory, 'working/sdks/sample/package.json')));
+      await snapshot.dispose(); // Repeated cleanup remains harmless.
+    }
     await rm(source, { recursive: true, force: true });
   }
 });

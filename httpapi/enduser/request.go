@@ -13,6 +13,7 @@ import (
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/httpapi/internal/jsonbody"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/user"
 )
 
@@ -46,17 +47,17 @@ func completionDeviceFrom(r *http.Request) (user.Device, *apierror.Error) {
 }
 
 func parseDevice(r *http.Request, required bool) (user.Device, *apierror.Error) {
-	id := r.Header.Get("X-Device-Id")
+	id := r.Header.Get(httpcontract.HeaderDeviceID)
 	if (required || id != "") && !deviceIDRe.MatchString(id) {
-		return user.Device{}, apierror.New(apierror.StatusInvalidArgument, "DEVICE_ID_INVALID", "X-Device-Id header is required and must match ^[A-Za-z0-9._-]{1,64}$")
+		return user.Device{}, apierror.New(apierror.StatusInvalidArgument, reasonDeviceIDInvalid, "X-Device-Id header is required and must match ^[A-Za-z0-9._-]{1,64}$")
 	}
-	name := r.Header.Get("X-Device-Name")
+	name := r.Header.Get(httpcontract.HeaderDeviceName)
 	if required {
 		// 初始登录保留既有规范化；补全时原值参与领域层的设备匹配。
 		name = strings.TrimSpace(name)
 	}
 	if !utf8.ValidString(name) || utf8.RuneCountInString(name) > maxDeviceNameRunes || strings.ContainsFunc(name, unicode.IsControl) {
-		return user.Device{}, apierror.New(apierror.StatusInvalidArgument, "DEVICE_NAME_INVALID", "X-Device-Name must be <= 64 characters without control characters")
+		return user.Device{}, apierror.New(apierror.StatusInvalidArgument, reasonDeviceNameInvalid, "X-Device-Name must be <= 64 characters without control characters")
 	}
 	return user.Device{ID: id, Name: name}, nil
 }
@@ -78,7 +79,7 @@ type credential struct {
 }
 
 func credentialIncomplete(msg string) *apierror.Error {
-	return apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_INCOMPLETE", msg)
+	return apierror.New(apierror.StatusInvalidArgument, reasonCredentialIncomplete, msg)
 }
 
 // parseKind 校验信封完整与 kind 格式，不判断该类型是否已登记。
@@ -89,7 +90,7 @@ func (c credential) parseKind() (enum.IdentityKind, *apierror.Error) {
 	}
 	kind, err := enum.ParseIdentityKind(c.Kind)
 	if err != nil {
-		return "", apierror.New(apierror.StatusInvalidArgument, "INVALID_ARGUMENT", "kind must match ^[A-Z][A-Z0-9_]{1,31}$")
+		return "", apierror.New(apierror.StatusInvalidArgument, httpcontract.ReasonInvalidArgument, "kind must match ^[A-Z][A-Z0-9_]{1,31}$")
 	}
 	return kind, nil
 }
@@ -104,7 +105,7 @@ func (c credential) anchor() (enum.IdentityKind, codeCredential, *apierror.Error
 		return "", codeCredential{}, e
 	}
 	if !kind.IsAnchor() {
-		return "", codeCredential{}, apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_KIND_NOT_ALLOWED", "only PHONE or EMAIL credentials are accepted here")
+		return "", codeCredential{}, apierror.New(apierror.StatusInvalidArgument, reasonCredentialKindNotAllowed, "only PHONE or EMAIL credentials are accepted here")
 	}
 	var cc codeCredential
 	if err := decodeObject(c.Credential, &cc); err != nil {
@@ -114,7 +115,7 @@ func (c credential) anchor() (enum.IdentityKind, codeCredential, *apierror.Error
 		return "", codeCredential{}, credentialIncomplete("target and code are required")
 	}
 	if !codeIDRe.MatchString(cc.CodeID) {
-		return "", codeCredential{}, apierror.New(apierror.StatusInvalidArgument, "INVALID_ARGUMENT", "code_id must be 32 lowercase hexadecimal characters")
+		return "", codeCredential{}, apierror.New(apierror.StatusInvalidArgument, httpcontract.ReasonInvalidArgument, "code_id must be 32 lowercase hexadecimal characters")
 	}
 	return kind, cc, nil
 }
@@ -126,7 +127,7 @@ func (c credential) provider() (user.IdpCredential, *apierror.Error) {
 		return user.IdpCredential{}, e
 	}
 	if kind.IsAnchor() {
-		return user.IdpCredential{}, apierror.New(apierror.StatusInvalidArgument, "CREDENTIAL_KIND_NOT_ALLOWED", "only third-party credentials are accepted here")
+		return user.IdpCredential{}, apierror.New(apierror.StatusInvalidArgument, reasonCredentialKindNotAllowed, "only third-party credentials are accepted here")
 	}
 	raw := bytes.TrimSpace(c.Credential)
 	if raw[0] != '{' || len(raw) > maxProviderCredentialBytes {
@@ -156,7 +157,7 @@ func decodeObject(raw json.RawMessage, dst any) error {
 func parseChannel(s string) (enum.IdentityKind, *apierror.Error) {
 	k, err := enum.ParseIdentityKind(s)
 	if err != nil || !k.IsChannel() {
-		return "", apierror.New(apierror.StatusInvalidArgument, "CHANNEL_INVALID", "channel must be PHONE or EMAIL")
+		return "", apierror.New(apierror.StatusInvalidArgument, reasonChannelInvalid, "channel must be PHONE or EMAIL")
 	}
 	return k, nil
 }

@@ -81,7 +81,7 @@ func (s *Service) RekeyDigests(ctx context.Context) (total int, resultErr error)
 		}
 		oldV := old
 		n, err := s.runBackfill(ctx, backfillStep{
-			name: "rekey_digests",
+			name: string(observability.TaskRekeyDigests),
 			list: func(ctx context.Context, v uint16) ([]db.Identity, error) {
 				return s.d.Repo.queries().ListIdentitiesByDigestKeyVersion(ctx, db.ListIdentitiesByDigestKeyVersionParams{Version: int16(v), BatchSize: keyBackfillBatchSize})
 			},
@@ -114,7 +114,7 @@ func (s *Service) ReencryptSubjects(ctx context.Context) (total int, resultErr e
 		}
 		oldV := old
 		n, err := s.runBackfill(ctx, backfillStep{
-			name: "reencrypt_subjects",
+			name: string(observability.TaskReencryptSubjects),
 			list: func(ctx context.Context, v uint16) ([]db.Identity, error) {
 				return s.d.Repo.queries().ListIdentitiesByCipherKeyVersion(ctx, db.ListIdentitiesByCipherKeyVersionParams{Version: int16(v), BatchSize: keyBackfillBatchSize})
 			},

@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -18,8 +19,8 @@ type healthState struct {
 }
 
 func healthResponse(w http.ResponseWriter, status int, label string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set(httpcontract.HeaderContentType, httpcontract.MediaTypeJSON)
+	httpcontract.SetNoStore(w)
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(struct {
 		Status string `json:"status"`
@@ -28,7 +29,7 @@ func healthResponse(w http.ResponseWriter, status int, label string) {
 
 func (s *healthState) serveReady(w http.ResponseWriter, r *http.Request) {
 	if !s.ready.Load() {
-		healthResponse(w, 503, "not_ready")
+		healthResponse(w, 503, healthNotReady)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
@@ -41,19 +42,19 @@ func (s *healthState) serveReady(w http.ResponseWriter, r *http.Request) {
 		select {
 		case err := <-results:
 			if err != nil {
-				healthResponse(w, 503, "not_ready")
+				healthResponse(w, 503, healthNotReady)
 				return
 			}
 		case <-ctx.Done():
-			healthResponse(w, 503, "not_ready")
+			healthResponse(w, 503, healthNotReady)
 			return
 		}
 	}
 	if !s.ready.Load() {
-		healthResponse(w, 503, "not_ready")
+		healthResponse(w, 503, healthNotReady)
 		return
 	}
-	healthResponse(w, 200, "ready")
+	healthResponse(w, 200, healthReady)
 }
 
 // serviceHandler 组装单监听器路由；purgeFeed / jwks 为 nil 时不挂载对应路由（仅供不涉及它们的测试）。
@@ -81,7 +82,7 @@ func serviceHandler(cfg Config, endUser, admin, introspect, purgeFeed, jwks, ide
 		case routeAdministrator:
 			handler = admin
 		case routeHealth:
-			handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { healthResponse(w, 200, "ok") })
+			handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { healthResponse(w, 200, healthOK) })
 		case routeReady:
 			handler = http.HandlerFunc(state.serveReady)
 		case routeMetrics:

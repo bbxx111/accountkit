@@ -67,9 +67,9 @@ func run() error {
 	var auth *accountkit.Auth
 	var owned *audit.Async
 	switch mode := os.Getenv("ACCOUNTKIT_AUDIT_MODE"); mode {
-	case "", "local":
+	case "", modeLocal:
 		auth, err = assembleLocal(cfg, deps)
-	case "host", "write-only":
+	case modeHost, modeWriteOnly:
 		// 两个值必须由宿主明确配置。相同配置同时传给认证生产方和存储适配器。
 		// 本示例仍使用同库 Store，只演示宿主接管组件，并非跨库中心审计实现。
 		store, storeErr := audit.NewStoreWithOptions(pool, audit.StoreOptions{Source: cfg.AuditSource, Namespace: cfg.AuditNamespace})
@@ -79,7 +79,7 @@ func run() error {
 		owned = audit.NewAsync(store, audit.AsyncOptions{})
 		// 先注册宿主关闭；后注册的 auth.Close 会先停止库维护任务。
 		defer owned.Close()
-		if mode == "host" {
+		if mode == modeHost {
 			auth, err = assembleHostReadWrite(cfg, deps, owned, store)
 		} else {
 			auth, err = assembleHostWriteOnly(cfg, deps, owned)

@@ -9,6 +9,7 @@ import (
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/httpapi/authn"
 	"github.com/bbxx111/accountkit/internal/boundedjson"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/user"
 )
 
@@ -63,7 +64,7 @@ func (h *Handler) updateMe(w http.ResponseWriter, r *http.Request) {
 		// U+2028/U+2029 use six canonical bytes for three input bytes.
 		value, err := boundedjson.Decode(req.AvatarURL, boundedjson.Limits{MaxBytes: 2 * len(req.AvatarURL), MaxDepth: 1, MaxNodes: 1})
 		if err != nil {
-			apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_ARGUMENT", "invalid avatar_url"))
+			apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, httpcontract.ReasonInvalidArgument, "invalid avatar_url"))
 			return
 		}
 		if value != nil {
@@ -76,7 +77,7 @@ func (h *Handler) updateMe(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if req.DisplayName == nil && avatarURL == nil {
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "NO_FIELDS", "no updatable fields present (display_name, avatar_url)"))
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, reasonNoFields, "no updatable fields present (display_name, avatar_url)"))
 		return
 	}
 	var me user.Me
@@ -84,7 +85,7 @@ func (h *Handler) updateMe(w http.ResponseWriter, r *http.Request) {
 	if updater, ok := h.d.Users.(ProfileUpdater); ok {
 		me, err = updater.UpdateProfile(r.Context(), p.UserID, user.ProfilePatch{DisplayName: req.DisplayName, AvatarURL: avatarURL})
 	} else if avatarURL != nil {
-		apierror.Write(w, apierror.New(apierror.StatusUnavailable, "PROFILE_UPDATE_NOT_CONFIGURED", "profile update not configured"))
+		apierror.Write(w, apierror.New(apierror.StatusUnavailable, reasonProfileUpdateNotConfigured, "profile update not configured"))
 		return
 	} else {
 		me, err = h.d.Users.UpdateDisplayName(r.Context(), p.UserID, *req.DisplayName)

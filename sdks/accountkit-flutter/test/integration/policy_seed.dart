@@ -20,6 +20,8 @@ void main() {
     final ready = await support.controlJson(control, '/__fixture/ready');
     expect(ready['mode'], 'embedded-test-host');
     expect(ready['profile'], 'custom-extended');
+    final seedMarker = ready['policy_seed_marker']! as String;
+    expect(seedMarker, 'SDK_POLICY_SEED_USER_ID=');
     final client = support.account(
       origin,
       'policy-${support.run}-seed',
@@ -31,6 +33,6 @@ void main() {
     expect((await client.listIdentities()).map((i) => i.kind), ['TEST_OIDC']);
     // Synthetic resource ID only. No token, provider subject, or identity plaintext.
     // ignore: avoid_print
-    print('SDK_POLICY_SEED_USER_ID=${client.session.userId}');
+    print('$seedMarker${client.session.userId}');
   }, timeout: const Timeout(Duration(seconds: 60)));
 }

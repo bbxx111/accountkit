@@ -34,8 +34,8 @@ var _ smtp.Renderer = (*Renderer)(nil)
 // New 固定默认语言；缺省或不支持的默认语言使用 zh-CN。
 // 模板均为本地常量，不读取环境凭据，也不进行网络 I/O。
 func New(defaultLanguage string) *Renderer {
-	if defaultLanguage != "en" && defaultLanguage != "zh-CN" {
-		defaultLanguage = "zh-CN"
+	if defaultLanguage != localeEn && defaultLanguage != localeZhCN {
+		defaultLanguage = localeZhCN
 	}
 	return &Renderer{
 		defaultLanguage: defaultLanguage,
@@ -64,31 +64,31 @@ func (r *Renderer) Render(ctx context.Context, m sender.CodeMessage) (smtp.Email
 		}
 	}
 	language, _ := ctx.Value(languageKey{}).(string)
-	if language != "en" && language != "zh-CN" {
+	if language != localeEn && language != localeZhCN {
 		language = r.defaultLanguage
 	}
 	var purpose string
 	switch m.Purpose {
 	case enum.PurposeSignIn:
-		if language == "en" {
+		if language == localeEn {
 			purpose = "sign in"
 		} else {
 			purpose = "登录"
 		}
 	case enum.PurposeBind:
-		if language == "en" {
+		if language == localeEn {
 			purpose = "bind an identity"
 		} else {
 			purpose = "绑定"
 		}
 	case enum.PurposeReauth:
-		if language == "en" {
+		if language == localeEn {
 			purpose = "reauthenticate"
 		} else {
 			purpose = "重新认证"
 		}
 	case enum.PurposeSignInComplete:
-		if language == "en" {
+		if language == localeEn {
 			purpose = "complete sign-in and link an identity, registering if needed"
 		} else {
 			purpose = "完成登录并关联身份，未注册时自动注册"
@@ -101,7 +101,7 @@ func (r *Renderer) Render(ctx context.Context, m sender.CodeMessage) (smtp.Email
 		minutes++
 	}
 	subject, validity := purpose+"验证码", fmt.Sprintf("%d 分钟", minutes)
-	if language == "en" {
+	if language == localeEn {
 		unit := "minutes"
 		if minutes == 1 {
 			unit = "minute"

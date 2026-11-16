@@ -1,3 +1,6 @@
+import 'package:accountkit_flutter/src/transport.dart'
+    show identityPath, sessionPath;
+
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -75,6 +78,38 @@ class WireAdapter implements HttpClientAdapter {
 }
 
 void main() {
+  test('resource paths validate collection and parent before constructing', () {
+    expect(
+      identityPath('i_0000000000001', 'u_0000000000001'),
+      '/users/me/identities/i_0000000000001',
+    );
+    expect(
+      sessionPath(
+        'users/u_0000000000001/sessions/s_0000000000001',
+        'u_0000000000001',
+      ),
+      '/users/me/sessions/s_0000000000001',
+    );
+    expect(
+      () => identityPath(
+        'users/u_0000000000002/identities/i_0000000000001',
+        'u_0000000000001',
+      ),
+      throwsA(isA<AccountConfigurationError>()),
+    );
+    expect(
+      () => sessionPath(
+        'users/u_0000000000001/identities/s_0000000000001',
+        'u_0000000000001',
+      ),
+      throwsA(isA<AccountConfigurationError>()),
+    );
+    expect(
+      () => identityPath('i_invalid', null),
+      throwsA(isA<AccountConfigurationError>()),
+    );
+  });
+
   late AccountClient client;
   late WireAdapter wire;
   late Dio dio;

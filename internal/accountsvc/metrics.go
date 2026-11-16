@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/observability"
 	metricsprom "github.com/bbxx111/accountkit/observability/prometheus"
 	"github.com/prometheus/client_golang/prometheus"
@@ -25,7 +26,7 @@ func newMetrics(cfg Config) (observability.Observer, http.Handler, error) {
 func newMetricsHandler(gatherer prometheus.Gatherer) http.Handler {
 	handler := promhttp.HandlerFor(gatherer, promhttp.HandlerOpts{MaxRequestsInFlight: 5})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-store")
+		httpcontract.SetNoStore(w)
 		handler.ServeHTTP(&metricsResponseWriter{ResponseWriter: w}, r)
 	})
 }

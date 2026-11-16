@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "accountkit 管理 HTTP API",
-    "version": "v1.1.0",
-    "description": "v1.1.0（已发布） 的内置管理 HTTP 契约：宿主配置实际挂载地址，请求体为单个 JSON 对象（默认上限 64 KiB，拒绝未知字段与尾随内容），adminRevealIdentity 的响应带 Cache-Control: no-store，领域状态、事务与故障策略以规格与 README 为准。 本分支包含待发布的管理权限配置扩展，x-required-permission为操作权限，x-legacy-required-role仅供旧嵌入宿主兼容。"
+    "version": "v1.2.0",
+    "description": "v1.2.0（候选）的内置管理 HTTP 契约：宿主配置实际挂载地址，请求体为单个 JSON 对象（默认上限 64 KiB，拒绝未知字段与尾随内容），adminRevealIdentity 的响应（含认证错误）带 Cache-Control: no-store，领域状态、事务与故障策略以规格与 README 为准。accountsvc 必须显式映射管理角色权限；x-required-permission 为操作权限，x-legacy-required-role 仅供旧嵌入宿主兼容。"
   },
   "servers": [
     {

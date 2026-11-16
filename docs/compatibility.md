@@ -1,6 +1,6 @@
 # 功能与兼容对照
 
-本文记录 v1.0.0（已发布）基线、长期契约边界及 v1.1.0（已发布）差异；下方 accountsvc 服务客户端配置章节明确描述v1.1.0 的已发布变化，不归入 v1.0.0 的历史能力。v1.0.0 之前各开发期版本之间的升级说明已退役，开发期版本只在[开发期版本记录](releases/pre-1.0-history.md)中留存摘要。HTTP 字段、状态码与配置以 [README](../README.md)、[OpenAPI 契约](openapi.md)和公开 Go 类型为准。
+本文当前对应 v1.2.0（候选），记录 v1.0.0/v1.1.0 已发布基线及长期契约边界。管理权限显式配置章节描述本候选的破坏性部署迁移；下方 accountsvc 服务客户端配置章节保留 v1.1.0 的已发布变化，不重复归入本次新增迁移。v1.0.0 之前各开发期版本之间的升级说明已退役，开发期版本只在[开发期版本记录](releases/pre-1.0-history.md)中留存摘要。HTTP 字段、状态码与配置以 [README](../README.md)、[OpenAPI 契约](openapi.md)和公开 Go 类型为准。
 
 ## v1.0.0 调用者须知
 
@@ -57,9 +57,9 @@ v1.1.0 移除 v1.0.0 已提供的旧逐接口配置模式，属于配置破坏�
 
 配置为启动快照；权限、方法、身份或秘密变更须重启全部副本或排空旧副本。提供方禁用客户端不保证已发令牌即时失效。如需恢复旧配置模式，必须同时恢复支持该模式的旧二进制、已保存的匹配配置及调用方凭据；当前二进制没有旧模式回退入口，不能通过清库或清 Redis 完成。完整配置、TLS、单文件 Compose 与迁移步骤见[服务手册](accountsvc.md#服务调用认证内省与已清理用户拉取)。
 
-## 管理权限显式配置（待发布）
+## 管理权限显式配置（v1.2.0 候选）
 
-本轮变更尚未发布。accountsvc 移除 operator/super-admin 的内置授权和继承，需要通过 `ADMIN_ROLE_BINDINGS` 及分项 NAME/PERMISSIONS 显式分配权限，不提供 builtin/custom 开关。旧部署只保持原角色签发仍会得到403，须按[管理员认证](accountsvc.md#管理员认证)迁移配置。
+状态：发布候选。本次相对正式 v1.1.0 的 accountsvc 部署存在破坏性授权迁移，不称全面向后兼容。accountsvc 移除 operator/super-admin 的内置授权和继承，需要通过 `ACCOUNTSVC_ADMIN_ROLE_BINDINGS`、`ACCOUNTSVC_ADMIN_ROLE_<ALIAS>_NAME` 和 `ACCOUNTSVC_ADMIN_ROLE_<ALIAS>_PERMISSIONS` 显式分配权限，不提供 builtin/custom 开关。空绑定合法启动，但有效管理员得到403 `ADMIN_FORBIDDEN`，无效凭据401、依赖故障503保持；旧有效 token 的精确角色匹配映射后可以继续使用。须按[管理员认证](accountsvc.md#管理员认证)及[升级/回退说明](releases/v1.2.0.md)迁移全部副本。`ADMIN_AUTHORIZATION_MODE` 从未正式发布，不是从 v1.1.0 升级的旧变量删除项。
 
 新增10项管理权限：users.read、users.freeze、users.unfreeze、users.delete、users.undelete、identities.reveal、sessions.read、sessions.revoke、sessions.revoke_all、audit_events.read。资源组通配符在升级后自动包含该组新增操作；有限授权应枚举具体权限。管理员scope不参与权限计算，服务权限不接受这些通配符。
 

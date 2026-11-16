@@ -102,3 +102,15 @@ SDK首次真实宿主启动因验证脚本过早设置ACCOUNTKIT_ADMIN_INTEGRATI
 合并前工作区干净，GOWORK=off普通Go全套通过（`premerge-go.log`）。本地使用`git merge --no-ff --no-commit`，无冲突；合并结果普通Go全套通过（`postmerge-go.log`），OpenSpec严格校验46/46、OpenAPI 24/11操作、SDK 36操作覆盖及暂存空白检查通过。Windows普通套件中的数据库skip不视为集成通过；上文Linux真实依赖/race/恢复证据及未验证项保持原边界。
 
 本段随独立merge commit记录，合并后按提交可达性核对再删除本地任务分支。此次授权仅执行本地合并与分支清理，不推送、不归档、不创建tag或发布。字符串字面量盘点材料保留在被忽略的`.test-output/literal-inventory/`，未纳入实现提交。
+
+## 2026-11-16：主规格同步、归档与本地提交
+
+用户明确要求归档、提交。基线为develop的`6bfd591a391803206aa659f8ef7c0fcde164a540`，本变更实现此前已随[PR #32](https://github.com/bbxx111/accountkit/pull/32)保留历史集成到远端develop；本轮从该干净基线创建`docs/archive-admin-permissions`文档任务分支。
+
+- OpenSpec CLI1.14.3确认全部工件完成、任务19/19。按同一份specs规则快照，内联同步accountsvc-admin-authentication、accountsvc-runtime、embedded-auth-package三份主规格：修改8项要求、新增11项，63项无关要求、原修改块的18个场景标题以及三个既有标题/Purpose均保持。
+- 首次同步后严格校验45通过、1项失败：新增兼容说明令“管理接口及审计兼容”正文略超500字符。仅精简该新增句的重复用词，保留可选扩展、仅旧角色契约宿主沿用原要求及无须迁移的含义；增量与主规格采用相同文字，未拆分要求或删减场景。原因及边界记录在design.md的Archive Notes，复验46/46通过，没有放宽校验。
+- 独立内容检查确认8项修改与11项新增均完整进入主规格，其他要求原文和顺序保持；重复执行同步后三份主规格SHA256不变。635个Go文件与此前已验收源码哈希一致，本轮按文档维护范围验证，未重跑Go/SDK测试。相同源码基线的[Go CI](https://github.com/bbxx111/accountkit/actions/runs/43798317383)及[SDK/Android/iOS CI](https://github.com/bbxx111/accountkit/actions/runs/43798317378)均已通过。
+- 主规格确认同步完毕后，使用CLI archive的--skip-specs避免重复写入；CLI返回specsUpdated=false仅表示归档步骤不重放已完成的同步。八份工件已移动至`openspec/changes/archive/2026-11-16-configure-admin-permissions/`，.openspec.yaml及19项任务状态保留。
+- 实施计划的设计链接指向新归档目录，并依据既有19/19证据补齐16个遗漏的计划勾选；原始历史提交和验证时间线保持。归档后严格校验45/45通过，活动变更列表为空，本地链接、UTF-8及diff空白检查通过。
+
+本轮命令输出与校验脚本保存在`.test-output/admin-permissions/archive-20261116/`，包括specs-instructions.json、sync-content-check.log、pre-archive-validate.log（初次失败）、pre-archive-revalidate.log、archive-cli.log及post-archive-validate.log。独立归档复核Spec/Quality通过、无实质问题，报告为admin-archive-review.md；按本轮指令在任务分支做本地文档提交。

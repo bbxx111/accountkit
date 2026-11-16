@@ -52,6 +52,16 @@
 - 首次消费的额外源码指纹检查未通过：准备快照使用Windows工作树字节，8个未改动历史Go文件仍为CRLF，而下载内容为Git中的LF。诊断逐文件确认这8处下载内容与发布Git对象一致；未改tag或源文件，将预期指纹改为受测main Git对象后，在两个新目录重跑完整消费及635文件检查成功。首次命令和诊断保留，不将首次失败计为通过。
 - 实际输出、模块版本/校验和、源文件指纹与SQL哈希位于remote-consumers/verification.json、published-git-go-manifest.json和各唯一run目录commands.json，完整来源见state.json/release-created.json/source-fingerprint-diagnosis.json。
 
-正式版本和消费均已确认。当前在独立发布补记分支将最新文档更新为已发布，随后按用户授权集成develop/main；这属于独立补记提交，不能冒充受测/tagged源提交。发布准备变更仍等待以后单独归档，产品环境验收边界保持。
+正式版本和消费均已确认。独立发布补记已将最新文档更新为已发布，并按用户授权集成develop/main；这是独立补记提交，不能冒充受测/tagged源提交。发布准备变更仍等待以后单独归档，产品环境验收边界保持。
 
 已发布状态文档的独立复核Spec/Quality通过、无finding（SDD目录task-5-review.md）；OpenAPI24/11、SDK36覆盖、194个本地链接/JSON/UTF-8及严格46/46均通过。补记中明确本地日期与UTC记录、tag内原候选文本不动、两个SDK仍为1.0.0。
+
+## 发布补记与最终闭环
+
+已发布补记提交75a7abb经[PR #36](https://github.com/bbxx111/accountkit/pull/36)合入develop（f0a3082），再经[PR #37](https://github.com/bbxx111/accountkit/pull/37)以独立merge commit合入main（70e047e）。两分支补记树相同，GitHub Release正文与已发布说明一致；正式tag对象和源码目标始终未变，没有将补记SHA称为发布源。状态维护按文档范围验证，受测运行源码与tag一致。
+
+最终核验通过：远端最新稳定Release为v1.2.0、非draft/prerelease，tag对象f8e624d仍解引用受测462d798；精确main的Go/SDK门禁全成功；两独立正式Go宿主与635源码/冻结SQL匹配；SDK矩阵保持1.0.0对v1.2.0 verified。所有本任务测试容器及网络已不存在，原有产品容器未操作。原始最终核验为final-published-check.log，阶段对象与PR完整SHA保存在state.json。
+
+本轮13项发布任务均已完成，最后闭环提交仅记录已发生的事实并同步任务/计划状态；按普通merge commit集成两分支，正式tag不移动。发布准备变更保持完成状态，归档需后续单独指令。真实提供方、网关及产品部署不因本次库发布而计为已验收。
+
+最后闭环记录经独立复核通过、无finding（SDD目录final-release-review.md）；任务/计划与实际发布、消费、补记集成及清理状态一致，未将后续记录提交称为受测或tagged源码。

@@ -29,7 +29,7 @@ apply后需按任务记录每阶段实际命令、独立审查、提交和清单
 
 ## 2026-11-16：实施基线与详细计划
 
-使用已创建任务分支和当前工作区，沿用此前工作树创建受沙箱限制后的原地执行方式；不重复创建工作树。详细执行计划为[全仓实施计划](../../../docs/superpowers/plans/2026-11-16-consolidate-string-contracts.md)，执行依赖及写入范围明确；无共享写入的Go HTTP、Flutter、TS/工具按项目规则并行，Go领域及配置接入顺序实施。
+使用已创建任务分支和当前工作区，沿用此前工作树创建受沙箱限制后的原地执行方式；不重复创建工作树。详细执行计划为[全仓实施计划](../../../../docs/superpowers/plans/2026-11-16-consolidate-string-contracts.md)，执行依赖及写入范围明确；无共享写入的Go HTTP、Flutter、TS/工具按项目规则并行，Go领域及配置接入顺序实施。
 
 - 起点`a94a070`，78组候选全部planned；30项任务映射及原值清单已核对。已有协议、审计、存储和拒绝边界断言作为行为基线，不为保持行为的纯提取编造先红；新增帮助函数先写测试观察缺失失败。
 - Go1.26.5 windows/amd64、GOWORK=off，`go test -count=1 ./...`基线通过，日志`.test-output/string-contracts/baseline-go.log`；未配置数据库，skip不作为真实集成证据。
@@ -111,8 +111,18 @@ apply后需按任务记录每阶段实际命令、独立审查、提交和清单
 
 ## 本地阶段提交
 
-已提交`5000620`详细计划、`932ed5c`管理SDK与工具、`93bea6c`HTTP/JOSE、`a26a363`Flutter、`abfcfdd`领域/审计/存储、`919a23d`配置/提供方/测试装配与跨模块接线、`8d5cc55`本地验收记录。用户本轮授权继续远端验收后，任务分支已推送并完成上述CI；本轮结果回填另作阶段提交，继续保留任务分支。
+已提交`5000620`详细计划、`932ed5c`管理SDK与工具、`93bea6c`HTTP/JOSE、`a26a363`Flutter、`abfcfdd`领域/审计/存储、`919a23d`配置/提供方/测试装配与跨模块接线、`8d5cc55`本地验收记录、`2a1b8e0`远端iOS补验与30/30任务闭环。任务分支已推送并完成上述CI；归档工件及链接修复另作阶段提交。
+
+## 2026-11-16：归档与集成
+
+用户明确要求合并、归档。OpenSpec CLI1.14.3确认30/30任务完成、proposal/design/tasks齐备、specs因skip_specs显式跳过；归档前严格校验47/47通过。CLI archive将六份工件移动至`openspec/changes/archive/2026-11-16-consolidate-string-contracts/`，specsUpdated=false，没有同步或修改主规格，也未归档原configure-admin-permissions变更。
+
+归档后修复inventory中的484处证据相对路径、验收记录中的计划链接，以及计划对设计文件的引用；原始值、367处基线引用及78组处理结果保持。运行源码与已通过CI的8d5cc55一致，归档仅改变工件位置和记录/引用。原始日志继续保留于仓库根目录的.test-output/string-contracts。
+
+归档内容检查通过：六份工件、78组清单不变、30项任务全勾选、12个本地Markdown链接及全部证据路径有效，635个Go文件SHA256与最终验证副本一致。归档后`openspec validate --all --strict`为46/46通过（45份主规格与剩余管理权限变更）；活动变更列表已移除本变更。归档前后的原始输出保留于archive-content-check.log、pre-archive-validate.log及post-archive-validate.log。
+
+集成目标为develop，按仓库默认PR流程保留独立merge commit。远端develop尚未包含本地develop的三个前置提交（4721bf7、7f43faa、a11ea46），本任务分支已继承该基线，集成时保留这些已完成历史；PR候选检查覆盖完整差异，合并记录及在线检查以对应PR为准。
 
 ## 当前交付状态
 
-78组均已实施并核对原值/拥有者及保留理由，任务30/30完成。Go、两个SDK、Android/iOS及工具的规定门禁均有本次通过证据，iOS环境缺口已由远端CI补齐；独立收尾复核Spec/Quality通过、无开放源码或文档finding（final-review.md），OpenSpec严格校验47/47通过，清单、链接、格式及源码一致性检查通过。本轮验收记录提交只更新四份工件/计划文档，运行源码与CI通过提交8d5cc55一致。本次没有修改版本、锁文件、冻结迁移或原管理权限变更，变更归档仍为单独步骤。
+78组均已实施并核对原值/拥有者及保留理由，任务30/30完成。Go、两个SDK、Android/iOS及工具的规定门禁均有本次通过证据，iOS环境缺口已由远端CI补齐；独立收尾复核Spec/Quality通过、无开放源码或文档finding（final-review.md）。远端验收回填提交2a1b8e0只更新四份工件/计划文档，运行源码与CI通过提交8d5cc55一致。变更现已归档，清单、链接、格式及源码一致性检查随归档复核；集成目标为develop。本次没有修改版本、锁文件、冻结迁移或原管理权限变更。

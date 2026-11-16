@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go1.26.5，PostgreSQL17/Redis，现有jwt/Chi/pgx，Flutter3.47.4/Dart3.13.3，Node24.21.0/pnpm11.24.0；其他精确版本以sdks/tool-versions.json为准，不新增依赖。
 
-**Spec:** [design.md](../../../openspec/changes/consolidate-string-contracts/design.md)、同目录proposal/tasks及inventory.json。OpenSpec清单是值、位置和primaryTask的唯一需求来源。
+**Spec:** [design.md](../../../openspec/changes/archive/2026-11-16-consolidate-string-contracts/design.md)、同目录proposal/tasks及inventory.json。OpenSpec清单是值、位置和primaryTask的唯一需求来源。
 
 ## Global Constraints
 

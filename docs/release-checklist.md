@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-当前 Go 版本为 v1.2.0（候选），见[发布说明](releases/v1.2.0.md)及[本次验收记录](../openspec/changes/prepare-v1-2-release/verification.md)。相对 v1.1.0，accountsvc 管理员角色改为显式权限映射，须核对空策略403、精确角色、全部副本重启/排空和成套回退可能恢复宽授权；不能用 scope 补救管理权限。正式 tag 包含候选说明，最终 main SHA 的 Go/SDK CI 与正式远端消费分别确认后独立补记，不移动 tag。历史见[v1.1.0](releases/v1.1.0.md)、[v1.0.0](releases/v1.0.0.md)和[开发期历史](releases/pre-1.0-history.md)。
+当前 Go 版本为 v1.2.0（已发布），见[发布说明](releases/v1.2.0.md)及[本次验收记录](../openspec/changes/prepare-v1-2-release/verification.md)。相对 v1.1.0，accountsvc 管理员角色改为显式权限映射，须核对空策略403、精确角色、全部副本重启/排空和成套回退可能恢复宽授权；不能用 scope 补救管理权限。正式 tag 固定最终 main `462d798dfc11e672cd2ee8d7ce7fbce402d29d02`，该 SHA 的 Go/SDK CI 与两个正式远端 Go 宿主消费均已通过；tag 保留候选说明，本次状态补记不移动 tag。历史见[v1.1.0](releases/v1.1.0.md)、[v1.0.0](releases/v1.0.0.md)和[开发期历史](releases/pre-1.0-history.md)。
 
 客户端 SDK 独立版本化：Flutter 与管理 TypeScript 的 1.0.0 已发布，见[SDK 发布说明](releases/client-sdks-v1.0.0.md)与[发布验收记录](../openspec/changes/archive/2026-11-04-prepare-client-sdks-v1-release/verification.md)。SDK 发布使用各自 tag，SDK 与 Go module 的版本分别递增，不因一方发布而自动变更另一方版本；候选同时运行 Go/SDK CI，发布后分别验证真实 Git 子目录消费，不套用下方 Go module 的 go get 消费命令。
 

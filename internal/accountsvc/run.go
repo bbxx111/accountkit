@@ -20,6 +20,7 @@ import (
 	"github.com/bbxx111/accountkit/internal/accountsvc/oidcjwt"
 	"github.com/bbxx111/accountkit/internal/accountsvc/purgefeed"
 	"github.com/bbxx111/accountkit/internal/accountsvc/serviceauth"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/migrations"
 	"github.com/bbxx111/accountkit/pii"
 	"github.com/bbxx111/accountkit/user"
@@ -60,9 +61,9 @@ type runtimeFactory struct {
 
 func parseCommand(args []string) (string, error) {
 	if len(args) == 0 {
-		return "serve", nil
+		return commandServe, nil
 	}
-	if len(args) == 1 && (args[0] == "serve" || args[0] == "migrate") {
+	if len(args) == 1 && (args[0] == commandServe || args[0] == commandMigrate) {
 		return args[0], nil
 	}
 	return "", errors.New("accountsvc: command must be serve, migrate or email-templates check")
@@ -102,7 +103,7 @@ func openDependencies(ctx context.Context, cfg Config, _ *slog.Logger) (*depende
 	d := &dependencies{pool: pool, databasePing: pool.Ping, closePool: pool.Close}
 	opts, err := redis.ParseURL(cfg.RedisURL)
 	if err != nil {
-		return d, invalidConfig("ACCOUNTSVC_REDIS_URL")
+		return d, invalidConfig(envAccountsvcRedisUrl)
 	}
 	opts.ContextTimeoutEnabled = true
 	rdb := redis.NewClient(opts)
@@ -120,7 +121,7 @@ func openDependencies(ctx context.Context, cfg Config, _ *slog.Logger) (*depende
 
 // 管理认证在构造时静态装配，远程 discovery 在监听就绪后执行。
 func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*application, error) {
-	if cfg.command == "migrate" {
+	if cfg.command == commandMigrate {
 		return newMigrationApplication(cfg, d)
 	}
 	observer, metrics, err := newMetrics(cfg)
@@ -145,7 +146,7 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 	var recordForbidden func(*http.Request, accountkit.AdminPrincipal)
 	var adminVerifier *adminauth.Verifier
 
-	if cfg.command == "serve" && cfg.AdminEnabled {
+	if cfg.command == commandServe && cfg.AdminEnabled {
 		var err error
 		adminVerifier, err = adminauth.New(context.Background(), cfg.Admin, adminauth.Options{Logger: logger, OnForbidden: func(r *http.Request, p accountkit.AdminPrincipal) {
 			if recordForbidden != nil {
@@ -181,17 +182,14 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 		// 只有多语言清单才需要读取请求语言；发码只经由消费者路由。
 		app.endUser = acceptLanguage(app.endUser)
 	}
-	if cfg.command == "serve" {
+	if cfg.command == commandServe {
 		intro, purge, resolve, preload, err := serviceAuthenticators(cfg, logger, nil, &closeServiceTokens)
 		if err != nil {
 			closeAuth()
 			return nil, err
 		}
 		app.preloadServiceTokens = preload
-		namespace := cfg.Library.AuditNamespace
-		if namespace == "" {
-			namespace = "accountkit/" + cfg.Library.Schema + "/resources"
-		}
+		namespace := identityAuditNamespace(cfg.Library)
 		app.identityResolve, err = identityresolve.NewWithAuthenticator(resolve, auth.Users().ResolveIdentity, namespace, requestID)
 		if err != nil {
 			closeAuth()
@@ -212,7 +210,19 @@ func newApplication(cfg Config, d *dependencies, logger *slog.Logger) (*applicat
 		app.admin = adminVerifier.Middleware(auth.AdminHandler())
 		app.preloadAdminTokens = adminVerifier.Load
 	}
+	app.admin = adminRevealNoStore(app.admin)
 	return app, nil
+}
+
+// Authentication can reject before the delegated admin router sees a reveal
+// request, so protect its error responses at the outermost admin boundary too.
+func adminRevealNoStore(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/identities/") && strings.HasSuffix(r.URL.Path, ":reveal") {
+			httpcontract.SetNoStore(w)
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // migrate 只装配存储迁移与密钥核验，不创建认证服务、发送器、IdP 或 HTTP 处理器。
@@ -318,11 +328,11 @@ func serviceAuthenticators(cfg Config, logger *slog.Logger, client *http.Client,
 // warnUnconfigured 为未配置、只会返回 503 *_NOT_CONFIGURED 的可选接口各记一条 WARN，
 // 使漏配在启动日志中可见，而不是等到调用失败才发现。只写变量名，不写值。
 func warnUnconfigured(cfg Config, logger *slog.Logger) {
-	if !cfg.ServiceClients.HasPermission("identities.resolve") {
+	if !cfg.ServiceClients.HasPermission(serviceauth.PermissionIdentitiesResolve) {
 		logger.Warn("accountsvc: identity resolution is not configured; POST /v1/identities:resolve answers 503 IDENTITY_RESOLUTION_NOT_CONFIGURED", "settings", "ACCOUNTSVC_SERVICE_CLIENTS, ACCOUNTSVC_SERVICE_CLIENT_<ALIAS>_PERMISSIONS")
 	}
-	introEnabled := cfg.ServiceClients.HasPermission("tokens.introspect")
-	purgeEnabled := cfg.ServiceClients.HasPermission("purged_users.read")
+	introEnabled := cfg.ServiceClients.HasPermission(serviceauth.PermissionTokensIntrospect)
+	purgeEnabled := cfg.ServiceClients.HasPermission(serviceauth.PermissionPurgedUsersRead)
 	introSettings := "ACCOUNTSVC_SERVICE_CLIENTS, ACCOUNTSVC_SERVICE_CLIENT_<ALIAS>_PERMISSIONS"
 	purgeSettings := introSettings
 	if !introEnabled {
@@ -343,7 +353,7 @@ func warnUnconfigured(cfg Config, logger *slog.Logger) {
 	}
 	if cfg.identityEnabled(enum.IdentityEmail) && cfg.EmailTemplates == nil {
 		logger.Warn("accountsvc: email templates are not configured; verification emails use the built-in default wording without a brand",
-			"settings", "ACCOUNTSVC_SMTP_TEMPLATES_FILE")
+			"settings", emailTemplatesSetting)
 	}
 }
 
@@ -413,7 +423,7 @@ func runConfig(ctx context.Context, cfg Config, logger *slog.Logger, factory run
 		_ = startupCleanup(cfg, d, app, nil)
 		return errors.New("accountsvc: migration failed")
 	}
-	if cfg.command == "migrate" {
+	if cfg.command == commandMigrate {
 		return startupCleanup(cfg, d, app, nil)
 	}
 	warnPlainHTTPIssuers(cfg, logger)

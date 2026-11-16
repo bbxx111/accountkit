@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/httpapi/apierror"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/internal/httpcredentials"
 	"github.com/bbxx111/accountkit/user"
 )
@@ -50,24 +51,24 @@ func PrincipalFrom(ctx context.Context) (user.Principal, bool) {
 
 // 401 错误体的 reason：请求未携带 Bearer token，或 token 无效、过期或会话已吊销。
 const (
-	ReasonTokenMissing = "TOKEN_MISSING"
-	ReasonTokenInvalid = "TOKEN_INVALID"
+	ReasonTokenMissing = httpcontract.ReasonTokenMissing
+	ReasonTokenInvalid = httpcontract.ReasonTokenInvalid
 )
 
 // WriteUnauthenticated 写 401：AIP-193 body + RFC 6750 WWW-Authenticate。
 func WriteUnauthenticated(w http.ResponseWriter, reason, message string) {
-	challenge := `Bearer realm="user"`
+	errorCode := ""
 	if reason == ReasonTokenInvalid {
-		challenge += `, error="invalid_token"`
+		errorCode = httpcontract.OAuthErrorInvalidToken
 	}
-	w.Header().Set("WWW-Authenticate", challenge)
+	w.Header().Set(httpcontract.HeaderWWWAuthenticate, httpcontract.BearerChallenge("user", errorCode))
 	apierror.Write(w, apierror.New(apierror.StatusUnauthenticated, reason, message))
 }
 
 // bearerToken 从 Authorization 头取 token；scheme 大小写不敏感；形状不对返回 ""。
 func bearerToken(r *http.Request) string {
 	scheme, rest, ok := httpcredentials.Parse(r)
-	if !ok || scheme != "bearer" {
+	if !ok || scheme != httpcredentials.SchemeBearer {
 		return ""
 	}
 	return rest
@@ -96,7 +97,7 @@ func bearer(authenticate func(context.Context, string) (user.Principal, error), 
 			case err == nil:
 				next.ServeHTTP(w, r.WithContext(WithPrincipal(r.Context(), p)))
 			case errors.Is(err, user.ErrUnavailable):
-				apierror.Write(w, &apierror.Error{Status: apierror.StatusUnavailable, Reason: "DEPENDENCY_UNAVAILABLE", Message: "authentication temporarily unavailable", RetryAfterSeconds: 1})
+				apierror.Write(w, &apierror.Error{Status: apierror.StatusUnavailable, Reason: httpcontract.ReasonDependencyUnavailable, Message: "authentication temporarily unavailable", RetryAfterSeconds: 1})
 			default:
 				// 无效/过期/已吊销：统一 401，不泄露细节
 				WriteUnauthenticated(w, ReasonTokenInvalid, "invalid or expired access token")
@@ -130,7 +131,7 @@ func requireScope(authenticate func(http.Handler) http.Handler, allowed []string
 		return authenticate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			p, _ := PrincipalFrom(r.Context())
 			if _, ok := set[p.Scope]; !ok {
-				apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, "INSUFFICIENT_SCOPE", "token scope does not permit this operation"))
+				apierror.Write(w, apierror.New(apierror.StatusPermissionDenied, httpcontract.ReasonInsufficientScope, "token scope does not permit this operation"))
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -154,7 +155,7 @@ func RequireRecentAuth(o Options, maxAge time.Duration, enabled bool) func(http.
 			}
 			// AuthTime 为零值（claim 缺失）时 Sub 得到巨大的正数 → 视为过期，fail-safe。
 			if p.AuthTime.IsZero() || o.now().Sub(p.AuthTime) > maxAge {
-				apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "REAUTHENTICATION_REQUIRED", "recent authentication required for this operation"))
+				apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, httpcontract.ReasonReauthenticationRequired, "recent authentication required for this operation"))
 				return
 			}
 			next.ServeHTTP(w, r)

@@ -95,7 +95,7 @@ GET 与 PATCH 成功均返回 200 和 `{"name":"users/u_0000000000001/profile","
 
 挂载内置 HTTP handler 的宿主可使用[消费者与管理面 OpenAPI 契约](docs/openapi.md)，按实际地址调整挂载前缀。
 
-本文描述 v1.1.0（已发布）的公开契约；账号资源沿用 `/users`。v1.0.0 移除的 Go 符号及调用者须知见[兼容指南](docs/compatibility.md#v100-调用者须知)，开发期版本见[1.0 前历史](docs/releases/pre-1.0-history.md)。
+本文描述 v1.2.0（候选）的公开契约；账号资源沿用 `/users`。v1.0.0 移除的 Go 符号及调用者须知见[兼容指南](docs/compatibility.md#v100-调用者须知)，开发期版本见[1.0 前历史](docs/releases/pre-1.0-history.md)。
 
 accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可选服务实现，使用同一套库能力；选择库集成不需要部署或调用 accountsvc。服务入口是 `cmd/accountsvc`，包含 SMTP 邮件投递、消费者远程鉴权和默认关闭的外部管理员 JWT 验证，运行与配置见 [accountsvc 服务手册](docs/accountsvc.md)。`examples/embedded` 保留为库集成开发示例。
 
@@ -109,7 +109,7 @@ accountsvc 使用一个监听地址承载消费者、管理员、`/v1/introspect
 
 完整可编译宿主示例见 [examples/embedded/main.go](examples/embedded/main.go)，开发与验证步骤见 [docs/development.md](docs/development.md)。导入使用 `"github.com/bbxx111/accountkit"`，通过 `accountkit.Config`、`accountkit.Deps` 和 `accountkit.New` 装配。
 
-按 `Config/Deps → New → Migrate → Start → Close` 装配；库不绑定端口，宿主挂载 EndUserHandler 到 /v1，AdminHandler 到 /admin/v1。管理员验证器及主体解析器可选；未配置时管理接口返回 503 ADMIN_NOT_CONFIGURED。生产宿主须在管理路由前完成身份验证，并提供 AdminVerifier/AdminPrincipal，服务商发送器也由宿主注入。直接构造终端用户适配器时使用 `httpapi/enduser` 包，见下文 [HTTP 面](#http-面)。
+按 `Config/Deps → New → Migrate → Start → Close` 装配；库不绑定端口，宿主挂载 EndUserHandler 到 /v1，AdminHandler 到 /admin/v1。管理员验证器及主体解析器可选；未配置时管理接口返回 503 ADMIN_NOT_CONFIGURED。生产宿主须在管理路由前完成身份验证，并提供 AdminVerifier/AdminPrincipal，服务商发送器也由宿主注入。验证器可额外实现 `AdminPermissionVerifier.RequirePermission(AdminPermission)` 以按操作权限授权；仅实现旧 RequireRole 的宿主保留原行为，新权限拒绝不回退。accountsvc 的显式角色绑定与升级步骤见 [管理员认证](docs/accountsvc.md#管理员认证)。直接构造终端用户适配器时使用 `httpapi/enduser` 包，见下文 [HTTP 面](#http-面)。
 
 ## 领域层
 
@@ -428,27 +428,27 @@ extensions仅接受直接Go调用或宿主回调，允许JSON primitive/null/obj
 
 ## 管理面
 
-宿主挂到 `/admin/v1`，前置 OIDC verifier 的 `Middleware()`；库内每条路由只检查一个角色名（`super-admin` 是包含 `operator` 的 composite role）。handler 内不判角色；C 端 token 打管理面在 verifier 处 401。
+宿主挂到 `/admin/v1`，前置 OIDC verifier 的 `Middleware()`；验证器实现可选权限接口时，每条管理路由检查具体权限；仅旧嵌入宿主沿用原角色要求。accountsvc 根据显式部署绑定授权，operator/super-admin 没有内置权限或继承；C 端 token 在管理员 verifier 处返回 401。
 
-| 端点 | 角色 | 成功 | 失败 |
+| 端点 | 权限（旧宿主角色） | 成功 | 失败 |
 |---|---|---|---|
-| `GET /users?filter=&show_deleted=&page_size=&page_token=` | operator | 200 `{users:[…], next_page_token}` | 400 `INVALID_FILTER` / `INVALID_PAGE_SIZE` / `INVALID_PAGE_TOKEN` / `INVALID_SHOW_DELETED` |
-| `GET /users/{user}` | operator | 200 用户资源 + `identities`（掩码）+ `active_session_count` | 400 `INVALID_ID`；404 |
-| `POST /users/{user}:freeze` `{reason}` | operator | 200 用户资源（`state=FROZEN`，`freeze` 快照） | 400 `INVALID_ARGUMENT`（reason 空/超 200 字/含控制符）/ `INVALID_ACCOUNT_STATE` / `USER_FROZEN`（已冻结）；404 |
-| `POST /users/{user}:unfreeze` `{reason?}`（须为 JSON 对象，无 reason 时发送 `{}`） | operator | 200 用户资源（`state=ACTIVE`，`freeze=null`） | 400 `INVALID_ACCOUNT_STATE`；404 |
-| `DELETE /users/{user}` | super-admin | 200 用户资源（`state=PENDING_DELETION`） | 400 `INVALID_ACCOUNT_STATE` / `USER_FROZEN`（需先解冻）；404 |
-| `POST /users/{user}:undelete` | super-admin | 200 用户资源（`state=ACTIVE`） | 400 `INVALID_ACCOUNT_STATE`（含已 purge）/ `USER_FROZEN`；404 |
-| `GET /users/{user}/identities/{identity}:reveal` | super-admin | 200 `{name, kind, subject}`（明文） | 400 `INVALID_ID`；404（非该用户或已解绑） |
-| `GET /users/{user}/sessions` | operator | 200 `{sessions:[{name, device_id, device_name, create_time, last_used_time}]}` | 404 |
-| `DELETE /users/{user}/sessions/{session}` | operator | 204 | 400 `INVALID_ID`；404 |
-| `POST /users/{user}/sessions:revokeAll` | operator | 200 `{revoked_count}` | 404 |
-| `GET /users/{user}/auditEvents?page_size=&page_token=` | operator | 200 `{audit_events:[…], next_page_token}` | 400 `INVALID_PAGE_*`；404；503 `AUDIT_QUERY_NOT_CONFIGURED` / `AUDIT_QUERY_UNAVAILABLE` |
+| `GET /users?filter=&show_deleted=&page_size=&page_token=` | `users.read`（operator） | 200 `{users:[…], next_page_token}` | 400 `INVALID_FILTER` / `INVALID_PAGE_SIZE` / `INVALID_PAGE_TOKEN` / `INVALID_SHOW_DELETED` |
+| `GET /users/{user}` | `users.read`（operator） | 200 用户资源 + `identities`（掩码）+ `active_session_count` | 400 `INVALID_ID`；404 |
+| `POST /users/{user}:freeze` `{reason}` | `users.freeze`（operator） | 200 用户资源（`state=FROZEN`，`freeze` 快照） | 400 `INVALID_ARGUMENT`（reason 空/超 200 字/含控制符）/ `INVALID_ACCOUNT_STATE` / `USER_FROZEN`（已冻结）；404 |
+| `POST /users/{user}:unfreeze` `{reason?}`（须为 JSON 对象，无 reason 时发送 `{}`） | `users.unfreeze`（operator） | 200 用户资源（`state=ACTIVE`，`freeze=null`） | 400 `INVALID_ACCOUNT_STATE`；404 |
+| `DELETE /users/{user}` | `users.delete`（super-admin） | 200 用户资源（`state=PENDING_DELETION`） | 400 `INVALID_ACCOUNT_STATE` / `USER_FROZEN`（需先解冻）；404 |
+| `POST /users/{user}:undelete` | `users.undelete`（super-admin） | 200 用户资源（`state=ACTIVE`） | 400 `INVALID_ACCOUNT_STATE`（含已 purge）/ `USER_FROZEN`；404 |
+| `GET /users/{user}/identities/{identity}:reveal` | `identities.reveal`（super-admin） | 200 `{name, kind, subject}`（明文） | 400 `INVALID_ID`；404（非该用户或已解绑） |
+| `GET /users/{user}/sessions` | `sessions.read`（operator） | 200 `{sessions:[{name, device_id, device_name, create_time, last_used_time}]}` | 404 |
+| `DELETE /users/{user}/sessions/{session}` | `sessions.revoke`（operator） | 204 | 400 `INVALID_ID`；404 |
+| `POST /users/{user}/sessions:revokeAll` | `sessions.revoke_all`（operator） | 200 `{revoked_count}` | 404 |
+| `GET /users/{user}/auditEvents?page_size=&page_token=` | `audit_events.read`（operator） | 200 `{audit_events:[…], next_page_token}` | 400 `INVALID_PAGE_*`；404；503 `AUDIT_QUERY_NOT_CONFIGURED` / `AUDIT_QUERY_UNAVAILABLE` |
 
 - **`filter`（AIP-160 子集）**：`term (AND term)*`，`term := field op value`，值为 `"…"` 或无空白裸词；时间戳值必须加双引号（含 `:`）。字段：`state = ACTIVE|FROZEN|PENDING_DELETION|DELETED`；`create_time >= <RFC3339>`、`create_time < <RFC3339>`；`identity.phone = <手机号>`、`identity.email = <邮箱>`（服务端归一化后按摘要等值查找）；`identity.phone_prefix`（如 `"+86138"`）、`identity.phone_suffix`（后 4 位）、`identity.email_prefix`、`identity.email_domain`。身份条件须同属一种 kind 且落在同一条活跃身份上；不支持 `OR` / `NOT` / 括号。`show_deleted=true` 才包含 `PENDING_DELETION` / `DELETED`（AIP-164）。
 - **分页**：`page_size` 默认 20、上限 100；`page_token` 不透明 keyset 游标（用户按 `create_time, id`，审计按 `occur_time, id`）；`next_page_token` 为空表示最后一页。
 - **DTO**：与 C 端分开定义；时间戳 RFC 3339（UTC）；身份默认掩码，明文只在 `:reveal` 响应中出现；审计事件的可空字段输出 `null`，result 未知/不适用为 `null`，已知结果仍为 `SUCCESS` / `FAILURE`。审计资源 name 使用 `users/{user}/auditEvents/{标准小写 UUID}`；不匹配的审计游标返回 400，客户端清除 page_token 后重新翻页，用户列表游标独立。
 - **审计**：每个写操作一条 `actor_kind=ADMIN` 事件（`admin_issuer/subject/username`、`request_id`、`ip`）：`USER_FROZEN` / `USER_UNFROZEN`（reason 为管理员填写值）、`SESSION_REVOKED`（reason `ADMIN`，冻结时为 `USER_FROZEN`）、`USER_DELETED` / `USER_UNDELETED`、`IDENTITY_REVEALED`（只记 kind + hint）。读取端点不产生事件。`ADMIN_FORBIDDEN` 由宿主经 `auth.RecordAdminForbidden` 在 verifier 的 `OnForbidden` 钩子里写入。
-- **状态码语义**：管理面上 403 只表示管理员角色不足（来自 verifier）；目标账号的状态问题一律 400 `FAILED_PRECONDITION`（`INVALID_ACCOUNT_STATE` / `USER_FROZEN`）；用户/身份/会话不存在或不属于该用户 → 404。
+- **状态码语义**：管理面上 403 表示管理员操作权限不足（旧宿主为角色不足，来自 verifier）；目标账号的状态问题一律 400 `FAILED_PRECONDITION`（`INVALID_ACCOUNT_STATE` / `USER_FROZEN`）；用户/身份/会话不存在或不属于该用户 → 404。
 
 ## 数据库与 Redis 隔离
 
@@ -541,7 +541,7 @@ HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额
 
 ## 仓库与发布状态
 
-当前版本为 v1.1.0（已发布），见[发布说明](docs/releases/v1.1.0.md)。module/import 保持 `github.com/bbxx111/accountkit`，HTTP `/v1` 和 `/admin/v1` 不变；accountsvc 配置与授权有破坏性接入变化，须按发布说明迁移，不能把 Go 源码兼容视为所有部署兼容。可用 `go get github.com/bbxx111/accountkit@v1.1.0` 接入；v1.0.0 历史见[原发布说明](docs/releases/v1.0.0.md)。公开 Go API 自 v1.0.0 起受语义化版本约束，破坏性变化发布新主版本；本次版本决定不表示以后可任意破坏 v1 契约。开发期（v1.0.0 之前）版本见[1.0 前历史](docs/releases/pre-1.0-history.md)。
+当前版本为 v1.2.0（候选），见[发布说明](docs/releases/v1.2.0.md)。module/import 保持 `github.com/bbxx111/accountkit`，HTTP `/v1` 和 `/admin/v1` 不变；accountsvc 管理员显式角色映射是相对 v1.1.0 的破坏性部署迁移，空绑定时有效管理员返回403，须按发布说明配置并重启或排空全部副本。公开 Go API 加法兼容，旧嵌入宿主角色接口保留，不代表全部部署兼容，也不授权未来任意破坏 v1 契约。正式 tag 将包含候选说明；[Release](https://github.com/bbxx111/accountkit/releases/tag/v1.2.0) 与远端消费确认后独立补记状态，不移动 tag。历史见[v1.1.0](docs/releases/v1.1.0.md)、[v1.0.0](docs/releases/v1.0.0.md)及[1.0 前历史](docs/releases/pre-1.0-history.md)。
 
 Go module：github.com/bbxx111/accountkit；远程仓库：https://github.com/bbxx111/accountkit.git。发布及产品上线要求见[检查表](docs/release-checklist.md)。
 

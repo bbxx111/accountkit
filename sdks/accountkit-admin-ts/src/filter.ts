@@ -1,14 +1,6 @@
 import { AccountAdminArgumentError } from "./errors";
 import { isTimestamp } from "./timestamp";
-export type UserFilterField =
-  | "state"
-  | "identity.phone"
-  | "identity.phone_prefix"
-  | "identity.phone_suffix"
-  | "identity.email"
-  | "identity.email_prefix"
-  | "identity.email_domain";
-const fields = new Set([
+const filterFields = [
   "state",
   "identity.phone",
   "identity.phone_prefix",
@@ -16,7 +8,10 @@ const fields = new Set([
   "identity.email",
   "identity.email_prefix",
   "identity.email_domain",
-]);
+] as const;
+export type UserFilterField = (typeof filterFields)[number];
+const fields: ReadonlySet<string> = new Set(filterFields);
+const comparisonOperators = [">=", "<"] as const;
 function quote(value: string) {
   // The formal parser has no quoted-string escape syntax. Never invent one.
   if (
@@ -32,10 +27,14 @@ export const userFilter = {
     if (!fields.has(field)) throw new AccountAdminArgumentError();
     return `${field} = ${quote(value)}`;
   },
-  compare(field: "create_time", operator: ">=" | "<", value: string): string {
+  compare(
+    field: "create_time",
+    operator: (typeof comparisonOperators)[number],
+    value: string,
+  ): string {
     if (
       field !== "create_time" ||
-      ![">=", "<"].includes(operator) ||
+      !comparisonOperators.includes(operator) ||
       !isTimestamp(value)
     )
       throw new AccountAdminArgumentError();

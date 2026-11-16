@@ -1,5 +1,9 @@
 # SDK 真实服务测试宿主
 
+fixture 的 profile、控制路由、环境键和默认监听地址分别维护在 `fixture/profiles.go`、`fixture/environment.go`、`fixture/addresses.go`；生产 SDK 不依赖这些定义。`/__fixture/ready` 的 baseline 由测试与 `sdks/tool-versions.json` 的 `serviceBaseline` 对照，不新增运行时文件读取或环境变量。
+
+readiness 的 `policy_seed_marker` 供策略 seed 工具及 shell 提取器共用；两端仍独立断言输出标记为 `SDK_POLICY_SEED_USER_ID=`。这是测试控制元数据，不属于消费者或管理 API。
+
 此目录只提供测试工具，不属于 SDK 运行时。宿主通过公开 `accountkit.New → Migrate → Start → Close` 装配真实库，复用 accountsvc 的 PoolConfig、默认本地审计、管理 OIDC verifier 和两 HTTP 面边界。它是嵌入式宿主；不能将其验证结果标为生产 accountsvc 进程验证。
 
 从仓库根目录运行（PowerShell）：

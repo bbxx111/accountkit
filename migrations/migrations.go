@@ -11,6 +11,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"github.com/bbxx111/accountkit/internal/migrationlock"
 	iofsapi "io/fs"
 	"regexp"
 
@@ -90,7 +91,7 @@ func runWithSource(ctx context.Context, connCfg *pgx.ConnConfig, schema string, 
 	}
 	driver, err := migratepgx.WithInstance(db, &migratepgx.Config{
 		SchemaName:      schema,
-		MigrationsTable: "schema_migrations",
+		MigrationsTable: migrationlock.TableName,
 	})
 	if err != nil {
 		return fmt.Errorf("migrations: driver: %w", err)

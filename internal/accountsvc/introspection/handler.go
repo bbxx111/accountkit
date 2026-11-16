@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/internal/accountsvc/serviceauth"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/user"
 )
 
@@ -24,6 +25,9 @@ const lookupTimeout = 3 * time.Second
 
 // Realm is the protection space named in this interface's challenges.
 const Realm = "accountsvc-introspection"
+
+// Endpoint is the stable service authentication observation label.
+const Endpoint = "introspect"
 
 type handler struct {
 	auth         *serviceauth.Authenticator
@@ -38,13 +42,13 @@ type handler struct {
 func New(clients map[string][]string, authenticate func(context.Context, string) (user.Principal, error)) (http.Handler, error) {
 	registered := make([]serviceauth.ClientConfig, 0, len(clients))
 	for id, secrets := range clients {
-		registered = append(registered, serviceauth.ClientConfig{ID: id, AuthMethods: []string{serviceauth.MethodBasic}, Permissions: []string{"tokens.introspect"}, BasicSecrets: secrets})
+		registered = append(registered, serviceauth.ClientConfig{ID: id, AuthMethods: []string{serviceauth.MethodBasic}, Permissions: []string{serviceauth.PermissionTokensIntrospect}, BasicSecrets: secrets})
 	}
 	registry, err := serviceauth.NewRegistry(registered)
 	if err != nil {
 		return nil, err
 	}
-	cfg := serviceauth.Config{Realm: Realm, Endpoint: "introspect", Registry: registry, RequiredPermission: "tokens.introspect"}
+	cfg := serviceauth.Config{Realm: Realm, Endpoint: Endpoint, Registry: registry, RequiredPermission: serviceauth.PermissionTokensIntrospect}
 	auth, err := serviceauth.New(cfg)
 	if err != nil {
 		return nil, err
@@ -65,54 +69,54 @@ func NewWithAuthenticator(auth *serviceauth.Authenticator, authenticate func(con
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Content-Type", "application/json")
+	httpcontract.SetNoStore(w)
+	w.Header().Set(httpcontract.HeaderContentType, httpcontract.MediaTypeJSON)
 	if !h.auth.Enabled() {
-		oauthError(w, http.StatusServiceUnavailable, "introspection_not_configured")
+		oauthError(w, http.StatusServiceUnavailable, errorNotConfigured)
 		return
 	}
 	res := h.auth.Authenticate(r)
 	switch res.Outcome {
 	case serviceauth.Unauthenticated:
 		serviceauth.WriteChallenges(w, h.auth.Challenges(res))
-		code := "invalid_client"
+		code := httpcontract.OAuthErrorInvalidClient
 		if res.BearerAttempted {
-			code = "invalid_token"
+			code = httpcontract.OAuthErrorInvalidToken
 		}
 		oauthError(w, http.StatusUnauthorized, code)
 		return
 	case serviceauth.Forbidden:
 		serviceauth.WriteChallenges(w, h.auth.Challenges(res))
-		oauthError(w, http.StatusForbidden, "insufficient_scope")
+		oauthError(w, http.StatusForbidden, httpcontract.OAuthErrorInsufficientScope)
 		return
 	case serviceauth.Unavailable:
-		oauthError(w, http.StatusServiceUnavailable, "temporarily_unavailable")
+		oauthError(w, http.StatusServiceUnavailable, httpcontract.OAuthErrorTemporarilyUnavailable)
 		return
 	}
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
-		oauthError(w, http.StatusMethodNotAllowed, "invalid_request")
+		oauthError(w, http.StatusMethodNotAllowed, httpcontract.OAuthErrorInvalidRequest)
 		return
 	}
-	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || mediaType != "application/x-www-form-urlencoded" {
-		oauthError(w, http.StatusUnsupportedMediaType, "invalid_request")
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get(httpcontract.HeaderContentType))
+	if err != nil || mediaType != httpcontract.MediaTypeForm {
+		oauthError(w, http.StatusUnsupportedMediaType, httpcontract.OAuthErrorInvalidRequest)
 		return
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBody))
 	if err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			oauthError(w, http.StatusRequestEntityTooLarge, "invalid_request")
+			oauthError(w, http.StatusRequestEntityTooLarge, httpcontract.OAuthErrorInvalidRequest)
 		} else {
-			oauthError(w, http.StatusBadRequest, "invalid_request")
+			oauthError(w, http.StatusBadRequest, httpcontract.OAuthErrorInvalidRequest)
 		}
 		return
 	}
 	// Parse only the bounded body. Request.ParseForm would merge query parameters.
 	form, err := url.ParseQuery(string(body))
 	if err != nil || len(form["token"]) != 1 || strings.TrimSpace(form.Get("token")) == "" {
-		oauthError(w, http.StatusBadRequest, "invalid_request")
+		oauthError(w, http.StatusBadRequest, httpcontract.OAuthErrorInvalidRequest)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), lookupTimeout)
@@ -125,7 +129,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		oauthError(w, http.StatusServiceUnavailable, "temporarily_unavailable")
+		oauthError(w, http.StatusServiceUnavailable, httpcontract.OAuthErrorTemporarilyUnavailable)
 		return
 	}
 	writeJSON(w, http.StatusOK, struct {
@@ -147,3 +151,5 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
 }
+
+const errorNotConfigured = "introspection_not_configured"

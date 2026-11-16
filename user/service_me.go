@@ -232,7 +232,7 @@ func (s *Service) reauthenticate(ctx context.Context, p Principal, cred CodeCred
 		return TokenResult{}, err
 	}
 	if !ok {
-		ev.Type, ev.Result, ev.Reason = enum.EventReauthenticationFailed, enum.ResultFailure, "NOT_ANCHOR"
+		ev.Type, ev.Result, ev.Reason = enum.EventReauthenticationFailed, enum.ResultFailure, auditReasonNotAnchor
 		s.record(ctx, ev)
 		return TokenResult{}, ErrNotAnchor
 	}
@@ -312,16 +312,16 @@ func (s *Service) reauthenticate(ctx context.Context, p Principal, cred CodeCred
 		// 业务事件。
 		switch {
 		case errors.Is(err, ErrNotAnchor):
-			ev.Type, ev.Result, ev.Reason = enum.EventReauthenticationFailed, enum.ResultFailure, "NOT_ANCHOR"
+			ev.Type, ev.Result, ev.Reason = enum.EventReauthenticationFailed, enum.ResultFailure, auditReasonNotAnchor
 			s.record(ctx, ev)
 		case errors.Is(err, errSessionExpired):
-			ev.Type, ev.Result, ev.Reason = enum.EventReauthenticationFailed, enum.ResultFailure, "SESSION_EXPIRED"
+			ev.Type, ev.Result, ev.Reason = enum.EventReauthenticationFailed, enum.ResultFailure, auditReasonSessionExpired
 			s.record(ctx, ev)
 		case errors.Is(err, ErrInvalidToken):
-			ev.Type, ev.Result, ev.Reason = enum.EventReauthenticationFailed, enum.ResultFailure, "SESSION_REVOKED"
+			ev.Type, ev.Result, ev.Reason = enum.EventReauthenticationFailed, enum.ResultFailure, auditReasonSessionRevoked
 			s.record(ctx, ev)
 		case errors.Is(err, ErrUserFrozen):
-			ev.Type, ev.Result, ev.Reason = enum.EventReauthenticationFailed, enum.ResultFailure, "USER_FROZEN"
+			ev.Type, ev.Result, ev.Reason = enum.EventReauthenticationFailed, enum.ResultFailure, auditReasonUserFrozen
 			s.record(ctx, ev)
 		}
 		return TokenResult{}, err

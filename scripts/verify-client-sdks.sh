@@ -78,32 +78,51 @@ wait_ready() {
   echo "SDK fixture readiness timeout: $origin" >&2
   return 1
 }
+read_policy_seed_marker() {
+  local marker
+  marker=$(node -e 'const fs = require("node:fs"); const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).policy_seed_marker; if (value !== "SDK_POLICY_SEED_USER_ID=") process.exit(1); process.stdout.write(value);' "$1") || return
+  [[ "$marker" == 'SDK_POLICY_SEED_USER_ID=' ]] || { echo 'Invalid policy seed marker' >&2; return 1; }
+  printf '%s' "$marker"
+}
+extract_policy_seed_user_id() {
+  local marker="$1" log="$2"
+  sed -n "s/.*${marker}\(u_[0-9a-z]*\).*/\1/p" "$log" | tail -n 1
+}
+control_addr=127.0.0.1:18081
+service_addr=127.0.0.1:18082
+policy_addr=127.0.0.1:18084
+control_origin="http://$control_addr"
+service_origin="http://$service_addr"
+policy_origin="http://$policy_addr"
 # env -u prevents caller profile overrides from silently changing service mode.
 env -u SDK_FIXTURE_SCHEMA -u SDK_FIXTURE_REDIS_PREFIX -u SDK_FIXTURE_REQUIRED_KINDS \
-  SDK_FIXTURE_ADDR=127.0.0.1:18081 SDK_FIXTURE_SERVICE_ADDR=127.0.0.1:18082 \
+  SDK_FIXTURE_ADDR="$control_addr" SDK_FIXTURE_SERVICE_ADDR="$service_addr" \
   SDK_FIXTURE_PROFILE=accountsvc "$output/fixture" > "$output/accountsvc.log" 2>&1 &
 service_pid=$!
-wait_ready http://127.0.0.1:18081 "$service_pid"
+wait_ready "$control_origin" "$service_pid"
 start_embedded() {
-  SDK_FIXTURE_ADDR=127.0.0.1:18084 SDK_FIXTURE_PROFILE=custom-extended \
+  SDK_FIXTURE_ADDR="$policy_addr" SDK_FIXTURE_PROFILE=custom-extended \
     SDK_FIXTURE_SCHEMA=sdk_fixture_extended SDK_FIXTURE_REDIS_PREFIX=sdk_fixture_extended: \
     SDK_FIXTURE_REQUIRED_KINDS="$1" "$output/fixture" > "$output/embedded-$2.log" 2>&1 &
   embedded_pid=$!
-  wait_ready http://127.0.0.1:18084 "$embedded_pid"
+  wait_ready "$policy_origin" "$embedded_pid"
 }
 start_embedded '[]' seed
-export ACCOUNTKIT_ADMIN_INTEGRATION_ORIGIN=http://127.0.0.1:18082
-export ACCOUNTKIT_ADMIN_INTEGRATION_CONTROL_ORIGIN=http://127.0.0.1:18081
-export ACCOUNTKIT_FLUTTER_SERVICE_ORIGIN=http://127.0.0.1:18082
-export ACCOUNTKIT_FLUTTER_CONTROL_ORIGIN=http://127.0.0.1:18081
-export ACCOUNTKIT_FLUTTER_EMBEDDED_ORIGIN=http://127.0.0.1:18081
+curl --fail --silent --connect-timeout 1 --max-time 2 \
+  "$policy_origin/__fixture/ready" > "$output/policy-readiness.json"
+policy_seed_marker=$(read_policy_seed_marker "$output/policy-readiness.json")
+export ACCOUNTKIT_ADMIN_INTEGRATION_ORIGIN="$service_origin"
+export ACCOUNTKIT_ADMIN_INTEGRATION_CONTROL_ORIGIN="$control_origin"
+export ACCOUNTKIT_FLUTTER_SERVICE_ORIGIN="$service_origin"
+export ACCOUNTKIT_FLUTTER_CONTROL_ORIGIN="$control_origin"
+export ACCOUNTKIT_FLUTTER_EMBEDDED_ORIGIN="$control_origin"
 (cd sdks/accountkit-admin-ts && pnpm test:integration)
 (cd sdks/accountkit-flutter && flutter test test/integration/service_contract.dart)
-export ACCOUNTKIT_FLUTTER_POLICY_ORIGIN=http://127.0.0.1:18084
-export ACCOUNTKIT_FLUTTER_POLICY_CONTROL_ORIGIN=http://127.0.0.1:18084
+export ACCOUNTKIT_FLUTTER_POLICY_ORIGIN="$policy_origin"
+export ACCOUNTKIT_FLUTTER_POLICY_CONTROL_ORIGIN="$policy_origin"
 export ACCOUNTKIT_FLUTTER_POLICY_SUBJECT="sdk-ci-policy-$(date +%s)-$$"
 (cd sdks/accountkit-flutter && flutter test --reporter expanded test/integration/policy_seed.dart) | tee "$output/policy-seed.log"
-ACCOUNTKIT_FLUTTER_POLICY_USER_ID=$(sed -n 's/.*SDK_POLICY_SEED_USER_ID=\(u_[0-9a-z]*\).*/\1/p' "$output/policy-seed.log" | tail -n 1)
+ACCOUNTKIT_FLUTTER_POLICY_USER_ID=$(extract_policy_seed_user_id "$policy_seed_marker" "$output/policy-seed.log")
 export ACCOUNTKIT_FLUTTER_POLICY_USER_ID
 [[ "$ACCOUNTKIT_FLUTTER_POLICY_USER_ID" =~ ^u_[0-9a-z]{13}$ ]] || { echo 'Policy seed did not return user ID' >&2; exit 1; }
 stop_fixture "$embedded_pid"

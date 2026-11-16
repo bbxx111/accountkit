@@ -1,3 +1,4 @@
+import { requestFailedMessage } from "./http";
 export class AccountAdminArgumentError extends Error {
   override name = "AccountAdminArgumentError";
   constructor() {
@@ -44,7 +45,7 @@ export class AccountAdminApiError extends Error {
     retryAfterSeconds?: number;
     requestId?: string;
   }) {
-    super("Account API request failed");
+    super(requestFailedMessage);
     this.httpStatus = data.httpStatus;
     this.status = data.status;
     this.reason = data.reason;

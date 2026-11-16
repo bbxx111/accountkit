@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/user/sender"
 )
 
@@ -60,7 +61,7 @@ var purposes = []enum.CodePurpose{enum.PurposeSignIn, enum.PurposeBind, enum.Pur
 
 // New 只校验和复制配置，不进行网络 I/O。错误只包含配置项名。
 func New(cfg Config) (*Sender, error) {
-	for name, v := range map[string]string{"AccessKeyID": cfg.AccessKeyID, "AccessKeySecret": cfg.AccessKeySecret, "SignName": cfg.SignName} {
+	for name, v := range map[string]string{"AccessKeyID": cfg.AccessKeyID, "AccessKeySecret": cfg.AccessKeySecret, aliyunSignName: cfg.SignName} {
 		if strings.TrimSpace(v) == "" {
 			return nil, fmt.Errorf("aliyun: %s is required", name)
 		}
@@ -172,27 +173,27 @@ func (s *Sender) SendSMS(ctx context.Context, e164 string, m sender.CodeMessage)
 	if !ok || !validCode(m.Code) {
 		return fmt.Errorf("%w: invalid code message", sender.ErrUnavailable)
 	}
-	param, _ := json.Marshal(map[string]string{"code": m.Code})
+	param, _ := json.Marshal(map[string]string{aliyunCode: m.Code})
 	nonce := make([]byte, 16)
 	if _, err := rand.Read(nonce); err != nil {
 		return fmt.Errorf("%w: nonce", sender.ErrUnavailable)
 	}
 	form := url.Values{
-		"AccessKeyId":      {s.cfg.AccessKeyID},
-		"Action":           {"SendSms"},
-		"Format":           {"JSON"},
-		"PhoneNumbers":     {number},
-		"RegionId":         {"cn-hangzhou"},
-		"SignName":         {s.cfg.SignName},
-		"SignatureMethod":  {"HMAC-SHA1"},
-		"SignatureNonce":   {hex.EncodeToString(nonce)},
-		"SignatureVersion": {"1.0"},
-		"TemplateCode":     {template},
-		"TemplateParam":    {string(param)},
-		"Timestamp":        {s.now().UTC().Format("2006-01-02T15:04:05Z")},
-		"Version":          {"2017-05-25"},
+		aliyunAccessKeyId:      {s.cfg.AccessKeyID},
+		aliyunAction:           {aliyunSendSms},
+		aliyunFormat:           {aliyunJSON},
+		aliyunPhoneNumbers:     {number},
+		aliyunRegionId:         {aliyunCnHangzhou},
+		aliyunSignName:         {s.cfg.SignName},
+		aliyunSignatureMethod:  {aliyunHMACSHA1},
+		aliyunSignatureNonce:   {hex.EncodeToString(nonce)},
+		aliyunSignatureVersion: {aliyun10},
+		aliyunTemplateCode:     {template},
+		aliyunTemplateParam:    {string(param)},
+		aliyunTimestamp:        {s.now().UTC().Format(time.RFC3339)},
+		aliyunVersion:          {aliyun20170525},
 	}
-	form.Set("Signature", sign(http.MethodPost, s.cfg.AccessKeySecret, form))
+	form.Set(aliyunSignature, sign(http.MethodPost, s.cfg.AccessKeySecret, form))
 
 	reqCtx, cancel := context.WithTimeout(ctx, s.cfg.Timeout)
 	defer cancel()
@@ -200,8 +201,8 @@ func (s *Sender) SendSMS(ctx context.Context, e164 string, m sender.CodeMessage)
 	if err != nil {
 		return s.fail(ctx, failure{stage: "build request"})
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set(httpcontract.HeaderContentType, httpcontract.MediaTypeForm)
+	req.Header.Set("Accept", httpcontract.MediaTypeJSON)
 	resp, err := s.client.Do(req)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -222,7 +223,7 @@ func (s *Sender) SendSMS(ctx context.Context, e164 string, m sender.CodeMessage)
 	}
 	parsed := json.Unmarshal(body, &result) == nil && result.Code != ""
 	switch {
-	case resp.StatusCode == http.StatusOK && parsed && result.Code == "OK":
+	case resp.StatusCode == http.StatusOK && parsed && result.Code == aliyunOK:
 		return nil
 	case !parsed:
 		return s.fail(ctx, failure{stage: "malformed response", status: resp.StatusCode})

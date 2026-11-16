@@ -33,15 +33,15 @@ type recoveryState struct {
 // TestRecoveryFixture is an operational fixture, invoked in each phase by verify-recovery.sh.
 // It never cleans up a database: the caller supplies separate, disposable empty databases.
 func TestRecoveryFixture(t *testing.T) {
-	mode := os.Getenv("ACCOUNTKIT_RECOVERY_MODE")
+	mode := os.Getenv(recoveryEnvMode)
 	if mode == "" {
 		t.Skip("executed separately by scripts/verify-recovery.sh")
 	}
-	if mode != "seed" && mode != "verify" && mode != "source-unchanged" {
+	if mode != recoveryModeSeed && mode != recoveryModeVerify && mode != recoveryModeSourceUnchanged {
 		t.Fatal("unknown recovery fixture mode")
 	}
-	dsn := os.Getenv("ACCOUNTKIT_RECOVERY_DSN")
-	stateFile := os.Getenv("ACCOUNTKIT_RECOVERY_STATE")
+	dsn := os.Getenv(recoveryEnvDSN)
+	stateFile := os.Getenv(recoveryEnvState)
 	if dsn == "" || stateFile == "" {
 		t.Fatal("recovery DSN and state file are required")
 	}
@@ -51,7 +51,7 @@ func TestRecoveryFixture(t *testing.T) {
 	cfg.RequiredIdentityKinds = []enum.IdentityKind{enum.IdentityEmail}
 	cfg.ProfileAttributes = recoveryProfileAttributesConfig()
 	cfg.SubjectCipherKeys[2] = k(4)
-	if mode != "seed" {
+	if mode != recoveryModeSeed {
 		cfg.SubjectCipherActiveKey = 2
 	}
 	pc, err := accountkit.PoolConfig(dsn, cfg.Schema)
@@ -70,7 +70,7 @@ func TestRecoveryFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer a.Close()
-	if mode == "seed" {
+	if mode == recoveryModeSeed {
 		f, access := seedSyntheticAccount(t, pool, a.Config())
 		if err := a.Migrate(ctx); err != nil {
 			t.Fatal(err)
@@ -164,7 +164,7 @@ func TestRecoveryFixture(t *testing.T) {
 	}
 	assertRecoverySessionContext(t, a, state)
 	assertRecoveryProfileAttributes(t, a, state)
-	if mode == "source-unchanged" {
+	if mode == recoveryModeSourceUnchanged {
 		return
 	}
 	for range 2 {

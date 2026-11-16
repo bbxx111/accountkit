@@ -1,3 +1,5 @@
+import { http, requestFailedMessage } from "./http";
+import { resource, tsidPattern as alphabet } from "./resources";
 import {
   AccountAdminApiError,
   AccountAdminArgumentError,
@@ -91,19 +93,20 @@ function root(config: AccountAdminConfig) {
     argument();
   return url.href.replace(/\/$/, "") + prefix.replace(/\/$/, "");
 }
-const alphabet = "[0-9a-hjkmnp-tv-z]{13}";
 function user(value: string) {
   if (typeof value !== "string") argument();
-  const id = value.startsWith("users/") ? value.slice(6) : value;
+  const id = value.startsWith(resource.users + "/")
+    ? value.slice(resource.users.length + 1)
+    : value;
   if (!new RegExp(`^u_${alphabet}$`).test(id)) argument();
-  return `users/${id}`;
+  return `${resource.users}/${id}`;
 }
 function child(
   parent: string,
   value: string,
-  collection: "sessions" | "identities",
+  collection: typeof resource.sessions | typeof resource.identities,
 ) {
-  const letter = collection === "sessions" ? "s" : "i";
+  const letter = collection === resource.sessions ? "s" : "i";
   if (typeof value !== "string") argument();
   if (new RegExp(`^${letter}_${alphabet}$`).test(value))
     return `${parent}/${collection}/${value}`;
@@ -189,9 +192,9 @@ export function createAccountAdminClient(config: AccountAdminConfig) {
       (typeof requestId !== "string" || !requestId)
     )
       argument();
-    const headers = new Headers({ Accept: "application/json" });
+    const headers = new Headers({ [http.accept]: http.json });
     try {
-      headers.set("X-Request-Id", requestId);
+      headers.set(http.requestId, requestId);
     } catch {
       argument();
     }
@@ -213,11 +216,11 @@ export function createAccountAdminClient(config: AccountAdminConfig) {
     )
       throw new AccountAdminTokenProviderError();
     try {
-      headers.set("Authorization", `Bearer ${token}`);
+      headers.set(http.authorization, `${http.bearer} ${token}`);
     } catch {
       throw new AccountAdminTokenProviderError();
     }
-    if (body !== undefined) headers.set("Content-Type", "application/json");
+    if (body !== undefined) headers.set(http.contentType, http.json);
     let response: Response;
     let text: string;
     try {
@@ -247,7 +250,7 @@ export function createAccountAdminClient(config: AccountAdminConfig) {
       (response.status >= 300 && response.status < 400)
     )
       throw new AccountAdminProtocolError();
-    const responseId = response.headers.get("X-Request-Id") ?? requestId;
+    const responseId = response.headers.get(http.requestId) ?? requestId;
     let data: unknown;
     try {
       data = JSON.parse(text);
@@ -256,7 +259,7 @@ export function createAccountAdminClient(config: AccountAdminConfig) {
     }
     if (!response.ok) {
       let status = "UNKNOWN",
-        message = "Account API request failed",
+        message = requestFailedMessage,
         apiReason: string | undefined,
         retryAfterSeconds: number | undefined;
       if (data && typeof data === "object" && "error" in data) {
@@ -300,17 +303,21 @@ export function createAccountAdminClient(config: AccountAdminConfig) {
     }
     if (response.status !== 200) throw new AccountAdminProtocolError();
     const result = decoder(data) as Record<string, unknown>;
-    const resource = path.split("?")[0].split(":")[0];
-    if (resource !== "users") {
-      if ("name" in result && result.name !== resource)
+    const resourceName = path.split("?")[0].split(":")[0];
+    if (resourceName !== resource.users) {
+      if ("name" in result && result.name !== resourceName)
         throw new AccountAdminProtocolError();
-      for (const collection of ["identities", "sessions", "audit_events"]) {
+      for (const collection of [
+        resource.identities,
+        resource.sessions,
+        resource.auditEventsField,
+      ]) {
         const items = result[collection];
         if (Array.isArray(items)) {
           const prefix =
-            collection === "identities"
-              ? resource + "/identities/"
-              : resource + "/";
+            collection === resource.identities
+              ? resourceName + "/" + resource.identities + "/"
+              : resourceName + "/";
           if (
             items.some(
               (item) =>
@@ -327,7 +334,7 @@ export function createAccountAdminClient(config: AccountAdminConfig) {
     listUsers: (params: ListUsersOptions = {}, options?: RequestOptions) =>
       request<AdminUserList>(
         "GET",
-        "users" + query(params),
+        resource.users + query(params),
         decode.users,
         options,
       ),
@@ -373,14 +380,14 @@ export function createAccountAdminClient(config: AccountAdminConfig) {
     ) =>
       request<RevealIdentity>(
         "GET",
-        child(user(value), identity, "identities") + ":reveal",
+        child(user(value), identity, resource.identities) + ":reveal",
         decode.reveal,
         options,
       ),
     listSessions: async (value: string, options?: RequestOptions) =>
       request<AdminSessionList>(
         "GET",
-        user(value) + "/sessions",
+        user(value) + "/" + resource.sessions,
         decode.sessions,
         options,
       ),
@@ -391,14 +398,14 @@ export function createAccountAdminClient(config: AccountAdminConfig) {
     ) =>
       request<void>(
         "DELETE",
-        child(user(value), session, "sessions"),
+        child(user(value), session, resource.sessions),
         null,
         options,
       ),
     revokeAllSessions: async (value: string, options?: RequestOptions) =>
       request<RevokeAllResult>(
         "POST",
-        user(value) + "/sessions:revokeAll",
+        user(value) + "/" + resource.sessions + ":revokeAll",
         decode.revokeAll,
         options,
       ),
@@ -409,7 +416,7 @@ export function createAccountAdminClient(config: AccountAdminConfig) {
     ) =>
       request<AuditEventList>(
         "GET",
-        user(value) + "/auditEvents" + query(params),
+        user(value) + "/" + resource.auditEvents + query(params),
         decode.audit,
         options,
       ),

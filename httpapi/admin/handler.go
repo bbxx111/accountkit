@@ -1,7 +1,7 @@
 // Package admin 提供管理面 /admin/v1 的 HTTP handler（只做 HTTP 翻译）。
 //
 // 宿主先在 /admin/v1 上挂 OIDC verifier 的 Middleware（401/403/503 由它产生），再 Mount 本包的 Router；
-// 本包按路由用 Verifier.RequireRole 放行，handler 内不判角色（AGENTS.md "Two identity systems"）。
+// 本包优先按具体 Permission 授权；仅旧宿主使用 RequireRole，handler 内不判断业务角色。
 // 本模块不 import oidc-verifier：宿主用 Deps.Verifier / Deps.Principal 适配。
 package admin
 
@@ -11,17 +11,17 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/bbxx111/accountkit/audit"
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/httpapi/internal/jsonbody"
 	"github.com/bbxx111/accountkit/httpapi/internal/reqid"
 	"github.com/bbxx111/accountkit/ids"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/user"
+	"github.com/go-chi/chi/v5"
 )
 
-// 角色名（Keycloak realm roles，§4.1）。super-admin 是包含 operator 的 composite role，每条路由只检查一个名字。
+// 公开角色名仅供旧嵌入宿主兼容；角色层级由其 verifier 决定，accountsvc 无内置角色授权。
 const (
 	RoleOperator   = "operator"
 	RoleSuperAdmin = "super-admin"
@@ -104,17 +104,17 @@ func New(d Deps) (*Handler, error) {
 // 响应带 X-Request-Id（与已配置时的行为一致）。accountkit.New 在宿主未注入 AdminVerifier / AdminPrincipal
 // 时使用它，保证 AdminHandler() 永不为 nil。
 func Unconfigured(requestID func(*http.Request) string) http.Handler {
-	return reqid.Middleware(requestID)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		apierror.Write(w, apierror.New(apierror.StatusUnavailable, "ADMIN_NOT_CONFIGURED", "admin surface is not configured on this host (Deps.AdminVerifier / Deps.AdminPrincipal missing)"))
-	}))
+	return noStore(reqid.Middleware(requestID)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		apierror.Write(w, apierror.New(apierror.StatusUnavailable, reasonAdminNotConfigured, "admin surface is not configured on this host (Deps.AdminVerifier / Deps.AdminPrincipal missing)"))
+	})))
 }
 
 // principal 取管理端主体；缺失说明宿主没有先挂 verifier Middleware → 401（不是 500：对客户端而言就是未认证）。
 func (h *Handler) principal(w http.ResponseWriter, r *http.Request) (user.Admin, bool) {
 	p, ok := h.d.Principal(r.Context())
 	if !ok {
-		w.Header().Set("WWW-Authenticate", `Bearer realm="admin"`)
-		apierror.Write(w, apierror.New(apierror.StatusUnauthenticated, "TOKEN_MISSING", "admin principal missing; the OIDC verifier middleware must run before this handler"))
+		w.Header().Set(httpcontract.HeaderWWWAuthenticate, httpcontract.BearerChallenge("admin", ""))
+		apierror.Write(w, apierror.New(apierror.StatusUnauthenticated, httpcontract.ReasonTokenMissing, "admin principal missing; the OIDC verifier middleware must run before this handler"))
 		return user.Admin{}, false
 	}
 	return user.Admin{Issuer: p.Issuer, Subject: p.Subject, Username: p.Username}, true
@@ -125,27 +125,33 @@ func (h *Handler) meta(r *http.Request) user.Meta {
 }
 
 // Router 构建相对路由；宿主在 verifier Middleware 之后 Mount 到 /admin/v1。
-// 角色：operator 可读、可冻结/解冻、可管理会话；super-admin 才能 :reveal 与代办删除/恢复（§4.3）。
+// 优先使用可选权限接口，旧宿主保留原角色要求；新权限拒绝不回退。
 func (h *Handler) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(reqid.Middleware(h.d.RequestID))
 	r.NotFound(func(w http.ResponseWriter, _ *http.Request) { apierror.WriteRouteNotFound(w) })
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) { apierror.WriteMethodNotAllowed(w) })
 
-	op := h.d.Verifier.RequireRole(RoleOperator)
-	su := h.d.Verifier.RequireRole(RoleSuperAdmin)
+	require := func(permission Permission, role string) func(http.Handler) http.Handler {
+		return h.d.Verifier.RequireRole(role)
+	}
+	if verifier, ok := h.d.Verifier.(PermissionVerifier); ok {
+		require = func(permission Permission, _ string) func(http.Handler) http.Handler {
+			return verifier.RequirePermission(permission)
+		}
+	}
 
-	r.With(op).Get("/users", h.listUsers)
-	r.With(op).Get("/users/{user}", h.getUser)
-	r.With(su).Delete("/users/{user}", h.deleteUser)
-	r.With(op).Post("/users/{user}:freeze", h.freeze)
-	r.With(op).Post("/users/{user}:unfreeze", h.unfreeze)
-	r.With(su).Post("/users/{user}:undelete", h.undeleteUser)
-	r.With(su).Get("/users/{user}/identities/{identity}:reveal", h.revealIdentity)
-	r.With(op).Get("/users/{user}/sessions", h.listSessions)
-	r.With(op).Delete("/users/{user}/sessions/{session}", h.deleteSession)
-	r.With(op).Post("/users/{user}/sessions:revokeAll", h.revokeAllSessions)
-	r.With(op).Get("/users/{user}/auditEvents", h.listAuditEvents)
+	r.With(require(PermissionUsersRead, RoleOperator)).Get("/users", h.listUsers)
+	r.With(require(PermissionUsersRead, RoleOperator)).Get("/users/{user}", h.getUser)
+	r.With(require(PermissionUsersDelete, RoleSuperAdmin)).Delete("/users/{user}", h.deleteUser)
+	r.With(require(PermissionUsersFreeze, RoleOperator)).Post("/users/{user}:freeze", h.freeze)
+	r.With(require(PermissionUsersUnfreeze, RoleOperator)).Post("/users/{user}:unfreeze", h.unfreeze)
+	r.With(require(PermissionUsersUndelete, RoleSuperAdmin)).Post("/users/{user}:undelete", h.undeleteUser)
+	r.With(noStore, require(PermissionIdentitiesReveal, RoleSuperAdmin)).Get("/users/{user}/identities/{identity}:reveal", h.revealIdentity)
+	r.With(require(PermissionSessionsRead, RoleOperator)).Get("/users/{user}/sessions", h.listSessions)
+	r.With(require(PermissionSessionsRevoke, RoleOperator)).Delete("/users/{user}/sessions/{session}", h.deleteSession)
+	r.With(require(PermissionSessionsRevokeAll, RoleOperator)).Post("/users/{user}/sessions:revokeAll", h.revokeAllSessions)
+	r.With(require(PermissionAuditEventsRead, RoleOperator)).Get("/users/{user}/auditEvents", h.listAuditEvents)
 	return r
 }
 
@@ -153,7 +159,7 @@ func (h *Handler) Router() http.Handler {
 func userID(w http.ResponseWriter, r *http.Request) (string, bool) {
 	id := chi.URLParam(r, "user")
 	if !ids.Valid(ids.User, id) {
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_ID", "user id is malformed"))
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, httpcontract.ReasonInvalidID, "user id is malformed"))
 		return "", false
 	}
 	return id, true

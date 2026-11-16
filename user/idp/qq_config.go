@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+
+	"github.com/bbxx111/accountkit/internal/idpdefaults"
 )
 
 // QQSubjectMode 决定实例内所有 QQ 应用的固定身份识别方式。
@@ -25,7 +27,7 @@ type QQConfig struct {
 	APIBaseURL  string        // 空值默认 https://graph.qq.com；仅回环测试地址允许 HTTP。
 }
 
-const qqDefaultAPIBaseURL = "https://graph.qq.com"
+const qqDefaultAPIBaseURL = idpdefaults.QQAPI
 
 var qqAppIDPattern = regexp.MustCompile(`^[0-9]{1,20}$`)
 

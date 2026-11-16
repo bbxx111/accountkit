@@ -32,7 +32,7 @@ func Compile(raw json.RawMessage) (*Policy, error) {
 		return nil, errSchema
 	}
 	root, ok := value.(map[string]any)
-	if !ok || root["$schema"] != "https://json-schema.org/draft/2020-12/schema" {
+	if !ok || root[schemaSchema] != schemaDraftURI {
 		return nil, errSchema
 	}
 	checker := schemaChecker{}
@@ -40,7 +40,7 @@ func Compile(raw json.RawMessage) (*Policy, error) {
 		return nil, errSchema
 	}
 	directory, err := checker.structure(root, map[string]bool{}, true)
-	if err != nil || directory.kind != "object" {
+	if err != nil || directory.kind != schemaObject {
 		return nil, errSchema
 	}
 	// Definitions unused by the main tree still must obey the supported subset

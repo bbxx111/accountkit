@@ -65,12 +65,12 @@ func (a *Alipay) Verify(ctx context.Context, credential json.RawMessage) (Identi
 		return Identity{}, alipayFailure(ErrMalformedCredential, "credential structure")
 	}
 	for key := range object {
-		if key != "app_id" && key != "code" {
+		if key != alipayAppId && key != alipayCode {
 			return Identity{}, alipayFailure(ErrMalformedCredential, "credential field")
 		}
 	}
-	appID, appErr := alipayString(object, "app_id")
-	code, codeErr := alipayString(object, "code")
+	appID, appErr := alipayString(object, alipayAppId)
+	code, codeErr := alipayString(object, alipayCode)
 	if appErr != nil || codeErr != nil || appID == "" || strings.TrimSpace(code) == "" {
 		return Identity{}, alipayFailure(ErrMalformedCredential, "credential fields")
 	}
@@ -80,21 +80,21 @@ func (a *Alipay) Verify(ctx context.Context, credential json.RawMessage) (Identi
 	if ctx.Err() != nil {
 		return Identity{}, ctx.Err()
 	}
-	token, err := a.request(ctx, appID, alipayTokenMethod, url.Values{"code": {code}, "grant_type": {"authorization_code"}}, 10*time.Second)
+	token, err := a.request(ctx, appID, alipayTokenMethod, url.Values{alipayCode: {code}, alipayGrantType: {"authorization_code"}}, 10*time.Second)
 	if err != nil {
 		return Identity{}, err
 	}
-	union, unionErr := alipayString(token, "union_id")
-	open, openErr := alipayString(token, "open_id")
+	union, unionErr := alipayString(token, alipayUnionId)
+	open, openErr := alipayString(token, alipayOpenId)
 	if unionErr != nil || openErr != nil || union != "" && !validAlipayIdentifier(union) || open != "" && !validAlipayIdentifier(open) {
 		return Identity{}, alipayFailure(ErrMisconfigured, "identity fields")
 	}
-	subject := "unionid:" + union
+	subject := alipaySubjectUnionIDPrefix + union
 	if a.config.subjectMode == AlipaySubjectModeOpenID {
 		if open == "" {
 			return Identity{}, alipayFailure(ErrMisconfigured, "missing openid")
 		}
-		subject = "openid:" + appID + ":" + open
+		subject = alipaySubjectOpenIDPrefix + appID + ":" + open
 	} else if union == "" {
 		return Identity{}, alipayFailure(ErrMisconfigured, "missing unionid")
 	}
@@ -104,17 +104,17 @@ func (a *Alipay) Verify(ctx context.Context, credential json.RawMessage) (Identi
 	}
 	// Tokens remain local to this Verify call and never enter Identity or pending
 	// proofs. Profile errors cannot invalidate an already verified identity.
-	accessToken, tokenErr := alipayString(token, "access_token")
+	accessToken, tokenErr := alipayString(token, alipayAccessToken)
 	var profileErr error
 	if tokenErr != nil || accessToken == "" || open == "" {
 		profileErr = alipayFailure(ErrMisconfigured, "profile prerequisites")
 	} else {
 		var profile map[string]json.RawMessage
-		profile, profileErr = a.request(ctx, appID, alipayProfileMethod, url.Values{"auth_token": {accessToken}}, 3*time.Second)
+		profile, profileErr = a.request(ctx, appID, alipayProfileMethod, url.Values{alipayAuthToken: {accessToken}}, 3*time.Second)
 		if profileErr == nil {
-			profileOpen, openErr := alipayString(profile, "open_id")
-			name, nameErr := alipayString(profile, "nick_name")
-			picture, pictureErr := alipayString(profile, "avatar")
+			profileOpen, openErr := alipayString(profile, alipayOpenId)
+			name, nameErr := alipayString(profile, alipayNickName)
+			picture, pictureErr := alipayString(profile, alipayAvatar)
 			if openErr != nil || profileOpen != open || nameErr != nil || pictureErr != nil {
 				profileErr = alipayFailure(ErrMisconfigured, "profile association or fields")
 			} else {

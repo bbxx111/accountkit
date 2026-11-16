@@ -676,6 +676,9 @@ func (f *integrationFixture) call(method, address, bearer string, body any, want
 	if resp.StatusCode != want {
 		f.t.Fatalf("%s expected %d got %d", r.URL.Path, want, resp.StatusCode)
 	}
+	if strings.Contains(r.URL.Path, "/identities/") && strings.HasSuffix(r.URL.Path, ":reveal") && resp.Header.Get("Cache-Control") != "no-store" {
+		f.t.Fatal("identity reveal response permits caching")
+	}
 	out := map[string]any{}
 	_ = json.Unmarshal(raw, &out)
 	f.rememberChallenge(body, out)
@@ -775,7 +778,12 @@ func (f *integrationFixture) oidc() *httptest.Server {
 	f.env["ACCOUNTSVC_ADMIN_ENABLED"] = "true"
 	f.env["ACCOUNTSVC_ADMIN_ISSUER"] = s.URL
 	f.env["ACCOUNTSVC_ADMIN_AUDIENCE"] = "integration-admin"
-	for _, role := range []string{"operator", "super-admin"} {
+	f.env["ACCOUNTSVC_ADMIN_ROLE_BINDINGS"] = "OPERATOR,SUPER_ADMIN"
+	f.env["ACCOUNTSVC_ADMIN_ROLE_OPERATOR_NAME"] = "operator"
+	f.env["ACCOUNTSVC_ADMIN_ROLE_OPERATOR_PERMISSIONS"] = "users.read,users.freeze,users.unfreeze,sessions.*,audit_events.read"
+	f.env["ACCOUNTSVC_ADMIN_ROLE_SUPER_ADMIN_NAME"] = "super-admin"
+	f.env["ACCOUNTSVC_ADMIN_ROLE_SUPER_ADMIN_PERMISSIONS"] = "users.*,sessions.*,identities.*,audit_events.*"
+	for _, role := range []string{"operator", "super-admin", "unmapped"} {
 		token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{"iss": s.URL, "aud": "integration-admin", "sub": "admin-" + role, "exp": time.Now().Add(time.Hour).Unix(), "roles": []string{role}})
 		token.Header["kid"] = "fixture"
 		raw, err := token.SignedString(key)

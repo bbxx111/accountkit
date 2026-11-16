@@ -9,6 +9,8 @@ import (
 	"net/http"
 
 	"github.com/bbxx111/accountkit/httpapi/apierror"
+	"github.com/bbxx111/accountkit/httpapi/internal/resourcename"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/user"
 )
 
@@ -40,7 +42,7 @@ func (h *Handler) getProfile(w http.ResponseWriter, r *http.Request) {
 		h.writeProfileError(w, r, err)
 		return
 	}
-	apierror.WriteJSON(w, http.StatusOK, profileResource{Name: "users/" + p.UserID + "/profile", ProfileAttributes: view.Data})
+	apierror.WriteJSON(w, http.StatusOK, profileResource{Name: resourcename.Profile(p.UserID), ProfileAttributes: view.Data})
 }
 
 func (h *Handler) patchProfile(w http.ResponseWriter, r *http.Request) {
@@ -55,8 +57,8 @@ func (h *Handler) patchProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	document, err := h.decodeProfilePatch(w, r)
 	if err != nil {
-		h.d.Logger.Debug("profile request rejected", "request_id", requestIDFrom(r.Context()), "reason", "MALFORMED_BODY")
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "MALFORMED_BODY", "request body must contain only profile_attributes and fit the configured size limit"))
+		h.d.Logger.Debug("profile request rejected", "request_id", requestIDFrom(r.Context()), "reason", httpcontract.ReasonMalformedBody)
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, httpcontract.ReasonMalformedBody, "request body must contain only profile_attributes and fit the configured size limit"))
 		return
 	}
 	view, err := svc.PatchProfileAttributes(r.Context(), p.UserID, user.ProfileAttributesPatch{Document: document}, h.meta(r))
@@ -64,7 +66,7 @@ func (h *Handler) patchProfile(w http.ResponseWriter, r *http.Request) {
 		h.writeProfileError(w, r, err)
 		return
 	}
-	apierror.WriteJSON(w, http.StatusOK, profileResource{Name: "users/" + p.UserID + "/profile", ProfileAttributes: view.Data})
+	apierror.WriteJSON(w, http.StatusOK, profileResource{Name: resourcename.Profile(p.UserID), ProfileAttributes: view.Data})
 }
 
 // decodeProfilePatch validates only the envelope and JSON syntax. The original
@@ -122,15 +124,15 @@ func (h *Handler) writeProfileError(w http.ResponseWriter, r *http.Request, err 
 	var out *apierror.Error
 	switch {
 	case errors.Is(err, user.ErrProfileAttributesNotConfigured):
-		out = apierror.New(apierror.StatusUnavailable, "PROFILE_ATTRIBUTES_NOT_CONFIGURED", "profile attributes are not configured")
+		out = apierror.New(apierror.StatusUnavailable, reasonProfileAttributesNotConfigured, "profile attributes are not configured")
 	case errors.Is(err, user.ErrInvalidArgument):
-		out = apierror.New(apierror.StatusInvalidArgument, "INVALID_PROFILE_ATTRIBUTES", "invalid profile attributes")
+		out = apierror.New(apierror.StatusInvalidArgument, reasonInvalidProfileAttributes, "invalid profile attributes")
 	case errors.Is(err, user.ErrInvalidState):
-		out = apierror.New(apierror.StatusFailedPrecondition, "INVALID_ACCOUNT_STATE", "operation not allowed in the account's current state")
+		out = apierror.New(apierror.StatusFailedPrecondition, httpcontract.ReasonInvalidAccountState, "operation not allowed in the account's current state")
 	case errors.Is(err, user.ErrNotFound):
-		out = apierror.New(apierror.StatusNotFound, "NOT_FOUND", "resource not found")
+		out = apierror.New(apierror.StatusNotFound, httpcontract.ReasonNotFound, "resource not found")
 	case errors.Is(err, user.ErrUnavailable):
-		out = &apierror.Error{Status: apierror.StatusUnavailable, Reason: "DEPENDENCY_UNAVAILABLE", Message: "service temporarily unavailable, retry later", RetryAfterSeconds: 1}
+		out = &apierror.Error{Status: apierror.StatusUnavailable, Reason: httpcontract.ReasonDependencyUnavailable, Message: "service temporarily unavailable, retry later", RetryAfterSeconds: 1}
 	default:
 		apierror.WriteInternal(w, h.d.Logger, requestIDFrom(r.Context()), errors.New("enduser: profile operation failed"))
 		return

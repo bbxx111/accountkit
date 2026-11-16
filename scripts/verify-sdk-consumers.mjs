@@ -1,3 +1,4 @@
+import { sdkDescriptors, sdkIds } from './sdk-metadata.mjs';
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -6,6 +7,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createSDKSnapshot } from './sdk-git-snapshot.mjs';
 import { isFixedRef } from './check-sdk-release.mjs';
 
+const temporaryPrefix = 'accountkit-sdk-consumers-';
+const cancelledMessage = 'SDK consumer validation cancelled';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export function dependencySource(sdk, source, ref) {
   if (!isFixedRef(ref, sdk)) throw new Error('a full commit SHA or matching SDK release tag is required');
@@ -13,8 +16,8 @@ export function dependencySource(sdk, source, ref) {
   if (url.username || url.password || url.search || url.hash || !((url.protocol === 'https:') || (url.protocol === 'git:' && ['127.0.0.1','[::1]','localhost'].includes(url.hostname)))) {
     throw new Error('Git URL must use HTTPS or the loopback test daemon, without credentials/query/fragment');
   }
-  if (sdk === 'flutter') return { git: { url: source, ref, path: 'sdks/accountkit-flutter' } };
-  return `${url.protocol === 'https:' ? 'git+' : ''}${source}#${ref}&path:/sdks/accountkit-admin-ts`;
+  if (sdk === 'flutter') return { git: { url: source, ref, path: sdkDescriptors.flutter.directory } };
+  return `${url.protocol === 'https:' ? 'git+' : ''}${source}#${ref}&path:/${sdkDescriptors['admin-ts'].directory}`;
 }
 export function parseConsumerOptions(args) {
   const result = { sdk: 'all', platform: 'none' };
@@ -24,7 +27,7 @@ export function parseConsumerOptions(args) {
     if (!key || !args[i+1] || args[i+1].startsWith('--')) throw new Error('usage: --sdk all|flutter|admin-ts --platform none|android|ios [--git-url URL --ref FIXED_REF]');
     result[key] = args[i+1];
   }
-  if (!['all','flutter','admin-ts'].includes(result.sdk) || !['none','android','ios'].includes(result.platform)) throw new Error('unsupported SDK or platform');
+  if (!['all',...sdkIds].includes(result.sdk) || !['none','android','ios'].includes(result.platform)) throw new Error('unsupported SDK or platform');
   if (result.sdk === 'admin-ts' && result.platform !== 'none') throw new Error('native platform builds require Flutter');
   if (Boolean(result.url) !== Boolean(result.ref)) throw new Error('remote mode requires both --git-url and --ref');
   return result;
@@ -32,7 +35,7 @@ export function parseConsumerOptions(args) {
 
 let operationSignal;
 export function runConsumerCommand(command, args, cwd, signal) {
-  if (signal?.aborted) return Promise.reject(new Error('SDK consumer validation cancelled'));
+  if (signal?.aborted) return Promise.reject(new Error(cancelledMessage));
   let windowsVerbatimArguments = false;
   // Windows batch launch is limited to generated arguments; never interpolate Git URLs.
   if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(command)) {
@@ -67,7 +70,7 @@ export function runConsumerCommand(command, args, cwd, signal) {
     child.once('exit', async (code, exitSignal) => {
       signal?.removeEventListener('abort',cancel);
       await cancelCompletion;
-      if(signal?.aborted) reject(new Error('SDK consumer validation cancelled'));
+      if(signal?.aborted) reject(new Error(cancelledMessage));
       else if(code === 0) accept();
       else reject(new Error(`consumer command failed (exit ${code}, signal ${exitSignal ?? 'none'})`));
     });
@@ -86,7 +89,7 @@ async function adminConsumer(directory, url, ref, versions) {
     name: 'accountkit-admin-isolated-consumer', version: '1.0.0', private: true, type: 'module',
     packageManager: `pnpm@${versions.pnpm}`,
     scripts: { typecheck: 'tsc --noEmit', test: 'vitest run', build: 'vite build' },
-    dependencies: { '@accountkit/admin-client': dependencySource('admin-ts', url, ref) },
+    dependencies: { [sdkDescriptors['admin-ts'].packageName]: dependencySource('admin-ts', url, ref) },
     devDependencies: { typescript: versions.typescript, vite: versions.vite, vitest: versions.vitest },
   });
   await writeFile(join(directory, 'pnpm-workspace.yaml'), 'allowBuilds:\n  esbuild: true\n');
@@ -119,7 +122,7 @@ async function flutterConsumer(directory, url, ref, platform) {
   await jsonFile(join(directory, 'pubspec.yaml'), {
     name:'accountkit_sdk_consumer', version:'1.0.0', publish_to:'none',
     environment:{sdk:'>=3.13.0 <4.0.0'},
-    dependencies:{flutter:{sdk:'flutter'},accountkit_flutter:dependencySource('flutter',url,ref)},
+    dependencies:{flutter:{sdk:'flutter'},[sdkDescriptors.flutter.packageName]:dependencySource('flutter',url,ref)},
     dev_dependencies:{flutter_test:{sdk:'flutter'}}, flutter:{'uses-material-design':true},
   });
   await writeFile(join(directory, 'analysis_options.yaml'), 'analyzer:\n  language:\n    strict-casts: true\n');
@@ -148,7 +151,7 @@ void main() {
 
 async function main() {
   const options = parseConsumerOptions(process.argv.slice(2));
-  if (options.url) for (const sdk of options.sdk === 'all' ? ['flutter','admin-ts'] : [options.sdk]) dependencySource(sdk, options.url, options.ref);
+  if (options.url) for (const sdk of options.sdk === 'all' ? sdkIds : [options.sdk]) dependencySource(sdk, options.url, options.ref);
   const versions = JSON.parse(await readFile(join(root, 'sdks/tool-versions.json'),'utf8'));
   const cancellation = new AbortController();
   operationSignal = cancellation.signal;
@@ -156,7 +159,7 @@ async function main() {
   process.on('SIGINT',cancel);
   process.on('SIGTERM',cancel);
   let snapshot;
-  const directory = await mkdtemp(join(tmpdir(), 'accountkit-sdk-consumers-'));
+  const directory = await mkdtemp(join(tmpdir(), temporaryPrefix));
   const owned = await realpath(directory);
   try {
     if (!options.url) snapshot = await createSDKSnapshot(root);
@@ -168,7 +171,7 @@ async function main() {
   } finally {
     try {
       await snapshot?.dispose();
-      if (await realpath(directory) !== owned || !relative(await realpath(tmpdir()),owned).startsWith('accountkit-sdk-consumers-')) throw new Error('refusing to clean unexpected consumer directory');
+      if (await realpath(directory) !== owned || !relative(await realpath(tmpdir()),owned).startsWith(temporaryPrefix)) throw new Error('refusing to clean unexpected consumer directory');
       await rm(directory,{recursive:true,force:true});
     } finally {
       process.removeListener('SIGINT',cancel);

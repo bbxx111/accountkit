@@ -49,3 +49,8 @@ test('POSIX cancellation escalates when a consumer ignores SIGTERM', {skip:proce
     assert.throws(()=>process.kill(pid,0));
   } finally {controller.abort();await rm(directory,{recursive:true,force:true});}
 });
+
+test('an already cancelled consumer never starts its command', async () => {
+  const controller = new AbortController(); controller.abort();
+  await assert.rejects(runConsumerCommand('nonexistent-consumer-command', [], tmpdir(), controller.signal), {message:'SDK consumer validation cancelled'});
+});

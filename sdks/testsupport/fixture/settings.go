@@ -2,9 +2,10 @@ package main
 
 import (
 	"errors"
+	"strings"
+
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/migrations"
-	"strings"
 )
 
 type fixtureSettings struct {
@@ -14,7 +15,7 @@ type fixtureSettings struct {
 }
 
 func parseSettings(o options) (fixtureSettings, error) {
-	s := fixtureSettings{schema: o.schema, redisPrefix: o.redisPrefix, apiPrefix: "/v1", adminPrefix: "/admin/v1"}
+	s := fixtureSettings{schema: o.schema, redisPrefix: o.redisPrefix, apiPrefix: defaultAPIPrefix, adminPrefix: defaultAdminPrefix}
 	if s.schema == "" {
 		s.schema = "sdk_fixture"
 	}
@@ -28,16 +29,16 @@ func parseSettings(o options) (fixtureSettings, error) {
 		return s, errors.New("SDK_FIXTURE_REDIS_PREFIX must end in ':' without surrounding whitespace")
 	}
 	switch o.profile {
-	case "", "accountsvc":
-	case "extended":
+	case "", profileAccountsvc:
+	case profileExtended:
 		s.extended = true
-	case "custom":
-		s.apiPrefix = "/custom/account"
-		s.adminPrefix = "/custom/admin"
-	case "custom-extended":
+	case profileCustom:
+		s.apiPrefix = customAPIPrefix
+		s.adminPrefix = customAdminPrefix
+	case profileCustomExtended:
 		s.extended = true
-		s.apiPrefix = "/custom/account"
-		s.adminPrefix = "/custom/admin"
+		s.apiPrefix = customAPIPrefix
+		s.adminPrefix = customAdminPrefix
 	default:
 		return s, errors.New("unknown SDK_FIXTURE_PROFILE")
 	}
@@ -55,7 +56,7 @@ func parseSettings(o options) (fixtureSettings, error) {
 			}
 		}
 	}
-	if o.profile == "accountsvc" && (o.schema != "" || o.redisPrefix != "" || o.requiredKinds != "") {
+	if o.profile == profileAccountsvc && (o.schema != "" || o.redisPrefix != "" || o.requiredKinds != "") {
 		return s, errors.New("explicit isolation and required policy inputs apply to embedded fixture profiles only")
 	}
 	return s, nil

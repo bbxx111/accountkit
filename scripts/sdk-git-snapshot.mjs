@@ -5,6 +5,8 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { createConnection, createServer } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 
+const temporaryPrefix = 'accountkit-sdk-snapshot-';
+
 function git(cwd, ...args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
 }
@@ -31,7 +33,7 @@ async function listening(port) {
 /** Creates an owned, loopback-only Git export. It never changes the source index or refs. */
 export async function createSDKSnapshot(sourceDirectory) {
   const source = await realpath(sourceDirectory);
-  const directory = await mkdtemp(join(tmpdir(), 'accountkit-sdk-snapshot-'));
+  const directory = await mkdtemp(join(tmpdir(), temporaryPrefix));
   const owned = await realpath(directory);
   let daemon;
   let disposed = false;
@@ -46,7 +48,7 @@ export async function createSDKSnapshot(sourceDirectory) {
     }
     daemon?.stderr?.destroy();
     // Delete only this invocation's verified temporary root, never a caller path.
-    if (await realpath(directory) !== owned || !relative(await realpath(tmpdir()), owned).startsWith('accountkit-sdk-snapshot-')) {
+    if (await realpath(directory) !== owned || !relative(await realpath(tmpdir()), owned).startsWith(temporaryPrefix)) {
       throw new Error('refusing to clean an unexpected snapshot directory');
     }
     await rm(directory, { recursive: true, force: true });

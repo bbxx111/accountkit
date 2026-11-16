@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
-const methods = new Set(['get', 'post', 'patch', 'delete', 'put', 'options', 'head', 'trace']);
+const methods = new Set(require('./openapi-methods.cjs'));
 
 function resolve(doc, pointer) {
   assert.ok(pointer.startsWith('#/'), `只接受文档内引用：${pointer}`);
@@ -102,6 +102,21 @@ assert.deepEqual(Object.keys(current.responses).sort(), ['200','401','403','500'
 assert.deepEqual(current['x-allowed-scopes'], ['user','user:bind']);
 assert.equal(current.responses['200'].headers['Cache-Control'].schema.const, 'no-store');
 const adminSpec = JSON.parse(read('docs/openapi/admin.json'));
+const adminPermissions = {
+  adminListUsers: 'users.read', adminGetUser: 'users.read',
+  adminFreezeUser: 'users.freeze', adminUnfreezeUser: 'users.unfreeze',
+  adminDeleteUser: 'users.delete', adminUndeleteUser: 'users.undelete',
+  adminRevealIdentity: 'identities.reveal', adminListSessions: 'sessions.read',
+  adminRevokeSession: 'sessions.revoke', adminRevokeAllSessions: 'sessions.revoke_all',
+  adminListAuditEvents: 'audit_events.read',
+};
+for (const item of Object.values(adminSpec.paths)) for (const op of Object.values(item)) {
+  if (!op.operationId) continue;
+  assert.ok(Object.hasOwn(adminPermissions, op.operationId), `${op.operationId} missing permission registration`);
+  assert.equal(op['x-required-permission'], adminPermissions[op.operationId], `${op.operationId} permission`);
+  assert.ok(op['x-legacy-required-role'], `${op.operationId} legacy role`);
+  assert.ok(!Object.hasOwn(op, 'x-required-role'), `${op.operationId} obsolete role metadata`);
+}
 assert.equal(adminSpec.paths['/users/{user}/identities/{identity}:reveal'].get.responses['200'].headers['Cache-Control'].schema.const, 'no-store', 'reveal no-store');
 assert.equal(enduser.components.schemas.CurrentSession.properties.is_current.const, true);
 assert.deepEqual(Object.keys(enduser.components.schemas.AuthenticationIdentity.properties).sort(), ['kind','name']);

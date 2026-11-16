@@ -68,7 +68,7 @@ func Engine(ctx context.Context, conn *pgx.Conn, schema string) (err error) {
 	if err = conn.QueryRow(waiting, "SELECT current_database()").Scan(&dbName); err != nil {
 		return err
 	}
-	key, err := database.GenerateAdvisoryLockId(dbName, schema, "schema_migrations")
+	key, err := database.GenerateAdvisoryLockId(dbName, schema, TableName)
 	if err != nil {
 		return err
 	}

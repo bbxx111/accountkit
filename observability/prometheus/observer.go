@@ -44,13 +44,13 @@ func New(registerer prom.Registerer, instance string) (*Observer, error) {
 		var collector prom.Collector
 		if d.Histogram {
 			h := prom.NewHistogramVec(prom.HistogramOpts{
-				Name: d.PromName, Help: d.Description, ConstLabels: prom.Labels{"accountkit_instance": instance}, Buckets: metricdata.DefaultBuckets(),
+				Name: d.PromName, Help: d.Description, ConstLabels: prom.Labels{metricdata.LabelAccountkitInstance: instance}, Buckets: metricdata.DefaultBuckets(),
 			}, d.Labels)
 			o.histograms[d.ID] = h
 			collector = h
 		} else {
 			c := prom.NewCounterVec(prom.CounterOpts{
-				Name: d.PromName, Help: d.Description, ConstLabels: prom.Labels{"accountkit_instance": instance},
+				Name: d.PromName, Help: d.Description, ConstLabels: prom.Labels{metricdata.LabelAccountkitInstance: instance},
 			}, d.Labels)
 			o.counters[d.ID] = c
 			collector = c

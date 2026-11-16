@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:async';
 
 import 'package:accountkit_flutter/accountkit_flutter.dart';
@@ -14,6 +15,15 @@ TokenPair pair(String id, {String scope = 'user'}) => TokenPair(
   isNewUser: false,
 );
 void main() {
+  test('legacy token record retains exact persisted JSON bytes', () {
+    const legacy =
+        '{"access_token":"a","refresh_token":"r","scope":"user:bind","user_id":"u_0000000000001","access_expire_time":"2030-01-01T00:00:00.000Z","refresh_expire_time":"2030-01-02T00:00:00.000Z"}';
+    final record = TokenRecord.fromJson(
+      jsonDecode(legacy) as Map<String, Object?>,
+    );
+    expect(jsonEncode(record.toJson()), legacy);
+  });
+
   test(
     'corrupt persisted record is cleared instead of becoming signed in',
     () async {

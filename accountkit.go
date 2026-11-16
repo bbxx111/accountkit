@@ -9,15 +9,11 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/redis/go-redis/v9"
 
 	"github.com/bbxx111/accountkit/anonymize"
 	"github.com/bbxx111/accountkit/audit"
@@ -25,6 +21,7 @@ import (
 	"github.com/bbxx111/accountkit/httpapi/admin"
 	"github.com/bbxx111/accountkit/httpapi/authn"
 	"github.com/bbxx111/accountkit/httpapi/enduser"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/maintenance"
 	"github.com/bbxx111/accountkit/migrations"
 	"github.com/bbxx111/accountkit/observability"
@@ -36,6 +33,8 @@ import (
 	"github.com/bbxx111/accountkit/user/code"
 	"github.com/bbxx111/accountkit/user/idp"
 	"github.com/bbxx111/accountkit/user/sender"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 // ErrSearchPath 表示 Deps.Pool 的连接 search_path 首位不是 Config.Schema。
@@ -45,6 +44,12 @@ var ErrSearchPath = errors.New("accountkit: pool search_path does not include th
 // AdminVerifier 是宿主管理端 OIDC verifier 的最小契约（路由级角色中间件）；本模块不 import oidc-verifier，
 // *oidcverifier.Verifier 直接满足它。
 type AdminVerifier = admin.Verifier
+
+// AdminPermission identifies a concrete administrator operation.
+type AdminPermission = admin.Permission
+
+// AdminPermissionVerifier is the optional permission authorization contract.
+type AdminPermissionVerifier = admin.PermissionVerifier
 
 // AdminPrincipal 是管理端主体；宿主从 oidcverifier.PrincipalFrom 映射后经 Deps.AdminPrincipal 提供。
 type AdminPrincipal = admin.Principal
@@ -84,7 +89,8 @@ type Deps struct {
 	// BeforeDelete 在注销事务中、账号锁和 ACTIVE 校验之后执行宿主检查；可空。
 	BeforeDelete user.BeforeDelete
 	// AdminVerifier / AdminPrincipal 启用管理面（§4.2/§6.3）：宿主在 /admin/v1 先挂 verifier 的 Middleware，
-	// 再 Mount AdminHandler()；库内每条路由用 AdminVerifier.RequireRole 放行，并用 AdminPrincipal 取当前管理员。
+	// 再 Mount AdminHandler()；验证器实现 AdminPermissionVerifier 时按具体权限检查，否则沿用 RequireRole。
+	// 新权限拒绝不回退；AdminPrincipal 提供可信管理员主体。
 	// 二者须同时提供；都为空时 AdminHandler() 的所有路由返回 503 ADMIN_NOT_CONFIGURED。
 	AdminVerifier  AdminVerifier
 	AdminPrincipal func(ctx context.Context) (AdminPrincipal, bool)
@@ -271,11 +277,11 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 	}
 	// 维护任务（§5.6 #1–#5）：顺序执行、失败互不影响。
 	a.runner = maintenance.NewRunnerWithObserver(cfg.MaintenanceInterval, maintenance.NewPGLocker(deps.Pool, cfg.Schema), deps.Logger, deps.Observer,
-		maintenance.Task{Name: "cleanup_sign_in_completion_flows", Run: func(ctx context.Context) error {
+		maintenance.Task{Name: string(observability.TaskCleanupSignInCompletionFlows), Run: func(ctx context.Context) error {
 			_, err := users.CleanupSignInCompletionFlows(ctx)
 			return err
 		}},
-		maintenance.Task{Name: "purge_users", Run: func(ctx context.Context) error {
+		maintenance.Task{Name: string(observability.TaskPurgeUsers), Run: func(ctx context.Context) error {
 			n, err := users.PurgeDueUsers(ctx)
 			if n > 0 {
 				deps.Logger.Info("maintenance: purged users", "count", n)
@@ -289,14 +295,14 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 			}
 			return err
 		}},
-		maintenance.Task{Name: "cleanup_sessions", Run: func(ctx context.Context) error {
+		maintenance.Task{Name: string(observability.TaskCleanupSessions), Run: func(ctx context.Context) error {
 			n, err := users.CleanupSessions(ctx)
 			if n > 0 {
 				deps.Logger.Info("maintenance: deleted stale sessions", "count", n)
 			}
 			return err
 		}},
-		maintenance.Task{Name: "audit_retention", Run: func(ctx context.Context) error {
+		maintenance.Task{Name: string(observability.TaskAuditRetention), Run: func(ctx context.Context) error {
 			before := time.Now().Add(-time.Duration(cfg.AuditRetentionDays) * 24 * time.Hour)
 			n, err := auditStore.DeleteOlderThan(ctx, before)
 			if n > 0 {
@@ -307,14 +313,14 @@ func New(cfg Config, deps Deps) (*Auth, error) {
 			}
 			return err
 		}},
-		maintenance.Task{Name: "rekey_digests", Run: func(ctx context.Context) error {
+		maintenance.Task{Name: string(observability.TaskRekeyDigests), Run: func(ctx context.Context) error {
 			n, err := users.RekeyDigests(ctx)
 			if n > 0 {
 				deps.Logger.Info("maintenance: rekeyed identity digests", "count", n)
 			}
 			return err
 		}},
-		maintenance.Task{Name: "reencrypt_subjects", Run: func(ctx context.Context) error {
+		maintenance.Task{Name: string(observability.TaskReencryptSubjects), Run: func(ctx context.Context) error {
 			n, err := users.ReencryptSubjects(ctx)
 			if n > 0 {
 				deps.Logger.Info("maintenance: re-encrypted identity subjects", "count", n)
@@ -474,10 +480,8 @@ func defaultClientIP(r *http.Request) string {
 	return host
 }
 
-var requestIDRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
-
 func defaultRequestID(r *http.Request) string {
-	if id := r.Header.Get("X-Request-Id"); requestIDRe.MatchString(id) {
+	if id := r.Header.Get(httpcontract.HeaderRequestID); httpcontract.ValidRequestID(id) {
 		return id
 	}
 	var b [16]byte

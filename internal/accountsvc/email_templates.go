@@ -123,7 +123,7 @@ var previewPurposes = []enum.CodePurpose{enum.PurposeSignIn, enum.PurposeBind, e
 // writeEmailPreviews 为每种语言、每种用途写出 <lang>/<PURPOSE>.html、.txt 与 subjects.txt。
 // 目录中只允许存在这些固定文件名，避免误覆盖其他文件。
 func writeEmailPreviews(renderer *emailtemplates.Renderer, dir string) error {
-	allowed := map[string]bool{"subjects.txt": true}
+	allowed := map[string]bool{previewSubjectsFile: true}
 	for _, tag := range renderer.Languages() {
 		allowed[tag] = true
 	}
@@ -156,7 +156,7 @@ func writeEmailPreviews(renderer *emailtemplates.Renderer, dir string) error {
 			fmt.Fprintf(&subjects, "%s %s: %s\n", tag, purpose, content.Subject)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(dir, "subjects.txt"), []byte(subjects.String()), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, previewSubjectsFile), []byte(subjects.String()), 0o644); err != nil {
 		return errors.New("accountsvc: cannot write preview file")
 	}
 	return nil

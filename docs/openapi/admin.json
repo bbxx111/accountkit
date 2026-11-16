@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "accountkit 管理 HTTP API",
-    "version": "v1.1.0",
-    "description": "v1.1.0（已发布） 的内置管理 HTTP 契约：宿主配置实际挂载地址，请求体为单个 JSON 对象（默认上限 64 KiB，拒绝未知字段与尾随内容），adminRevealIdentity 的响应带 Cache-Control: no-store，领域状态、事务与故障策略以规格与 README 为准。"
+    "version": "v1.2.0",
+    "description": "v1.2.0（候选）的内置管理 HTTP 契约：宿主配置实际挂载地址，请求体为单个 JSON 对象（默认上限 64 KiB，拒绝未知字段与尾随内容），adminRevealIdentity 的响应（含认证错误）带 Cache-Control: no-store，领域状态、事务与故障策略以规格与 README 为准。accountsvc 必须显式映射管理角色权限；x-required-permission 为操作权限，x-legacy-required-role 仅供旧嵌入宿主兼容。"
   },
   "servers": [
     {
@@ -26,7 +26,7 @@
       "get": {
         "operationId": "adminListUsers",
         "summary": "筛选与分页列出账号",
-        "description": "按 create_time、id 的 keyset 分页。filter 使用 AND 子集，无 OR/NOT/括号。身份条件必须同一 kind 且命中同一活跃身份；具体支持字段见 docs/openapi.md。 所需管理员角色：operator；角色层级由宿主 verifier 决定。",
+        "description": "按 create_time、id 的 keyset 分页。filter 使用 AND 子集，无 OR/NOT/括号。身份条件必须同一 kind 且命中同一活跃身份；具体支持字段见 docs/openapi.md。 所需管理权限：users.read；accountsvc通过显式角色映射授权。旧嵌入宿主角色要求仅见x-legacy-required-role。",
         "responses": {
           "200": {
             "description": "成功。",
@@ -93,7 +93,6 @@
             }
           }
         ],
-        "x-required-role": "operator",
         "x-error-reasons": {
           "400": [
             "INVALID_FILTER",
@@ -107,14 +106,16 @@
           "503": [
             "ADMIN_NOT_CONFIGURED"
           ]
-        }
+        },
+        "x-required-permission": "users.read",
+        "x-legacy-required-role": "operator"
       }
     },
     "/users/{user}": {
       "get": {
         "operationId": "adminGetUser",
         "summary": "获取账号详情",
-        "description": " 所需管理员角色：operator；角色层级由宿主 verifier 决定。",
+        "description": " 所需管理权限：users.read；accountsvc通过显式角色映射授权。旧嵌入宿主角色要求仅见x-legacy-required-role。",
         "responses": {
           "200": {
             "description": "成功。",
@@ -159,7 +160,6 @@
             }
           }
         ],
-        "x-required-role": "operator",
         "x-error-reasons": {
           "400": [
             "INVALID_ID"
@@ -173,12 +173,14 @@
           "503": [
             "ADMIN_NOT_CONFIGURED"
           ]
-        }
+        },
+        "x-required-permission": "users.read",
+        "x-legacy-required-role": "operator"
       },
       "delete": {
         "operationId": "adminDeleteUser",
         "summary": "管理代办注销",
-        "description": "经过领域状态校验和宿主 BeforeDelete；请求体忽略。 所需管理员角色：super-admin；角色层级由宿主 verifier 决定。",
+        "description": "经过领域状态校验和宿主 BeforeDelete；请求体忽略。 所需管理权限：users.delete；accountsvc通过显式角色映射授权。旧嵌入宿主角色要求仅见x-legacy-required-role。",
         "responses": {
           "200": {
             "description": "成功。",
@@ -223,7 +225,6 @@
             }
           }
         ],
-        "x-required-role": "super-admin",
         "x-error-reasons": {
           "400": [
             "DELETION_BLOCKED",
@@ -240,14 +241,16 @@
           "503": [
             "ADMIN_NOT_CONFIGURED"
           ]
-        }
+        },
+        "x-required-permission": "users.delete",
+        "x-legacy-required-role": "super-admin"
       }
     },
     "/users/{user}:freeze": {
       "post": {
         "operationId": "adminFreezeUser",
         "summary": "冻结账号",
-        "description": "ACTIVE → FROZEN，同时撤销会话。目标账号状态问题返回 400。 所需管理员角色：operator；角色层级由宿主 verifier 决定。",
+        "description": "ACTIVE → FROZEN，同时撤销会话。目标账号状态问题返回 400。 所需管理权限：users.freeze；accountsvc通过显式角色映射授权。旧嵌入宿主角色要求仅见x-legacy-required-role。",
         "responses": {
           "200": {
             "description": "成功。",
@@ -292,7 +295,6 @@
             }
           }
         ],
-        "x-required-role": "operator",
         "requestBody": {
           "required": true,
           "content": {
@@ -320,14 +322,16 @@
           "503": [
             "ADMIN_NOT_CONFIGURED"
           ]
-        }
+        },
+        "x-required-permission": "users.freeze",
+        "x-legacy-required-role": "operator"
       }
     },
     "/users/{user}:unfreeze": {
       "post": {
         "operationId": "adminUnfreezeUser",
         "summary": "解冻账号",
-        "description": "必须发送 JSON 对象，可用 {}。FROZEN → ACTIVE，不重建会话。 所需管理员角色：operator；角色层级由宿主 verifier 决定。",
+        "description": "必须发送 JSON 对象，可用 {}。FROZEN → ACTIVE，不重建会话。 所需管理权限：users.unfreeze；accountsvc通过显式角色映射授权。旧嵌入宿主角色要求仅见x-legacy-required-role。",
         "responses": {
           "200": {
             "description": "成功。",
@@ -372,7 +376,6 @@
             }
           }
         ],
-        "x-required-role": "operator",
         "requestBody": {
           "required": true,
           "content": {
@@ -399,14 +402,16 @@
           "503": [
             "ADMIN_NOT_CONFIGURED"
           ]
-        }
+        },
+        "x-required-permission": "users.unfreeze",
+        "x-legacy-required-role": "operator"
       }
     },
     "/users/{user}:undelete": {
       "post": {
         "operationId": "adminUndeleteUser",
         "summary": "管理代办恢复",
-        "description": "恢复冷静期账号，最终匿名化后不可恢复；请求体忽略。 所需管理员角色：super-admin；角色层级由宿主 verifier 决定。",
+        "description": "恢复冷静期账号，最终匿名化后不可恢复；请求体忽略。 所需管理权限：users.undelete；accountsvc通过显式角色映射授权。旧嵌入宿主角色要求仅见x-legacy-required-role。",
         "responses": {
           "200": {
             "description": "成功。",
@@ -451,7 +456,6 @@
             }
           }
         ],
-        "x-required-role": "super-admin",
         "x-error-reasons": {
           "400": [
             "INVALID_ACCOUNT_STATE",
@@ -467,14 +471,16 @@
           "503": [
             "ADMIN_NOT_CONFIGURED"
           ]
-        }
+        },
+        "x-required-permission": "users.undelete",
+        "x-legacy-required-role": "super-admin"
       }
     },
     "/users/{user}/identities/{identity}:reveal": {
       "get": {
         "operationId": "adminRevealIdentity",
         "summary": "授权查看身份明文",
-        "description": "保留既有 GET :reveal 协议并写入审计；此契约不改 HTTP 方法。成功响应带 Cache-Control: no-store；宿主应对敏感响应实施日志保护。 所需管理员角色：super-admin；角色层级由宿主 verifier 决定。",
+        "description": "保留既有 GET :reveal 协议并写入审计；此契约不改 HTTP 方法。所有成功与错误响应带 Cache-Control: no-store；宿主应在外层认证前设置该头并对敏感响应实施日志保护。 所需管理权限：identities.reveal；accountsvc通过显式角色映射授权。旧嵌入宿主角色要求仅见x-legacy-required-role。",
         "responses": {
           "200": {
             "description": "成功。",
@@ -535,7 +541,6 @@
             }
           }
         ],
-        "x-required-role": "super-admin",
         "x-error-reasons": {
           "400": [
             "INVALID_ID"
@@ -549,14 +554,16 @@
           "503": [
             "ADMIN_NOT_CONFIGURED"
           ]
-        }
+        },
+        "x-required-permission": "identities.reveal",
+        "x-legacy-required-role": "super-admin"
       }
     },
     "/users/{user}/sessions": {
       "get": {
         "operationId": "adminListSessions",
         "summary": "列出账号活跃会话",
-        "description": "不分页；不含消费者 DTO 的 is_current。 所需管理员角色：operator；角色层级由宿主 verifier 决定。",
+        "description": "不分页；不含消费者 DTO 的 is_current。 所需管理权限：sessions.read；accountsvc通过显式角色映射授权。旧嵌入宿主角色要求仅见x-legacy-required-role。",
         "responses": {
           "200": {
             "description": "成功。",
@@ -601,7 +608,6 @@
             }
           }
         ],
-        "x-required-role": "operator",
         "x-error-reasons": {
           "400": [
             "INVALID_ID"
@@ -615,14 +621,16 @@
           "503": [
             "ADMIN_NOT_CONFIGURED"
           ]
-        }
+        },
+        "x-required-permission": "sessions.read",
+        "x-legacy-required-role": "operator"
       }
     },
     "/users/{user}/sessions/{session}": {
       "delete": {
         "operationId": "adminRevokeSession",
         "summary": "管理撤销指定会话",
-        "description": " 所需管理员角色：operator；角色层级由宿主 verifier 决定。",
+        "description": " 所需管理权限：sessions.revoke；accountsvc通过显式角色映射授权。旧嵌入宿主角色要求仅见x-legacy-required-role。",
         "responses": {
           "204": {
             "description": "成功，无响应体。"
@@ -667,7 +675,6 @@
             }
           }
         ],
-        "x-required-role": "operator",
         "x-error-reasons": {
           "400": [
             "INVALID_ID"
@@ -681,14 +688,16 @@
           "503": [
             "ADMIN_NOT_CONFIGURED"
           ]
-        }
+        },
+        "x-required-permission": "sessions.revoke",
+        "x-legacy-required-role": "operator"
       }
     },
     "/users/{user}/sessions:revokeAll": {
       "post": {
         "operationId": "adminRevokeAllSessions",
         "summary": "管理撤销全部会话",
-        "description": "返回实际撤销数量，请求体忽略。 所需管理员角色：operator；角色层级由宿主 verifier 决定。",
+        "description": "返回实际撤销数量，请求体忽略。 所需管理权限：sessions.revoke_all；accountsvc通过显式角色映射授权。旧嵌入宿主角色要求仅见x-legacy-required-role。",
         "responses": {
           "200": {
             "description": "成功。",
@@ -733,7 +742,6 @@
             }
           }
         ],
-        "x-required-role": "operator",
         "x-error-reasons": {
           "400": [
             "INVALID_ID"
@@ -747,14 +755,16 @@
           "503": [
             "ADMIN_NOT_CONFIGURED"
           ]
-        }
+        },
+        "x-required-permission": "sessions.revoke_all",
+        "x-legacy-required-role": "operator"
       }
     },
     "/users/{user}/auditEvents": {
       "get": {
         "operationId": "adminListAuditEvents",
         "summary": "读取账号认证审计",
-        "description": "仅返回当前账号范围的认证事件，不透传通用业务 data。按 occur_time、UUID 升序；v2 游标绑定来源、账号和认证动作集合，旧游标返回 400 INVALID_PAGE_TOKEN，须从第一页重新开始。仅外部写侧为 503 AUDIT_QUERY_NOT_CONFIGURED；读侧故障/越界为 503 AUDIT_QUERY_UNAVAILABLE。 所需管理员角色：operator；角色层级由宿主 verifier 决定。",
+        "description": "仅返回当前账号范围的认证事件，不透传通用业务 data。按 occur_time、UUID 升序；v2 游标绑定来源、账号和认证动作集合，旧游标返回 400 INVALID_PAGE_TOKEN，须从第一页重新开始。仅外部写侧为 503 AUDIT_QUERY_NOT_CONFIGURED；读侧故障/越界为 503 AUDIT_QUERY_UNAVAILABLE。 所需管理权限：audit_events.read；accountsvc通过显式角色映射授权。旧嵌入宿主角色要求仅见x-legacy-required-role。",
         "responses": {
           "200": {
             "description": "成功。",
@@ -817,7 +827,6 @@
             }
           }
         ],
-        "x-required-role": "operator",
         "x-error-reasons": {
           "400": [
             "INVALID_ID",
@@ -835,7 +844,9 @@
             "AUDIT_QUERY_NOT_CONFIGURED",
             "AUDIT_QUERY_UNAVAILABLE"
           ]
-        }
+        },
+        "x-required-permission": "audit_events.read",
+        "x-legacy-required-role": "operator"
       }
     }
   },

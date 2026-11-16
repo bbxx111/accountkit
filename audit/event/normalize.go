@@ -48,17 +48,17 @@ func Validate(e Event) error { _, err := Freeze(e); return err }
 // 时间统一为 UTC 微秒，资源按完整引用排序去重；空 data/targets 规范为 {}/[]。
 func Freeze(e Event) (Event, error) {
 	if e.ID == uuid.Nil || e.ID.Version() != 7 || e.ID.Variant() != uuid.RFC4122 {
-		return Event{}, invalid("id")
+		return Event{}, invalid(fieldId)
 	}
 	if len(e.Source) > 128 || !sourcePattern.MatchString(e.Source) {
-		return Event{}, invalid("source")
+		return Event{}, invalid(fieldSource)
 	}
 	if len(e.Action) > 128 || !actionPattern.MatchString(e.Action) {
-		return Event{}, invalid("action")
+		return Event{}, invalid(fieldAction)
 	}
 	if e.Result != nil {
 		if !e.Result.Valid() {
-			return Event{}, invalid("result")
+			return Event{}, invalid(fieldResult)
 		}
 		r := *e.Result
 		e.Result = &r
@@ -68,7 +68,7 @@ func Freeze(e Event) (Event, error) {
 	}
 	e.OccurTime = e.OccurTime.UTC().Truncate(time.Microsecond)
 	if e.OccurTime.IsZero() || e.OccurTime.Year() < 1 || e.OccurTime.Year() > 9999 {
-		return Event{}, invalid("occur_time")
+		return Event{}, invalid(fieldOccurTime)
 	}
 	var err error
 	e.Targets, err = freezeResources(e.Targets)
@@ -87,14 +87,14 @@ func Freeze(e Event) (Event, error) {
 	}
 	data, err := parseJSON(e.Data)
 	if err != nil {
-		return Event{}, invalid("data")
+		return Event{}, invalid(fieldData)
 	}
 	if _, ok := data.(map[string]any); !ok {
-		return Event{}, invalid("data")
+		return Event{}, invalid(fieldData)
 	}
 	e.Data, err = json.Marshal(data)
 	if err != nil {
-		return Event{}, invalid("data")
+		return Event{}, invalid(fieldData)
 	}
 	wire, err := json.Marshal(e)
 	if err != nil || len(wire) > MaxEventBytes {
@@ -114,19 +114,19 @@ func DecodeEvent(wire []byte) (Event, error) {
 	if !ok {
 		return Event{}, invalid("event")
 	}
-	if _, ok := obj["create_time"]; ok {
-		return Event{}, invalid("create_time")
+	if _, ok := obj[fieldCreateTime]; ok {
+		return Event{}, invalid(fieldCreateTime)
 	}
-	for _, key := range []string{"actor", "context", "data"} {
+	for _, key := range []string{fieldActor, fieldContext, fieldData} {
 		if value, exists := obj[key]; exists {
 			if _, ok := value.(map[string]any); !ok {
 				return Event{}, invalid(key)
 			}
 		}
 	}
-	if value, exists := obj["targets"]; exists {
+	if value, exists := obj[fieldTargets]; exists {
 		if _, ok := value.([]any); !ok {
-			return Event{}, invalid("targets")
+			return Event{}, invalid(fieldTargets)
 		}
 	}
 	var e Event
@@ -203,7 +203,7 @@ func validateActor(a Actor) error {
 		return invalid("actor.type")
 	}
 	if !validText(a.Namespace, 512) || !validText(a.ID, 512) || !validName(a.Name) {
-		return invalid("actor")
+		return invalid(fieldActor)
 	}
 	return nil
 }
@@ -232,7 +232,7 @@ func freezeResources(in []Resource) ([]Resource, error) {
 
 func validateContext(c EventContext) error {
 	if !validText(c.RequestID, 128) || !validText(c.UserAgent, 2048) || !validText(c.DeviceID, 256) {
-		return invalid("context")
+		return invalid(fieldContext)
 	}
 	if c.TraceID != "" && !validHex(c.TraceID, 32) {
 		return invalid("context.trace_id")

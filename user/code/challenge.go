@@ -52,13 +52,13 @@ func (s *Store) challengeKeys(channel enum.IdentityKind, purpose enum.CodePurpos
 	digests := s.targetDigests(target)
 	keys := make([]string, 0, 2*len(digests))
 	for _, d := range digests {
-		keys = append(keys, s.prefix+"challenge:"+channel.String()+":"+purpose.Key()+":"+d, s.prefix+"verify_failure:"+channel.String()+":"+d)
+		keys = append(keys, s.prefix+challengeKeyPrefix+channel.String()+":"+purpose.Key()+":"+d, s.prefix+verifyFailureKeyPrefix+channel.String()+":"+d)
 	}
 	return keys
 }
 
 func (s *Store) challengeHMAC(c Credential) string {
-	return "challenge:" + c.Channel.String() + ":" + c.Purpose.Key() + ":" + c.Target + ":" + c.CodeID + ":" + c.Code
+	return challengeHMACDomain + c.Channel.String() + ":" + c.Purpose.Key() + ":" + c.Target + ":" + c.CodeID + ":" + c.Code
 }
 
 // IssueChallenge 原子检查目标失败预算、占用发送额度并替换该用途的全部旧轮次。
@@ -97,7 +97,7 @@ func (s *Store) IssueChallengeUntil(ctx context.Context, channel enum.IdentityKi
 	for _, d := range digests {
 		_, cool, quota, k := s.keys(channel, purpose, d, ip, now)
 		ipKey = k
-		keys = append(keys, cool, quota, s.prefix+"challenge:"+channel.String()+":"+purpose.Key()+":"+d, s.prefix+"verify_failure:"+channel.String()+":"+d)
+		keys = append(keys, cool, quota, s.prefix+challengeKeyPrefix+channel.String()+":"+purpose.Key()+":"+d, s.prefix+verifyFailureKeyPrefix+channel.String()+":"+d)
 	}
 	keys = append(keys, ipKey)
 	hardDeadline := int64(0)
@@ -108,9 +108,9 @@ func (s *Store) IssueChallengeUntil(ctx context.Context, channel enum.IdentityKi
 	if err != nil {
 		return Issued{}, fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
-	allowed := []string{"OK", "COOLDOWN", "TARGET_LIMIT", "IP_LIMIT", "TARGET_VERIFY_LIMIT"}
+	allowed := []string{statusOK, DimensionCooldown, DimensionTargetLimit, DimensionIPLimit, DimensionTargetVerifyLimit}
 	if hardDeadline > 0 {
-		allowed = append(allowed, "MISSING")
+		allowed = append(allowed, statusMissing)
 	}
 	err = challengeResult(res, now, allowed...)
 	if err != nil {
@@ -143,7 +143,7 @@ func (s *Store) VerifyChallengeWithExpiry(ctx context.Context, c Credential) (ti
 	if len(res) < 2 {
 		return time.Time{}, ErrUnavailable
 	}
-	if err := challengeResult(res[:2], s.o.Now(), "OK", "MISSING", "MISMATCH", "TARGET_VERIFY_LIMIT"); err != nil {
+	if err := challengeResult(res[:2], s.o.Now(), statusOK, statusMissing, statusMismatch, DimensionTargetVerifyLimit); err != nil {
 		return time.Time{}, err
 	}
 	if len(res) != 3 {
@@ -177,7 +177,7 @@ func (s *Store) DiscardChallenge(ctx context.Context, channel enum.IdentityKind,
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
-	return challengeResult(res, s.o.Now(), "OK")
+	return challengeResult(res, s.o.Now(), statusOK)
 }
 
 func challengeResult(res []interface{}, now time.Time, allowed ...string) error {
@@ -200,23 +200,23 @@ func challengeResult(res []interface{}, now time.Time, allowed ...string) error 
 		return ErrUnavailable
 	}
 	switch status {
-	case "OK":
+	case statusOK:
 		if retry == 0 {
 			return nil
 		}
-	case "MISSING":
+	case statusMissing:
 		if retry == 0 {
 			return ErrExpired
 		}
-	case "MISMATCH":
+	case statusMismatch:
 		if retry == 0 {
 			return ErrInvalid
 		}
-	case "TARGET_LIMIT", "IP_LIMIT":
+	case DimensionTargetLimit, DimensionIPLimit:
 		if retry == 0 {
 			return &RateLimitedError{Dimension: status, RetryAfter: nextUTCMidnight(now).Sub(now.UTC())}
 		}
-	case "COOLDOWN", "TARGET_VERIFY_LIMIT":
+	case DimensionCooldown, DimensionTargetVerifyLimit:
 		if retry > 0 && retry <= int64((1<<63-1)/time.Second) {
 			return &RateLimitedError{Dimension: status, RetryAfter: time.Duration(retry) * time.Second}
 		}

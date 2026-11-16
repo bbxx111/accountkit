@@ -68,3 +68,5 @@ await business.post<Object?>(url, data:body, options:Options(extra:{
 测试导入 `package:accountkit_flutter/testing.dart`，提供 MemoryTokenStore、MutableAccountClock、FixedDeviceProvider、FakeAccountApi，可脚本化延迟、补全、刷新、失效；无需平台通道。`example/main.dart` 为使用 FakeAccountApi 的独立 UI 示例。
 
 开发检查：`flutter pub get --enforce-lockfile`、`dart format --output=none --set-exit-if-changed lib test example`、`flutter analyze`、`flutter test`。真实服务、Git 隔离消费和原生平台构建由仓库 SDK 验证入口分层执行，不将单元测试视为这些层级通过。
+
+协议词汇与匿名端点目录位于 `lib/src` 内部，供 SDK 自身编码、解析与凭据隔离共同使用；不属于公开 API。自定义身份 kind 仍可扩展，原有 token 存储 JSON 与 `AuthenticatedReplay.key` 保持兼容；业务 Dio 的 `extra` 请使用应用自己的命名空间，保留 `accountkit.*` 供刷新与重放协调使用。

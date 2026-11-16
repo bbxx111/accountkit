@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/bbxx111/accountkit/internal/jose"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -26,7 +27,7 @@ const (
 	// Algorithm 是唯一接受的签名算法。
 	Algorithm = "ES256"
 	// TokenType 是 access token 的 header typ（RFC 9068）。
-	TokenType = "at+jwt"
+	TokenType = jose.AccessTokenType
 )
 
 // ErrInvalidToken 表示 token 缺失、格式错、验签失败、过期或 iss/aud 不匹配。
@@ -147,7 +148,7 @@ func marshalJWKS(keys map[uint16]*ecdsa.PrivateKey) ([]byte, error) {
 			return nil, fmt.Errorf("tokens: key version %d: invalid public key", v)
 		}
 		set.Keys = append(set.Keys, jwk{
-			Kty: "EC", Crv: "P-256", Kid: strconv.FormatUint(uint64(v), 10), Alg: Algorithm, Use: "sig",
+			Kty: jose.JWKTypeEC, Crv: jose.JWKCurveP256, Kid: strconv.FormatUint(uint64(v), 10), Alg: Algorithm, Use: jose.JWKUseSignature,
 			X: base64.RawURLEncoding.EncodeToString(point[1:33]),
 			Y: base64.RawURLEncoding.EncodeToString(point[33:65]),
 		})
@@ -193,8 +194,8 @@ func (s *Signer) Sign(c Claims, now time.Time, ttl time.Duration) (string, strin
 		},
 	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodES256, wc)
-	tok.Header["typ"] = TokenType
-	tok.Header["kid"] = strconv.FormatUint(uint64(s.active), 10)
+	tok.Header[jose.HeaderType] = TokenType
+	tok.Header[jose.HeaderKeyID] = strconv.FormatUint(uint64(s.active), 10)
 	signed, err := tok.SignedString(s.keys[s.active])
 	if err != nil {
 		return "", "", fmt.Errorf("tokens: sign: %w", err)
@@ -212,10 +213,10 @@ func (s *Signer) Parse(token string) (Claims, error) {
 		jwt.WithLeeway(s.leeway),
 		jwt.WithExpirationRequired(),
 	).ParseWithClaims(token, &wc, func(t *jwt.Token) (any, error) {
-		if typ, _ := t.Header["typ"].(string); typ != TokenType {
+		if typ, _ := t.Header[jose.HeaderType].(string); typ != TokenType {
 			return nil, errors.New("bad typ")
 		}
-		kidStr, _ := t.Header["kid"].(string)
+		kidStr, _ := t.Header[jose.HeaderKeyID].(string)
 		if kidStr == "" {
 			return nil, errors.New("missing kid")
 		}

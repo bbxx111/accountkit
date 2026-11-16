@@ -11,6 +11,8 @@ import (
 	"github.com/bbxx111/accountkit/enum"
 	"github.com/bbxx111/accountkit/httpapi/apierror"
 	"github.com/bbxx111/accountkit/httpapi/internal/reqid"
+	"github.com/bbxx111/accountkit/httpapi/internal/resourcename"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 	"github.com/bbxx111/accountkit/user"
 )
 
@@ -48,7 +50,7 @@ type userResource struct {
 
 func newUserResource(u user.AdminUser) userResource {
 	out := userResource{
-		Name: "users/" + u.ID, State: u.State.String(), DisplayName: u.DisplayName, AvatarURL: u.AvatarURL,
+		Name: resourcename.User(u.ID), State: u.State.String(), DisplayName: u.DisplayName, AvatarURL: u.AvatarURL,
 		CreateTime: fmtTime(u.CreateTime), UpdateTime: fmtTime(u.UpdateTime),
 		DeleteTime: fmtTimePtr(u.DeleteTime), PurgeTime: fmtTimePtr(u.PurgeTime),
 	}
@@ -75,7 +77,7 @@ type userDetailResource struct {
 func newUserDetailResource(d user.AdminUserDetail) userDetailResource {
 	out := userDetailResource{userResource: newUserResource(d.AdminUser), Identities: make([]identityResource, 0, len(d.Identities)), ActiveSessionCount: d.ActiveSessionCount}
 	for _, i := range d.Identities {
-		out.Identities = append(out.Identities, identityResource{Name: "users/" + d.ID + "/identities/" + i.ID, Kind: i.Kind.String(), MaskedSubject: i.MaskedSubject, CreateTime: fmtTime(i.CreateTime)})
+		out.Identities = append(out.Identities, identityResource{Name: resourcename.Identity(d.ID, i.ID), Kind: i.Kind.String(), MaskedSubject: i.MaskedSubject, CreateTime: fmtTime(i.CreateTime)})
 	}
 	return out
 }
@@ -130,7 +132,7 @@ type auditEventResource struct {
 }
 
 func newAuditEventResource(userID string, e authentication.Input) auditEventResource {
-	out := auditEventResource{Name: "users/" + userID + "/auditEvents/" + e.ID.String(), EventType: e.Type.String(), ActorKind: e.Actor.String(),
+	out := auditEventResource{Name: resourcename.AuditEvent(userID, e.ID.String()), EventType: e.Type.String(), ActorKind: e.Actor.String(),
 		Reason: auditString(e.Reason), SessionID: auditString(e.SessionID), FlowID: auditString(e.FlowID), SubjectHint: auditString(e.SubjectHint), DeviceID: auditString(e.DeviceID), RequestID: auditString(e.RequestID),
 		AdminIssuer: auditString(e.AdminIssuer), AdminSubject: auditString(e.AdminSubject), AdminUsername: auditString(e.AdminUsername), OccurTime: fmtTime(e.OccurTime), IP: auditString(e.IP)}
 	if e.Result.Valid() {
@@ -159,21 +161,21 @@ type auditEventList struct {
 func (h *Handler) writeServiceError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, user.ErrNotFound):
-		apierror.Write(w, apierror.New(apierror.StatusNotFound, "NOT_FOUND", "resource not found"))
+		apierror.Write(w, apierror.New(apierror.StatusNotFound, httpcontract.ReasonNotFound, "resource not found"))
 	case errors.Is(err, user.ErrDeletionBlocked):
-		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "DELETION_BLOCKED", "account deletion is blocked"))
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, httpcontract.ReasonDeletionBlocked, "account deletion is blocked"))
 	case errors.Is(err, user.ErrInvalidState):
-		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "INVALID_ACCOUNT_STATE", "operation not allowed in the account's current state"))
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, httpcontract.ReasonInvalidAccountState, "operation not allowed in the account's current state"))
 	case errors.Is(err, user.ErrUserFrozen):
-		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, "USER_FROZEN", "the account is frozen; unfreeze it first"))
+		apierror.Write(w, apierror.New(apierror.StatusFailedPrecondition, httpcontract.ReasonUserFrozen, "the account is frozen; unfreeze it first"))
 	case errors.Is(err, user.ErrInvalidTarget):
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_FILTER", "invalid filter: identity.phone / identity.email value is not a valid phone number or email address"))
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, reasonInvalidFilter, "invalid filter: identity.phone / identity.email value is not a valid phone number or email address"))
 	case errors.Is(err, user.ErrInvalidArgument):
 		msg := strings.TrimPrefix(strings.TrimPrefix(err.Error(), user.ErrInvalidArgument.Error()), ": ")
 		if msg == "" {
 			msg = "invalid argument"
 		}
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_ARGUMENT", msg))
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, httpcontract.ReasonInvalidArgument, msg))
 	default:
 		apierror.WriteInternal(w, h.d.Logger, reqid.From(r.Context()), err)
 	}

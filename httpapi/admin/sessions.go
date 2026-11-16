@@ -3,10 +3,11 @@ package admin
 import (
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/bbxx111/accountkit/httpapi/apierror"
+	"github.com/bbxx111/accountkit/httpapi/internal/resourcename"
 	"github.com/bbxx111/accountkit/ids"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
+	"github.com/go-chi/chi/v5"
 )
 
 // GET /users/{user}/sessions
@@ -22,7 +23,7 @@ func (h *Handler) listSessions(w http.ResponseWriter, r *http.Request) {
 	}
 	out := sessionList{Sessions: make([]sessionResource, 0, len(items))}
 	for _, s := range items {
-		out.Sessions = append(out.Sessions, sessionResource{ClientInfo: newClientInfoResource(s.ClientInfo), ClientInfoUpdateTime: fmtTimePtr(s.ClientInfoUpdateTime), Name: "users/" + uid + "/sessions/" + s.ID, DeviceID: s.DeviceID, DeviceName: s.DeviceName, CreateTime: fmtTime(s.CreateTime), LastUsedTime: fmtTime(s.LastUsedTime)})
+		out.Sessions = append(out.Sessions, sessionResource{ClientInfo: newClientInfoResource(s.ClientInfo), ClientInfoUpdateTime: fmtTimePtr(s.ClientInfoUpdateTime), Name: resourcename.Session(uid, s.ID), DeviceID: s.DeviceID, DeviceName: s.DeviceName, CreateTime: fmtTime(s.CreateTime), LastUsedTime: fmtTime(s.LastUsedTime)})
 	}
 	apierror.WriteJSON(w, http.StatusOK, out)
 }
@@ -39,7 +40,7 @@ func (h *Handler) deleteSession(w http.ResponseWriter, r *http.Request) {
 	}
 	sid := chi.URLParam(r, "session")
 	if !ids.Valid(ids.Session, sid) {
-		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, "INVALID_ID", "session id is malformed"))
+		apierror.Write(w, apierror.New(apierror.StatusInvalidArgument, httpcontract.ReasonInvalidID, "session id is malformed"))
 		return
 	}
 	if err := h.d.Users.AdminRevokeSession(r.Context(), a, uid, sid, h.meta(r)); err != nil {

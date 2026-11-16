@@ -12,10 +12,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
-
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/jose"
 	"github.com/bbxx111/accountkit/observability"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const (
@@ -106,7 +106,7 @@ func (a *Apple) VerifyApple(ctx context.Context, idToken, rawNonce string) (Iden
 	)
 	claims := jwt.MapClaims{}
 	_, err := parser.ParseWithClaims(idToken, claims, func(t *jwt.Token) (any, error) {
-		kid, _ := t.Header["kid"].(string)
+		kid, _ := t.Header[jose.HeaderKeyID].(string)
 		if kid == "" {
 			return nil, errors.New("missing kid")
 		}
@@ -119,14 +119,14 @@ func (a *Apple) VerifyApple(ctx context.Context, idToken, rawNonce string) (Iden
 		// jwt 库的错误文本不回显 token 本体，可安全拼接。
 		return Identity{}, fmt.Errorf("%w: apple id_token: %v", ErrInvalidCredential, err)
 	}
-	if !a.audienceAllowed(claims["aud"]) {
+	if !a.audienceAllowed(claims[jose.ClaimAudience]) {
 		return Identity{}, fmt.Errorf("%w: apple aud", ErrAppNotAllowed)
 	}
-	sub, _ := claims["sub"].(string)
+	sub, _ := claims[jose.ClaimSubject].(string)
 	if sub == "" {
 		return Identity{}, fmt.Errorf("%w: apple sub missing", ErrInvalidCredential)
 	}
-	nonceClaim, _ := claims["nonce"].(string)
+	nonceClaim, _ := claims[jose.ClaimNonce].(string)
 	want := sha256.Sum256([]byte(rawNonce))
 	wantHex := hex.EncodeToString(want[:])
 	if nonceClaim == "" || subtle.ConstantTimeCompare([]byte(nonceClaim), []byte(wantHex)) != 1 {
@@ -147,7 +147,7 @@ func (a *Apple) VerifyApple(ctx context.Context, idToken, rawNonce string) (Iden
 	if exp, err := claims.GetExpirationTime(); err == nil && exp != nil {
 		id.ExpireTime = exp.Time
 	}
-	if email, _ := claims["email"].(string); email != "" && emailVerified(claims["email_verified"]) {
+	if email, _ := claims[profileClaimEmail].(string); email != "" && emailVerified(claims[profileClaimEmailVerified]) {
 		id.HintEmail = email
 	}
 	return id, nil

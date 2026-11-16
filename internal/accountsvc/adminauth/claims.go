@@ -5,11 +5,12 @@ import (
 	"strings"
 
 	"github.com/bbxx111/accountkit"
+	"github.com/bbxx111/accountkit/internal/jose"
 	"github.com/golang-jwt/jwt/v5"
 )
 
 func (v *Verifier) extractClaims(claims jwt.MapClaims) (accountkit.AdminPrincipal, map[string]bool, error) {
-	subject, ok := claims["sub"].(string)
+	subject, ok := claims[jose.ClaimSubject].(string)
 	if !ok || strings.TrimSpace(subject) == "" {
 		return accountkit.AdminPrincipal{}, nil, errInvalid
 	}
@@ -30,9 +31,6 @@ func (v *Verifier) extractClaims(claims jwt.MapClaims) (accountkit.AdminPrincipa
 			}
 			roles[role] = true
 		}
-	}
-	if roles["super-admin"] {
-		roles["operator"] = true
 	}
 	return principal, roles, nil
 }

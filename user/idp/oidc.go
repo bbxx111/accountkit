@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
-
 	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/internal/jose"
 	"github.com/bbxx111/accountkit/observability"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const idTokenLeeway = 30 * time.Second
@@ -57,7 +57,7 @@ func (v *idTokenVerifier) verify(ctx context.Context, idToken, rawNonce string) 
 	)
 	claims := jwt.MapClaims{}
 	_, err := parser.ParseWithClaims(idToken, claims, func(t *jwt.Token) (any, error) {
-		kid, _ := t.Header["kid"].(string)
+		kid, _ := t.Header[jose.HeaderKeyID].(string)
 		if kid == "" {
 			return nil, errors.New("missing kid")
 		}
@@ -70,24 +70,24 @@ func (v *idTokenVerifier) verify(ctx context.Context, idToken, rawNonce string) 
 		// jwt 库的错误文本不回显 token 本体，可安全拼接。
 		return Identity{}, fmt.Errorf("%w: %s id_token: %v", ErrInvalidCredential, v.label, err)
 	}
-	iss, _ := claims["iss"].(string)
+	iss, _ := claims[jose.ClaimIssuer].(string)
 	if iss == "" || !slices.Contains(v.issuers, iss) {
 		return Identity{}, fmt.Errorf("%w: %s iss", ErrInvalidCredential, v.label)
 	}
-	if !v.audienceAllowed(claims["aud"]) {
+	if !v.audienceAllowed(claims[jose.ClaimAudience]) {
 		return Identity{}, fmt.Errorf("%w: %s aud", ErrAppNotAllowed, v.label)
 	}
-	if azp, present := claims["azp"]; present {
+	if azp, present := claims[jose.ClaimAuthorizedParty]; present {
 		s, _ := azp.(string)
 		if _, ok := v.clientIDs[s]; !ok {
 			return Identity{}, fmt.Errorf("%w: %s azp", ErrAppNotAllowed, v.label)
 		}
 	}
-	sub, _ := claims["sub"].(string)
+	sub, _ := claims[jose.ClaimSubject].(string)
 	if sub == "" {
 		return Identity{}, fmt.Errorf("%w: %s sub missing", ErrInvalidCredential, v.label)
 	}
-	nonceClaim, _ := claims["nonce"].(string)
+	nonceClaim, _ := claims[jose.ClaimNonce].(string)
 	if nonceClaim == "" || subtle.ConstantTimeCompare([]byte(nonceClaim), []byte(rawNonce)) != 1 {
 		return Identity{}, fmt.Errorf("%w: %s nonce mismatch", ErrInvalidCredential, v.label)
 	}
@@ -104,7 +104,7 @@ func (v *idTokenVerifier) verify(ctx context.Context, idToken, rawNonce string) 
 	if exp, err := claims.GetExpirationTime(); err == nil && exp != nil {
 		id.ExpireTime = exp.Time
 	}
-	if email, _ := claims["email"].(string); email != "" && (v.hintEmailUnverified || emailVerified(claims["email_verified"])) {
+	if email, _ := claims[profileClaimEmail].(string); email != "" && (v.hintEmailUnverified || emailVerified(claims[profileClaimEmailVerified])) {
 		id.HintEmail = email
 	}
 	id.Name = firstStringClaim(claims, v.nameClaims)
@@ -196,17 +196,17 @@ func NewOIDC(o OIDCOptions) *OIDC {
 		o.NonceTTL = 10 * time.Minute
 	}
 	if o.NameClaims == nil {
-		o.NameClaims = []string{"name"}
+		o.NameClaims = []string{profileClaimName}
 	}
 	if o.PictureClaims == nil {
-		o.PictureClaims = []string{"picture"}
+		o.PictureClaims = []string{profileClaimPicture}
 	}
 	label := strings.ToLower(string(o.Kind))
 	recorder := observability.NewRecorder(o.Observer, o.Logger)
 	return &OIDC{issuer: o.Issuer, jwksURL: o.JWKSURL, v: &idTokenVerifier{
 		kind: o.Kind, label: label, issuers: []string{o.Issuer}, clientIDs: clientIDSet(o.ClientIDs),
 		jwks:   newJWKSCache(label, o.JWKSURL, o.HTTP, o.Logger, recorder, observability.DegradationOIDCCachedKeyFallback, o.Now),
-		nonces: o.Nonces, nonceScope: "oidc:" + string(o.Kind), nonceTTL: o.NonceTTL, now: o.Now,
+		nonces: o.Nonces, nonceScope: nonceScopeOIDCPrefix + string(o.Kind), nonceTTL: o.NonceTTL, now: o.Now,
 		nameClaims: slices.Clone(o.NameClaims), pictureClaims: slices.Clone(o.PictureClaims),
 	}}
 }

@@ -40,7 +40,7 @@ func NewCache(rdb redis.UniversalClient, keyPrefix string, cipher *pii.Cipher) *
 	return &Cache{rdb: rdb, prefix: keyPrefix, cipher: cipher}
 }
 
-func (c *Cache) key(oldHash []byte) string { return c.prefix + "grace:" + hex.EncodeToString(oldHash) }
+func (c *Cache) key(oldHash []byte) string { return c.prefix + keyDomain + hex.EncodeToString(oldHash) }
 
 // Put 加密并写入。ttl 必须为正：go-redis 把 <=0 的过期时间当作"永不过期"处理，
 // 对宽限缓存而言这会让重放窗口永不关闭，因此在写入 Redis 之前直接拒绝。

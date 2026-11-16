@@ -461,7 +461,7 @@ func (s *Service) finishSignIn(ctx context.Context, ev audit.AuthenticationEvent
 	}
 	ev.Type, ev.Result = enum.EventSignIn, enum.ResultSuccess
 	if res.IsNewUser {
-		ev.Reason = "NEW_USER"
+		ev.Reason = auditReasonNewUser
 	}
 	s.record(ctx, ev)
 }

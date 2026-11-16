@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/bbxx111/accountkit/ids"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 )
 
 // ErrUnavailable means the dependency failed, not that the user must log in again.
@@ -84,16 +85,16 @@ func (c *Client) Introspect(ctx context.Context, rawToken string) (Result, error
 	if err != nil {
 		return Result{}, ErrUnavailable
 	}
-	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	r.Header.Set("Accept", "application/json")
+	r.Header.Set(httpcontract.HeaderContentType, httpcontract.MediaTypeForm)
+	r.Header.Set("Accept", httpcontract.MediaTypeJSON)
 	r.SetBasicAuth(c.clientID, c.clientSecret)
 	response, err := c.httpClient.Do(r)
 	if err != nil {
 		return Result{}, ErrUnavailable
 	}
 	defer response.Body.Close()
-	ct, _, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
-	if response.StatusCode != http.StatusOK || err != nil || ct != "application/json" {
+	ct, _, err := mime.ParseMediaType(response.Header.Get(httpcontract.HeaderContentType))
+	if response.StatusCode != http.StatusOK || err != nil || ct != httpcontract.MediaTypeJSON {
 		return Result{}, ErrUnavailable
 	}
 	const maxResponse = 64 * 1024

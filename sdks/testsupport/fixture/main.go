@@ -13,14 +13,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/bbxx111/accountkit"
-	"github.com/bbxx111/accountkit/internal/accountsvc/adminauth"
-	"github.com/bbxx111/accountkit/user"
-	"github.com/bbxx111/accountkit/user/sender"
-	"github.com/go-chi/chi/v5"
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/redis/go-redis/v9"
 	"math/big"
 	"net"
 	"net/http"
@@ -29,6 +21,18 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/bbxx111/accountkit"
+	"github.com/bbxx111/accountkit/enum"
+	"github.com/bbxx111/accountkit/httpapi/admin"
+	"github.com/bbxx111/accountkit/internal/accountsvc/adminauth"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
+	"github.com/bbxx111/accountkit/user"
+	"github.com/bbxx111/accountkit/user/sender"
+	"github.com/go-chi/chi/v5"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 type options struct{ database, redis, addr, profile, schema, redisPrefix, requiredKinds string }
@@ -77,7 +81,7 @@ func (h *host) close() {
 	h.pool.Close()
 }
 func write(w http.ResponseWriter, v any) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(httpcontract.HeaderContentType, httpcontract.MediaTypeJSON)
 	w.Header().Set("Cache-Control", "no-store")
 	json.NewEncoder(w).Encode(v)
 }
@@ -90,7 +94,7 @@ func start(parent context.Context, o options) (h *host, err error) {
 		return nil, err
 	}
 	if o.addr == "" {
-		o.addr = "127.0.0.1:18081"
+		o.addr = defaultControlAddr
 	}
 	addr, _, e := net.SplitHostPort(o.addr)
 	if e != nil || addr != "127.0.0.1" {
@@ -138,7 +142,7 @@ func start(parent context.Context, o options) (h *host, err error) {
 		token.Header["kid"] = "fixture"
 		return token.SignedString(rsaKey)
 	}
-	router.Get("/__fixture/admin-token", func(w http.ResponseWriter, r *http.Request) {
+	router.Get(controlAdminTokenPath, func(w http.ResponseWriter, r *http.Request) {
 		role := r.URL.Query().Get("role")
 		if role != "operator" && role != "super-admin" {
 			http.Error(w, "invalid role", 400)
@@ -156,7 +160,7 @@ func start(parent context.Context, o options) (h *host, err error) {
 		write(w, map[string]string{"access_token": token})
 	})
 	capture := newCapture()
-	router.Get("/__fixture/code", func(w http.ResponseWriter, r *http.Request) {
+	router.Get(controlCodePath, func(w http.ResponseWriter, r *http.Request) {
 		m, ok := capture.get(r.URL.Query().Get("target"), r.URL.Query().Get("purpose"))
 		if !ok {
 			http.NotFound(w, r)
@@ -176,8 +180,8 @@ func start(parent context.Context, o options) (h *host, err error) {
 	cfg.FacebookAppSecret = "synthetic-secret"
 	cfg.FacebookJWKSURL = origin + "/keys"
 	configureUpstreams(router, &cfg, origin, rsaKey)
-	cfg.OIDCProviders = []accountkit.OIDCProvider{{Kind: "TEST_OIDC", Issuer: origin, JWKSURL: origin + "/keys", ClientIDs: []string{"sdk-app"}}}
-	router.Get("/__fixture/credential", func(w http.ResponseWriter, r *http.Request) {
+	cfg.OIDCProviders = []accountkit.OIDCProvider{{Kind: labelTestOIDC, Issuer: origin, JWKSURL: origin + "/keys", ClientIDs: []string{"sdk-app"}}}
+	router.Get(controlCredentialPath, func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		kind := q.Get("kind")
 		subject := q.Get("subject")
@@ -189,43 +193,43 @@ func start(parent context.Context, o options) (h *host, err error) {
 		issuer := origin
 		claimNonce := nonce
 		switch kind {
-		case "WECHAT", "WECHAT_MINI", "QQ", "WEIBO", "ALIPAY", "FACEBOOK_CLASSIC":
+		case string(enum.IdentityWeChat), labelWeChatMini, string(enum.IdentityQQ), string(enum.IdentityWeibo), string(enum.IdentityAlipay), labelFacebookClassic:
 			appID := "12345"
 			field := "access_token"
-			if kind == "WECHAT" {
+			if kind == string(enum.IdentityWeChat) {
 				appID = "sdk-wechat"
 				field = "code"
 			}
-			if kind == "WECHAT_MINI" {
+			if kind == labelWeChatMini {
 				appID = "sdk-mini"
 				field = "code"
 			}
-			if kind == "ALIPAY" {
+			if kind == string(enum.IdentityAlipay) {
 				appID = "2026110100000001"
 				field = "code"
 			}
 			credential := map[string]string{field: "synthetic-" + subject}
-			if kind != "FACEBOOK_CLASSIC" {
+			if kind != labelFacebookClassic {
 				credential["app_id"] = appID
 			}
 			wireKind := kind
-			if kind == "WECHAT_MINI" {
-				wireKind = "WECHAT"
+			if kind == labelWeChatMini {
+				wireKind = string(enum.IdentityWeChat)
 			}
-			if kind == "FACEBOOK_CLASSIC" {
-				wireKind = "FACEBOOK"
+			if kind == labelFacebookClassic {
+				wireKind = string(enum.IdentityFacebook)
 			}
 			write(w, map[string]any{"kind": wireKind, "credential": credential})
 			return
-		case "APPLE":
+		case string(enum.IdentityApple):
 			issuer = "https://appleid.apple.com"
 			hash := sha256.Sum256([]byte(nonce))
 			claimNonce = hex.EncodeToString(hash[:])
-		case "GOOGLE":
+		case string(enum.IdentityGoogle):
 			issuer = "https://accounts.google.com"
-		case "FACEBOOK":
+		case string(enum.IdentityFacebook):
 			issuer = "https://www.facebook.com"
-		case "TEST_OIDC":
+		case labelTestOIDC:
 		default:
 			http.Error(w, "unsupported controlled kind", 400)
 			return
@@ -257,7 +261,7 @@ func start(parent context.Context, o options) (h *host, err error) {
 		}
 	}()
 	var auth *accountkit.Auth
-	verifier, err := adminauth.New(parent, adminauth.Config{Issuer: origin, Audience: "sdk-admin", AllowHTTP: true}, adminauth.Options{OnForbidden: func(r *http.Request, p accountkit.AdminPrincipal) {
+	verifier, err := adminauth.New(parent, adminauth.Config{Issuer: origin, Audience: "sdk-admin", AllowHTTP: true, RoleBindings: []adminauth.RoleBinding{{Name: "operator", Permissions: []string{string(admin.PermissionUsersRead), string(admin.PermissionUsersFreeze), string(admin.PermissionUsersUnfreeze), "sessions.*", string(admin.PermissionAuditEventsRead)}}, {Name: "super-admin", Permissions: []string{"users.*", "sessions.*", "identities.*", "audit_events.*"}}}}, adminauth.Options{OnForbidden: func(r *http.Request, p accountkit.AdminPrincipal) {
 		if auth != nil {
 			auth.RecordAdminForbidden(r, p)
 		}
@@ -285,7 +289,7 @@ func start(parent context.Context, o options) (h *host, err error) {
 	router.Group(func(r chi.Router) { r.Use(verifier.Middleware); r.Mount(adminPrefix, auth.AdminHandler()) })
 	mode := "embedded-test-host"
 	serviceOrigin := origin
-	if o.profile == "accountsvc" {
+	if o.profile == profileAccountsvc {
 		mode = "accountsvc-development"
 		var stop context.CancelFunc
 		serviceOrigin, stop, err = runService(parent, ec, o, origin, capture)
@@ -296,8 +300,8 @@ func start(parent context.Context, o options) (h *host, err error) {
 		oldCancel := cancel
 		cancel = func() { stop(); oldCancel() }
 	}
-	router.Get("/__fixture/ready", func(w http.ResponseWriter, r *http.Request) {
-		write(w, map[string]string{"origin": serviceOrigin, "control_origin": origin, "api_prefix": prefix, "admin_prefix": adminPrefix, "profile": o.profile, "baseline": "v1.0.0", "mode": mode})
+	router.Get(controlReadyPath, func(w http.ResponseWriter, r *http.Request) {
+		write(w, readinessMetadata(serviceOrigin, origin, prefix, adminPrefix, o.profile, mode))
 	})
 	finalHandler := http.Handler(router)
 	live.Store(&finalHandler)
@@ -306,7 +310,7 @@ func start(parent context.Context, o options) (h *host, err error) {
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
-	h, err := start(ctx, options{database: os.Getenv("SDK_FIXTURE_DATABASE_URL"), redis: os.Getenv("SDK_FIXTURE_REDIS_ADDR"), addr: os.Getenv("SDK_FIXTURE_ADDR"), profile: os.Getenv("SDK_FIXTURE_PROFILE"), schema: os.Getenv("SDK_FIXTURE_SCHEMA"), redisPrefix: os.Getenv("SDK_FIXTURE_REDIS_PREFIX"), requiredKinds: os.Getenv("SDK_FIXTURE_REQUIRED_KINDS")})
+	h, err := start(ctx, options{database: os.Getenv(envFixtureDatabaseURL), redis: os.Getenv(envFixtureRedisAddr), addr: os.Getenv(envFixtureAddr), profile: os.Getenv(envFixtureProfile), schema: os.Getenv(envFixtureSchema), redisPrefix: os.Getenv(envFixtureRedisPrefix), requiredKinds: os.Getenv(envFixtureRequiredKinds)})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "fixture startup failed:", err)
 		os.Exit(1)

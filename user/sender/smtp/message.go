@@ -28,11 +28,11 @@ func message(from, to string, content EmailContent) ([]byte, error) {
 		}
 	} else {
 		alternatives := multipart.NewWriter(&buf)
-		fmt.Fprintf(&buf, "Content-Type: %s\r\n\r\n", mime.FormatMediaType("multipart/alternative", map[string]string{"boundary": alternatives.Boundary()}))
-		for _, part := range []struct{ kind, body string }{{"text/plain", content.Text}, {"text/html", content.HTML}} {
+		fmt.Fprintf(&buf, "Content-Type: %s\r\n\r\n", mime.FormatMediaType(mimeMultipartAlternative, map[string]string{mimeBoundary: alternatives.Boundary()}))
+		for _, part := range []struct{ kind, body string }{{mimeTextPlain, content.Text}, {mimeTextHtml, content.HTML}} {
 			header := make(textproto.MIMEHeader)
-			header.Set("Content-Type", part.kind+"; charset=UTF-8")
-			header.Set("Content-Transfer-Encoding", "quoted-printable")
+			header.Set(mimeContentType, part.kind+"; charset=UTF-8")
+			header.Set(mimeContentTransferEncoding, mimeQuotedPrintable)
 			writer, err := alternatives.CreatePart(header)
 			if err != nil {
 				return nil, sender.ErrUnavailable

@@ -75,7 +75,7 @@ func durationEnv(name string, fallback time.Duration) (time.Duration, error) {
 	}
 	d, err := time.ParseDuration(s)
 	if err != nil || d <= 0 {
-		return 0, invalidConfig("ACCOUNTSVC_" + name)
+		return 0, invalidConfig(envPrefix + name)
 	}
 	return d, nil
 }
@@ -99,7 +99,7 @@ func rejectLegacyPrefix() error {
 
 // LoadConfig 先校验配置再允许创建依赖；migrate 不读取服务专用设置。
 func LoadConfig(command string) (Config, error) {
-	if command != "serve" && command != "migrate" {
+	if command != commandServe && command != commandMigrate {
 		return Config{}, errors.New("accountsvc: command must be serve or migrate")
 	}
 	if err := rejectLegacyPrefix(); err != nil {
@@ -114,24 +114,24 @@ func LoadConfig(command string) (Config, error) {
 	c.DatabaseURL = env("DATABASE_URL")
 	u, err := url.Parse(c.DatabaseURL)
 	if err != nil || u.Hostname() == "" || (u.Scheme != "postgres" && u.Scheme != "postgresql") || u.Fragment != "" {
-		return Config{}, invalidConfig("ACCOUNTSVC_DATABASE_URL")
+		return Config{}, invalidConfig(envAccountsvcDatabaseUrl)
 	}
 	if _, err = pgxpool.ParseConfig(c.DatabaseURL); err != nil {
-		return Config{}, invalidConfig("ACCOUNTSVC_DATABASE_URL")
+		return Config{}, invalidConfig(envAccountsvcDatabaseUrl)
 	}
 	c.RedisURL = env("REDIS_URL")
 	u, err = url.Parse(c.RedisURL)
 	if err != nil || u.Hostname() == "" || (u.Scheme != "redis" && u.Scheme != "rediss") || u.Fragment != "" {
-		return Config{}, invalidConfig("ACCOUNTSVC_REDIS_URL")
+		return Config{}, invalidConfig(envAccountsvcRedisUrl)
 	}
 	if _, err = redis.ParseURL(c.RedisURL); err != nil {
-		return Config{}, invalidConfig("ACCOUNTSVC_REDIS_URL")
+		return Config{}, invalidConfig(envAccountsvcRedisUrl)
 	}
 	c.StartupTimeout, err = durationEnv("STARTUP_TIMEOUT", time.Minute)
 	if err != nil {
 		return Config{}, err
 	}
-	if command == "migrate" {
+	if command == commandMigrate {
 		return c, nil
 	}
 	c.Library.ProfileAttributes, err = loadProfileAttributes(env("PROFILE_ATTRIBUTES_SCHEMA_FILE"))
@@ -150,7 +150,7 @@ func LoadConfig(command string) (Config, error) {
 			return Config{}, invalidConfig("ACCOUNTSVC_METRICS_INSTANCE")
 		}
 	}
-	if c.SMS, err = loadSMS(defaultEnv("MODE", "production")); err != nil {
+	if c.SMS, err = loadSMS(defaultEnv("MODE", modeProduction)); err != nil {
 		return Config{}, err
 	}
 	if c.Library.EnabledIdentityKinds != nil {
@@ -170,17 +170,17 @@ func LoadConfig(command string) (Config, error) {
 			return Config{}, invalidConfig("ACCOUNTSVC_FACEBOOK_APP_ID")
 		}
 		if c.identityEnabled(enum.IdentityAlipay) && len(c.Library.AlipayApps) == 0 {
-			return Config{}, invalidConfig("ACCOUNTSVC_ALIPAY_APP_IDS")
+			return Config{}, invalidConfig(envAccountsvcAlipayAppIds)
 		}
 		if c.identityEnabled(enum.IdentityQQ) && len(c.Library.QQAppIDs) == 0 {
-			return Config{}, invalidConfig("ACCOUNTSVC_QQ_APP_IDS")
+			return Config{}, invalidConfig(envAccountsvcQqAppIds)
 		}
 		if c.identityEnabled(enum.IdentityWeibo) && len(c.Library.WeiboAppIDs) == 0 {
-			return Config{}, invalidConfig("ACCOUNTSVC_WEIBO_APP_IDS")
+			return Config{}, invalidConfig(envAccountsvcWeiboAppIds)
 		}
 	}
-	c.Mode = defaultEnv("MODE", "production")
-	if c.Mode != "production" && c.Mode != "development" {
+	c.Mode = defaultEnv("MODE", modeProduction)
+	if c.Mode != modeProduction && c.Mode != modeDevelopment {
 		return Config{}, invalidConfig("ACCOUNTSVC_MODE")
 	}
 	c.HTTPAddr = defaultEnv("HTTP_ADDR", "127.0.0.1:8080")
@@ -199,7 +199,7 @@ func LoadConfig(command string) (Config, error) {
 	}
 	c.TLSCertFile = env("TLS_CERT_FILE")
 	c.TLSKeyFile = env("TLS_KEY_FILE")
-	c.TLSEnabled = c.Mode == "production" || c.TLSCertFile != "" || c.TLSKeyFile != ""
+	c.TLSEnabled = c.Mode == modeProduction || c.TLSCertFile != "" || c.TLSKeyFile != ""
 	if raw := env("TLS_ENABLED"); raw != "" {
 		c.TLSEnabled, err = strconv.ParseBool(raw)
 		if err != nil {
@@ -211,16 +211,16 @@ func LoadConfig(command string) (Config, error) {
 	}
 	if c.TLSEnabled {
 		if c.TLSCertFile == "" {
-			return Config{}, invalidConfig("ACCOUNTSVC_TLS_CERT_FILE")
+			return Config{}, invalidConfig(envAccountsvcTlsCertFile)
 		}
 		if c.TLSKeyFile == "" {
-			return Config{}, invalidConfig("ACCOUNTSVC_TLS_KEY_FILE")
+			return Config{}, invalidConfig(envAccountsvcTlsKeyFile)
 		}
 		if _, err = os.Stat(c.TLSCertFile); err != nil {
-			return Config{}, invalidConfig("ACCOUNTSVC_TLS_CERT_FILE")
+			return Config{}, invalidConfig(envAccountsvcTlsCertFile)
 		}
 		if _, err = os.Stat(c.TLSKeyFile); err != nil {
-			return Config{}, invalidConfig("ACCOUNTSVC_TLS_KEY_FILE")
+			return Config{}, invalidConfig(envAccountsvcTlsKeyFile)
 		}
 		cert, err := tls.LoadX509KeyPair(c.TLSCertFile, c.TLSKeyFile)
 		if err != nil {
@@ -242,18 +242,18 @@ func LoadConfig(command string) (Config, error) {
 		if err != nil || port < 1 || port > 65535 {
 			return Config{}, invalidConfig("ACCOUNTSVC_SMTP_PORT")
 		}
-		c.SMTP = smtp.Config{Host: env("SMTP_HOST"), Port: port, From: env("SMTP_FROM"), Username: env("SMTP_USERNAME"), Password: os.Getenv("ACCOUNTSVC_SMTP_PASSWORD"), TLSMode: defaultEnv("SMTP_TLS_MODE", "implicit")}
+		c.SMTP = smtp.Config{Host: env("SMTP_HOST"), Port: port, From: env("SMTP_FROM"), Username: env("SMTP_USERNAME"), Password: os.Getenv(envAccountsvcSmtpPassword), TLSMode: defaultEnv("SMTP_TLS_MODE", smtp.TLSModeImplicit)}
 		c.SMTP.Timeout, err = durationEnv("SMTP_TIMEOUT", 10*time.Second)
 		if err != nil {
 			return Config{}, err
 		}
-		if c.SMTP.Username == "" && (c.Mode == "production" || c.SMTP.Password != "") {
+		if c.SMTP.Username == "" && (c.Mode == modeProduction || c.SMTP.Password != "") {
 			return Config{}, invalidConfig("ACCOUNTSVC_SMTP_USERNAME")
 		}
-		if c.SMTP.Password == "" && (c.Mode == "production" || c.SMTP.Username != "") {
-			return Config{}, invalidConfig("ACCOUNTSVC_SMTP_PASSWORD")
+		if c.SMTP.Password == "" && (c.Mode == modeProduction || c.SMTP.Username != "") {
+			return Config{}, invalidConfig(envAccountsvcSmtpPassword)
 		}
-		if c.Mode == "production" && c.SMTP.TLSMode == "none" {
+		if c.Mode == modeProduction && c.SMTP.TLSMode == smtp.TLSModeNone {
 			return Config{}, invalidConfig("ACCOUNTSVC_SMTP_TLS_MODE")
 		}
 		if err = c.loadEmailTemplates(env("SMTP_TEMPLATES_FILE")); err != nil {
@@ -289,35 +289,41 @@ func (c *Config) loadAdmin() error {
 		}
 	}
 	if !c.AdminEnabled {
-		if os.Getenv("ACCOUNTSVC_ADMIN_TOKEN_PROFILE") != "" {
+		if err := c.loadAdminRoles(); err != nil {
+			return err
+		}
+		if os.Getenv(envAccountsvcAdminTokenProfile) != "" {
 			return invalidConfig("ACCOUNTSVC_ADMIN_TOKEN_PROFILE (ADMIN_ENABLED is false)")
 		}
-		for _, name := range []string{"ADMIN_ISSUER", "ADMIN_AUDIENCE", "ADMIN_ROLES_CLAIM", "ADMIN_USERNAME_CLAIM"} {
+		for _, name := range []string{configEnvAdminIssuer, configEnvAdminAudience, configEnvAdminRolesClaim, configEnvAdminUsernameClaim} {
 			if env(name) != "" {
-				return invalidConfig("ACCOUNTSVC_" + name + " (ADMIN_ENABLED is false)")
+				return invalidConfig(envPrefix + name + " (ADMIN_ENABLED is false)")
 			}
 		}
 		return nil
 	}
 	// 开发模式允许本地明文 IdP；production 保持只接受 HTTPS，错误信息不变。
-	if !oidcjwt.ValidProfile(os.Getenv("ACCOUNTSVC_ADMIN_TOKEN_PROFILE")) {
-		return invalidConfig("ACCOUNTSVC_ADMIN_TOKEN_PROFILE")
+	if !oidcjwt.ValidProfile(os.Getenv(envAccountsvcAdminTokenProfile)) {
+		return invalidConfig(envAccountsvcAdminTokenProfile)
 	}
-	c.Admin = adminauth.Config{TokenProfile: defaultEnv("ADMIN_TOKEN_PROFILE", "default"), Issuer: env("ADMIN_ISSUER"), Audience: env("ADMIN_AUDIENCE"), RolesClaim: defaultEnv("ADMIN_ROLES_CLAIM", "/roles"), UsernameClaim: defaultEnv("ADMIN_USERNAME_CLAIM", "/preferred_username"), AllowHTTP: c.Mode == "development"}
+	c.Admin = adminauth.Config{TokenProfile: defaultEnv("ADMIN_TOKEN_PROFILE", oidcjwt.ProfileDefault), Issuer: env(configEnvAdminIssuer), Audience: env(configEnvAdminAudience), RolesClaim: defaultEnv(configEnvAdminRolesClaim, adminauth.DefaultRolesClaim), UsernameClaim: defaultEnv(configEnvAdminUsernameClaim, adminauth.DefaultUsernameClaim), AllowHTTP: c.Mode == modeDevelopment}
 	if err = c.Admin.Validate(); err != nil {
 		return invalidConfig("ACCOUNTSVC_ADMIN_ISSUER / ADMIN_AUDIENCE / ADMIN_ROLES_CLAIM / ADMIN_USERNAME_CLAIM")
 	}
 	if c.Admin.Audience == c.Library.JWTAudience {
-		return invalidConfig("ACCOUNTSVC_ADMIN_AUDIENCE")
+		return invalidConfig(envAccountsvcAdminAudience)
+	}
+	if err = c.loadAdminRoles(); err != nil {
+		return err
 	}
 	for _, app := range append(append([]accountkit.WeChatApp(nil), c.Library.WeChatApps...), c.Library.WeChatMiniProgramApps...) {
 		if c.Admin.Audience == app.AppID {
-			return invalidConfig("ACCOUNTSVC_ADMIN_AUDIENCE")
+			return invalidConfig(envAccountsvcAdminAudience)
 		}
 	}
 	for _, id := range c.Library.AppleBundleIDs {
 		if c.Admin.Audience == id {
-			return invalidConfig("ACCOUNTSVC_ADMIN_AUDIENCE")
+			return invalidConfig(envAccountsvcAdminAudience)
 		}
 	}
 	return nil
@@ -339,9 +345,9 @@ func (s ServiceConfig) Enabled() bool { return len(s.bearerClientIDs) > 0 }
 func (c *Config) loadService() error {
 	s := &c.Service
 	// audience 不经 env() 去空白，以便拒绝首尾空白。
-	s.Issuer, s.Audience = env("SERVICE_ISSUER"), os.Getenv("ACCOUNTSVC_SERVICE_AUDIENCE")
-	s.TokenProfile = os.Getenv("ACCOUNTSVC_SERVICE_TOKEN_PROFILE")
-	s.AllowHTTP = c.Mode == "development"
+	s.Issuer, s.Audience = env("SERVICE_ISSUER"), os.Getenv(envAccountsvcServiceAudience)
+	s.TokenProfile = os.Getenv(envAccountsvcServiceTokenProfile)
+	s.AllowHTTP = c.Mode == modeDevelopment
 	if !s.Enabled() {
 		if s.TokenProfile != "" {
 			return invalidConfig("ACCOUNTSVC_SERVICE_TOKEN_PROFILE (no bearer clients configured)")
@@ -352,10 +358,10 @@ func (c *Config) loadService() error {
 		return nil
 	}
 	if !oidcjwt.ValidProfile(s.TokenProfile) {
-		return invalidConfig("ACCOUNTSVC_SERVICE_TOKEN_PROFILE")
+		return invalidConfig(envAccountsvcServiceTokenProfile)
 	}
 	if s.TokenProfile == "" {
-		s.TokenProfile = "default"
+		s.TokenProfile = oidcjwt.ProfileDefault
 	}
 	validIssuer := oidcjwt.ValidIssuer
 	if s.AllowHTTP {
@@ -365,7 +371,7 @@ func (c *Config) loadService() error {
 		return invalidConfig("ACCOUNTSVC_SERVICE_ISSUER")
 	}
 	if s.Audience == "" || strings.TrimSpace(s.Audience) != s.Audience || slices.Contains(c.reservedAudiences(), s.Audience) {
-		return invalidConfig("ACCOUNTSVC_SERVICE_AUDIENCE")
+		return invalidConfig(envAccountsvcServiceAudience)
 	}
 	return nil
 }
@@ -411,7 +417,7 @@ func loadSMS(mode string) (*aliyun.Config, error) {
 	provider := env("SMS_PROVIDER")
 	if provider == "" {
 		for _, entry := range os.Environ() {
-			if name, _, _ := strings.Cut(entry, "="); strings.HasPrefix(name, "ACCOUNTSVC_SMS_ALIYUN_") && env(strings.TrimPrefix(name, "ACCOUNTSVC_")) != "" {
+			if name, _, _ := strings.Cut(entry, "="); strings.HasPrefix(name, envAccountsvcSmsAliyun) && env(strings.TrimPrefix(name, envPrefix)) != "" {
 				return nil, invalidConfig("ACCOUNTSVC_SMS_PROVIDER (" + name + " is set)")
 			}
 		}
@@ -420,13 +426,13 @@ func loadSMS(mode string) (*aliyun.Config, error) {
 	if provider != "aliyun" {
 		return nil, invalidConfig("ACCOUNTSVC_SMS_PROVIDER")
 	}
-	known := map[string]bool{"ACCESS_KEY_ID": true, "ACCESS_KEY_SECRET": true, "SIGN_NAME": true, "ENDPOINT": true}
+	known := map[string]bool{configEnvAccessKeyId: true, configEnvAccessKeySecret: true, configEnvSignName: true, "ENDPOINT": true}
 	for _, key := range aliyunTemplateKeys {
 		known[key.suffix] = true
 	}
 	for _, entry := range os.Environ() {
 		name, _, _ := strings.Cut(entry, "=")
-		if suffix, ok := strings.CutPrefix(name, "ACCOUNTSVC_SMS_ALIYUN_"); ok && !known[suffix] && env(strings.TrimPrefix(name, "ACCOUNTSVC_")) != "" {
+		if suffix, ok := strings.CutPrefix(name, envAccountsvcSmsAliyun); ok && !known[suffix] && env(strings.TrimPrefix(name, envPrefix)) != "" {
 			return nil, invalidConfig(name + " (unknown variable)")
 		}
 	}
@@ -437,20 +443,20 @@ func loadSMS(mode string) (*aliyun.Config, error) {
 		Endpoint:        env("SMS_ALIYUN_ENDPOINT"),
 		Templates:       make(map[enum.CodePurpose]string, len(aliyunTemplateKeys)),
 	}
-	for name, value := range map[string]string{"ACCESS_KEY_ID": cfg.AccessKeyID, "ACCESS_KEY_SECRET": cfg.AccessKeySecret, "SIGN_NAME": cfg.SignName} {
+	for name, value := range map[string]string{configEnvAccessKeyId: cfg.AccessKeyID, configEnvAccessKeySecret: cfg.AccessKeySecret, configEnvSignName: cfg.SignName} {
 		if value == "" {
-			return nil, invalidConfig("ACCOUNTSVC_SMS_ALIYUN_" + name)
+			return nil, invalidConfig(envAccountsvcSmsAliyun + name)
 		}
 	}
 	for _, key := range aliyunTemplateKeys {
 		code := env("SMS_ALIYUN_" + key.suffix)
 		if code == "" {
-			return nil, invalidConfig("ACCOUNTSVC_SMS_ALIYUN_" + key.suffix)
+			return nil, invalidConfig(envAccountsvcSmsAliyun + key.suffix)
 		}
 		cfg.Templates[key.purpose] = code
 	}
 	if cfg.Endpoint != "" {
-		if aliyun.ValidateEndpoint(cfg.Endpoint, mode != "production") != nil {
+		if aliyun.ValidateEndpoint(cfg.Endpoint, mode != modeProduction) != nil {
 			return nil, invalidConfig("ACCOUNTSVC_SMS_ALIYUN_ENDPOINT")
 		}
 	}
@@ -515,19 +521,19 @@ func safeLibraryConfigError(err error) error {
 		return invalidConfig(matches[1])
 	}
 	if matches := libraryAlipayAppError.FindStringSubmatch(err.Error()); len(matches) == 3 {
-		apps := strings.Split(os.Getenv(envPrefix+"ALIPAY_APP_IDS"), ",")
+		apps := strings.Split(os.Getenv(envPrefix+configEnvAlipayAppIds), ",")
 		index, parseErr := strconv.Atoi(matches[1])
 		if parseErr == nil && index < len(apps) && matches[2] != "AppID" {
 			appID := strings.TrimSpace(apps[index])
 			if alipayAppIDPattern.MatchString(appID) {
-				suffix := "PRIVATE_KEY"
+				suffix := configEnvPrivateKey
 				if matches[2] == "AlipayPublicKey" {
-					suffix = "PUBLIC_KEY"
+					suffix = configEnvPublicKey
 				}
 				return invalidConfig("ACCOUNTSVC_ALIPAY_" + appID + "_" + suffix)
 			}
 		}
-		return invalidConfig("ACCOUNTSVC_ALIPAY_APP_IDS")
+		return invalidConfig(envAccountsvcAlipayAppIds)
 	}
 	if matches := libraryAlipayFieldError.FindStringSubmatch(err.Error()); len(matches) == 2 {
 		if matches[1] == "AlipaySubjectMode" {
@@ -536,12 +542,12 @@ func safeLibraryConfigError(err error) error {
 		return invalidConfig("ACCOUNTSVC_ALIPAY_GATEWAY_URL")
 	}
 	if matches := libraryQQFieldError.FindStringSubmatch(err.Error()); len(matches) == 2 {
-		return invalidConfig(map[string]string{"QQAppIDs": "ACCOUNTSVC_QQ_APP_IDS", "QQSubjectMode": "ACCOUNTSVC_QQ_SUBJECT_MODE", "QQAPIBaseURL": "ACCOUNTSVC_QQ_API_BASE_URL"}[matches[1]])
+		return invalidConfig(map[string]string{"QQAppIDs": envAccountsvcQqAppIds, "QQSubjectMode": "ACCOUNTSVC_QQ_SUBJECT_MODE", "QQAPIBaseURL": "ACCOUNTSVC_QQ_API_BASE_URL"}[matches[1]])
 	}
 	if matches := libraryWeiboFieldError.FindStringSubmatch(err.Error()); len(matches) == 2 {
-		return invalidConfig(map[string]string{"WeiboAppIDs": "ACCOUNTSVC_WEIBO_APP_IDS", "WeiboAPIBaseURL": "ACCOUNTSVC_WEIBO_API_BASE_URL"}[matches[1]])
+		return invalidConfig(map[string]string{"WeiboAppIDs": envAccountsvcWeiboAppIds, "WeiboAPIBaseURL": "ACCOUNTSVC_WEIBO_API_BASE_URL"}[matches[1]])
 	}
-	names := map[string]string{"Schema": "AUTH_SCHEMA", "KeyPrefix": "AUTH_KEY_PREFIX", "JWTKeys": "JWT_KEYS / ACCOUNTSVC_JWT_ACTIVE_KEY", "JWTIssuer": "JWT_ISSUER / ACCOUNTSVC_JWT_AUDIENCE", "SubjectHMACKeys": "SUBJECT_HMAC_KEYS / ACCOUNTSVC_SUBJECT_HMAC_ACTIVE_KEY", "SubjectCipherKeys": "SUBJECT_CIPHER_KEYS / ACCOUNTSVC_SUBJECT_CIPHER_ACTIVE_KEY", "AccessTokenTTL": "ACCESS_TOKEN_TTL", "RefreshTokenTTL": "REFRESH_TOKEN_TTL", "RefreshGrace": "REFRESH_GRACE", "ReauthMaxAge": "REAUTH_MAX_AGE", "CodeTTL": "CODE_TTL / ACCOUNTSVC_CODE_COOLDOWN", "Code": "CODE_MAX_ATTEMPTS / ACCOUNTSVC_CODE_DAILY_LIMIT_PER_TARGET / ACCOUNTSVC_CODE_DAILY_LIMIT_PER_IP", "MaxIdentitiesPerKind": "MAX_IDENTITIES_PER_KIND", "DeletionCoolingPeriod": "DELETION_COOLING_PERIOD / ACCOUNTSVC_AUDIT_RETENTION_DAYS", "PurgedUserRetention": "PURGED_USER_RETENTION", "DefaultRegion": "DEFAULT_REGION", "WeChatApps": "WECHAT_APPS", "WeChatMiniProgramApps": "WECHAT_MINI_PROGRAM_APPS", "WeChatSubjectMode": "WECHAT_SUBJECT_MODE", "AppleBundleIDs": "APPLE_BUNDLE_IDS", "AppleNonceTTL": "APPLE_NONCE_TTL", "GoogleClientIDs": "GOOGLE_CLIENT_IDS", "GoogleNonceTTL": "GOOGLE_NONCE_TTL", "WeChatAPIBaseURL": "WECHAT_API_BASE_URL", "AppleJWKSURL": "APPLE_JWKS_URL", "GoogleJWKSURL": "GOOGLE_JWKS_URL", "MaintenanceInterval": "MAINTENANCE_INTERVAL"}
+	names := map[string]string{"Schema": "AUTH_SCHEMA", "KeyPrefix": "AUTH_KEY_PREFIX", "JWTKeys": "JWT_KEYS / ACCOUNTSVC_JWT_ACTIVE_KEY", "JWTIssuer": "JWT_ISSUER / ACCOUNTSVC_JWT_AUDIENCE", "SubjectHMACKeys": "SUBJECT_HMAC_KEYS / ACCOUNTSVC_SUBJECT_HMAC_ACTIVE_KEY", "SubjectCipherKeys": "SUBJECT_CIPHER_KEYS / ACCOUNTSVC_SUBJECT_CIPHER_ACTIVE_KEY", "AccessTokenTTL": "ACCESS_TOKEN_TTL", "RefreshTokenTTL": "REFRESH_TOKEN_TTL", "RefreshGrace": "REFRESH_GRACE", "ReauthMaxAge": "REAUTH_MAX_AGE", "CodeTTL": "CODE_TTL / ACCOUNTSVC_CODE_COOLDOWN", "Code": "CODE_MAX_ATTEMPTS / ACCOUNTSVC_CODE_DAILY_LIMIT_PER_TARGET / ACCOUNTSVC_CODE_DAILY_LIMIT_PER_IP", "MaxIdentitiesPerKind": "MAX_IDENTITIES_PER_KIND", "DeletionCoolingPeriod": "DELETION_COOLING_PERIOD / ACCOUNTSVC_AUDIT_RETENTION_DAYS", "PurgedUserRetention": "PURGED_USER_RETENTION", "DefaultRegion": "DEFAULT_REGION", "WeChatApps": "WECHAT_APPS", "WeChatMiniProgramApps": "WECHAT_MINI_PROGRAM_APPS", "WeChatSubjectMode": configEnvWechatSubjectMode, "AppleBundleIDs": "APPLE_BUNDLE_IDS", "AppleNonceTTL": "APPLE_NONCE_TTL", "GoogleClientIDs": "GOOGLE_CLIENT_IDS", "GoogleNonceTTL": "GOOGLE_NONCE_TTL", "WeChatAPIBaseURL": "WECHAT_API_BASE_URL", "AppleJWKSURL": "APPLE_JWKS_URL", "GoogleJWKSURL": "GOOGLE_JWKS_URL", "MaintenanceInterval": "MAINTENANCE_INTERVAL"}
 	names["FacebookAppID"] = "FACEBOOK_APP_ID"
 	names["FacebookAppSecret"] = "FACEBOOK_APP_SECRET"
 	names["FacebookGraphAPIVersion"] = "FACEBOOK_GRAPH_API_VERSION"
@@ -549,11 +555,11 @@ func safeLibraryConfigError(err error) error {
 	names["FacebookGraphAPIBaseURL"] = "FACEBOOK_GRAPH_API_BASE_URL"
 	names["FacebookJWKSURL"] = "FACEBOOK_JWKS_URL"
 	names["EnabledIdentityKinds"] = "ENABLED_IDENTITY_KINDS"
-	names["OIDCProviders"] = "OIDC_PROVIDERS"
+	names["OIDCProviders"] = configEnvOidcProviders
 	names["RequiredIdentityKinds"] = "REQUIRED_IDENTITY_KINDS"
 	if matches := libraryErrorField.FindStringSubmatch(err.Error()); len(matches) == 2 {
 		if name, ok := names[matches[1]]; ok {
-			return invalidConfig("ACCOUNTSVC_" + name)
+			return invalidConfig(envPrefix + name)
 		}
 	}
 	return invalidConfig(envPrefix + " library configuration")

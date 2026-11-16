@@ -1,5 +1,13 @@
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationEmailLifecycle
+github.com/bbxx111/accountkit/internal/accountsvc/TestIdentityAuditNamespacePreservesEmptySchema
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationAdminLifecycle
+github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationAdminPermissions
+github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationAdminPolicyRestart
+github.com/bbxx111/accountkit/internal/accountsvc/TestConfigAdminRoleBindings
+github.com/bbxx111/accountkit/internal/accountsvc/TestConfigAdminRoleRejections
+github.com/bbxx111/accountkit/internal/accountsvc/TestConfigAdminRoleEmptyDisabledAndMigrate
+github.com/bbxx111/accountkit/internal/accountsvc/TestConfigAdminRoleTemplate
+github.com/bbxx111/accountkit/internal/accountsvc/TestApplicationAdminRevealErrorsNoStore
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationDependencyFailure
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceIntegrationStartupSafety
 github.com/bbxx111/accountkit/internal/accountsvc/TestServiceProcessSIGTERM
@@ -126,3 +134,5 @@ github.com/bbxx111/accountkit/internal/accountsvc/introspection/TestIntrospectio
 github.com/bbxx111/accountkit/internal/accountsvc/serviceauth/TestRegistryBearerSubjectValidationAndSnapshot
 github.com/bbxx111/accountkit/internal/accountsvc/TestUnifiedServiceClientFixtureConfiguration
 github.com/bbxx111/accountkit/internal/accountsvc/adminauth/TestAdminDefaultProfileDoesNotRequireClientClaims
+github.com/bbxx111/accountkit/internal/accountsvc/adminauth/TestPolicyCompilation
+github.com/bbxx111/accountkit/internal/accountsvc/adminauth/TestPermissionAuthenticationAndSnapshot

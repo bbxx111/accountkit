@@ -7,6 +7,7 @@ import (
 	"net/url"
 
 	"github.com/bbxx111/accountkit/httpapi/apierror"
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 )
 
 type tokenRequest struct {
@@ -25,8 +26,8 @@ type tokenRequest struct {
 // 新增表单支持之前完全一致：既有调用方不要求 Content-Type，JSON 路径继续拒绝未知字段。表单能力不扩散到
 // 其他端点。
 func (h *Handler) decodeOAuthBody(w http.ResponseWriter, r *http.Request, dst any, fields map[string]*string) error {
-	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || mediaType != "application/x-www-form-urlencoded" {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get(httpcontract.HeaderContentType))
+	if err != nil || mediaType != httpcontract.MediaTypeForm {
 		return h.decodeJSON(w, r, dst)
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, h.d.MaxBodyBytes))
@@ -63,11 +64,11 @@ func (h *Handler) token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.GrantType == "" || req.RefreshToken == "" {
-		apierror.WriteOAuth(w, http.StatusBadRequest, "invalid_request", "grant_type and refresh_token are required", nil)
+		apierror.WriteOAuth(w, http.StatusBadRequest, httpcontract.OAuthErrorInvalidRequest, "grant_type and refresh_token are required", nil)
 		return
 	}
-	if req.GrantType != "refresh_token" {
-		apierror.WriteOAuth(w, http.StatusBadRequest, "unsupported_grant_type", "only grant_type=refresh_token is supported", nil)
+	if req.GrantType != httpcontract.GrantTypeRefreshToken {
+		apierror.WriteOAuth(w, http.StatusBadRequest, httpcontract.OAuthErrorUnsupportedGrantType, "only grant_type=refresh_token is supported", nil)
 		return
 	}
 	meta, err := h.authMeta(r)
@@ -99,13 +100,13 @@ func (h *Handler) revoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Token == "" {
-		apierror.WriteOAuth(w, http.StatusBadRequest, "invalid_request", "token is required", nil)
+		apierror.WriteOAuth(w, http.StatusBadRequest, httpcontract.OAuthErrorInvalidRequest, "token is required", nil)
 		return
 	}
 	if err := h.d.Users.Revoke(r.Context(), req.Token, h.meta(r)); err != nil {
 		h.writeOAuthError(w, r, err)
 		return
 	}
-	w.Header().Set("Cache-Control", "no-store")
+	httpcontract.SetNoStore(w)
 	w.WriteHeader(http.StatusOK)
 }

@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/bbxx111/accountkit/internal/httpcontract"
 )
 
 const maxWeiboBody = 64 << 10
@@ -55,7 +57,7 @@ func (p *Weibo) do(ctx context.Context, method, path string, values url.Values, 
 		return 0, nil, weiboFailure(ErrMisconfigured, "request construction")
 	}
 	if body != nil {
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set(httpcontract.HeaderContentType, httpcontract.MediaTypeForm)
 	}
 	resp, err := p.http.Do(req)
 	if err != nil {
@@ -90,9 +92,9 @@ func (p *Weibo) do(ctx context.Context, method, path string, values url.Values, 
 // weiboTokenError 仅按已核对的错误码分类；error、request 文本不参与判断也不输出。
 func weiboTokenError(code string) error {
 	switch code {
-	case "21314", "21315", "21316", "21317", "21319", "21327", "21332": // 令牌已使用 / 过期 / 撤销 / 拒绝 / 授权收回 / 过期 / 无效
+	case weibo21314, weibo21315, weibo21316, weibo21317, weibo21319, weibo21327, weibo21332: // 令牌已使用 / 过期 / 撤销 / 拒绝 / 授权收回 / 过期 / 无效
 		return weiboFailure(ErrInvalidCredential, "access token rejected")
-	case "10005", "10014", "21321": // 需更高授权 / 应用权限受限 / 未审核应用用户数超限
+	case weibo10005, weibo10014, weibo21321: // 需更高授权 / 应用权限受限 / 未审核应用用户数超限
 		return weiboFailure(ErrMisconfigured, "application not permitted")
 	}
 	return weiboFailure(ErrUnavailable, "upstream error")

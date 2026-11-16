@@ -84,7 +84,7 @@ func UnmarshalClientInfo(input []byte) (*ClientInfo, error) {
 	out := &ClientInfo{}
 	for key, value := range root {
 		switch key {
-		case "type":
+		case clientFieldType:
 			s, ok := value.(string)
 			if !ok {
 				return nil, ErrInvalidClientInfo
@@ -93,7 +93,7 @@ func UnmarshalClientInfo(input []byte) (*ClientInfo, error) {
 			if err != nil {
 				return nil, ErrInvalidClientInfo
 			}
-		case "os", "browser", "app", "device":
+		case clientFieldOs, clientFieldBrowser, clientFieldApp, clientFieldDevice:
 			obj, ok := value.(map[string]any)
 			if !ok {
 				return nil, ErrInvalidClientInfo
@@ -104,25 +104,25 @@ func UnmarshalClientInfo(input []byte) (*ClientInfo, error) {
 					return nil, ErrInvalidClientInfo
 				}
 				switch key + "." + field {
-				case "os.name":
+				case clientFieldOsName:
 					out.OSName = s
-				case "os.version":
+				case clientFieldOsVersion:
 					out.OSVersion = s
-				case "browser.name":
+				case clientFieldBrowserName:
 					out.BrowserName = s
-				case "browser.version":
+				case clientFieldBrowserVersion:
 					out.BrowserVersion = s
-				case "app.name":
+				case clientFieldAppName:
 					out.AppName = s
-				case "app.version":
+				case clientFieldAppVersion:
 					out.AppVersion = s
-				case "app.build":
+				case clientFieldAppBuild:
 					out.AppBuild = s
-				case "device.manufacturer":
+				case clientFieldDeviceManufacturer:
 					out.DeviceManufacturer = s
-				case "device.model":
+				case clientFieldDeviceModel:
 					out.DeviceModel = s
-				case "device.type":
+				case clientFieldDeviceType:
 					out.DeviceType, err = enum.ParseDeviceType(s)
 					if err != nil {
 						return nil, ErrInvalidClientInfo
@@ -131,7 +131,7 @@ func UnmarshalClientInfo(input []byte) (*ClientInfo, error) {
 					return nil, ErrInvalidClientInfo
 				}
 			}
-		case "extensions":
+		case clientFieldExtensions:
 			obj, ok := value.(map[string]any)
 			if !ok {
 				return nil, ErrInvalidClientInfo

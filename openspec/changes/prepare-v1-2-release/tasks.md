@@ -20,13 +20,13 @@
 
 ## 4. 最终发布候选
 
-- [ ] 4.1 将完整准备材料按独立merge commit集成develop及main并推送，工作区干净，固定包含全部候选说明的最终main SHA。
-- [ ] 4.2 最终main SHA对应Go及SDK在线检查全部成功；复核同名tag不存在、远端无v0 tag及候选完整性，记录实际链接后才能发布。
+- [x] 4.1 将完整准备材料按独立merge commit集成develop及main并推送，工作区干净，固定包含全部候选说明的最终main SHA。
+- [x] 4.2 最终main SHA对应Go及SDK在线检查全部成功；复核同名tag不存在、远端无v0 tag及候选完整性，记录实际链接后才能发布。
 
 ## 5. 正式发布与消费
 
-- [ ] 5.1 创建并推送指向受测main候选的annotated v1.2.0 tag，使用同一发布说明创建GitHub Release；核对tag对象、解引用提交和Release内容一致，不移动tag。
-- [ ] 5.2 两个新独立宿主以GOWORK=off、无replace获取正式v1.2.0，分别编译根门面及直接适配器，核对旧/新管理员接口、公开新增符号、go list版本及冻结SQL哈希。
+- [x] 5.1 创建并推送指向受测main候选的annotated v1.2.0 tag，使用同一发布说明创建GitHub Release；核对tag对象、解引用提交和Release内容一致，不移动tag。
+- [x] 5.2 两个新独立宿主以GOWORK=off、无replace获取正式v1.2.0，分别编译根门面及直接适配器，核对旧/新管理员接口、公开新增符号、go list版本及冻结SQL哈希。
 
 ## 6. 发布补记与闭环
 

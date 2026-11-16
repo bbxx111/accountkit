@@ -35,3 +35,23 @@
 候选文档阶段提交为41b9078。准备证据补记仅改变文档/SDK兼容状态，运行源码及协议与受测准备源一致；最终main SHA尚未生成，本轮尚未创建正式tag/Release或宣称远端Go消费通过。
 
 完整准备分支的独立收尾审查通过、无开放finding（SDD目录final-candidate-review.md），核对原始Go JSON、SDK平台产物及矩阵状态来源；公开Go兼容、角色迁移、最终SHA与不可变tag边界保持。两个发布后消费程序已先在当前源码上编译检查公共API用法，但尚未获取正式v1.2.0，不能算远端消费证据。
+
+## 最终main候选与正式发布
+
+准备材料通过[PR #34](https://github.com/bbxx111/accountkit/pull/34)以独立merge commit集成develop（8ac08ad），随后通过[PR #35](https://github.com/bbxx111/accountkit/pull/35)固定最终main为`462d798dfc11e672cd2ee8d7ce7fbce402d29d02`。合并树与受审查候选一致，冻结后未修改候选说明。最终发布门禁为该精确SHA的[Go CI 43922266678](https://github.com/bbxx111/accountkit/actions/runs/43922266678)与[SDK CI 43922266660](https://github.com/bbxx111/accountkit/actions/runs/43922266660)，两项整体及Go单任务/SDK三个任务全部success，包含实际Android/iOS构建；旧准备源和中间PR不替代最终SHA。
+
+中间develop SDK运行43918890092的Android首次在Flutter下载Dart SDK启动阶段失败，toolchain输出为空，尚未进入应用构建/测试。main合并保护实际拦截了该失败；保存原始任务日志后，只重跑一次相同源码和工具版本，attempt2所有任务成功，没有改源码或放宽校验。旧PR #34的另一SDK运行中，单元与Android成功、iOS取消，未将取消算作通过。最终main的两项完整成功独立于上述中间结果。
+
+发布保护先核对本地/远端main与最终SHA、干净工作区、实际工作流身份/结论、SDK矩阵、候选说明和远端tag条件，check-only通过后才执行创建。annotated `v1.2.0`对象为`f8e624dda3e50c0e05c62e039447dc5e922b153b`，精确解引用到462d798；[GitHub Release](https://github.com/bbxx111/accountkit/releases/tag/v1.2.0)于2026-11-16 18:00:55 UTC发布（Asia/Shanghai为2026-11-17），非draft、非prerelease，正文与tag内候选发布说明一致。当前正式tag固定该受测提交，后续状态补记不移动tag。
+
+## 正式远端Go消费
+
+两个全新独立module经`GOPROXY=https://proxy.golang.org,direct`及`GOSUMDB=sum.golang.org`获取`github.com/bbxx111/accountkit@v1.2.0`，Go1.26.5 windows/amd64，GOWORK=off、无replace。分别验证根门面/旧RequireRole宿主与直接HTTP适配器/新权限扩展宿主；tidy/build/run均成功，运行时BuildInfo确认实际链接v1.2.0且无替换，go list版本与模块缓存来源正确。
+
+- 权限目录及副本、新别名、既有角色常量、认证资源/验证码Dimension/SMTP TLS常量均可消费。下载模块的635个Go文件逐字节匹配最终受测Git对象，初始0001 up/down SQL匹配v1.0.0冻结哈希；消费者自行确认远端annotated tag仍指向462d798。
+- 首次消费的额外源码指纹检查未通过：准备快照使用Windows工作树字节，8个未改动历史Go文件仍为CRLF，而下载内容为Git中的LF。诊断逐文件确认这8处下载内容与发布Git对象一致；未改tag或源文件，将预期指纹改为受测main Git对象后，在两个新目录重跑完整消费及635文件检查成功。首次命令和诊断保留，不将首次失败计为通过。
+- 实际输出、模块版本/校验和、源文件指纹与SQL哈希位于remote-consumers/verification.json、published-git-go-manifest.json和各唯一run目录commands.json，完整来源见state.json/release-created.json/source-fingerprint-diagnosis.json。
+
+正式版本和消费均已确认。当前在独立发布补记分支将最新文档更新为已发布，随后按用户授权集成develop/main；这属于独立补记提交，不能冒充受测/tagged源提交。发布准备变更仍等待以后单独归档，产品环境验收边界保持。
+
+已发布状态文档的独立复核Spec/Quality通过、无finding（SDD目录task-5-review.md）；OpenAPI24/11、SDK36覆盖、194个本地链接/JSON/UTF-8及严格46/46均通过。补记中明确本地日期与UTC记录、tag内原候选文本不动、两个SDK仍为1.0.0。

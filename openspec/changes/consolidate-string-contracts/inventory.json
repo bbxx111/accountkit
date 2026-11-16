@@ -3525,6 +3525,6 @@
   "progressNotes": [
     "78组实现按各模块报告及当前代码闭环，L041补齐六类私有日志定义，L046恢复QQ与微博独立规则；审查结论及后续补验以verification.md持续更新。",
     "精确TS工具下56项单元、typecheck/format通过；精确Flutter工具下77项单元、format/analyze通过。真实SDK验证覆盖TS全部11操作、Flutter 3项service及1项policy；固定Git快照两个SDK的none消费与Flutter Android独立消费者通过。",
-    "Linux Node工具33/33通过，包含POSIX取消；Windows平台skip未算作POSIX通过。全Go真实数据库/race/恢复及最终服务进程门禁已通过，Compose与root不可读文件条件skip已分别在宿主与非root补验；635个Go文件与最终验证源码一致。iOS仍缺macOS/Xcode环境，6.3/10.2/10.3保留未完成；远端发布tag消费不从本地固定Git消费推定通过。"
+    "Linux Node工具33/33通过，包含POSIX取消；Windows平台skip未算作POSIX通过。全Go真实数据库/race/恢复及最终服务进程门禁已通过，Compose与root不可读文件条件skip已分别在宿主与非root补验；635个Go文件与最终验证源码一致。GitHub Actions运行43793597139在提交8d5cc551f7f74dab7b299ce86d9540c3958670c9上完成SDK契约与Android/iOS全部三个任务；macos-15使用Xcode26.1.1完成iOS无签名构建。环境缺口已补齐，正式证据与最后收尾状态见verification.md；远端发布tag消费不从本次固定Git消费推定通过。"
   ]
 }

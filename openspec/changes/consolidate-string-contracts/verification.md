@@ -82,7 +82,7 @@ apply后需按任务记录每阶段实际命令、独立审查、提交和清单
 - Node工具最终Windows33项中32通过、1项POSIX专属skip（final-node-windows.log）；Linux33/33通过（final-node-linux-path.log），含忽略SIGTERM的取消、临时Git/路径安全、seed元数据拒绝与最终旧标记。首次Linux运行因未把已安装Node加入子进程PATH失败，补正确进程PATH后全通过，未修改测试来放行。
 - `node scripts/check-openapi.cjs`、check-sdk-coverage.mjs通过：24/11操作及36项覆盖保持；两包check-sdk-release以各自v1.0.0候选tag和--metadata-only通过，仅检查元数据，未创建tag或宣称发布就绪。此前误用不存在的check-openapi.mjs失败，已改用仓库实际.cjs入口重跑。
 - 最终Go独立消费快照`838a35a969d5ad1bcd9959d2daac26844c6bff25`，本地proxy版本`v1.1.1-0.20261115200649-838a35a969d5`：旧角色宿主与新权限宿主均GOWORK=off、无replace地tidy/build/run通过（final-consumers/verification.json）。快照包含当时未提交实现，不依赖工作树或源分支tag。
-- 当前主机为Windows，缺macOS/Xcode26.1.1；已向用户异步询问可用环境，尚无答复。iOS原生构建未执行，6.3/10.2及要求全门禁闭环的10.3保持未完成，不以Android或单元结果替代。
+- 本地验收阶段的主机为Windows，缺macOS/Xcode26.1.1，故当时未执行iOS原生构建，6.3/10.2/10.3保持未完成。该缺口现已通过下述GitHub Actions的macOS任务补齐，未以Android或单元结果替代。
 
 ## 综合验证：Go、数据库与恢复
 
@@ -92,12 +92,27 @@ apply后需按任务记录每阶段实际命令、独立审查、提交和清单
 - 全分支独立审查覆盖78组，唯一P2为L009的metrics与外层reveal缓存两处遗漏。Final fix round 1/5（Task5累计修复轮2）：已复用SetNoStore，保留原条件、时机且不增加Pragma；范围测试/vet通过，定点复核ADDRESSED，当前spec/quality通过、无开放源码finding。原始报告final-review.md及task5-fix2-*.log。
 - 全仓验证后的源码只差最后两处等价接线（metrics.go/run.go），其余633个Go文件一致；已覆盖最终两文件，重新通过全仓build/vet及完整accountsvc真实进程/race门禁，日志final-linux-evidence/accountsvc-final-linux.log和accountsvc-tests.jsonl。最终服务顶层275通过、Compose和root权限两项条件skip；前者宿主补验如上，后者通过UID65534执行TestProfileAttributesUnreadableFile补验（profile-unreadable-nonroot.log），无剩余Go条件skip缺口。恢复与其他领域源码无变化，不重建已使用的恢复源/目标库或重复清空数据。
 - final-source-match.log确认最终验证容器与提交源码的635个Go文件SHA256全部一致。测试结束前核对完整容器ID、名称、任务标签与网络成员，仅移除本任务三个容器/匿名卷及专用网络（cleanup-result.json）；原始测试、恢复材料及精确工具保留在忽略目录用于复查。
-- sqlc1.31.1的check-generated.sh通过（generated-check.log），冻结生产SQL及哈希未变；OpenSpec严格校验47/47通过。清单78项均有实际符号/文件/保留说明，原始78组值及367处基线引用未改；JSON、任务映射、文档链接、gofmt/LF/diff检查通过，综合验收仍保留明确环境缺口。
+- sqlc1.31.1的check-generated.sh通过（generated-check.log），冻结生产SQL及哈希未变；OpenSpec严格校验47/47通过。清单78项均有实际符号/文件/保留说明，原始78组值及367处基线引用未改；JSON、任务映射、文档链接、gofmt/LF/diff检查通过。Go阶段结束时尚缺的iOS环境由后续远端任务补齐。
+
+## 2026-11-16：远端SDK与iOS验收
+
+用户授权继续远端验收后，推送任务分支并通过既有workflow_dispatch运行client-sdks.yml。验收提交固定为`8d5cc551f7f74dab7b299ce86d9540c3958670c9`，运行[43793597139](https://github.com/bbxx111/accountkit/actions/runs/43793597139)，2026-11-16 02:40:30 UTC触发，02:45:01 UTC结束，整体结论success。
+
+| 任务 | 结果与证据 |
+|---|---|
+| SDK unit, real service, embedded policy and Git consumption | success；TS56项单元、Flutter77项单元、TS全部11管理操作、Flutter3项服务/IdP与1项策略演进、36项协议覆盖、两个SDK固定Git子目录独立消费全部通过。 |
+| Flutter Git consumer / ios | success；macos-15 runner实际为macOS15.8.2 arm64，显式选择Xcode26.1.1；Flutter3.47.4/Dart3.13.3，完成独立消费项目分析、测试和无签名iOS release构建，生成Runner.app。 |
+| Flutter Git consumer / android | success；同样通过精确工具链检查及独立Git消费，生成debug APK。 |
+
+- 三个任务的Node24.21.0/pnpm11.24.0、Flutter3.47.4/Dart3.13.3检查均通过。iOS日志明确记录Xcode26.1.1及`SDK isolated consumers passed (flutter, native platform=ios)`；没有缺依赖而跳过的必需平台门禁。
+- 本轮下载sdk-contracts、sdk-native-ios、sdk-native-android三个产物；SDK契约与iOS完整任务日志、Android构建日志、run-final.json、artifact ID/digest元数据和13个下载文件的SHA256清单保存在`.test-output/string-contracts/remote-ci-43793597139/`。本地核验运行SHA、三个任务success、工具版本与构建/协议结果全部通过。
+- 这些结果证明本次源码的固定Git子目录消费和原生编译；iOS采用--no-codesign，没有执行真机签名部署。SDK正式远端tag消费仍是独立发布验证，本次未创建版本或tag。
+- 本轮回填仅修改OpenSpec工件及详细计划，运行源码与上述CI通过提交一致；Go门禁沿用本变更已完成的实际数据库/race/恢复记录，不把SDK workflow当成Go门禁替代证据。
 
 ## 本地阶段提交
 
-已提交`5000620`详细计划、`932ed5c`管理SDK与工具、`93bea6c`HTTP/JOSE、`a26a363`Flutter、`abfcfdd`领域/审计/存储、`919a23d`配置/提供方/测试装配与跨模块接线。全仓结果和清单最终闭环另作验收记录提交。所有提交均在任务分支，不推送、合并、归档或发布。
+已提交`5000620`详细计划、`932ed5c`管理SDK与工具、`93bea6c`HTTP/JOSE、`a26a363`Flutter、`abfcfdd`领域/审计/存储、`919a23d`配置/提供方/测试装配与跨模块接线、`8d5cc55`本地验收记录。用户本轮授权继续远端验收后，任务分支已推送并完成上述CI；本轮结果回填另作阶段提交，继续保留任务分支。
 
 ## 当前交付状态
 
-78组均已实施并核对原值/拥有者及保留理由；逐模块和全分支独立审查无开放源码finding，收尾文档审查发现的清单进度旧值已同步为最新证据。Go及可执行的SDK/Android/工具门禁已通过，任务27/30；6.3、10.2和10.3仅因必需iOS原生构建缺macOS/Xcode环境而保持未完成。代码实施完成不等于全平台验收或变更归档，后续提供该环境后再完成iOS和三个剩余勾选。未修改版本、锁文件、冻结迁移或原管理权限变更。
+78组均已实施并核对原值/拥有者及保留理由，任务30/30完成。Go、两个SDK、Android/iOS及工具的规定门禁均有本次通过证据，iOS环境缺口已由远端CI补齐；独立收尾复核Spec/Quality通过、无开放源码或文档finding（final-review.md），OpenSpec严格校验47/47通过，清单、链接、格式及源码一致性检查通过。本轮验收记录提交只更新四份工件/计划文档，运行源码与CI通过提交8d5cc55一致。本次没有修改版本、锁文件、冻结迁移或原管理权限变更，变更归档仍为单独步骤。

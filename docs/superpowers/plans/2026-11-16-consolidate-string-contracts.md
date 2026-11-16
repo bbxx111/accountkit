@@ -97,5 +97,5 @@
 
 - [x] root固定全仓Go/SDK基线，取得旧/新无replace独立module消费；每批根据原值/实例隔离/协议断言核查并记录。
 - [x] 最终在容器本地文件系统执行Go build/vet/test/race、生成/迁移历史检查、verify.sh恢复和verify-accountsvc进程；只用任务资源，结束核对ID清理。
-- [ ] 精确SDK工具完成Flutter和TS单元、真实服务/嵌入策略、固定Git消费及Android/iOS；Windows不能提供的macOS/Xcode检查保留未完成，不伪造。
+- [x] 精确SDK工具完成Flutter和TS单元、真实服务/嵌入策略、固定Git消费及Android/iOS；本地Windows之外，由GitHub Actions运行43793597139的macOS/Xcode任务补齐iOS证据，详见对应变更verification.md。
 - [x] 全分支审查修复、78组闭环、OpenSpec/链接/LF/diff校验；按实际证据勾选任务并分阶段本地提交。推送、合并、归档、发布另按授权。

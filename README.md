@@ -95,7 +95,7 @@ GET 与 PATCH 成功均返回 200 和 `{"name":"users/u_0000000000001/profile","
 
 挂载内置 HTTP handler 的宿主可使用[消费者与管理面 OpenAPI 契约](docs/openapi.md)，按实际地址调整挂载前缀。
 
-本文描述 v1.2.0（候选）的公开契约；账号资源沿用 `/users`。v1.0.0 移除的 Go 符号及调用者须知见[兼容指南](docs/compatibility.md#v100-调用者须知)，开发期版本见[1.0 前历史](docs/releases/pre-1.0-history.md)。
+本文描述 v1.2.0（已发布）的公开契约；账号资源沿用 `/users`。v1.0.0 移除的 Go 符号及调用者须知见[兼容指南](docs/compatibility.md#v100-调用者须知)，开发期版本见[1.0 前历史](docs/releases/pre-1.0-history.md)。
 
 accountkit 支持直接作为库嵌入宿主。accountsvc 是项目自带的可选服务实现，使用同一套库能力；选择库集成不需要部署或调用 accountsvc。服务入口是 `cmd/accountsvc`，包含 SMTP 邮件投递、消费者远程鉴权和默认关闭的外部管理员 JWT 验证，运行与配置见 [accountsvc 服务手册](docs/accountsvc.md)。`examples/embedded` 保留为库集成开发示例。
 
@@ -541,7 +541,7 @@ HMAC 还须等待旧轮次、目标失败预算、目标冷却和当日目标额
 
 ## 仓库与发布状态
 
-当前版本为 v1.2.0（候选），见[发布说明](docs/releases/v1.2.0.md)。module/import 保持 `github.com/bbxx111/accountkit`，HTTP `/v1` 和 `/admin/v1` 不变；accountsvc 管理员显式角色映射是相对 v1.1.0 的破坏性部署迁移，空绑定时有效管理员返回403，须按发布说明配置并重启或排空全部副本。公开 Go API 加法兼容，旧嵌入宿主角色接口保留，不代表全部部署兼容，也不授权未来任意破坏 v1 契约。正式 tag 将包含候选说明；[Release](https://github.com/bbxx111/accountkit/releases/tag/v1.2.0) 与远端消费确认后独立补记状态，不移动 tag。历史见[v1.1.0](docs/releases/v1.1.0.md)、[v1.0.0](docs/releases/v1.0.0.md)及[1.0 前历史](docs/releases/pre-1.0-history.md)。
+当前版本为 v1.2.0（已发布），见[发布说明](docs/releases/v1.2.0.md)。module/import 保持 `github.com/bbxx111/accountkit`，HTTP `/v1` 和 `/admin/v1` 不变；accountsvc 管理员显式角色映射是相对 v1.1.0 的破坏性部署迁移，空绑定时有效管理员返回403，须按发布说明配置并重启或排空全部副本。公开 Go API 加法兼容，旧嵌入宿主角色接口保留，不代表全部部署兼容，也不授权未来任意破坏 v1 契约。正式 tag 固定提交 `462d798dfc11e672cd2ee8d7ce7fbce402d29d02`，对应 Go/SDK CI 与两个独立远端 Go 宿主消费均通过，见[Release](https://github.com/bbxx111/accountkit/releases/tag/v1.2.0)。tag 保留原候选说明，本次补记不移动 tag。历史见[v1.1.0](docs/releases/v1.1.0.md)、[v1.0.0](docs/releases/v1.0.0.md)及[1.0 前历史](docs/releases/pre-1.0-history.md)。
 
 Go module：github.com/bbxx111/accountkit；远程仓库：https://github.com/bbxx111/accountkit.git。发布及产品上线要求见[检查表](docs/release-checklist.md)。
 

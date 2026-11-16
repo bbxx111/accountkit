@@ -3,7 +3,7 @@
   "info": {
     "title": "accountsvc 服务身份解析 API",
     "version": "v1.2.0",
-    "description": "v1.2.0（候选）：独立服务调用面；仅登记 v1.1.0 已引入的身份解析操作，不代表其他 accountsvc 端点覆盖，本次服务调用协议保持不变。"
+    "description": "v1.2.0（已发布）：独立服务调用面；仅登记 v1.1.0 已引入的身份解析操作，不代表其他 accountsvc 端点覆盖，本次服务调用协议保持不变。"
   },
   "servers": [
     {
